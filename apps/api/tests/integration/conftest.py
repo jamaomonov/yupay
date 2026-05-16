@@ -76,6 +76,7 @@ async def db_engine():
             await conn.execute(
                 text(
                     "TRUNCATE TABLE "
+                    "wallet_postings, wallet_transactions, wallet_accounts, "
                     "deliveries, fulfillment_attempts, fulfillment_tasks, "
                     "payment_webhooks, payment_attempts, payments, "
                     "order_events, order_items, orders, "

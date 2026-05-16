@@ -24,6 +24,7 @@ from yupay.modules.fx import models as _fx_models  # noqa: F401
 from yupay.modules.orders import models as _orders_models  # noqa: F401
 from yupay.modules.payments import models as _payments_models  # noqa: F401
 from yupay.modules.users import models as _users_models  # noqa: F401
+from yupay.modules.wallet import models as _wallet_models  # noqa: F401
 
 config = context.config
 

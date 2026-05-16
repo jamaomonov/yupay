@@ -1,0 +1,62 @@
+"""Public surface of the ``wallet`` module — the only thing other modules import."""
+
+from yupay.modules.wallet.models import WalletAccount, WalletPosting, WalletTransaction
+from yupay.modules.wallet.routes import admin_router, router
+from yupay.modules.wallet.schemas import (
+    USER_VISIBLE_KINDS,
+    AccountKind,
+    AccountOut,
+    AdminAccountListOut,
+    AdminAccountWithBalanceOut,
+    AdminAdjustIn,
+    AdminUserLedgerOut,
+    BalanceOut,
+    Direction,
+    OwnerType,
+    PostingOut,
+    TransactionListOut,
+    TransactionOut,
+    WalletOverviewOut,
+)
+from yupay.modules.wallet.service import (
+    NORMAL_SIDE,
+    Leg,
+    Reference,
+    admin_adjust,
+    balance,
+    ensure_account,
+    post,
+    transactions_for_user,
+    user_accounts,
+)
+
+__all__ = [
+    "AccountKind",
+    "AccountOut",
+    "AdminAccountListOut",
+    "AdminAccountWithBalanceOut",
+    "AdminAdjustIn",
+    "AdminUserLedgerOut",
+    "BalanceOut",
+    "Direction",
+    "Leg",
+    "NORMAL_SIDE",
+    "OwnerType",
+    "PostingOut",
+    "Reference",
+    "TransactionListOut",
+    "TransactionOut",
+    "USER_VISIBLE_KINDS",
+    "WalletAccount",
+    "WalletOverviewOut",
+    "WalletPosting",
+    "WalletTransaction",
+    "admin_adjust",
+    "admin_router",
+    "balance",
+    "ensure_account",
+    "post",
+    "router",
+    "transactions_for_user",
+    "user_accounts",
+]

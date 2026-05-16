@@ -18,6 +18,8 @@ from yupay.modules.orders.api import router as orders_router
 from yupay.modules.payments.api import admin_router as payments_admin_router
 from yupay.modules.payments.api import router as payments_router
 from yupay.modules.payments.api import webhook_router as payments_webhook_router
+from yupay.modules.wallet.api import admin_router as wallet_admin_router
+from yupay.modules.wallet.api import router as wallet_router
 
 router = APIRouter()
 router.include_router(auth_router)
@@ -31,3 +33,5 @@ router.include_router(orders_admin_router)
 router.include_router(payments_router)
 router.include_router(payments_admin_router)
 router.include_router(payments_webhook_router)
+router.include_router(wallet_router)
+router.include_router(wallet_admin_router)

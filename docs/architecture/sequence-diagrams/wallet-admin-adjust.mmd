@@ -1,0 +1,37 @@
+sequenceDiagram
+    autonumber
+    title YuPay — wallet skeleton (admin adjustment)
+
+    participant A as Admin SPA
+    participant API as FastAPI
+    participant DB as Postgres
+
+    A->>API: POST /api/v1/admin/wallet/adjust {user_id, kind, currency, amount, reason, idempotency_key}
+    API->>DB: SELECT wallet_transactions WHERE idempotency_key = ? (replay short-circuit)
+
+    alt new transaction
+        API->>DB: ensure_account(user, kind, currency) — get-or-create with UNIQUE
+        API->>DB: ensure_account(house, house_promo_expense, currency)
+        API->>API: validate legs — SUM(D) == SUM(C) per currency, amounts > 0
+        API->>DB: INSERT wallet_transactions (kind='admin.adjust', actor='admin:<id>', metadata.reason)
+        Note over API: amount > 0 → D user_<kind>, C house_promo_expense (credit the user)
+        Note over API: amount < 0 → C user_<kind>, D house_promo_expense (claw back)
+        API->>DB: INSERT wallet_postings × 2
+
+        alt unique key race
+            DB-->>API: IntegrityError on idempotency_key
+            API->>DB: SELECT existing transaction by key
+        end
+
+        API-->>A: 200 TransactionOut
+    else replay
+        API-->>A: 200 TransactionOut (existing)
+    end
+
+    A->>API: GET /api/v1/admin/wallet/{user_id}
+    API->>DB: SELECT wallet_accounts WHERE owner_type='user' AND owner_id=?
+    loop per account
+        API->>DB: SUM postings respecting normal_side
+    end
+    API->>DB: SELECT recent wallet_transactions touching user's accounts
+    API-->>A: 200 AdminUserLedgerOut
