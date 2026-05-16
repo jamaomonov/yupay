@@ -9,6 +9,7 @@ import { BrandEditPage } from "@/features/catalog/brands/BrandEditPage";
 import { CategoriesListPage } from "@/features/catalog/categories/CategoriesListPage";
 import { ProductsListPage } from "@/features/catalog/products/ProductsListPage";
 import { ProductEditPage } from "@/features/catalog/products/ProductEditPage";
+import { SkuEditPage } from "@/features/catalog/skus/SkuEditPage";
 import { SkusListPage } from "@/features/catalog/skus/SkusListPage";
 import { FulfillmentPage } from "@/features/fulfillment/FulfillmentPage";
 import { InventoryPage } from "@/features/inventory/InventoryPage";
@@ -36,6 +37,8 @@ export const router = createBrowserRouter([
           { path: "/products/new", element: <ProductEditPage /> },
           { path: "/products/:id", element: <ProductEditPage /> },
           { path: "/skus", element: <SkusListPage /> },
+          { path: "/skus/new", element: <SkuEditPage /> },
+          { path: "/skus/:id", element: <SkuEditPage /> },
           { path: "/inventory", element: <InventoryPage /> },
           { path: "/sourcing", element: <SourcingPage /> },
           { path: "/payments", element: <PaymentsPage /> },
