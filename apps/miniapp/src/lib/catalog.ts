@@ -109,6 +109,12 @@ function brandToGame(b: BrandApi, locale = "ru"): Game {
     publisher: b.short_description ?? "",
     category: bucketCategory(b.category_slug),
     category_slug: b.category_slug,
+    // ``appIcon`` is the square brand mark — the icon tiles on Home, recent
+    // strip and search results all prefer it first. ``bgUrl`` is the wide
+    // hero image used by promo cards and the TopUp hero. Map them straight
+    // from the API so a brand's logo doesn't get stretched into the hero
+    // slot and vice versa.
+    appIcon: b.logo_url ?? undefined,
     logoUrl: b.logo_url ?? undefined,
     bgUrl: b.hero_image_url ?? undefined,
     color: b.accent_color ?? "#3b82f6",

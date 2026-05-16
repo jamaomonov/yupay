@@ -113,9 +113,9 @@ function PromoStrip({ games }: { games: Game[] }) {
                 transition={{ delay: i * 0.06 }}
                 className="relative flex-shrink-0 w-[148px] h-[108px] rounded-2xl overflow-hidden cursor-pointer"
               >
-                {game.appIcon || game.bgUrl ? (
+                {game.bgUrl || game.appIcon ? (
                   <img
-                    src={game.appIcon || game.bgUrl}
+                    src={game.bgUrl || game.appIcon}
                     className="absolute inset-0 w-full h-full object-cover"
                     alt={game.name}
                   />
