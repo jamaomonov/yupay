@@ -1,17 +1,33 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
-  Bell,
+  Check,
   ChevronRight,
-  Globe,
-  HelpCircle,
+  Coins,
+  ExternalLink,
   Info,
+  LifeBuoy,
   LogOut,
-  Shield,
 } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { useLogout, useMe } from "@/lib/auth";
+import {
+  CURRENCY_LABEL,
+  CURRENCY_SYMBOL,
+  DISPLAY_CURRENCIES,
+  type DisplayCurrency,
+  useCurrencyStore,
+} from "@/lib/currency";
+import { getWebApp } from "@/lib/telegram";
 
 function initials(name: string | null | undefined): string {
   if (!name) return "👤";
@@ -23,18 +39,31 @@ function initials(name: string | null | undefined): string {
     .join("");
 }
 
+const SUPPORT_URL =
+  (import.meta.env.VITE_SUPPORT_URL as string | undefined) ??
+  "https://t.me/yupay_support";
+const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "0.1.0";
+
 export default function Settings() {
   const me = useMe();
   const logout = useLogout();
   const user = me.data;
 
-  const MENU_ITEMS = [
-    { icon: Bell, label: "Уведомления", color: "text-blue-400" },
-    { icon: Globe, label: "Язык (Русский)", color: "text-violet-400" },
-    { icon: Shield, label: "Безопасность", color: "text-green-400" },
-    { icon: HelpCircle, label: "Поддержка", color: "text-yellow-400" },
-    { icon: Info, label: "О приложении", color: "text-muted-foreground" },
-  ];
+  const currency = useCurrencyStore((s) => s.currency);
+  const setCurrency = useCurrencyStore((s) => s.setCurrency);
+  const [currencyOpen, setCurrencyOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
+
+  const openSupport = () => {
+    const wa = getWebApp();
+    if (wa?.openTelegramLink && SUPPORT_URL.startsWith("https://t.me/")) {
+      wa.openTelegramLink(SUPPORT_URL);
+    } else if (wa?.openLink) {
+      wa.openLink(SUPPORT_URL);
+    } else {
+      window.open(SUPPORT_URL, "_blank");
+    }
+  };
 
   return (
     <motion.div
@@ -95,32 +124,40 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* Settings list */}
+      {/* Real settings */}
       <div className="space-y-1.5">
         <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest px-1 mb-2">
           Приложение
         </p>
 
         <div className="bg-card border border-border rounded-3xl overflow-hidden">
-          {MENU_ITEMS.map((item, index) => (
-            <button
-              key={index}
-              className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-white/5 transition-colors border-b border-border/40 last:border-0"
-              data-testid={`settings-menu-${index}`}
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-background/80 border border-border/60 flex items-center justify-center">
-                  <item.icon size={15} className={item.color} />
-                </div>
-                <span className="font-medium text-sm text-foreground">{item.label}</span>
-              </div>
-              <ChevronRight size={16} className="text-muted-foreground/50" />
-            </button>
-          ))}
+          <SettingsRow
+            icon={Coins}
+            iconClass="text-primary"
+            label="Валюта отображения"
+            value={`${CURRENCY_SYMBOL[currency]} · ${currency}`}
+            onClick={() => setCurrencyOpen(true)}
+          />
+          <SettingsRow
+            icon={LifeBuoy}
+            iconClass="text-blue-400"
+            label="Поддержка"
+            value="Telegram"
+            onClick={openSupport}
+            chevron={<ExternalLink size={14} className="text-muted-foreground/50" />}
+          />
+          <SettingsRow
+            icon={Info}
+            iconClass="text-muted-foreground"
+            label="О приложении"
+            value={`v${APP_VERSION}`}
+            onClick={() => setAboutOpen(true)}
+            last
+          />
         </div>
       </div>
 
-      {/* Logout — subtle, not alarming */}
+      {/* Logout */}
       {user && (
         <button
           onClick={() => logout.mutate()}
@@ -131,6 +168,149 @@ export default function Settings() {
           Выйти из аккаунта
         </button>
       )}
+
+      {/* Currency sheet */}
+      <Sheet open={currencyOpen} onOpenChange={setCurrencyOpen}>
+        <SheetContent side="bottom" className="rounded-t-3xl">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <Coins size={16} className="text-primary" />
+              Валюта отображения
+            </SheetTitle>
+            <SheetDescription className="text-left text-white/60 leading-relaxed">
+              Влияет на цены в каталоге. Балансы и старые заказы остаются в своей
+              валюте.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="mt-4 space-y-2">
+            {DISPLAY_CURRENCIES.map((c) => (
+              <CurrencyOption
+                key={c}
+                code={c}
+                active={currency === c}
+                onSelect={() => {
+                  setCurrency(c);
+                  setCurrencyOpen(false);
+                }}
+              />
+            ))}
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* About sheet */}
+      <Sheet open={aboutOpen} onOpenChange={setAboutOpen}>
+        <SheetContent side="bottom" className="rounded-t-3xl">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <Info size={16} className="text-primary" />
+              О приложении
+            </SheetTitle>
+          </SheetHeader>
+          <div className="mt-4 space-y-3 text-sm">
+            <div className="rounded-2xl border border-border p-3 flex items-center justify-between">
+              <span className="text-white/60">Версия</span>
+              <code className="font-mono text-white">v{APP_VERSION}</code>
+            </div>
+            <p className="text-white/60 leading-relaxed">
+              YuPay — пополнение игр, ваучеры и подписки. Лицензия —
+              проприетарная; код в приватном репо.
+            </p>
+            <p className="text-white/40 text-xs leading-relaxed">
+              По любым вопросам пишите в поддержку — ответим в течение часа.
+            </p>
+          </div>
+        </SheetContent>
+      </Sheet>
     </motion.div>
+  );
+}
+
+function SettingsRow({
+  icon: Icon,
+  iconClass,
+  label,
+  value,
+  onClick,
+  chevron,
+  last,
+}: {
+  icon: typeof Coins;
+  iconClass?: string;
+  label: string;
+  value?: string;
+  onClick: () => void;
+  chevron?: React.ReactNode;
+  last?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center justify-between px-4 py-3.5 hover:bg-white/5 transition-colors ${
+        last ? "" : "border-b border-border/40"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 rounded-xl bg-background/80 border border-border/60 flex items-center justify-center">
+          <Icon size={15} className={iconClass} />
+        </div>
+        <span className="font-medium text-sm text-foreground">{label}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        {value && (
+          <span className="text-xs text-muted-foreground font-medium">{value}</span>
+        )}
+        {chevron ?? (
+          <ChevronRight size={16} className="text-muted-foreground/50" />
+        )}
+      </div>
+    </button>
+  );
+}
+
+function CurrencyOption({
+  code,
+  active,
+  onSelect,
+}: {
+  code: DisplayCurrency;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      onClick={onSelect}
+      className="w-full flex items-center justify-between p-3.5 rounded-2xl transition-all"
+      style={{
+        background: active ? "hsl(228 32% 22%)" : "hsl(228 32% 16%)",
+        border: active
+          ? "1.5px solid hsl(var(--primary) / 0.7)"
+          : "1.5px solid hsl(var(--border))",
+      }}
+    >
+      <div className="flex items-center gap-3">
+        <div
+          className="w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm"
+          style={{
+            background: active ? "hsl(var(--primary) / 0.18)" : "hsl(228 32% 22%)",
+            color: active ? "hsl(var(--primary))" : "rgba(255,255,255,0.7)",
+          }}
+        >
+          {CURRENCY_SYMBOL[code]}
+        </div>
+        <div className="text-left">
+          <p className="text-white font-bold text-sm">{code}</p>
+          <p className="text-white/40 text-xs">{CURRENCY_LABEL[code]}</p>
+        </div>
+      </div>
+      {active && (
+        <div
+          className="w-5 h-5 rounded-full flex items-center justify-center"
+          style={{ background: "hsl(var(--primary))" }}
+        >
+          <Check size={11} strokeWidth={3} className="text-black" />
+        </div>
+      )}
+    </button>
   );
 }

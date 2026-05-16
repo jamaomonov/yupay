@@ -39,9 +39,8 @@ function TrustBar() {
 }
 
 // ─── Recent orders strip ──────────────────────────────────────────────────────
-// Real orders come back without a denormalised brand slug; we can't link them to
-// a `/topup/...` page without an extra lookup. Until we add that join we render
-// recent orders as static chips that bounce to /history.
+// Use order.items[0].display to know which brand to link to. Falls back to
+// /history when the order has no items (legacy / corrupted data).
 function RecentStrip() {
   const orders = useMyOrders();
   const recent = (orders.data ?? []).slice(0, 4);
@@ -51,37 +50,63 @@ function RecentStrip() {
     <div className="px-4">
       <div className="flex items-center gap-2 mb-2.5">
         <RotateCcw size={13} className="text-white/40" />
-        <span className="text-xs font-semibold text-white/50 uppercase tracking-wide">Недавние</span>
+        <span className="text-xs font-semibold text-white/50 uppercase tracking-wide">
+          Купить ещё раз
+        </span>
       </div>
       <div className="flex gap-2 overflow-x-auto no-scrollbar">
-        {recent.map((order, i) => (
-          <Link key={order.id} href="/history">
-            <motion.div
-              whileTap={{ scale: 0.94 }}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-              className="flex items-center gap-2.5 flex-shrink-0 px-3 py-2 rounded-2xl cursor-pointer"
-              style={{ background: "hsl(228 32% 17%)", border: "1px solid hsl(var(--border))" }}
-            >
-              <div
-                className="w-8 h-8 rounded-[22%] flex items-center justify-center text-[10px] font-bold uppercase"
-                style={{ background: "hsl(var(--primary) / 0.18)", color: "hsl(var(--primary))" }}
+        {recent.map((order, i) => {
+          const first = order.items[0]?.display ?? null;
+          const href = first?.brand_slug
+            ? `/topup/${first.brand_slug}`
+            : "/history";
+          const title = first
+            ? first.brand_name || first.product_name || first.product_slug
+            : `Заказ ${order.id.slice(0, 6)}`;
+          const subtitle = first
+            ? first.denomination ?? first.sku_code
+            : `${Number.parseFloat(order.total_charged).toLocaleString("ru", { maximumFractionDigits: 2 })} ${order.currency}`;
+          return (
+            <Link key={order.id} href={href}>
+              <motion.div
+                whileTap={{ scale: 0.94 }}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.05 }}
+                className="flex items-center gap-2.5 flex-shrink-0 px-3 py-2 rounded-2xl cursor-pointer"
+                style={{
+                  background: "hsl(228 32% 17%)",
+                  border: "1px solid hsl(var(--border))",
+                }}
               >
-                {order.status[0]}
-              </div>
-              <div>
-                <p className="text-white text-xs font-semibold leading-tight line-clamp-1 max-w-[100px]">
-                  Заказ {order.id.slice(0, 6)}
-                </p>
-                <p className="text-white/40 text-[10px] mt-0.5">
-                  {Number.parseFloat(order.total_charged).toLocaleString("ru", { maximumFractionDigits: 2 })}{" "}
-                  {order.currency}
-                </p>
-              </div>
-            </motion.div>
-          </Link>
-        ))}
+                <div className="w-8 h-8 rounded-[22%] overflow-hidden flex-shrink-0 bg-black/30 flex items-center justify-center">
+                  {first?.image_url ? (
+                    <img
+                      src={first.image_url}
+                      className="w-full h-full object-cover"
+                      alt=""
+                    />
+                  ) : (
+                    <span
+                      className="text-[10px] font-bold uppercase"
+                      style={{ color: "hsl(var(--primary))" }}
+                    >
+                      {(first?.brand_name?.[0] ?? "?").toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <p className="text-white text-xs font-semibold leading-tight line-clamp-1 max-w-[110px]">
+                    {title}
+                  </p>
+                  <p className="text-white/40 text-[10px] mt-0.5 line-clamp-1 max-w-[110px]">
+                    {subtitle}
+                  </p>
+                </div>
+              </motion.div>
+            </Link>
+          );
+        })}
       </div>
     </div>
   );
@@ -392,10 +417,47 @@ export default function Home() {
               <span className="text-sm font-semibold text-white">
                 {searchOpen && search.trim() ? "Результаты" : "Все сервисы"}
               </span>
-              <span className="text-xs text-white/30">{displayGames.length} позиций</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-white/30">
+                  {displayGames.length} позиций
+                </span>
+                <button
+                  type="button"
+                  onClick={() => gamesQuery.refetch()}
+                  disabled={gamesQuery.isFetching}
+                  className="w-7 h-7 rounded-full flex items-center justify-center transition-colors disabled:opacity-40"
+                  style={{
+                    background: "hsl(228 32% 17%)",
+                    border: "1px solid hsl(var(--border))",
+                  }}
+                  aria-label="Обновить"
+                >
+                  <RotateCcw
+                    size={11}
+                    className={`text-white/60 ${
+                      gamesQuery.isFetching ? "animate-spin" : ""
+                    }`}
+                  />
+                </button>
+              </div>
             </div>
 
-            {displayGames.length === 0 ? (
+            {gamesQuery.isLoading ? (
+              <div className="grid grid-cols-4 gap-x-2 gap-y-4">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="flex flex-col items-center gap-1.5">
+                    <div
+                      className="w-full aspect-square rounded-[22%] animate-pulse"
+                      style={{ background: "hsl(228 32% 18%)" }}
+                    />
+                    <div
+                      className="h-2 w-3/4 rounded animate-pulse"
+                      style={{ background: "hsl(228 32% 18%)" }}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : displayGames.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-14 gap-2">
                 <Search size={28} className="text-white/15" />
                 <p className="text-white/30 text-sm">Ничего не найдено</p>

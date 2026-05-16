@@ -14,11 +14,10 @@ import {
   Share2,
   ShieldCheck,
   Star,
-  Tag,
-  X,
   Zap,
 } from "lucide-react";
 
+import { DynamicFields } from "@/components/DynamicFields";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { ApiError } from "@/lib/api";
@@ -29,6 +28,7 @@ import {
   useProductWithSkus,
   type Package as ApiPackage,
 } from "@/lib/catalog";
+import { useCurrencyStore } from "@/lib/currency";
 import { useCheckout } from "@/lib/orders";
 import { cn } from "@/lib/utils";
 
@@ -113,7 +113,8 @@ export default function TopUp() {
     }
   }, [products, selectedProductSlug]);
 
-  const productQuery = useProductWithSkus(selectedProductSlug || undefined, "USD");
+  const currency = useCurrencyStore((s) => s.currency);
+  const productQuery = useProductWithSkus(selectedProductSlug || undefined, currency);
   const requiredFields = productQuery.data?.product.required_fields ?? [];
   const productImage = productQuery.data?.product.image_url ?? null;
   const packages: Package[] = useMemo(
@@ -125,11 +126,9 @@ export default function TopUp() {
   const checkout = useCheckout();
   const isProcessing = checkout.isPending;
 
-  const [accountId, setAccountId] = useState("");
+  const [fulfillment, setFulfillment] = useState<Record<string, string>>({});
   const [selectedPkg, setSelectedPkg] = useState<string>("");
   const [paymentMethod, setPaymentMethod] = useState("mock");
-  const [promoCode, setPromoCode] = useState("");
-  const [promoOpen, setPromoOpen] = useState(false);
 
   // Re-default the SKU on every product switch: pick the 3rd (often a popular
   // mid-tier) or fall back to the first.
@@ -159,14 +158,18 @@ export default function TopUp() {
   }
 
   const activePkg = packages.find((p) => p.id === selectedPkg);
-  const priceCode = activePkg?.priceCode ?? "USD";
+  const priceCode = activePkg?.priceCode ?? currency;
   const finalPrice = activePkg?.price ?? 0;
 
-  const fieldLabel =
-    requiredFields[0]?.label?.["ru"] ?? game.inputType ?? "ID аккаунта";
-  const fieldPlaceholder =
-    requiredFields[0]?.placeholder?.["ru"] ?? game.inputPlaceholder;
   const accountRequired = requiredFields.length > 0;
+  const missingFieldKey = requiredFields.find((f) => {
+    if (!f.required) return false;
+    const v = fulfillment[f.key];
+    return !v || v.trim().length === 0;
+  })?.key;
+  const fillingHint = accountRequired
+    ? `Введите ${requiredFields[0]?.label?.["ru"] ?? "данные"} аккаунта`
+    : "Без передачи аккаунта";
 
   const handlePayment = async () => {
     if (!activePkg) {
@@ -177,10 +180,11 @@ export default function TopUp() {
       });
       return;
     }
-    if (accountRequired && !accountId.trim()) {
+    if (missingFieldKey) {
+      const f = requiredFields.find((x) => x.key === missingFieldKey);
       toast({
         title: "Заполните поле",
-        description: `Введите ${fieldLabel}`,
+        description: f?.label?.["ru"] ?? missingFieldKey,
         variant: "destructive",
       });
       return;
@@ -194,16 +198,15 @@ export default function TopUp() {
       return;
     }
     const fulfillmentData: Record<string, string> = {};
-    const primaryField = requiredFields.find((f) => f.required) ?? requiredFields[0];
-    if (primaryField) {
-      fulfillmentData[primaryField.key] = accountId.trim();
-    } else if (accountId.trim()) {
-      fulfillmentData["account_id"] = accountId.trim();
+    for (const f of requiredFields) {
+      const v = (fulfillment[f.key] ?? "").trim();
+      if (v) fulfillmentData[f.key] = v;
     }
     try {
       const result = await checkout.mutateAsync({
         skuId: activePkg.id,
         fulfillmentData,
+        currency,
         provider: PROVIDER_BY_METHOD[paymentMethod] ?? "mock",
       });
       if (result.payment.intent_url && result.payment.provider !== "mock") {
@@ -377,40 +380,21 @@ export default function TopUp() {
             </div>
           )}
 
-          {/* Step 1 — Account ID */}
+          {/* Step 1 — Dynamic account fields from product.required_fields */}
           {accountRequired && (
             <div>
               <Step
                 n={1}
-                title={`Введите ${fieldLabel}`}
-                sub="Без этого поставщик не сможет начислить"
+                title={requiredFields.length === 1 ? "Куда зачислить?" : "Реквизиты"}
+                sub={fillingHint}
               />
-              <div className="relative">
-                <input
-                  value={accountId}
-                  onChange={(e) => setAccountId(e.target.value)}
-                  placeholder={fieldPlaceholder ?? "ID аккаунта"}
-                  className="w-full rounded-2xl px-4 py-3.5 text-base text-white placeholder:text-white/25 outline-none transition-all"
-                  style={{
-                    background: "hsl(228 32% 17%)",
-                    border: accountId
-                      ? "1.5px solid hsl(var(--primary) / 0.7)"
-                      : "1.5px solid hsl(var(--border))",
-                    color: accountId ? "hsl(var(--primary))" : "white",
-                    letterSpacing: accountId ? "0.08em" : "normal",
-                  }}
-                  data-testid="input-account-id"
-                />
-                {accountId && (
-                  <button
-                    onClick={() => setAccountId("")}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center"
-                    aria-label="Очистить"
-                  >
-                    <X size={12} className="text-white/60" />
-                  </button>
-                )}
-              </div>
+              <DynamicFields
+                fields={requiredFields}
+                values={fulfillment}
+                onChange={(key, value) =>
+                  setFulfillment((prev) => ({ ...prev, [key]: value }))
+                }
+              />
             </div>
           )}
 
@@ -493,40 +477,6 @@ export default function TopUp() {
               })}
             </div>
 
-            {/* Promo code */}
-            <button
-              onClick={() => setPromoOpen(!promoOpen)}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all"
-              style={{
-                background: "hsl(228 32% 16%)",
-                border: promoOpen
-                  ? "1.5px solid hsl(var(--primary) / 0.5)"
-                  : "1.5px solid hsl(var(--border))",
-              }}
-            >
-              <Tag size={15} className="text-primary flex-shrink-0" />
-              {promoOpen ? (
-                <input
-                  autoFocus
-                  value={promoCode}
-                  onChange={(e) => setPromoCode(e.target.value)}
-                  placeholder="Введите промокод"
-                  onClick={(e) => e.stopPropagation()}
-                  className="flex-1 bg-transparent text-sm text-white placeholder:text-white/30 outline-none"
-                />
-              ) : (
-                <span className="flex-1 text-left text-sm text-white/40">
-                  Промокод? Введите для скидки
-                </span>
-              )}
-              <ChevronRight
-                size={15}
-                className={cn(
-                  "text-white/25 transition-transform",
-                  promoOpen && "rotate-90",
-                )}
-              />
-            </button>
           </div>
 
           {/* Trust items */}
@@ -535,7 +485,7 @@ export default function TopUp() {
               {
                 icon: ShieldCheck,
                 text: accountRequired
-                  ? `Без передачи пароля — только ${fieldLabel}`
+                  ? "Без передачи пароля — только публичные данные аккаунта"
                   : "Шифрованные платежи и безопасная выдача кодов",
               },
               {
@@ -567,7 +517,11 @@ export default function TopUp() {
                   {activePkg.label} · {game.name}
                 </p>
                 <p className="text-white/40 text-xs mt-0.5 line-clamp-1">
-                  {accountId ? `по ID ${accountId}` : "ID будет указан перед оплатой"}
+                  {accountRequired
+                    ? missingFieldKey
+                      ? "Заполните реквизиты выше"
+                      : "Реквизиты заполнены"
+                    : "Получите код после оплаты"}
                 </p>
               </div>
               <p className="text-white font-black text-sm flex-shrink-0">

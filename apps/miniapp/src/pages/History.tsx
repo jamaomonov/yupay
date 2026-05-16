@@ -1,5 +1,11 @@
 import { motion } from "framer-motion";
-import { CheckCircle2, Clock3, Receipt, AlertTriangle } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock3,
+  Receipt,
+  RotateCcw,
+} from "lucide-react";
 import { Link } from "wouter";
 
 import { useMe } from "@/lib/auth";
@@ -59,9 +65,31 @@ export default function History() {
       exit={{ opacity: 0, x: -20 }}
       className="p-4 space-y-5"
     >
-      <div className="space-y-0.5">
-        <h1 className="text-2xl font-bold tracking-tight text-white">История</h1>
-        <p className="text-muted-foreground text-sm">Все ваши пополнения</p>
+      <div className="flex items-start justify-between">
+        <div className="space-y-0.5">
+          <h1 className="text-2xl font-bold tracking-tight text-white">История</h1>
+          <p className="text-muted-foreground text-sm">Все ваши пополнения</p>
+        </div>
+        {me.data && (
+          <button
+            type="button"
+            onClick={() => ordersQuery.refetch()}
+            disabled={ordersQuery.isFetching}
+            className="w-9 h-9 rounded-full flex items-center justify-center transition-colors disabled:opacity-40"
+            style={{
+              background: "hsl(228 32% 17%)",
+              border: "1px solid hsl(var(--border))",
+            }}
+            aria-label="Обновить"
+          >
+            <RotateCcw
+              size={14}
+              className={`text-white/60 ${
+                ordersQuery.isFetching ? "animate-spin" : ""
+              }`}
+            />
+          </button>
+        )}
       </div>
 
       {!me.data && !me.isLoading && (
