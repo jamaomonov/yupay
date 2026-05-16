@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { CheckCircle2, Clock3, TrendingUp, Receipt, AlertTriangle } from "lucide-react";
+import { CheckCircle2, Clock3, Receipt, AlertTriangle } from "lucide-react";
 import { Link } from "wouter";
 
 import { useMe } from "@/lib/auth";
@@ -44,9 +44,6 @@ export default function History() {
   const orders = ordersQuery.data ?? [];
   const rows: HistoryRow[] = orders.map(orderToHistoryRow);
 
-  const successTxs = rows.filter((t) => t.status === "success");
-  const processingCount = rows.filter((t) => t.status === "processing").length;
-  const totalSpent = successTxs.reduce((sum, t) => sum + t.amount, 0);
   const currency = rows[0]?.currency ?? "USD";
 
   const grouped = rows.reduce<Record<string, HistoryRow[]>>((acc, tx) => {
@@ -78,27 +75,6 @@ export default function History() {
           </div>
         </div>
       )}
-
-      {/* Summary strip */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="bg-card border border-border rounded-2xl p-3 flex flex-col gap-1">
-          <TrendingUp size={16} className="text-primary" />
-          <p className="text-lg font-black text-primary leading-none">
-            {totalSpent.toLocaleString("ru", { maximumFractionDigits: 2 })} {currency}
-          </p>
-          <p className="text-[10px] text-muted-foreground leading-tight">Потрачено всего</p>
-        </div>
-        <div className="bg-card border border-border rounded-2xl p-3 flex flex-col gap-1">
-          <CheckCircle2 size={16} className="text-green-400" />
-          <p className="text-lg font-black text-white leading-none">{successTxs.length}</p>
-          <p className="text-[10px] text-muted-foreground leading-tight">Выполнено</p>
-        </div>
-        <div className="bg-card border border-border rounded-2xl p-3 flex flex-col gap-1">
-          <Clock3 size={16} className="text-yellow-400" />
-          <p className="text-lg font-black text-white leading-none">{processingCount}</p>
-          <p className="text-[10px] text-muted-foreground leading-tight">В обработке</p>
-        </div>
-      </div>
 
       {ordersQuery.isLoading && me.data && (
         <div className="py-10 text-center text-white/40 text-sm">Загрузка…</div>
