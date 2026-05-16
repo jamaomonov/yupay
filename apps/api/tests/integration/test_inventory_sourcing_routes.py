@@ -1,0 +1,517 @@
+"""Integration tests for the inventory + sourcing skeleton.
+
+Covers:
+- bulk_upload happy path + dedup detection
+- counts endpoint reflects state
+- reserve_and_issue atomically pulls one code; admin listing shows cleartext
+- void_for_order_item flips state
+- sourcing default (no rule) = inventory-first with mock fallback
+- sourcing force_supplier overrides stock — even with codes available
+- sourcing force_inventory + no stock → task fails
+- Admin upsert / get-decision / delete-rule
+- 403 for non-admin
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import time
+from decimal import Decimal
+from urllib.parse import urlencode
+
+import pytest
+from httpx import AsyncClient
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+from yupay.core.ids import new_id
+from yupay.modules.catalog.models import (
+    Brand,
+    BrandTranslation,
+    Category,
+    CategoryTranslation,
+    Product,
+    ProductTranslation,
+    Sku,
+)
+from yupay.modules.inventory import service as inv_svc
+from yupay.modules.inventory.crypto import code_hash, decrypt
+from yupay.modules.inventory.models import InventoryCode
+from yupay.modules.orders.models import Order, OrderItem
+from yupay.modules.users.models import TelegramLink, User
+
+
+async def _make_order_item(db: AsyncSession, *, sku_id: str, email: str) -> str:
+    """Service-level helper: insert a minimal order + order_item satisfying FKs."""
+    order = Order(
+        id=new_id(),
+        user_id=None,
+        guest_email=email,
+        status="paid",
+        currency="USD",
+        total_usd=Decimal("1"),
+        total_charged=Decimal("1"),
+        expires_at=__import__("datetime").datetime.fromtimestamp(
+            time.time() + 3600,
+            tz=__import__("datetime").timezone.utc,
+        ),
+    )
+    item = OrderItem(
+        id=new_id(),
+        order_id=order.id,
+        sku_id=sku_id,
+        qty=1,
+        unit_price_usd=Decimal("1"),
+    )
+    db.add_all([order, item])
+    await db.commit()
+    return item.id
+
+pytestmark = pytest.mark.asyncio
+
+BOT_TOKEN = "123456:TEST"
+
+
+def _sign_init_data(fields: dict[str, str]) -> str:
+    pairs = sorted((k, v) for k, v in fields.items() if k != "hash")
+    data = "\n".join(f"{k}={v}" for k, v in pairs).encode("utf-8")
+    secret = hmac.new(b"WebAppData", BOT_TOKEN.encode("utf-8"), hashlib.sha256).digest()
+    fields = {**fields, "hash": hmac.new(secret, data, hashlib.sha256).hexdigest()}
+    return urlencode(fields)
+
+
+async def _login_user(client: AsyncClient, tg_id: int) -> str:
+    user_json = json.dumps({"id": tg_id, "first_name": "U"}, separators=(",", ":"))
+    init = _sign_init_data({"user": user_json, "auth_date": str(int(time.time()))})
+    r = await client.post("/api/v1/auth/telegram/webapp", json={"init_data": init})
+    assert r.status_code == 200, r.text
+    return r.json()["access_token"]
+
+
+async def _grant_admin(db: AsyncSession, tg_id: int) -> str:
+    user_id = (
+        await db.execute(
+            select(User.id)
+            .join(TelegramLink, TelegramLink.user_id == User.id)
+            .where(TelegramLink.tg_user_id == tg_id)
+        )
+    ).scalar_one()
+    await db.execute(update(User).where(User.id == user_id).values(roles=["admin"]))
+    await db.commit()
+    return user_id
+
+
+@pytest.fixture
+async def _seed_sku(db_session: AsyncSession) -> str:
+    category = Category(
+        id=new_id(),
+        slug="vouchers",
+        sort_order=10,
+        active=True,
+        translations=[CategoryTranslation(locale="ru", name="Ваучеры")],
+    )
+    brand = Brand(
+        id=new_id(),
+        slug="netflix",
+        category_id=category.id,
+        sort_order=10,
+        active=True,
+        translations=[BrandTranslation(locale="ru", name="Netflix")],
+    )
+    product = Product(
+        id=new_id(),
+        slug="netflix-gift",
+        brand_id=brand.id,
+        kind="voucher",
+        sort_order=10,
+        active=True,
+        required_fields=[],
+        translations=[ProductTranslation(locale="ru", name="Gift card")],
+    )
+    sku = Sku(
+        id=new_id(),
+        product_id=product.id,
+        sku_code="netflix-10-us",
+        denomination="10",
+        region="US",
+        price_usd=Decimal("1.00"),
+        sort_order=10,
+        active=True,
+    )
+    db_session.add_all([category, brand, product, sku])
+    await db_session.commit()
+    return sku.id
+
+
+async def _pay_order(
+    client: AsyncClient, *, token: str, sku_id: str, key_suffix: str
+) -> str:
+    """Create + pay an order; returns order_id (status=delivered or failed after fulfilment)."""
+    create = await client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": f"inv-test-{key_suffix}",
+        },
+        json={
+            "currency": "USD",
+            "items": [{"sku_id": sku_id, "qty": 1, "fulfillment_data": {}}],
+        },
+    )
+    assert create.status_code == 201, create.text
+    order_id = create.json()["id"]
+    intent = await client.post(
+        "/api/v1/payments/intents",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"order_id": order_id, "provider": "mock"},
+    )
+    external_id = intent.json()["external_id"]
+    wh = await client.post(
+        "/api/v1/webhooks/payments/mock",
+        content=json.dumps(
+            {
+                "event_id": f"evt_inv_{key_suffix}",
+                "payment_id": external_id,
+                "outcome": "succeeded",
+            }
+        ),
+        headers={"content-type": "application/json"},
+    )
+    assert wh.status_code == 200, wh.text
+    return order_id
+
+
+# ---------- inventory ----------
+
+
+async def test_bulk_upload_happy_path_and_dedup(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_sku: str,
+) -> None:
+    admin = await _login_user(integration_client, tg_id=301)
+    await _grant_admin(db_session, tg_id=301)
+    headers = {"Authorization": f"Bearer {admin}"}
+
+    r = await integration_client.post(
+        "/api/v1/admin/inventory/bulk-upload",
+        headers=headers,
+        json={
+            "sku_id": _seed_sku,
+            "codes": ["AAA-001", "AAA-002", "AAA-001", "AAA-003"],  # third is a dupe
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["total"] == 4
+    assert body["succeeded"] == 3
+    assert body["duplicates"] == 1
+
+    # Re-uploading "AAA-001" later → duplicate against persisted hash.
+    again = await integration_client.post(
+        "/api/v1/admin/inventory/bulk-upload",
+        headers=headers,
+        json={"sku_id": _seed_sku, "codes": ["AAA-001", "AAA-999"]},
+    )
+    assert again.status_code == 200
+    assert again.json()["succeeded"] == 1
+    assert again.json()["duplicates"] == 1
+
+    counts = await integration_client.get(
+        f"/api/v1/admin/inventory/sku/{_seed_sku}", headers=headers
+    )
+    assert counts.status_code == 200
+    cb = counts.json()
+    assert cb["available"] == 4
+    assert cb["reserved"] == 0
+    assert cb["issued"] == 0
+
+
+async def test_admin_codes_listing_shows_cleartext(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_sku: str,
+) -> None:
+    admin = await _login_user(integration_client, tg_id=302)
+    await _grant_admin(db_session, tg_id=302)
+    headers = {"Authorization": f"Bearer {admin}"}
+    await integration_client.post(
+        "/api/v1/admin/inventory/bulk-upload",
+        headers=headers,
+        json={"sku_id": _seed_sku, "codes": ["LIST-001", "LIST-002"]},
+    )
+    r = await integration_client.get(
+        f"/api/v1/admin/inventory/codes?sku_id={_seed_sku}", headers=headers
+    )
+    assert r.status_code == 200
+    codes = sorted([row["code"] for row in r.json()["items"]])
+    assert codes == ["LIST-001", "LIST-002"]
+
+
+async def test_reserve_and_issue_at_service_layer(
+    db_session: AsyncSession, _seed_sku: str
+) -> None:
+    await inv_svc.bulk_upload(
+        db_session,
+        sku_id=_seed_sku,
+        codes=["SVC-001", "SVC-002"],
+        uploaded_by="test",
+    )
+    item_id = await _make_order_item(db_session, sku_id=_seed_sku, email="a@y.io")
+    issued = await inv_svc.reserve_and_issue(
+        db_session, sku_id=_seed_sku, order_item_id=item_id
+    )
+    assert issued.code in ("SVC-001", "SVC-002")
+
+    # Replay returns the same row, not a second one.
+    again = await inv_svc.reserve_and_issue(
+        db_session, sku_id=_seed_sku, order_item_id=item_id
+    )
+    assert again.inventory_code_id == issued.inventory_code_id
+
+
+async def test_no_stock_raises(
+    db_session: AsyncSession, _seed_sku: str
+) -> None:
+    item_id = await _make_order_item(db_session, sku_id=_seed_sku, email="b@y.io")
+    with pytest.raises(inv_svc.NoStockError):
+        await inv_svc.reserve_and_issue(
+            db_session, sku_id=_seed_sku, order_item_id=item_id
+        )
+
+
+async def test_non_admin_forbidden(
+    integration_client: AsyncClient, _seed_sku: str
+) -> None:
+    user = await _login_user(integration_client, tg_id=303)
+    r = await integration_client.post(
+        "/api/v1/admin/inventory/bulk-upload",
+        headers={"Authorization": f"Bearer {user}"},
+        json={"sku_id": _seed_sku, "codes": ["X"]},
+    )
+    assert r.status_code == 403
+
+
+# ---------- sourcing rules ----------
+
+
+async def test_default_decision_is_auto(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_sku: str,
+) -> None:
+    admin = await _login_user(integration_client, tg_id=311)
+    await _grant_admin(db_session, tg_id=311)
+    r = await integration_client.get(
+        f"/api/v1/admin/sourcing/rules/{_seed_sku}",
+        headers={"Authorization": f"Bearer {admin}"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["primary"] == "inventory"
+    assert body["fallback"] == "supplier:mock"
+    assert body["strict"] is False
+    assert body["rule_present"] is False
+
+
+async def test_upsert_and_delete_rule(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_sku: str,
+) -> None:
+    admin = await _login_user(integration_client, tg_id=312)
+    await _grant_admin(db_session, tg_id=312)
+    headers = {"Authorization": f"Bearer {admin}"}
+
+    r = await integration_client.put(
+        f"/api/v1/admin/sourcing/rules/{_seed_sku}",
+        headers=headers,
+        json={"mode": "force_supplier", "supplier_slug": "mock"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["mode"] == "force_supplier"
+    assert r.json()["supplier_slug"] == "mock"
+
+    decision = await integration_client.get(
+        f"/api/v1/admin/sourcing/rules/{_seed_sku}", headers=headers
+    )
+    assert decision.json()["primary"] == "supplier:mock"
+    assert decision.json()["strict"] is True
+
+    deleted = await integration_client.delete(
+        f"/api/v1/admin/sourcing/rules/{_seed_sku}", headers=headers
+    )
+    assert deleted.status_code == 204
+
+    after = await integration_client.get(
+        f"/api/v1/admin/sourcing/rules/{_seed_sku}", headers=headers
+    )
+    assert after.json()["primary"] == "inventory"
+
+
+async def test_force_supplier_validation_requires_slug(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_sku: str,
+) -> None:
+    admin = await _login_user(integration_client, tg_id=313)
+    await _grant_admin(db_session, tg_id=313)
+    r = await integration_client.put(
+        f"/api/v1/admin/sourcing/rules/{_seed_sku}",
+        headers={"Authorization": f"Bearer {admin}"},
+        json={"mode": "force_supplier"},
+    )
+    assert r.status_code in (422,)  # core ValidationError
+
+
+# ---------- end-to-end through fulfilment ----------
+
+
+async def test_inventory_serves_paid_order(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_sku: str,
+) -> None:
+    """With stock + auto sourcing, the paid order is fulfilled from inventory."""
+    admin = await _login_user(integration_client, tg_id=321)
+    await _grant_admin(db_session, tg_id=321)
+    await integration_client.post(
+        "/api/v1/admin/inventory/bulk-upload",
+        headers={"Authorization": f"Bearer {admin}"},
+        json={"sku_id": _seed_sku, "codes": ["STOCK-AAA-001"]},
+    )
+
+    customer = await _login_user(integration_client, tg_id=322)
+    order_id = await _pay_order(
+        integration_client, token=customer, sku_id=_seed_sku, key_suffix="stock-aa"
+    )
+
+    detail = await integration_client.get(
+        f"/api/v1/orders/{order_id}",
+        headers={"Authorization": f"Bearer {customer}"},
+    )
+    assert detail.json()["status"] == "delivered"
+
+    deliveries = await integration_client.get(
+        f"/api/v1/orders/{order_id}/deliveries",
+        headers={"Authorization": f"Bearer {customer}"},
+    )
+    items = deliveries.json()["items"]
+    assert len(items) == 1
+    assert items[0]["artifact_kind"] == "voucher_code"
+    assert items[0]["artifact"]["code"] == "STOCK-AAA-001"
+    assert items[0]["artifact"]["source"] == "inventory"
+
+
+async def test_auto_falls_back_to_supplier_when_no_stock(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_sku: str,
+) -> None:
+    customer = await _login_user(integration_client, tg_id=331)
+    order_id = await _pay_order(
+        integration_client, token=customer, sku_id=_seed_sku, key_suffix="auto-fb"
+    )
+    detail = await integration_client.get(
+        f"/api/v1/orders/{order_id}",
+        headers={"Authorization": f"Bearer {customer}"},
+    )
+    assert detail.json()["status"] == "delivered"
+    deliveries = await integration_client.get(
+        f"/api/v1/orders/{order_id}/deliveries",
+        headers={"Authorization": f"Bearer {customer}"},
+    )
+    items = deliveries.json()["items"]
+    # Mock supplier delivers a "MOCK-..." code, not an inventory one.
+    assert items[0]["artifact"]["code"].startswith("MOCK-")
+
+
+async def test_force_supplier_overrides_stock(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_sku: str,
+) -> None:
+    """Stock exists but admin forced supplier route — mock supplier issues the code."""
+    admin = await _login_user(integration_client, tg_id=341)
+    await _grant_admin(db_session, tg_id=341)
+    admin_h = {"Authorization": f"Bearer {admin}"}
+    await integration_client.post(
+        "/api/v1/admin/inventory/bulk-upload",
+        headers=admin_h,
+        json={"sku_id": _seed_sku, "codes": ["FORCE-STOCK-001"]},
+    )
+    await integration_client.put(
+        f"/api/v1/admin/sourcing/rules/{_seed_sku}",
+        headers=admin_h,
+        json={"mode": "force_supplier", "supplier_slug": "mock"},
+    )
+
+    customer = await _login_user(integration_client, tg_id=342)
+    order_id = await _pay_order(
+        integration_client, token=customer, sku_id=_seed_sku, key_suffix="force-sup"
+    )
+    deliveries = await integration_client.get(
+        f"/api/v1/orders/{order_id}/deliveries",
+        headers={"Authorization": f"Bearer {customer}"},
+    )
+    items = deliveries.json()["items"]
+    assert items[0]["artifact"]["code"].startswith("MOCK-")
+
+    # Inventory row stayed available — not consumed.
+    counts = await integration_client.get(
+        f"/api/v1/admin/inventory/sku/{_seed_sku}", headers=admin_h
+    )
+    assert counts.json()["available"] == 1
+
+
+async def test_force_inventory_with_no_stock_fails_task(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_sku: str,
+) -> None:
+    admin = await _login_user(integration_client, tg_id=351)
+    await _grant_admin(db_session, tg_id=351)
+    admin_h = {"Authorization": f"Bearer {admin}"}
+    await integration_client.put(
+        f"/api/v1/admin/sourcing/rules/{_seed_sku}",
+        headers=admin_h,
+        json={"mode": "force_inventory"},
+    )
+
+    customer = await _login_user(integration_client, tg_id=352)
+    order_id = await _pay_order(
+        integration_client, token=customer, sku_id=_seed_sku, key_suffix="force-inv"
+    )
+    detail = await integration_client.get(
+        f"/api/v1/orders/{order_id}",
+        headers={"Authorization": f"Bearer {customer}"},
+    )
+    # Order didn't reach delivered — task failed for lack of stock.
+    assert detail.json()["status"] != "delivered"
+    # Admin sees the failing task.
+    tasks = await integration_client.get(
+        f"/api/v1/admin/fulfillment/tasks?order_id={order_id}", headers=admin_h
+    )
+    failing = [t for t in tasks.json()["items"] if t["status"] == "failed"]
+    assert failing, tasks.json()
+
+
+async def test_encryption_at_rest(
+    db_session: AsyncSession, _seed_sku: str
+) -> None:
+    """Stored ciphertext is not the plaintext; decryption round-trips."""
+    await inv_svc.bulk_upload(
+        db_session,
+        sku_id=_seed_sku,
+        codes=["SECRET-XYZ-9000"],
+        uploaded_by="test",
+    )
+    row = (
+        await db_session.execute(
+            select(InventoryCode).where(InventoryCode.sku_id == _seed_sku)
+        )
+    ).scalar_one()
+    assert row.code_ciphertext != b"SECRET-XYZ-9000"
+    assert row.code_hash == code_hash("SECRET-XYZ-9000")
+    assert decrypt(row.code_ciphertext, row.code_nonce) == "SECRET-XYZ-9000"

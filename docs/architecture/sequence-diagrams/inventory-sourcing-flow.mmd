@@ -1,0 +1,67 @@
+sequenceDiagram
+    autonumber
+    title YuPay — fulfilment routes through sourcing → inventory or supplier
+
+    participant FE as Customer / Admin
+    participant API as FastAPI
+    participant DB as Postgres
+    participant INV as inventory
+    participant SRC as sourcing
+    participant SUP as Fulfiller (mock / steam / ...)
+
+    Note over FE,SUP: 0. Admin seeds the warehouse (one-off)
+
+    FE->>API: POST /admin/inventory/bulk-upload {sku_id, codes:[...]}
+    API->>INV: bulk_upload(sku_id, codes, uploaded_by)
+    INV->>DB: INSERT inventory_codes (encrypted) × N, dedup on (sku_id, code_hash)
+    INV->>DB: INSERT inventory_uploads (total, succeeded, duplicates)
+    API-->>FE: 200 BulkUploadOut
+
+    Note over FE,SUP: 1. Customer pays → fulfilment kicks in
+
+    FE->>API: POST /payments/intents → ...webhook(succeeded)
+    API->>API: payments._mark_payment_succeeded → order.status=paid
+    API->>API: fulfillment.start_for_order(order_id)
+
+    loop per OrderItem
+        API->>SRC: resolve_for_sku(item.sku_id)
+        alt no row OR mode=auto
+            SRC-->>API: Decision(primary=inventory, fallback=supplier:mock, strict=False)
+        else mode=force_inventory
+            SRC-->>API: Decision(primary=inventory, fallback=None, strict=True)
+        else mode=force_supplier
+            SRC-->>API: Decision(primary=supplier:<slug>, fallback=None, strict=True)
+        end
+        API->>DB: INSERT fulfillment_tasks(supplier=<route_label>)
+    end
+
+    Note over FE,SUP: 2. process_task per task
+
+    loop per task
+        alt task.supplier == 'inventory'
+            API->>INV: reserve_and_issue(sku, order_item)
+            alt success
+                INV->>DB: UPDATE one inventory_codes SET state='issued' (FOR UPDATE SKIP LOCKED)
+                INV-->>API: IssuedCode(code, inventory_code_id)
+                API->>DB: INSERT deliveries(artifact={code, source:'inventory'})
+                API->>DB: task.status='succeeded'
+            else no stock + strict
+                API->>DB: task.status='failed', last_error='no stock and sourcing rule is strict'
+            else no stock + auto
+                API->>SRC: resolve_for_sku again (read fallback)
+                API->>DB: fulfillment_attempts(kind=fulfill, payload={route_switch:'mock'})
+                API->>DB: task.supplier = 'mock'
+                API->>SUP: fulfill(item, idempotency_key=task.id)
+                SUP-->>API: FulfillResult(succeeded, artifact={code:'MOCK-...'})
+                API->>DB: INSERT deliveries(artifact={code, source:'<slug>'})
+                API->>DB: task.status='succeeded'
+            end
+        else supplier route
+            API->>SUP: fulfill(item, idempotency_key=task.id)
+            SUP-->>API: FulfillResult
+            API->>DB: INSERT deliveries(artifact={code, source:'<slug>'})
+        end
+    end
+
+    API->>API: _try_settle_order — all tasks succeeded → order.status=delivered
+    API-->>FE: order tracking shows status=delivered + delivery artifact

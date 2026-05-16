@@ -77,6 +77,7 @@ async def db_engine():
                 text(
                     "TRUNCATE TABLE "
                     "wallet_postings, wallet_transactions, wallet_accounts, "
+                    "inventory_codes, inventory_uploads, sku_sourcing_rules, "
                     "deliveries, fulfillment_attempts, fulfillment_tasks, "
                     "payment_webhooks, payment_attempts, payments, "
                     "order_events, order_items, orders, "

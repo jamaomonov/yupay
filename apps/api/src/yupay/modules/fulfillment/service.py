@@ -35,21 +35,29 @@ from yupay.modules.fulfillment.suppliers import (
     FulfillResult,
     get_fulfiller,
 )
+from yupay.modules.inventory import service as inv_svc
 from yupay.modules.orders.models import Order, OrderEvent, OrderItem
+from yupay.modules.sourcing import service as sourcing_svc
+from yupay.modules.sourcing.service import Decision
 
 log = get_logger("yupay.fulfillment.service")
+
+INVENTORY_ROUTE = "inventory"
+_SUPPLIER_PREFIX = "supplier:"
 
 
 # ---------- supplier routing ----------
 
 
-def _resolve_supplier(item: OrderItem) -> str:  # noqa: ARG001 -- per ADR-0013
-    """Map an order item to a supplier slug.
+def _route_label(decision: Decision) -> str:
+    """Persisted ``fulfillment_tasks.supplier`` value for a routing decision."""
+    if decision.primary == "inventory":
+        return INVENTORY_ROUTE
+    return decision.primary.removeprefix(_SUPPLIER_PREFIX) or decision.primary
 
-    Today: hardcoded to ``"mock"`` because the ``sourcing`` module is not built
-    yet. When `sourcing.sku_sourcing_rules` lands, this helper queries it.
-    """
-    return "mock"
+
+def _supplier_slug(route: str) -> str:
+    return route.removeprefix(_SUPPLIER_PREFIX) if route.startswith(_SUPPLIER_PREFIX) else route
 
 
 # ---------- loaders ----------
@@ -139,12 +147,12 @@ async def start_for_order(db: AsyncSession, *, order_id: str) -> list[Fulfillmen
         if item.id in existing:
             new_tasks.append(existing[item.id])
             continue
-        supplier = _resolve_supplier(item)
+        decision = await sourcing_svc.resolve_for_sku(db, item.sku_id)
         task = FulfillmentTask(
             id=new_id(),
             order_id=order.id,
             order_item_id=item.id,
-            supplier=supplier,
+            supplier=_route_label(decision),
             status="pending",
         )
         db.add(task)
@@ -174,8 +182,69 @@ async def start_for_order(db: AsyncSession, *, order_id: str) -> list[Fulfillmen
     return new_tasks
 
 
+async def _inventory_fulfill(
+    db: AsyncSession, *, task: FulfillmentTask, item: OrderItem
+) -> bool:
+    """Try to satisfy the task from the warehouse.
+
+    Returns True on success. On ``NoStockError`` returns False — caller decides
+    whether to fall back or mark the task failed.
+    """
+    try:
+        issued = await inv_svc.reserve_and_issue(
+            db, sku_id=item.sku_id, order_item_id=item.id
+        )
+    except inv_svc.NoStockError as exc:
+        _record_attempt(
+            db,
+            task=task,
+            kind="fulfill",
+            status="error",
+            payload={"route": INVENTORY_ROUTE, "reason": "no_stock"},
+            error=str(exc),
+        )
+        return False
+
+    task.external_order_id = issued.inventory_code_id
+    task.status = "succeeded"
+    task.succeeded_at = now()
+    task.last_error = None
+    item.fulfillment_state = "delivered"
+    item.supplier_order_id = issued.inventory_code_id
+    db.add(
+        Delivery(
+            id=new_id(),
+            order_item_id=item.id,
+            channel="in_app",
+            artifact_kind="voucher_code",
+            artifact={
+                "code": issued.code,
+                "inventory_code_id": issued.inventory_code_id,
+                "source": INVENTORY_ROUTE,
+            },
+        )
+    )
+    _record_attempt(
+        db,
+        task=task,
+        kind="fulfill",
+        status="ok",
+        payload={
+            "route": INVENTORY_ROUTE,
+            "inventory_code_id": issued.inventory_code_id,
+        },
+    )
+    return True
+
+
 async def process_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
-    """Run a single task against its supplier and persist the outcome."""
+    """Run a single task and persist the outcome.
+
+    Routing: if ``task.supplier == 'inventory'`` (set by ``start_for_order`` from
+    the sourcing decision), serve from the warehouse. On no-stock we re-consult
+    sourcing to decide whether to fall back to a supplier (mode='auto') or fail
+    the task (mode='force_inventory').
+    """
     task = await _load_task(db, task_id)
     if task.status in ("succeeded", "cancelled"):
         return task
@@ -189,6 +258,30 @@ async def process_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
 
     task.status = "in_progress"
     task.updated_at = now()
+
+    # ---- inventory route ----
+    if task.supplier == INVENTORY_ROUTE:
+        if await _inventory_fulfill(db, task=task, item=item):
+            return task
+        # No stock — check sourcing rule to decide fallback.
+        decision = await sourcing_svc.resolve_for_sku(db, item.sku_id)
+        if decision.strict or decision.fallback is None:
+            task.status = "failed"
+            task.failed_at = now()
+            task.last_error = "no stock and sourcing rule is strict"
+            item.fulfillment_state = "failed"
+            return task
+        # Switch the route to the supplier fallback for the rest of this attempt.
+        task.supplier = _supplier_slug(decision.fallback)
+        _record_attempt(
+            db,
+            task=task,
+            kind="fulfill",
+            status="ok",
+            payload={"route_switch": task.supplier, "reason": "inventory_no_stock"},
+        )
+
+    # ---- supplier route ----
     fulfiller: Fulfiller = get_fulfiller(task.supplier)
 
     try:

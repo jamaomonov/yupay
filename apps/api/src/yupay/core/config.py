@@ -119,6 +119,16 @@ class Settings(BaseSettings):
     # --- cors ---
     cors_allow_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
 
+    # --- inventory ---
+    inventory_enc_key: str = Field(
+        default="",
+        description=(
+            "32-byte symmetric key for libsodium SecretBox encryption of voucher "
+            "codes at rest. Provide as base64 (urlsafe or standard). In dev a "
+            "default-derived key is used when empty; refuses to start in prod."
+        ),
+    )
+
     @property
     def is_prod(self) -> bool:
         """Whether we are running in production."""
