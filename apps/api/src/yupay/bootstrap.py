@@ -52,13 +52,26 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_allow_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    # ``["*"]`` plus credentials is rejected by browsers; route through
+    # ``allow_origin_regex`` so the actual Origin is echoed back while still
+    # allowing cookies / Authorization headers. Useful for ngrok / cloudflared
+    # tunnels in dev.
+    if "*" in settings.cors_allow_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origin_regex=".*",
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+    else:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_allow_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
     app.add_exception_handler(AppError, app_error_handler)  # type: ignore[arg-type]
 

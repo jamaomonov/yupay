@@ -16,7 +16,7 @@ x-app-env: &app-env
   ADMIN_DEV_LOGIN_ENABLED: ${ADMIN_DEV_LOGIN_ENABLED:-false}
   ADMIN_DEV_LOGIN: ${ADMIN_DEV_LOGIN:-admin}
   ADMIN_DEV_PASSWORD: ${ADMIN_DEV_PASSWORD:-admin}
-  CORS_ALLOW_ORIGINS: '["http://localhost:3000","http://localhost:3001","http://localhost:3002","https://app.localhost","https://yupay.localhost","https://admin.localhost"]'
+  CORS_ALLOW_ORIGINS: '${CORS_ALLOW_ORIGINS:-["*"]}'
 
 services:
   postgres:
@@ -151,7 +151,12 @@ services:
       context: .
       dockerfile: infra/docker/miniapp.Dockerfile
       args:
-        VITE_API_BASE_URL: http://localhost:8000
+        # Empty base URL → the SPA calls /api/... on the same origin; nginx in
+        # the miniapp container proxies that upstream to the api service. This
+        # avoids HTTPS-to-HTTP mixed-content blocks when serving the miniapp
+        # over ngrok / Telegram. Override at build time to point at a remote
+        # API in prod.
+        VITE_API_BASE_URL: ""
         VITE_TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
     restart: unless-stopped
     ports:
