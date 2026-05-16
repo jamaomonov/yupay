@@ -6,10 +6,12 @@ here directly.
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from yupay.core.clock import now
+from yupay.core.errors import NotFoundError
 from yupay.core.ids import new_id
 from yupay.modules.auth.telegram import TelegramUser
 from yupay.modules.users.models import TelegramLink, User
@@ -84,8 +86,103 @@ async def upsert_user_by_telegram(
     return user
 
 
+async def list_users_admin(
+    session: AsyncSession,
+    *,
+    search: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[User], int]:
+    """Admin listing with optional substring search across display_name, email,
+    Telegram username and Telegram user id."""
+    base = select(User).options(selectinload(User.telegram_link))
+    count_stmt = select(func.count()).select_from(User)
+    if search and search.strip():
+        q = f"%{search.strip()}%"
+        as_int = None
+        if search.strip().isdigit():
+            try:
+                as_int = int(search.strip())
+            except ValueError:
+                as_int = None
+        join_clauses = [
+            User.display_name.ilike(q),
+            User.email.ilike(q),
+        ]
+        # Telegram-side filters need a join. We do an outer join so a user
+        # without a TG link can still match by display_name/email above.
+        base = base.outerjoin(TelegramLink, TelegramLink.user_id == User.id)
+        count_stmt = count_stmt.outerjoin(
+            TelegramLink, TelegramLink.user_id == User.id
+        )
+        join_clauses.append(TelegramLink.tg_username.ilike(q))
+        if as_int is not None:
+            join_clauses.append(TelegramLink.tg_user_id == as_int)
+        base = base.where(or_(*join_clauses))
+        count_stmt = count_stmt.where(or_(*join_clauses))
+
+    items = list(
+        (
+            await session.execute(
+                base.order_by(User.created_at.desc()).limit(limit).offset(offset)
+            )
+        )
+        .unique()
+        .scalars()
+        .all()
+    )
+    total = int((await session.execute(count_stmt)).scalar_one() or 0)
+    return items, total
+
+
+async def get_user_admin(session: AsyncSession, user_id: str) -> User:
+    """Load a user with the Telegram link eager-loaded; 404 if missing."""
+    stmt = (
+        select(User)
+        .options(selectinload(User.telegram_link))
+        .where(User.id == user_id)
+    )
+    row = (await session.execute(stmt)).unique().scalar_one_or_none()
+    if row is None:
+        raise NotFoundError("user not found")
+    return row
+
+
+# Roles we accept on a user record. Anything else is rejected at the route layer.
+_ALLOWED_ROLES = frozenset({"admin"})
+
+
+async def set_user_roles(
+    session: AsyncSession, user_id: str, *, roles: list[str]
+) -> User:
+    """Replace the user's roles list. Unknown roles raise NotFoundError-friendly
+    error via core.errors. Empty list means "demote to plain user"."""
+    user = await get_user_admin(session, user_id)
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for r in roles:
+        r2 = r.strip().lower()
+        if not r2 or r2 in seen:
+            continue
+        if r2 not in _ALLOWED_ROLES:
+            from yupay.core.errors import ValidationError  # noqa: PLC0415
+
+            raise ValidationError(
+                f"unknown role: {r2}", allowed=sorted(_ALLOWED_ROLES)
+            )
+        seen.add(r2)
+        cleaned.append(r2)
+    user.roles = cleaned
+    user.updated_at = now()
+    await session.flush()
+    return user
+
+
 __all__ = [
+    "get_user_admin",
     "get_user_by_id",
     "get_user_by_telegram_id",
+    "list_users_admin",
+    "set_user_roles",
     "upsert_user_by_telegram",
 ]

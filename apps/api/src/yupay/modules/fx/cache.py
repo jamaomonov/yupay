@@ -71,3 +71,8 @@ async def write(
     payload = _serialise(q)
     await redis.set(_key(q.base, q.quote), payload, ex=fresh_ttl_seconds)
     await redis.set(_key(q.base, q.quote, stale=True), payload, ex=stale_ttl_seconds)
+
+
+async def invalidate(redis: Redis, base: str, quote: str) -> None:
+    """Drop the fresh cache entry (keep stale as a safety net)."""
+    await redis.delete(_key(base, quote))
