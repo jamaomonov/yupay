@@ -15,10 +15,16 @@ from sqlalchemy.orm import selectinload
 
 from yupay.core.clock import now
 from yupay.core.config import Settings
-from yupay.core.errors import ConflictError, NotFoundError, ValidationError
+from yupay.core.errors import (
+    ConflictError,
+    NotFoundError,
+    UpstreamUnavailableError,
+    ValidationError,
+)
 from yupay.core.ids import new_id
 from yupay.modules.catalog.models import Brand, Product, Sku
 from yupay.modules.fx.factory import build_default_service
+from yupay.modules.fx.service import FxUnavailableError
 from yupay.modules.orders.models import Order, OrderEvent, OrderItem
 from yupay.modules.orders.schemas import OrderCreate, OrderItemDisplay
 from yupay.modules.orders.validation import validate_fulfillment_data
@@ -197,7 +203,15 @@ async def create_order(
     else:
         factory = fx_service_factory or build_default_service
         fx = factory()
-        snap = await fx.snapshot(db, base="USD", quote=currency)
+        try:
+            snap = await fx.snapshot(db, base="USD", quote=currency)
+        except FxUnavailableError as exc:
+            raise UpstreamUnavailableError(
+                f"Не удалось получить курс USD→{currency}. Попробуйте позже или "
+                "оплатите в USD.",
+                base="USD",
+                quote=currency,
+            ) from exc
         fx_snapshot_id = snap.id
         total_charged = (total_usd * snap.rate).quantize(Decimal("1.000000"))
 

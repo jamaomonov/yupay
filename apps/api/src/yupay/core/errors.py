@@ -61,6 +61,15 @@ class ForbiddenError(AppError):
     title = "Forbidden"
 
 
+class UpstreamUnavailableError(AppError):
+    """A third-party service we depend on (FX, supplier API, payment gateway)
+    couldn't be reached. Maps to RFC 7807 with HTTP 502."""
+
+    status_code = 502
+    type_uri = "https://yupay.io/errors/upstream-unavailable"
+    title = "Upstream unavailable"
+
+
 async def app_error_handler(_request: Request, exc: AppError) -> JSONResponse:
     """Render an :class:`AppError` as an RFC 7807 problem+json response."""
     body: dict[str, Any] = {
