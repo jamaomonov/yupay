@@ -1,52 +1,67 @@
-import { useParams, useLocation } from "wouter";
-import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useParams } from "wouter";
+import { motion } from "framer-motion";
 import {
-  ArrowLeft, Heart, Share2, Star, Clock, Check, ChevronRight,
-  CreditCard, Zap, Bitcoin, Tag, ShieldCheck, RotateCcw, Users, X,
+  ArrowLeft,
+  Bitcoin,
+  Check,
+  ChevronRight,
+  Clock,
+  CreditCard,
+  Heart,
+  Package as PackageIcon,
+  RotateCcw,
+  Share2,
+  ShieldCheck,
+  Star,
+  Tag,
+  X,
+  Zap,
 } from "lucide-react";
-import { useGames, useBrandWithPrimaryProduct, type Package as ApiPackage } from "@/lib/catalog";
-import { useCheckout } from "@/lib/orders";
-import { useMe } from "@/lib/auth";
-import { useToast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
-import { ApiError } from "@/lib/api";
 
-// ─── Package types ─────────────────────────────────────────────────────────────
+import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
+import { ApiError } from "@/lib/api";
+import { useMe } from "@/lib/auth";
+import {
+  useBrandSummary,
+  useGames,
+  useProductWithSkus,
+  type Package as ApiPackage,
+} from "@/lib/catalog";
+import { useCheckout } from "@/lib/orders";
+import { cn } from "@/lib/utils";
+
+// ─── Adapter: API Package → local Package ─────────────────────────────────────
+// Keeps badge/bonus optional for future enrichment.
 type Package = {
-  id: string;            // SKU id (used for checkout)
-  currency: number;      // numeric denomination — pulled from sku.denomination
-  bonus?: number;
-  price: number;         // numeric price in `priceCode`
-  priceCode: string;     // currency code (USD by default)
+  id: string;
+  amount: number;
+  label: string;
+  region: string | null;
+  price: number;
+  priceCode: string;
+  imageUrl: string | null;
   badge?: { label: string; color: string };
-  currencyLabel?: string; // "UC", "VP", or "" — kept for the existing icon switch
 };
 
-function denominationToParts(label: string): { amount: number; tag: string } {
-  const m = label.match(/^\s*(\d[\d\s,.]*)\s*(.*)$/);
-  if (!m) return { amount: 0, tag: label };
-  const amount = Number.parseInt((m[1] ?? "").replace(/[\s,.]/g, ""), 10) || 0;
-  const tag = (m[2] ?? "").trim();
-  return { amount, tag };
-}
-
 function adaptPackage(api: ApiPackage): Package {
-  const parts = denominationToParts(api.label);
   return {
     id: api.id,
-    currency: parts.amount || api.amount || 1,
+    amount: api.amount,
+    label: api.label,
+    region: api.region,
     price: api.displayPrice?.amount ?? api.priceUsd,
     priceCode: api.displayPrice?.currency ?? "USD",
-    currencyLabel: parts.tag || undefined,
+    imageUrl: api.imageUrl,
   };
 }
 
 const PAYMENT_METHODS = [
-  { id: "mock",   name: "Mock",    sub: "dev / staging", icon: ShieldCheck },
-  { id: "card",   name: "Карта",   sub: "скоро",         icon: CreditCard },
-  { id: "sbp",    name: "СБП",     sub: "скоро",         icon: Zap },
-  { id: "crypto", name: "Крипта",  sub: "скоро",         icon: Bitcoin },
+  { id: "mock", name: "Mock", sub: "dev",        icon: ShieldCheck },
+  { id: "card", name: "Карта", sub: "Visa · МИР", icon: CreditCard },
+  { id: "sbp",  name: "СБП",   sub: "без коми",   icon: Zap },
+  { id: "crypto", name: "Крипта", sub: "USDT",    icon: Bitcoin },
 ];
 
 const PROVIDER_BY_METHOD: Record<string, string> = {
@@ -57,16 +72,14 @@ const PROVIDER_BY_METHOD: Record<string, string> = {
 };
 
 function formatMoney(value: number, code: string): string {
-  if (code === "USD" || code === "USDT") {
-    return `$${value.toFixed(2)}`;
-  }
+  if (code === "USD" || code === "USDT") return `$${value.toFixed(2)}`;
   return `${value.toLocaleString("ru", { maximumFractionDigits: 2 })} ${code}`;
 }
 
-// ─── Step label ────────────────────────────────────────────────────────────────
+// ─── Step heading ──────────────────────────────────────────────────────────────
 function Step({ n, title, sub }: { n: number; title: string; sub?: string }) {
   return (
-    <div className="flex items-start gap-3 mb-4">
+    <div className="flex items-start gap-3 mb-3.5">
       <div
         className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black flex-shrink-0 mt-0.5"
         style={{ background: "hsl(var(--primary))", color: "#000" }}
@@ -81,23 +94,7 @@ function Step({ n, title, sub }: { n: number; title: string; sub?: string }) {
   );
 }
 
-// ─── UC icon ───────────────────────────────────────────────────────────────────
-function UCIcon({ label }: { label?: string }) {
-  if (label === "VP") return (
-    <div className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-black flex-shrink-0"
-      style={{ background: "#ff4655", color: "#fff" }}>VP</div>
-  );
-  if (label === "₽") return (
-    <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0"
-      style={{ background: "#4285f4", color: "#fff" }}>₽</div>
-  );
-  return (
-    <div className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-black flex-shrink-0"
-      style={{ background: "#f59e0b", color: "#000" }}>UC</div>
-  );
-}
-
-// ─── Main component ────────────────────────────────────────────────────────────
+// ─── Page ─────────────────────────────────────────────────────────────────────
 export default function TopUp() {
   const { gameId } = useParams();
   const [, setLocation] = useLocation();
@@ -105,42 +102,56 @@ export default function TopUp() {
 
   const gamesQuery = useGames();
   const game = gamesQuery.data?.find((g) => g.id === gameId);
-  const brandQuery = useBrandWithPrimaryProduct(gameId, "USD");
-  const packages: Package[] = (brandQuery.data?.packages ?? []).map(adaptPackage);
-  const product = brandQuery.data?.product ?? null;
-  const requiredFields = product?.required_fields ?? [];
+  const brandQuery = useBrandSummary(gameId);
+  const products = brandQuery.data?.products ?? [];
+
+  // The currently picked product within the brand (PUBG UC vs Royale Pass …).
+  const [selectedProductSlug, setSelectedProductSlug] = useState<string>("");
+  useEffect(() => {
+    if (!selectedProductSlug && products.length > 0) {
+      setSelectedProductSlug(products[0]!.slug);
+    }
+  }, [products, selectedProductSlug]);
+
+  const productQuery = useProductWithSkus(selectedProductSlug || undefined, "USD");
+  const requiredFields = productQuery.data?.product.required_fields ?? [];
+  const productImage = productQuery.data?.product.image_url ?? null;
+  const packages: Package[] = useMemo(
+    () => (productQuery.data?.packages ?? []).map(adaptPackage),
+    [productQuery.data],
+  );
 
   const me = useMe();
   const checkout = useCheckout();
-
-  const [accountId, setAccountId]           = useState("");
-  const [selectedPkg, setSelectedPkg]       = useState<string>("");
-  const [showCustom, setShowCustom]         = useState(false);
-  const [customAmount, setCustomAmount]     = useState("");
-  const [paymentMethod, setPaymentMethod]   = useState("mock");
-  const [promoCode, setPromoCode]           = useState("");
-  const [promoOpen, setPromoOpen]           = useState(false);
-
-  // Preselect a sensible default once packages land. Sweet spot: 3rd package, or
-  // the first one available.
-  if (selectedPkg === "" && packages.length > 0) {
-    const initial = packages[2]?.id ?? packages[0]?.id ?? "";
-    if (initial) setSelectedPkg(initial);
-  }
-
   const isProcessing = checkout.isPending;
 
-  if (gamesQuery.isLoading || brandQuery.isLoading) {
-    return (
-      <div className="p-4 pt-24 text-center text-white/40 text-sm">Загрузка…</div>
-    );
-  }
+  const [accountId, setAccountId] = useState("");
+  const [selectedPkg, setSelectedPkg] = useState<string>("");
+  const [paymentMethod, setPaymentMethod] = useState("mock");
+  const [promoCode, setPromoCode] = useState("");
+  const [promoOpen, setPromoOpen] = useState(false);
 
+  // Re-default the SKU on every product switch: pick the 3rd (often a popular
+  // mid-tier) or fall back to the first.
+  useEffect(() => {
+    if (packages.length === 0) return;
+    const stillPresent = packages.find((p) => p.id === selectedPkg);
+    if (!stillPresent) {
+      setSelectedPkg(packages[2]?.id ?? packages[0]?.id ?? "");
+    }
+  }, [packages, selectedPkg]);
+
+  if (gamesQuery.isLoading || brandQuery.isLoading) {
+    return <PageSkeleton onBack={() => setLocation("/")} />;
+  }
   if (!game || brandQuery.isError) {
     return (
       <div className="p-4 pt-20 text-center space-y-4">
         <h2 className="text-xl font-bold">Сервис не найден</h2>
-        <button onClick={() => setLocation("/")} className="px-6 py-3 bg-primary text-black font-bold rounded-2xl">
+        <button
+          onClick={() => setLocation("/")}
+          className="px-6 py-3 bg-primary text-black font-bold rounded-2xl"
+        >
           На главную
         </button>
       </div>
@@ -148,22 +159,30 @@ export default function TopUp() {
   }
 
   const activePkg = packages.find((p) => p.id === selectedPkg);
-  const finalPrice = showCustom && customAmount
-    ? parseInt(customAmount, 10)
-    : (activePkg?.price ?? 0);
-  const finalCurrency = showCustom && customAmount
-    ? parseInt(customAmount, 10)
-    : (activePkg?.currency ?? 0);
-  const currencyLabel = activePkg?.currencyLabel ?? "";
   const priceCode = activePkg?.priceCode ?? "USD";
+  const finalPrice = activePkg?.price ?? 0;
+
+  const fieldLabel =
+    requiredFields[0]?.label?.["ru"] ?? game.inputType ?? "ID аккаунта";
+  const fieldPlaceholder =
+    requiredFields[0]?.placeholder?.["ru"] ?? game.inputPlaceholder;
+  const accountRequired = requiredFields.length > 0;
 
   const handlePayment = async () => {
     if (!activePkg) {
-      toast({ title: "Выберите пакет", description: "Сначала укажи номинал", variant: "destructive" });
+      toast({
+        title: "Выберите пакет",
+        description: "Сначала укажи номинал",
+        variant: "destructive",
+      });
       return;
     }
-    if (requiredFields.length > 0 && !accountId.trim()) {
-      toast({ title: "Заполните поле", description: `Введите ${game.inputType}`, variant: "destructive" });
+    if (accountRequired && !accountId.trim()) {
+      toast({
+        title: "Заполните поле",
+        description: `Введите ${fieldLabel}`,
+        variant: "destructive",
+      });
       return;
     }
     if (!me.data) {
@@ -174,8 +193,6 @@ export default function TopUp() {
       });
       return;
     }
-    // Map the single input field to whatever the product expects. If there are
-    // several fields we'd render them dynamically — that's a follow-up.
     const fulfillmentData: Record<string, string> = {};
     const primaryField = requiredFields.find((f) => f.required) ?? requiredFields[0];
     if (primaryField) {
@@ -189,23 +206,23 @@ export default function TopUp() {
         fulfillmentData,
         provider: PROVIDER_BY_METHOD[paymentMethod] ?? "mock",
       });
-      if (result.payment.intent_url) {
+      if (result.payment.intent_url && result.payment.provider !== "mock") {
         toast({
           title: "Перенаправляем на оплату",
           description: result.payment.provider,
         });
-        // For mock the URL is a placeholder; in dev we just announce success.
-        if (result.payment.provider !== "mock") {
-          window.location.href = result.payment.intent_url;
-          return;
-        }
-      } else {
-        toast({ title: "Заказ создан", description: `${game.name} в обработке` });
+        window.location.href = result.payment.intent_url;
+        return;
       }
+      toast({ title: "Заказ создан", description: `${game.name} в обработке` });
       setLocation("/history");
     } catch (exc) {
       const detail = exc instanceof ApiError ? exc.detail : "Попробуйте ещё раз";
-      toast({ title: "Не удалось оформить", description: detail, variant: "destructive" });
+      toast({
+        title: "Не удалось оформить",
+        description: detail,
+        variant: "destructive",
+      });
     }
   };
 
@@ -220,56 +237,81 @@ export default function TopUp() {
         {/* ── Hero ── */}
         <div className="relative h-56 overflow-hidden">
           {game.bgUrl ? (
-            <img src={game.bgUrl} className="absolute inset-0 w-full h-full object-cover" alt={game.name} />
+            <img
+              src={game.bgUrl}
+              className="absolute inset-0 w-full h-full object-cover"
+              alt={game.name}
+            />
           ) : (
-            <div className={`absolute inset-0 bg-gradient-to-br ${game.gradient}`} />
+            <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950" />
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-black/20" />
 
-          {/* Top buttons */}
           <div className="absolute top-12 left-4 right-4 flex items-center justify-between z-10">
             <button
               onClick={() => setLocation("/")}
               className="w-9 h-9 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center"
               data-testid="btn-back"
+              aria-label="Назад"
             >
               <ArrowLeft size={16} className="text-white" />
             </button>
             <div className="flex items-center gap-2">
-              <button className="w-9 h-9 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center">
+              <button
+                className="w-9 h-9 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center"
+                aria-label="В избранное"
+              >
                 <Heart size={15} className="text-white/70" />
               </button>
-              <button className="w-9 h-9 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center">
+              <button
+                className="w-9 h-9 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center"
+                aria-label="Поделиться"
+              >
                 <Share2 size={15} className="text-white/70" />
               </button>
             </div>
           </div>
 
-          {/* Game info row — bottom of hero */}
           <div className="absolute bottom-0 left-0 right-0 px-4 pb-4 flex items-end gap-3 z-10">
             <div className="w-14 h-14 rounded-[18px] overflow-hidden shadow-xl border border-white/15 flex-shrink-0">
               {game.appIcon ? (
-                <img src={game.appIcon} className="w-full h-full object-cover" alt={game.name} />
-              ) : game.bgUrl ? (
-                <img src={game.bgUrl} className="w-full h-full object-cover" alt={game.name} />
+                <img
+                  src={game.appIcon}
+                  className="w-full h-full object-cover"
+                  alt={game.name}
+                />
               ) : (
-                <div className={`w-full h-full bg-gradient-to-br ${game.gradient} flex items-center justify-center`}>
-                  {game.icon && <game.icon style={{ width: 24, height: 24, color: game.iconColor || "#fff" }} />}
+                <div
+                  className="w-full h-full flex items-center justify-center text-white/80 font-black text-xl"
+                  style={{ background: game.color }}
+                >
+                  {game.name.charAt(0)}
                 </div>
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-white/50 text-[11px] uppercase tracking-wide">{game.publisher}</p>
-              <h1 className="text-white font-black text-lg leading-tight">{game.name}</h1>
+              <p className="text-white/50 text-[11px] uppercase tracking-wide line-clamp-1">
+                {game.publisher || "YuPay"}
+              </p>
+              <h1 className="text-white font-black text-lg leading-tight line-clamp-1">
+                {game.name}
+              </h1>
               <div className="flex items-center gap-3 mt-0.5">
                 <div className="flex items-center gap-1">
                   <Star size={11} className="text-yellow-400 fill-yellow-400" />
-                  <span className="text-white/60 text-[11px]">4.9 · 8.2k отзывов</span>
+                  <span className="text-white/60 text-[11px]">4.9</span>
                 </div>
-                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full"
-                  style={{ background: "hsl(var(--primary) / 0.15)", border: "1px solid hsl(var(--primary) / 0.3)" }}>
+                <div
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-full"
+                  style={{
+                    background: "hsl(var(--primary) / 0.15)",
+                    border: "1px solid hsl(var(--primary) / 0.3)",
+                  }}
+                >
                   <Clock size={10} className="text-primary" />
-                  <span className="text-primary text-[10px] font-semibold">1–2 мин</span>
+                  <span className="text-primary text-[10px] font-semibold">
+                    1–2 мин
+                  </span>
                 </div>
               </div>
             </div>
@@ -278,168 +320,138 @@ export default function TopUp() {
 
         {/* ── Form ── */}
         <div className="px-4 pt-5 space-y-7">
+          {/* Step 0 — Product picker (only when there's more than one product) */}
+          {products.length > 1 && (
+            <div>
+              <div className="flex items-center justify-between mb-2.5">
+                <div className="flex items-center gap-2">
+                  <PackageIcon size={13} className="text-white/40" />
+                  <span className="text-xs font-semibold text-white/50 uppercase tracking-wide">
+                    Выберите продукт
+                  </span>
+                </div>
+                <span className="text-[10px] text-white/30">
+                  {products.length} опций
+                </span>
+              </div>
+              <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4">
+                {products.map((p) => {
+                  const active = p.slug === selectedProductSlug;
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => setSelectedProductSlug(p.slug)}
+                      className="flex items-center gap-2 flex-shrink-0 pl-2 pr-3 py-1.5 rounded-2xl transition-all duration-150"
+                      style={{
+                        background: active
+                          ? "hsl(228 32% 22%)"
+                          : "hsl(228 32% 16%)",
+                        border: active
+                          ? "1.5px solid hsl(var(--primary) / 0.7)"
+                          : "1.5px solid hsl(var(--border))",
+                      }}
+                    >
+                      <div className="w-6 h-6 rounded-md overflow-hidden bg-black/30 flex-shrink-0 flex items-center justify-center">
+                        {p.image_url ? (
+                          <img
+                            src={p.image_url}
+                            className="w-full h-full object-cover"
+                            alt=""
+                          />
+                        ) : (
+                          <PackageIcon size={11} className="text-white/40" />
+                        )}
+                      </div>
+                      <span
+                        className={cn(
+                          "text-xs font-semibold whitespace-nowrap",
+                          active ? "text-white" : "text-white/60",
+                        )}
+                      >
+                        {p.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Step 1 — Account ID */}
-          <div>
-            <Step n={1} title={`Введите ${game.inputType}`} sub="UID профиля в игре" />
-            <div className="relative">
-              <input
-                value={accountId}
-                onChange={(e) => setAccountId(e.target.value)}
-                placeholder={game.inputPlaceholder}
-                className="w-full rounded-2xl px-4 py-3.5 text-base text-white placeholder:text-white/25 outline-none transition-all"
-                style={{
-                  background: "hsl(228 32% 17%)",
-                  border: accountId
-                    ? "1.5px solid hsl(var(--primary) / 0.7)"
-                    : "1.5px solid hsl(var(--border))",
-                  color: accountId ? "hsl(var(--primary))" : "white",
-                  letterSpacing: accountId ? "0.08em" : "normal",
-                }}
-                data-testid="input-account-id"
+          {accountRequired && (
+            <div>
+              <Step
+                n={1}
+                title={`Введите ${fieldLabel}`}
+                sub="Без этого поставщик не сможет начислить"
               />
-              {accountId && (
-                <button
-                  onClick={() => setAccountId("")}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center"
-                >
-                  <X size={12} className="text-white/60" />
-                </button>
-              )}
-            </div>
-
-            {/* Validation hint */}
-            <AnimatePresence>
-              {accountId.length >= 4 && (
-                <motion.div
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  className="flex items-center justify-between mt-2 px-1"
-                >
-                  <div className="flex items-center gap-1.5">
-                    <Check size={12} className="text-primary" />
-                    <span className="text-primary text-xs font-medium">Найден: iLoveChicken</span>
-                  </div>
-                  <button className="flex items-center gap-1 text-white/40 text-xs">
-                    Где найти ID?
-                    <ChevronRight size={11} />
+              <div className="relative">
+                <input
+                  value={accountId}
+                  onChange={(e) => setAccountId(e.target.value)}
+                  placeholder={fieldPlaceholder ?? "ID аккаунта"}
+                  className="w-full rounded-2xl px-4 py-3.5 text-base text-white placeholder:text-white/25 outline-none transition-all"
+                  style={{
+                    background: "hsl(228 32% 17%)",
+                    border: accountId
+                      ? "1.5px solid hsl(var(--primary) / 0.7)"
+                      : "1.5px solid hsl(var(--border))",
+                    color: accountId ? "hsl(var(--primary))" : "white",
+                    letterSpacing: accountId ? "0.08em" : "normal",
+                  }}
+                  data-testid="input-account-id"
+                />
+                {accountId && (
+                  <button
+                    onClick={() => setAccountId("")}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center"
+                    aria-label="Очистить"
+                  >
+                    <X size={12} className="text-white/60" />
                   </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Step 2 — Packages */}
           <div>
             <Step
-              n={2}
-              title={`Сколько ${currencyLabel === "₽" ? "пополнить?" : currencyLabel + "?"}`}
-              sub="Выбери пакет — зачисление сразу"
+              n={accountRequired ? 2 : 1}
+              title="Сколько пополнить?"
+              sub="Зачисление обычно в течение пары минут"
             />
 
-            <div className="grid grid-cols-2 gap-2.5">
-              {packages.map((pkg) => {
-                const active = selectedPkg === pkg.id && !showCustom;
-                return (
-                  <button
+            {productQuery.isLoading && <PackagesSkeleton />}
+            {!productQuery.isLoading && packages.length === 0 && (
+              <p className="rounded-2xl border border-dashed border-white/10 p-6 text-center text-sm text-white/40">
+                У этого продукта пока нет активных позиций. Загляни позже.
+              </p>
+            )}
+            {packages.length > 0 && (
+              <div className="grid grid-cols-2 gap-2.5">
+                {packages.map((pkg) => (
+                  <PackageCard
                     key={pkg.id}
-                    onClick={() => { setSelectedPkg(pkg.id); setShowCustom(false); }}
-                    className="relative text-left p-3.5 rounded-2xl transition-all duration-150"
-                    style={{
-                      background: active ? "hsl(228 32% 20%)" : "hsl(228 32% 16%)",
-                      border: active
-                        ? "1.5px solid hsl(var(--primary) / 0.8)"
-                        : "1.5px solid hsl(var(--border))",
-                      boxShadow: active ? "0 0 0 3px hsl(var(--primary) / 0.1)" : "none",
-                    }}
-                    data-testid={`btn-pkg-${pkg.id}`}
-                  >
-                    {/* Badge */}
-                    {pkg.badge && (
-                      <div
-                        className="absolute -top-2 left-3 px-2 py-0.5 rounded-md text-[9px] font-black tracking-wider"
-                        style={{ background: pkg.badge.color, color: "#fff" }}
-                      >
-                        {pkg.badge.label}
-                      </div>
-                    )}
-
-                    {/* Checkmark */}
-                    {active && (
-                      <div
-                        className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full flex items-center justify-center"
-                        style={{ background: "hsl(var(--primary))" }}
-                      >
-                        <Check size={11} strokeWidth={3} className="text-black" />
-                      </div>
-                    )}
-
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <UCIcon label={pkg.currencyLabel} />
-                      <span className="text-white font-black text-lg leading-none">
-                        {pkg.currency.toLocaleString("ru")}
-                      </span>
-                    </div>
-
-                    {pkg.bonus && (
-                      <p className="text-white/40 text-[11px] mb-2">
-                        +{pkg.bonus} бонус {pkg.currencyLabel}
-                      </p>
-                    )}
-
-                    <p className="text-white font-bold text-sm">
-                      {formatMoney(pkg.price, pkg.priceCode)}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Custom amount */}
-            <button
-              onClick={() => setShowCustom(!showCustom)}
-              className="w-full mt-3 py-3 rounded-2xl border text-sm font-semibold text-white/50 flex items-center justify-center gap-2 transition-colors"
-              style={{
-                border: showCustom ? "1.5px solid hsl(var(--primary) / 0.5)" : "1.5px solid hsl(var(--border))",
-                background: "hsl(228 32% 16%)",
-              }}
-            >
-              + Другая сумма
-            </button>
-
-            <AnimatePresence>
-              {showCustom && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="overflow-hidden"
-                >
-                  <div className="relative mt-2">
-                    <input
-                      type="tel"
-                      value={customAmount}
-                      onChange={(e) => setCustomAmount(e.target.value.replace(/\D/g, ""))}
-                      placeholder="Введите сумму"
-                      className="w-full rounded-2xl px-4 py-3.5 pr-12 text-base text-white placeholder:text-white/25 outline-none"
-                      style={{
-                        background: "hsl(228 32% 17%)",
-                        border: "1.5px solid hsl(var(--primary) / 0.5)",
-                      }}
-                    />
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 font-bold">₽</span>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                    pkg={pkg}
+                    active={selectedPkg === pkg.id}
+                    fallbackImage={productImage}
+                    onSelect={() => setSelectedPkg(pkg.id)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Step 3 — Payment */}
           <div>
-            <Step n={3} title="Способ оплаты" sub="без комиссии, мгновенно" />
+            <Step
+              n={accountRequired ? 3 : 2}
+              title="Способ оплаты"
+              sub="Безопасно, без передачи карт"
+            />
 
-            <div className="grid grid-cols-3 gap-2 mb-3">
+            <div className="grid grid-cols-4 gap-2 mb-3">
               {PAYMENT_METHODS.map((m) => {
                 const active = paymentMethod === m.id;
                 const Icon = m.icon;
@@ -447,9 +459,9 @@ export default function TopUp() {
                   <button
                     key={m.id}
                     onClick={() => setPaymentMethod(m.id)}
-                    className="relative flex flex-col items-center gap-1.5 py-3.5 rounded-2xl transition-all duration-150"
+                    className="relative flex flex-col items-center gap-1 py-3 rounded-2xl transition-all duration-150"
                     style={{
-                      background: active ? "hsl(228 32% 20%)" : "hsl(228 32% 16%)",
+                      background: active ? "hsl(228 32% 22%)" : "hsl(228 32% 16%)",
                       border: active
                         ? "1.5px solid hsl(var(--primary) / 0.8)"
                         : "1.5px solid hsl(var(--border))",
@@ -458,15 +470,24 @@ export default function TopUp() {
                   >
                     {active && (
                       <div
-                        className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center"
+                        className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full flex items-center justify-center"
                         style={{ background: "hsl(var(--primary))" }}
                       >
                         <Check size={9} strokeWidth={3} className="text-black" />
                       </div>
                     )}
-                    <Icon size={20} className={active ? "text-primary" : "text-white/40"} />
-                    <span className={cn("text-xs font-bold", active ? "text-white" : "text-white/50")}>{m.name}</span>
-                    <span className="text-[10px] text-white/30">{m.sub}</span>
+                    <Icon
+                      size={18}
+                      className={active ? "text-primary" : "text-white/40"}
+                    />
+                    <span
+                      className={cn(
+                        "text-[11px] font-bold leading-none",
+                        active ? "text-white" : "text-white/50",
+                      )}
+                    >
+                      {m.name}
+                    </span>
                   </button>
                 );
               })}
@@ -478,7 +499,9 @@ export default function TopUp() {
               className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all"
               style={{
                 background: "hsl(228 32% 16%)",
-                border: promoOpen ? "1.5px solid hsl(var(--primary) / 0.5)" : "1.5px solid hsl(var(--border))",
+                border: promoOpen
+                  ? "1.5px solid hsl(var(--primary) / 0.5)"
+                  : "1.5px solid hsl(var(--border))",
               }}
             >
               <Tag size={15} className="text-primary flex-shrink-0" />
@@ -492,18 +515,33 @@ export default function TopUp() {
                   className="flex-1 bg-transparent text-sm text-white placeholder:text-white/30 outline-none"
                 />
               ) : (
-                <span className="flex-1 text-left text-sm text-white/40">Промокод, есть код?</span>
+                <span className="flex-1 text-left text-sm text-white/40">
+                  Промокод? Введите для скидки
+                </span>
               )}
-              <ChevronRight size={15} className={cn("text-white/25 transition-transform", promoOpen && "rotate-90")} />
+              <ChevronRight
+                size={15}
+                className={cn(
+                  "text-white/25 transition-transform",
+                  promoOpen && "rotate-90",
+                )}
+              />
             </button>
           </div>
 
           {/* Trust items */}
           <div className="space-y-2.5 pt-1">
             {[
-              { icon: ShieldCheck, text: `Без передачи пароля — только ${game.inputType}` },
-              { icon: RotateCcw,   text: "Зачисление 1–2 минуты, иначе возврат" },
-              { icon: Users,       text: `1 247 пополнений ${game.name} за сегодня` },
+              {
+                icon: ShieldCheck,
+                text: accountRequired
+                  ? `Без передачи пароля — только ${fieldLabel}`
+                  : "Шифрованные платежи и безопасная выдача кодов",
+              },
+              {
+                icon: RotateCcw,
+                text: "Не пришло за 5 минут — оформим возврат",
+              },
             ].map(({ icon: Icon, text }, i) => (
               <div key={i} className="flex items-center gap-2.5">
                 <Icon size={14} className="text-white/25 flex-shrink-0" />
@@ -513,33 +551,23 @@ export default function TopUp() {
           </div>
 
           {/* Order summary */}
-          {accountId && activePkg && !showCustom && (
+          {activePkg && (
             <motion.div
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               className="flex items-center gap-3 p-3 rounded-2xl"
-              style={{ background: "hsl(228 32% 16%)", border: "1px solid hsl(var(--border))" }}
+              style={{
+                background: "hsl(228 32% 16%)",
+                border: "1px solid hsl(var(--border))",
+              }}
             >
-              <div className="w-10 h-10 rounded-[14px] overflow-hidden flex-shrink-0">
-                {game.appIcon ? (
-                  <img src={game.appIcon} className="w-full h-full object-cover" alt={game.name} />
-                ) : game.bgUrl ? (
-                  <img src={game.bgUrl} className="w-full h-full object-cover" alt={game.name} />
-                ) : (
-                  <div className={`w-full h-full bg-gradient-to-br ${game.gradient} flex items-center justify-center`}>
-                    {game.icon && <game.icon style={{ width: 16, height: 16, color: game.iconColor || "#fff" }} />}
-                  </div>
-                )}
-              </div>
+              <PackageThumb pkg={activePkg} fallback={productImage ?? game.appIcon ?? null} />
               <div className="flex-1 min-w-0">
-                <p className="text-white text-sm font-semibold">
-                  {activePkg.currency.toLocaleString("ru")} {currencyLabel}
-                  {activePkg.bonus && (
-                    <span className="text-primary text-xs ml-1">+{activePkg.bonus} бонус</span>
-                  )}
+                <p className="text-white font-bold text-sm line-clamp-1">
+                  {activePkg.label} · {game.name}
                 </p>
                 <p className="text-white/40 text-xs mt-0.5 line-clamp-1">
-                  по ID {accountId}
+                  {accountId ? `по ID ${accountId}` : "ID будет указан перед оплатой"}
                 </p>
               </div>
               <p className="text-white font-black text-sm flex-shrink-0">
@@ -555,12 +583,16 @@ export default function TopUp() {
         <motion.button
           whileTap={{ scale: 0.97 }}
           onClick={handlePayment}
-          disabled={isProcessing}
+          disabled={isProcessing || !activePkg}
           className="w-full py-4 rounded-2xl text-base font-black tracking-wide flex items-center justify-center gap-2 transition-all"
           style={{
-            background: isProcessing ? "hsl(var(--primary) / 0.5)" : "hsl(var(--primary))",
+            background:
+              isProcessing || !activePkg
+                ? "hsl(var(--primary) / 0.45)"
+                : "hsl(var(--primary))",
             color: "#000",
-            boxShadow: isProcessing ? "none" : "0 0 24px hsl(var(--primary) / 0.35)",
+            boxShadow:
+              isProcessing || !activePkg ? "none" : "0 0 24px hsl(var(--primary) / 0.35)",
           }}
           data-testid="btn-pay"
         >
@@ -575,5 +607,127 @@ export default function TopUp() {
         </motion.button>
       </div>
     </>
+  );
+}
+
+// ─── Package card ─────────────────────────────────────────────────────────────
+function PackageCard({
+  pkg,
+  active,
+  fallbackImage,
+  onSelect,
+}: {
+  pkg: Package;
+  active: boolean;
+  fallbackImage: string | null;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      onClick={onSelect}
+      className="relative text-left p-3.5 rounded-2xl transition-all duration-150"
+      style={{
+        background: active ? "hsl(228 32% 22%)" : "hsl(228 32% 16%)",
+        border: active
+          ? "1.5px solid hsl(var(--primary) / 0.8)"
+          : "1.5px solid hsl(var(--border))",
+        boxShadow: active ? "0 0 0 3px hsl(var(--primary) / 0.1)" : "none",
+      }}
+      data-testid={`btn-pkg-${pkg.id}`}
+    >
+      {pkg.badge && (
+        <div
+          className="absolute -top-2 left-3 px-2 py-0.5 rounded-md text-[9px] font-black tracking-wider"
+          style={{ background: pkg.badge.color, color: "#fff" }}
+        >
+          {pkg.badge.label}
+        </div>
+      )}
+
+      {active && (
+        <div
+          className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full flex items-center justify-center"
+          style={{ background: "hsl(var(--primary))" }}
+        >
+          <Check size={11} strokeWidth={3} className="text-black" />
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 mb-1.5">
+        <PackageThumb pkg={pkg} fallback={fallbackImage} />
+        <span className="text-white font-black text-lg leading-none">
+          {pkg.amount > 0 ? pkg.amount.toLocaleString("ru") : pkg.label}
+        </span>
+      </div>
+
+      {pkg.region && pkg.region !== "GLOBAL" && (
+        <p className="text-white/40 text-[11px] mb-2">регион {pkg.region}</p>
+      )}
+
+      <p className="text-white font-bold text-sm">
+        {formatMoney(pkg.price, pkg.priceCode)}
+      </p>
+    </button>
+  );
+}
+
+function PackageThumb({
+  pkg,
+  fallback,
+}: {
+  pkg: Package;
+  fallback: string | null;
+}) {
+  const src = pkg.imageUrl ?? fallback;
+  if (src) {
+    return (
+      <div className="w-9 h-9 rounded-xl overflow-hidden bg-black/30 flex-shrink-0">
+        <img src={src} className="w-full h-full object-cover" alt={pkg.label} />
+      </div>
+    );
+  }
+  // No image — show a small chip with whatever non-numeric part of the
+  // denomination we have (e.g. "UC", "VP", "1 мес").
+  const tag = pkg.label.replace(/^[\s\d.,]+/, "").trim() || "—";
+  return (
+    <div
+      className="w-9 h-9 rounded-xl flex items-center justify-center text-[10px] font-black text-black"
+      style={{ background: "hsl(var(--primary))" }}
+    >
+      {tag.slice(0, 4).toUpperCase()}
+    </div>
+  );
+}
+
+// ─── Loading skeletons ────────────────────────────────────────────────────────
+function PageSkeleton({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="pb-32">
+      <div className="relative h-56 overflow-hidden bg-gradient-to-br from-slate-800 to-slate-950">
+        <div className="absolute top-12 left-4 z-10">
+          <button
+            onClick={onBack}
+            className="w-9 h-9 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center"
+            aria-label="Назад"
+          >
+            <ArrowLeft size={16} className="text-white" />
+          </button>
+        </div>
+      </div>
+      <div className="px-4 pt-5 space-y-4">
+        <Skeleton className="h-12 w-full" />
+        <PackagesSkeleton />
+      </div>
+    </div>
+  );
+}
+
+function PackagesSkeleton() {
+  return (
+    <div className="grid grid-cols-2 gap-2.5">
+      {[0, 1, 2, 3].map((i) => (
+        <Skeleton key={i} className="h-24 rounded-2xl" />
+      ))}
+    </div>
   );
 }

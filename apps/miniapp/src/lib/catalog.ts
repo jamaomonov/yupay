@@ -199,41 +199,81 @@ export function useGames() {
   });
 }
 
-/**
- * Full brand payload: products + their SKUs. ``gameId`` is the brand slug.
- * The miniapp shows the brand's first active product's SKUs as packages.
- */
-export function useBrandWithPrimaryProduct(
-  gameId: string | undefined,
-  currency = "USD",
-) {
-  return useQuery({
-    queryKey: ["catalog", "brand", gameId, currency],
+export interface BrandSummary {
+  id: string;
+  slug: string;
+  name: string;
+  short_description: string | null;
+  description: string | null;
+  logo_url: string | null;
+  hero_image_url: string | null;
+  accent_color: string | null;
+  category_slug: string;
+  products: ProductSummaryApi[];
+}
+
+/** Brand metadata + the list of products (no SKUs). Cheap, cached separately
+ *  so the product switcher can render before we fetch a product's full SKUs. */
+export function useBrandSummary(gameId: string | undefined) {
+  return useQuery<BrandSummary>({
+    queryKey: ["catalog", "brand-summary", gameId],
     enabled: Boolean(gameId),
     queryFn: async () => {
-      const brand = await apiGet<BrandDetailApi>(
+      const data = await apiGet<BrandDetailApi>(
         `/api/v1/catalog/brands/${gameId ?? ""}`,
         true,
       );
-      const firstProduct = brand.products.find((p) => true) ?? null;
-      if (!firstProduct) {
-        return {
-          brand,
-          product: null,
-          packages: [] as Package[],
-        };
-      }
+      return data as BrandSummary;
+    },
+    staleTime: 5 * 60_000,
+  });
+}
+
+export interface ProductWithSkus {
+  product: ProductDetailApi;
+  packages: Package[];
+}
+
+/** Full product payload (form schema + SKUs). Used by the package picker. */
+export function useProductWithSkus(
+  productSlug: string | undefined,
+  currency = "USD",
+) {
+  return useQuery<ProductWithSkus>({
+    queryKey: ["catalog", "product", productSlug, currency],
+    enabled: Boolean(productSlug),
+    queryFn: async () => {
       const params = currency && currency !== "USD" ? `?currency=${currency}` : "";
       const product = await apiGet<ProductDetailApi>(
-        `/api/v1/catalog/products/${firstProduct.slug}${params}`,
+        `/api/v1/catalog/products/${productSlug ?? ""}${params}`,
         true,
       );
       return {
-        brand,
         product,
         packages: product.skus.map(skuToPackage),
       };
     },
     staleTime: 2 * 60_000,
   });
+}
+
+export interface ProductSummary {
+  id: string;
+  slug: string;
+  name: string;
+  short_description: string | null;
+  image_url: string | null;
+  kind: "top_up" | "voucher";
+}
+
+export function brandProducts(brand: BrandSummary | undefined): ProductSummary[] {
+  if (!brand) return [];
+  return brand.products.map((p) => ({
+    id: p.id,
+    slug: p.slug,
+    name: p.name,
+    short_description: p.short_description,
+    image_url: p.image_url,
+    kind: p.kind,
+  }));
 }
