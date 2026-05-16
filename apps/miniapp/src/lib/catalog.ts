@@ -108,12 +108,39 @@ function brandToGame(b: BrandApi, locale = "ru"): Game {
     name: b.name,
     publisher: b.short_description ?? "",
     category: bucketCategory(b.category_slug),
+    category_slug: b.category_slug,
     logoUrl: b.logo_url ?? undefined,
     bgUrl: b.hero_image_url ?? undefined,
     color: b.accent_color ?? "#3b82f6",
     inputType: "text",
     inputPlaceholder: locale === "ru" ? "Введите ID аккаунта" : "Account ID",
   };
+}
+
+export interface CategoryListItem {
+  id: string;
+  slug: string;
+  name: string;
+  icon: string | null;
+}
+
+export function useCategoriesList() {
+  return useQuery<CategoryListItem[]>({
+    queryKey: ["catalog", "categories"],
+    queryFn: async () => {
+      const data = await apiGet<{ items: CategoryApi[] }>(
+        "/api/v1/catalog/categories",
+        true,
+      );
+      return data.items.map((c) => ({
+        id: c.id,
+        slug: c.slug,
+        name: c.name,
+        icon: c.icon,
+      }));
+    },
+    staleTime: 5 * 60_000,
+  });
 }
 
 export interface Package {
@@ -162,15 +189,6 @@ export function useGames() {
       );
       return data.items.map((b) => brandToGame(b));
     },
-    staleTime: 5 * 60_000,
-  });
-}
-
-export function useCategories() {
-  return useQuery({
-    queryKey: ["catalog", "categories"],
-    queryFn: () =>
-      apiGet<{ items: CategoryApi[] }>("/api/v1/catalog/categories", true),
     staleTime: 5 * 60_000,
   });
 }

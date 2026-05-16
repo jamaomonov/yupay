@@ -9,6 +9,7 @@
 export const qk = {
   me: () => ["me"] as const,
   categories: () => ["admin", "categories"] as const,
+  category: (id: string) => ["admin", "categories", id] as const,
   brands: () => ["admin", "brands"] as const,
   brand: (id: string) => ["admin", "brands", id] as const,
   products: (filters?: { brandId?: string | null }) =>

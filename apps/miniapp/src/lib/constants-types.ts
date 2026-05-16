@@ -15,6 +15,9 @@ export type Game = {
   name: string;
   publisher: string;
   category: Category;
+  /** Real category slug from the API (e.g. "games", "subscriptions"). Optional
+   *  for backwards-compat with the mock data in ``constants.ts``. */
+  category_slug?: string;
   appIcon?: string;
   logoUrl?: string;
   bgUrl?: string;

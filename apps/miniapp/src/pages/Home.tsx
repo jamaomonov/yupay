@@ -2,17 +2,12 @@ import { useState, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, X, TrendingUp, ArrowLeft, ShieldCheck, Zap, Headphones, RotateCcw } from "lucide-react";
 import { CATEGORY_LABELS } from "@/lib/constants";
-import type { Category, Game } from "@/lib/constants-types";
-import { useGames } from "@/lib/catalog";
+import type { Game } from "@/lib/constants-types";
+import { useCategoriesList, useGames } from "@/lib/catalog";
 import { useMyOrders } from "@/lib/orders";
 import { Link } from "wouter";
 
-const CATEGORIES: { key: Category | "all"; label: string }[] = [
-  { key: "all", label: "Все" },
-  { key: "games", label: "Игры" },
-  { key: "services", label: "Сервисы" },
-  { key: "cards", label: "Карты" },
-];
+const ALL_KEY = "__all__";
 
 const FEATURED_IDS = ["pubg", "telegram", "delta-force", "steam", "valorant"];
 
@@ -220,11 +215,24 @@ function SearchResultCard({ game, index }: { game: Game; index: number }) {
 export default function Home() {
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
-  const [activeCategory, setActiveCategory] = useState<Category | "all">("all");
+  const [activeCategory, setActiveCategory] = useState<string>(ALL_KEY);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const gamesQuery = useGames();
   const games = gamesQuery.data ?? [];
+  const categoriesQuery = useCategoriesList();
+  const apiCategories = categoriesQuery.data ?? [];
+  // Only show category chips that actually have at least one brand attached —
+  // an empty filter is just visual noise.
+  const visibleCategorySlugs = new Set(
+    games.map((g) => g.category_slug).filter(Boolean) as string[],
+  );
+  const categoryChips: { key: string; label: string }[] = [
+    { key: ALL_KEY, label: "Все" },
+    ...apiCategories
+      .filter((c) => visibleCategorySlugs.has(c.slug))
+      .map((c) => ({ key: c.slug, label: c.name })),
+  ];
 
   const openSearch = () => {
     setSearchOpen(true);
@@ -246,7 +254,9 @@ export default function Home() {
   }, [search, games]);
 
   const filtered =
-    activeCategory === "all" ? games : games.filter((g) => g.category === activeCategory);
+    activeCategory === ALL_KEY
+      ? games
+      : games.filter((g) => g.category_slug === activeCategory);
 
   const displayGames = searchOpen && search.trim() ? searchResults : filtered;
 
@@ -346,10 +356,10 @@ export default function Home() {
               >
                 <Search size={15} className="text-white/50" />
               </button>
-              {CATEGORIES.map((cat) => (
+              {categoryChips.map((cat) => (
                 <button
                   key={cat.key}
-                  onClick={() => setActiveCategory(cat.key as Category | "all")}
+                  onClick={() => setActiveCategory(cat.key)}
                   className="whitespace-nowrap rounded-xl px-3.5 py-2 text-xs font-semibold transition-all duration-200 flex-shrink-0"
                   style={{
                     background: activeCategory === cat.key ? "hsl(var(--primary))" : "hsl(var(--card))",

@@ -7,6 +7,7 @@ import { LoginPage } from "@/features/auth/LoginPage";
 import { BrandsListPage } from "@/features/catalog/brands/BrandsListPage";
 import { BrandEditPage } from "@/features/catalog/brands/BrandEditPage";
 import { CategoriesListPage } from "@/features/catalog/categories/CategoriesListPage";
+import { CategoryEditPage } from "@/features/catalog/categories/CategoryEditPage";
 import { ProductsListPage } from "@/features/catalog/products/ProductsListPage";
 import { ProductEditPage } from "@/features/catalog/products/ProductEditPage";
 import { SkuEditPage } from "@/features/catalog/skus/SkuEditPage";
@@ -30,6 +31,8 @@ export const router = createBrowserRouter([
         children: [
           { path: "/", element: <DashboardPage /> },
           { path: "/categories", element: <CategoriesListPage /> },
+          { path: "/categories/new", element: <CategoryEditPage /> },
+          { path: "/categories/:id", element: <CategoryEditPage /> },
           { path: "/brands", element: <BrandsListPage /> },
           { path: "/brands/new", element: <BrandEditPage /> },
           { path: "/brands/:id", element: <BrandEditPage /> },
