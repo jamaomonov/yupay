@@ -4,25 +4,36 @@ import { NavLink, Outlet } from "react-router-dom";
 import {
   Boxes,
   Coins,
+  CreditCard,
   Gauge,
   LayoutGrid,
   LogOut,
   Package,
+  Route as RouteIcon,
   Settings,
+  ShieldCheck,
   Tag,
+  Truck,
   Users as UsersIcon,
+  Wallet,
+  Warehouse,
 } from "lucide-react";
 
 import { Button } from "@yupay/ui";
 
 import { useAuthStore } from "@/features/auth/authStore";
 
-const NAV = [
+const NAV: { to: string; label: string; icon: typeof Gauge; end?: boolean }[] = [
   { to: "/", label: "Обзор", icon: Gauge, end: true },
   { to: "/categories", label: "Категории", icon: LayoutGrid },
   { to: "/brands", label: "Бренды", icon: Tag },
   { to: "/products", label: "Продукты", icon: Package },
   { to: "/skus", label: "SKU", icon: Boxes },
+  { to: "/inventory", label: "Склад", icon: Warehouse },
+  { to: "/sourcing", label: "Sourcing", icon: RouteIcon },
+  { to: "/payments", label: "Платежи", icon: CreditCard },
+  { to: "/fulfillment", label: "Fulfilment", icon: Truck },
+  { to: "/wallet", label: "Кошелёк", icon: Wallet },
   { to: "/fx", label: "Курсы", icon: Coins },
   { to: "/users", label: "Пользователи", icon: UsersIcon },
   { to: "/settings", label: "Настройки", icon: Settings },
@@ -39,7 +50,7 @@ export function Layout() {
         style={{ width: "var(--sidebar-width)" }}
       >
         <div className="flex h-[var(--topbar-height)] items-center gap-2 border-b px-4">
-          <Tag className="size-5 text-[--color-brand]" />
+          <ShieldCheck className="size-5 text-[--color-brand]" />
           <span className="text-lg font-semibold">YuPay Admin</span>
         </div>
         <nav className="flex-1 overflow-y-auto p-3">

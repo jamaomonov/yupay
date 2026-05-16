@@ -10,6 +10,11 @@ import { CategoriesListPage } from "@/features/catalog/categories/CategoriesList
 import { ProductsListPage } from "@/features/catalog/products/ProductsListPage";
 import { ProductEditPage } from "@/features/catalog/products/ProductEditPage";
 import { SkusListPage } from "@/features/catalog/skus/SkusListPage";
+import { FulfillmentPage } from "@/features/fulfillment/FulfillmentPage";
+import { InventoryPage } from "@/features/inventory/InventoryPage";
+import { PaymentsPage } from "@/features/payments/PaymentsPage";
+import { SourcingPage } from "@/features/sourcing/SourcingPage";
+import { WalletPage } from "@/features/wallet/WalletPage";
 import { DashboardPage } from "@/routes/Dashboard";
 
 import { Layout } from "./Layout";
@@ -31,6 +36,11 @@ export const router = createBrowserRouter([
           { path: "/products/new", element: <ProductEditPage /> },
           { path: "/products/:id", element: <ProductEditPage /> },
           { path: "/skus", element: <SkusListPage /> },
+          { path: "/inventory", element: <InventoryPage /> },
+          { path: "/sourcing", element: <SourcingPage /> },
+          { path: "/payments", element: <PaymentsPage /> },
+          { path: "/fulfillment", element: <FulfillmentPage /> },
+          { path: "/wallet", element: <WalletPage /> },
           { path: "/fx", element: <FxStub /> },
           { path: "/users", element: <UsersStub /> },
           { path: "/settings", element: <SettingsStub /> },

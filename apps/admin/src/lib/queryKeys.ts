@@ -17,4 +17,56 @@ export const qk = {
   skus: (filters?: { productId?: string | null }) =>
     ["admin", "skus", filters?.productId ?? null] as const,
   sku: (id: string) => ["admin", "skus", id] as const,
+
+  // inventory
+  inventoryCounts: (skuId: string) =>
+    ["admin", "inventory", "counts", skuId] as const,
+  inventoryCodes: (filters: { skuId?: string | null; state?: string | null }) =>
+    [
+      "admin",
+      "inventory",
+      "codes",
+      filters.skuId ?? null,
+      filters.state ?? null,
+    ] as const,
+
+  // sourcing
+  sourcingRules: () => ["admin", "sourcing", "rules"] as const,
+  sourcingDecision: (skuId: string) =>
+    ["admin", "sourcing", "decision", skuId] as const,
+
+  // wallet
+  walletUser: (userId: string) => ["admin", "wallet", "user", userId] as const,
+
+  // fulfillment
+  fulfillmentTasks: (filters: {
+    orderId?: string | null;
+    supplier?: string | null;
+    status?: string | null;
+  }) =>
+    [
+      "admin",
+      "fulfillment",
+      "tasks",
+      filters.orderId ?? null,
+      filters.supplier ?? null,
+      filters.status ?? null,
+    ] as const,
+  fulfillmentTask: (taskId: string) =>
+    ["admin", "fulfillment", "task", taskId] as const,
+
+  // payments
+  payments: (filters: {
+    orderId?: string | null;
+    provider?: string | null;
+    status?: string | null;
+  }) =>
+    [
+      "admin",
+      "payments",
+      filters.orderId ?? null,
+      filters.provider ?? null,
+      filters.status ?? null,
+    ] as const,
+  payment: (id: string) => ["admin", "payments", id] as const,
 };
