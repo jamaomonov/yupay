@@ -1,0 +1,26 @@
+sequenceDiagram
+    autonumber
+    actor User as Web visitor
+    participant Web as Public web (apps/web)
+    participant TG as Telegram Login Widget
+    participant API as FastAPI (auth)
+    participant DB as Postgres
+
+    User->>Web: Visits /login
+    Web->>TG: <script src="telegram-widget.js?...">
+    User->>TG: Clicks "Log in with Telegram"
+    TG-->>Web: window.onauth(payload {id, first_name, ..., auth_date, hash})
+    Web->>API: POST /api/v1/auth/telegram/widget<br/>{id, first_name, ..., auth_date, hash}
+    API->>API: verify HMAC(payload, key=SHA256(bot_token))
+    alt signature OK
+        API->>DB: SELECT users JOIN telegram_links WHERE tg_user_id=?
+        alt user exists
+            API->>DB: UPDATE telegram_links SET names...
+        else first sight
+            API->>DB: INSERT users + telegram_links
+        end
+        API->>DB: INSERT auth_sessions(kind=user, refresh_hash)
+        API-->>Web: 200 {access, refresh}
+    else signature / freshness fails
+        API-->>Web: 401 problem+json
+    end

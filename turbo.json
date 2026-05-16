@@ -1,0 +1,47 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "stream",
+  "globalEnv": [
+    "NODE_ENV",
+    "NEXT_PUBLIC_*",
+    "SENTRY_*",
+    "TELEGRAM_*"
+  ],
+  "globalDependencies": [
+    "packages/config-tsconfig/**",
+    "packages/config-eslint/**",
+    "packages/config-tailwind/**",
+    ".env",
+    "tsconfig.json"
+  ],
+  "tasks": {
+    "dev": {
+      "cache": false,
+      "persistent": true,
+      "dependsOn": ["^gen:api"]
+    },
+    "build": {
+      "dependsOn": ["^build", "^gen:api"],
+      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+    },
+    "lint": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "lint:fix": {
+      "cache": false
+    },
+    "typecheck": {
+      "dependsOn": ["^build", "^gen:api"],
+      "outputs": []
+    },
+    "test": {
+      "dependsOn": ["^build", "^gen:api"],
+      "outputs": ["coverage/**"]
+    },
+    "gen:api": {
+      "inputs": ["../../docs/api/openapi.json", "src/generated/.gitkeep"],
+      "outputs": ["src/generated/**"]
+    }
+  }
+}

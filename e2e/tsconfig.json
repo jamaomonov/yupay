@@ -1,0 +1,5 @@
+{
+  "extends": "@yupay/config-tsconfig/base.json",
+  "compilerOptions": { "noEmit": true, "types": ["node", "@playwright/test"] },
+  "include": ["tests/**/*", "playwright.config.ts"]
+}

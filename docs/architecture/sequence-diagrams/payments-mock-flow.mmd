@@ -1,0 +1,37 @@
+sequenceDiagram
+    autonumber
+    title YuPay — payments skeleton (mock provider, dev/staging only)
+
+    participant U as User / Admin
+    participant API as FastAPI
+    participant DB as Postgres
+    participant MOCK as MockGateway
+    participant ORD as Orders FSM
+
+    Note over U,ORD: Customer creates an intent
+
+    U->>API: POST /api/v1/payments/intents {order_id, provider="mock"}
+    API->>DB: SELECT orders WHERE id=? AND status='pending_payment'
+    API->>DB: SELECT payments WHERE order_id=? AND status IN ('pending','requires_action') (reuse if same provider)
+    API->>MOCK: create_intent(order, return_url)
+    MOCK-->>API: PaymentIntent(external_id="mock_…", intent_url, status="pending")
+    API->>DB: INSERT payments + INSERT payment_attempts(kind='create_intent', status='ok')
+    API-->>U: 201 PaymentOut
+
+    Note over U,ORD: Webhook flips the order — same path for real providers later
+
+    U->>API: POST /api/v1/admin/payments/{id}/simulate-webhook (dev-only)
+    API->>API: build mock body {event_id, payment_id, outcome}
+    API->>MOCK: verify_webhook(body)
+    MOCK-->>API: WebhookEvent(succeeded, external_event_id)
+    API->>DB: INSERT payment_webhooks (UNIQUE provider+external_event_id)
+    alt duplicate (IntegrityError)
+        DB-->>API: violates unique constraint
+        API-->>U: 200 {status: "duplicate"}
+    else first time
+        API->>DB: SELECT payments WHERE provider='mock' AND external_id=?
+        API->>DB: UPDATE payments SET status='succeeded', succeeded_at=now()
+        API->>ORD: order.status='pending_payment' → 'paid'
+        API->>DB: INSERT order_events(kind='order.paid', payload={payment_id, provider, external_event_id})
+        API-->>U: 200 PaymentAdminOut
+    end

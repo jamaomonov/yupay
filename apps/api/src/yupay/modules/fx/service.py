@@ -1,0 +1,194 @@
+"""FX orchestrator: cache → provider chain → cache write-back → DB history.
+
+The service is the *only* place that knows about the full chain; providers stay
+unaware of caching and DB.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import dataclass
+from decimal import Decimal
+
+from redis.asyncio import Redis
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from yupay.core.clock import now
+from yupay.core.config import Settings, get_settings
+from yupay.core.ids import new_id
+from yupay.core.logging import get_logger
+from yupay.modules.fx import cache
+from yupay.modules.fx.models import FxRate, FxSnapshot
+from yupay.modules.fx.providers.base import FxProvider, FxProviderError, Quote
+
+log = get_logger("yupay.fx.service")
+
+
+class FxUnavailableError(Exception):
+    """Raised when no provider could service a request and no stale cache exists."""
+
+
+@dataclass(frozen=True)
+class ConversionResult:
+    """Result of a currency conversion."""
+
+    amount: Decimal
+    rate: Decimal
+    source: str
+
+
+class FxService:
+    """Stateful façade over the provider chain + cache + DB.
+
+    Constructed once per app at startup (or per test); free of FastAPI / Dramatiq
+    coupling so the same instance is reusable from the scheduler, the storefront, and
+    the order saga.
+    """
+
+    def __init__(
+        self,
+        *,
+        providers: Sequence[FxProvider],
+        redis: Redis,
+        settings: Settings | None = None,
+    ) -> None:
+        self._providers = list(providers)
+        self._redis = redis
+        self._settings = settings or get_settings()
+
+    async def get_rate(self, base: str, quote: str, *, allow_stale: bool = True) -> Quote:
+        """Return a :class:`Quote` for ``base → quote``.
+
+        Cache → providers → stale fallback (if allowed). Persists the fetched rate to
+        ``fx_rates`` only when we actually hit the network — cache hits don't write.
+        """
+        base_u, quote_u = base.upper(), quote.upper()
+
+        if base_u == quote_u:
+            return Quote(
+                base=base_u, quote=quote_u, rate=Decimal(1), fetched_at=now(), source="identity"
+            )
+
+        fresh = await cache.read_fresh(self._redis, base_u, quote_u)
+        if fresh is not None:
+            return fresh
+
+        for provider in self._providers:
+            if not provider.supports(base_u, quote_u):
+                continue
+            try:
+                q = await provider.get_rate(base_u, quote_u)
+            except FxProviderError as exc:
+                log.warning("fx.provider.failed", provider=provider.name, error=str(exc))
+                continue
+
+            await cache.write(
+                self._redis,
+                q,
+                fresh_ttl_seconds=self._settings.fx_cache_fresh_seconds,
+                stale_ttl_seconds=self._settings.fx_cache_stale_seconds,
+            )
+            return q
+
+        if allow_stale:
+            stale = await cache.read_stale(self._redis, base_u, quote_u)
+            if stale is not None:
+                log.warning("fx.serving_stale", base=base_u, quote=quote_u)
+                return stale
+
+        raise FxUnavailableError(f"no provider could serve {base_u}->{quote_u}")
+
+    async def convert(self, amount: Decimal, *, base: str, quote: str) -> ConversionResult:
+        """Convert ``amount`` from ``base`` to ``quote`` using the latest cached rate."""
+        q = await self.get_rate(base, quote)
+        return ConversionResult(amount=(amount * q.rate), rate=q.rate, source=q.source)
+
+    async def snapshot(
+        self,
+        db: AsyncSession,
+        *,
+        base: str,
+        quote: str,
+        reuse_within_seconds: int | None = None,
+    ) -> FxSnapshot:
+        """Persist (or reuse) an immutable :class:`FxSnapshot` for an order.
+
+        If a recent snapshot for the same pair exists within
+        ``reuse_within_seconds`` (default = ``fx_snapshot_max_age_seconds``), we return
+        it as-is. Otherwise we fetch a fresh rate and insert a new row.
+        """
+        max_age = reuse_within_seconds or self._settings.fx_snapshot_max_age_seconds
+        base_u, quote_u = base.upper(), quote.upper()
+
+        if max_age > 0:
+            stmt = (
+                select(FxSnapshot)
+                .where(FxSnapshot.base == base_u, FxSnapshot.quote == quote_u)
+                .order_by(FxSnapshot.created_at.desc())
+                .limit(1)
+            )
+            recent = (await db.execute(stmt)).scalar_one_or_none()
+            if recent is not None:
+                age = (now() - recent.created_at).total_seconds()
+                if age <= max_age:
+                    return recent
+
+        q = await self.get_rate(base_u, quote_u)
+        snap = FxSnapshot(
+            id=new_id(),
+            base=q.base,
+            quote=q.quote,
+            rate=q.rate,
+            source=q.source,
+            fetched_at=q.fetched_at,
+        )
+        db.add(snap)
+        await db.flush()
+        return snap
+
+    async def refresh_all(
+        self,
+        db: AsyncSession,
+        *,
+        base: str = "USD",
+        quotes: Sequence[str] | None = None,
+    ) -> dict[str, Quote]:
+        """Force-refresh the supported pair matrix.
+
+        Intended to be called by the periodic scheduler every 5 minutes. Returns the
+        fetched quotes keyed by ``quote`` symbol. Also writes a history row to
+        ``fx_rates`` per successful fetch.
+        """
+        targets = list(quotes) if quotes is not None else self._settings.fx_supported_quotes
+        results: dict[str, Quote] = {}
+        for q_symbol in targets:
+            if q_symbol.upper() == base.upper():
+                continue
+            try:
+                # Bypass the fresh cache to force network call.
+                await self._redis.delete(f"fx:rate:{base.upper()}:{q_symbol.upper()}")
+                q = await self.get_rate(base, q_symbol, allow_stale=False)
+            except FxUnavailableError:
+                log.exception("fx.refresh.unavailable", base=base, quote=q_symbol)
+                continue
+            db.add(
+                FxRate(
+                    id=new_id(),
+                    base=q.base,
+                    quote=q.quote,
+                    rate=q.rate,
+                    source=q.source,
+                    fetched_at=q.fetched_at,
+                )
+            )
+            results[q.quote] = q
+        await db.flush()
+        return results
+
+
+__all__ = [
+    "ConversionResult",
+    "FxService",
+    "FxUnavailableError",
+]

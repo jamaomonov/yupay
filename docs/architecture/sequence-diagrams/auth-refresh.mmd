@@ -1,0 +1,25 @@
+sequenceDiagram
+    autonumber
+    participant Client
+    participant API as FastAPI (auth)
+    participant DB as Postgres
+
+    Client->>API: POST /api/v1/auth/refresh {refresh_token}
+    API->>API: hash = sha256(refresh_token)
+    API->>DB: SELECT auth_sessions WHERE refresh_token_hash = hash
+
+    alt row not found
+        API-->>Client: 401 invalid refresh
+    else row.revoked_at IS NOT NULL
+        Note over API,DB: Reuse trip-wire — token was rotated already.
+        API->>DB: UPDATE auth_sessions SET revoked_at=now() WHERE user_id=? AND revoked_at IS NULL
+        API-->>Client: 401 reuse detected
+    else row.expires_at < now()
+        API-->>Client: 401 expired
+    else OK
+        API->>DB: UPDATE row SET revoked_at = now()
+        API->>API: refresh' = new_refresh_token(), sid = new_id()
+        API->>DB: INSERT auth_sessions(id=sid, refresh_token_hash=sha256(refresh'), ...)
+        API->>API: access' = mint_access(sub=user.id, sid=sid, ...)
+        API-->>Client: 200 {access', refresh'}
+    end

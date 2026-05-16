@@ -1,0 +1,75 @@
+"""Dev/staging-only fulfiller.
+
+Returns a fake artifact synchronously so the order can be walked through the full
+lifecycle in tests and demos without any supplier dependency. Disabled in prod
+via :attr:`MockFulfiller.available`.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from yupay.core.config import get_settings
+from yupay.core.ids import new_id
+from yupay.modules.fulfillment.suppliers.base import (
+    Fulfiller,
+    FulfillResult,
+    FulfillStatus,
+)
+
+if TYPE_CHECKING:
+    from yupay.modules.fulfillment.models import FulfillmentTask
+    from yupay.modules.orders.models import Order, OrderItem
+
+
+class MockFulfiller(Fulfiller):
+    """No-op fulfiller used by tests and the dev admin SPA."""
+
+    supplier = "mock"
+
+    @property
+    def available(self) -> bool:
+        return not get_settings().is_prod
+
+    async def fulfill(
+        self,
+        *,
+        order: Order,
+        item: OrderItem,
+        idempotency_key: str,
+    ) -> FulfillResult:
+        return FulfillResult(
+            outcome="succeeded",
+            external_order_id=f"mock_{new_id()}",
+            artifact_kind="voucher_code",
+            artifact={
+                "code": f"MOCK-{item.id[-12:].upper()}",
+                "sku_id": item.sku_id,
+                "qty": item.qty,
+            },
+            error=None,
+            extra_metadata={
+                "mock": True,
+                "order_id": order.id,
+                "idempotency_key": idempotency_key,
+            },
+        )
+
+    async def check_status(
+        self,
+        *,
+        task: FulfillmentTask,  # noqa: ARG002 -- mock is always already done
+    ) -> FulfillStatus:
+        return FulfillStatus(
+            outcome="succeeded",
+            artifact_kind="voucher_code",
+            artifact={"code": "MOCK"},
+            error=None,
+        )
+
+    async def cancel(
+        self,
+        *,
+        task: FulfillmentTask,  # noqa: ARG002
+    ) -> None:
+        return None

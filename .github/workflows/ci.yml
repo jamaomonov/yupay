@@ -1,0 +1,140 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+
+jobs:
+  commitlint:
+    name: Commit messages
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: ${{ env.NODE_VERSION }}, cache: pnpm }
+      - run: pnpm install --frozen-lockfile=false
+      - run: pnpm exec commitlint --from origin/${{ github.base_ref }} --to HEAD --verbose
+
+  lint-py:
+    name: Lint Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with: { python-version: ${{ env.PYTHON_VERSION }}, enable-cache: true }
+      - run: uv sync --frozen
+      - run: uv run ruff check apps
+      - run: uv run ruff format --check apps
+      - run: uv run mypy apps
+
+  lint-ts:
+    name: Lint TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: ${{ env.NODE_VERSION }}, cache: pnpm }
+      - run: pnpm install --frozen-lockfile=false
+      - run: pnpm exec turbo run lint typecheck
+      - run: pnpm exec prettier --check .
+
+  test-py:
+    name: Test Python
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: yupay_app
+          POSTGRES_PASSWORD: yupay_app
+          POSTGRES_DB: yupay_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U yupay_app"
+          --health-interval=5s --health-timeout=3s --health-retries=10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s --health-timeout=3s --health-retries=10
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: postgresql+asyncpg://yupay_app:yupay_app@localhost:5432/yupay_test
+      REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with: { python-version: ${{ env.PYTHON_VERSION }}, enable-cache: true }
+      - run: uv sync --frozen
+      - run: uv run pytest --cov=apps --cov-report=xml --cov-fail-under=80
+
+  test-ts:
+    name: Test TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: ${{ env.NODE_VERSION }}, cache: pnpm }
+      - run: pnpm install --frozen-lockfile=false
+      - run: pnpm exec turbo run test
+
+  openapi-drift:
+    name: OpenAPI drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with: { python-version: ${{ env.PYTHON_VERSION }}, enable-cache: true }
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: ${{ env.NODE_VERSION }}, cache: pnpm }
+      - run: uv sync --frozen
+      - run: pnpm install --frozen-lockfile=false
+      - run: |
+          cd apps/api && uv run python -m yupay.scripts.export_openapi ../../docs/api/openapi.json
+          cd ../.. && pnpm --filter @yupay/api-client gen:api
+      - name: Fail if generated files drifted
+        run: |
+          if [[ -n "$(git status --porcelain docs/api/openapi.json packages/api-client/src/generated)" ]]; then
+            echo '::error::OpenAPI schema or generated client is out of date. Run `make gen-api` and commit.'
+            git --no-pager diff
+            exit 1
+          fi
+
+  docs-check:
+    name: Docs check
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Verify docs change accompanies code change
+        run: |
+          base=$(git merge-base origin/${{ github.base_ref }} HEAD)
+          changed=$(git diff --name-only "$base"..HEAD)
+          touched_modules=$(echo "$changed" | grep -E '^apps/api/src/yupay/modules/' || true)
+          touched_docs=$(echo "$changed" | grep -E '^docs/' || true)
+          if [[ -n "$touched_modules" && -z "$touched_docs" ]]; then
+            echo '::error::A backend module changed but docs/ was not updated. See AGENTS.md § 5.'
+            echo "Touched modules:"; echo "$touched_modules"
+            exit 1
+          fi

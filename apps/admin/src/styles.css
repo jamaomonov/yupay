@@ -1,0 +1,7 @@
+@import "@yupay/config-tailwind/preset.css";
+
+/* Admin layout uses a sidebar; reserve some structural variables here. */
+:root {
+  --sidebar-width: 260px;
+  --topbar-height: 56px;
+}

@@ -1,0 +1,190 @@
+name: yupay-prod
+
+x-app-env: &app-env
+  ENVIRONMENT: prod
+  DEBUG: "false"
+  LOG_LEVEL: INFO
+  LOG_JSON: "true"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file: /opt/yupay/secrets/postgres.env
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 10s
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    restart: unless-stopped
+    env_file: /opt/yupay/secrets/postgres-exporter.env
+    depends_on:
+      - postgres
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    depends_on:
+      - redis
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    env_file: /opt/yupay/secrets/minio.env
+    volumes:
+      - minio-data:/data
+
+  api:
+    image: ghcr.io/yupay/api:${IMAGE_TAG:-main}
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+    env_file: /opt/yupay/secrets/api.env
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/healthz || exit 1"]
+      interval: 30s
+
+  worker:
+    image: ghcr.io/yupay/worker:${IMAGE_TAG:-main}
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+    env_file: /opt/yupay/secrets/api.env
+    depends_on: [postgres, redis]
+
+  scheduler:
+    image: ghcr.io/yupay/scheduler:${IMAGE_TAG:-main}
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+    env_file: /opt/yupay/secrets/api.env
+    depends_on: [postgres, redis]
+
+  bot:
+    image: ghcr.io/yupay/bot:${IMAGE_TAG:-main}
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+    env_file: /opt/yupay/secrets/api.env
+    depends_on: [api]
+
+  web:
+    image: ghcr.io/yupay/web:${IMAGE_TAG:-main}
+    restart: unless-stopped
+    env_file: /opt/yupay/secrets/web.env
+
+  miniapp:
+    image: ghcr.io/yupay/miniapp:${IMAGE_TAG:-main}
+    restart: unless-stopped
+    env_file: /opt/yupay/secrets/miniapp.env
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./infra/caddy/Caddyfile.prod:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [api, web, miniapp]
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/alerts:/etc/prometheus/alerts:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    restart: unless-stopped
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    restart: unless-stopped
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    env_file: /opt/yupay/secrets/grafana.env
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on: [prometheus, loki]
+
+  loki:
+    image: grafana/loki:latest
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/loki-config.yml"]
+    volumes:
+      - ./infra/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+
+  promtail:
+    image: grafana/promtail:latest
+    restart: unless-stopped
+    command: ["-config.file=/etc/promtail/promtail-config.yml"]
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./infra/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+    depends_on: [loki]
+
+  backup:
+    image: alpine:3.20
+    restart: "no"
+    env_file: /opt/yupay/secrets/backup.env
+    volumes:
+      - ./infra/backup:/scripts:ro
+      - backup-tmp:/tmp/backup
+    depends_on: [postgres]
+    entrypoint: ["/bin/sh", "-c", "apk add --no-cache postgresql-client age rclone bash && /scripts/pg_backup.sh"]
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  caddy-data:
+  caddy-config:
+  prometheus-data:
+  grafana-data:
+  loki-data:
+  backup-tmp:

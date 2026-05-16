@@ -1,0 +1,19 @@
+{
+  "brand": "YuPay",
+  "tagline": "Oʻyinlarni toʻldirish, vaucherlar va sovgʻa kartalari",
+  "nav": {
+    "catalog": "Katalog",
+    "wallet": "Hamyon",
+    "orders": "Buyurtmalar",
+    "support": "Yordam"
+  },
+  "actions": {
+    "buy": "Sotib olish",
+    "topUp": "Toʻldirish",
+    "continue": "Davom etish",
+    "back": "Orqaga"
+  },
+  "errors": {
+    "generic": "Xatolik yuz berdi. Qaytadan urinib koʻring."
+  }
+}

@@ -1,0 +1,195 @@
+name: yupay-dev
+
+x-app-env: &app-env
+  ENVIRONMENT: ${ENVIRONMENT:-dev}
+  DEBUG: ${DEBUG:-true}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  LOG_JSON: ${LOG_JSON:-false}
+  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-yupay_app}:${POSTGRES_PASSWORD:-yupay_app}@postgres:5432/${POSTGRES_DB:-yupay}
+  REDIS_URL: redis://redis:6379/0
+  DRAMATIQ_BROKER_URL: redis://redis:6379/1
+  TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+  JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
+  JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
+  AUTH_EMAIL_PEPPER: ${AUTH_EMAIL_PEPPER:-}
+  SENTRY_DSN: ${SENTRY_DSN:-}
+  ADMIN_DEV_LOGIN_ENABLED: ${ADMIN_DEV_LOGIN_ENABLED:-false}
+  ADMIN_DEV_LOGIN: ${ADMIN_DEV_LOGIN:-admin}
+  ADMIN_DEV_PASSWORD: ${ADMIN_DEV_PASSWORD:-admin}
+  CORS_ALLOW_ORIGINS: '["http://localhost:3000","http://localhost:3001","http://localhost:3002","https://app.localhost","https://yupay.localhost","https://admin.localhost"]'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-yupay_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-yupay_app}
+      POSTGRES_DB: ${POSTGRES_DB:-yupay}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-yupay_app} -d ${POSTGRES_DB:-yupay}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-yupay}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-yupay-dev-secret-change-me}
+    ports:
+      - "${MINIO_PORT_API:-9000}:9000"
+      - "${MINIO_PORT_CONSOLE:-9001}:9001"
+    volumes:
+      - minio-data:/data
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  adminer:
+    image: adminer:5
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    volumes:
+      - ./apps/api:/app/apps/api
+    command: ["uvicorn", "yupay.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  worker:
+    build:
+      context: .
+      dockerfile: infra/docker/worker.Dockerfile
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    volumes:
+      - ./apps:/app/apps
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: infra/docker/scheduler.Dockerfile
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    volumes:
+      - ./apps:/app/apps
+
+  bot:
+    build:
+      context: .
+      dockerfile: infra/docker/bot.Dockerfile
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+    depends_on:
+      api: { condition: service_started }
+    volumes:
+      - ./apps:/app/apps
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://api:8000
+      NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+  miniapp:
+    build:
+      context: .
+      dockerfile: infra/docker/miniapp.Dockerfile
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://api:8000
+      NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+    ports:
+      - "3001:3000"
+    depends_on:
+      - api
+
+  admin:
+    build:
+      context: .
+      dockerfile: infra/docker/admin.Dockerfile
+      args:
+        VITE_API_BASE_URL: http://localhost:8000
+        VITE_TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+    restart: unless-stopped
+    ports:
+      - "3002:80"
+    depends_on:
+      - api
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./infra/caddy/Caddyfile.dev:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - api
+      - web
+      - miniapp
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  caddy-data:
+  caddy-config:

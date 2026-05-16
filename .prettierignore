@@ -1,0 +1,11 @@
+node_modules
+.next
+.turbo
+dist
+build
+coverage
+**/generated
+pnpm-lock.yaml
+uv.lock
+docs/api/openapi.json
+*.min.*

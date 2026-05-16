@@ -1,0 +1,21 @@
+{
+  "name": "@yupay/config-tailwind",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "style": "./preset.css",
+      "default": "./preset.css"
+    },
+    "./preset.css": {
+      "style": "./preset.css",
+      "default": "./preset.css"
+    },
+    "./tokens.css": {
+      "style": "./tokens.css",
+      "default": "./tokens.css"
+    }
+  },
+  "files": ["preset.css", "tokens.css"]
+}

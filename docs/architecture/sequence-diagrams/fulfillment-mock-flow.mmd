@@ -1,0 +1,43 @@
+sequenceDiagram
+    autonumber
+    title YuPay — fulfillment skeleton (mock supplier, dev/staging only)
+
+    participant U as User
+    participant API as FastAPI
+    participant PAY as payments.service
+    participant FUL as fulfillment.service
+    participant DB as Postgres
+    participant MOCK as MockFulfiller
+
+    Note over U,MOCK: Payment webhook drives fulfilment
+
+    U->>API: POST /webhooks/payments/mock {event_id, payment_id, succeeded}
+    API->>PAY: handle_webhook
+    PAY->>DB: UPDATE payments SET status='succeeded'
+    PAY->>DB: UPDATE orders SET status='paid', paid_at=now()
+    PAY->>DB: INSERT order_events(order.paid)
+    PAY->>FUL: start_for_order(order_id)
+    FUL->>DB: SELECT existing fulfillment_tasks (idempotency)
+    FUL->>DB: INSERT fulfillment_tasks per order_item
+    FUL->>DB: UPDATE orders SET status='fulfilling'
+    FUL->>DB: INSERT order_events(order.fulfilling)
+
+    loop per task
+        FUL->>DB: UPDATE task.status='in_progress'
+        FUL->>MOCK: fulfill(order, item, idempotency_key=task.id)
+        MOCK-->>FUL: FulfillResult(succeeded, external_order_id, artifact)
+        FUL->>DB: INSERT fulfillment_attempts(kind='fulfill', status='ok')
+        FUL->>DB: UPDATE task.status='succeeded', external_order_id=?, succeeded_at=now()
+        FUL->>DB: INSERT deliveries(channel='in_app', artifact_kind='voucher_code', artifact={code})
+        FUL->>DB: UPDATE order_items.fulfillment_state='delivered'
+    end
+
+    Note over FUL,DB: Settle order if every task succeeded
+
+    FUL->>DB: SELECT all tasks for order
+    alt all succeeded
+        FUL->>DB: UPDATE orders SET status='delivered', fulfilled_at=?, delivered_at=now()
+        FUL->>DB: INSERT order_events(order.delivered)
+    end
+
+    API-->>U: 200 {status: "processed"}

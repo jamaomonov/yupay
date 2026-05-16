@@ -1,0 +1,17 @@
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+*.zip binary
+
+# Mark generated files
+docs/api/openapi.json linguist-generated=true
+packages/api-client/src/generated/** linguist-generated=true
+pnpm-lock.yaml linguist-generated=true
+uv.lock linguist-generated=true

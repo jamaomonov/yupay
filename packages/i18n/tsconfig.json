@@ -1,0 +1,5 @@
+{
+  "extends": "@yupay/config-tsconfig/base.json",
+  "compilerOptions": { "noEmit": true, "resolveJsonModule": true },
+  "include": ["src/**/*", "locales/**/*.json"]
+}

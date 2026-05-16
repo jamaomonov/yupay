@@ -1,0 +1,26 @@
+sequenceDiagram
+    autonumber
+    actor User as Telegram user
+    participant MA as Mini App (apps/miniapp)
+    participant TG as Telegram SDK
+    participant API as FastAPI (auth)
+    participant DB as Postgres
+
+    User->>MA: Opens Mini App
+    MA->>TG: Telegram.WebApp.initData
+    TG-->>MA: signed initData string
+    MA->>API: POST /api/v1/auth/telegram/webapp<br/>{init_data}
+    API->>API: verify HMAC(initData, key=HMAC("WebAppData", bot_token))
+    alt signature OK
+        API->>DB: SELECT users JOIN telegram_links WHERE tg_user_id=?
+        alt user exists
+            API->>DB: UPDATE telegram_links SET last_seen_at, names...
+        else first sight
+            API->>DB: INSERT users + telegram_links
+        end
+        API->>DB: INSERT auth_sessions(kind=user, refresh_hash, expires_at)
+        API-->>MA: 200 {access, refresh, expires_in}
+        MA->>MA: store access in memory, refresh in storage
+    else signature / freshness fails
+        API-->>MA: 401 problem+json
+    end

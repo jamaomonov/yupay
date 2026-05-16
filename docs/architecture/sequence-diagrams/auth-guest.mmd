@@ -1,0 +1,16 @@
+sequenceDiagram
+    autonumber
+    actor User as Guest visitor
+    participant Web as Public web
+    participant API as FastAPI (auth)
+    participant DB as Postgres
+
+    User->>Web: Enter email at checkout
+    Web->>API: POST /api/v1/auth/guest {email}
+    API->>API: normalise(email), email_hash(SHA256(pepper||email))
+    API->>DB: INSERT auth_sessions(kind=guest, guest_email, expires_at)
+    API->>API: mint guest JWT (kind=guest, sub=guest:<email_hash>, scope=[orders:create,...])
+    API-->>Web: 200 {access_token (Guest), expires_in=1800}
+    Web->>API: POST /api/v1/orders<br/>Authorization: Guest <jwt>
+    API->>API: verify JWT (kind=guest), enforce scope
+    API-->>Web: 201 order

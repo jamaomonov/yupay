@@ -1,0 +1,38 @@
+sequenceDiagram
+    autonumber
+    participant Caller as Caller (orders / storefront)
+    participant Svc as FxService
+    participant Redis as Redis cache
+    participant P1 as Provider 1 (exchangerate.host)
+    participant P2 as Provider 2 (openexchangerates)
+    participant P3 as Provider 3 (coingecko)
+
+    Caller->>Svc: get_rate(USD, RUB)
+    Svc->>Redis: GET fx:rate:USD:RUB
+    alt fresh hit
+        Redis-->>Svc: Quote
+        Svc-->>Caller: Quote (cached)
+    else miss
+        Svc->>P1: get_rate(USD, RUB)
+        alt success
+            P1-->>Svc: Quote
+            Svc->>Redis: SET fx:rate:USD:RUB TTL 15m
+            Svc->>Redis: SET fx:rate:USD:RUB:stale TTL 24h
+            Svc-->>Caller: Quote
+        else fail
+            Svc->>P2: get_rate(USD, RUB)
+            alt success
+                P2-->>Svc: Quote
+                Svc->>Redis: SET fresh + stale
+                Svc-->>Caller: Quote
+            else fail
+                Svc->>Redis: GET fx:rate:USD:RUB:stale
+                alt stale hit
+                    Redis-->>Svc: stale Quote
+                    Svc-->>Caller: stale Quote (graceful degradation)
+                else no stale
+                    Svc-->>Caller: FxUnavailableError
+                end
+            end
+        end
+    end

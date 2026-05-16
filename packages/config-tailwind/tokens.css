@@ -1,0 +1,68 @@
+/* YuPay design tokens — single source of truth.
+ *
+ * Tailwind v4 reads these CSS custom properties via `@theme` (see preset.css).
+ * Mini App overlays Telegram theme params (--tg-*) on top of these in the runtime.
+ */
+
+@theme {
+  /* ---------- Color: semantic ---------- */
+  --color-bg: oklch(0.985 0 0);
+  --color-fg: oklch(0.146 0.005 270);
+  --color-muted: oklch(0.708 0.008 270);
+  --color-subtle: oklch(0.928 0.005 270);
+  --color-border: oklch(0.890 0.005 270);
+
+  --color-brand: oklch(0.575 0.205 260);
+  --color-brand-fg: oklch(0.985 0 0);
+  --color-brand-hover: oklch(0.520 0.225 260);
+
+  --color-accent: oklch(0.770 0.180 65);
+  --color-accent-fg: oklch(0.146 0.005 270);
+
+  --color-success: oklch(0.625 0.180 145);
+  --color-success-fg: oklch(0.985 0 0);
+  --color-danger: oklch(0.580 0.235 27);
+  --color-danger-fg: oklch(0.985 0 0);
+  --color-warning: oklch(0.760 0.170 80);
+  --color-warning-fg: oklch(0.146 0.005 270);
+  --color-info: oklch(0.700 0.130 235);
+  --color-info-fg: oklch(0.985 0 0);
+
+  /* ---------- Spacing: 4px base ---------- */
+  --spacing: 0.25rem;
+
+  /* ---------- Radius ---------- */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-full: 9999px;
+
+  /* ---------- Typography ---------- */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* ---------- Shadows ---------- */
+  --shadow-sm: 0 1px 2px 0 oklch(0 0 0 / 0.06);
+  --shadow-md: 0 4px 12px -2px oklch(0 0 0 / 0.10);
+  --shadow-lg: 0 12px 32px -8px oklch(0 0 0 / 0.16);
+
+  /* ---------- Motion ---------- */
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+  --easing-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-theme="dark"] {
+  --color-bg: oklch(0.146 0.005 270);
+  --color-fg: oklch(0.985 0 0);
+  --color-muted: oklch(0.560 0.010 270);
+  --color-subtle: oklch(0.220 0.010 270);
+  --color-border: oklch(0.310 0.010 270);
+
+  --color-brand: oklch(0.700 0.180 260);
+  --color-brand-fg: oklch(0.146 0.005 270);
+  --color-brand-hover: oklch(0.760 0.180 260);
+}

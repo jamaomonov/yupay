@@ -1,0 +1,216 @@
+"""JWT issuance and verification (EdDSA / Ed25519).
+
+See `docs/decisions/0007-jwt-format-and-rotation.md` for the token format, claims, and
+rotation policy. This module is intentionally thin — it does **no** session lookups and
+**no** revocation checks. Those belong in the service layer.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import Any, Final, Literal, cast
+
+import jwt
+from jwt.exceptions import InvalidTokenError
+
+from yupay.core.clock import now
+from yupay.core.config import Settings, get_settings
+from yupay.core.errors import UnauthorizedError
+from yupay.core.ids import new_id
+
+ALG: Final[str] = "EdDSA"
+
+TokenKind = Literal["access", "refresh", "guest", "ws"]
+
+
+@dataclass(frozen=True)
+class Claims:
+    """Decoded JWT payload, narrowed to the fields YuPay cares about."""
+
+    sub: str
+    kind: TokenKind
+    jti: str
+    iat: datetime
+    exp: datetime
+    sid: str | None = None
+    tg_id: int | None = None
+    email_hash: str | None = None
+    scope: tuple[str, ...] = ()
+    channel: str | None = None
+
+
+def _settings_or(settings: Settings | None) -> Settings:
+    return settings if settings is not None else get_settings()
+
+
+def _encode(
+    payload: dict[str, Any],
+    *,
+    settings: Settings,
+) -> str:
+    private_key = settings.jwt_private_key
+    if not private_key:
+        raise RuntimeError(
+            "JWT_PRIVATE_KEY is not configured — refusing to mint tokens. "
+            "Generate one with `./scripts/gen-secret.sh jwt`."
+        )
+    return jwt.encode(
+        payload,
+        private_key,
+        algorithm=ALG,
+        headers={"kid": settings.jwt_kid},
+    )
+
+
+def _base_payload(
+    *,
+    sub: str,
+    kind: TokenKind,
+    ttl_seconds: int,
+    settings: Settings,
+) -> dict[str, Any]:
+    issued = now()
+    return {
+        "iss": settings.jwt_issuer,
+        "sub": sub,
+        "kind": kind,
+        "jti": new_id(),
+        "iat": int(issued.timestamp()),
+        "exp": int((issued + timedelta(seconds=ttl_seconds)).timestamp()),
+    }
+
+
+def mint_access(
+    *,
+    sub: str,
+    sid: str,
+    tg_id: int | None = None,
+    email_hash: str | None = None,
+    settings: Settings | None = None,
+) -> str:
+    """Issue a short-lived access JWT for an authenticated user.
+
+    The caller is responsible for ensuring ``sid`` references a non-revoked row in
+    ``auth_sessions``.
+    """
+    s = _settings_or(settings)
+    payload = _base_payload(
+        sub=sub,
+        kind="access",
+        ttl_seconds=s.jwt_access_ttl_seconds,
+        settings=s,
+    )
+    payload["sid"] = sid
+    if tg_id is not None:
+        payload["tg_id"] = tg_id
+    if email_hash is not None:
+        payload["email_hash"] = email_hash
+    return _encode(payload, settings=s)
+
+
+def mint_refresh(
+    *,
+    sub: str,
+    sid: str,
+    settings: Settings | None = None,
+) -> str:
+    """Issue a long-lived refresh JWT.
+
+    The corresponding ``auth_sessions`` row stores ``SHA-256`` of the **opaque** refresh
+    token actually shipped to the client (see ``security.new_refresh_token``). The JWT
+    flavour here is reserved for environments that prefer JWT refresh; YuPay currently
+    uses opaque tokens — keep this helper for completeness and future flexibility.
+    """
+    s = _settings_or(settings)
+    payload = _base_payload(
+        sub=sub,
+        kind="refresh",
+        ttl_seconds=s.jwt_refresh_ttl_seconds,
+        settings=s,
+    )
+    payload["sid"] = sid
+    return _encode(payload, settings=s)
+
+
+def mint_guest(
+    *,
+    email_hash: str,
+    scope: list[str] | None = None,
+    settings: Settings | None = None,
+) -> str:
+    """Issue a single-purpose guest checkout token, bound to an email hash."""
+    s = _settings_or(settings)
+    payload = _base_payload(
+        sub=f"guest:{email_hash}",
+        kind="guest",
+        ttl_seconds=s.jwt_guest_ttl_seconds,
+        settings=s,
+    )
+    payload["email_hash"] = email_hash
+    payload["scope"] = scope or ["orders:create", "orders:read:own"]
+    return _encode(payload, settings=s)
+
+
+def mint_ws_handshake(
+    *,
+    sub: str,
+    sid: str,
+    channel: str,
+    settings: Settings | None = None,
+) -> str:
+    """Issue a 60-second token used to authorise a WebSocket ``Upgrade``."""
+    s = _settings_or(settings)
+    payload = _base_payload(
+        sub=sub,
+        kind="ws",
+        ttl_seconds=s.jwt_ws_ttl_seconds,
+        settings=s,
+    )
+    payload["sid"] = sid
+    payload["channel"] = channel
+    return _encode(payload, settings=s)
+
+
+def verify(
+    token: str,
+    *,
+    expected_kind: TokenKind,
+    settings: Settings | None = None,
+) -> Claims:
+    """Decode and validate a JWT.
+
+    Raises:
+        UnauthorizedError: On signature failure, expiry, or kind mismatch.
+    """
+    s = _settings_or(settings)
+    if not s.jwt_public_key:
+        raise RuntimeError("JWT_PUBLIC_KEY is not configured — cannot verify tokens.")
+
+    try:
+        raw = jwt.decode(
+            token,
+            s.jwt_public_key,
+            algorithms=[ALG],
+            issuer=s.jwt_issuer,
+            options={"require": ["iat", "exp", "iss", "sub", "jti"]},
+        )
+    except InvalidTokenError as exc:
+        raise UnauthorizedError("invalid token") from exc
+
+    kind = raw.get("kind")
+    if kind != expected_kind:
+        raise UnauthorizedError("wrong token kind")
+
+    return Claims(
+        sub=str(raw["sub"]),
+        kind=cast(TokenKind, kind),
+        jti=str(raw["jti"]),
+        iat=datetime.fromtimestamp(int(raw["iat"]), tz=now().tzinfo),
+        exp=datetime.fromtimestamp(int(raw["exp"]), tz=now().tzinfo),
+        sid=raw.get("sid"),
+        tg_id=raw.get("tg_id"),
+        email_hash=raw.get("email_hash"),
+        scope=tuple(raw.get("scope", ())),
+        channel=raw.get("channel"),
+    )

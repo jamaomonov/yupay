@@ -1,0 +1,10 @@
+@import "@yupay/config-tailwind/preset.css";
+
+/* Telegram theme params bridge — overlaid by useThemeParams() on the client. */
+:root {
+  --tg-bg: var(--color-bg);
+  --tg-fg: var(--color-fg);
+  --tg-link: var(--color-brand);
+  --tg-button: var(--color-brand);
+  --tg-button-text: var(--color-brand-fg);
+}

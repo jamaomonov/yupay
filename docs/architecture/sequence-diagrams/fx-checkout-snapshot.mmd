@@ -1,0 +1,22 @@
+sequenceDiagram
+    autonumber
+    participant Cust as Customer
+    participant Orders as orders module
+    participant Fx as FxService
+    participant DB as Postgres
+
+    Cust->>Orders: create order (currency=RUB)
+    Orders->>Fx: snapshot(base=USD, quote=RUB)
+    Fx->>DB: SELECT fx_snapshots WHERE base, quote ORDER BY created_at DESC LIMIT 1
+    alt recent snapshot (< 5 min)
+        DB-->>Fx: existing FxSnapshot
+        Fx-->>Orders: reused snapshot
+    else stale / missing
+        Fx->>Fx: get_rate(USD, RUB)  -- through cache+chain
+        Fx->>DB: INSERT fx_snapshots(...)
+        DB-->>Fx: new FxSnapshot
+        Fx-->>Orders: new snapshot
+    end
+    Orders->>DB: INSERT orders(..., fx_snapshot_id=snap.id, total_charged=usd*rate)
+    Orders-->>Cust: 201 order
+```

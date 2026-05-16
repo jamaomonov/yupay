@@ -1,0 +1,30 @@
+# Caddy — local dev config with internal TLS (tls internal) so HTTPS works on localhost.
+{
+	local_certs
+	auto_https disable_redirects
+}
+
+yupay.localhost {
+	tls internal
+	reverse_proxy web:3000
+}
+
+app.localhost {
+	tls internal
+	reverse_proxy miniapp:3000
+}
+
+admin.localhost {
+	tls internal
+	reverse_proxy admin:80
+}
+
+api.localhost {
+	tls internal
+	@websocket {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	reverse_proxy @websocket api:8000
+	reverse_proxy api:8000
+}

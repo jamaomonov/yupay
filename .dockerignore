@@ -1,0 +1,27 @@
+**/.git
+**/.gitignore
+**/.DS_Store
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+**/build
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/coverage
+**/htmlcov
+**/.coverage
+**/.env
+**/.env.*
+!**/.env.example
+**/Dockerfile
+**/docker-compose*.yml
+# Note: do NOT ignore **/README.md — apps/api/pyproject.toml's `readme = "README.md"`
+# requires the file inside the build context.
+docs/
+e2e/
+playwright-report/
+test-results/

@@ -1,0 +1,274 @@
+"""SQLAlchemy ORM for the ``catalog`` module.
+
+See ADR-0009 for the three-level model (Category → Brand → Product → SKU) and the
+``Product.required_fields`` form schema.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from decimal import Decimal
+from typing import Any
+
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    PrimaryKeyConstraint,
+    String,
+    Text,
+    text,
+)
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from yupay.core.db import Base
+
+
+class Category(Base):
+    """A flat top-level grouping (Games, Subscriptions, Gift cards, Crypto)."""
+
+    __tablename__ = "categories"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
+    slug: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    icon: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+
+    translations: Mapped[list[CategoryTranslation]] = relationship(
+        back_populates="category",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+
+class CategoryTranslation(Base):
+    """Localised name + optional description for a category."""
+
+    __tablename__ = "category_translations"
+
+    category_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("categories.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    locale: Mapped[str] = mapped_column(String(8), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        PrimaryKeyConstraint("category_id", "locale", name="pk_category_translations"),
+    )
+
+    category: Mapped[Category] = relationship(back_populates="translations")
+
+
+class Brand(Base):
+    """A brand/game/service customers recognise (PUBG Mobile, Steam, Spotify)."""
+
+    __tablename__ = "brands"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
+    slug: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    category_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("categories.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    logo_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    hero_image_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    accent_color: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+
+    category: Mapped[Category] = relationship(lazy="joined")
+    translations: Mapped[list[BrandTranslation]] = relationship(
+        back_populates="brand",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    products: Mapped[list[Product]] = relationship(
+        back_populates="brand",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="Product.sort_order",
+    )
+
+
+class BrandTranslation(Base):
+    """Localised brand copy (name + short/long description)."""
+
+    __tablename__ = "brand_translations"
+
+    brand_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("brands.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    locale: Mapped[str] = mapped_column(String(8), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    short_description: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        PrimaryKeyConstraint("brand_id", "locale", name="pk_brand_translations"),
+    )
+
+    brand: Mapped[Brand] = relationship(back_populates="translations")
+
+
+class Product(Base):
+    """One sellable concept within a :class:`Brand`.
+
+    Examples:
+        * PUBG Mobile → UC, Royal Pass, Skin Pack
+        * Steam → Wallet Code, Gift Card
+        * Spotify → Premium
+
+    The product owns the form schema (:attr:`required_fields`) and the SKU set.
+    """
+
+    __tablename__ = "products"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
+    slug: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    brand_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("brands.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    supplier_hint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    required_fields: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+
+    __table_args__ = (CheckConstraint("kind IN ('top_up', 'voucher')", name="ck_products_kind"),)
+
+    brand: Mapped[Brand] = relationship(back_populates="products", lazy="joined")
+    translations: Mapped[list[ProductTranslation]] = relationship(
+        back_populates="product",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    skus: Mapped[list[Sku]] = relationship(
+        back_populates="product",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="Sku.sort_order",
+    )
+
+
+class ProductTranslation(Base):
+    """Localised name + descriptions for a product."""
+
+    __tablename__ = "product_translations"
+
+    product_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("products.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    locale: Mapped[str] = mapped_column(String(8), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    short_description: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        PrimaryKeyConstraint("product_id", "locale", name="pk_product_translations"),
+    )
+
+    product: Mapped[Product] = relationship(back_populates="translations")
+
+
+class Sku(Base):
+    """A specific sellable variant of a :class:`Product` (e.g. "60 UC TR")."""
+
+    __tablename__ = "skus"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
+    product_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("products.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    sku_code: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    denomination: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    region: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    price_usd: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
+    image_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+
+    __table_args__ = (CheckConstraint("price_usd > 0", name="ck_skus_price_positive"),)
+
+    product: Mapped[Product] = relationship(back_populates="skus")
+    price_overrides: Mapped[list[SkuPrice]] = relationship(
+        back_populates="sku",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+
+class SkuPrice(Base):
+    """Optional per-currency price override that bypasses FX conversion."""
+
+    __tablename__ = "sku_prices"
+
+    sku_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("skus.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    currency: Mapped[str] = mapped_column(String(8), nullable=False)
+    price: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
+
+    __table_args__ = (
+        PrimaryKeyConstraint("sku_id", "currency", name="pk_sku_prices"),
+        CheckConstraint("price > 0", name="ck_sku_prices_positive"),
+    )
+
+    sku: Mapped[Sku] = relationship(back_populates="price_overrides")
+
+
+__all__ = [
+    "Brand",
+    "BrandTranslation",
+    "Category",
+    "CategoryTranslation",
+    "Product",
+    "ProductTranslation",
+    "Sku",
+    "SkuPrice",
+]

@@ -1,0 +1,19 @@
+{
+  "brand": "YuPay",
+  "tagline": "Game top-ups, vouchers, and gift cards",
+  "nav": {
+    "catalog": "Catalog",
+    "wallet": "Wallet",
+    "orders": "Orders",
+    "support": "Support"
+  },
+  "actions": {
+    "buy": "Buy",
+    "topUp": "Top up",
+    "continue": "Continue",
+    "back": "Back"
+  },
+  "errors": {
+    "generic": "Something went wrong. Please try again."
+  }
+}

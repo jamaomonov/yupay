@@ -1,0 +1,42 @@
+sequenceDiagram
+    autonumber
+    actor Cust as Customer
+    participant API as FastAPI orders
+    participant Cat as catalog.skus + products
+    participant Fx as FxService
+    participant DB as Postgres
+
+    Cust->>API: POST /api/v1/orders<br/>Idempotency-Key: ...<br/>Authorization: Bearer | Guest
+    API->>API: resolve_actor(headers, body)
+
+    alt replay (same idempotency key)
+        API->>DB: SELECT order WHERE (actor, idempotency_key)
+        DB-->>API: existing order
+        API-->>Cust: 201 (same order)
+    else new order
+        API->>Cat: SELECT skus + product (required_fields) WHERE id IN (...)
+        Cat-->>API: SKUs (active) + per-product schema
+
+        loop for each item
+            API->>API: validate_fulfillment_data(product, item)
+        end
+        API->>API: total_usd = Σ qty × unit_price_usd
+
+        alt currency == USD
+            API->>API: total_charged = total_usd
+        else currency != USD
+            API->>Fx: snapshot(USD, currency)
+            Fx->>DB: SELECT recent snapshot OR INSERT new
+            Fx-->>API: FxSnapshot(rate, source)
+            API->>API: total_charged = total_usd × rate
+        end
+
+        API->>DB: INSERT orders + order_items + order_events('order.created')
+        alt unique violation on (actor, idempotency_key)
+            DB-->>API: IntegrityError
+            API->>DB: SELECT existing
+            API-->>Cust: 201 (replay)
+        else success
+            API-->>Cust: 201 OrderOut
+        end
+    end

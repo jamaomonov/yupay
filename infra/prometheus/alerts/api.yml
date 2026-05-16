@@ -1,0 +1,27 @@
+groups:
+  - name: api
+    rules:
+      - alert: ApiHighErrorRate
+        expr: |
+          sum(rate(http_requests_total{job="api",status_code=~"5.."}[5m]))
+            / sum(rate(http_requests_total{job="api"}[5m])) > 0.05
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "API 5xx rate > 5%"
+          runbook: "https://github.com/yupay/yupay/blob/main/docs/runbooks/incident-template.md"
+
+      - alert: ApiHighLatency
+        expr: |
+          histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="api"}[5m])) by (le)) > 1.5
+        for: 10m
+        labels: { severity: warn }
+        annotations:
+          summary: "API p95 latency > 1.5s"
+
+      - alert: QueueBacklog
+        expr: redis_list_length{key=~"dramatiq:.*"} > 1000
+        for: 10m
+        labels: { severity: warn }
+        annotations:
+          summary: "Dramatiq queue backlog > 1000"

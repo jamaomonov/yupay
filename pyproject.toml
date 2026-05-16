@@ -1,0 +1,176 @@
+[project]
+name = "yupay-workspace"
+version = "0.0.1"
+description = "YuPay monorepo workspace root (Python apps live under apps/)."
+requires-python = ">=3.12"
+readme = "README.md"
+
+[tool.uv.workspace]
+members = ["apps/api", "apps/worker", "apps/scheduler", "apps/bot"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [
+    ".venv",
+    "migrations/versions",
+    "**/generated/**",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "C901",   # mccabe complexity
+    "UP",     # pyupgrade
+    "N",      # pep8-naming
+    "S",      # flake8-bandit
+    "BLE",    # flake8-blind-except
+    "FBT",    # flake8-boolean-trap
+    "A",      # flake8-builtins
+    "DTZ",    # flake8-datetimez
+    "T10",    # flake8-debugger
+    "EM",     # flake8-errmsg
+    "ISC",    # flake8-implicit-str-concat
+    "G",      # flake8-logging-format
+    "PIE",    # flake8-pie
+    "PT",     # flake8-pytest-style
+    "RET",    # flake8-return
+    "SIM",    # flake8-simplify
+    "TID",    # flake8-tidy-imports
+    "ARG",    # flake8-unused-arguments
+    "PTH",    # flake8-use-pathlib
+    "ERA",    # eradicate
+    "PL",     # pylint
+    "TRY",    # tryceratops
+    "RUF",    # ruff-specific
+]
+ignore = [
+    "S101",     # assert (allowed in tests)
+    "PLR0913",  # too many arguments
+    "TRY003",   # avoid long messages outside exception class
+    "EM101",    # raw string in exception
+    "EM102",    # f-string in exception
+    "ISC001",   # implicit string concat (formatter handles)
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests legitimately use hardcoded "secrets", magic numbers, unused args (fixture
+# injection), PT019 (we like underscore-prefixed yielded fixtures), lazy imports
+# (to keep fixture import-time light), and i18n strings with Uzbek apostrophes (U+02BB).
+"**/tests/**" = ["S", "PLR2004", "ARG", "PT019", "PLC0415", "RUF001"]
+"**/migrations/**" = ["E501", "I"]
+# Module-level lazy singletons are intentional in core; flagging `global` here is noise.
+"**/core/db.py" = ["PLW0603"]
+"**/core/redis.py" = ["PLW0603"]
+"**/core/clock.py" = ["PLW0603"]
+# Composition root mounts routers lazily; suppress PLC0415 there.
+"**/bootstrap.py" = ["PLC0415"]
+# Seed scripts carry i18n strings (Uzbek apostrophe U+02BB) and are linear-imperative
+# by design — the function-complexity checks add no value here.
+"**/scripts/seed_catalog.py" = ["RUF001", "C901", "PLR0912", "PLR0915"]
+# Form-schema validator is one big match-on-type that doesn't benefit from being split.
+"**/orders/validation.py" = ["C901", "PLR0912"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+warn_unused_ignores = true
+show_error_codes = true
+show_column_numbers = true
+pretty = true
+plugins = ["pydantic.mypy"]
+# Each app has its own `tests/` package; treat them as separate roots so mypy doesn't
+# trip on duplicate module names.
+explicit_package_bases = true
+namespace_packages = true
+mypy_path = "apps/api/src:apps/worker/src:apps/scheduler/src:apps/bot/src:apps/api:apps/worker:apps/scheduler:apps/bot"
+exclude = [
+    "^.*/migrations/versions/.*$",
+    "^.*/generated/.*$",
+    "^\\.venv/.*$",
+    "^apps/(worker|scheduler|bot)/tests/.*$",
+]
+
+[[tool.mypy.overrides]]
+# Tests use a lot of fixture injection + monkeypatching; full strictness adds noise
+# without catching real bugs.
+module = ["tests.*"]
+disallow_untyped_decorators = false
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = false
+warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
+# Seed scripts are linear-imperative and use a lot of helper closures over an
+# AsyncSession. Full strictness adds noise without catching real bugs.
+module = ["yupay.scripts.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = false
+warn_return_any = false
+
+[[tool.mypy.overrides]]
+# Third-party libs that don't ship type stubs.
+module = [
+    "apscheduler.*",
+    "dramatiq.*",
+    "fakeredis.*",
+    "respx.*",
+    "testcontainers.*",
+    "uuid_utils.*",
+]
+ignore_missing_imports = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra --strict-markers --strict-config --cov-report=term-missing"
+asyncio_mode = "auto"
+testpaths = ["apps/api/tests", "apps/worker/tests", "apps/scheduler/tests", "apps/bot/tests"]
+markers = [
+    "integration: tests that require testcontainers (postgres, redis)",
+    "contract: tests that hit recorded supplier/provider cassettes",
+    "load: load tests (not run in CI by default)",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["apps"]
+omit = [
+    "**/migrations/*",
+    "**/generated/*",
+    "**/tests/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 80
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "@(abc\\.)?abstractmethod",
+]

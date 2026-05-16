@@ -1,0 +1,77 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.egg-info/
+dist/
+build/
+.tox/
+
+# --- Node / Next ---
+node_modules/
+.pnp.*
+.yarn/install-state.gz
+.next/
+out/
+.turbo/
+.vercel/
+.swc/
+
+# --- TypeScript ---
+*.tsbuildinfo
+
+# --- Logs ---
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# --- Editors ---
+.idea/
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.recommended.json
+*.swp
+*.swo
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Docker / runtime ---
+.docker/
+docker-compose.override.yml
+*.pid
+
+# --- Secrets ---
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+!*.enc.env
+!infra/secrets/*.enc.env
+
+# --- Backups ---
+*.dump
+*.sql.gz
+backups/
+
+# --- Generated ---
+docs/api/openapi.json.tmp
+packages/api-client/src/generated/
+playwright-report/
+test-results/

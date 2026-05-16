@@ -1,0 +1,21 @@
+stateDiagram-v2
+    [*] --> pending_payment
+
+    pending_payment --> paid : payments saga
+    pending_payment --> cancelled : user / admin
+    pending_payment --> expired : scheduler
+
+    paid --> fulfilling : fulfillment saga
+    fulfilling --> fulfilled : codes issued / API top-up done
+    fulfilling --> failed : supplier rejected
+
+    fulfilled --> delivered : notifications delivered
+    delivered --> partially_refunded : admin refund
+    delivered --> refunded : admin full refund
+
+    failed --> refunded : automatic / admin
+
+    cancelled --> [*]
+    expired --> [*]
+    refunded --> [*]
+    partially_refunded --> [*]

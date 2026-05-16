@@ -1,0 +1,6 @@
+packages:
+  - "apps/web"
+  - "apps/miniapp"
+  - "apps/admin"
+  - "packages/*"
+  - "e2e"

@@ -1,0 +1,29 @@
+sequenceDiagram
+    autonumber
+    actor Storefront
+    participant API as FastAPI catalog
+    participant DB as Postgres
+    participant Fx as FxService
+
+    Storefront->>API: GET /catalog/products/pubg-uc?currency=RUB<br/>Accept-Language: en
+    API->>API: resolve_locale → "en"
+    API->>API: resolve_currency → "RUB"
+    API->>DB: SELECT product JOIN brand JOIN category<br/>+ translations + skus + sku_prices WHERE slug='pubg-uc'
+    DB-->>API: product (brand=PUBG Mobile, category=games, required_fields=[player_id, server],<br/>4 active SKUs with TR/AS overrides)
+
+    loop for each active SKU
+        alt currency override exists
+            API-->>API: price = override row (source=override)
+        else USD requested
+            API-->>API: price = price_usd (source=usd)
+        else FX available
+            API->>Fx: convert(price_usd, USD, RUB)
+            alt success
+                Fx-->>API: amount + rate (source=fx)
+            else FxUnavailableError (per-SKU swallow)
+                API-->>API: display_price = None (USD-only)
+            end
+        end
+    end
+
+    API-->>Storefront: 200 ProductDetailOut<br/>{brand, category_slug, required_fields, skus[].display_price}

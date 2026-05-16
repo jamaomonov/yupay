@@ -1,0 +1,32 @@
+# Default owners
+* @yupay/core
+
+# Backend
+/apps/api/                @yupay/backend
+/apps/worker/             @yupay/backend
+/apps/scheduler/          @yupay/backend
+/apps/bot/                @yupay/backend
+
+# Frontend
+/apps/web/                @yupay/frontend
+/apps/miniapp/            @yupay/frontend
+/packages/ui/             @yupay/frontend
+/packages/api-client/     @yupay/frontend
+/packages/i18n/           @yupay/frontend
+
+# Infra & ops
+/infra/                   @yupay/ops
+/.github/                 @yupay/ops
+/docker-compose.yml       @yupay/ops
+/docker-compose.prod.yml  @yupay/ops
+
+# Docs
+/docs/                    @yupay/core @yupay/docs
+/AGENTS.md                @yupay/core
+/docs/decisions/          @yupay/core
+
+# Security-sensitive areas — require security review
+/apps/api/src/yupay/modules/auth/       @yupay/security @yupay/backend
+/apps/api/src/yupay/modules/payments/   @yupay/security @yupay/backend
+/apps/api/src/yupay/modules/wallet/     @yupay/security @yupay/backend
+/docs/security/                         @yupay/security
