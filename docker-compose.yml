@@ -17,6 +17,7 @@ x-app-env: &app-env
   ADMIN_DEV_LOGIN: ${ADMIN_DEV_LOGIN:-admin}
   ADMIN_DEV_PASSWORD: ${ADMIN_DEV_PASSWORD:-admin}
   CORS_ALLOW_ORIGINS: '${CORS_ALLOW_ORIGINS:-["*"]}'
+  FX_EXCHANGERATE_API_KEY: ${FX_EXCHANGERATE_API_KEY:-}
 
 services:
   postgres:

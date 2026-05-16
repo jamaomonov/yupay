@@ -94,10 +94,8 @@ export function useMyOrders() {
 export interface CreateOrderInput {
   skuId: string;
   fulfillmentData: Record<string, unknown>;
-  /** Reserved for the future when a real acquirer demands a local-currency
-   *  order. For now every order is created in USD and the FX snapshot is
-   *  skipped — display currency is a pure UI setting and does not propagate
-   *  to the order payload. */
+  /** Order currency. The backend snapshots the FX rate at order time for any
+   *  non-USD value so the total stays frozen even if the rate moves later. */
   currency?: string;
 }
 
@@ -113,12 +111,11 @@ export interface CheckoutResult {
 export function useCheckout() {
   const qc = useQueryClient();
   return useMutation<CheckoutResult, ApiError, CreateOrderInput & { provider?: string }>({
-    mutationFn: async ({ skuId, fulfillmentData, provider = "mock" }) => {
+    mutationFn: async ({ skuId, fulfillmentData, currency = "USD", provider = "mock" }) => {
       const order = await apiPost<OrderOut>(
         "/api/v1/orders",
         {
-          // Canonical USD. See note on ``currency`` in CreateOrderInput.
-          currency: "USD",
+          currency,
           items: [
             {
               sku_id: skuId,

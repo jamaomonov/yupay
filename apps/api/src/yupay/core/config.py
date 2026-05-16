@@ -100,6 +100,12 @@ class Settings(BaseSettings):
 
     # --- fx ---
     fx_supported_quotes: list[str] = Field(default_factory=lambda: ["RUB", "UZS", "USDT"])
+    # Preferred provider when a key is set. Free tier supports USD base with ~160
+    # currencies; ``{key}`` is the placeholder we substitute at request time.
+    fx_exchangerate_api_url: str = Field(
+        default="https://v6.exchangerate-api.com/v6/{key}/latest/USD"
+    )
+    fx_exchangerate_api_key: str = Field(default="")
     fx_primary_url: str = Field(default="https://api.exchangerate.host/latest")
     fx_fallback_url: str = Field(default="https://openexchangerates.org/api/latest.json")
     fx_fallback_api_key: str = Field(default="")
