@@ -1,27 +1,59 @@
 import { motion } from "framer-motion";
-import { HISTORY, GAMES } from "@/lib/constants";
-import { CheckCircle2, Clock3, TrendingUp, Receipt } from "lucide-react";
+import { CheckCircle2, Clock3, TrendingUp, Receipt, AlertTriangle } from "lucide-react";
+import { Link } from "wouter";
 
-function parseMonthYear(dateStr: string): string {
-  const head = dateStr.split(", ")[0] ?? "";
-  const parts = head.split(" ");
-  return `${parts[1] ?? ""} ${parts[2] ?? ""}`.trim();
+import { useMe } from "@/lib/auth";
+import { useMyOrders, orderToHistoryRow, type HistoryRow } from "@/lib/orders";
+
+const STATUS_LABEL: Record<HistoryRow["status"], string> = {
+  success: "Выполнено",
+  processing: "Обработка",
+  failed: "Отменён",
+};
+
+const RU_MONTHS = [
+  "янв",
+  "фев",
+  "мар",
+  "апр",
+  "май",
+  "июн",
+  "июл",
+  "авг",
+  "сен",
+  "окт",
+  "ноя",
+  "дек",
+];
+
+function monthYearKey(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return `${RU_MONTHS[d.getMonth()] ?? ""} ${d.getFullYear()}`;
+}
+
+function shortTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" });
 }
 
 export default function History() {
-  const successTxs = HISTORY.filter((t) => t.status === "success");
-  const totalSpent = successTxs.reduce((sum, t) => sum + t.amount, 0);
-  const processingCount = HISTORY.filter((t) => t.status === "processing").length;
+  const me = useMe();
+  const ordersQuery = useMyOrders();
+  const orders = ordersQuery.data ?? [];
+  const rows: HistoryRow[] = orders.map(orderToHistoryRow);
 
-  const grouped = HISTORY.reduce(
-    (acc, tx) => {
-      const key = parseMonthYear(tx.date);
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(tx);
-      return acc;
-    },
-    {} as Record<string, typeof HISTORY>
-  );
+  const successTxs = rows.filter((t) => t.status === "success");
+  const processingCount = rows.filter((t) => t.status === "processing").length;
+  const totalSpent = successTxs.reduce((sum, t) => sum + t.amount, 0);
+  const currency = rows[0]?.currency ?? "USD";
+
+  const grouped = rows.reduce<Record<string, HistoryRow[]>>((acc, tx) => {
+    const key = monthYearKey(tx.raw.created_at);
+    (acc[key] ??= []).push(tx);
+    return acc;
+  }, {});
 
   return (
     <motion.div
@@ -35,11 +67,25 @@ export default function History() {
         <p className="text-muted-foreground text-sm">Все ваши пополнения</p>
       </div>
 
+      {!me.data && !me.isLoading && (
+        <div className="rounded-2xl border border-yellow-400/30 bg-yellow-400/5 p-4 flex items-start gap-3">
+          <AlertTriangle size={18} className="text-yellow-400 flex-shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-semibold text-yellow-200">Откройте в Telegram</p>
+            <p className="text-yellow-100/70 text-xs mt-1">
+              История заказов доступна только под авторизацией через Telegram Mini App.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Summary strip */}
       <div className="grid grid-cols-3 gap-2">
         <div className="bg-card border border-border rounded-2xl p-3 flex flex-col gap-1">
           <TrendingUp size={16} className="text-primary" />
-          <p className="text-lg font-black text-primary leading-none">{totalSpent.toLocaleString("ru")} ₽</p>
+          <p className="text-lg font-black text-primary leading-none">
+            {totalSpent.toLocaleString("ru", { maximumFractionDigits: 2 })} {currency}
+          </p>
           <p className="text-[10px] text-muted-foreground leading-tight">Потрачено всего</p>
         </div>
         <div className="bg-card border border-border rounded-2xl p-3 flex flex-col gap-1">
@@ -54,6 +100,30 @@ export default function History() {
         </div>
       </div>
 
+      {ordersQuery.isLoading && me.data && (
+        <div className="py-10 text-center text-white/40 text-sm">Загрузка…</div>
+      )}
+
+      {ordersQuery.isError && (
+        <div className="rounded-2xl border border-rose-500/30 bg-rose-500/5 p-4 text-sm text-rose-200">
+          Не удалось загрузить историю. Попробуйте позже.
+        </div>
+      )}
+
+      {me.data && !ordersQuery.isLoading && rows.length === 0 && (
+        <div className="rounded-2xl border border-border bg-card p-10 text-center space-y-3">
+          <Receipt size={28} className="mx-auto text-white/30" />
+          <p className="text-white/60 text-sm">У вас ещё нет заказов.</p>
+          <Link
+            href="/"
+            className="inline-block rounded-2xl px-5 py-2.5 text-sm font-semibold"
+            style={{ background: "hsl(var(--primary))", color: "#000" }}
+          >
+            Выбрать игру
+          </Link>
+        </div>
+      )}
+
       {/* Grouped transactions */}
       <div className="space-y-5">
         {Object.entries(grouped).map(([monthYear, txs]) => (
@@ -64,73 +134,65 @@ export default function History() {
               </span>
               <div className="flex-1 h-px bg-border" />
               <span className="text-xs text-muted-foreground">
-                {txs.reduce((s, t) => s + t.amount, 0).toLocaleString("ru")} ₽
+                {txs.reduce((s, t) => s + t.amount, 0).toLocaleString("ru", {
+                  maximumFractionDigits: 2,
+                })}{" "}
+                {txs[0]?.currency ?? currency}
               </span>
             </div>
 
-            {txs.map((tx, index) => {
-              const game = GAMES.find((g) => g.id === tx.gameId);
-              if (!game) return null;
+            {txs.map((tx, index) => (
+              <motion.div
+                key={tx.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.04 }}
+                className="flex items-center gap-3 p-3.5 rounded-2xl bg-card border border-border"
+                data-testid={`history-item-${tx.id}`}
+              >
+                {/* Icon */}
+                <div className="w-11 h-11 rounded-xl bg-background border border-border flex items-center justify-center shrink-0">
+                  <Receipt size={18} className="text-muted-foreground" />
+                </div>
 
-              return (
-                <motion.div
-                  key={tx.id}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.04 }}
-                  className="flex items-center gap-3 p-3.5 rounded-2xl bg-card border border-border"
-                  data-testid={`history-item-${tx.id}`}
-                >
-                  {/* Icon */}
-                  <div className="w-11 h-11 rounded-xl bg-background border border-border flex items-center justify-center shrink-0 p-1.5 relative overflow-hidden">
-                    {game.bgUrl && (
-                      <div
-                        className="absolute inset-0 opacity-30"
-                        style={{
-                          backgroundImage: `url(${game.bgUrl})`,
-                          backgroundSize: "cover",
-                          backgroundPosition: "center",
-                        }}
-                      />
-                    )}
-                    {game.logoUrl ? (
-                      <img src={game.logoUrl} className="w-full h-auto z-10 relative" alt={game.name} />
-                    ) : game.icon ? (
-                      <game.icon
-                        className="z-10 relative"
-                        style={{ width: 20, height: 20, color: game.iconColor || "#fff" }}
-                      />
-                    ) : (
-                      <Receipt size={18} className="text-muted-foreground z-10 relative" />
-                    )}
-                  </div>
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-bold text-white text-sm truncate">
+                    Заказ {tx.id.slice(0, 8)}
+                  </h3>
+                  <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                    {shortTime(tx.raw.created_at)} · {tx.raw.items.length} поз.
+                  </p>
+                </div>
 
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-bold text-white text-sm truncate">{game.name}</h3>
-                    <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
-                      {tx.date.split(", ")[1] ?? ""} · {tx.date.split(", ")[0]}
-                    </p>
-                  </div>
-
-                  {/* Amount + status */}
-                  <div className="text-right shrink-0 space-y-1">
-                    <p className="font-black text-primary text-sm">{tx.amount.toLocaleString("ru")} ₽</p>
+                {/* Amount + status */}
+                <div className="text-right shrink-0 space-y-1">
+                  <p className="font-black text-primary text-sm">
+                    {tx.amount.toLocaleString("ru", { maximumFractionDigits: 2 })} {tx.currency}
+                  </p>
+                  <div
+                    className={`flex items-center justify-end gap-1 ${
+                      tx.status === "success"
+                        ? "text-green-400"
+                        : tx.status === "failed"
+                          ? "text-rose-400"
+                          : "text-yellow-400"
+                    }`}
+                  >
                     {tx.status === "success" ? (
-                      <div className="flex items-center justify-end gap-1 text-green-400">
-                        <CheckCircle2 size={11} />
-                        <span className="text-[10px] font-semibold">Выполнено</span>
-                      </div>
+                      <CheckCircle2 size={11} />
+                    ) : tx.status === "failed" ? (
+                      <AlertTriangle size={11} />
                     ) : (
-                      <div className="flex items-center justify-end gap-1 text-yellow-400">
-                        <Clock3 size={11} />
-                        <span className="text-[10px] font-semibold">Обработка</span>
-                      </div>
+                      <Clock3 size={11} />
                     )}
+                    <span className="text-[10px] font-semibold">
+                      {STATUS_LABEL[tx.status]}
+                    </span>
                   </div>
-                </motion.div>
-              );
-            })}
+                </div>
+              </motion.div>
+            ))}
           </div>
         ))}
       </div>

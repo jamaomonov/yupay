@@ -5,55 +5,62 @@ import {
   ArrowLeft, Heart, Share2, Star, Clock, Check, ChevronRight,
   CreditCard, Zap, Bitcoin, Tag, ShieldCheck, RotateCcw, Users, X,
 } from "lucide-react";
-import { GAMES } from "@/lib/constants";
+import { useGames, useBrandWithPrimaryProduct, type Package as ApiPackage } from "@/lib/catalog";
+import { useCheckout } from "@/lib/orders";
+import { useMe } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { ApiError } from "@/lib/api";
 
 // ─── Package types ─────────────────────────────────────────────────────────────
 type Package = {
-  id: string;
-  currency: number;
+  id: string;            // SKU id (used for checkout)
+  currency: number;      // numeric denomination — pulled from sku.denomination
   bonus?: number;
-  price: number;
+  price: number;         // numeric price in `priceCode`
+  priceCode: string;     // currency code (USD by default)
   badge?: { label: string; color: string };
-  currencyLabel?: string;
+  currencyLabel?: string; // "UC", "VP", or "" — kept for the existing icon switch
 };
 
-const PUBG_PACKAGES: Package[] = [
-  { id: "p1", currency: 60,   price: 79,   currencyLabel: "UC" },
-  { id: "p2", currency: 325,  price: 399,  bonus: 33,  currencyLabel: "UC" },
-  { id: "p3", currency: 660,  price: 799,  bonus: 66,  currencyLabel: "UC", badge: { label: "ХИТ",     color: "#ef4444" } },
-  { id: "p4", currency: 1800, price: 1999, bonus: 270, currencyLabel: "UC" },
-  { id: "p5", currency: 3850, price: 4199, bonus: 770, currencyLabel: "UC", badge: { label: "ВЫГОДНО", color: "#22c55e" } },
-  { id: "p6", currency: 8100, price: 8499, bonus: 2025, currencyLabel: "UC" },
-];
+function denominationToParts(label: string): { amount: number; tag: string } {
+  const m = label.match(/^\s*(\d[\d\s,.]*)\s*(.*)$/);
+  if (!m) return { amount: 0, tag: label };
+  const amount = Number.parseInt((m[1] ?? "").replace(/[\s,.]/g, ""), 10) || 0;
+  const tag = (m[2] ?? "").trim();
+  return { amount, tag };
+}
 
-const VALORANT_PACKAGES: Package[] = [
-  { id: "v1", currency: 475,  price: 399,  currencyLabel: "VP" },
-  { id: "v2", currency: 1000, price: 799,  bonus: 50,  currencyLabel: "VP" },
-  { id: "v3", currency: 2050, price: 1599, bonus: 100, currencyLabel: "VP", badge: { label: "ХИТ", color: "#ef4444" } },
-  { id: "v4", currency: 3650, price: 2799, bonus: 150, currencyLabel: "VP", badge: { label: "ВЫГОДНО", color: "#22c55e" } },
-];
-
-const RUBLE_PACKAGES: Package[] = [
-  { id: "r1", currency: 100,  price: 100,  currencyLabel: "₽" },
-  { id: "r2", currency: 250,  price: 250,  currencyLabel: "₽" },
-  { id: "r3", currency: 500,  price: 500,  currencyLabel: "₽",  badge: { label: "ХИТ", color: "#ef4444" } },
-  { id: "r4", currency: 1000, price: 1000, currencyLabel: "₽" },
-  { id: "r5", currency: 2000, price: 2000, currencyLabel: "₽", badge: { label: "ВЫГОДНО", color: "#22c55e" } },
-  { id: "r6", currency: 5000, price: 5000, currencyLabel: "₽" },
-];
+function adaptPackage(api: ApiPackage): Package {
+  const parts = denominationToParts(api.label);
+  return {
+    id: api.id,
+    currency: parts.amount || api.amount || 1,
+    price: api.displayPrice?.amount ?? api.priceUsd,
+    priceCode: api.displayPrice?.currency ?? "USD",
+    currencyLabel: parts.tag || undefined,
+  };
+}
 
 const PAYMENT_METHODS = [
-  { id: "card",   name: "Карта",   sub: "Visa, MC, МИР", icon: CreditCard },
-  { id: "sbp",    name: "СБП",     sub: "Без комиссии",  icon: Zap },
-  { id: "crypto", name: "Крипта",  sub: "USDT, BTC",     icon: Bitcoin },
+  { id: "mock",   name: "Mock",    sub: "dev / staging", icon: ShieldCheck },
+  { id: "card",   name: "Карта",   sub: "скоро",         icon: CreditCard },
+  { id: "sbp",    name: "СБП",     sub: "скоро",         icon: Zap },
+  { id: "crypto", name: "Крипта",  sub: "скоро",         icon: Bitcoin },
 ];
 
-function getPackages(gameId: string): Package[] {
-  if (gameId === "pubg") return PUBG_PACKAGES;
-  if (gameId === "valorant") return VALORANT_PACKAGES;
-  return RUBLE_PACKAGES;
+const PROVIDER_BY_METHOD: Record<string, string> = {
+  mock: "mock",
+  card: "click",
+  sbp: "yookassa",
+  crypto: "crypto",
+};
+
+function formatMoney(value: number, code: string): string {
+  if (code === "USD" || code === "USDT") {
+    return `$${value.toFixed(2)}`;
+  }
+  return `${value.toLocaleString("ru", { maximumFractionDigits: 2 })} ${code}`;
 }
 
 // ─── Step label ────────────────────────────────────────────────────────────────
@@ -96,22 +103,43 @@ export default function TopUp() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
-  const game = GAMES.find((g) => g.id === gameId);
-  const packages = getPackages(gameId ?? "");
+  const gamesQuery = useGames();
+  const game = gamesQuery.data?.find((g) => g.id === gameId);
+  const brandQuery = useBrandWithPrimaryProduct(gameId, "USD");
+  const packages: Package[] = (brandQuery.data?.packages ?? []).map(adaptPackage);
+  const product = brandQuery.data?.product ?? null;
+  const requiredFields = product?.required_fields ?? [];
+
+  const me = useMe();
+  const checkout = useCheckout();
 
   const [accountId, setAccountId]           = useState("");
-  const [selectedPkg, setSelectedPkg]       = useState<string>(packages[2]?.id ?? packages[0]?.id ?? "");
+  const [selectedPkg, setSelectedPkg]       = useState<string>("");
   const [showCustom, setShowCustom]         = useState(false);
   const [customAmount, setCustomAmount]     = useState("");
-  const [paymentMethod, setPaymentMethod]   = useState("card");
+  const [paymentMethod, setPaymentMethod]   = useState("mock");
   const [promoCode, setPromoCode]           = useState("");
   const [promoOpen, setPromoOpen]           = useState(false);
-  const [isProcessing, setIsProcessing]     = useState(false);
 
-  if (!game) {
+  // Preselect a sensible default once packages land. Sweet spot: 3rd package, or
+  // the first one available.
+  if (selectedPkg === "" && packages.length > 0) {
+    const initial = packages[2]?.id ?? packages[0]?.id ?? "";
+    if (initial) setSelectedPkg(initial);
+  }
+
+  const isProcessing = checkout.isPending;
+
+  if (gamesQuery.isLoading || brandQuery.isLoading) {
+    return (
+      <div className="p-4 pt-24 text-center text-white/40 text-sm">Загрузка…</div>
+    );
+  }
+
+  if (!game || brandQuery.isError) {
     return (
       <div className="p-4 pt-20 text-center space-y-4">
-        <h2 className="text-xl font-bold">Игра не найдена</h2>
+        <h2 className="text-xl font-bold">Сервис не найден</h2>
         <button onClick={() => setLocation("/")} className="px-6 py-3 bg-primary text-black font-bold rounded-2xl">
           На главную
         </button>
@@ -121,28 +149,64 @@ export default function TopUp() {
 
   const activePkg = packages.find((p) => p.id === selectedPkg);
   const finalPrice = showCustom && customAmount
-    ? parseInt(customAmount)
+    ? parseInt(customAmount, 10)
     : (activePkg?.price ?? 0);
   const finalCurrency = showCustom && customAmount
-    ? parseInt(customAmount)
+    ? parseInt(customAmount, 10)
     : (activePkg?.currency ?? 0);
-  const currencyLabel = activePkg?.currencyLabel ?? "₽";
+  const currencyLabel = activePkg?.currencyLabel ?? "";
+  const priceCode = activePkg?.priceCode ?? "USD";
 
-  const handlePayment = () => {
-    if (!accountId.trim()) {
+  const handlePayment = async () => {
+    if (!activePkg) {
+      toast({ title: "Выберите пакет", description: "Сначала укажи номинал", variant: "destructive" });
+      return;
+    }
+    if (requiredFields.length > 0 && !accountId.trim()) {
       toast({ title: "Заполните поле", description: `Введите ${game.inputType}`, variant: "destructive" });
       return;
     }
-    if (finalPrice <= 0) {
-      toast({ title: "Выберите пакет", description: "Укажите сумму пополнения", variant: "destructive" });
+    if (!me.data) {
+      toast({
+        title: "Откройте в Telegram",
+        description: "Оплата доступна только из Telegram Mini App",
+        variant: "destructive",
+      });
       return;
     }
-    setIsProcessing(true);
-    setTimeout(() => {
-      setIsProcessing(false);
-      toast({ title: "Оплата принята", description: `Пополнение ${game.name} выполняется` });
+    // Map the single input field to whatever the product expects. If there are
+    // several fields we'd render them dynamically — that's a follow-up.
+    const fulfillmentData: Record<string, string> = {};
+    const primaryField = requiredFields.find((f) => f.required) ?? requiredFields[0];
+    if (primaryField) {
+      fulfillmentData[primaryField.key] = accountId.trim();
+    } else if (accountId.trim()) {
+      fulfillmentData["account_id"] = accountId.trim();
+    }
+    try {
+      const result = await checkout.mutateAsync({
+        skuId: activePkg.id,
+        fulfillmentData,
+        provider: PROVIDER_BY_METHOD[paymentMethod] ?? "mock",
+      });
+      if (result.payment.intent_url) {
+        toast({
+          title: "Перенаправляем на оплату",
+          description: result.payment.provider,
+        });
+        // For mock the URL is a placeholder; in dev we just announce success.
+        if (result.payment.provider !== "mock") {
+          window.location.href = result.payment.intent_url;
+          return;
+        }
+      } else {
+        toast({ title: "Заказ создан", description: `${game.name} в обработке` });
+      }
       setLocation("/history");
-    }, 1500);
+    } catch (exc) {
+      const detail = exc instanceof ApiError ? exc.detail : "Попробуйте ещё раз";
+      toast({ title: "Не удалось оформить", description: detail, variant: "destructive" });
+    }
   };
 
   return (
@@ -325,7 +389,7 @@ export default function TopUp() {
                     )}
 
                     <p className="text-white font-bold text-sm">
-                      {pkg.price.toLocaleString("ru")} ₽
+                      {formatMoney(pkg.price, pkg.priceCode)}
                     </p>
                   </button>
                 );
@@ -479,7 +543,7 @@ export default function TopUp() {
                 </p>
               </div>
               <p className="text-white font-black text-sm flex-shrink-0">
-                {activePkg.price.toLocaleString("ru")} ₽
+                {formatMoney(activePkg.price, activePkg.priceCode)}
               </p>
             </motion.div>
           )}
@@ -504,7 +568,7 @@ export default function TopUp() {
             "Обработка..."
           ) : (
             <>
-              Пополнить за {finalPrice > 0 ? `${finalPrice.toLocaleString("ru")} ₽` : "—"}
+              Пополнить за {finalPrice > 0 ? formatMoney(finalPrice, priceCode) : "—"}
               <ChevronRight size={18} strokeWidth={2.5} />
             </>
           )}

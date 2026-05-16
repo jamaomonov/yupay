@@ -1,7 +1,10 @@
 import { useState, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, X, TrendingUp, ArrowLeft, ShieldCheck, Zap, Headphones, RotateCcw } from "lucide-react";
-import { GAMES, HISTORY, CATEGORY_LABELS, type Category, type Game } from "@/lib/constants";
+import { CATEGORY_LABELS } from "@/lib/constants";
+import type { Category, Game } from "@/lib/constants-types";
+import { useGames } from "@/lib/catalog";
+import { useMyOrders } from "@/lib/orders";
 import { Link } from "wouter";
 
 const CATEGORIES: { key: Category | "all"; label: string }[] = [
@@ -40,14 +43,14 @@ function TrustBar() {
   );
 }
 
-// ─── Recent games strip ────────────────────────────────────────────────────────
+// ─── Recent orders strip ──────────────────────────────────────────────────────
+// Real orders come back without a denormalised brand slug; we can't link them to
+// a `/topup/...` page without an extra lookup. Until we add that join we render
+// recent orders as static chips that bounce to /history.
 function RecentStrip() {
-  const recentGameIds = [...new Map(HISTORY.map((h) => [h.gameId, h])).values()].slice(0, 4);
-  const recentGames = recentGameIds
-    .map((h) => ({ ...h, game: GAMES.find((g) => g.id === h.gameId)! }))
-    .filter((r) => r.game);
-
-  if (recentGames.length === 0) return null;
+  const orders = useMyOrders();
+  const recent = (orders.data ?? []).slice(0, 4);
+  if (recent.length === 0) return null;
 
   return (
     <div className="px-4">
@@ -56,8 +59,8 @@ function RecentStrip() {
         <span className="text-xs font-semibold text-white/50 uppercase tracking-wide">Недавние</span>
       </div>
       <div className="flex gap-2 overflow-x-auto no-scrollbar">
-        {recentGames.map(({ game, amount }, i) => (
-          <Link key={game.id} href={`/topup/${game.id}`}>
+        {recent.map((order, i) => (
+          <Link key={order.id} href="/history">
             <motion.div
               whileTap={{ scale: 0.94 }}
               initial={{ opacity: 0, y: 8 }}
@@ -66,21 +69,20 @@ function RecentStrip() {
               className="flex items-center gap-2.5 flex-shrink-0 px-3 py-2 rounded-2xl cursor-pointer"
               style={{ background: "hsl(228 32% 17%)", border: "1px solid hsl(var(--border))" }}
             >
-              {/* mini icon */}
-              <div className="w-8 h-8 rounded-[22%] overflow-hidden flex-shrink-0">
-                {game.appIcon ? (
-                  <img src={game.appIcon} className="w-full h-full object-cover" alt={game.name} />
-                ) : game.bgUrl ? (
-                  <img src={game.bgUrl} className="w-full h-full object-cover" alt={game.name} />
-                ) : (
-                  <div className={`w-full h-full bg-gradient-to-br ${game.gradient || "from-card to-background"} flex items-center justify-center`}>
-                    {game.icon && <game.icon style={{ width: 16, height: 16, color: game.iconColor || "#fff" }} />}
-                  </div>
-                )}
+              <div
+                className="w-8 h-8 rounded-[22%] flex items-center justify-center text-[10px] font-bold uppercase"
+                style={{ background: "hsl(var(--primary) / 0.18)", color: "hsl(var(--primary))" }}
+              >
+                {order.status[0]}
               </div>
               <div>
-                <p className="text-white text-xs font-semibold leading-tight line-clamp-1 max-w-[80px]">{game.name}</p>
-                <p className="text-white/40 text-[10px] mt-0.5">₽{amount.toLocaleString("ru")}</p>
+                <p className="text-white text-xs font-semibold leading-tight line-clamp-1 max-w-[100px]">
+                  Заказ {order.id.slice(0, 6)}
+                </p>
+                <p className="text-white/40 text-[10px] mt-0.5">
+                  {Number.parseFloat(order.total_charged).toLocaleString("ru", { maximumFractionDigits: 2 })}{" "}
+                  {order.currency}
+                </p>
               </div>
             </motion.div>
           </Link>
@@ -91,8 +93,9 @@ function RecentStrip() {
 }
 
 // ─── Promo strip ──────────────────────────────────────────────────────────────
-function PromoStrip() {
-  const featured = GAMES.filter((g) => FEATURED_IDS.includes(g.id));
+function PromoStrip({ games }: { games: Game[] }) {
+  const featured = games.filter((g) => FEATURED_IDS.includes(g.id));
+  if (featured.length === 0) return null;
 
   return (
     <div>
@@ -220,6 +223,9 @@ export default function Home() {
   const [activeCategory, setActiveCategory] = useState<Category | "all">("all");
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const gamesQuery = useGames();
+  const games = gamesQuery.data ?? [];
+
   const openSearch = () => {
     setSearchOpen(true);
     setSearch("");
@@ -234,13 +240,13 @@ export default function Home() {
   const searchResults = useMemo(() => {
     const q = search.toLowerCase().trim();
     if (!q) return [];
-    return GAMES.filter(
-      (g) => g.name.toLowerCase().includes(q) || g.publisher.toLowerCase().includes(q)
+    return games.filter(
+      (g) => g.name.toLowerCase().includes(q) || g.publisher.toLowerCase().includes(q),
     );
-  }, [search]);
+  }, [search, games]);
 
   const filtered =
-    activeCategory === "all" ? GAMES : GAMES.filter((g) => g.category === activeCategory);
+    activeCategory === "all" ? games : games.filter((g) => g.category === activeCategory);
 
   const displayGames = searchOpen && search.trim() ? searchResults : filtered;
 
@@ -256,7 +262,7 @@ export default function Home() {
         <h1 className="text-xl font-bold tracking-tight text-white leading-tight">
           Пополнение игр
         </h1>
-        <p className="text-white/35 text-xs mt-0.5">{GAMES.length} сервисов · Оплата картой и СБП</p>
+        <p className="text-white/35 text-xs mt-0.5">{games.length} сервисов · Оплата картой и СБП</p>
       </div>
 
       <AnimatePresence>
@@ -268,7 +274,8 @@ export default function Home() {
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.18 }}
           >
-            <PromoStrip />
+            <PromoStrip games={games} />
+            <RecentStrip />
           </motion.div>
         )}
       </AnimatePresence>

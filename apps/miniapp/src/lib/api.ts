@@ -1,0 +1,126 @@
+/**
+ * Thin fetch wrapper for the YuPay API.
+ *
+ * Attaches the access JWT (when present) as ``Authorization: Bearer …``.
+ * Surfaces 4xx/5xx as typed exceptions so query hooks can react explicitly.
+ */
+
+const TOKEN_KEY = "yupay.miniapp.access_token";
+const REFRESH_KEY = "yupay.miniapp.refresh_token";
+
+export const apiBase =
+  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ??
+  "";
+
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    public statusText: string,
+    public body: unknown,
+  ) {
+    super(`${status.toString()} ${statusText}`);
+    this.name = "ApiError";
+  }
+
+  get detail(): string {
+    if (this.body && typeof this.body === "object") {
+      const b = this.body as { detail?: string; title?: string };
+      if (typeof b.detail === "string") return b.detail;
+      if (typeof b.title === "string") return b.title;
+    }
+    return this.message;
+  }
+}
+
+export function getAccessToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setTokens(access: string, refresh?: string | null): void {
+  try {
+    localStorage.setItem(TOKEN_KEY, access);
+    if (refresh) localStorage.setItem(REFRESH_KEY, refresh);
+  } catch {
+    // localStorage may be blocked in some Telegram clients; ignore.
+  }
+}
+
+export function getRefreshToken(): string | null {
+  try {
+    return localStorage.getItem(REFRESH_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function clearTokens(): void {
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(REFRESH_KEY);
+  } catch {
+    // ignored
+  }
+}
+
+export interface RequestOptions extends RequestInit {
+  /** Suppress the Authorization header even if a token is stored. */
+  anonymous?: boolean;
+  /** Adds an Idempotency-Key header (required by all write endpoints in v1). */
+  idempotencyKey?: string;
+}
+
+export async function api<T = unknown>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
+  const { anonymous, idempotencyKey, headers, ...init } = options;
+  const url = path.startsWith("http") ? path : `${apiBase}${path}`;
+  const h = new Headers(headers);
+  h.set("Accept", "application/json");
+  if (init.body && !h.has("Content-Type")) {
+    h.set("Content-Type", "application/json");
+  }
+  if (!anonymous) {
+    const token = getAccessToken();
+    if (token) h.set("Authorization", `Bearer ${token}`);
+  }
+  if (idempotencyKey) h.set("Idempotency-Key", idempotencyKey);
+
+  const response = await fetch(url, { ...init, headers: h });
+  if (!response.ok) {
+    let body: unknown = null;
+    try {
+      body = await response.json();
+    } catch {
+      body = await response.text().catch(() => null);
+    }
+    throw new ApiError(response.status, response.statusText, body);
+  }
+  if (response.status === 204) return undefined as T;
+  return (await response.json()) as T;
+}
+
+export const apiGet = <T>(path: string, anonymous = false) =>
+  api<T>(path, { anonymous });
+export const apiPost = <T>(
+  path: string,
+  body: unknown,
+  opts: Omit<RequestOptions, "method" | "body"> = {},
+) => api<T>(path, { ...opts, method: "POST", body: JSON.stringify(body) });
+export const apiPatch = <T>(path: string, body: unknown) =>
+  api<T>(path, { method: "PATCH", body: JSON.stringify(body) });
+export const apiDelete = (path: string) =>
+  api<void>(path, { method: "DELETE" });
+
+/** Generate a random idempotency key suitable for the backend's >=16 char rule. */
+export function newIdempotencyKey(prefix = "miniapp"): string {
+  const rand =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2) + Date.now().toString(36);
+  return `${prefix}-${rand}`;
+}
