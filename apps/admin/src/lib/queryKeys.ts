@@ -36,6 +36,11 @@ export const qk = {
   sourcingDecision: (skuId: string) =>
     ["admin", "sourcing", "decision", skuId] as const,
 
+  // orders
+  orders: (filters: { status?: string | null }) =>
+    ["admin", "orders", filters.status ?? null] as const,
+  order: (id: string) => ["admin", "orders", id] as const,
+
   // wallet
   walletUser: (userId: string) => ["admin", "wallet", "user", userId] as const,
 

@@ -14,6 +14,8 @@ import { SkuEditPage } from "@/features/catalog/skus/SkuEditPage";
 import { SkusListPage } from "@/features/catalog/skus/SkusListPage";
 import { FulfillmentPage } from "@/features/fulfillment/FulfillmentPage";
 import { InventoryPage } from "@/features/inventory/InventoryPage";
+import { OrderDetailPage } from "@/features/orders/OrderDetailPage";
+import { OrdersListPage } from "@/features/orders/OrdersListPage";
 import { PaymentsPage } from "@/features/payments/PaymentsPage";
 import { SourcingPage } from "@/features/sourcing/SourcingPage";
 import { WalletPage } from "@/features/wallet/WalletPage";
@@ -44,6 +46,8 @@ export const router = createBrowserRouter([
           { path: "/skus/:id", element: <SkuEditPage /> },
           { path: "/inventory", element: <InventoryPage /> },
           { path: "/sourcing", element: <SourcingPage /> },
+          { path: "/orders", element: <OrdersListPage /> },
+          { path: "/orders/:id", element: <OrderDetailPage /> },
           { path: "/payments", element: <PaymentsPage /> },
           { path: "/fulfillment", element: <FulfillmentPage /> },
           { path: "/wallet", element: <WalletPage /> },
