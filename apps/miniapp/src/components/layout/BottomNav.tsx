@@ -1,0 +1,34 @@
+import { Link, useLocation } from "wouter";
+import { Home, Clock, Settings } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+export function BottomNav() {
+  const [location] = useLocation();
+
+  const navItems = [
+    { href: "/", label: "Главная", icon: Home },
+    { href: "/history", label: "История", icon: Clock },
+    { href: "/settings", label: "Настройки", icon: Settings },
+  ];
+
+  return (
+    <nav className="fixed bottom-4 left-0 right-0 z-50 flex justify-center max-w-[430px] mx-auto px-6">
+      <div className="flex items-center justify-around w-full px-3 py-2 rounded-[22px] bg-card/80 backdrop-blur-2xl border border-border/60 shadow-[0_8px_32px_rgba(0,0,0,0.45)]">
+        {navItems.map((item) => {
+          const isActive = location === item.href;
+          const Icon = item.icon;
+          return (
+            <Link key={item.href} href={item.href} className="flex flex-col items-center gap-0.5 min-w-[56px]" data-testid={`nav-${item.href.replace("/", "") || "home"}`}>
+              <div className={cn("p-1.5 rounded-xl transition-all duration-200", isActive ? "text-primary" : "text-muted-foreground")}>
+                <Icon size={20} className={cn("transition-transform duration-200", isActive && "scale-110")} />
+              </div>
+              <span className={cn("text-[9px] font-medium transition-colors", isActive ? "text-primary" : "text-muted-foreground")}>
+                {item.label}
+              </span>
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}

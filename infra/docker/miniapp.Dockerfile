@@ -7,6 +7,7 @@ FROM base AS deps
 COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/package.json
 COPY apps/miniapp/package.json apps/miniapp/package.json
+COPY apps/admin/package.json apps/admin/package.json
 COPY packages/ui/package.json packages/ui/package.json
 COPY packages/api-client/package.json packages/api-client/package.json
 COPY packages/i18n/package.json packages/i18n/package.json
@@ -20,14 +21,15 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile=false
 
 FROM base AS builder
+ARG VITE_API_BASE_URL
+ARG VITE_TELEGRAM_BOT_USERNAME
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_TELEGRAM_BOT_USERNAME=${VITE_TELEGRAM_BOT_USERNAME}
 COPY --from=deps /app /app
 COPY . .
 RUN pnpm --filter @yupay/miniapp build
 
-FROM node:22-alpine AS runner
-WORKDIR /app
-ENV NODE_ENV=production
-RUN corepack enable && corepack prepare pnpm@9 --activate
-COPY --from=builder /app /app
-EXPOSE 3000
-CMD ["pnpm", "--filter", "@yupay/miniapp", "start"]
+FROM nginx:alpine AS runner
+COPY --from=builder /app/apps/miniapp/dist /usr/share/nginx/html
+COPY infra/docker/miniapp-nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80

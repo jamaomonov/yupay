@@ -150,12 +150,12 @@ services:
     build:
       context: .
       dockerfile: infra/docker/miniapp.Dockerfile
+      args:
+        VITE_API_BASE_URL: http://localhost:8000
+        VITE_TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
     restart: unless-stopped
-    environment:
-      NEXT_PUBLIC_API_BASE_URL: http://api:8000
-      NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
     ports:
-      - "3001:3000"
+      - "3001:80"
     depends_on:
       - api
 
