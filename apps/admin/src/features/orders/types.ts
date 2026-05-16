@@ -10,6 +10,17 @@ export type OrderStatus =
   | "expired"
   | "refunded";
 
+export interface OrderItemDisplay {
+  brand_slug: string;
+  brand_name: string;
+  product_slug: string;
+  product_name: string;
+  sku_code: string;
+  denomination: string | null;
+  region: string | null;
+  image_url: string | null;
+}
+
 export interface OrderItemOut {
   id: string;
   sku_id: string;
@@ -18,6 +29,7 @@ export interface OrderItemOut {
   fulfillment_state: string;
   fulfillment_data: Record<string, unknown>;
   supplier_order_id: string | null;
+  display: OrderItemDisplay | null;
 }
 
 export interface OrderEventOut {

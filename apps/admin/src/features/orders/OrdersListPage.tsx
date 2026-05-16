@@ -106,11 +106,47 @@ export function OrdersListPage() {
     },
     {
       key: "items",
-      header: "Позиций",
-      render: (o) => (
-        <span className="font-mono text-xs">{o.items.length}</span>
-      ),
-      className: "w-20 text-center",
+      header: "Товар",
+      render: (o) => {
+        const first = o.items[0]?.display ?? null;
+        if (!first) {
+          return (
+            <span className="text-xs text-[--color-muted]">
+              {o.items.length} поз.
+            </span>
+          );
+        }
+        const extra = o.items.length - 1;
+        const headline = first.brand_name
+          ? `${first.brand_name} · ${first.denomination ?? first.sku_code}`
+          : `${first.product_name || first.product_slug} · ${first.denomination ?? first.sku_code}`;
+        return (
+          <div className="flex items-center gap-2 min-w-0">
+            {first.image_url ? (
+              <img
+                src={first.image_url}
+                alt=""
+                className="size-7 rounded object-cover border border-[--color-border] flex-shrink-0"
+              />
+            ) : (
+              <div
+                className="size-7 rounded flex items-center justify-center text-[10px] font-bold text-[--color-muted] border border-[--color-border] flex-shrink-0"
+                style={{ background: "var(--color-subtle)" }}
+              >
+                {(first.brand_name?.[0] ?? "?").toUpperCase()}
+              </div>
+            )}
+            <div className="min-w-0">
+              <div className="truncate text-sm">{headline}</div>
+              {extra > 0 && (
+                <div className="text-[10px] text-[--color-muted]">
+                  +{extra} ещё
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      },
     },
     {
       key: "total",

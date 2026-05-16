@@ -210,7 +210,7 @@ function ItemsCard({ order }: { order: OrderAdminOut }) {
       <table className="w-full text-sm">
         <thead className="text-xs uppercase text-[--color-muted]">
           <tr>
-            <th className="px-4 py-2 text-left font-medium">SKU</th>
+            <th className="px-4 py-2 text-left font-medium">Товар</th>
             <th className="px-3 py-2 text-center font-medium">Кол-во</th>
             <th className="px-3 py-2 text-right font-medium">Цена</th>
             <th className="px-3 py-2 text-left font-medium">Fulfilment</th>
@@ -218,34 +218,78 @@ function ItemsCard({ order }: { order: OrderAdminOut }) {
           </tr>
         </thead>
         <tbody>
-          {order.items.map((it) => (
-            <tr key={it.id} className="border-t">
-              <td className="px-4 py-2.5">
-                <code className="text-xs">{it.sku_id.slice(0, 8)}…</code>
-                {Object.keys(it.fulfillment_data).length > 0 && (
-                  <pre className="mt-1 text-[10px] text-[--color-muted] whitespace-pre-wrap">
-                    {JSON.stringify(it.fulfillment_data, null, 0)}
-                  </pre>
-                )}
-              </td>
-              <td className="px-3 py-2.5 text-center font-mono">{it.qty}</td>
-              <td className="px-3 py-2.5 text-right font-mono">
-                ${Number.parseFloat(it.unit_price_usd).toFixed(2)}
-              </td>
-              <td className="px-3 py-2.5">
-                <code className="text-xs">{it.fulfillment_state}</code>
-              </td>
-              <td className="px-3 py-2.5">
-                {it.supplier_order_id ? (
-                  <code className="text-xs">
-                    {it.supplier_order_id.slice(0, 12)}…
-                  </code>
-                ) : (
-                  <span className="text-xs text-[--color-muted]">—</span>
-                )}
-              </td>
-            </tr>
-          ))}
+          {order.items.map((it) => {
+            const d = it.display;
+            const headline = d
+              ? d.brand_name
+                ? `${d.brand_name} · ${d.denomination ?? d.sku_code}`
+                : `${d.product_name || d.product_slug} · ${d.denomination ?? d.sku_code}`
+              : it.sku_id.slice(0, 8) + "…";
+            const sub = d
+              ? d.product_name && d.product_name !== d.brand_name
+                ? d.product_name
+                : null
+              : null;
+            return (
+              <tr key={it.id} className="border-t">
+                <td className="px-4 py-2.5">
+                  <div className="flex items-center gap-3">
+                    {d?.image_url ? (
+                      <img
+                        src={d.image_url}
+                        alt=""
+                        className="size-10 rounded-md object-cover border border-[--color-border] flex-shrink-0"
+                      />
+                    ) : (
+                      <div
+                        className="size-10 rounded-md flex items-center justify-center text-xs font-bold text-[--color-muted] border border-[--color-border] flex-shrink-0"
+                        style={{ background: "var(--color-subtle)" }}
+                      >
+                        {(d?.brand_name?.[0] ?? "?").toUpperCase()}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <div className="font-medium truncate">{headline}</div>
+                      <div className="flex items-center gap-1.5 text-xs text-[--color-muted] truncate">
+                        {sub && <span>{sub}</span>}
+                        {d?.region && d.region !== "GLOBAL" && (
+                          <span className="rounded bg-[--color-subtle] px-1 font-mono">
+                            {d.region}
+                          </span>
+                        )}
+                        {d && (
+                          <code className="text-[10px] opacity-70">
+                            {d.sku_code}
+                          </code>
+                        )}
+                      </div>
+                      {Object.keys(it.fulfillment_data).length > 0 && (
+                        <pre className="mt-1 text-[10px] text-[--color-muted] whitespace-pre-wrap break-all">
+                          {JSON.stringify(it.fulfillment_data, null, 0)}
+                        </pre>
+                      )}
+                    </div>
+                  </div>
+                </td>
+                <td className="px-3 py-2.5 text-center font-mono">{it.qty}</td>
+                <td className="px-3 py-2.5 text-right font-mono">
+                  ${Number.parseFloat(it.unit_price_usd).toFixed(2)}
+                </td>
+                <td className="px-3 py-2.5">
+                  <code className="text-xs">{it.fulfillment_state}</code>
+                </td>
+                <td className="px-3 py-2.5">
+                  {it.supplier_order_id ? (
+                    <code className="text-xs">
+                      {it.supplier_order_id.slice(0, 12)}…
+                    </code>
+                  ) : (
+                    <span className="text-xs text-[--color-muted]">—</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

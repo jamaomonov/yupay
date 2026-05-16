@@ -126,18 +126,28 @@ export default function History() {
                 className="flex items-center gap-3 p-3.5 rounded-2xl bg-card border border-border"
                 data-testid={`history-item-${tx.id}`}
               >
-                {/* Icon */}
-                <div className="w-11 h-11 rounded-xl bg-background border border-border flex items-center justify-center shrink-0">
-                  <Receipt size={18} className="text-muted-foreground" />
+                {/* Icon — brand/product image when we have one */}
+                <div className="w-11 h-11 rounded-xl overflow-hidden bg-background border border-border flex items-center justify-center shrink-0">
+                  {tx.imageUrl ? (
+                    <img
+                      src={tx.imageUrl}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <Receipt size={18} className="text-muted-foreground" />
+                  )}
                 </div>
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
                   <h3 className="font-bold text-white text-sm truncate">
-                    Заказ {tx.id.slice(0, 8)}
+                    {tx.title}
                   </h3>
                   <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
-                    {shortTime(tx.raw.created_at)} · {tx.raw.items.length} поз.
+                    {shortTime(tx.raw.created_at)}
+                    {tx.subtitle ? ` · ${tx.subtitle}` : ""}
+                    {tx.itemsCount > 1 ? ` · ${tx.itemsCount} поз.` : ""}
                   </p>
                 </div>
 

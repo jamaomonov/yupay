@@ -17,11 +17,57 @@ from yupay.core.clock import now
 from yupay.core.config import Settings
 from yupay.core.errors import ConflictError, NotFoundError, ValidationError
 from yupay.core.ids import new_id
-from yupay.modules.catalog.models import Product, Sku
+from yupay.modules.catalog.models import Brand, Product, Sku
 from yupay.modules.fx.factory import build_default_service
 from yupay.modules.orders.models import Order, OrderEvent, OrderItem
-from yupay.modules.orders.schemas import OrderCreate
+from yupay.modules.orders.schemas import OrderCreate, OrderItemDisplay
 from yupay.modules.orders.validation import validate_fulfillment_data
+
+
+def _order_load_options() -> tuple:
+    """Eager-loading chain used by every read of an Order — keeps the
+    OrderItemOut.display field populatable without a separate fetch."""
+    return (
+        selectinload(Order.items)
+        .selectinload(OrderItem.sku)
+        .options(
+            selectinload(Sku.product).options(
+                selectinload(Product.translations),
+                selectinload(Product.brand).selectinload(Brand.translations),
+            ),
+        ),
+    )
+
+
+def _tr_name(translations: list, locale: str = "ru") -> str:
+    """Pick the localised name from a translations relationship, falling back
+    to the first available row when the asked locale is missing."""
+    if not translations:
+        return ""
+    for t in translations:
+        if t.locale == locale:
+            return t.name or ""
+    return translations[0].name or ""
+
+
+def build_item_display(item: OrderItem, *, locale: str = "ru") -> OrderItemDisplay | None:
+    """Build the display block for a single order item. Requires that the
+    SKU → product → brand chain has been eagerly loaded."""
+    sku = item.sku
+    if sku is None:
+        return None
+    product = sku.product
+    brand = product.brand if product is not None else None
+    return OrderItemDisplay(
+        brand_slug=brand.slug if brand is not None else "",
+        brand_name=_tr_name(brand.translations, locale) if brand is not None else "",
+        product_slug=product.slug if product is not None else "",
+        product_name=_tr_name(product.translations, locale) if product is not None else "",
+        sku_code=sku.sku_code,
+        denomination=sku.denomination,
+        region=sku.region,
+        image_url=sku.image_url or (product.image_url if product is not None else None),
+    )
 
 if TYPE_CHECKING:
     from yupay.modules.fx.service import FxService
@@ -83,7 +129,7 @@ async def _existing_idempotent_order(
 ) -> Order | None:
     stmt = (
         select(Order)
-        .options(selectinload(Order.items), selectinload(Order.events))
+        .options(*_order_load_options(), selectinload(Order.events))
         .where(Order.idempotency_key == idempotency_key)
     )
     if actor.user_id is not None:
@@ -205,7 +251,7 @@ async def create_order(
 async def _load_order(db: AsyncSession, order_id: str) -> Order:
     stmt = (
         select(Order)
-        .options(selectinload(Order.items), selectinload(Order.events))
+        .options(*_order_load_options(), selectinload(Order.events))
         .where(Order.id == order_id)
     )
     row = (await db.execute(stmt)).scalar_one_or_none()
@@ -234,7 +280,7 @@ async def list_orders_for_actor(
 ) -> list[Order]:
     stmt = (
         select(Order)
-        .options(selectinload(Order.items))
+        .options(*_order_load_options())
         .order_by(Order.created_at.desc())
         .limit(limit)
     )
@@ -253,7 +299,7 @@ async def list_orders_admin(
 ) -> list[Order]:
     stmt = (
         select(Order)
-        .options(selectinload(Order.items), selectinload(Order.events))
+        .options(*_order_load_options(), selectinload(Order.events))
         .order_by(Order.created_at.desc())
         .limit(limit)
     )
@@ -294,6 +340,7 @@ async def cancel_order_admin(
 __all__ = [
     "ORDER_EXPIRY_SECONDS",
     "Actor",
+    "build_item_display",
     "cancel_order_admin",
     "create_order",
     "get_order_admin",

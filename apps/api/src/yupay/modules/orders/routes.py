@@ -19,6 +19,7 @@ from yupay.modules.auth.deps import current_user
 from yupay.modules.auth.dev_login import DEV_ADMIN_ID
 from yupay.modules.auth.jwt import verify as verify_jwt
 from yupay.modules.orders import service as svc
+from yupay.modules.orders.models import Order
 from yupay.modules.orders.schemas import (
     OrderAdminListOut,
     OrderAdminOut,
@@ -26,8 +27,26 @@ from yupay.modules.orders.schemas import (
     OrderListOut,
     OrderOut,
 )
-from yupay.modules.orders.service import Actor
+from yupay.modules.orders.service import Actor, build_item_display
 from yupay.modules.users.models import User
+
+
+def _attach_displays(order_out: OrderOut, order: Order, locale: str = "ru") -> None:
+    """Mutate each item's ``display`` from the eagerly-loaded SKU chain."""
+    for item_out, item in zip(order_out.items, order.items, strict=False):
+        item_out.display = build_item_display(item, locale=locale)
+
+
+def _to_order_out(order: Order, locale: str = "ru") -> OrderOut:
+    out = OrderOut.model_validate(order)
+    _attach_displays(out, order, locale=locale)
+    return out
+
+
+def _to_admin_order_out(order: Order, locale: str = "ru") -> OrderAdminOut:
+    out = OrderAdminOut.model_validate(order)
+    _attach_displays(out, order, locale=locale)
+    return out
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 admin_router = APIRouter(
@@ -103,7 +122,7 @@ async def create_order_route(
         actor=actor,
         idempotency_key=idempotency_key,
     )
-    return OrderOut.model_validate(order)
+    return _to_order_out(order)
 
 
 @router.get("/{order_id}", response_model=OrderOut)
@@ -141,7 +160,7 @@ async def get_order_route(
         raise UnauthorizedError("authorization required")
 
     order = await svc.get_order_for_actor(db, order_id, actor=actor)
-    return OrderOut.model_validate(order)
+    return _to_order_out(order)
 
 
 @router.get("", response_model=OrderListOut)
@@ -153,7 +172,7 @@ async def list_orders_route(
     orders = await svc.list_orders_for_actor(
         db, actor=Actor(user_id=user.id, email=None)
     )
-    return OrderListOut(items=[OrderOut.model_validate(o) for o in orders])
+    return OrderListOut(items=[_to_order_out(o) for o in orders])
 
 
 # ---------- admin ----------
@@ -167,7 +186,7 @@ async def admin_list_orders(
 ) -> OrderAdminListOut:
     """Admin order list with optional status filter."""
     orders = await svc.list_orders_admin(db, status_filter=status_filter)
-    return OrderAdminListOut(items=[OrderAdminOut.model_validate(o) for o in orders])
+    return OrderAdminListOut(items=[_to_admin_order_out(o) for o in orders])
 
 
 @admin_router.get("/{order_id}", response_model=OrderAdminOut)
@@ -177,7 +196,7 @@ async def admin_get_order(
     _admin: Annotated[User, Depends(require_admin)],
 ) -> OrderAdminOut:
     order = await svc.get_order_admin(db, order_id)
-    return OrderAdminOut.model_validate(order)
+    return _to_admin_order_out(order)
 
 
 @admin_router.post("/{order_id}/cancel", response_model=OrderAdminOut)
@@ -189,4 +208,4 @@ async def admin_cancel_order(
     """Admin-initiated cancellation. Only valid from ``pending_payment``."""
     actor_id = admin.id if admin.id != DEV_ADMIN_ID else "dev_admin"
     order = await svc.cancel_order_admin(db, order_id, admin_id=actor_id)
-    return OrderAdminOut.model_validate(order)
+    return _to_admin_order_out(order)

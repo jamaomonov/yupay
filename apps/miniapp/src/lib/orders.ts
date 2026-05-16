@@ -23,6 +23,17 @@ export type OrderStatus =
   | "expired"
   | "refunded";
 
+export interface OrderItemDisplay {
+  brand_slug: string;
+  brand_name: string;
+  product_slug: string;
+  product_name: string;
+  sku_code: string;
+  denomination: string | null;
+  region: string | null;
+  image_url: string | null;
+}
+
 export interface OrderItemOut {
   id: string;
   sku_id: string;
@@ -31,6 +42,7 @@ export interface OrderItemOut {
   fulfillment_state: string;
   fulfillment_data: Record<string, unknown>;
   supplier_order_id: string | null;
+  display: OrderItemDisplay | null;
 }
 
 export interface OrderOut {
@@ -141,16 +153,56 @@ export function useOrder(orderId: string | undefined) {
   });
 }
 
-// Map an OrderOut to the prototype's flat history-row shape so the History page
-// can stay close to its original markup.
+// Map an OrderOut to the flat history-row shape used by the History page.
 export interface HistoryRow {
   id: string;
   gameSlug: string | null;
+  title: string;
+  subtitle: string | null;
+  imageUrl: string | null;
+  itemsCount: number;
   amount: number;
   currency: string;
   date: string;
   status: "success" | "processing" | "failed";
   raw: OrderOut;
+}
+
+function summariseOrder(o: OrderOut): {
+  title: string;
+  subtitle: string | null;
+  image: string | null;
+  gameSlug: string | null;
+} {
+  const first = o.items[0]?.display ?? null;
+  const extra = o.items.length - 1;
+  if (!first) {
+    return {
+      title: `Заказ ${o.id.slice(0, 8)}`,
+      subtitle: o.items.length > 0 ? `${o.items.length} поз.` : null,
+      image: null,
+      gameSlug: null,
+    };
+  }
+  const denom = first.denomination ?? first.sku_code;
+  const product = first.product_name || first.product_slug;
+  // The "brand · denomination" pair is the most-useful one-glance summary.
+  const head = first.brand_name
+    ? `${first.brand_name} · ${denom}`
+    : `${product} · ${denom}`;
+  const title = extra > 0 ? `${head} +${extra}` : head;
+  const subtitle =
+    first.brand_name && product && product !== first.brand_name
+      ? product
+      : first.region && first.region !== "GLOBAL"
+        ? `регион ${first.region}`
+        : null;
+  return {
+    title,
+    subtitle,
+    image: first.image_url,
+    gameSlug: first.brand_slug || null,
+  };
 }
 
 export function orderToHistoryRow(o: OrderOut): HistoryRow {
@@ -162,12 +214,14 @@ export function orderToHistoryRow(o: OrderOut): HistoryRow {
         : o.status === "cancelled" || o.status === "expired"
           ? "failed"
           : "processing";
+  const summary = summariseOrder(o);
   return {
     id: o.id,
-    // Items refer to SKUs by id; the UI doesn't know the brand slug without
-    // joining catalog. We surface the SKU id and let the UI fall back to a
-    // generic icon.
-    gameSlug: null,
+    gameSlug: summary.gameSlug,
+    title: summary.title,
+    subtitle: summary.subtitle,
+    imageUrl: summary.image,
+    itemsCount: o.items.length,
     amount: Number.parseFloat(o.total_charged) || 0,
     currency: o.currency,
     date: new Date(o.created_at).toLocaleString("ru", {

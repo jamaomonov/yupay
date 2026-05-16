@@ -43,6 +43,26 @@ class OrderCreate(BaseModel):
     guest_email: EmailStr | None = None
 
 
+class OrderItemDisplay(BaseModel):
+    """What the customer/admin should see for this line.
+
+    Resolved from the SKU → product → brand chain at read time, so a renamed
+    product reflects in old orders too. For an at-purchase-time snapshot we'd
+    move this to a stored jsonb column — deferred until we hit the use case.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    brand_slug: str
+    brand_name: str
+    product_slug: str
+    product_name: str
+    sku_code: str
+    denomination: str | None
+    region: str | None
+    image_url: str | None
+
+
 class OrderItemOut(BaseModel):
     """One line of an order response."""
 
@@ -55,6 +75,7 @@ class OrderItemOut(BaseModel):
     fulfillment_state: str
     fulfillment_data: dict[str, Any]
     supplier_order_id: str | None
+    display: OrderItemDisplay | None = None
 
 
 class OrderEventOut(BaseModel):
@@ -111,6 +132,7 @@ __all__ = [
     "OrderAdminOut",
     "OrderCreate",
     "OrderEventOut",
+    "OrderItemDisplay",
     "OrderItemIn",
     "OrderItemOut",
     "OrderListOut",
