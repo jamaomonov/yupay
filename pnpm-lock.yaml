@@ -327,8 +327,8 @@ importers:
   packages/api-client:
     dependencies:
       '@hey-api/client-fetch':
-        specifier: ^0.5.0
-        version: 0.5.7
+        specifier: ^0.13.1
+        version: 0.13.1(@hey-api/openapi-ts@0.61.3(typescript@5.9.3))
       '@tanstack/react-query':
         specifier: ^5.59.20
         version: 5.100.10(react@19.2.6)
@@ -867,9 +867,11 @@ packages:
   '@formatjs/intl-localematcher@0.8.7':
     resolution: {integrity: sha512-1R/ljfRKG1fUhKG4F0lUmrEKPkr/PlHqbgQ8xeYQYYunXu5/0+vbQeeVgGAgydp13Tq+S1X5Qjn6L90hijXjHg==}
 
-  '@hey-api/client-fetch@0.5.7':
-    resolution: {integrity: sha512-hLpID6NCs8+stbz935UyvyGOXY44oLBSOy7ZEpwXxj977A/0U41iihDQllDoCJrxtbe06DnDgwPOn6/xnRJ71w==}
+  '@hey-api/client-fetch@0.13.1':
+    resolution: {integrity: sha512-29jBRYNdxVGlx5oewFgOrkulZckpIpBIRHth3uHFn1PrL2ucMy52FvWOY3U3dVx2go1Z3kUmMi6lr07iOpUqqA==}
     deprecated: Starting with v0.73.0, this package is bundled directly inside @hey-api/openapi-ts.
+    peerDependencies:
+      '@hey-api/openapi-ts': < 2
 
   '@hey-api/json-schema-ref-parser@1.0.1':
     resolution: {integrity: sha512-dBt0A7op9kf4BcK++x6HBYDmvCvnJUZEGe5QytghPFHnMXPyKwDKomwL/v5e9ERk6E0e1GzL/e/y6pWUso9zrQ==}
@@ -4389,7 +4391,9 @@ snapshots:
     dependencies:
       '@formatjs/fast-memoize': 3.1.5
 
-  '@hey-api/client-fetch@0.5.7': {}
+  '@hey-api/client-fetch@0.13.1(@hey-api/openapi-ts@0.61.3(typescript@5.9.3))':
+    dependencies:
+      '@hey-api/openapi-ts': 0.61.3(typescript@5.9.3)
 
   '@hey-api/json-schema-ref-parser@1.0.1':
     dependencies:
