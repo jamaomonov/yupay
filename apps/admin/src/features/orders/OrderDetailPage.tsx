@@ -78,6 +78,22 @@ export function OrderDetailPage() {
     },
   });
 
+  const refund = useMutation<
+    PaymentAdminOut,
+    ApiError,
+    { id: string; reason: string }
+  >({
+    mutationFn: ({ id, reason }) =>
+      apiPost<PaymentAdminOut>(`/api/v1/admin/payments/${id}/refund`, {
+        reason,
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["admin", "orders"] });
+      void qc.invalidateQueries({ queryKey: ["admin", "payments"] });
+      void qc.invalidateQueries({ queryKey: qk.order(orderId) });
+    },
+  });
+
   if (orderQuery.isLoading) {
     return <p className="text-sm text-[--color-muted]">Загрузка…</p>;
   }
@@ -139,7 +155,18 @@ export function OrderDetailPage() {
 
         {/* ----- right column: payments + fulfillment ----- */}
         <aside className="space-y-6">
-          <PaymentsCard payments={payments} />
+          <PaymentsCard
+            payments={payments}
+            refunding={refund.isPending}
+            onRefund={(p) => {
+              const reason = window.prompt(
+                `Возврат ${Number.parseFloat(p.amount).toFixed(2)} ${p.currency} (${p.provider}). Причина:`,
+                "",
+              );
+              if (reason === null) return;
+              refund.mutate({ id: p.id, reason: reason.trim() });
+            }}
+          />
           <FulfillmentCard tasks={tasks} />
         </aside>
       </div>
@@ -363,7 +390,15 @@ function Timeline({
   );
 }
 
-function PaymentsCard({ payments }: { payments: PaymentAdminOut[] }) {
+function PaymentsCard({
+  payments,
+  onRefund,
+  refunding,
+}: {
+  payments: PaymentAdminOut[];
+  onRefund: (payment: PaymentAdminOut) => void;
+  refunding: boolean;
+}) {
   return (
     <div className="rounded-lg border bg-[--color-bg]">
       <header className="border-b px-4 py-3 flex items-center gap-2">
@@ -378,32 +413,52 @@ function PaymentsCard({ payments }: { payments: PaymentAdminOut[] }) {
         </p>
       ) : (
         <ul className="divide-y">
-          {payments.map((p) => (
-            <li key={p.id} className="p-3 text-sm">
-              <div className="flex items-baseline justify-between gap-3">
-                <code className="text-xs">{p.id.slice(0, 8)}…</code>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                    p.status === "succeeded"
-                      ? "bg-emerald-100 text-emerald-700"
-                      : p.status === "failed"
-                        ? "bg-rose-100 text-rose-700"
-                        : "bg-amber-100 text-amber-700"
-                  }`}
-                >
-                  {p.status}
-                </span>
-              </div>
-              <p className="mt-1 text-xs text-[--color-muted]">
-                {p.provider} · {Number.parseFloat(p.amount).toFixed(2)} {p.currency}
-              </p>
-              {p.intent_url && p.provider === "mock" && (
-                <p className="mt-1 text-[10px] text-[--color-muted] break-all">
-                  {p.intent_url}
+          {payments.map((p) => {
+            const canRefund =
+              p.status === "succeeded" || p.status === "partially_refunded";
+            return (
+              <li key={p.id} className="p-3 text-sm">
+                <div className="flex items-baseline justify-between gap-3">
+                  <code className="text-xs">{p.id.slice(0, 8)}…</code>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                      p.status === "succeeded"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : p.status === "failed"
+                          ? "bg-rose-100 text-rose-700"
+                          : p.status === "refunded" ||
+                              p.status === "partially_refunded"
+                            ? "bg-sky-100 text-sky-700"
+                            : "bg-amber-100 text-amber-700"
+                    }`}
+                  >
+                    {p.status}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-[--color-muted]">
+                  {p.provider} · {Number.parseFloat(p.amount).toFixed(2)}{" "}
+                  {p.currency}
                 </p>
-              )}
-            </li>
-          ))}
+                {p.intent_url && p.provider === "mock" && (
+                  <p className="mt-1 text-[10px] text-[--color-muted] break-all">
+                    {p.intent_url}
+                  </p>
+                )}
+                {canRefund && (
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="sm"
+                    onClick={() => onRefund(p)}
+                    disabled={refunding}
+                    className="mt-2"
+                  >
+                    Возврат
+                  </Button>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

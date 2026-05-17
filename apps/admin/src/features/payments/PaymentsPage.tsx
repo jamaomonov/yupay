@@ -75,6 +75,27 @@ export function PaymentsPage() {
     },
   });
 
+  const refundMutation = useMutation<
+    PaymentAdminOut,
+    ApiError,
+    { id: string; reason: string }
+  >({
+    mutationFn: ({ id, reason }) =>
+      apiPost<PaymentAdminOut>(`/api/v1/admin/payments/${id}/refund`, {
+        reason,
+      }),
+    onSuccess: (data) => {
+      setFeedback(`Возврат оформлен → статус: ${data.status}.`);
+      setError(null);
+      void qc.invalidateQueries({ queryKey: ["admin", "payments"] });
+      void qc.invalidateQueries({ queryKey: ["admin", "orders"] });
+    },
+    onError: (err) => {
+      setError(formatApiError(err));
+      setFeedback(null);
+    },
+  });
+
   const columns: Column<PaymentAdminOut>[] = [
     {
       key: "id",
@@ -124,39 +145,59 @@ export function PaymentsPage() {
     {
       key: "actions",
       header: "",
-      render: (p) =>
-        p.provider === "mock" &&
-        (p.status === "pending" || p.status === "requires_action") ? (
-          <div
-            className="flex justify-end gap-1"
-            onClick={(e) => e.stopPropagation()}
-          >
+      render: (p) => (
+        <div
+          className="flex justify-end gap-1"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {p.provider === "mock" &&
+            (p.status === "pending" || p.status === "requires_action") && (
+              <>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() =>
+                    simulateMutation.mutate({
+                      id: p.id,
+                      body: { outcome: "succeeded" },
+                    })
+                  }
+                >
+                  Webhook OK
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    simulateMutation.mutate({
+                      id: p.id,
+                      body: { outcome: "failed" },
+                    })
+                  }
+                >
+                  Failed
+                </Button>
+              </>
+            )}
+          {(p.status === "succeeded" || p.status === "partially_refunded") && (
             <Button
-              variant="secondary"
+              variant="danger"
               size="sm"
-              onClick={() =>
-                simulateMutation.mutate({
-                  id: p.id,
-                  body: { outcome: "succeeded" },
-                })
-              }
+              disabled={refundMutation.isPending}
+              onClick={() => {
+                const reason = window.prompt(
+                  `Возврат ${Number.parseFloat(p.amount).toFixed(2)} ${p.currency}.\nПричина (видна в audit log):`,
+                  "",
+                );
+                if (reason === null) return;
+                refundMutation.mutate({ id: p.id, reason: reason.trim() });
+              }}
             >
-              Webhook OK
+              Refund
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() =>
-                simulateMutation.mutate({
-                  id: p.id,
-                  body: { outcome: "failed" },
-                })
-              }
-            >
-              Failed
-            </Button>
-          </div>
-        ) : null,
+          )}
+        </div>
+      ),
       className: "w-52 text-right",
     },
   ];

@@ -29,6 +29,7 @@ from yupay.modules.payments.gateways import (
     get_gateway,
 )
 from yupay.modules.payments.models import Payment, PaymentAttempt, PaymentWebhook
+from yupay.modules.wallet import api as wallet_api
 
 log = get_logger("yupay.payments.service")
 
@@ -358,6 +359,180 @@ async def get_payment(db: AsyncSession, payment_id: str) -> Payment:
     return payment
 
 
+async def refund_admin(
+    db: AsyncSession,
+    *,
+    payment_id: str,
+    admin_id: str,
+    amount: Decimal | None = None,
+    reason: str | None = None,
+) -> Payment:
+    """Admin-initiated refund.
+
+    Calls the gateway's ``refund`` hook (if implemented), flips the payment to
+    ``refunded`` / ``partially_refunded``, walks the order to ``refunded``, and
+    posts a double-entry on the ledger:
+
+      D house_refunds  amount
+      C provider_clearing:<provider>  amount
+
+    ``amount`` defaults to the full charged amount. The skeleton treats any
+    ``amount < payment.amount`` as a partial refund — it does not currently
+    track cumulative refunds, so calling refund_admin twice on the same
+    payment is rejected. Add a ``payment_refunds`` row if you need that.
+    """
+    payment = await get_payment(db, payment_id)
+    if payment.status not in ("succeeded", "partially_refunded"):
+        raise ConflictError(
+            "payment can't be refunded in its current state",
+            extra={"status": payment.status},
+        )
+    refund_amount = amount if amount is not None else payment.amount
+    if refund_amount <= 0:
+        raise ValidationError("refund amount must be positive")
+    if refund_amount > payment.amount:
+        raise ValidationError(
+            "refund amount exceeds payment amount",
+            extra={"amount": str(refund_amount), "max": str(payment.amount)},
+        )
+
+    gw = get_gateway(payment.provider)
+    moment = now()
+    refund_metadata: dict[str, Any] = {
+        "refund_amount": str(refund_amount),
+        "reason": reason or "",
+        "admin_id": admin_id,
+    }
+
+    if gw.available:
+        try:
+            result = await gw.refund(payment=payment, amount=refund_amount)
+            refund_metadata["external_refund_id"] = result.external_refund_id
+            refund_metadata.update(result.extra_metadata)
+        except (PaymentGatewayError, PaymentNotIntegratedError) as exc:
+            _record_attempt(
+                db,
+                payment_id=payment.id,
+                kind="refund",
+                status="error",
+                payload=refund_metadata,
+                error=str(exc),
+            )
+            await db.flush()
+            raise ConflictError(
+                "payment provider rejected the refund",
+                extra={"reason": str(exc)},
+            ) from exc
+    else:
+        # Stubbed provider — record the intent but skip the network call.
+        refund_metadata["dry_run"] = True
+
+    is_full = refund_amount == payment.amount
+    payment.status = "refunded" if is_full else "partially_refunded"
+    payment.updated_at = moment
+    payment.extra_metadata = {**payment.extra_metadata, "last_refund": refund_metadata}
+
+    _record_attempt(
+        db,
+        payment_id=payment.id,
+        kind="refund",
+        status="ok",
+        payload=refund_metadata,
+    )
+
+    # Order: mark refunded only for a full refund. Partial refunds keep the
+    # original status — they're an accounting concern, not an FSM concern.
+    order = (
+        await db.execute(select(Order).where(Order.id == payment.order_id))
+    ).scalar_one()
+    if is_full and order.status != "refunded":
+        order.status = "refunded"
+        order.updated_at = moment
+    db.add(
+        OrderEvent(
+            id=new_id(),
+            order_id=order.id,
+            kind="payment.refunded",
+            payload={
+                "payment_id": payment.id,
+                "provider": payment.provider,
+                "amount": str(refund_amount),
+                "full": is_full,
+                "reason": reason or "",
+            },
+            actor=f"admin:{admin_id}",
+        )
+    )
+
+    # Ledger: book the refund through the wallet module.
+    house_refunds = await wallet_api.ensure_account(
+        db,
+        owner_type="house",
+        owner_id="house",
+        kind="house_refunds",
+        currency=payment.currency,
+    )
+    provider_clearing = await wallet_api.ensure_account(
+        db,
+        owner_type="provider",
+        owner_id=payment.provider,
+        kind="provider_clearing",
+        currency=payment.currency,
+    )
+    await wallet_api.post(
+        db,
+        kind="payment.refund",
+        legs=[
+            wallet_api.Leg(
+                account_id=house_refunds.id,
+                direction="D",
+                amount=refund_amount,
+                currency=payment.currency,
+            ),
+            wallet_api.Leg(
+                account_id=provider_clearing.id,
+                direction="C",
+                amount=refund_amount,
+                currency=payment.currency,
+            ),
+        ],
+        idempotency_key=f"refund:{payment.id}",
+        reference=wallet_api.Reference(type="payment", id=payment.id),
+        actor=f"admin:{admin_id}",
+        metadata={"reason": reason or "", "full": is_full},
+    )
+
+    await db.flush()
+    log.info(
+        "payments.refund.ok",
+        payment_id=payment.id,
+        provider=payment.provider,
+        amount=str(refund_amount),
+        full=is_full,
+    )
+    return payment
+
+
+async def list_webhooks_admin(
+    db: AsyncSession,
+    *,
+    provider: str | None = None,
+    signature_ok: bool | None = None,
+    limit: int = 50,
+) -> list[PaymentWebhook]:
+    """Admin listing of received webhooks for the audit / debugging page."""
+    stmt = (
+        select(PaymentWebhook)
+        .order_by(PaymentWebhook.received_at.desc())
+        .limit(limit)
+    )
+    if provider is not None:
+        stmt = stmt.where(PaymentWebhook.provider == provider)
+    if signature_ok is not None:
+        stmt = stmt.where(PaymentWebhook.signature_ok.is_(signature_ok))
+    return list((await db.execute(stmt)).scalars().all())
+
+
 async def list_payments_admin(
     db: AsyncSession,
     *,
@@ -386,6 +561,8 @@ __all__ = [
     "get_payment",
     "handle_webhook",
     "list_payments_admin",
+    "list_webhooks_admin",
+    "refund_admin",
     "simulate_webhook",
 ]
 

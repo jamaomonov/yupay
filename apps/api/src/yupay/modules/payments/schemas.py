@@ -82,6 +82,33 @@ class SimulateWebhookIn(BaseModel):
     outcome: Literal["succeeded", "failed", "cancelled"] = "succeeded"
 
 
+class RefundIn(BaseModel):
+    """Body of admin's ``POST /admin/payments/{id}/refund``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    amount: Decimal | None = None
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class PaymentWebhookOut(BaseModel):
+    """One row of the webhook audit table."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    provider: str
+    external_event_id: str
+    received_at: datetime
+    processed_at: datetime | None
+    signature_ok: bool
+    payload: dict[str, Any]
+
+
+class PaymentWebhookListOut(BaseModel):
+    items: list[PaymentWebhookOut]
+
+
 __all__ = [
     "PaymentAdminListOut",
     "PaymentAdminOut",
@@ -90,5 +117,8 @@ __all__ = [
     "PaymentListOut",
     "PaymentOut",
     "PaymentStatus",
+    "PaymentWebhookListOut",
+    "PaymentWebhookOut",
+    "RefundIn",
     "SimulateWebhookIn",
 ]

@@ -55,6 +55,18 @@ export const qk = {
   // fx
   fxRates: () => ["admin", "fx", "rates"] as const,
 
+  // webhook log
+  webhooks: (filters: {
+    provider?: string | null;
+    signature_ok?: boolean | null;
+  }) =>
+    [
+      "admin",
+      "webhooks",
+      filters.provider ?? null,
+      filters.signature_ok ?? null,
+    ] as const,
+
   // wallet
   walletUser: (userId: string) => ["admin", "wallet", "user", userId] as const,
 

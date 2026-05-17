@@ -24,6 +24,9 @@ from yupay.modules.payments.schemas import (
     PaymentAdminOut,
     PaymentIntentIn,
     PaymentOut,
+    PaymentWebhookListOut,
+    PaymentWebhookOut,
+    RefundIn,
     SimulateWebhookIn,
 )
 from yupay.modules.users.models import User
@@ -32,6 +35,11 @@ router = APIRouter(prefix="/payments", tags=["payments"])
 admin_router = APIRouter(
     prefix="/admin/payments",
     tags=["admin:payments"],
+    dependencies=[Depends(require_admin)],
+)
+admin_webhook_router = APIRouter(
+    prefix="/admin/webhooks",
+    tags=["admin:webhooks"],
     dependencies=[Depends(require_admin)],
 )
 webhook_router = APIRouter(prefix="/webhooks/payments", tags=["webhooks:payments"])
@@ -188,3 +196,50 @@ async def admin_simulate_webhook(
         db, payment_id=payment_id, outcome=body.outcome
     )
     return PaymentAdminOut.model_validate(payment)
+
+
+@admin_router.post(
+    "/{payment_id}/refund",
+    response_model=PaymentAdminOut,
+    summary="Admin-initiated refund (full or partial)",
+)
+async def admin_refund_payment(
+    payment_id: str,
+    body: RefundIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+) -> PaymentAdminOut:
+    payment = await svc.refund_admin(
+        db,
+        payment_id=payment_id,
+        admin_id=admin.id,
+        amount=body.amount,
+        reason=body.reason,
+    )
+    return PaymentAdminOut.model_validate(payment)
+
+
+# ---------- webhook log ----------
+
+
+@admin_webhook_router.get(
+    "",
+    response_model=PaymentWebhookListOut,
+    summary="Recent incoming payment webhooks, with verify status and raw payload",
+)
+async def admin_list_webhooks(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+    provider: str | None = None,
+    signature_ok: bool | None = None,
+    limit: int = 100,
+) -> PaymentWebhookListOut:
+    rows = await svc.list_webhooks_admin(
+        db,
+        provider=provider,
+        signature_ok=signature_ok,
+        limit=max(1, min(limit, 500)),
+    )
+    return PaymentWebhookListOut(
+        items=[PaymentWebhookOut.model_validate(r) for r in rows]
+    )

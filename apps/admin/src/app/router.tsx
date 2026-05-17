@@ -21,6 +21,7 @@ import { PaymentsPage } from "@/features/payments/PaymentsPage";
 import { SourcingPage } from "@/features/sourcing/SourcingPage";
 import { UsersListPage } from "@/features/users/UsersListPage";
 import { WalletPage } from "@/features/wallet/WalletPage";
+import { WebhooksPage } from "@/features/webhooks/WebhooksPage";
 import { DashboardPage } from "@/routes/Dashboard";
 
 import { Layout } from "./Layout";
@@ -51,6 +52,7 @@ export const router = createBrowserRouter([
           { path: "/orders", element: <OrdersListPage /> },
           { path: "/orders/:id", element: <OrderDetailPage /> },
           { path: "/payments", element: <PaymentsPage /> },
+          { path: "/webhooks", element: <WebhooksPage /> },
           { path: "/fulfillment", element: <FulfillmentPage /> },
           { path: "/wallet", element: <WalletPage /> },
           { path: "/fx", element: <FxPage /> },
