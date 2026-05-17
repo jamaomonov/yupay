@@ -190,7 +190,7 @@ export default function OrderSuccess() {
           className="size-9 rounded-xl flex items-center justify-center"
           style={{
             background: "hsl(var(--card))",
-            border: "1.5px solid hsl(var(--border))",
+            border: "1px solid hsl(var(--border))",
           }}
           aria-label="Назад"
         >
@@ -297,8 +297,8 @@ function StatusCard({
       <div
         className="relative overflow-hidden rounded-3xl p-5"
         style={{
-          background: "hsl(228 32% 14%)",
-          border: `1.5px solid ${tone === "delivered" ? "hsl(var(--primary) / 0.4)" : "hsl(var(--border))"}`,
+          background: "hsl(var(--surface-1))",
+          border: `1px solid ${tone === "delivered" ? "hsl(var(--primary) / 0.4)" : "hsl(var(--border))"}`,
         }}
       >
         {/* Glow */}
@@ -353,7 +353,7 @@ function StatusCard({
             href={supportHref}
             className="relative mt-4 flex items-center justify-between gap-2 rounded-2xl px-3 py-2.5 transition-opacity active:opacity-70"
             style={{
-              background: "hsl(228 32% 19%)",
+              background: "hsl(var(--surface-2))",
               border: "1px solid hsl(var(--border))",
             }}
           >
@@ -453,7 +453,7 @@ function ItemCard({
     <div
       className="rounded-2xl p-3.5"
       style={{
-        background: "hsl(228 32% 14%)",
+        background: "hsl(var(--surface-1))",
         border: "1px solid hsl(var(--border))",
       }}
     >
@@ -467,7 +467,7 @@ function ItemCard({
         ) : (
           <div
             className="size-11 rounded-xl flex items-center justify-center flex-shrink-0 text-sm font-bold text-white/40"
-            style={{ background: "hsl(228 32% 19%)" }}
+            style={{ background: "hsl(var(--surface-2))" }}
           >
             {display?.brand_name?.[0]?.toUpperCase() ?? "?"}
           </div>
@@ -590,7 +590,7 @@ function TopUpReceipt({
         <div
           className="rounded-xl p-3 space-y-1.5"
           style={{
-            background: "hsl(228 32% 19%)",
+            background: "hsl(var(--surface-2))",
             border: "1px solid hsl(var(--border))",
           }}
         >
@@ -685,7 +685,7 @@ function ArtifactBlock({ delivery }: { delivery: DeliveryOut }) {
         <div
           className="rounded-xl px-3 py-2.5 text-xs text-white/75 leading-snug"
           style={{
-            background: "hsl(228 32% 19%)",
+            background: "hsl(var(--surface-2))",
             border: "1px solid hsl(var(--border))",
           }}
         >
@@ -697,7 +697,7 @@ function ArtifactBlock({ delivery }: { delivery: DeliveryOut }) {
         <pre
           className="rounded-xl px-3 py-2.5 text-[11px] text-white/65 leading-snug whitespace-pre-wrap font-mono overflow-x-auto"
           style={{
-            background: "hsl(228 32% 19%)",
+            background: "hsl(var(--surface-2))",
             border: "1px solid hsl(var(--border))",
           }}
         >
@@ -733,7 +733,7 @@ function CopyableValue({
       onClick={() => onCopy(value)}
       className="group w-full text-left rounded-xl px-3 py-3 flex items-center gap-3 transition-colors active:scale-[0.99]"
       style={{
-        background: "hsl(228 32% 19%)",
+        background: "hsl(var(--surface-2))",
         border: "1.5px solid hsl(var(--primary) / 0.45)",
       }}
     >
@@ -761,7 +761,7 @@ function Summary({ order }: { order: OrderOut }) {
       <div
         className="rounded-2xl p-4 space-y-1.5 text-xs"
         style={{
-          background: "hsl(228 32% 14%)",
+          background: "hsl(var(--surface-1))",
           border: "1px solid hsl(var(--border))",
         }}
       >
@@ -814,11 +814,11 @@ function ActionButton({
       type="button"
       className="w-full rounded-2xl py-3 flex items-center justify-center gap-2 text-sm font-semibold transition-transform active:scale-[0.97]"
       style={{
-        background: primary ? "hsl(var(--primary))" : "hsl(228 32% 16%)",
+        background: primary ? "hsl(var(--primary))" : "hsl(var(--surface-2))",
         color: primary ? "hsl(var(--primary-foreground))" : "rgba(255,255,255,0.85)",
         border: primary
-          ? "1.5px solid hsl(var(--primary))"
-          : "1.5px solid hsl(var(--border))",
+          ? "1px solid hsl(var(--primary))"
+          : "1px solid hsl(var(--border))",
       }}
     >
       {icon}
@@ -838,20 +838,20 @@ function SkeletonView({ onBack }: { onBack: () => void }) {
           className="size-9 rounded-xl flex items-center justify-center"
           style={{
             background: "hsl(var(--card))",
-            border: "1.5px solid hsl(var(--border))",
+            border: "1px solid hsl(var(--border))",
           }}
         >
           <ArrowLeft size={15} className="text-white/60" />
         </button>
         <div
           className="flex-1 h-3 rounded animate-pulse"
-          style={{ background: "hsl(228 32% 18%)" }}
+          style={{ background: "hsl(var(--surface-2))" }}
         />
       </header>
       <div className="px-4">
         <div
           className="h-28 rounded-3xl animate-pulse"
-          style={{ background: "hsl(228 32% 14%)" }}
+          style={{ background: "hsl(var(--surface-1))" }}
         />
       </div>
       <div className="px-4 space-y-2">
@@ -859,7 +859,7 @@ function SkeletonView({ onBack }: { onBack: () => void }) {
           <div
             key={i}
             className="h-20 rounded-2xl animate-pulse"
-            style={{ background: "hsl(228 32% 14%)" }}
+            style={{ background: "hsl(var(--surface-1))" }}
           />
         ))}
       </div>

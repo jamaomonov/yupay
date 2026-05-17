@@ -77,7 +77,7 @@ export default function History() {
             disabled={ordersQuery.isFetching}
             className="w-9 h-9 rounded-full flex items-center justify-center transition-colors disabled:opacity-40"
             style={{
-              background: "hsl(228 32% 17%)",
+              background: "hsl(var(--surface-2))",
               border: "1px solid hsl(var(--border))",
             }}
             aria-label="Обновить"

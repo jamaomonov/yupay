@@ -282,17 +282,17 @@ function CurrencyOption({
       onClick={onSelect}
       className="w-full flex items-center justify-between p-3.5 rounded-2xl transition-all"
       style={{
-        background: active ? "hsl(228 32% 22%)" : "hsl(228 32% 16%)",
+        background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
         border: active
           ? "1.5px solid hsl(var(--primary) / 0.7)"
-          : "1.5px solid hsl(var(--border))",
+          : "1px solid hsl(var(--border))",
       }}
     >
       <div className="flex items-center gap-3">
         <div
           className="w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm"
           style={{
-            background: active ? "hsl(var(--primary) / 0.18)" : "hsl(228 32% 22%)",
+            background: active ? "hsl(var(--primary) / 0.18)" : "hsl(var(--surface-3))",
             color: active ? "hsl(var(--primary))" : "rgba(255,255,255,0.7)",
           }}
         >

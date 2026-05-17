@@ -403,7 +403,7 @@ export default function TopUp() {
             <div
               className="rounded-2xl p-4 flex items-start gap-3"
               style={{
-                background: "hsl(228 32% 14%)",
+                background: "hsl(var(--surface-1))",
                 border: "1.5px solid hsl(var(--primary) / 0.4)",
               }}
               role="status"
@@ -467,11 +467,11 @@ export default function TopUp() {
                       className="flex items-center gap-2 flex-shrink-0 pl-2 pr-3 py-1.5 rounded-2xl transition-all duration-150"
                       style={{
                         background: active
-                          ? "hsl(228 32% 22%)"
-                          : "hsl(228 32% 16%)",
+                          ? "hsl(var(--surface-3))"
+                          : "hsl(var(--surface-2))",
                         border: active
                           ? "1.5px solid hsl(var(--primary) / 0.7)"
-                          : "1.5px solid hsl(var(--border))",
+                          : "1px solid hsl(var(--border))",
                       }}
                     >
                       <div className="w-6 h-6 rounded-md overflow-hidden bg-black/30 flex-shrink-0 flex items-center justify-center">
@@ -588,10 +588,10 @@ export default function TopUp() {
                     onClick={() => setPaymentMethod(m.id)}
                     className="relative flex flex-col items-center gap-1 py-3 rounded-2xl transition-all duration-150"
                     style={{
-                      background: active ? "hsl(228 32% 22%)" : "hsl(228 32% 16%)",
+                      background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
                       border: active
                         ? "1.5px solid hsl(var(--primary) / 0.8)"
-                        : "1.5px solid hsl(var(--border))",
+                        : "1px solid hsl(var(--border))",
                     }}
                     data-testid={`btn-pay-${m.id}`}
                   >
@@ -650,7 +650,7 @@ export default function TopUp() {
               animate={{ opacity: 1, y: 0 }}
               className="flex items-center gap-3 p-3 rounded-2xl"
               style={{
-                background: "hsl(228 32% 16%)",
+                background: "hsl(var(--surface-2))",
                 border: "1px solid hsl(var(--border))",
               }}
             >
@@ -759,10 +759,10 @@ function PackageCard({
       onClick={onSelect}
       className="relative text-left p-3.5 rounded-2xl transition-all duration-150"
       style={{
-        background: active ? "hsl(228 32% 22%)" : "hsl(228 32% 16%)",
+        background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
         border: active
           ? "1.5px solid hsl(var(--primary) / 0.8)"
-          : "1.5px solid hsl(var(--border))",
+          : "1px solid hsl(var(--border))",
         boxShadow: active ? "0 0 0 3px hsl(var(--primary) / 0.1)" : "none",
       }}
       data-testid={`btn-pkg-${pkg.id}`}

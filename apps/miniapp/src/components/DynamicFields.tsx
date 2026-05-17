@@ -148,10 +148,10 @@ function TextLikeField({
         placeholder={placeholder || field.key}
         className="w-full rounded-2xl px-4 py-3.5 text-base text-white placeholder:text-white/25 outline-none transition-all"
         style={{
-          background: "hsl(228 32% 17%)",
+          background: "hsl(var(--surface-2))",
           border: filled
             ? "1.5px solid hsl(var(--primary) / 0.7)"
-            : "1.5px solid hsl(var(--border))",
+            : "1px solid hsl(var(--border))",
           color: filled ? "hsl(var(--primary))" : "white",
           letterSpacing: field.type === "number" && filled ? "0.08em" : "normal",
         }}
@@ -199,10 +199,10 @@ function SelectField({
               onClick={() => onChange(opt.value)}
               className="relative rounded-2xl px-3 py-3 text-sm font-semibold transition-all duration-150"
               style={{
-                background: active ? "hsl(228 32% 22%)" : "hsl(228 32% 16%)",
+                background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
                 border: active
                   ? "1.5px solid hsl(var(--primary) / 0.8)"
-                  : "1.5px solid hsl(var(--border))",
+                  : "1px solid hsl(var(--border))",
                 color: active ? "white" : "rgba(255,255,255,0.7)",
               }}
             >

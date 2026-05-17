@@ -66,7 +66,7 @@ export default function Wallet() {
           className="relative rounded-3xl p-5 overflow-hidden"
           style={{
             background:
-              "linear-gradient(135deg, hsl(228 32% 17%) 0%, hsl(228 32% 12%) 100%)",
+              "linear-gradient(135deg, hsl(var(--surface-2)) 0%, hsl(var(--background)) 100%)",
             border: "1px solid hsl(var(--border))",
           }}
         >
@@ -112,7 +112,7 @@ export default function Wallet() {
           <div
             className="relative rounded-3xl p-5 overflow-hidden"
             style={{
-              background: "hsl(228 32% 14%)",
+              background: "hsl(var(--surface-1))",
               border: "1.5px dashed hsl(var(--border))",
             }}
           >
@@ -179,7 +179,7 @@ function AccountChip({
     <div
       className="rounded-2xl p-3 flex flex-col gap-1.5"
       style={{
-        background: "hsl(228 32% 16%)",
+        background: "hsl(var(--surface-2))",
         border: "1px solid hsl(var(--border))",
       }}
     >
