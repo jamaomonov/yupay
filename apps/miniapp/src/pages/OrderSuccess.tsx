@@ -180,8 +180,10 @@ export default function OrderSuccess() {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.22 }}
       className="space-y-4 pb-6"
     >
       <header className="px-4 pt-3 flex items-center gap-3">

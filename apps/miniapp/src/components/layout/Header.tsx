@@ -28,7 +28,7 @@ export function Header() {
         >
           <WalletIcon size={16} strokeWidth={2.4} />
         </div>
-        <span className="font-black tracking-wider text-lg text-white">
+        <span className="font-bold tracking-wider text-lg text-white">
           YUPAY
         </span>
       </Link>
@@ -66,7 +66,7 @@ export function Header() {
                 }&backgroundColor=1e2a3a`}
               />
             )}
-            <AvatarFallback className="bg-primary/20 text-primary text-xs font-black">
+            <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">
               {(user?.display_name?.[0] ?? "?").toUpperCase()}
             </AvatarFallback>
           </Avatar>

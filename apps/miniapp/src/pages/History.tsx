@@ -60,9 +60,10 @@ export default function History() {
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: -20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.22 }}
       className="p-4 space-y-5"
     >
       <div className="flex items-start justify-between">
@@ -182,7 +183,7 @@ export default function History() {
 
                 {/* Amount + status */}
                 <div className="text-right shrink-0 space-y-1">
-                  <p className="font-black text-primary text-sm">
+                  <p className="font-bold text-primary text-sm">
                     {tx.amount.toLocaleString("ru", { maximumFractionDigits: 2 })} {tx.currency}
                   </p>
                   <div

@@ -67,9 +67,10 @@ export default function Settings() {
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: -20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.22 }}
       className="p-4 space-y-4"
     >
       <h1 className="text-2xl font-bold tracking-tight text-white mb-2">Настройки</h1>
@@ -101,13 +102,13 @@ export default function Settings() {
                 }&backgroundColor=1e2a3a`}
               />
             )}
-            <AvatarFallback className="bg-primary/20 text-primary font-black text-lg">
+            <AvatarFallback className="bg-primary/20 text-primary font-bold text-lg">
               {initials(user?.display_name) || "👤"}
             </AvatarFallback>
           </Avatar>
 
           <div className="flex-1 min-w-0">
-            <h2 className="font-black text-lg text-white leading-tight truncate">
+            <h2 className="font-bold text-lg text-white leading-tight truncate">
               {user?.display_name ?? "Гость"}
             </h2>
             <div className="flex items-center gap-1.5 mt-0.5">
@@ -290,7 +291,7 @@ function CurrencyOption({
     >
       <div className="flex items-center gap-3">
         <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm"
+          className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm"
           style={{
             background: active ? "hsl(var(--primary) / 0.18)" : "hsl(var(--surface-3))",
             color: active ? "hsl(var(--primary))" : "rgba(255,255,255,0.7)",

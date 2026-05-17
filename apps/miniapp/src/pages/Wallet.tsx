@@ -30,9 +30,10 @@ export default function Wallet() {
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.22 }}
       className="pb-28"
     >
       {/* Top bar */}
@@ -81,7 +82,7 @@ export default function Wallet() {
             <p className="text-white/50 text-xs uppercase tracking-widest font-bold">
               Доступно к трате
             </p>
-            <p className="text-white font-black text-3xl mt-1 tabular-nums">
+            <p className="text-white font-bold text-3xl mt-1 tabular-nums">
               {me.data ? formatBalance(total.amount, total.currency) : "—"}
             </p>
             <p className="text-white/40 text-xs mt-1.5">
@@ -194,7 +195,7 @@ function AccountChip({
           {currency}
         </span>
       </div>
-      <p className="text-white text-base font-black tabular-nums leading-none">
+      <p className="text-white text-base font-bold tabular-nums leading-none">
         {formatBalance(amount, currency)}
       </p>
       <p className="text-white/40 text-[10px] leading-tight line-clamp-1">{meta.label}</p>

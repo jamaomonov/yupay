@@ -122,8 +122,12 @@ function Step({ n, title, sub }: { n: number; title: string; sub?: string }) {
   return (
     <div className="flex items-start gap-3 mb-3.5">
       <div
-        className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black flex-shrink-0 mt-0.5"
-        style={{ background: "hsl(var(--primary))", color: "#000" }}
+        className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 mt-0.5"
+        style={{
+          background: "hsl(var(--primary) / 0.15)",
+          color: "hsl(var(--primary))",
+          border: "1px solid hsl(var(--primary) / 0.4)",
+        }}
       >
         {n}
       </div>
@@ -306,9 +310,10 @@ export default function TopUp() {
   return (
     <>
       <motion.div
-        initial={{ opacity: 0, x: 20 }}
-        animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: -20 }}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.22 }}
         className="pb-32"
       >
         {/* ── Hero ── */}
@@ -350,7 +355,7 @@ export default function TopUp() {
           </div>
 
           <div className="absolute bottom-0 left-0 right-0 px-4 pb-4 flex items-end gap-3 z-10">
-            <div className="w-14 h-14 rounded-[18px] overflow-hidden shadow-xl border border-white/15 flex-shrink-0">
+            <div className="w-14 h-14 rounded-2xl overflow-hidden shadow-xl border border-white/15 flex-shrink-0">
               {game.appIcon ? (
                 <img
                   src={game.appIcon}
@@ -359,7 +364,7 @@ export default function TopUp() {
                 />
               ) : (
                 <div
-                  className="w-full h-full flex items-center justify-center text-white/80 font-black text-xl"
+                  className="w-full h-full flex items-center justify-center text-white/80 font-bold text-xl"
                   style={{ background: game.color }}
                 >
                   {game.name.charAt(0)}
@@ -370,7 +375,7 @@ export default function TopUp() {
               <p className="text-white/50 text-[11px] uppercase tracking-wide line-clamp-1">
                 {game.publisher || "YuPay"}
               </p>
-              <h1 className="text-white font-black text-lg leading-tight line-clamp-1">
+              <h1 className="text-white font-bold text-lg leading-tight line-clamp-1">
                 {game.name}
               </h1>
               <div className="flex items-center gap-3 mt-0.5">
@@ -667,7 +672,7 @@ export default function TopUp() {
                     : "Получите код после оплаты"}
                 </p>
               </div>
-              <p className="text-white font-black text-sm flex-shrink-0">
+              <p className="text-white font-bold text-sm flex-shrink-0">
                 {formatMoney(activePkg.price, activePkg.priceCode)}
               </p>
             </motion.div>
@@ -696,11 +701,11 @@ export default function TopUp() {
           <motion.a
             whileTap={{ scale: 0.97 }}
             href={TELEGRAM_DEEP_LINK}
-            className="w-full py-4 rounded-2xl text-base font-black tracking-wide flex items-center justify-center gap-2 transition-all"
+            className="w-full py-4 rounded-2xl text-base font-bold tracking-wide flex items-center justify-center gap-2 transition-all"
             style={{
               background: "hsl(var(--primary))",
               color: "#000",
-              boxShadow: "0 0 24px hsl(var(--primary) / 0.35)",
+              boxShadow: "0 0 16px hsl(var(--primary) / 0.25)",
             }}
           >
             <Send size={16} />
@@ -711,7 +716,7 @@ export default function TopUp() {
             whileTap={{ scale: 0.97 }}
             onClick={handlePayment}
             disabled={isProcessing || !activePkg || !insideTelegram}
-            className="w-full py-4 rounded-2xl text-base font-black tracking-wide flex items-center justify-center gap-2 transition-all"
+            className="w-full py-4 rounded-2xl text-base font-bold tracking-wide flex items-center justify-center gap-2 transition-all"
             style={{
               background:
                 isProcessing || !activePkg || !insideTelegram
@@ -721,7 +726,7 @@ export default function TopUp() {
               boxShadow:
                 isProcessing || !activePkg || !insideTelegram
                   ? "none"
-                  : "0 0 24px hsl(var(--primary) / 0.35)",
+                  : "0 0 16px hsl(var(--primary) / 0.25)",
             }}
             data-testid="btn-pay"
           >
@@ -769,7 +774,7 @@ function PackageCard({
     >
       {pkg.badge && (
         <div
-          className="absolute -top-2 left-3 px-2 py-0.5 rounded-md text-[9px] font-black tracking-wider"
+          className="absolute -top-2 left-3 px-2 py-0.5 rounded-md text-[9px] font-bold tracking-wider"
           style={{ background: pkg.badge.color, color: "#fff" }}
         >
           {pkg.badge.label}
@@ -787,7 +792,7 @@ function PackageCard({
 
       <div className="flex items-center gap-2 mb-1.5">
         <PackageThumb pkg={pkg} fallback={fallbackImage} />
-        <span className="text-white font-black text-lg leading-none">
+        <span className="text-white font-bold text-lg leading-none">
           {pkg.amount > 0 ? pkg.amount.toLocaleString("ru") : pkg.label}
         </span>
       </div>
@@ -823,7 +828,7 @@ function PackageThumb({
   const tag = pkg.label.replace(/^[\s\d.,]+/, "").trim() || "—";
   return (
     <div
-      className="w-9 h-9 rounded-xl flex items-center justify-center text-[10px] font-black text-black"
+      className="w-9 h-9 rounded-xl flex items-center justify-center text-[10px] font-bold text-black"
       style={{ background: "hsl(var(--primary))" }}
     >
       {tag.slice(0, 4).toUpperCase()}

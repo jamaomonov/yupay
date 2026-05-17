@@ -260,7 +260,7 @@ function Logo({ spinning }: { spinning: boolean }) {
       />
       {/* Core mark */}
       <div
-        className="w-16 h-16 rounded-2xl flex items-center justify-center font-black text-[26px] tracking-tighter"
+        className="w-16 h-16 rounded-2xl flex items-center justify-center font-bold text-[26px] tracking-tighter"
         style={{
           background:
             "linear-gradient(140deg, hsl(var(--primary)) 0%, hsl(84 100% 70%) 100%)",
