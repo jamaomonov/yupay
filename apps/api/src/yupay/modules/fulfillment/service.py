@@ -444,6 +444,18 @@ async def _try_settle_order(db: AsyncSession, *, order_id: str) -> None:
         )
     )
 
+    # Telegram push — fire-and-forget *after commit* so a slow / down
+    # Telegram never blocks the saga AND the notification's own session can
+    # see the persisted delivery rows. Notifications swallow their own
+    # errors.
+    from yupay.modules.notifications import api as notifications  # noqa: PLC0415
+
+    order_id = order.id
+    notifications.schedule_after_commit(
+        db,
+        lambda: notifications.notify_order_delivered(order_id),
+    )
+
 
 # ---------- read helpers ----------
 

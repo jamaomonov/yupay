@@ -1,0 +1,261 @@
+"""Notification service: format order events and dispatch through channels.
+
+Lookups (user → telegram link, order → items) happen here so callers only
+need to supply the order id. Each ``notify_*`` function is fire-and-forget:
+it catches all errors so a notification failure can never roll back the
+business transaction that triggered it.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Callable, Coroutine
+from decimal import Decimal
+from typing import Any, Final
+
+from sqlalchemy import event, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session, selectinload
+
+from yupay.core.config import get_settings
+from yupay.core.db import get_session_factory
+from yupay.core.logging import get_logger
+from yupay.modules.fulfillment.models import Delivery
+from yupay.modules.notifications.channels import telegram as tg
+from yupay.modules.orders.models import Order, OrderItem
+from yupay.modules.users.models import TelegramLink
+
+log = get_logger("yupay.notifications.service")
+
+# Cap delivered codes shown inline in the bot — long lists hit Telegram's 4096
+# message-length limit and visually overwhelm the chat.
+_MAX_INLINE_CODES: Final[int] = 5
+
+
+async def _resolve_chat_id(
+    db: AsyncSession, *, user_id: str | None
+) -> tuple[int, str | None] | None:
+    """Look up the Telegram chat id and display name for ``user_id``.
+
+    Returns ``None`` if the user has no linked Telegram account (e.g. guest
+    orders) — callers no-op silently in that case.
+    """
+    if user_id is None:
+        return None
+    stmt = select(TelegramLink).where(TelegramLink.user_id == user_id)
+    link = (await db.execute(stmt)).scalar_one_or_none()
+    if link is None:
+        return None
+    name = link.first_name or link.tg_username
+    return link.tg_user_id, name
+
+
+def _format_amount(value: str, currency: str) -> str:
+    try:
+        amount = Decimal(value)
+    except (ArithmeticError, ValueError):
+        return f"{value} {currency}"
+    # Two-decimal trailing zeros for fiat, three for crypto so 0.123 USDT stays exact.
+    digits = 3 if currency in {"USDT", "USDC"} else 2
+    return f"{amount:.{digits}f} {currency}"
+
+
+def _summarise_order(order: Order) -> str:
+    """One-line product summary, e.g. ``PUBG Mobile · 660 UC × 2``."""
+    items: list[OrderItem] = list(order.items)
+    if not items:
+        return f"Заказ {order.id[:8]}"
+    first = items[0]
+    sku = first.sku
+    product = sku.product if sku is not None else None
+    brand = product.brand if product is not None else None
+    headline_parts = [
+        brand.name if brand else (product.name if product else "Заказ"),
+        sku.denomination or sku.sku_code if sku else "",
+    ]
+    headline = " · ".join(p for p in headline_parts if p)
+    extra = len(items) - 1
+    if extra > 0:
+        headline += f" +{extra}"
+    return headline
+
+
+async def notify_order_paid(order_id: str) -> bool:
+    """Telegram: «Заказ оплачен, передаём в выдачу». Returns delivery success."""
+    async with get_session_factory()() as db:
+        order = await _load_order(db, order_id)
+        if order is None:
+            return False
+        chat = await _resolve_chat_id(db, user_id=order.user_id)
+        if chat is None:
+            return False
+        chat_id, name = chat
+
+    settings = get_settings()
+    token = settings.telegram_bot_token
+    if not token:
+        log.info("notify.skipped.no_token", event="order.paid", order_id=order_id)
+        return False
+
+    summary = _summarise_order(order)
+    amount = _format_amount(order.total_charged, order.currency)
+    text = (
+        f"<b>Оплата получена</b>\n\n"
+        f"{summary}\n"
+        f"Сумма: <b>{amount}</b>\n\n"
+        f"<i>Передаём заказ в выдачу — пришлём код как только будет готово.</i>"
+    )
+    return await tg.send_message(bot_token=token, chat_id=chat_id, text=text)
+
+
+async def notify_order_delivered(order_id: str) -> bool:
+    """Telegram: «Заказ выдан + коды»."""
+    async with get_session_factory()() as db:
+        order = await _load_order(db, order_id)
+        if order is None:
+            return False
+        chat = await _resolve_chat_id(db, user_id=order.user_id)
+        if chat is None:
+            return False
+        chat_id, _name = chat
+
+        # Inline-render up to N voucher codes for the smallest-friction UX.
+        # Real top-up receipts and license keys also surface here.
+        deliveries = (
+            (
+                await db.execute(
+                    select(Delivery)
+                    .join(OrderItem, OrderItem.id == Delivery.order_item_id)
+                    .where(OrderItem.order_id == order_id)
+                    .order_by(Delivery.delivered_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    settings = get_settings()
+    token = settings.telegram_bot_token
+    if not token:
+        return False
+
+    summary = _summarise_order(order)
+    amount = _format_amount(order.total_charged, order.currency)
+
+    code_lines: list[str] = []
+    truncated = 0
+    for d in deliveries[:_MAX_INLINE_CODES]:
+        code = d.artifact.get("code") or d.artifact.get("key")
+        if isinstance(code, str) and code:
+            code_lines.append(f"<code>{code}</code>")
+        elif d.artifact_kind == "topup_receipt":
+            ext = d.artifact.get("external_id")
+            if isinstance(ext, str):
+                code_lines.append(f"Зачислено · <code>{ext}</code>")
+    truncated = max(0, len(deliveries) - _MAX_INLINE_CODES)
+
+    body = f"<b>Заказ выдан</b> ✅\n\n{summary}\nСумма: <b>{amount}</b>"
+    if code_lines:
+        body += "\n\n" + "\n".join(code_lines)
+    if truncated > 0:
+        body += f"\n\n<i>… и ещё {truncated}. Открой приложение, чтобы увидеть все.</i>"
+
+    return await tg.send_message(bot_token=token, chat_id=chat_id, text=body)
+
+
+async def notify_order_failed(order_id: str, *, reason: str | None = None) -> bool:
+    """Telegram: «Не удалось выполнить заказ»."""
+    async with get_session_factory()() as db:
+        order = await _load_order(db, order_id)
+        if order is None:
+            return False
+        chat = await _resolve_chat_id(db, user_id=order.user_id)
+        if chat is None:
+            return False
+        chat_id, _name = chat
+
+    settings = get_settings()
+    token = settings.telegram_bot_token
+    if not token:
+        return False
+
+    summary = _summarise_order(order)
+    body = f"<b>Заказ не выполнен</b>\n\n{summary}"
+    if reason:
+        body += f"\n\n<i>{reason}</i>"
+    body += (
+        "\n\nЕсли деньги были списаны — они вернутся автоматически. "
+        "Напиши в поддержку, если возврат не пришёл за 24 часа."
+    )
+    return await tg.send_message(bot_token=token, chat_id=chat_id, text=body)
+
+
+async def _load_order(db: AsyncSession, order_id: str) -> Order | None:
+    """Eager-load the chain we need to summarise the order in one go."""
+    stmt = (
+        select(Order)
+        .where(Order.id == order_id)
+        .options(
+            selectinload(Order.items)
+            .selectinload(OrderItem.sku)
+        )
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+# ─── fire-and-forget scheduler ───────────────────────────────────────────────
+
+
+def schedule(coro: Coroutine[Any, Any, bool]) -> None:
+    """Run ``coro`` in the background and swallow every error.
+
+    Used for fire-and-forget paths where there's no DB-transaction race —
+    e.g. background reconciliation. Most order-event callers should prefer
+    :func:`schedule_after_commit` so the notification only fires once the
+    business transaction is durable.
+    """
+
+    async def _runner() -> None:
+        try:
+            await coro
+        except Exception as exc:  # pragma: no cover - defensive
+            log.exception("notify.runner.crash", error=str(exc))
+
+    asyncio.create_task(_runner())
+
+
+def schedule_after_commit(
+    db: AsyncSession,
+    coro_factory: Callable[[], Coroutine[Any, Any, bool]],
+) -> None:
+    """Schedule a notification to run **after** the session commits.
+
+    Two problems this solves:
+
+    1. The notification opens its own ``AsyncSession`` to look up
+       ``telegram_links`` etc. If we ``schedule()`` mid-transaction, that
+       fresh session won't see uncommitted state — the user lookup may miss
+       a brand-new ``TelegramLink``, deliveries won't be visible, etc.
+    2. If the parent transaction rolls back, the user must not get a "your
+       order shipped" ping for an order that never persisted.
+
+    Hooks the SQLAlchemy ``after_commit`` event on the underlying sync
+    session. On rollback nothing happens. ``coro_factory`` is a zero-arg
+    callable so the coroutine isn't materialised until commit succeeds —
+    avoiding "coroutine was never awaited" warnings on rollback paths.
+    """
+
+    sync_session = db.sync_session
+
+    @event.listens_for(sync_session, "after_commit", once=True)
+    def _fire(_s: Session) -> None:
+        schedule(coro_factory())
+
+
+__all__ = [
+    "notify_order_delivered",
+    "notify_order_failed",
+    "notify_order_paid",
+    "schedule",
+    "schedule_after_commit",
+]

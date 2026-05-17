@@ -186,6 +186,21 @@ async def _mark_payment_succeeded(
         await db.flush()
         await fulfillment_svc.start_for_order(db, order_id=order.id)
 
+        # Telegram push. If mock-fulfilment already delivered synchronously,
+        # the ``delivered`` notification is enough — skip the noisy "paid"
+        # confirmation. Long-running real fulfilment instead leaves the order
+        # in ``paid`` / ``fulfilling`` here, so the user gets an immediate
+        # "received" ping while we wait.
+        from yupay.modules.notifications import api as notifications  # noqa: PLC0415
+
+        await db.refresh(order)
+        if order.status != "delivered":
+            order_id = order.id
+            notifications.schedule_after_commit(
+                db,
+                lambda: notifications.notify_order_paid(order_id),
+            )
+
 
 async def _mark_payment_terminal(
     db: AsyncSession,
