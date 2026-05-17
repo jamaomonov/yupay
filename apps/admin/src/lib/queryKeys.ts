@@ -85,6 +85,10 @@ export const qk = {
       filters.until ?? null,
     ] as const,
 
+  // stats
+  dashboard: (windowHours: number) =>
+    ["admin", "stats", "dashboard", windowHours] as const,
+
   // wallet
   walletUser: (userId: string) => ["admin", "wallet", "user", userId] as const,
 

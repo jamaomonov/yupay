@@ -1,26 +1,405 @@
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+import {
+  AlertTriangle,
+  Boxes,
+  CheckCircle2,
+  CircleDollarSign,
+  Clock,
+  CreditCard,
+  Package,
+  Receipt,
+  Truck,
+} from "lucide-react";
+
+import { apiGet } from "@/lib/api";
+import { qk } from "@/lib/queryKeys";
 import { useAuthStore } from "@/features/auth/authStore";
+
+interface DashboardOut {
+  generated_at: string;
+  window_hours: number;
+  orders_in_window: number;
+  orders_delivered_in_window: number;
+  orders_failed_in_window: number;
+  revenue_in_window: { currency: string; amount: string }[];
+  status_breakdown: { status: string; count: number }[];
+  in_flight_tasks: number;
+  stuck_payments: number;
+  pending_orders: number;
+  inventory: {
+    available: number;
+    reserved: number;
+    issued: number;
+    voided: number;
+    low_stock_skus: number;
+  };
+  orders_last_7_days: { date: string; count: number; revenue_usd: string }[];
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  pending_payment: "Ждут оплаты",
+  paid: "Оплачено",
+  fulfilling: "В работе",
+  fulfilled: "Готово",
+  delivered: "Доставлено",
+  cancelled: "Отменено",
+  expired: "Истекло",
+  refunded: "Возврат",
+};
+
+const STATUS_TONE: Record<string, string> = {
+  pending_payment: "bg-amber-100 text-amber-700",
+  paid: "bg-sky-100 text-sky-700",
+  fulfilling: "bg-violet-100 text-violet-700",
+  fulfilled: "bg-emerald-100 text-emerald-700",
+  delivered: "bg-emerald-100 text-emerald-800",
+  cancelled: "bg-zinc-100 text-zinc-600",
+  expired: "bg-zinc-100 text-zinc-600",
+  refunded: "bg-rose-100 text-rose-700",
+};
 
 export function DashboardPage() {
   const me = useAuthStore((s) => s.me);
+  const q = useQuery<DashboardOut>({
+    queryKey: qk.dashboard(24),
+    queryFn: () =>
+      apiGet<DashboardOut>("/api/v1/admin/stats/dashboard?window_hours=24"),
+    refetchInterval: 30_000,
+  });
+
+  const d = q.data;
+
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Привет, {me?.display_name ?? "админ"} 👋</h1>
-        <p className="mt-1 text-sm text-[--color-muted]">
-          Здесь будут метрики: заказы за день, выручка, проваленные платежи, остатки кодов.
-        </p>
+      <header className="flex items-baseline justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">
+            Привет, {me?.display_name ?? "админ"} 👋
+          </h1>
+          <p className="mt-1 text-sm text-[--color-muted]">
+            Сводка за последние 24 часа. Обновляется автоматически каждые 30 сек.
+          </p>
+        </div>
+        {d && (
+          <span className="text-xs text-[--color-muted]">
+            обновлено{" "}
+            {new Date(d.generated_at).toLocaleTimeString("ru", {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            })}
+          </span>
+        )}
       </header>
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {["Заказы (24ч)", "Выручка (24ч)", "Stock", "Refunds"].map((label) => (
-          <article
-            key={label}
-            className="rounded-lg border bg-[--color-bg] p-4"
-          >
-            <p className="text-sm text-[--color-muted]">{label}</p>
-            <p className="mt-2 text-2xl font-semibold">—</p>
-          </article>
-        ))}
+
+      {q.isError && (
+        <p className="text-sm text-[--color-danger]">
+          Не удалось загрузить метрики.
+        </p>
+      )}
+
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Kpi
+          icon={Receipt}
+          label="Заказы (24ч)"
+          value={d?.orders_in_window ?? 0}
+          accent
+        />
+        <Kpi
+          icon={CheckCircle2}
+          label="Доставлено"
+          value={d?.orders_delivered_in_window ?? 0}
+          tone="success"
+        />
+        <Kpi
+          icon={AlertTriangle}
+          label="Отменено / истекло"
+          value={d?.orders_failed_in_window ?? 0}
+          tone={(d?.orders_failed_in_window ?? 0) > 0 ? "warn" : "muted"}
+        />
+        <Kpi
+          icon={CircleDollarSign}
+          label="Выручка"
+          value={
+            d && d.revenue_in_window.length > 0
+              ? d.revenue_in_window
+                  .map(
+                    (r) =>
+                      `${Number.parseFloat(r.amount).toFixed(2)} ${r.currency}`,
+                  )
+                  .join(" · ")
+              : "—"
+          }
+          accent
+        />
       </section>
+
+      <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <AlertCard
+          icon={CreditCard}
+          label="Висящие платежи"
+          hint="pending дольше 1 часа"
+          value={d?.stuck_payments ?? 0}
+          tone={(d?.stuck_payments ?? 0) > 0 ? "warn" : "muted"}
+          to="/payments"
+        />
+        <AlertCard
+          icon={Clock}
+          label="Ждут оплаты"
+          hint="заказы старше 5 минут без платежа"
+          value={d?.pending_orders ?? 0}
+          tone={(d?.pending_orders ?? 0) > 0 ? "warn" : "muted"}
+          to="/orders"
+        />
+        <AlertCard
+          icon={Truck}
+          label="В работе"
+          hint="fulfilment task pending / in_progress"
+          value={d?.in_flight_tasks ?? 0}
+          to="/fulfillment"
+        />
+      </section>
+
+      <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <article className="rounded-lg border bg-[--color-bg] p-4">
+          <header className="mb-3 flex items-baseline justify-between">
+            <h2 className="text-sm font-semibold">Заказы за 7 дней</h2>
+            <span className="text-xs text-[--color-muted]">
+              {d?.orders_last_7_days.reduce((s, b) => s + b.count, 0) ?? 0}{" "}
+              всего
+            </span>
+          </header>
+          {d ? (
+            <DayBars buckets={d.orders_last_7_days} />
+          ) : (
+            <div className="h-32 animate-pulse rounded bg-[--color-subtle]" />
+          )}
+        </article>
+
+        <article className="rounded-lg border bg-[--color-bg] p-4">
+          <header className="mb-3 flex items-baseline justify-between">
+            <h2 className="text-sm font-semibold">Статусы за 24ч</h2>
+            <Link
+              to="/orders"
+              className="text-xs text-[--color-muted] hover:underline"
+            >
+              открыть заказы →
+            </Link>
+          </header>
+          {d?.status_breakdown.length === 0 ? (
+            <p className="text-sm text-[--color-muted]">За окно ничего нет.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {(d?.status_breakdown ?? []).map((s) => (
+                <li
+                  key={s.status}
+                  className="flex items-center justify-between rounded-md px-3 py-1.5"
+                  style={{ background: "var(--color-subtle)" }}
+                >
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                      STATUS_TONE[s.status] ?? "bg-zinc-100 text-zinc-700"
+                    }`}
+                  >
+                    {STATUS_LABEL[s.status] ?? s.status}
+                  </span>
+                  <span className="font-mono text-sm">{s.count}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </article>
+      </section>
+
+      <section className="rounded-lg border bg-[--color-bg] p-4">
+        <header className="mb-3 flex items-baseline justify-between">
+          <div className="flex items-center gap-2">
+            <Boxes className="size-4 text-[--color-muted]" />
+            <h2 className="text-sm font-semibold">Склад</h2>
+          </div>
+          <Link
+            to="/inventory"
+            className="text-xs text-[--color-muted] hover:underline"
+          >
+            открыть склад →
+          </Link>
+        </header>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          <MiniStat
+            label="Доступно"
+            value={d?.inventory.available ?? 0}
+            tone="success"
+          />
+          <MiniStat label="Резерв" value={d?.inventory.reserved ?? 0} />
+          <MiniStat label="Выдано" value={d?.inventory.issued ?? 0} />
+          <MiniStat
+            label="Воид"
+            value={d?.inventory.voided ?? 0}
+            tone="muted"
+          />
+          <MiniStat
+            icon={Package}
+            label="SKU без запаса"
+            value={d?.inventory.low_stock_skus ?? 0}
+            tone={(d?.inventory.low_stock_skus ?? 0) > 0 ? "warn" : "muted"}
+          />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function Kpi({
+  icon: Icon,
+  label,
+  value,
+  accent,
+  tone,
+}: {
+  icon: typeof Receipt;
+  label: string;
+  value: number | string;
+  accent?: boolean;
+  tone?: "warn" | "success" | "muted";
+}) {
+  const valueCls = accent
+    ? "text-[--color-brand]"
+    : tone === "warn"
+      ? "text-[--color-danger]"
+      : tone === "success"
+        ? "text-emerald-600"
+        : tone === "muted"
+          ? "text-[--color-muted]"
+          : "text-[--color-fg]";
+  return (
+    <article className="rounded-lg border bg-[--color-bg] p-4">
+      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-[--color-muted]">
+        <Icon className="size-3.5" />
+        {label}
+      </div>
+      <div className={`mt-2 text-2xl font-semibold ${valueCls}`}>{value}</div>
+    </article>
+  );
+}
+
+function AlertCard({
+  icon: Icon,
+  label,
+  hint,
+  value,
+  tone = "default",
+  to,
+}: {
+  icon: typeof CreditCard;
+  label: string;
+  hint: string;
+  value: number;
+  tone?: "warn" | "muted" | "default";
+  to?: string;
+}) {
+  const inner = (
+    <article
+      className="rounded-lg border bg-[--color-bg] p-4 transition-colors hover:bg-[--color-subtle]/40"
+      style={
+        tone === "warn" && value > 0
+          ? {
+              borderColor:
+                "color-mix(in oklab, var(--color-danger) 50%, var(--color-border))",
+            }
+          : undefined
+      }
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Icon
+            className={`size-4 ${
+              tone === "warn" && value > 0
+                ? "text-[--color-danger]"
+                : "text-[--color-muted]"
+            }`}
+          />
+          <span className="text-sm font-semibold">{label}</span>
+        </div>
+        <span
+          className={`text-xl font-bold ${
+            tone === "warn" && value > 0 ? "text-[--color-danger]" : ""
+          }`}
+        >
+          {value}
+        </span>
+      </div>
+      <p className="mt-1 text-xs text-[--color-muted]">{hint}</p>
+    </article>
+  );
+  return to ? <Link to={to}>{inner}</Link> : inner;
+}
+
+function MiniStat({
+  icon: Icon,
+  label,
+  value,
+  tone = "default",
+}: {
+  icon?: typeof Package;
+  label: string;
+  value: number;
+  tone?: "warn" | "success" | "muted" | "default";
+}) {
+  const valueCls =
+    tone === "warn"
+      ? "text-[--color-danger]"
+      : tone === "success"
+        ? "text-emerald-600"
+        : tone === "muted"
+          ? "text-[--color-muted]"
+          : "text-[--color-fg]";
+  return (
+    <div className="rounded-md border bg-[--color-bg] p-3">
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-[--color-muted]">
+        {Icon && <Icon className="size-3" />}
+        {label}
+      </div>
+      <div className={`mt-1 text-xl font-semibold ${valueCls}`}>{value}</div>
+    </div>
+  );
+}
+
+function DayBars({
+  buckets,
+}: {
+  buckets: { date: string; count: number; revenue_usd: string }[];
+}) {
+  const max = Math.max(...buckets.map((b) => b.count), 1);
+  return (
+    <div className="flex h-32 items-end gap-2">
+      {buckets.map((b) => {
+        const heightPct =
+          b.count === 0 ? 4 : Math.max(8, (b.count / max) * 100);
+        return (
+          <div
+            key={b.date}
+            className="group flex flex-1 flex-col items-center gap-1"
+          >
+            <div
+              className="w-full rounded-t flex items-end justify-center text-[10px] font-mono"
+              style={{
+                height: `${heightPct}%`,
+                background:
+                  b.count === 0
+                    ? "var(--color-border)"
+                    : "color-mix(in oklab, var(--color-brand) 70%, transparent)",
+                color: b.count === 0 ? "var(--color-muted)" : "#000",
+              }}
+            >
+              {b.count > 0 && <span className="pb-1">{b.count}</span>}
+            </div>
+            <span className="text-[10px] text-[--color-muted]">
+              {b.date.slice(5).replace("-", "/")}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
