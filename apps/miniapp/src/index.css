@@ -146,7 +146,7 @@
   --chart-4: 330 100% 60%;
   --chart-5: 45 100% 60%;
 
-  --app-font-sans: 'Inter', sans-serif;
+  --app-font-sans: 'Rubik', system-ui, sans-serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: Menlo, monospace;
   --radius: 0.75rem;
