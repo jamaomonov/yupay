@@ -130,23 +130,27 @@ export interface CategoryListItem {
   icon: string | null;
 }
 
+/** Reusable query options for the categories list. Used by ``useCategoriesList``
+ *  and by the BootstrapGate prefetch so the cache shape matches the hook. */
+export const categoriesQueryOptions = {
+  queryKey: ["catalog", "categories"] as const,
+  queryFn: async (): Promise<CategoryListItem[]> => {
+    const data = await apiGet<{ items: CategoryApi[] }>(
+      "/api/v1/catalog/categories",
+      true,
+    );
+    return data.items.map((c) => ({
+      id: c.id,
+      slug: c.slug,
+      name: c.name,
+      icon: c.icon,
+    }));
+  },
+  staleTime: 5 * 60_000,
+};
+
 export function useCategoriesList() {
-  return useQuery<CategoryListItem[]>({
-    queryKey: ["catalog", "categories"],
-    queryFn: async () => {
-      const data = await apiGet<{ items: CategoryApi[] }>(
-        "/api/v1/catalog/categories",
-        true,
-      );
-      return data.items.map((c) => ({
-        id: c.id,
-        slug: c.slug,
-        name: c.name,
-        icon: c.icon,
-      }));
-    },
-    staleTime: 5 * 60_000,
-  });
+  return useQuery<CategoryListItem[]>(categoriesQueryOptions);
 }
 
 export interface Package {
@@ -185,18 +189,21 @@ function skuToPackage(sku: SkuApi): Package {
 
 // --- queries --------------------------------------------------------------
 
+/** Reusable query options for the brands list. */
+export const brandsQueryOptions = {
+  queryKey: ["catalog", "brands"] as const,
+  queryFn: async (): Promise<Game[]> => {
+    const data = await apiGet<{ items: BrandApi[] }>(
+      "/api/v1/catalog/brands",
+      true,
+    );
+    return data.items.map((b) => brandToGame(b));
+  },
+  staleTime: 5 * 60_000,
+};
+
 export function useGames() {
-  return useQuery<Game[]>({
-    queryKey: ["catalog", "brands"],
-    queryFn: async () => {
-      const data = await apiGet<{ items: BrandApi[] }>(
-        "/api/v1/catalog/brands",
-        true,
-      );
-      return data.items.map((b) => brandToGame(b));
-    },
-    staleTime: 5 * 60_000,
-  });
+  return useQuery<Game[]>(brandsQueryOptions);
 }
 
 export interface BrandSummary {

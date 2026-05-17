@@ -16,12 +16,16 @@ import { motion, AnimatePresence } from "framer-motion";
 
 import { bootstrapAuth } from "@/lib/auth";
 import { ApiError, apiGet, getAccessToken } from "@/lib/api";
+import { brandsQueryOptions, categoriesQueryOptions } from "@/lib/catalog";
 
 type Phase = "booting" | "ready" | "error";
 
 interface PrefetchSpec {
   key: readonly unknown[];
-  /** Returns the query result; failures are swallowed individually. */
+  /** Returns the query result; failures are swallowed individually. The
+   *  returned value MUST match the shape the corresponding ``useQuery``
+   *  hook expects — otherwise the cache will short-circuit the hook with
+   *  the wrong type. */
   fetch: () => Promise<unknown>;
   /** When false, skip this prefetch (e.g. needs auth and we're anonymous). */
   required?: boolean;
@@ -79,25 +83,13 @@ export function BootstrapGate({ children }: { children: ReactNode }) {
 
       const specs: PrefetchSpec[] = [
         {
-          key: ["catalog", "brands"],
-          fetch: async () => {
-            const data = await apiGet<{ items: unknown[] }>(
-              "/api/v1/catalog/brands",
-              true,
-            );
-            return data.items;
-          },
+          key: brandsQueryOptions.queryKey,
+          fetch: brandsQueryOptions.queryFn,
           required: true,
         },
         {
-          key: ["catalog", "categories"],
-          fetch: async () => {
-            const data = await apiGet<{ items: unknown[] }>(
-              "/api/v1/catalog/categories",
-              true,
-            );
-            return data.items;
-          },
+          key: categoriesQueryOptions.queryKey,
+          fetch: categoriesQueryOptions.queryFn,
           required: true,
         },
         {
