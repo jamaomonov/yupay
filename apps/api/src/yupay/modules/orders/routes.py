@@ -183,10 +183,20 @@ async def admin_list_orders(
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
     status_filter: Annotated[str | None, "status"] = None,
+    limit: int = 50,
+    offset: int = 0,
 ) -> OrderAdminListOut:
     """Admin order list with optional status filter."""
-    orders = await svc.list_orders_admin(db, status_filter=status_filter)
-    return OrderAdminListOut(items=[_to_admin_order_out(o) for o in orders])
+    orders, total = await svc.list_orders_admin(
+        db,
+        status_filter=status_filter,
+        limit=max(1, min(limit, 500)),
+        offset=max(0, offset),
+    )
+    return OrderAdminListOut(
+        items=[_to_admin_order_out(o) for o in orders],
+        total=total,
+    )
 
 
 @admin_router.get("/{order_id}", response_model=OrderAdminOut)

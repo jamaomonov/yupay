@@ -5,8 +5,11 @@ import { Button, Input } from "@yupay/ui";
 
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable, type Column } from "@/components/DataTable";
+import { Pagination } from "@/components/Pagination";
 import { ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
+
+const PAGE_SIZE = 50;
 
 import type { TaskAdminOut, TaskListOut, TaskStatus } from "./types";
 
@@ -24,22 +27,28 @@ export function FulfillmentPage() {
   const [orderId, setOrderId] = useState("");
   const [supplier, setSupplier] = useState("");
   const [status, setStatus] = useState<TaskStatus | "">("");
+  const [offset, setOffset] = useState(0);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const tasksQuery = useQuery<TaskListOut>({
-    queryKey: qk.fulfillmentTasks({
-      orderId: orderId || null,
-      supplier: supplier || null,
-      status: status || null,
-    }),
+    queryKey: [
+      ...qk.fulfillmentTasks({
+        orderId: orderId || null,
+        supplier: supplier || null,
+        status: status || null,
+      }),
+      "page",
+      offset,
+    ],
     queryFn: () => {
       const params = new URLSearchParams();
       if (orderId) params.set("order_id", orderId);
       if (supplier) params.set("supplier", supplier);
       if (status) params.set("status_filter", status);
-      params.set("limit", "100");
+      params.set("limit", String(PAGE_SIZE));
+      params.set("offset", String(offset));
       return apiGet<TaskListOut>(
         `/api/v1/admin/fulfillment/tasks?${params.toString()}`,
       );
@@ -98,18 +107,21 @@ export function FulfillmentPage() {
         <code className="text-xs">{t.supplier}</code>
       ),
       className: "w-32",
+      sortAccessor: (t) => t.supplier,
     },
     {
       key: "status",
       header: "Статус",
       render: (t) => <StatusBadge status={t.status} />,
       className: "w-32",
+      sortAccessor: (t) => t.status,
     },
     {
       key: "attempts",
       header: "Попыток",
       render: (t) => t.attempts_count,
       className: "w-20 text-center",
+      sortAccessor: (t) => t.attempts_count,
     },
     {
       key: "error",
@@ -171,7 +183,10 @@ export function FulfillmentPage() {
           </label>
           <Input
             value={orderId}
-            onChange={(e) => setOrderId(e.target.value)}
+            onChange={(e) => {
+              setOrderId(e.target.value);
+              setOffset(0);
+            }}
             placeholder="UUID"
             className="mt-1 font-mono text-xs"
           />
@@ -182,7 +197,10 @@ export function FulfillmentPage() {
           </label>
           <Input
             value={supplier}
-            onChange={(e) => setSupplier(e.target.value)}
+            onChange={(e) => {
+              setSupplier(e.target.value);
+              setOffset(0);
+            }}
             placeholder="inventory / mock / steam / ..."
             className="mt-1 text-sm"
           />
@@ -193,7 +211,10 @@ export function FulfillmentPage() {
           </label>
           <select
             value={status}
-            onChange={(e) => setStatus(e.target.value as TaskStatus | "")}
+            onChange={(e) => {
+              setStatus(e.target.value as TaskStatus | "");
+              setOffset(0);
+            }}
             className="mt-1 h-10 w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 text-sm"
           >
             {STATUSES.map((s) => (
@@ -218,6 +239,13 @@ export function FulfillmentPage() {
         rowKey={(t) => t.id}
         empty="Задач не нашлось."
         onRowClick={(t) => setExpanded(expanded === t.id ? null : t.id)}
+      />
+
+      <Pagination
+        total={tasksQuery.data?.total ?? 0}
+        limit={PAGE_SIZE}
+        offset={offset}
+        onPageChange={setOffset}
       />
 
       {expanded && (

@@ -60,6 +60,7 @@ export interface OrderAdminOut {
 
 export interface OrderAdminListOut {
   items: OrderAdminOut[];
+  total: number;
 }
 
 export const STATUS_LABEL: Record<OrderStatus, string> = {

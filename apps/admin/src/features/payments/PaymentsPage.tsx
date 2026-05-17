@@ -5,8 +5,11 @@ import { Button, Input } from "@yupay/ui";
 
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable, type Column } from "@/components/DataTable";
+import { Pagination } from "@/components/Pagination";
 import { ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
+
+const PAGE_SIZE = 50;
 
 import type {
   PaymentAdminListOut,
@@ -34,20 +37,27 @@ export function PaymentsPage() {
   const [orderId, setOrderId] = useState("");
   const [provider, setProvider] = useState("");
   const [status, setStatus] = useState<PaymentStatus | "">("");
+  const [offset, setOffset] = useState(0);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const listQuery = useQuery<PaymentAdminListOut>({
-    queryKey: qk.payments({
-      orderId: orderId || null,
-      provider: provider || null,
-      status: status || null,
-    }),
+    queryKey: [
+      ...qk.payments({
+        orderId: orderId || null,
+        provider: provider || null,
+        status: status || null,
+      }),
+      "page",
+      offset,
+    ],
     queryFn: () => {
       const params = new URLSearchParams();
       if (orderId) params.set("order_id", orderId);
       if (provider) params.set("provider", provider);
       if (status) params.set("status_filter", status);
+      params.set("limit", String(PAGE_SIZE));
+      params.set("offset", String(offset));
       return apiGet<PaymentAdminListOut>(
         `/api/v1/admin/payments?${params.toString()}`,
       );
@@ -112,12 +122,14 @@ export function PaymentsPage() {
       header: "Провайдер",
       render: (p) => <code className="text-xs">{p.provider}</code>,
       className: "w-28",
+      sortAccessor: (p) => p.provider,
     },
     {
       key: "status",
       header: "Статус",
       render: (p) => <StatusBadge status={p.status} />,
       className: "w-36",
+      sortAccessor: (p) => p.status,
     },
     {
       key: "amount",
@@ -128,6 +140,7 @@ export function PaymentsPage() {
         </span>
       ),
       className: "w-32 text-right",
+      sortAccessor: (p) => Number.parseFloat(p.amount) || 0,
     },
     {
       key: "created",
@@ -141,6 +154,7 @@ export function PaymentsPage() {
           minute: "2-digit",
         }),
       className: "w-36",
+      sortAccessor: (p) => new Date(p.created_at),
     },
     {
       key: "actions",
@@ -214,7 +228,10 @@ export function PaymentsPage() {
           <label className="text-xs uppercase text-[--color-muted]">Order ID</label>
           <Input
             value={orderId}
-            onChange={(e) => setOrderId(e.target.value)}
+            onChange={(e) => {
+              setOrderId(e.target.value);
+              setOffset(0);
+            }}
             placeholder="UUID"
             className="mt-1 font-mono text-xs"
           />
@@ -225,7 +242,10 @@ export function PaymentsPage() {
           </label>
           <select
             value={provider}
-            onChange={(e) => setProvider(e.target.value)}
+            onChange={(e) => {
+              setProvider(e.target.value);
+              setOffset(0);
+            }}
             className="mt-1 h-10 w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 text-sm"
           >
             {PROVIDERS.map((p) => (
@@ -239,7 +259,10 @@ export function PaymentsPage() {
           <label className="text-xs uppercase text-[--color-muted]">Статус</label>
           <select
             value={status}
-            onChange={(e) => setStatus(e.target.value as PaymentStatus | "")}
+            onChange={(e) => {
+              setStatus(e.target.value as PaymentStatus | "");
+              setOffset(0);
+            }}
             className="mt-1 h-10 w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 text-sm"
           >
             {STATUSES.map((s) => (
@@ -265,6 +288,13 @@ export function PaymentsPage() {
         columns={columns}
         rowKey={(p) => p.id}
         empty="Платежей нет."
+      />
+
+      <Pagination
+        total={listQuery.data?.total ?? 0}
+        limit={PAGE_SIZE}
+        offset={offset}
+        onPageChange={setOffset}
       />
     </div>
   );

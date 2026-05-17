@@ -60,6 +60,7 @@ class FulfillmentTaskOut(BaseModel):
 
 class FulfillmentTaskListOut(BaseModel):
     items: list[FulfillmentTaskOut]
+    total: int = 0
 
 
 __all__ = [

@@ -159,14 +159,21 @@ async def admin_list_payments(
     order_id: str | None = None,
     provider: str | None = None,
     status_filter: Annotated[str | None, "status"] = None,
+    limit: int = 50,
+    offset: int = 0,
 ) -> PaymentAdminListOut:
-    rows = await svc.list_payments_admin(
+    rows, total = await svc.list_payments_admin(
         db,
         order_id=order_id,
         provider=provider,
         status_filter=status_filter,
+        limit=max(1, min(limit, 500)),
+        offset=max(0, offset),
     )
-    return PaymentAdminListOut(items=[PaymentAdminOut.model_validate(p) for p in rows])
+    return PaymentAdminListOut(
+        items=[PaymentAdminOut.model_validate(p) for p in rows],
+        total=total,
+    )
 
 
 @admin_router.get("/{payment_id}", response_model=PaymentAdminOut)

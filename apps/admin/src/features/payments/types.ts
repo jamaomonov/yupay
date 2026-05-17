@@ -33,4 +33,5 @@ export interface PaymentAdminOut {
 
 export interface PaymentAdminListOut {
   items: PaymentAdminOut[];
+  total: number;
 }

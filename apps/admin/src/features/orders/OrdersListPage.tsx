@@ -7,8 +7,11 @@ import { Button, Input } from "@yupay/ui";
 
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable, type Column } from "@/components/DataTable";
+import { Pagination } from "@/components/Pagination";
 import { ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
+
+const PAGE_SIZE = 50;
 
 import {
   type OrderAdminListOut,
@@ -35,15 +38,21 @@ export function OrdersListPage() {
   const navigate = useNavigate();
   const [status, setStatus] = useState<OrderStatus | "">("");
   const [query, setQuery] = useState("");
+  const [offset, setOffset] = useState(0);
 
   const ordersQuery = useQuery<OrderAdminListOut>({
-    queryKey: qk.orders({ status: status || null }),
+    queryKey: [
+      ...qk.orders({ status: status || null }),
+      "page",
+      offset,
+    ],
     queryFn: () => {
       const params = new URLSearchParams();
       if (status) params.set("status_filter", status);
-      const qs = params.toString();
+      params.set("limit", String(PAGE_SIZE));
+      params.set("offset", String(offset));
       return apiGet<OrderAdminListOut>(
-        `/api/v1/admin/orders${qs ? `?${qs}` : ""}`,
+        `/api/v1/admin/orders?${params.toString()}`,
       );
     },
     refetchInterval: 10_000,
@@ -157,18 +166,21 @@ export function OrdersListPage() {
         </span>
       ),
       className: "w-32 text-right",
+      sortAccessor: (o) => Number.parseFloat(o.total_charged) || 0,
     },
     {
       key: "status",
       header: "Статус",
       render: (o) => <StatusBadge status={o.status} />,
       className: "w-40",
+      sortAccessor: (o) => o.status,
     },
     {
       key: "created",
       header: "Создан",
       render: (o) => formatDate(o.created_at),
       className: "w-36",
+      sortAccessor: (o) => new Date(o.created_at),
     },
     {
       key: "delivered",
@@ -238,7 +250,10 @@ export function OrdersListPage() {
         </div>
         <select
           value={status}
-          onChange={(e) => setStatus(e.target.value as OrderStatus | "")}
+          onChange={(e) => {
+            setStatus(e.target.value as OrderStatus | "");
+            setOffset(0);
+          }}
           className="h-10 rounded-md border border-[--color-border] bg-[--color-bg] px-3 text-sm"
         >
           {STATUS_FILTERS.map((s) => (
@@ -277,6 +292,13 @@ export function OrdersListPage() {
             ? "Под фильтр / поиск ничего не подошло."
             : "Заказов пока нет."
         }
+      />
+
+      <Pagination
+        total={ordersQuery.data?.total ?? 0}
+        limit={PAGE_SIZE}
+        offset={offset}
+        onPageChange={setOffset}
       />
     </div>
   );

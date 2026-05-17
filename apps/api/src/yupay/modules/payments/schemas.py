@@ -72,6 +72,7 @@ class PaymentListOut(BaseModel):
 
 class PaymentAdminListOut(BaseModel):
     items: list[PaymentAdminOut]
+    total: int = 0
 
 
 class SimulateWebhookIn(BaseModel):

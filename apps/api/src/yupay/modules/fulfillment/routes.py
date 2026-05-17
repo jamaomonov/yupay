@@ -97,12 +97,20 @@ async def admin_list_tasks(
     order_id: str | None = None,
     supplier: str | None = None,
     status_filter: Annotated[str | None, "status"] = None,
+    limit: int = 50,
+    offset: int = 0,
 ) -> FulfillmentTaskListOut:
-    rows = await svc.list_tasks_admin(
-        db, order_id=order_id, supplier=supplier, status_filter=status_filter
+    rows, total = await svc.list_tasks_admin(
+        db,
+        order_id=order_id,
+        supplier=supplier,
+        status_filter=status_filter,
+        limit=max(1, min(limit, 500)),
+        offset=max(0, offset),
     )
     return FulfillmentTaskListOut(
-        items=[FulfillmentTaskOut.model_validate(r) for r in rows]
+        items=[FulfillmentTaskOut.model_validate(r) for r in rows],
+        total=total,
     )
 
 

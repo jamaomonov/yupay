@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -467,20 +467,35 @@ async def list_tasks_admin(
     supplier: str | None = None,
     status_filter: str | None = None,
     limit: int = 50,
-) -> list[FulfillmentTask]:
-    stmt = (
-        select(FulfillmentTask)
-        .options(selectinload(FulfillmentTask.attempts))
-        .order_by(FulfillmentTask.created_at.desc())
-        .limit(limit)
+    offset: int = 0,
+) -> tuple[list[FulfillmentTask], int]:
+    """Paged admin listing. Returns ``(rows, total_matching_filter)``."""
+    base = select(FulfillmentTask).options(
+        selectinload(FulfillmentTask.attempts)
     )
+    count_stmt = select(func.count()).select_from(FulfillmentTask)
     if order_id is not None:
-        stmt = stmt.where(FulfillmentTask.order_id == order_id)
+        base = base.where(FulfillmentTask.order_id == order_id)
+        count_stmt = count_stmt.where(FulfillmentTask.order_id == order_id)
     if supplier is not None:
-        stmt = stmt.where(FulfillmentTask.supplier == supplier)
+        base = base.where(FulfillmentTask.supplier == supplier)
+        count_stmt = count_stmt.where(FulfillmentTask.supplier == supplier)
     if status_filter is not None:
-        stmt = stmt.where(FulfillmentTask.status == status_filter)
-    return list((await db.execute(stmt)).scalars().all())
+        base = base.where(FulfillmentTask.status == status_filter)
+        count_stmt = count_stmt.where(FulfillmentTask.status == status_filter)
+    rows = list(
+        (
+            await db.execute(
+                base.order_by(FulfillmentTask.created_at.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    total = int((await db.execute(count_stmt)).scalar_one() or 0)
+    return rows, total
 
 
 async def get_task_admin(db: AsyncSession, task_id: str) -> FulfillmentTask:

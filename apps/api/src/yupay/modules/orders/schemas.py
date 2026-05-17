@@ -125,6 +125,7 @@ class OrderAdminOut(OrderOut):
 
 class OrderAdminListOut(BaseModel):
     items: list[OrderAdminOut]
+    total: int = 0
 
 
 __all__ = [

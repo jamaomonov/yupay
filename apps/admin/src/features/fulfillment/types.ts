@@ -31,4 +31,5 @@ export interface TaskAdminOut {
 
 export interface TaskListOut {
   items: TaskAdminOut[];
+  total: number;
 }

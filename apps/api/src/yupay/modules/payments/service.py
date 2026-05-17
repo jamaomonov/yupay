@@ -11,7 +11,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -540,20 +540,31 @@ async def list_payments_admin(
     provider: str | None = None,
     status_filter: str | None = None,
     limit: int = 50,
-) -> list[Payment]:
-    stmt = (
-        select(Payment)
-        .options(selectinload(Payment.attempts))
-        .order_by(Payment.created_at.desc())
-        .limit(limit)
-    )
+    offset: int = 0,
+) -> tuple[list[Payment], int]:
+    """Paged admin listing. Returns ``(rows, total_matching_filter)``."""
+    base = select(Payment).options(selectinload(Payment.attempts))
+    count_stmt = select(func.count()).select_from(Payment)
     if order_id is not None:
-        stmt = stmt.where(Payment.order_id == order_id)
+        base = base.where(Payment.order_id == order_id)
+        count_stmt = count_stmt.where(Payment.order_id == order_id)
     if provider is not None:
-        stmt = stmt.where(Payment.provider == provider)
+        base = base.where(Payment.provider == provider)
+        count_stmt = count_stmt.where(Payment.provider == provider)
     if status_filter is not None:
-        stmt = stmt.where(Payment.status == status_filter)
-    return list((await db.execute(stmt)).scalars().all())
+        base = base.where(Payment.status == status_filter)
+        count_stmt = count_stmt.where(Payment.status == status_filter)
+    rows = list(
+        (
+            await db.execute(
+                base.order_by(Payment.created_at.desc()).limit(limit).offset(offset)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    total = int((await db.execute(count_stmt)).scalar_one() or 0)
+    return rows, total
 
 
 __all__ = [

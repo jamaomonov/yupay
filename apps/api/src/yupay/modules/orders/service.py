@@ -8,7 +8,7 @@ from datetime import timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -310,16 +310,27 @@ async def list_orders_admin(
     *,
     status_filter: str | None = None,
     limit: int = 50,
-) -> list[Order]:
-    stmt = (
-        select(Order)
-        .options(*_order_load_options(), selectinload(Order.events))
-        .order_by(Order.created_at.desc())
-        .limit(limit)
+    offset: int = 0,
+) -> tuple[list[Order], int]:
+    """Paged admin listing. Returns ``(rows, total_matching_filter)``."""
+    base = select(Order).options(
+        *_order_load_options(), selectinload(Order.events)
     )
+    count_stmt = select(func.count()).select_from(Order)
     if status_filter is not None:
-        stmt = stmt.where(Order.status == status_filter)
-    return list((await db.execute(stmt)).scalars().all())
+        base = base.where(Order.status == status_filter)
+        count_stmt = count_stmt.where(Order.status == status_filter)
+    rows = list(
+        (
+            await db.execute(
+                base.order_by(Order.created_at.desc()).limit(limit).offset(offset)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    total = int((await db.execute(count_stmt)).scalar_one() or 0)
+    return rows, total
 
 
 async def get_order_admin(db: AsyncSession, order_id: str) -> Order:
