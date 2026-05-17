@@ -23,11 +23,14 @@ export type OrderStatus =
   | "expired"
   | "refunded";
 
+export type ProductKind = "top_up" | "voucher";
+
 export interface OrderItemDisplay {
   brand_slug: string;
   brand_name: string;
   product_slug: string;
   product_name: string;
+  product_kind: ProductKind;
   sku_code: string;
   denomination: string | null;
   region: string | null;

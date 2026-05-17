@@ -62,6 +62,30 @@ def _format_amount(value: str, currency: str) -> str:
     return f"{amount:.{digits}f} {currency}"
 
 
+_FIELD_LABEL_RU: Final[dict[str, str]] = {
+    "player_id": "ID игрока",
+    "user_id": "ID пользователя",
+    "account_id": "Аккаунт",
+    "email": "Email",
+    "phone": "Телефон",
+    "region": "Регион",
+    "zone_id": "Zone ID",
+    "character": "Персонаж",
+    "nickname": "Никнейм",
+}
+
+
+def _format_target_fields(fields: dict[str, object]) -> str | None:
+    """Render fulfilment-data fields as ``ID игрока: 123, Регион: EU``."""
+    parts: list[str] = []
+    for key, value in fields.items():
+        if not isinstance(value, str) or not value.strip():
+            continue
+        label = _FIELD_LABEL_RU.get(key, key)
+        parts.append(f"{label}: <code>{value}</code>")
+    return ", ".join(parts) if parts else None
+
+
 def _summarise_order(order: Order, *, locale: str = "ru") -> str:
     """One-line product summary, e.g. ``PUBG Mobile · 660 UC +1``.
 
@@ -150,15 +174,22 @@ async def notify_order_delivered(order_id: str) -> bool:
     amount = _format_amount(order.total_charged, order.currency)
 
     code_lines: list[str] = []
-    truncated = 0
     for d in deliveries[:_MAX_INLINE_CODES]:
         code = d.artifact.get("code") or d.artifact.get("key")
         if isinstance(code, str) and code:
             code_lines.append(f"<code>{code}</code>")
         elif d.artifact_kind == "topup_receipt":
-            ext = d.artifact.get("external_id")
-            if isinstance(ext, str):
-                code_lines.append(f"Зачислено · <code>{ext}</code>")
+            # Echo the player id (or whatever the user typed at checkout) so
+            # they can verify we credited the right account at a glance.
+            snapshot = d.artifact.get("fulfillment_data")
+            fields = snapshot if isinstance(snapshot, dict) else {}
+            target = _format_target_fields(fields)
+            if target:
+                code_lines.append(f"Зачислено · {target}")
+            else:
+                ext = d.artifact.get("external_id")
+                if isinstance(ext, str):
+                    code_lines.append(f"Зачислено · <code>{ext}</code>")
     truncated = max(0, len(deliveries) - _MAX_INLINE_CODES)
 
     body = f"<b>Заказ выдан</b> ✅\n\n{summary}\nСумма: <b>{amount}</b>"

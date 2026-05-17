@@ -64,9 +64,20 @@ def _supplier_slug(route: str) -> str:
 
 
 async def _load_order_with_items(db: AsyncSession, order_id: str) -> Order:
+    # Suppliers (notably the mock fulfiller, but real ones too once we wire
+    # them) read ``item.sku.product.kind`` to decide whether to mint a
+    # voucher code or a top-up receipt — async SA refuses lazy loads, so
+    # eager-load the chain right here.
+    from yupay.modules.catalog.models import Sku  # noqa: PLC0415
+
     stmt = (
         select(Order)
-        .options(selectinload(Order.items), selectinload(Order.events))
+        .options(
+            selectinload(Order.items).selectinload(OrderItem.sku).selectinload(
+                Sku.product
+            ),
+            selectinload(Order.events),
+        )
         .where(Order.id == order_id)
     )
     order = (await db.execute(stmt)).scalar_one_or_none()

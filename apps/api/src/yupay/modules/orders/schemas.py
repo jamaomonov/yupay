@@ -57,6 +57,7 @@ class OrderItemDisplay(BaseModel):
     brand_name: str
     product_slug: str
     product_name: str
+    product_kind: str  # "top_up" | "voucher"
     sku_code: str
     denomination: str | None
     region: str | None

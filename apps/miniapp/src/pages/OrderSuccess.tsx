@@ -329,6 +329,8 @@ function ItemCard({
       : `${display.product_name || display.product_slug} · ${display.denomination ?? display.sku_code}`
     : `SKU ${item.sku_id.slice(0, 8)}…`;
 
+  const isTopUp = display?.product_kind === "top_up";
+
   return (
     <div
       className="rounded-2xl p-3.5"
@@ -372,7 +374,14 @@ function ItemCard({
 
       <AnimatePresence>
         {delivery ? (
-          <ArtifactBlock delivery={delivery} />
+          isTopUp ? (
+            <TopUpReceipt
+              delivery={delivery}
+              fulfillmentData={item.fulfillment_data}
+            />
+          ) : (
+            <ArtifactBlock delivery={delivery} />
+          )
         ) : (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
@@ -381,12 +390,114 @@ function ItemCard({
             className="mt-3 flex items-center gap-2 text-[11px] text-white/40"
           >
             <Loader2 size={12} className="animate-spin" />
-            <span>ожидаем выдачу…</span>
+            <span>{isTopUp ? "пополняем аккаунт…" : "ожидаем выдачу…"}</span>
           </motion.div>
         )}
       </AnimatePresence>
     </div>
   );
+}
+
+// ─── Top-up receipt ─────────────────────────────────────────────────────────
+// For top-up products there is no code to deliver — the supplier credits the
+// player's account directly. The receipt block surfaces:
+//   * the fields the user entered at checkout (player_id, region, …) so they
+//     can confirm we pushed UC to the right account;
+//   * the supplier's order id, in case support needs it later.
+
+const FIELD_LABEL: Record<string, string> = {
+  player_id: "ID игрока",
+  user_id: "ID пользователя",
+  account_id: "Аккаунт",
+  email: "Email",
+  phone: "Телефон",
+  region: "Регион",
+  zone_id: "Zone ID",
+  character: "Персонаж",
+  nickname: "Никнейм",
+};
+
+function labelForField(key: string): string {
+  return FIELD_LABEL[key] ?? key;
+}
+
+function TopUpReceipt({
+  delivery,
+  fulfillmentData,
+}: {
+  delivery: DeliveryOut;
+  fulfillmentData: Record<string, unknown>;
+}) {
+  // Prefer the snapshot stored in the artifact (frozen at fulfilment time),
+  // fall back to the live item.fulfillment_data if the supplier didn't echo
+  // it back.
+  const artifactSnapshot = isStringRecord(delivery.artifact.fulfillment_data)
+    ? delivery.artifact.fulfillment_data
+    : null;
+  const fields = artifactSnapshot ?? fulfillmentData;
+  const externalId =
+    typeof delivery.artifact.external_id === "string"
+      ? delivery.artifact.external_id
+      : null;
+
+  const entries = Object.entries(fields).filter(
+    ([, v]) => typeof v === "string" && (v as string).trim().length > 0,
+  ) as [string, string][];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mt-3 space-y-2"
+    >
+      <div className="flex items-center gap-1.5">
+        <span
+          className="text-[10px] uppercase tracking-[0.12em] font-semibold"
+          style={{ color: "hsl(var(--primary))" }}
+        >
+          Зачислено
+        </span>
+        <span className="text-white/25 text-[10px]">·</span>
+        <span className="text-white/35 text-[10px]">
+          {new Date(delivery.delivered_at).toLocaleString("ru", {
+            day: "2-digit",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+        </span>
+      </div>
+
+      {entries.length > 0 && (
+        <div
+          className="rounded-xl p-3 space-y-1.5"
+          style={{
+            background: "hsl(228 32% 19%)",
+            border: "1px solid hsl(var(--border))",
+          }}
+        >
+          {entries.map(([key, value]) => (
+            <div key={key} className="flex items-baseline justify-between gap-3 text-xs">
+              <span className="text-white/50">{labelForField(key)}</span>
+              <span className="text-white font-mono text-right truncate max-w-[60%]">
+                {value}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {externalId && (
+        <p className="text-[10px] text-white/30 font-mono">
+          № операции: {externalId}
+        </p>
+      )}
+    </motion.div>
+  );
+}
+
+function isStringRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
 // ─── Artifact block ──────────────────────────────────────────────────────────

@@ -69,6 +69,7 @@ def build_item_display(item: OrderItem, *, locale: str = "ru") -> OrderItemDispl
         brand_name=_tr_name(brand.translations, locale) if brand is not None else "",
         product_slug=product.slug if product is not None else "",
         product_name=_tr_name(product.translations, locale) if product is not None else "",
+        product_kind=product.kind if product is not None else "voucher",
         sku_code=sku.sku_code,
         denomination=sku.denomination,
         region=sku.region,

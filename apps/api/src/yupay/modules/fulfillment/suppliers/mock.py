@@ -38,20 +38,40 @@ class MockFulfiller(Fulfiller):
         item: OrderItem,
         idempotency_key: str,
     ) -> FulfillResult:
-        return FulfillResult(
-            outcome="succeeded",
-            external_order_id=f"mock_{new_id()}",
-            artifact_kind="voucher_code",
-            artifact={
+        # Branch on product kind so the demo flow looks plausible end-to-end:
+        # top-up products mint a receipt that echoes the player_id the user
+        # entered at checkout; vouchers mint a copyable fake code.
+        product = item.sku.product if item.sku is not None else None
+        kind = product.kind if product is not None else "voucher"
+        external_id = f"mock_{new_id()}"
+
+        if kind == "top_up":
+            artifact_kind = "topup_receipt"
+            artifact: dict[str, object] = {
+                "external_id": external_id,
+                "fulfillment_data": item.fulfillment_data,
+                "sku_id": item.sku_id,
+                "qty": item.qty,
+            }
+        else:
+            artifact_kind = "voucher_code"
+            artifact = {
                 "code": f"MOCK-{item.id[-12:].upper()}",
                 "sku_id": item.sku_id,
                 "qty": item.qty,
-            },
+            }
+
+        return FulfillResult(
+            outcome="succeeded",
+            external_order_id=external_id,
+            artifact_kind=artifact_kind,
+            artifact=artifact,
             error=None,
             extra_metadata={
                 "mock": True,
                 "order_id": order.id,
                 "idempotency_key": idempotency_key,
+                "product_kind": kind,
             },
         )
 
