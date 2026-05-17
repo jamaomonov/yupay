@@ -2,6 +2,7 @@
 
 import { NavLink, Outlet } from "react-router-dom";
 import {
+  Activity,
   Boxes,
   Coins,
   CreditCard,
@@ -38,6 +39,7 @@ const NAV: { to: string; label: string; icon: typeof Gauge; end?: boolean }[] = 
   { to: "/webhooks", label: "Webhooks", icon: Radio },
   { to: "/fulfillment", label: "Fulfilment", icon: Truck },
   { to: "/wallet", label: "Кошелёк", icon: Wallet },
+  { to: "/audit", label: "Activity log", icon: Activity },
   { to: "/fx", label: "Курсы", icon: Coins },
   { to: "/users", label: "Пользователи", icon: UsersIcon },
   { to: "/settings", label: "Настройки", icon: Settings },

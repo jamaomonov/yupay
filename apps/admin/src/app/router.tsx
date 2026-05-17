@@ -4,6 +4,7 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import { AuthGuard } from "@/features/auth/AuthGuard";
 import { LoginPage } from "@/features/auth/LoginPage";
+import { AuditPage } from "@/features/audit/AuditPage";
 import { BrandsListPage } from "@/features/catalog/brands/BrandsListPage";
 import { BrandEditPage } from "@/features/catalog/brands/BrandEditPage";
 import { CategoriesListPage } from "@/features/catalog/categories/CategoriesListPage";
@@ -55,6 +56,7 @@ export const router = createBrowserRouter([
           { path: "/webhooks", element: <WebhooksPage /> },
           { path: "/fulfillment", element: <FulfillmentPage /> },
           { path: "/wallet", element: <WalletPage /> },
+          { path: "/audit", element: <AuditPage /> },
           { path: "/fx", element: <FxPage /> },
           { path: "/users", element: <UsersListPage /> },
           { path: "/settings", element: <SettingsStub /> },

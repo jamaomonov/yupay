@@ -67,6 +67,24 @@ export const qk = {
       filters.signature_ok ?? null,
     ] as const,
 
+  // audit feed
+  audit: (filters: {
+    sources?: string[] | null;
+    actor?: string | null;
+    target?: string | null;
+    since?: string | null;
+    until?: string | null;
+  }) =>
+    [
+      "admin",
+      "audit",
+      filters.sources ?? null,
+      filters.actor ?? null,
+      filters.target ?? null,
+      filters.since ?? null,
+      filters.until ?? null,
+    ] as const,
+
   // wallet
   walletUser: (userId: string) => ["admin", "wallet", "user", userId] as const,
 

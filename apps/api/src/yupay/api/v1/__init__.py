@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from yupay.modules.audit.api import admin_router as audit_admin_router
 from yupay.modules.auth.api import router as auth_router
 from yupay.modules.catalog.admin_routes import router as catalog_admin_router
 from yupay.modules.catalog.api import router as catalog_router
@@ -28,6 +29,7 @@ from yupay.modules.wallet.api import router as wallet_router
 
 router = APIRouter()
 router.include_router(auth_router)
+router.include_router(audit_admin_router)
 router.include_router(catalog_router)
 router.include_router(catalog_admin_router)
 router.include_router(fulfillment_router)
