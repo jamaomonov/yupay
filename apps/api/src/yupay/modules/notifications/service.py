@@ -15,14 +15,16 @@ from typing import Any, Final
 
 from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from yupay.core.config import get_settings
 from yupay.core.db import get_session_factory
 from yupay.core.logging import get_logger
+from yupay.modules.catalog.models import Brand, Product, Sku
 from yupay.modules.fulfillment.models import Delivery
 from yupay.modules.notifications.channels import telegram as tg
 from yupay.modules.orders.models import Order, OrderItem
+from yupay.modules.orders.service import build_item_display
 from yupay.modules.users.models import TelegramLink
 
 log = get_logger("yupay.notifications.service")
@@ -60,20 +62,25 @@ def _format_amount(value: str, currency: str) -> str:
     return f"{amount:.{digits}f} {currency}"
 
 
-def _summarise_order(order: Order) -> str:
-    """One-line product summary, e.g. ``PUBG Mobile · 660 UC × 2``."""
+def _summarise_order(order: Order, *, locale: str = "ru") -> str:
+    """One-line product summary, e.g. ``PUBG Mobile · 660 UC +1``.
+
+    Reuses :func:`build_item_display` so the bot copy matches the mini-app
+    storefront — both pull the same localised brand / product names out of
+    the eager-loaded translations chain.
+    """
     items: list[OrderItem] = list(order.items)
     if not items:
         return f"Заказ {order.id[:8]}"
-    first = items[0]
-    sku = first.sku
-    product = sku.product if sku is not None else None
-    brand = product.brand if product is not None else None
-    headline_parts = [
-        brand.name if brand else (product.name if product else "Заказ"),
-        sku.denomination or sku.sku_code if sku else "",
-    ]
-    headline = " · ".join(p for p in headline_parts if p)
+    display = build_item_display(items[0], locale=locale)
+    if display is None:
+        return f"Заказ {order.id[:8]}"
+    denom = display.denomination or display.sku_code
+    headline = (
+        f"{display.brand_name} · {denom}"
+        if display.brand_name
+        else f"{display.product_name or display.product_slug} · {denom}"
+    )
     extra = len(items) - 1
     if extra > 0:
         headline += f" +{extra}"
@@ -191,13 +198,26 @@ async def notify_order_failed(order_id: str, *, reason: str | None = None) -> bo
 
 
 async def _load_order(db: AsyncSession, order_id: str) -> Order | None:
-    """Eager-load the chain we need to summarise the order in one go."""
+    """Eager-load the chain we need to summarise the order in one go.
+
+    Walks ``item → sku → product`` because ``_summarise_order`` reads
+    ``item.sku.product.brand``. Brand is ``lazy="joined"`` on ``Product``,
+    so once ``product`` is loaded the brand comes for free. Async
+    SQLAlchemy refuses lazy loads outside the request scope, so any
+    missing eager load here surfaces as ``DetachedInstanceError`` when
+    the background task tries to walk the relationship.
+    """
+    items_to_sku = selectinload(Order.items).selectinload(OrderItem.sku)
     stmt = (
         select(Order)
         .where(Order.id == order_id)
         .options(
-            selectinload(Order.items)
-            .selectinload(OrderItem.sku)
+            items_to_sku.selectinload(Sku.product)
+            .joinedload(Product.brand)
+            .selectinload(Brand.translations),
+            items_to_sku.selectinload(Sku.product).selectinload(
+                Product.translations
+            ),
         )
     )
     return (await db.execute(stmt)).scalar_one_or_none()
