@@ -145,6 +145,20 @@ export default function OrderSuccess() {
     return map;
   }, [deliveries]);
 
+  // Elapsed since the order was created. Drives the soft-SLA copy on the
+  // status card. Ticking pauses once the order reaches a terminal state.
+  // IMPORTANT: this hook MUST be called before any early return — otherwise
+  // we run a different number of hooks on first render (loading) vs second
+  // (data), which is the classic "Rendered more hooks than during the
+  // previous render" violation.
+  const isProcessingOrUnknown = order
+    ? PROCESSING.includes(order.status)
+    : false;
+  const elapsed = useElapsedSeconds(
+    order?.created_at,
+    isProcessingOrUnknown,
+  );
+
   if (!orderId) {
     return (
       <ErrorView
@@ -160,12 +174,9 @@ export default function OrderSuccess() {
   }
 
   const stage = STAGE[order.status];
-  const isProcessing = PROCESSING.includes(order.status);
+  const isProcessing = isProcessingOrUnknown;
   const isDelivered = order.status === "delivered";
   const isFailed = TERMINAL_FAIL.includes(order.status);
-  // Elapsed since the order was created. Drives the soft-SLA copy on the
-  // status card. Ticking pauses once the order reaches a terminal state.
-  const elapsed = useElapsedSeconds(order.created_at, isProcessing);
 
   return (
     <motion.div
