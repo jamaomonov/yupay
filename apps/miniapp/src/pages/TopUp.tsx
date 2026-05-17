@@ -218,7 +218,7 @@ export default function TopUp() {
         return;
       }
       toast({ title: "Заказ создан", description: `${game.name} в обработке` });
-      setLocation("/history");
+      setLocation(`/order/${result.order.id}`);
     } catch (exc) {
       const detail = exc instanceof ApiError ? exc.detail : "Попробуйте ещё раз";
       toast({

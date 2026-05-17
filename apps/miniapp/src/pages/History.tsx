@@ -146,12 +146,13 @@ export default function History() {
             </div>
 
             {txs.map((tx, index) => (
+              <Link key={tx.id} href={`/order/${tx.id}`}>
               <motion.div
-                key={tx.id}
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.04 }}
-                className="flex items-center gap-3 p-3.5 rounded-2xl bg-card border border-border"
+                whileTap={{ scale: 0.985 }}
+                className="flex items-center gap-3 p-3.5 rounded-2xl bg-card border border-border cursor-pointer"
                 data-testid={`history-item-${tx.id}`}
               >
                 {/* Icon — brand/product image when we have one */}
@@ -206,6 +207,7 @@ export default function History() {
                   </div>
                 </div>
               </motion.div>
+              </Link>
             ))}
           </div>
         ))}

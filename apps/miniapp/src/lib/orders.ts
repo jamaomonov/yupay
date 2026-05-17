@@ -155,6 +155,52 @@ export function useOrder(orderId: string | undefined) {
   });
 }
 
+// --- deliveries -----------------------------------------------------------
+
+export type ArtifactKind = "voucher_code" | "topup_receipt" | "license_key";
+
+export interface DeliveryOut {
+  id: string;
+  order_item_id: string;
+  channel: string;
+  artifact_kind: ArtifactKind;
+  artifact: Record<string, unknown>;
+  delivered_at: string;
+}
+
+interface DeliveryListOut {
+  items: DeliveryOut[];
+}
+
+/**
+ * Fetch delivery artifacts (codes / receipts) for an order.
+ *
+ * Polls while the parent order is still in motion so the success page can
+ * surface fresh artifacts the moment fulfilment lands them.
+ */
+export function useDeliveries(
+  orderId: string | undefined,
+  parentStatus: OrderStatus | undefined,
+) {
+  return useQuery<DeliveryOut[]>({
+    queryKey: ["deliveries", orderId],
+    enabled: Boolean(orderId),
+    queryFn: async () => {
+      const data = await apiGet<DeliveryListOut>(
+        `/api/v1/orders/${orderId ?? ""}/deliveries`,
+      );
+      return data.items;
+    },
+    refetchInterval: () => {
+      if (!parentStatus) return false;
+      if (parentStatus === "delivered") return false;
+      return ["paid", "fulfilling", "fulfilled"].includes(parentStatus)
+        ? 2_000
+        : false;
+    },
+  });
+}
+
 // Map an OrderOut to the flat history-row shape used by the History page.
 export interface HistoryRow {
   id: string;
