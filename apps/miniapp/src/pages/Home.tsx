@@ -5,6 +5,7 @@ import { CATEGORY_LABELS } from "@/lib/constants";
 import type { Game } from "@/lib/constants-types";
 import { useCategoriesList, useGames } from "@/lib/catalog";
 import { useMyOrders } from "@/lib/orders";
+import { useDocumentTitle } from "@/lib/use-document-title";
 import { Link } from "wouter";
 
 const ALL_KEY = "__all__";
@@ -236,6 +237,7 @@ function SearchResultCard({ game, index }: { game: Game; index: number }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function Home() {
+  useDocumentTitle("Главная");
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string>(ALL_KEY);
@@ -341,7 +343,9 @@ export default function Home() {
                 />
                 <input
                   ref={inputRef}
-                  type="text"
+                  type="search"
+                  role="searchbox"
+                  aria-label="Поиск по играм"
                   placeholder="Найти игру..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
@@ -355,9 +359,10 @@ export default function Home() {
                 {search && (
                   <button
                     onClick={() => setSearch("")}
+                    aria-label="Очистить поиск"
                     className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-full bg-white/10"
                   >
-                    <X size={12} className="text-white/60" />
+                    <X size={12} className="text-white/60" aria-hidden="true" />
                   </button>
                 )}
               </div>

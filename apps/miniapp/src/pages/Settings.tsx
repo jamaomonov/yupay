@@ -28,6 +28,7 @@ import {
   useCurrencyStore,
 } from "@/lib/currency";
 import { getWebApp } from "@/lib/telegram";
+import { useDocumentTitle } from "@/lib/use-document-title";
 
 function initials(name: string | null | undefined): string {
   if (!name) return "👤";
@@ -45,6 +46,7 @@ const SUPPORT_URL =
 const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "0.1.0";
 
 export default function Settings() {
+  useDocumentTitle("Настройки");
   const me = useMe();
   const logout = useLogout();
   const user = me.data;
@@ -127,7 +129,7 @@ export default function Settings() {
 
       {/* Real settings */}
       <div className="space-y-1.5">
-        <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest px-1 mb-2">
+        <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-[0.08em] px-1 mb-2">
           Приложение
         </p>
 

@@ -10,6 +10,7 @@ import { Link } from "wouter";
 
 import { useMe } from "@/lib/auth";
 import { useMyOrders, orderToHistoryRow, type HistoryRow } from "@/lib/orders";
+import { useDocumentTitle } from "@/lib/use-document-title";
 
 const STATUS_LABEL: Record<HistoryRow["status"], string> = {
   success: "Выполнено",
@@ -45,6 +46,7 @@ function shortTime(iso: string): string {
 }
 
 export default function History() {
+  useDocumentTitle("История");
   const me = useMe();
   const ordersQuery = useMyOrders();
   const orders = ordersQuery.data ?? [];
@@ -134,7 +136,7 @@ export default function History() {
         {Object.entries(grouped).map(([monthYear, txs]) => (
           <div key={monthYear} className="space-y-2">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-[0.08em]">
                 {monthYear}
               </span>
               <div className="flex-1 h-px bg-border" />

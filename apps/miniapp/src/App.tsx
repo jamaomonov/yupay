@@ -1,5 +1,6 @@
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MotionConfig } from "framer-motion";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { BootstrapGate } from "@/components/BootstrapGate";
 import { Toaster } from "@/components/ui/toaster";
@@ -41,14 +42,20 @@ function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <BootstrapGate>
-            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-              <Router />
-            </WouterRouter>
-          </BootstrapGate>
-          <Toaster />
-        </TooltipProvider>
+        {/* reducedMotion="user" makes framer-motion honour the OS preference
+            (WCAG 2.3.3). Combined with the @media query in index.css that
+            handles raw CSS transitions, every motion in the app collapses
+            when the user has motion sensitivity enabled. */}
+        <MotionConfig reducedMotion="user">
+          <TooltipProvider>
+            <BootstrapGate>
+              <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+                <Router />
+              </WouterRouter>
+            </BootstrapGate>
+            <Toaster />
+          </TooltipProvider>
+        </MotionConfig>
       </QueryClientProvider>
     </ErrorBoundary>
   );

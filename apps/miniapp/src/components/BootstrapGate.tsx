@@ -176,7 +176,7 @@ function Splash({
             YuPay
           </h1>
           <p
-            className="text-xs uppercase tracking-[0.18em] font-medium"
+            className="text-xs uppercase tracking-[0.08em] font-medium"
             style={{ color: "hsl(var(--primary))" }}
           >
             пополнение игр и сервисов
@@ -221,7 +221,7 @@ function Splash({
       </div>
 
       <div
-        className="absolute bottom-7 text-[10px] uppercase tracking-[0.2em]"
+        className="absolute bottom-7 text-[10px] uppercase tracking-[0.08em]"
         style={{ color: "hsl(0 0% 100% / 0.18)" }}
       >
         v0.1 · made for telegram

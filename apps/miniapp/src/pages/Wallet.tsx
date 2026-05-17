@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 import { useMe } from "@/lib/auth";
+import { useDocumentTitle } from "@/lib/use-document-title";
 import {
   ACCOUNT_META,
   ACCOUNT_ORDER,
@@ -21,6 +22,7 @@ import {
 } from "@/lib/wallet";
 
 export default function Wallet() {
+  useDocumentTitle("Кошелёк");
   const [, setLocation] = useLocation();
   const me = useMe();
   const wallet = useWallet();
@@ -79,7 +81,7 @@ export default function Wallet() {
             }}
           />
           <div className="relative z-10">
-            <p className="text-white/50 text-xs uppercase tracking-widest font-bold">
+            <p className="text-white/50 text-xs uppercase tracking-[0.08em] font-bold">
               Доступно к трате
             </p>
             <p className="text-white font-bold text-3xl mt-1 tabular-nums">
@@ -132,7 +134,7 @@ export default function Wallet() {
                 <h2 className="text-white font-bold text-sm flex items-center gap-2">
                   Пополнение баланса
                   <span
-                    className="text-[10px] uppercase tracking-[0.12em] font-bold px-2 py-0.5 rounded-full"
+                    className="text-[10px] uppercase tracking-[0.08em] font-bold px-2 py-0.5 rounded-full"
                     style={{
                       background: "hsl(var(--primary) / 0.18)",
                       color: "hsl(var(--primary))",

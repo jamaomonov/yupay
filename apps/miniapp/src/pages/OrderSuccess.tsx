@@ -35,6 +35,7 @@ import {
   type OrderOut,
   type OrderStatus,
 } from "@/lib/orders";
+import { useDocumentTitle } from "@/lib/use-document-title";
 
 const PROCESSING: OrderStatus[] = [
   "pending_payment",
@@ -130,6 +131,7 @@ export default function OrderSuccess() {
   const params = useParams<{ id: string }>();
   const orderId = params.id;
   const [, setLocation] = useLocation();
+  useDocumentTitle(orderId ? `Заказ ${orderId.slice(0, 8)}…` : "Заказ");
 
   const orderQuery = useOrder(orderId);
   const order = orderQuery.data;
@@ -199,7 +201,7 @@ export default function OrderSuccess() {
           <ArrowLeft size={15} className="text-white/60" />
         </button>
         <div className="flex-1 min-w-0">
-          <p className="text-[10px] uppercase tracking-[0.12em] text-white/35">
+          <p className="text-[10px] uppercase tracking-[0.08em] text-white/35">
             Заказ
           </p>
           <p className="text-white text-sm font-mono leading-tight truncate">
@@ -309,7 +311,16 @@ function StatusCard({
           style={{ background: accent }}
         />
 
-        <div className="relative flex items-center gap-3">
+        {/* Wrapping the status copy in an aria-live region lets screen
+            readers announce stage transitions (paid → fulfilling → delivered)
+            without yanking focus. `polite` so it queues behind whatever the
+            user is doing; `assertive` would interrupt mid-typing. */}
+        <div
+          className="relative flex items-center gap-3"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
           <StatusIcon tone={tone} />
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-2 flex-wrap">
@@ -330,7 +341,12 @@ function StatusCard({
 
         {/* Progress strip — only while in motion. */}
         {isProcessing && (
-          <div className="relative mt-4 h-1 rounded-full bg-white/5 overflow-hidden">
+          <div
+            className="relative mt-4 h-1 rounded-full bg-white/5 overflow-hidden"
+            role="progressbar"
+            aria-valuetext="Обработка заказа"
+            aria-busy="true"
+          >
             <motion.div
               className="absolute inset-y-0 left-0 w-1/3 rounded-full"
               style={{ background: accent }}
@@ -572,7 +588,7 @@ function TopUpReceipt({
     >
       <div className="flex items-center gap-1.5">
         <span
-          className="text-[10px] uppercase tracking-[0.12em] font-semibold"
+          className="text-[10px] uppercase tracking-[0.08em] font-semibold"
           style={{ color: "hsl(var(--primary))" }}
         >
           Зачислено
@@ -653,7 +669,7 @@ function ArtifactBlock({ delivery }: { delivery: DeliveryOut }) {
     >
       <div className="flex items-center gap-1.5 mb-1.5">
         <span
-          className="text-[10px] uppercase tracking-[0.12em] font-semibold"
+          className="text-[10px] uppercase tracking-[0.08em] font-semibold"
           style={{ color: "hsl(var(--primary))" }}
         >
           {labelForKind(delivery.artifact_kind)}

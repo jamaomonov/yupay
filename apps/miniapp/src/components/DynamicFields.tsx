@@ -7,7 +7,7 @@
  * available.
  */
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { HelpCircle, X } from "lucide-react";
 
 import {
@@ -58,6 +58,11 @@ function DynamicField({
   onChange: (v: string) => void;
 }) {
   const [helpOpen, setHelpOpen] = useState(false);
+  // Stable per-instance id so the visible <label> and the underlying control
+  // can be tied together for screen readers (WCAG 3.3.2). useId is React 18+
+  // safe across SSR — important once we share components with apps/web.
+  const fieldId = useId();
+  const helpId = `${fieldId}-help`;
 
   const label = t(field.label, field.key);
   const placeholder = t(field.placeholder ?? null, "");
@@ -68,15 +73,24 @@ function DynamicField({
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5 px-1 gap-2">
-        <label className="text-xs font-semibold text-white/75 uppercase tracking-wide">
+        <label
+          htmlFor={fieldId}
+          className="text-xs font-semibold text-white/75 uppercase tracking-wide"
+        >
           {label}
-          {required && <span className="text-primary ml-1">*</span>}
+          {required && (
+            <span className="text-primary ml-1" aria-hidden="true">
+              *
+            </span>
+          )}
         </label>
         {hasHelp && (
           <button
             type="button"
             onClick={() => setHelpOpen(true)}
             aria-label={`Где найти ${label}`}
+            aria-controls={helpId}
+            aria-expanded={helpOpen}
             className="flex items-center gap-1 text-[11px] font-semibold rounded-full px-2.5 py-1 transition-opacity active:opacity-70"
             style={{
               background: "hsl(var(--primary) / 0.12)",
@@ -84,23 +98,37 @@ function DynamicField({
               color: "hsl(var(--primary))",
             }}
           >
-            <HelpCircle size={11} />
+            <HelpCircle size={11} aria-hidden="true" />
             Где найти?
           </button>
         )}
       </div>
 
       {field.type === "select" ? (
-        <SelectField field={field} value={value} onChange={onChange} placeholder={placeholder} />
+        <SelectField
+          field={field}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          fieldId={fieldId}
+          required={required}
+        />
       ) : (
-        <TextLikeField field={field} value={value} onChange={onChange} placeholder={placeholder} />
+        <TextLikeField
+          field={field}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          fieldId={fieldId}
+          required={required}
+        />
       )}
 
       <Sheet open={helpOpen} onOpenChange={setHelpOpen}>
-        <SheetContent side="bottom" className="rounded-t-3xl">
+        <SheetContent side="bottom" className="rounded-t-3xl" id={helpId}>
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
-              <HelpCircle size={16} className="text-primary" />
+              <HelpCircle size={16} className="text-primary" aria-hidden="true" />
               Где найти «{label}»
             </SheetTitle>
             <SheetDescription className="whitespace-pre-wrap text-left text-white/70 leading-relaxed">
@@ -118,11 +146,15 @@ function TextLikeField({
   value,
   onChange,
   placeholder,
+  fieldId,
+  required,
 }: {
   field: FormField;
   value: string;
   onChange: (v: string) => void;
   placeholder: string;
+  fieldId: string;
+  required: boolean;
 }) {
   const inputType =
     field.type === "email" ? "email" : field.type === "number" ? "tel" : "text";
@@ -141,11 +173,14 @@ function TextLikeField({
   return (
     <div className="relative">
       <input
+        id={fieldId}
         type={inputType}
         inputMode={inputMode as "text" | "email" | "numeric"}
         value={value}
         onChange={(e) => handleChange(e.target.value)}
         placeholder={placeholder || field.key}
+        required={required}
+        aria-required={required}
         className="w-full rounded-2xl px-4 py-3.5 text-base text-white placeholder:text-white/25 outline-none transition-all"
         style={{
           background: "hsl(var(--surface-2))",
@@ -175,16 +210,26 @@ function SelectField({
   value,
   onChange,
   placeholder,
+  fieldId,
+  required,
 }: {
   field: FormField;
   value: string;
   onChange: (v: string) => void;
   placeholder: string;
+  fieldId: string;
+  required: boolean;
 }) {
   const options = field.options ?? [];
   const filled = value.length > 0;
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div
+      id={fieldId}
+      className="grid grid-cols-2 gap-2"
+      role="radiogroup"
+      aria-required={required}
+      aria-label={t(field.label, field.key)}
+    >
       {options.length === 0 ? (
         <div className="col-span-2 rounded-2xl p-3 text-center text-sm text-white/40 border border-dashed border-white/15">
           {placeholder || "Опций пока нет"}
@@ -196,6 +241,8 @@ function SelectField({
             <button
               key={opt.value}
               type="button"
+              role="radio"
+              aria-checked={active}
               onClick={() => onChange(opt.value)}
               className="relative rounded-2xl px-3 py-3 text-sm font-semibold transition-all duration-150"
               style={{

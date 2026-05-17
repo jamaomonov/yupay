@@ -25,6 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ApiError } from "@/lib/api";
 import { useMe } from "@/lib/auth";
 import { isInsideTelegram } from "@/lib/telegram";
+import { useDocumentTitle } from "@/lib/use-document-title";
 import {
   useBrandSummary,
   useGames,
@@ -149,6 +150,8 @@ export default function TopUp() {
   const game = gamesQuery.data?.find((g) => g.id === gameId);
   const brandQuery = useBrandSummary(gameId);
   const products = brandQuery.data?.products ?? [];
+
+  useDocumentTitle(game ? `Пополнение · ${game.name}` : "Пополнение");
 
   // The currently picked product within the brand (PUBG UC vs Royale Pass …).
   const [selectedProductSlug, setSelectedProductSlug] = useState<string>("");
