@@ -53,6 +53,7 @@ export function RequiredFieldsEditor({ control, register, name }: Props) {
             type: "text",
             required: true,
             placeholder: { ru: "", en: "", uz: "" },
+            help_text: { ru: "", en: "", uz: "" },
           } satisfies FormField)
         }
       >
@@ -148,6 +149,30 @@ function FieldRow({
                   key={l}
                   {...register(`${path}.placeholder.${l}`)}
                   placeholder={l.toUpperCase()}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* help_text drives the «Где найти?» bottom-sheet in the miniapp.
+              Per-locale because it's user-facing copy: "Profile → Settings →
+              copy your numeric ID at the top". Markdown / newlines welcome. */}
+          <div>
+            <div className="text-xs font-medium uppercase text-[--color-muted]">
+              Help text — «Где найти?»
+            </div>
+            <p className="mt-1 text-[11px] text-[--color-muted]">
+              Подсказка раскрывается тапом по pill «Где найти?» рядом с полем.
+              Если пусто — pill не показывается. Несколько строк допустимо.
+            </p>
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {LOCALES.map((l) => (
+                <textarea
+                  key={l}
+                  {...register(`${path}.help_text.${l}`)}
+                  placeholder={l.toUpperCase()}
+                  rows={3}
+                  className="min-h-[72px] w-full resize-y rounded-md border border-[--color-border] bg-[--color-bg] px-3 py-2 text-sm leading-snug"
                 />
               ))}
             </div>
