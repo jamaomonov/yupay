@@ -15,7 +15,6 @@ import {
   Send,
   Share2,
   ShieldCheck,
-  Star,
   Zap,
 } from "lucide-react";
 
@@ -382,10 +381,11 @@ export default function TopUp() {
                 {game.name}
               </h1>
               <div className="flex items-center gap-3 mt-0.5">
-                <div className="flex items-center gap-1">
-                  <Star size={11} className="text-yellow-400 fill-yellow-400" />
-                  <span className="text-white/60 text-[11px]">4.9</span>
-                </div>
+                {/* Single honest signal: typical delivery time. The 4.9 star
+                    rating that used to live here was hardcoded with no count
+                    behind it — pulled per the audit ("trust gaps · present
+                    but unearned"). When real review data lands, add a count
+                    + tap-to-open reviews sheet. */}
                 <div
                   className="flex items-center gap-1 px-2 py-0.5 rounded-full"
                   style={{

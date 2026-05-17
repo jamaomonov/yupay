@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, X, TrendingUp, ArrowLeft, ShieldCheck, Zap, Headphones, RotateCcw } from "lucide-react";
+import { Search, X, TrendingUp, ArrowLeft, RotateCcw } from "lucide-react";
 import { CATEGORY_LABELS } from "@/lib/constants";
 import type { Game } from "@/lib/constants-types";
 import { useCategoriesList, useGames } from "@/lib/catalog";
@@ -18,19 +18,41 @@ const PROMO_BADGES: Record<string, { label: string; color: string }> = {
   "delta-force": { label: "НОВИНКА", color: "#a855f7" },
 };
 
-// ─── Trust bar ────────────────────────────────────────────────────────────────
-function TrustBar() {
-  const items = [
-    { icon: ShieldCheck, label: "Защита платежей" },
-    { icon: Zap, label: "До 5 минут" },
-    { icon: Headphones, label: "Поддержка 24/7" },
-  ];
+// ─── Payment methods strip ───────────────────────────────────────────────────
+// Replaces the old generic "trust bar" (Защита платежей / 5 мин / 24/7) which
+// the audit flagged as unearned decoration. Concrete payment-method names
+// with brand-coloured dots are a far stronger signal for CIS customers —
+// they scan for "Click / Payme / Uzum / СБП" before they scan for shield
+// icons.
+const PAYMENT_METHODS_STRIP: { label: string; dot: string }[] = [
+  { label: "Click", dot: "#0085FF" },
+  { label: "Payme", dot: "#1FB7B6" },
+  { label: "Uzum", dot: "#7B68FF" },
+  { label: "СБП", dot: "#5B0AAE" },
+  { label: "USDT", dot: "#26A17B" },
+];
+
+function PaymentMethodsBar() {
   return (
-    <div className="flex items-center justify-between px-4 py-2.5 mx-4 rounded-2xl bg-surface-2 border border-border">
-      {items.map(({ icon: Icon, label }, i) => (
-        <div key={i} className="flex items-center gap-1.5">
-          <Icon size={13} className="text-primary flex-shrink-0" />
-          <span className="text-[11px] text-body-muted font-medium whitespace-nowrap">{label}</span>
+    <div
+      className="flex items-center gap-2 mx-4 px-3 py-2.5 rounded-2xl bg-surface-2 border border-border overflow-x-auto no-scrollbar"
+      role="list"
+      aria-label="Поддерживаемые способы оплаты"
+    >
+      {PAYMENT_METHODS_STRIP.map(({ label, dot }) => (
+        <div
+          key={label}
+          role="listitem"
+          className="flex items-center gap-1.5 flex-shrink-0 pr-2"
+        >
+          <span
+            className="size-1.5 rounded-full flex-shrink-0"
+            style={{ background: dot }}
+            aria-hidden="true"
+          />
+          <span className="text-[11px] text-body-muted font-semibold whitespace-nowrap tracking-wide">
+            {label}
+          </span>
         </div>
       ))}
     </div>
@@ -309,7 +331,9 @@ export default function Home() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.18 }}
+            className="space-y-3.5"
           >
+            <PaymentMethodsBar />
             <PromoStrip games={games} />
             <RecentStrip />
           </motion.div>

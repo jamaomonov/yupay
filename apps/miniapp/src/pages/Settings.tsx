@@ -6,9 +6,12 @@ import {
   ChevronRight,
   Coins,
   ExternalLink,
+  FileText,
   Info,
   LifeBuoy,
   LogOut,
+  RefreshCcw,
+  Shield,
 } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -44,6 +47,22 @@ const SUPPORT_URL =
   (import.meta.env.VITE_SUPPORT_URL as string | undefined) ??
   "https://t.me/yupay_support";
 const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "0.1.0";
+
+// Legal doc URLs — surfaced only when set so we don't ship rows that link
+// to drafts or 404s. Operators flip them on by populating the env vars at
+// build time (see infra/docker/miniapp.Dockerfile).
+const TERMS_URL = import.meta.env.VITE_TERMS_URL as string | undefined;
+const PRIVACY_URL = import.meta.env.VITE_PRIVACY_URL as string | undefined;
+const REFUND_URL = import.meta.env.VITE_REFUND_URL as string | undefined;
+const HAS_LEGAL_DOCS = Boolean(TERMS_URL || PRIVACY_URL || REFUND_URL);
+
+const COMPANY_NAME = import.meta.env.VITE_COMPANY_NAME as string | undefined;
+const COMPANY_REGISTRATION = import.meta.env
+  .VITE_COMPANY_REGISTRATION as string | undefined;
+const COMPANY_SINCE = import.meta.env.VITE_COMPANY_SINCE as string | undefined;
+const HAS_COMPANY_INFO = Boolean(
+  COMPANY_NAME || COMPANY_REGISTRATION || COMPANY_SINCE,
+);
 
 export default function Settings() {
   useDocumentTitle("Настройки");
@@ -160,6 +179,54 @@ export default function Settings() {
         </div>
       </div>
 
+      {/* Legal docs — hidden when no URL configured so we don't ship
+          dead links during the pre-launch period. */}
+      {HAS_LEGAL_DOCS && (
+        <div className="space-y-1.5">
+          <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-[0.08em] px-1 mb-2">
+            Документы
+          </p>
+          <div className="bg-card border border-border rounded-3xl overflow-hidden">
+            {TERMS_URL && (
+              <SettingsRow
+                icon={FileText}
+                iconClass="text-blue-400"
+                label="Условия использования"
+                onClick={() => window.open(TERMS_URL, "_blank", "noopener")}
+                chevron={
+                  <ExternalLink size={14} className="text-muted-foreground/50" />
+                }
+                last={!PRIVACY_URL && !REFUND_URL}
+              />
+            )}
+            {PRIVACY_URL && (
+              <SettingsRow
+                icon={Shield}
+                iconClass="text-emerald-400"
+                label="Политика конфиденциальности"
+                onClick={() => window.open(PRIVACY_URL, "_blank", "noopener")}
+                chevron={
+                  <ExternalLink size={14} className="text-muted-foreground/50" />
+                }
+                last={!REFUND_URL}
+              />
+            )}
+            {REFUND_URL && (
+              <SettingsRow
+                icon={RefreshCcw}
+                iconClass="text-amber-400"
+                label="Условия возврата"
+                onClick={() => window.open(REFUND_URL, "_blank", "noopener")}
+                chevron={
+                  <ExternalLink size={14} className="text-muted-foreground/50" />
+                }
+                last
+              />
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Logout */}
       {user && (
         <button
@@ -206,7 +273,7 @@ export default function Settings() {
         <SheetContent side="bottom" className="rounded-t-3xl">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
-              <Info size={16} className="text-primary" />
+              <Info size={16} className="text-primary" aria-hidden="true" />
               О приложении
             </SheetTitle>
           </SheetHeader>
@@ -215,6 +282,27 @@ export default function Settings() {
               <span className="text-white/60">Версия</span>
               <code className="font-mono text-white">v{APP_VERSION}</code>
             </div>
+
+            {HAS_COMPANY_INFO && (
+              <div className="rounded-2xl border border-border p-3 space-y-1.5">
+                {COMPANY_NAME && (
+                  <p className="text-white font-semibold leading-tight">
+                    {COMPANY_NAME}
+                  </p>
+                )}
+                {COMPANY_REGISTRATION && (
+                  <p className="text-white/55 text-xs leading-snug font-mono">
+                    {COMPANY_REGISTRATION}
+                  </p>
+                )}
+                {COMPANY_SINCE && (
+                  <p className="text-white/40 text-[11px] leading-snug">
+                    Работаем с {COMPANY_SINCE} года
+                  </p>
+                )}
+              </div>
+            )}
+
             <p className="text-white/60 leading-relaxed">
               YuPay — пополнение игр, ваучеры и подписки. Лицензия —
               проприетарная; код в приватном репо.
