@@ -1,20 +1,14 @@
-import { useState } from "react";
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
   ArrowLeft,
-  Bitcoin,
-  Check,
-  ChevronRight,
-  CreditCard,
+  Clock,
   Gift,
   Sparkles,
   Wallet as WalletIcon,
-  Zap,
 } from "lucide-react";
 
-import { useToast } from "@/hooks/use-toast";
 import { useMe } from "@/lib/auth";
 import {
   ACCOUNT_META,
@@ -26,50 +20,13 @@ import {
   useWallet,
 } from "@/lib/wallet";
 
-const PRESETS_USD = [5, 10, 25, 50, 100, 250];
-
-const METHODS = [
-  { id: "card", name: "Карта", sub: "Visa · Mastercard · МИР", icon: CreditCard },
-  { id: "sbp", name: "СБП", sub: "Без комиссии", icon: Zap },
-  { id: "crypto", name: "Крипта", sub: "USDT TRC-20 · ERC-20", icon: Bitcoin },
-];
-
 export default function Wallet() {
   const [, setLocation] = useLocation();
-  const { toast } = useToast();
   const me = useMe();
   const wallet = useWallet();
 
-  const [amount, setAmount] = useState("");
-  const [method, setMethod] = useState("card");
-
   const balances = wallet.data ?? [];
   const total = totalDisplayBalance(balances);
-  const parsedAmount = Number.parseFloat(amount.replace(/\s/g, "").replace(",", "."));
-  const amountValid = Number.isFinite(parsedAmount) && parsedAmount > 0;
-
-  const onSubmit = () => {
-    if (!me.data) {
-      toast({
-        title: "Не авторизованы",
-        description: "Откройте миниапп через Telegram",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (!amountValid) {
-      toast({
-        title: "Введите сумму",
-        description: "Сумма пополнения должна быть больше нуля",
-        variant: "destructive",
-      });
-      return;
-    }
-    toast({
-      title: "Пополнение скоро",
-      description: `Идём через ${method.toUpperCase()} на $${parsedAmount.toFixed(2)}. Подключим эквайринг — заработает.`,
-    });
-  };
 
   return (
     <motion.div
@@ -146,124 +103,57 @@ export default function Wallet() {
         )}
       </section>
 
-      {/* Top-up form */}
-      <section className="mx-4 mb-5">
-        <h2 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
-          <Sparkles size={14} className="text-primary" />
-          Пополнить баланс
-        </h2>
-
-        {/* Amount input */}
-        <div className="relative mb-3">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 font-bold text-base">
-            $
-          </span>
-          <input
-            type="text"
-            inputMode="decimal"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="0.00"
-            className="w-full rounded-2xl pl-9 pr-4 py-4 text-2xl font-black text-white placeholder:text-white/15 outline-none transition-all tabular-nums"
+      {/* Top-up placeholder — the real flow is gated behind acquirer
+          integration (Click / Payme / Uzum / SBP / Yookassa / USDT). Showing
+          the form before any provider is live shipped trust loss: users
+          would fill amount + card and watch a toast. */}
+      {me.data && (
+        <section className="mx-4 mb-5">
+          <div
+            className="relative rounded-3xl p-5 overflow-hidden"
             style={{
-              background: "hsl(228 32% 17%)",
-              border: amountValid
-                ? "1.5px solid hsl(var(--primary) / 0.7)"
-                : "1.5px solid hsl(var(--border))",
-              boxShadow: amountValid ? "0 0 0 3px hsl(var(--primary) / 0.1)" : "none",
+              background: "hsl(228 32% 14%)",
+              border: "1.5px dashed hsl(var(--border))",
             }}
-          />
-        </div>
-
-        {/* Presets */}
-        <div className="grid grid-cols-3 gap-2 mb-4">
-          {PRESETS_USD.map((p) => {
-            const active = parsedAmount === p;
-            return (
-              <button
-                key={p}
-                onClick={() => setAmount(String(p))}
-                className="rounded-2xl py-2.5 text-sm font-bold transition-all"
+          >
+            <div className="flex items-start gap-3">
+              <div
+                className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0"
                 style={{
-                  background: active ? "hsl(var(--primary) / 0.12)" : "hsl(228 32% 16%)",
-                  border: active
-                    ? "1.5px solid hsl(var(--primary) / 0.7)"
-                    : "1.5px solid hsl(var(--border))",
-                  color: active ? "hsl(var(--primary))" : "rgba(255,255,255,0.7)",
+                  background: "hsl(var(--primary) / 0.12)",
+                  color: "hsl(var(--primary))",
                 }}
+                aria-hidden="true"
               >
-                ${p}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Payment method */}
-        <p className="text-xs uppercase tracking-widest font-bold text-white/40 mb-2">
-          Способ оплаты
-        </p>
-        <div className="space-y-2">
-          {METHODS.map((m) => {
-            const active = m.id === method;
-            return (
-              <button
-                key={m.id}
-                onClick={() => setMethod(m.id)}
-                className="w-full flex items-center gap-3 p-3.5 rounded-2xl text-left transition-all"
-                style={{
-                  background: active ? "hsl(228 32% 19%)" : "hsl(228 32% 16%)",
-                  border: active
-                    ? "1.5px solid hsl(var(--primary) / 0.7)"
-                    : "1.5px solid hsl(var(--border))",
-                }}
-              >
-                <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{
-                    background: active
-                      ? "hsl(var(--primary) / 0.15)"
-                      : "hsl(228 32% 22%)",
-                    color: active ? "hsl(var(--primary))" : "rgba(255,255,255,0.6)",
-                  }}
-                >
-                  <m.icon size={18} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-white font-bold text-sm">{m.name}</p>
-                  <p className="text-white/40 text-[11px] mt-0.5">{m.sub}</p>
-                </div>
-                {active ? (
-                  <div
-                    className="w-5 h-5 rounded-full flex items-center justify-center"
-                    style={{ background: "hsl(var(--primary))" }}
+                <Clock size={18} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-white font-bold text-sm flex items-center gap-2">
+                  Пополнение баланса
+                  <span
+                    className="text-[10px] uppercase tracking-[0.12em] font-bold px-2 py-0.5 rounded-full"
+                    style={{
+                      background: "hsl(var(--primary) / 0.18)",
+                      color: "hsl(var(--primary))",
+                    }}
                   >
-                    <Check size={11} strokeWidth={3} className="text-black" />
-                  </div>
-                ) : (
-                  <ChevronRight size={16} className="text-white/30" />
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* CTA */}
-      <div className="fixed bottom-[76px] left-1/2 -translate-x-1/2 w-full max-w-[430px] px-4 z-40">
-        <motion.button
-          whileTap={{ scale: 0.97 }}
-          onClick={onSubmit}
-          className="w-full py-4 rounded-2xl text-base font-black tracking-wide flex items-center justify-center gap-2 transition-all"
-          style={{
-            background: amountValid ? "hsl(var(--primary))" : "hsl(var(--primary) / 0.45)",
-            color: "#000",
-            boxShadow: amountValid ? "0 0 24px hsl(var(--primary) / 0.35)" : "none",
-          }}
-        >
-          {amountValid ? `Пополнить на $${parsedAmount.toFixed(2)}` : "Введите сумму"}
-          <ChevronRight size={18} strokeWidth={2.5} />
-        </motion.button>
-      </div>
+                    скоро
+                  </span>
+                </h2>
+                <p className="text-white/55 text-[12px] mt-1.5 leading-relaxed">
+                  Подключаем Click, Payme, Uzum, СБП и USDT. До этого баланс
+                  пополняется автоматически — кэшбэком за заказы и
+                  реферальными бонусами.
+                </p>
+                <div className="mt-3 flex items-center gap-2 text-[11px] text-white/35">
+                  <Sparkles size={12} className="text-primary/70" />
+                  <span>Кэшбэк начисляется автоматически после доставки</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
     </motion.div>
   );
 }

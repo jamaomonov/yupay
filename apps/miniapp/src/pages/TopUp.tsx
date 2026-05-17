@@ -8,9 +8,11 @@ import {
   ChevronRight,
   Clock,
   CreditCard,
+  ExternalLink,
   Heart,
   Package as PackageIcon,
   RotateCcw,
+  Send,
   Share2,
   ShieldCheck,
   Star,
@@ -22,6 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { ApiError } from "@/lib/api";
 import { useMe } from "@/lib/auth";
+import { isInsideTelegram } from "@/lib/telegram";
 import {
   useBrandSummary,
   useGames,
@@ -57,12 +60,30 @@ function adaptPackage(api: ApiPackage): Package {
   };
 }
 
-const PAYMENT_METHODS = [
-  { id: "mock", name: "Mock", sub: "dev",        icon: ShieldCheck },
-  { id: "card", name: "Карта", sub: "Visa · МИР", icon: CreditCard },
-  { id: "sbp",  name: "СБП",   sub: "без коми",   icon: Zap },
-  { id: "crypto", name: "Крипта", sub: "USDT",    icon: Bitcoin },
+// `mock` is a dev-only payment method — it short-circuits to a synchronous
+// fulfilment via the MockFulfiller. Shipping it in prod is a footgun: a user
+// can tap "Pay" with Mock pre-selected, see a "success" toast and never realise
+// nothing was charged.
+const ALL_PAYMENT_METHODS = [
+  { id: "mock", name: "Mock", sub: "dev",        icon: ShieldCheck, devOnly: true },
+  { id: "card", name: "Карта", sub: "Visa · МИР", icon: CreditCard, devOnly: false },
+  { id: "sbp",  name: "СБП",   sub: "без коми",   icon: Zap,        devOnly: false },
+  { id: "crypto", name: "Крипта", sub: "USDT",    icon: Bitcoin,    devOnly: false },
 ];
+
+const PAYMENT_METHODS = ALL_PAYMENT_METHODS.filter(
+  (m) => !m.devOnly || import.meta.env.DEV,
+);
+
+const DEFAULT_PAYMENT_METHOD = PAYMENT_METHODS[0]?.id ?? "card";
+
+// When the user opens the miniapp in a plain browser we can't take payment
+// (auth is bound to Telegram initData). Deep-link them back into the bot
+// rather than letting them fill the whole form and bouncing at submit.
+const BOT_USERNAME = (
+  (import.meta.env.VITE_TELEGRAM_BOT_USERNAME as string | undefined) ?? ""
+).replace(/^@/, "");
+const TELEGRAM_DEEP_LINK = BOT_USERNAME ? `https://t.me/${BOT_USERNAME}` : null;
 
 const PROVIDER_BY_METHOD: Record<string, string> = {
   mock: "mock",
@@ -125,10 +146,14 @@ export default function TopUp() {
   const me = useMe();
   const checkout = useCheckout();
   const isProcessing = checkout.isPending;
+  // Checkout requires Telegram initData. Detected once at mount — re-running
+  // on every render would let an authenticated user navigate-and-render with
+  // a stale answer if their session was just rebuilt.
+  const insideTelegram = isInsideTelegram();
 
   const [fulfillment, setFulfillment] = useState<Record<string, string>>({});
   const [selectedPkg, setSelectedPkg] = useState<string>("");
-  const [paymentMethod, setPaymentMethod] = useState("mock");
+  const [paymentMethod, setPaymentMethod] = useState(DEFAULT_PAYMENT_METHOD);
 
   // Re-default the SKU on every product switch: pick the 3rd (often a popular
   // mid-tier) or fall back to the first.
@@ -207,7 +232,7 @@ export default function TopUp() {
         skuId: activePkg.id,
         fulfillmentData,
         currency,
-        provider: PROVIDER_BY_METHOD[paymentMethod] ?? "mock",
+        provider: PROVIDER_BY_METHOD[paymentMethod] ?? "click",
       });
       if (result.payment.intent_url && result.payment.provider !== "mock") {
         toast({
@@ -320,6 +345,52 @@ export default function TopUp() {
             </div>
           </div>
         </div>
+
+        {/* Telegram-only banner — surfaced at the top of the funnel, before
+            the user invests time filling fulfilment fields and picking a
+            package. */}
+        {!insideTelegram && (
+          <div className="px-4 pt-4">
+            <div
+              className="rounded-2xl p-4 flex items-start gap-3"
+              style={{
+                background: "hsl(228 32% 14%)",
+                border: "1.5px solid hsl(var(--primary) / 0.4)",
+              }}
+              role="status"
+            >
+              <div
+                className="size-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{
+                  background: "hsl(var(--primary) / 0.15)",
+                  color: "hsl(var(--primary))",
+                }}
+                aria-hidden="true"
+              >
+                <Send size={16} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-white font-semibold text-sm leading-tight">
+                  Откройте в Telegram
+                </p>
+                <p className="text-white/55 text-[12px] mt-1 leading-relaxed">
+                  Оплата привязана к вашему Telegram-аккаунту. Каталог
+                  доступен для просмотра — оформить заказ можно только из бота.
+                </p>
+                {TELEGRAM_DEEP_LINK && (
+                  <a
+                    href={TELEGRAM_DEEP_LINK}
+                    className="mt-2.5 inline-flex items-center gap-1.5 text-[12px] font-semibold transition-opacity active:opacity-70"
+                    style={{ color: "hsl(var(--primary))" }}
+                  >
+                    Открыть бота
+                    <ExternalLink size={11} />
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Form ── */}
         <div className="px-4 pt-5 space-y-7">
@@ -534,31 +605,51 @@ export default function TopUp() {
 
       {/* ── Fixed CTA ── */}
       <div className="fixed bottom-[76px] left-1/2 -translate-x-1/2 w-full max-w-[430px] px-4 z-40">
-        <motion.button
-          whileTap={{ scale: 0.97 }}
-          onClick={handlePayment}
-          disabled={isProcessing || !activePkg}
-          className="w-full py-4 rounded-2xl text-base font-black tracking-wide flex items-center justify-center gap-2 transition-all"
-          style={{
-            background:
-              isProcessing || !activePkg
-                ? "hsl(var(--primary) / 0.45)"
-                : "hsl(var(--primary))",
-            color: "#000",
-            boxShadow:
-              isProcessing || !activePkg ? "none" : "0 0 24px hsl(var(--primary) / 0.35)",
-          }}
-          data-testid="btn-pay"
-        >
-          {isProcessing ? (
-            "Обработка..."
-          ) : (
-            <>
-              Пополнить за {finalPrice > 0 ? formatMoney(finalPrice, priceCode) : "—"}
-              <ChevronRight size={18} strokeWidth={2.5} />
-            </>
-          )}
-        </motion.button>
+        {!insideTelegram && TELEGRAM_DEEP_LINK ? (
+          <motion.a
+            whileTap={{ scale: 0.97 }}
+            href={TELEGRAM_DEEP_LINK}
+            className="w-full py-4 rounded-2xl text-base font-black tracking-wide flex items-center justify-center gap-2 transition-all"
+            style={{
+              background: "hsl(var(--primary))",
+              color: "#000",
+              boxShadow: "0 0 24px hsl(var(--primary) / 0.35)",
+            }}
+          >
+            <Send size={16} />
+            Открыть в Telegram
+          </motion.a>
+        ) : (
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            onClick={handlePayment}
+            disabled={isProcessing || !activePkg || !insideTelegram}
+            className="w-full py-4 rounded-2xl text-base font-black tracking-wide flex items-center justify-center gap-2 transition-all"
+            style={{
+              background:
+                isProcessing || !activePkg || !insideTelegram
+                  ? "hsl(var(--primary) / 0.45)"
+                  : "hsl(var(--primary))",
+              color: "#000",
+              boxShadow:
+                isProcessing || !activePkg || !insideTelegram
+                  ? "none"
+                  : "0 0 24px hsl(var(--primary) / 0.35)",
+            }}
+            data-testid="btn-pay"
+          >
+            {isProcessing ? (
+              "Обработка..."
+            ) : !insideTelegram ? (
+              "Доступно в Telegram"
+            ) : (
+              <>
+                Пополнить за {finalPrice > 0 ? formatMoney(finalPrice, priceCode) : "—"}
+                <ChevronRight size={18} strokeWidth={2.5} />
+              </>
+            )}
+          </motion.button>
+        )}
       </div>
     </>
   );
