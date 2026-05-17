@@ -33,6 +33,11 @@ import {
 } from "@/lib/catalog";
 import { useCurrencyStore } from "@/lib/currency";
 import { useCheckout } from "@/lib/orders";
+import {
+  forgetFulfillment,
+  getRecentFulfillment,
+  rememberFulfillment,
+} from "@/lib/recent-checkout";
 import { cn } from "@/lib/utils";
 
 // ─── Adapter: API Package → local Package ─────────────────────────────────────
@@ -90,6 +95,21 @@ const PROVIDER_BY_METHOD: Record<string, string> = {
   card: "click",
   sbp: "yookassa",
   crypto: "crypto",
+};
+
+// What the user will actually see on their bank statement / wallet after the
+// gateway settles. Surfacing this upfront prevents the "I paid $5 but my bank
+// statement shows 61 800 UZS — am I being scammed?" support ticket.
+interface AcquirerInfo {
+  label: string;
+  currency: string;
+}
+
+const ACQUIRER_BY_METHOD: Record<string, AcquirerInfo> = {
+  mock: { label: "Mock-провайдер", currency: "USD" },
+  card: { label: "Click", currency: "UZS" },
+  sbp: { label: "СБП через YooKassa", currency: "RUB" },
+  crypto: { label: "USDT TRC-20", currency: "USDT" },
 };
 
 function formatMoney(value: number, code: string): string {
@@ -152,6 +172,10 @@ export default function TopUp() {
   const insideTelegram = isInsideTelegram();
 
   const [fulfillment, setFulfillment] = useState<Record<string, string>>({});
+  // Pre-filled from localStorage on the first hydration of the form. We
+  // surface a chip ("Используем те же данные · изменить") so the user is
+  // never surprised, and the chip dismiss clears state + storage.
+  const [prefilled, setPrefilled] = useState(false);
   const [selectedPkg, setSelectedPkg] = useState<string>("");
   const [paymentMethod, setPaymentMethod] = useState(DEFAULT_PAYMENT_METHOD);
 
@@ -164,6 +188,27 @@ export default function TopUp() {
       setSelectedPkg(packages[2]?.id ?? packages[0]?.id ?? "");
     }
   }, [packages, selectedPkg]);
+
+  // Prefill fulfillment_data from the user's last successful checkout for
+  // this brand. Runs once per brand-slug change: switching brand wipes the
+  // prefilled flag so we don't carry PUBG's player_id into Steam's email.
+  useEffect(() => {
+    if (!gameId) return;
+    const recent = getRecentFulfillment(gameId);
+    if (!recent) {
+      setPrefilled(false);
+      return;
+    }
+    setFulfillment(recent.fulfillment_data);
+    setPrefilled(true);
+  }, [gameId]);
+
+  const clearPrefilled = () => {
+    if (!gameId) return;
+    forgetFulfillment(gameId);
+    setFulfillment({});
+    setPrefilled(false);
+  };
 
   if (gamesQuery.isLoading || brandQuery.isLoading) {
     return <PageSkeleton onBack={() => setLocation("/")} />;
@@ -234,6 +279,10 @@ export default function TopUp() {
         currency,
         provider: PROVIDER_BY_METHOD[paymentMethod] ?? "click",
       });
+      // Remember the fulfilment payload only after the order was accepted by
+      // the API — no point caching a half-typed player_id that came back
+      // 400. Subsequent visits to this brand pick it back up automatically.
+      if (gameId) rememberFulfillment(gameId, fulfillmentData);
       if (result.payment.intent_url && result.payment.provider !== "mock") {
         toast({
           title: "Перенаправляем на оплату",
@@ -459,12 +508,35 @@ export default function TopUp() {
                 title={requiredFields.length === 1 ? "Куда зачислить?" : "Реквизиты"}
                 sub={fillingHint}
               />
+              {prefilled && (
+                <div className="mb-2.5 flex items-center justify-between gap-2 rounded-2xl px-3 py-2"
+                  style={{
+                    background: "hsl(var(--primary) / 0.08)",
+                    border: "1px solid hsl(var(--primary) / 0.25)",
+                  }}
+                >
+                  <p className="text-[12px] text-white/75 leading-snug">
+                    Используем данные с прошлого заказа
+                  </p>
+                  <button
+                    type="button"
+                    onClick={clearPrefilled}
+                    className="text-[11px] font-semibold transition-opacity active:opacity-70 whitespace-nowrap"
+                    style={{ color: "hsl(var(--primary))" }}
+                  >
+                    Изменить
+                  </button>
+                </div>
+              )}
               <DynamicFields
                 fields={requiredFields}
                 values={fulfillment}
-                onChange={(key, value) =>
-                  setFulfillment((prev) => ({ ...prev, [key]: value }))
-                }
+                onChange={(key, value) => {
+                  setFulfillment((prev) => ({ ...prev, [key]: value }));
+                  // Manual edit dismisses the chip — user is explicitly
+                  // overriding the cached value.
+                  if (prefilled) setPrefilled(false);
+                }}
               />
             </div>
           )}
@@ -605,6 +677,21 @@ export default function TopUp() {
 
       {/* ── Fixed CTA ── */}
       <div className="fixed bottom-[76px] left-1/2 -translate-x-1/2 w-full max-w-[430px] px-4 z-40">
+        {/* Settlement disclaimer — only shown when the gateway will charge
+            in a currency different from the displayed one. Keeps the CTA
+            honest without forcing a live FX preview. */}
+        {insideTelegram &&
+          activePkg &&
+          ACQUIRER_BY_METHOD[paymentMethod] &&
+          ACQUIRER_BY_METHOD[paymentMethod]!.currency !== priceCode && (
+            <p
+              className="mb-2 text-center text-[11px] text-white/45"
+              role="note"
+            >
+              Списание в {ACQUIRER_BY_METHOD[paymentMethod]!.currency} через{" "}
+              {ACQUIRER_BY_METHOD[paymentMethod]!.label} по курсу банка
+            </p>
+          )}
         {!insideTelegram && TELEGRAM_DEEP_LINK ? (
           <motion.a
             whileTap={{ scale: 0.97 }}

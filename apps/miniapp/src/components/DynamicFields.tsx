@@ -67,8 +67,8 @@ function DynamicField({
 
   return (
     <div>
-      <div className="flex items-baseline justify-between mb-1.5 px-1">
-        <label className="text-xs font-semibold text-white/60 uppercase tracking-wide">
+      <div className="flex items-center justify-between mb-1.5 px-1 gap-2">
+        <label className="text-xs font-semibold text-white/75 uppercase tracking-wide">
           {label}
           {required && <span className="text-primary ml-1">*</span>}
         </label>
@@ -76,7 +76,13 @@ function DynamicField({
           <button
             type="button"
             onClick={() => setHelpOpen(true)}
-            className="flex items-center gap-1 text-[11px] text-white/40 hover:text-white/70 transition-colors"
+            aria-label={`Где найти ${label}`}
+            className="flex items-center gap-1 text-[11px] font-semibold rounded-full px-2.5 py-1 transition-opacity active:opacity-70"
+            style={{
+              background: "hsl(var(--primary) / 0.12)",
+              border: "1px solid hsl(var(--primary) / 0.35)",
+              color: "hsl(var(--primary))",
+            }}
           >
             <HelpCircle size={11} />
             Где найти?

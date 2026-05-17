@@ -10,13 +10,15 @@
  * artifacts (voucher codes, receipts, license keys) the moment they appear.
  */
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useParams, Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
   CheckCircle2,
   Copy,
+  ExternalLink,
+  HeadphonesIcon,
   Loader2,
   Receipt,
   ShoppingBag,
@@ -42,6 +44,47 @@ const PROCESSING: OrderStatus[] = [
 ];
 
 const TERMINAL_FAIL: OrderStatus[] = ["cancelled", "expired", "refunded"];
+
+// Soft SLA thresholds. The order is allowed to take whatever it takes
+// (fulfillment can poll suppliers, manual intervention etc.), but we lower
+// the user's anxiety after a couple of minutes by surfacing a support escape.
+const SLA_WARN_SECONDS = 3 * 60; // show "long? support" link
+const SLA_DELAYED_SECONDS = 10 * 60; // upgrade subtitle to "задерживается"
+
+const SUPPORT_USERNAME = (
+  (import.meta.env.VITE_TELEGRAM_SUPPORT_USERNAME as string | undefined) ??
+  (import.meta.env.VITE_TELEGRAM_BOT_USERNAME as string | undefined) ??
+  ""
+).replace(/^@/, "");
+
+function supportDeepLink(orderId: string): string | null {
+  if (!SUPPORT_USERNAME) return null;
+  // Telegram's t.me deep-link with a prefilled message body — when the user
+  // taps "Поддержка" Telegram pops the chat with this text in the composer.
+  const text = encodeURIComponent(`Привет! Завис заказ ${orderId}.`);
+  return `https://t.me/${SUPPORT_USERNAME}?text=${text}`;
+}
+
+function useElapsedSeconds(start: string | null | undefined, active: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    // 5s tick is enough — thresholds are minute-grained, sub-second precision
+    // is wasted CPU and battery.
+    const id = window.setInterval(() => setNow(Date.now()), 5_000);
+    return () => window.clearInterval(id);
+  }, [active]);
+  if (!start) return 0;
+  const startedAt = new Date(start).getTime();
+  if (!Number.isFinite(startedAt)) return 0;
+  return Math.max(0, Math.floor((now - startedAt) / 1000));
+}
+
+function formatElapsed(seconds: number): string {
+  if (seconds < 60) return `${seconds} с`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes} мин`;
+}
 
 interface StageCopy {
   title: string;
@@ -120,6 +163,9 @@ export default function OrderSuccess() {
   const isProcessing = PROCESSING.includes(order.status);
   const isDelivered = order.status === "delivered";
   const isFailed = TERMINAL_FAIL.includes(order.status);
+  // Elapsed since the order was created. Drives the soft-SLA copy on the
+  // status card. Ticking pauses once the order reaches a terminal state.
+  const elapsed = useElapsedSeconds(order.created_at, isProcessing);
 
   return (
     <motion.div
@@ -155,6 +201,7 @@ export default function OrderSuccess() {
         isProcessing={isProcessing}
         isDelivered={isDelivered}
         isFailed={isFailed}
+        elapsedSeconds={elapsed}
       />
 
       {/* Per-item delivery artifacts. Always render so the user sees what's
@@ -202,12 +249,14 @@ function StatusCard({
   isProcessing,
   isDelivered,
   isFailed,
+  elapsedSeconds,
 }: {
   order: OrderOut;
   stage: StageCopy;
   isProcessing: boolean;
   isDelivered: boolean;
   isFailed: boolean;
+  elapsedSeconds: number;
 }) {
   const tone = isDelivered
     ? "delivered"
@@ -223,6 +272,14 @@ function StatusCard({
       : tone === "failed"
         ? "#ef4444"
         : "hsl(220 70% 60%)";
+
+  const isDelayed = isProcessing && elapsedSeconds >= SLA_DELAYED_SECONDS;
+  const showSupport = isProcessing && elapsedSeconds >= SLA_WARN_SECONDS;
+  const subtitle = isDelayed
+    ? "Заказ задерживается. Мы уже следим — обычно решается без вашего участия."
+    : stage.subtitle;
+
+  const supportHref = supportDeepLink(order.id);
 
   return (
     <div className="px-4">
@@ -242,10 +299,19 @@ function StatusCard({
         <div className="relative flex items-center gap-3">
           <StatusIcon tone={tone} />
           <div className="min-w-0 flex-1">
-            <h1 className="text-white text-lg font-bold leading-tight">
-              {stage.title}
-            </h1>
-            <p className="text-white/55 text-xs mt-0.5">{stage.subtitle}</p>
+            <div className="flex items-baseline gap-2 flex-wrap">
+              <h1 className="text-white text-lg font-bold leading-tight">
+                {stage.title}
+              </h1>
+              {isProcessing && elapsedSeconds > 0 && (
+                <span className="text-[11px] text-white/35 font-medium tabular-nums">
+                  · {formatElapsed(elapsedSeconds)}
+                </span>
+              )}
+            </div>
+            <p className="text-white/55 text-xs mt-0.5 leading-snug">
+              {subtitle}
+            </p>
           </div>
         </div>
 
@@ -263,6 +329,47 @@ function StatusCard({
               }}
             />
           </div>
+        )}
+
+        {/* Soft SLA escape: after a couple of minutes show a low-stress link
+            to support. We don't expose a cancel/refund button here — refunds
+            are mediated by support to keep the rules consistent across
+            providers. */}
+        {showSupport && supportHref && (
+          <motion.a
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            href={supportHref}
+            className="relative mt-4 flex items-center justify-between gap-2 rounded-2xl px-3 py-2.5 transition-opacity active:opacity-70"
+            style={{
+              background: "hsl(228 32% 19%)",
+              border: "1px solid hsl(var(--border))",
+            }}
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div
+                className="size-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{
+                  background: "hsl(var(--primary) / 0.15)",
+                  color: "hsl(var(--primary))",
+                }}
+                aria-hidden="true"
+              >
+                <HeadphonesIcon size={13} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-white text-xs font-semibold leading-tight">
+                  {isDelayed
+                    ? "Написать в поддержку"
+                    : "Долго? Напишите в поддержку"}
+                </p>
+                <p className="text-white/40 text-[10px] mt-0.5 leading-tight truncate">
+                  Скопируем номер заказа автоматически
+                </p>
+              </div>
+            </div>
+            <ExternalLink size={13} className="text-white/40 flex-shrink-0" />
+          </motion.a>
         )}
       </div>
     </div>
