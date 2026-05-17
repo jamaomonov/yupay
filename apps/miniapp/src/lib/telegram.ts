@@ -70,3 +70,27 @@ export function readyTelegram(): void {
     }
   }
 }
+
+/**
+ * Wait until ``Telegram.WebApp.initData`` is populated.
+ *
+ * On cold Telegram launches (especially Android) the WebView may render before
+ * the official ``telegram-web-app.js`` has hydrated ``initData`` from the URL
+ * hash. Calling this and awaiting the result before hitting the auth endpoint
+ * removes the "have to reopen the miniapp 2–3 times" pain.
+ *
+ * Returns the raw initData string, or ``null`` if it never appeared within the
+ * timeout (e.g. running in a plain browser).
+ */
+export async function waitForInitData(
+  timeoutMs = 2_000,
+  stepMs = 50,
+): Promise<string | null> {
+  const start = Date.now();
+  let initData = getWebApp()?.initData ?? "";
+  while (!initData && Date.now() - start < timeoutMs) {
+    await new Promise((r) => setTimeout(r, stepMs));
+    initData = getWebApp()?.initData ?? "";
+  }
+  return initData || null;
+}

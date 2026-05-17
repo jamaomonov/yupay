@@ -73,24 +73,76 @@ export interface RequestOptions extends RequestInit {
   idempotencyKey?: string;
 }
 
+interface RawTokensOut {
+  access_token: string;
+  refresh_token?: string | null;
+}
+
+let refreshInFlight: Promise<string | null> | null = null;
+
+async function tryRefreshOnce(): Promise<string | null> {
+  if (refreshInFlight) return refreshInFlight;
+  const refresh = getRefreshToken();
+  if (!refresh) return null;
+  refreshInFlight = (async () => {
+    try {
+      const url = `${apiBase}/api/v1/auth/refresh`;
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ refresh_token: refresh }),
+      });
+      if (!resp.ok) {
+        // Refresh itself failed — wipe so the user can re-auth via initData.
+        if (resp.status === 401 || resp.status === 403) clearTokens();
+        return null;
+      }
+      const tokens = (await resp.json()) as RawTokensOut;
+      setTokens(tokens.access_token, tokens.refresh_token ?? null);
+      return tokens.access_token;
+    } catch {
+      return null;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+}
+
 export async function api<T = unknown>(
   path: string,
   options: RequestOptions = {},
 ): Promise<T> {
   const { anonymous, idempotencyKey, headers, ...init } = options;
   const url = path.startsWith("http") ? path : `${apiBase}${path}`;
-  const h = new Headers(headers);
-  h.set("Accept", "application/json");
-  if (init.body && !h.has("Content-Type")) {
-    h.set("Content-Type", "application/json");
-  }
-  if (!anonymous) {
-    const token = getAccessToken();
-    if (token) h.set("Authorization", `Bearer ${token}`);
-  }
-  if (idempotencyKey) h.set("Idempotency-Key", idempotencyKey);
 
-  const response = await fetch(url, { ...init, headers: h });
+  const send = async (token: string | null): Promise<Response> => {
+    const h = new Headers(headers);
+    h.set("Accept", "application/json");
+    if (init.body && !h.has("Content-Type")) {
+      h.set("Content-Type", "application/json");
+    }
+    if (!anonymous && token) h.set("Authorization", `Bearer ${token}`);
+    if (idempotencyKey) h.set("Idempotency-Key", idempotencyKey);
+    return fetch(url, { ...init, headers: h });
+  };
+
+  let response = await send(anonymous ? null : getAccessToken());
+
+  // Rotate-and-retry once on 401 for authenticated requests when a refresh
+  // token is available. Single retry only — never loop.
+  if (
+    response.status === 401 &&
+    !anonymous &&
+    path !== "/api/v1/auth/refresh" &&
+    path !== "/api/v1/auth/telegram/webapp"
+  ) {
+    const fresh = await tryRefreshOnce();
+    if (fresh) {
+      response = await send(fresh);
+    }
+  }
+
   if (!response.ok) {
     let body: unknown = null;
     try {

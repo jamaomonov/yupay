@@ -19,7 +19,7 @@ import {
   getAccessToken,
   setTokens,
 } from "./api";
-import { getWebApp, isInsideTelegram, readyTelegram } from "./telegram";
+import { isInsideTelegram, readyTelegram, waitForInitData } from "./telegram";
 
 interface TokensOut {
   access_token: string;
@@ -49,24 +49,43 @@ export async function loginWithTelegramInitData(initData: string): Promise<Token
   return tokens;
 }
 
+export type BootstrapStatus = "ok" | "no-telegram" | "no-init-data" | "failed";
+
+export interface BootstrapResult {
+  status: BootstrapStatus;
+  error?: ApiError | Error;
+}
+
 /**
  * Bootstrap auth on app mount.
  *
- * - Inside Telegram (``initData`` non-empty): always re-log; tokens may have rotated.
- * - Outside Telegram (plain browser dev): keep whatever token is stored; pages will
- *   detect missing ``me`` and surface an "Open in Telegram" banner.
+ * Polls ``Telegram.WebApp.initData`` for up to ``timeoutMs`` ms before giving
+ * up. Cold-launches of the Telegram client (especially Android) can render the
+ * WebView before the official ``telegram-web-app.js`` has populated initData
+ * from the URL hash — without the wait we silently miss it on the first open.
+ *
+ * Returns a typed result so callers (e.g. ``BootstrapGate``) can show a retry
+ * button or fall back to anonymous mode.
  */
-export async function bootstrapAuth(): Promise<void> {
+export async function bootstrapAuth(
+  { timeoutMs }: { timeoutMs?: number } = {},
+): Promise<BootstrapResult> {
   readyTelegram();
-  if (!isInsideTelegram()) return;
-  const initData = getWebApp()?.initData;
-  if (!initData) return;
+  // Plain browser dev: keep whatever token is stored; UI surfaces "Open in Telegram".
+  if (typeof window === "undefined" || !window.Telegram) {
+    return { status: "no-telegram" };
+  }
+  const initData = await waitForInitData(timeoutMs ?? 2_000);
+  if (!initData) {
+    // Either not running inside Telegram, or the client never delivered initData.
+    return { status: isInsideTelegram() ? "no-init-data" : "no-telegram" };
+  }
   try {
     await loginWithTelegramInitData(initData);
+    return { status: "ok" };
   } catch (exc) {
-    // Telegram auth failed (bad HMAC, server down) — just log and continue. The user
-    // will see anonymous-only state and can retry by reopening the miniapp.
-    console.warn("Telegram auth bootstrap failed", exc);
+    const err = exc instanceof Error ? exc : new Error(String(exc));
+    return { status: "failed", error: err };
   }
 }
 
