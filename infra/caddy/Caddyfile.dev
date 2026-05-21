@@ -17,7 +17,8 @@ app.localhost {
 
 admin.localhost {
 	tls internal
-	reverse_proxy admin:80
+	# Vite dev server listens on 5173 inside the admin container.
+	reverse_proxy admin:5173
 }
 
 api.localhost {

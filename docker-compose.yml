@@ -194,17 +194,34 @@ services:
       - /app/apps/miniapp/node_modules
 
   admin:
+    # Dev image: ``vite dev`` with HMR + bind-mounted source. Production
+    # build (nginx + static dist) is in ``admin.Dockerfile`` and consumed by
+    # docker-compose.prod.yml via the GHCR tag.
     build:
       context: .
-      dockerfile: infra/docker/admin.Dockerfile
-      args:
-        VITE_API_BASE_URL: http://localhost:8000
-        VITE_TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+      dockerfile: infra/docker/admin.dev.Dockerfile
     restart: unless-stopped
+    environment:
+      # Same-origin API calls — the SPA hits `/api/...` and Vite's proxy
+      # forwards to the api container (see apps/admin/vite.config.ts).
+      VITE_API_BASE_URL: ""
+      VITE_TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+      # HMR through a public proxy (Caddy / ngrok). Same convention as
+      # miniapp — leave blank for plain ``localhost:3002`` browsing.
+      VITE_HMR_HOST: ${ADMIN_HMR_HOST:-}
+      VITE_HMR_PROTOCOL: ${ADMIN_HMR_PROTOCOL:-wss}
+      VITE_HMR_CLIENT_PORT: ${ADMIN_HMR_CLIENT_PORT:-443}
+      DOCKER_CONTAINER: "1"
     ports:
-      - "3002:80"
+      # External 3002 → Vite dev server on 5173 (set in vite.config.ts).
+      - "3002:5173"
     depends_on:
       - api
+    volumes:
+      - ./apps/admin:/app/apps/admin
+      - ./packages:/app/packages
+      - /app/node_modules
+      - /app/apps/admin/node_modules
 
   caddy:
     image: caddy:2-alpine
