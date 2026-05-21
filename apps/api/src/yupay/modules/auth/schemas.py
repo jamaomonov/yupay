@@ -92,6 +92,7 @@ class MeOut(BaseModel):
     id: str
     email: EmailStr | None
     locale: str
+    display_currency: str
     display_name: str | None
     photo_url: str | None
     roles: list[str] = []

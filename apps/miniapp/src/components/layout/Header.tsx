@@ -3,6 +3,8 @@ import { Plus, Wallet as WalletIcon } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useMe } from "@/lib/auth";
+import { useDisplayCurrency } from "@/lib/currency";
+import { useFxRate } from "@/lib/fx";
 import {
   formatBalance,
   totalDisplayBalance,
@@ -12,7 +14,13 @@ import {
 export function Header() {
   const me = useMe();
   const wallet = useWallet();
-  const balance = totalDisplayBalance(wallet.data ?? []);
+  const displayCurrency = useDisplayCurrency();
+  const fx = useFxRate(displayCurrency);
+  const balance = totalDisplayBalance(
+    wallet.data ?? [],
+    displayCurrency,
+    fx.ready ? fx.rate : null,
+  );
   const user = me.data;
 
   return (
@@ -43,7 +51,9 @@ export function Header() {
           <div className="flex items-center gap-1.5 pl-3 pr-2">
             <WalletIcon size={12} className="text-white/40" />
             <span className="text-white font-bold text-sm tabular-nums leading-none">
-              {user ? formatBalance(balance.amount, balance.currency) : "—"}
+              {user && balance.ready
+                ? formatBalance(balance.amount, balance.currency)
+                : "—"}
             </span>
           </div>
           <div

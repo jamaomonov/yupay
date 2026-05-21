@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { apiGet } from "./api";
 import { useMe } from "./auth";
+import { CURRENCY_SYMBOL, type DisplayCurrency } from "./currency";
 
 export type UserAccountKind =
   | "user_wallet"
@@ -84,26 +85,56 @@ export function useWallet() {
 }
 
 /**
- * Summed balance across the three user-side accounts in one display currency.
- * Real implementation would FX-convert; for now we assume USD across the
- * board and just total. Callers can override the currency for display.
+ * Sum the three user-side accounts converted into ``target`` via ``rate``.
+ *
+ * All wallet accounts currently store USD natively, so ``rate`` is the
+ * USD→target multiplier (1 for USD/USDT). When ``rate === null`` we treat
+ * the result as "not ready yet" so the caller can show a placeholder
+ * instead of a misleading 0.
  */
 export function totalDisplayBalance(
   balances: ParsedBalance[],
-): { amount: number; currency: string } {
-  if (balances.length === 0) return { amount: 0, currency: "USD" };
-  const wallet = balances.find((b) => b.kind === "user_wallet");
-  const currency = wallet?.currency ?? balances[0]?.currency ?? "USD";
-  const same = balances.filter((b) => b.currency === currency);
-  return {
-    amount: same.reduce((s, b) => s + b.amount, 0),
-    currency,
-  };
+  target: DisplayCurrency,
+  rate: number | null,
+): { amount: number; currency: DisplayCurrency; ready: boolean } {
+  if (rate === null) {
+    return { amount: 0, currency: target, ready: false };
+  }
+  const usd = balances.reduce(
+    (sum, b) => (b.currency === "USD" ? sum + b.amount : sum),
+    0,
+  );
+  return { amount: usd * rate, currency: target, ready: true };
 }
 
-export function formatBalance(amount: number, currency: string): string {
-  if (currency === "USD" || currency === "USDT") {
-    return `$${amount.toFixed(2)}`;
+/**
+ * Convert a USD amount into the target currency given a fresh rate. Pure
+ * helper so the wallet hero and the per-account cards stay consistent.
+ */
+export function convertFromUsd(amountUsd: number, rate: number): number {
+  return amountUsd * rate;
+}
+
+const _RU_FORMATTERS: Partial<Record<DisplayCurrency, Intl.NumberFormat>> = {};
+
+function getFormatter(currency: DisplayCurrency): Intl.NumberFormat {
+  let cached = _RU_FORMATTERS[currency];
+  if (!cached) {
+    // We render the symbol ourselves (Telegram's font sometimes mangles ₽);
+    // the formatter is just here for grouping/decimals.
+    const fractionDigits = currency === "UZS" ? 0 : 2;
+    cached = new Intl.NumberFormat("ru-RU", {
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
+    });
+    _RU_FORMATTERS[currency] = cached;
   }
-  return `${amount.toLocaleString("ru", { maximumFractionDigits: 2 })} ${currency}`;
+  return cached;
+}
+
+export function formatBalance(amount: number, currency: DisplayCurrency): string {
+  const formatted = getFormatter(currency).format(amount);
+  if (currency === "USD") return `$${formatted}`;
+  if (currency === "USDT") return `${formatted} USDT`;
+  return `${formatted} ${CURRENCY_SYMBOL[currency]}`;
 }

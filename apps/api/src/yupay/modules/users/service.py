@@ -178,11 +178,53 @@ async def set_user_roles(
     return user
 
 
+# Mirror of the Pydantic Literal in ``schemas.UpdateMeIn``. Defining it here
+# too keeps the service layer self-contained for cross-module callers that
+# import ``users.api`` without pulling Pydantic in.
+_ALLOWED_DISPLAY_CURRENCIES = frozenset({"USD", "UZS", "RUB", "USDT"})
+
+
+async def update_me(
+    session: AsyncSession,
+    user_id: str,
+    *,
+    display_currency: str | None = None,
+    locale: str | None = None,
+) -> User:
+    """Patch the authenticated user's preferences.
+
+    Only fields whose value is not ``None`` are touched, so callers can send
+    partial bodies. Unknown currencies are rejected as a 400 — they would
+    otherwise break the storefront's FX lookup and silently degrade prices.
+    """
+    user = await get_user_by_id(session, user_id)
+    if user is None:
+        raise NotFoundError("user not found")
+    if display_currency is not None:
+        currency = display_currency.strip().upper()
+        if currency not in _ALLOWED_DISPLAY_CURRENCIES:
+            from yupay.core.errors import ValidationError  # noqa: PLC0415
+
+            raise ValidationError(
+                f"unsupported display currency: {currency!r}",
+                allowed=sorted(_ALLOWED_DISPLAY_CURRENCIES),
+            )
+        user.display_currency = currency
+    if locale is not None:
+        cleaned = locale.strip().split("-")[0][:8]
+        if cleaned:
+            user.locale = cleaned
+    user.updated_at = now()
+    await session.flush()
+    return user
+
+
 __all__ = [
     "get_user_admin",
     "get_user_by_id",
     "get_user_by_telegram_id",
     "list_users_admin",
     "set_user_roles",
+    "update_me",
     "upsert_user_by_telegram",
 ]

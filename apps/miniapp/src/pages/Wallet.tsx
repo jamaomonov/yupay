@@ -10,10 +10,13 @@ import {
 } from "lucide-react";
 
 import { useMe } from "@/lib/auth";
+import { useDisplayCurrency, type DisplayCurrency } from "@/lib/currency";
+import { useFxRate } from "@/lib/fx";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import {
   ACCOUNT_META,
   ACCOUNT_ORDER,
+  convertFromUsd,
   formatBalance,
   type ParsedBalance,
   totalDisplayBalance,
@@ -26,9 +29,15 @@ export default function Wallet() {
   const [, setLocation] = useLocation();
   const me = useMe();
   const wallet = useWallet();
+  const displayCurrency = useDisplayCurrency();
+  const fx = useFxRate(displayCurrency);
 
   const balances = wallet.data ?? [];
-  const total = totalDisplayBalance(balances);
+  const total = totalDisplayBalance(
+    balances,
+    displayCurrency,
+    fx.ready ? fx.rate : null,
+  );
 
   return (
     <motion.div
@@ -85,7 +94,9 @@ export default function Wallet() {
               Доступно к трате
             </p>
             <p className="text-white font-bold text-3xl mt-1 tabular-nums">
-              {me.data ? formatBalance(total.amount, total.currency) : "—"}
+              {me.data && total.ready
+                ? formatBalance(total.amount, total.currency)
+                : "—"}
             </p>
             <p className="text-white/40 text-xs mt-1.5">
               {me.data
@@ -100,7 +111,15 @@ export default function Wallet() {
           <div className="grid grid-cols-3 gap-2 mt-3">
             {ACCOUNT_ORDER.map((kind) => {
               const b = balances.find((x) => x.kind === kind);
-              return <AccountChip key={kind} kind={kind} balance={b} />;
+              return (
+                <AccountChip
+                  key={kind}
+                  kind={kind}
+                  balance={b}
+                  displayCurrency={displayCurrency}
+                  rate={fx.ready ? fx.rate : null}
+                />
+              );
             })}
           </div>
         )}
@@ -164,9 +183,13 @@ export default function Wallet() {
 function AccountChip({
   kind,
   balance,
+  displayCurrency,
+  rate,
 }: {
   kind: UserAccountKind;
   balance: ParsedBalance | undefined;
+  displayCurrency: DisplayCurrency;
+  rate: number | null;
 }) {
   const meta = ACCOUNT_META[kind];
   const tone =
@@ -176,8 +199,9 @@ function AccountChip({
         ? { bg: "rgba(251, 191, 36, 0.12)", fg: "rgb(252, 211, 77)" }
         : { bg: "rgba(167, 139, 250, 0.12)", fg: "rgb(196, 181, 253)" };
   const Icon = kind === "user_wallet" ? WalletIcon : kind === "user_cashback" ? Sparkles : Gift;
-  const amount = balance?.amount ?? 0;
-  const currency = balance?.currency ?? "USD";
+  const usdAmount = balance?.amount ?? 0;
+  const ready = rate !== null;
+  const amount = ready ? convertFromUsd(usdAmount, rate) : 0;
   return (
     <div
       className="rounded-2xl p-3 flex flex-col gap-1.5"
@@ -194,11 +218,11 @@ function AccountChip({
           <Icon size={12} />
         </span>
         <span className="text-[10px] uppercase font-bold tracking-wider text-white/40">
-          {currency}
+          {displayCurrency}
         </span>
       </div>
       <p className="text-white text-base font-bold tabular-nums leading-none">
-        {formatBalance(amount, currency)}
+        {ready ? formatBalance(amount, displayCurrency) : "—"}
       </p>
       <p className="text-white/40 text-[10px] leading-tight line-clamp-1">{meta.label}</p>
     </div>

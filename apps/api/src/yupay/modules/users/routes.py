@@ -1,7 +1,12 @@
-"""Admin HTTP routes for the ``users`` module.
+"""HTTP routes for the ``users`` module.
 
-Customer-facing user queries live in ``auth`` (``GET /auth/me``). This file is
-admin-only — list, detail, role management.
+Customer-facing reads still live in ``auth`` (``GET /auth/me`` — same JWT
+gate). This file exposes:
+
+* ``/users/me`` — customer ``PATCH`` for editable preferences (display
+  currency, locale). Adding more profile fields here later is a pure
+  additive change.
+* ``/admin/users`` — admin CRUD for the user directory.
 """
 
 from __future__ import annotations
@@ -13,19 +18,43 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
 from yupay.modules.admin.api import require_admin
+from yupay.modules.auth.deps import current_user
 from yupay.modules.users import service as svc
 from yupay.modules.users.models import User
 from yupay.modules.users.schemas import (
+    UpdateMeIn,
     UserAdminListOut,
     UserAdminOut,
+    UserOut,
     UserRolesIn,
 )
 
+router = APIRouter(prefix="/users", tags=["users"])
 admin_router = APIRouter(
     prefix="/admin/users",
     tags=["admin:users"],
     dependencies=[Depends(require_admin)],
 )
+
+
+@router.patch(
+    "/me",
+    response_model=UserOut,
+    summary="Update the authenticated user's preferences",
+)
+async def update_me_route(
+    body: UpdateMeIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    user: Annotated[User, Depends(current_user)],
+) -> UserOut:
+    """Partial update — only the fields actually sent are applied."""
+    updated = await svc.update_me(
+        db,
+        user.id,
+        display_currency=body.display_currency,
+        locale=body.locale,
+    )
+    return UserOut.model_validate(updated)
 
 
 @admin_router.get(

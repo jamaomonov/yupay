@@ -3,8 +3,14 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+# Keep in sync with the ``DISPLAY_CURRENCIES`` constant in
+# ``apps/miniapp/src/lib/currency.ts``. Limited to what we can actually FX
+# right now (see ``Settings.fx_supported_quotes``).
+DisplayCurrencyLiteral = Literal["USD", "UZS", "RUB", "USDT"]
 
 
 class UserOut(BaseModel):
@@ -15,10 +21,20 @@ class UserOut(BaseModel):
     id: str
     email: EmailStr | None
     locale: str
+    display_currency: str
     display_name: str | None
     photo_url: str | None
     roles: list[str] = []
     created_at: datetime
+
+
+class UpdateMeIn(BaseModel):
+    """Customer-facing ``PATCH /users/me`` body. All fields optional."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    display_currency: DisplayCurrencyLiteral | None = None
+    locale: str | None = Field(default=None, max_length=8)
 
 
 class TelegramLinkOut(BaseModel):
@@ -43,6 +59,7 @@ class UserAdminOut(BaseModel):
     id: str
     email: EmailStr | None
     locale: str
+    display_currency: str
     display_name: str | None
     photo_url: str | None
     roles: list[str] = []
@@ -70,7 +87,9 @@ class UserRolesIn(BaseModel):
 
 
 __all__ = [
+    "DisplayCurrencyLiteral",
     "TelegramLinkOut",
+    "UpdateMeIn",
     "UserAdminListOut",
     "UserAdminOut",
     "UserOut",

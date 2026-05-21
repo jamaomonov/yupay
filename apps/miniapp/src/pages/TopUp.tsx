@@ -29,7 +29,7 @@ import {
   useProductWithSkus,
   type Package as ApiPackage,
 } from "@/lib/catalog";
-import { useCurrencyStore } from "@/lib/currency";
+import { useDisplayCurrency } from "@/lib/currency";
 import { useAvailableProviders, useCheckout } from "@/lib/orders";
 import {
   forgetFulfillment,
@@ -156,7 +156,7 @@ export default function TopUp() {
     }
   }, [products, selectedProductSlug]);
 
-  const currency = useCurrencyStore((s) => s.currency);
+  const currency = useDisplayCurrency();
   const productQuery = useProductWithSkus(selectedProductSlug || undefined, currency);
   const requiredFields = productQuery.data?.product.required_fields ?? [];
   const productImage = productQuery.data?.product.image_url ?? null;

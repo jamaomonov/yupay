@@ -33,6 +33,8 @@ export interface Me {
   id: string;
   email: string | null;
   locale: string;
+  /** Storefront/wallet display currency the customer picked (default ``USD``). */
+  display_currency: string;
   display_name: string | null;
   photo_url: string | null;
   roles: string[];

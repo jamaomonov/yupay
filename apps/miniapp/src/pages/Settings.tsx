@@ -28,7 +28,8 @@ import {
   CURRENCY_SYMBOL,
   DISPLAY_CURRENCIES,
   type DisplayCurrency,
-  useCurrencyStore,
+  useDisplayCurrency,
+  useUpdateDisplayCurrency,
 } from "@/lib/currency";
 import { getWebApp } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -70,8 +71,8 @@ export default function Settings() {
   const logout = useLogout();
   const user = me.data;
 
-  const currency = useCurrencyStore((s) => s.currency);
-  const setCurrency = useCurrencyStore((s) => s.setCurrency);
+  const currency = useDisplayCurrency();
+  const updateCurrency = useUpdateDisplayCurrency();
   const [currencyOpen, setCurrencyOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
 
@@ -259,7 +260,7 @@ export default function Settings() {
                 code={c}
                 active={currency === c}
                 onSelect={() => {
-                  setCurrency(c);
+                  if (c !== currency) updateCurrency.mutate(c);
                   setCurrencyOpen(false);
                 }}
               />
