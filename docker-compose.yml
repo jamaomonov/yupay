@@ -148,29 +148,50 @@ services:
       - api
 
   miniapp:
+    # Dev image: runs `vite dev` with HMR. Source is bind-mounted below so
+    # edits land in the browser within ~200ms (polling-based watcher). The
+    # production build (nginx + static dist) lives in miniapp.Dockerfile and
+    # is consumed by docker-compose.prod.yml via the GHCR image.
     build:
       context: .
-      dockerfile: infra/docker/miniapp.Dockerfile
-      args:
-        # Empty base URL → the SPA calls /api/... on the same origin; nginx in
-        # the miniapp container proxies that upstream to the api service. This
-        # avoids HTTPS-to-HTTP mixed-content blocks when serving the miniapp
-        # over ngrok / Telegram. Override at build time to point at a remote
-        # API in prod.
-        VITE_API_BASE_URL: ""
-        VITE_TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
-        VITE_TELEGRAM_SUPPORT_USERNAME: ${TELEGRAM_SUPPORT_USERNAME:-}
-        VITE_TERMS_URL: ${TERMS_URL:-}
-        VITE_PRIVACY_URL: ${PRIVACY_URL:-}
-        VITE_REFUND_URL: ${REFUND_URL:-}
-        VITE_COMPANY_NAME: ${COMPANY_NAME:-}
-        VITE_COMPANY_REGISTRATION: ${COMPANY_REGISTRATION:-}
-        VITE_COMPANY_SINCE: ${COMPANY_SINCE:-}
+      dockerfile: infra/docker/miniapp.dev.Dockerfile
     restart: unless-stopped
+    environment:
+      # Same-origin API calls — the SPA hits `/api/...` and Vite's proxy
+      # forwards to the api container (see apps/miniapp/vite.config.ts).
+      # Avoids HTTPS-to-HTTP mixed-content blocks when accessing through
+      # ngrok / Telegram.
+      VITE_API_BASE_URL: ""
+      VITE_TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+      VITE_TELEGRAM_SUPPORT_USERNAME: ${TELEGRAM_SUPPORT_USERNAME:-}
+      VITE_TERMS_URL: ${TERMS_URL:-}
+      VITE_PRIVACY_URL: ${PRIVACY_URL:-}
+      VITE_REFUND_URL: ${REFUND_URL:-}
+      VITE_COMPANY_NAME: ${COMPANY_NAME:-}
+      VITE_COMPANY_REGISTRATION: ${COMPANY_REGISTRATION:-}
+      VITE_COMPANY_SINCE: ${COMPANY_SINCE:-}
+      # HMR through a public tunnel (ngrok / cloudflared). Set MINIAPP_HMR_HOST
+      # to the public hostname (e.g. abc123.ngrok-free.app) — Vite will dial
+      # `wss://<host>:443` instead of `ws://localhost:5173`, which is the only
+      # way HMR survives reverse-proxying. Leave empty for plain localhost.
+      VITE_HMR_HOST: ${MINIAPP_HMR_HOST:-}
+      VITE_HMR_PROTOCOL: ${MINIAPP_HMR_PROTOCOL:-wss}
+      VITE_HMR_CLIENT_PORT: ${MINIAPP_HMR_CLIENT_PORT:-443}
+      DOCKER_CONTAINER: "1"
     ports:
-      - "3001:80"
+      # External 3001 → Vite dev server on 5173 (set in vite.config.ts).
+      - "3001:5173"
     depends_on:
       - api
+    volumes:
+      # Live source — edits hot-reload through Vite's HMR.
+      - ./apps/miniapp:/app/apps/miniapp
+      - ./packages:/app/packages
+      # Anonymous volumes mask the bind-mounts above so node_modules baked
+      # into the image survive. Without these, pnpm-install layers would be
+      # invisible at runtime and `pnpm dev` would crash with missing deps.
+      - /app/node_modules
+      - /app/apps/miniapp/node_modules
 
   admin:
     build:

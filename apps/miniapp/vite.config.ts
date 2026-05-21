@@ -7,6 +7,21 @@ import { defineConfig } from "vite";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Where the FastAPI container can be reached from inside Docker. When `vite
+// dev` runs on the host (no compose), fall back to localhost. Override via
+// VITE_DEV_API_TARGET if you proxy to a different backend.
+const apiTarget =
+  process.env.VITE_DEV_API_TARGET ??
+  (process.env.DOCKER_CONTAINER ? "http://api:8000" : "http://localhost:8000");
+
+// Public host the browser uses to reach this dev server — required for HMR
+// over ngrok / Telegram, because the default `ws://localhost:5173` baked into
+// the client wouldn't reach the dev server from a public HTTPS origin.
+// Leave unset for plain `localhost:3001` browsing and HMR will use defaults.
+const hmrHost = process.env.VITE_HMR_HOST?.trim() || null;
+const hmrProtocol = process.env.VITE_HMR_PROTOCOL?.trim() || "wss";
+const hmrClientPort = Number(process.env.VITE_HMR_CLIENT_PORT ?? 443);
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -20,6 +35,41 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 5173,
     strictPort: true,
+    // Accept any Host header so requests proxied through ngrok / Caddy / Telegram
+    // aren't rejected by Vite's host-check. Safe in dev because the server is
+    // never exposed publicly without an intentional tunnel.
+    allowedHosts: true,
+    // Bind-mounted source on macOS/Windows Docker Desktop doesn't reliably emit
+    // inotify events; polling is the only safe default for dev hot-reload.
+    watch: {
+      usePolling: true,
+      interval: 200,
+    },
+    // Hot Module Reload websocket. When the dev server sits behind ngrok we
+    // need the client to dial the *public* host on 443/wss, not the in-app
+    // default of localhost:5173. Set the three VITE_HMR_* env vars to enable.
+    hmr: hmrHost
+      ? {
+          host: hmrHost,
+          protocol: hmrProtocol,
+          clientPort: hmrClientPort,
+        }
+      : undefined,
+    // Mirror the production nginx routes: SPA owns everything except
+    // `/api/*` and `/webhooks/*`, which proxy straight to the FastAPI
+    // container. Keeps "same-origin" calls from the SPA working without
+    // CORS or mixed-content surprises.
+    proxy: {
+      "/api": {
+        target: apiTarget,
+        changeOrigin: true,
+        ws: true,
+      },
+      "/webhooks": {
+        target: apiTarget,
+        changeOrigin: true,
+      },
+    },
   },
   preview: {
     host: "0.0.0.0",

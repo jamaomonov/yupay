@@ -11,7 +11,8 @@ yupay.localhost {
 
 app.localhost {
 	tls internal
-	reverse_proxy miniapp:3000
+	# Vite dev server listens on 5173 inside the miniapp container.
+	reverse_proxy miniapp:5173
 }
 
 admin.localhost {
