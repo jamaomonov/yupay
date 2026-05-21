@@ -46,6 +46,12 @@ const PROCESSING: OrderStatus[] = [
 
 const TERMINAL_FAIL: OrderStatus[] = ["cancelled", "expired", "refunded"];
 
+// Subset of PROCESSING where a delivery is actually being attempted. We hide
+// "ожидаем выдачу…" / "пополняем аккаунт…" placeholders outside of these
+// states — pending_payment hasn't been paid yet, and expired/cancelled/
+// refunded will never fulfil. Showing the spinner there was misleading.
+const AWAITING_DELIVERY: OrderStatus[] = ["paid", "fulfilling", "fulfilled"];
+
 // Soft SLA thresholds. The order is allowed to take whatever it takes
 // (fulfillment can poll suppliers, manual intervention etc.), but we lower
 // the user's anxiety after a couple of minutes by surfacing a support escape.
@@ -219,8 +225,9 @@ export default function OrderSuccess() {
         elapsedSeconds={elapsed}
       />
 
-      {/* Per-item delivery artifacts. Always render so the user sees what's
-          waiting on fulfilment vs what has landed already. */}
+      {/* Per-item delivery artifacts. The "awaiting" placeholder is gated
+          on actual fulfilment activity (see AWAITING_DELIVERY) — for
+          unpaid / expired / cancelled orders we render just the item line. */}
       <section className="px-4 space-y-2">
         {order.items.map((item) => (
           <ItemCard
@@ -228,6 +235,7 @@ export default function OrderSuccess() {
             item={item}
             delivery={deliveriesByItem[item.id] ?? null}
             currency={order.currency}
+            awaitingDelivery={AWAITING_DELIVERY.includes(order.status)}
           />
         ))}
       </section>
@@ -453,10 +461,12 @@ function ItemCard({
   item,
   delivery,
   currency,
+  awaitingDelivery,
 }: {
   item: OrderOut["items"][number];
   delivery: DeliveryOut | null;
   currency: string;
+  awaitingDelivery: boolean;
 }) {
   const display = item.display;
   const headline = display
@@ -518,7 +528,7 @@ function ItemCard({
           ) : (
             <ArtifactBlock delivery={delivery} />
           )
-        ) : (
+        ) : awaitingDelivery ? (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
@@ -528,7 +538,7 @@ function ItemCard({
             <Loader2 size={12} className="animate-spin" />
             <span>{isTopUp ? "пополняем аккаунт…" : "ожидаем выдачу…"}</span>
           </motion.div>
-        )}
+        ) : null}
       </AnimatePresence>
     </div>
   );
