@@ -32,7 +32,7 @@ import {
   type Package as ApiPackage,
 } from "@/lib/catalog";
 import { useCurrencyStore } from "@/lib/currency";
-import { useCheckout } from "@/lib/orders";
+import { useAvailableProviders, useCheckout } from "@/lib/orders";
 import {
   forgetFulfillment,
   getRecentFulfillment,
@@ -65,20 +65,18 @@ function adaptPackage(api: ApiPackage): Package {
   };
 }
 
-// `mock` is a dev-only payment method — it short-circuits to a synchronous
-// fulfilment via the MockFulfiller. Shipping it in prod is a footgun: a user
-// can tap "Pay" with Mock pre-selected, see a "success" toast and never realise
-// nothing was charged.
-const ALL_PAYMENT_METHODS = [
-  { id: "mock", name: "Mock", sub: "dev",        icon: ShieldCheck, devOnly: true },
-  { id: "card", name: "Карта", sub: "Visa · МИР", icon: CreditCard, devOnly: false },
-  { id: "sbp",  name: "СБП",   sub: "без коми",   icon: Zap,        devOnly: false },
-  { id: "crypto", name: "Крипта", sub: "USDT",    icon: Bitcoin,    devOnly: false },
+// `mock` short-circuits to a synchronous fulfilment via the MockFulfiller —
+// indispensable for end-to-end testing of the delivery flow. We do NOT hide it
+// based on a build flag: the backend itself refuses to expose the mock gateway
+// when Settings.is_prod is true (see modules/payments/gateways/mock.py), which
+// is the only check that matters. Hiding it on the frontend created confusion
+// when running `vite preview` against a dev backend.
+const PAYMENT_METHODS = [
+  { id: "mock", name: "Mock", sub: "тест выдачи", icon: ShieldCheck },
+  { id: "card", name: "Карта", sub: "Visa · МИР", icon: CreditCard },
+  { id: "sbp",  name: "СБП",   sub: "без коми",   icon: Zap },
+  { id: "crypto", name: "Крипта", sub: "USDT",    icon: Bitcoin },
 ];
-
-const PAYMENT_METHODS = ALL_PAYMENT_METHODS.filter(
-  (m) => !m.devOnly || import.meta.env.DEV,
-);
 
 const DEFAULT_PAYMENT_METHOD = PAYMENT_METHODS[0]?.id ?? "card";
 
@@ -172,6 +170,20 @@ export default function TopUp() {
   const me = useMe();
   const checkout = useCheckout();
   const isProcessing = checkout.isPending;
+  // Backend tells us which gateways can actually accept a payment right now
+  // (mock + whatever real acquirers have been wired). Until the response
+  // lands we optimistically treat the catalogue as fully available so the UI
+  // doesn't flash a "Скоро" badge across every method on first paint.
+  const providersQuery = useAvailableProviders();
+  const liveProviderSet = useMemo(() => {
+    if (!providersQuery.data) return null;
+    return new Set(providersQuery.data);
+  }, [providersQuery.data]);
+  const isMethodAvailable = (methodId: string): boolean => {
+    if (liveProviderSet === null) return true;
+    const provider = PROVIDER_BY_METHOD[methodId];
+    return provider !== undefined && liveProviderSet.has(provider);
+  };
   // Checkout requires Telegram initData. Detected once at mount — re-running
   // on every render would let an authenticated user navigate-and-render with
   // a stale answer if their session was just rebuilt.
@@ -184,6 +196,17 @@ export default function TopUp() {
   const [prefilled, setPrefilled] = useState(false);
   const [selectedPkg, setSelectedPkg] = useState<string>("");
   const [paymentMethod, setPaymentMethod] = useState(DEFAULT_PAYMENT_METHOD);
+
+  // If the user has a stale selection (e.g. "card" preserved across a session
+  // where the live list now only has "mock"), bounce them to the first live
+  // method instead of letting them tap a button that will refuse.
+  useEffect(() => {
+    if (liveProviderSet === null) return;
+    if (isMethodAvailable(paymentMethod)) return;
+    const fallback = PAYMENT_METHODS.find((m) => isMethodAvailable(m.id));
+    if (fallback) setPaymentMethod(fallback.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveProviderSet, paymentMethod]);
 
   // Re-default the SKU on every product switch: pick the 3rd (often a popular
   // mid-tier) or fall back to the first.
@@ -269,6 +292,17 @@ export default function TopUp() {
       toast({
         title: "Откройте в Telegram",
         description: "Оплата доступна только из Telegram Mini App",
+        variant: "destructive",
+      });
+      return;
+    }
+    // Preflight: never POST /orders if the selected gateway is unavailable —
+    // the follow-up POST /payments/intents would fail and leave an orphan
+    // ``pending_payment`` order until it expires.
+    if (!isMethodAvailable(paymentMethod)) {
+      toast({
+        title: "Способ оплаты недоступен",
+        description: "Этот метод временно отключён. Выберите другой.",
         variant: "destructive",
       });
       return;
@@ -589,21 +623,30 @@ export default function TopUp() {
             <div className="grid grid-cols-4 gap-2 mb-3">
               {PAYMENT_METHODS.map((m) => {
                 const active = paymentMethod === m.id;
+                const available = isMethodAvailable(m.id);
                 const Icon = m.icon;
                 return (
                   <button
                     key={m.id}
-                    onClick={() => setPaymentMethod(m.id)}
-                    className="relative flex flex-col items-center gap-1 py-3 rounded-2xl transition-all duration-150"
+                    type="button"
+                    onClick={() => {
+                      if (!available) return;
+                      setPaymentMethod(m.id);
+                    }}
+                    disabled={!available}
+                    aria-disabled={!available}
+                    title={available ? undefined : "Скоро"}
+                    className="relative flex flex-col items-center gap-1 py-3 rounded-2xl transition-all duration-150 disabled:cursor-not-allowed"
                     style={{
                       background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
                       border: active
                         ? "1.5px solid hsl(var(--primary) / 0.8)"
                         : "1px solid hsl(var(--border))",
+                      opacity: available ? 1 : 0.5,
                     }}
                     data-testid={`btn-pay-${m.id}`}
                   >
-                    {active && (
+                    {active && available && (
                       <div
                         className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full flex items-center justify-center"
                         style={{ background: "hsl(var(--primary))" }}
@@ -611,14 +654,25 @@ export default function TopUp() {
                         <Check size={9} strokeWidth={3} className="text-black" />
                       </div>
                     )}
+                    {!available && (
+                      <div
+                        className="absolute top-1 right-1 px-1 py-0.5 rounded text-[8px] font-bold uppercase tracking-wide"
+                        style={{
+                          background: "hsl(var(--surface-3))",
+                          color: "hsl(var(--muted-foreground))",
+                        }}
+                      >
+                        скоро
+                      </div>
+                    )}
                     <Icon
                       size={18}
-                      className={active ? "text-primary" : "text-white/40"}
+                      className={active && available ? "text-primary" : "text-white/40"}
                     />
                     <span
                       className={cn(
                         "text-[11px] font-bold leading-none",
-                        active ? "text-white" : "text-white/50",
+                        active && available ? "text-white" : "text-white/50",
                       )}
                     >
                       {m.name}

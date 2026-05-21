@@ -79,6 +79,27 @@ export interface PaymentOut {
   external_id: string | null;
 }
 
+interface ProvidersOut {
+  providers: string[];
+}
+
+/**
+ * Live payment-provider slugs (those whose ``gateway.available`` is true on
+ * the backend). Stubs like ``click`` / ``yookassa`` / ``crypto`` are absent
+ * until integrated, so the UI can grey them out instead of letting users
+ * create an orphan order followed by a failed intent.
+ */
+export function useAvailableProviders() {
+  return useQuery<string[]>({
+    queryKey: ["payments", "providers"],
+    queryFn: async () => {
+      const data = await apiGet<ProvidersOut>("/api/v1/payments/providers");
+      return data.providers;
+    },
+    staleTime: 60_000,
+  });
+}
+
 // --- hooks ----------------------------------------------------------------
 
 export function useMyOrders() {
@@ -110,11 +131,30 @@ export interface CheckoutResult {
 /**
  * Checkout = create order + create payment intent. One mutation from the UI.
  * Provider defaults to ``mock`` while real acquirers are stubs (see ADR-0012).
+ *
+ * The mutation *first* resolves the live-providers list (hit cache if fresh,
+ * otherwise fetch) and refuses to create an order when the requested provider
+ * isn't available. Without that guard a fast tap would race the providers
+ * useQuery hook on the calling page and leave an orphan ``pending_payment``
+ * order whenever the user picked a stub gateway.
  */
 export function useCheckout() {
   const qc = useQueryClient();
   return useMutation<CheckoutResult, ApiError, CreateOrderInput & { provider?: string }>({
     mutationFn: async ({ skuId, fulfillmentData, currency = "USD", provider = "mock" }) => {
+      const live = await qc.fetchQuery<string[]>({
+        queryKey: ["payments", "providers"],
+        queryFn: async () => {
+          const data = await apiGet<ProvidersOut>("/api/v1/payments/providers");
+          return data.providers;
+        },
+        staleTime: 60_000,
+      });
+      if (!live.includes(provider)) {
+        throw new ApiError(409, "Conflict", {
+          detail: "Способ оплаты временно недоступен",
+        });
+      }
       const order = await apiPost<OrderOut>(
         "/api/v1/orders",
         {
