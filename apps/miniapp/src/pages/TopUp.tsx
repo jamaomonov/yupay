@@ -9,11 +9,9 @@ import {
   Clock,
   CreditCard,
   ExternalLink,
-  Heart,
   Package as PackageIcon,
   RotateCcw,
   Send,
-  Share2,
   ShieldCheck,
   Zap,
 } from "lucide-react";
@@ -364,31 +362,6 @@ export default function TopUp() {
             <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950" />
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-black/20" />
-
-          <div className="absolute top-12 left-4 right-4 flex items-center justify-between z-10">
-            <button
-              onClick={() => setLocation("/")}
-              className="w-9 h-9 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center"
-              data-testid="btn-back"
-              aria-label="Назад"
-            >
-              <ArrowLeft size={16} className="text-white" />
-            </button>
-            <div className="flex items-center gap-2">
-              <button
-                className="w-9 h-9 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center"
-                aria-label="В избранное"
-              >
-                <Heart size={15} className="text-white/70" />
-              </button>
-              <button
-                className="w-9 h-9 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center"
-                aria-label="Поделиться"
-              >
-                <Share2 size={15} className="text-white/70" />
-              </button>
-            </div>
-          </div>
 
           <div className="absolute bottom-0 left-0 right-0 px-4 pb-4 flex items-end gap-3 z-10">
             <div className="w-14 h-14 rounded-2xl overflow-hidden shadow-xl border border-white/15 flex-shrink-0">
