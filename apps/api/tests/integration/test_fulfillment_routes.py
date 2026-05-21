@@ -176,8 +176,12 @@ async def test_paid_order_walks_to_delivered(
     items = deliveries.json()["items"]
     assert len(items) == 1
     assert items[0]["channel"] == "in_app"
-    assert items[0]["artifact_kind"] == "voucher_code"
-    assert items[0]["artifact"]["code"].startswith("MOCK-")
+    # Seed product is ``kind="top_up"`` so MockFulfiller emits a receipt
+    # artifact (not a voucher code — that branch is exercised when the
+    # product is ``kind="voucher"``). See modules/fulfillment/suppliers/mock.py.
+    assert items[0]["artifact_kind"] == "topup_receipt"
+    assert items[0]["artifact"]["external_id"].startswith("mock_")
+    assert items[0]["artifact"]["sku_id"] == _seed_sku
 
 
 async def test_deliveries_owner_only(
