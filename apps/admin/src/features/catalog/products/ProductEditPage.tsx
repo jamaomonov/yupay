@@ -85,29 +85,34 @@ export function ProductEditPage() {
   });
   const trans = useFieldArray({ control: form.control, name: "translations" });
 
+  // Wait for both the product row *and* the brands list. Without the brands
+  // present, the brand ``<select>`` has no matching ``<option>`` for
+  // ``existing.brand_id`` and the value silently resets to the "— Выбери —"
+  // placeholder. react-hook-form's uncontrolled select won't re-apply once
+  // the options arrive — see BrandEditPage for the same pattern.
+  const brandsReady = (brandsQuery.data?.length ?? 0) > 0;
   useEffect(() => {
-    if (existing) {
-      form.reset({
-        slug: existing.slug,
-        brand_id: existing.brand_id,
-        kind: existing.kind,
-        supplier_hint: existing.supplier_hint ?? "",
-        image_url: existing.image_url ?? "",
-        sort_order: existing.sort_order,
-        active: existing.active,
-        required_fields: existing.required_fields,
-        translations: LOCALES.map((locale) => {
-          const t = existing.translations.find((x) => x.locale === locale);
-          return {
-            locale,
-            name: t?.name ?? "",
-            short_description: t?.short_description ?? "",
-            description: t?.description ?? "",
-          };
-        }),
-      });
-    }
-  }, [existing, form]);
+    if (!existing || !brandsReady) return;
+    form.reset({
+      slug: existing.slug,
+      brand_id: existing.brand_id,
+      kind: existing.kind,
+      supplier_hint: existing.supplier_hint ?? "",
+      image_url: existing.image_url ?? "",
+      sort_order: existing.sort_order,
+      active: existing.active,
+      required_fields: existing.required_fields,
+      translations: LOCALES.map((locale) => {
+        const t = existing.translations.find((x) => x.locale === locale);
+        return {
+          locale,
+          name: t?.name ?? "",
+          short_description: t?.short_description ?? "",
+          description: t?.description ?? "",
+        };
+      }),
+    });
+  }, [existing, brandsReady, form]);
 
   const save = useMutation({
     mutationFn: async (values: FormValues) => {

@@ -89,28 +89,33 @@ export function BrandEditPage() {
   });
   const { fields } = useFieldArray({ control: form.control, name: "translations" });
 
+  // Wait for *both* the brand row and the categories list. Resetting the form
+  // before categories arrive means the ``<select>`` has no ``<option>`` whose
+  // value matches ``existing.category_id``, so the browser snaps back to the
+  // empty "— Выбери —" placeholder and react-hook-form's uncontrolled select
+  // never re-applies the right value once the options finally render.
+  const categoriesReady = (categoriesQuery.data?.length ?? 0) > 0;
   useEffect(() => {
-    if (existing) {
-      form.reset({
-        slug: existing.slug,
-        category_id: existing.category_id,
-        logo_url: existing.logo_url ?? "",
-        hero_image_url: existing.hero_image_url ?? "",
-        accent_color: existing.accent_color ?? "",
-        sort_order: existing.sort_order,
-        active: existing.active,
-        translations: LOCALES.map((locale) => {
-          const t = existing.translations.find((x) => x.locale === locale);
-          return {
-            locale,
-            name: t?.name ?? "",
-            short_description: t?.short_description ?? "",
-            description: t?.description ?? "",
-          };
-        }),
-      });
-    }
-  }, [existing, form]);
+    if (!existing || !categoriesReady) return;
+    form.reset({
+      slug: existing.slug,
+      category_id: existing.category_id,
+      logo_url: existing.logo_url ?? "",
+      hero_image_url: existing.hero_image_url ?? "",
+      accent_color: existing.accent_color ?? "",
+      sort_order: existing.sort_order,
+      active: existing.active,
+      translations: LOCALES.map((locale) => {
+        const t = existing.translations.find((x) => x.locale === locale);
+        return {
+          locale,
+          name: t?.name ?? "",
+          short_description: t?.short_description ?? "",
+          description: t?.description ?? "",
+        };
+      }),
+    });
+  }, [existing, categoriesReady, form]);
 
   const save = useMutation({
     mutationFn: async (values: FormValues) => {

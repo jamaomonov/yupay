@@ -128,24 +128,27 @@ export function SkuEditPage() {
     }
   }, [isNew, search, form]);
 
+  // Wait for products to land before resetting — otherwise the
+  // ``<select name="product_id">`` has no matching ``<option>`` and snaps
+  // back to "— Выбери —". Same pattern as BrandEditPage / ProductEditPage.
+  const productsReady = (productsQuery.data?.length ?? 0) > 0;
   useEffect(() => {
-    if (existing) {
-      form.reset({
-        product_id: existing.product_id,
-        sku_code: existing.sku_code,
-        denomination: existing.denomination ?? "",
-        region: existing.region ?? "GLOBAL",
-        price_usd: existing.price_usd,
-        image_url: existing.image_url ?? "",
-        sort_order: existing.sort_order,
-        active: existing.active,
-        price_overrides: existing.price_overrides.map((o) => ({
-          currency: o.currency,
-          price: o.price,
-        })),
-      });
-    }
-  }, [existing, form]);
+    if (!existing || !productsReady) return;
+    form.reset({
+      product_id: existing.product_id,
+      sku_code: existing.sku_code,
+      denomination: existing.denomination ?? "",
+      region: existing.region ?? "GLOBAL",
+      price_usd: existing.price_usd,
+      image_url: existing.image_url ?? "",
+      sort_order: existing.sort_order,
+      active: existing.active,
+      price_overrides: existing.price_overrides.map((o) => ({
+        currency: o.currency,
+        price: o.price,
+      })),
+    });
+  }, [existing, productsReady, form]);
 
   const productById = useMemo(() => {
     const map = new Map<string, Product>();
