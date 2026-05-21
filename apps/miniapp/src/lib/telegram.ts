@@ -19,6 +19,14 @@ export interface TelegramUser {
   photo_url?: string;
 }
 
+export interface TelegramBackButton {
+  isVisible: boolean;
+  show: () => void;
+  hide: () => void;
+  onClick: (cb: () => void) => void;
+  offClick: (cb: () => void) => void;
+}
+
 export interface TelegramWebApp {
   initData: string; // raw query string, signed; never trust initDataUnsafe.
   initDataUnsafe: {
@@ -32,6 +40,10 @@ export interface TelegramWebApp {
   ready: () => void;
   expand: () => void;
   close: () => void;
+  // Available since Bot API 6.1 (mid-2022) — every supported Telegram client
+  // has it. When visible the client swaps the title-bar "×" for a "←", so we
+  // get native back-navigation that feels exactly like other Mini Apps.
+  BackButton?: TelegramBackButton;
   HapticFeedback?: {
     impactOccurred: (style: "light" | "medium" | "heavy" | "rigid" | "soft") => void;
     notificationOccurred: (type: "error" | "success" | "warning") => void;

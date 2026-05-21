@@ -6,6 +6,7 @@ import { BootstrapGate } from "@/components/BootstrapGate";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Shell } from "@/components/layout/Shell";
+import { useTelegramBackButton } from "@/lib/use-telegram-back-button";
 import Home from "@/pages/Home";
 import TopUp from "@/pages/TopUp";
 import History from "@/pages/History";
@@ -19,6 +20,9 @@ function NotFound() { return <div className="p-4 text-center mt-20">404 - Не �
 const queryClient = new QueryClient();
 
 function Router() {
+  // Sync Telegram's native BackButton with the route — shown on every
+  // non-root page, taps the browser history (or falls back to Home).
+  useTelegramBackButton();
   return (
     <Shell>
       <Switch>
