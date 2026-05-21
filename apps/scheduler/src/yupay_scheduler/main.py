@@ -9,18 +9,38 @@ import asyncio
 import signal
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+# Touch every module's models so SQLAlchemy's metadata has the full graph
+# resolved before any query runs. Without this, cross-table FKs (e.g.
+# ``orders.user_id → users.id``) raise ``NoReferencedTableError`` because
+# the dependent ``users.models`` module never got imported.
+from yupay.modules.auth import models as _auth_models  # noqa: F401
+from yupay.modules.catalog import models as _catalog_models  # noqa: F401
+from yupay.modules.fulfillment import models as _fulfillment_models  # noqa: F401
+from yupay.modules.fx import models as _fx_models  # noqa: F401
+from yupay.modules.inventory import models as _inventory_models  # noqa: F401
+from yupay.modules.orders import models as _orders_models  # noqa: F401
+from yupay.modules.payments import models as _payments_models  # noqa: F401
+from yupay.modules.sourcing import models as _sourcing_models  # noqa: F401
+from yupay.modules.users import models as _users_models  # noqa: F401
+from yupay.modules.wallet import models as _wallet_models  # noqa: F401
 from yupay.core.logging import configure_logging, get_logger
+
+from yupay_scheduler.jobs import expire_orders
 
 configure_logging()
 log = get_logger("yupay.scheduler")
 
 
 def build_scheduler() -> AsyncIOScheduler:
-    """Build the AsyncIO scheduler with no jobs registered yet.
+    """Build the AsyncIO scheduler with all production jobs attached.
 
-    Jobs are added by importing the corresponding module from ``yupay_scheduler.jobs``.
+    New periodic jobs land here — keep the body short by delegating
+    registration to each ``jobs/<name>.register(scheduler)`` helper.
     """
-    return AsyncIOScheduler(timezone="UTC")
+    scheduler = AsyncIOScheduler(timezone="UTC")
+    expire_orders.register(scheduler)
+    return scheduler
 
 
 async def run() -> None:

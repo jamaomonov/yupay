@@ -415,3 +415,118 @@ async def test_admin_can_list_and_cancel(
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert repeat.status_code == 409
+
+
+# ---------- expiry ----------
+
+
+async def test_stale_order_lazy_expires_on_read(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_pubg: dict[str, str],
+) -> None:
+    """Reading a ``pending_payment`` order past its ``expires_at`` should
+    flip it to ``expired`` inline so the customer never stares at
+    "ждём оплату · 4 days"."""
+    from datetime import datetime, timedelta, timezone
+
+    from yupay.modules.orders.models import Order
+
+    token = await _login_user(integration_client, tg_id=51)
+    create = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "expiry-lazy-aaaaaa",
+        },
+        json={
+            "items": [
+                {
+                    "sku_id": _seed_pubg["sku_id"],
+                    "qty": 1,
+                    "fulfillment_data": {"player_id": "555555", "server": "as"},
+                }
+            ],
+        },
+    )
+    assert create.status_code == 201
+    order_id = create.json()["id"]
+
+    # Wind the clock — back-date ``expires_at`` to 1 second ago.
+    past = datetime.now(timezone.utc) - timedelta(seconds=1)
+    await db_session.execute(
+        update(Order).where(Order.id == order_id).values(expires_at=past)
+    )
+    await db_session.commit()
+
+    read = await integration_client.get(
+        f"/api/v1/orders/{order_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert read.status_code == 200, read.text
+    body = read.json()
+    assert body["status"] == "expired"
+    assert body["cancelled_at"] is not None
+
+
+async def test_expire_stale_orders_service_batch_flips_pending(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_pubg: dict[str, str],
+) -> None:
+    """The scheduler job ``expire_stale_orders`` flips every TTL-exceeded
+    ``pending_payment`` row and leaves healthy orders alone."""
+    from datetime import datetime, timedelta, timezone
+
+    from yupay.modules.orders import api as orders_api
+    from yupay.modules.orders.models import Order
+
+    token = await _login_user(integration_client, tg_id=52)
+
+    # Two stale orders + one fresh.
+    ids: list[str] = []
+    for idx in range(3):
+        r = await integration_client.post(
+            "/api/v1/orders",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Idempotency-Key": f"expiry-bulk-{idx:04d}-pad",
+            },
+            json={
+                "items": [
+                    {
+                        "sku_id": _seed_pubg["sku_id"],
+                        "qty": 1,
+                        "fulfillment_data": {"player_id": "555555", "server": "as"},
+                    }
+                ],
+            },
+        )
+        assert r.status_code == 201, r.text
+        ids.append(r.json()["id"])
+
+    stale_ids, fresh_id = ids[:2], ids[2]
+    past = datetime.now(timezone.utc) - timedelta(seconds=5)
+    await db_session.execute(
+        update(Order).where(Order.id.in_(stale_ids)).values(expires_at=past)
+    )
+    await db_session.commit()
+
+    count = await orders_api.expire_stale_orders(db_session)
+    await db_session.commit()
+    assert count == 2
+
+    for sid in stale_ids:
+        r = await integration_client.get(
+            f"/api/v1/orders/{sid}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert r.status_code == 200
+        assert r.json()["status"] == "expired"
+
+    r = await integration_client.get(
+        f"/api/v1/orders/{fresh_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200
+    assert r.json()["status"] == "pending_payment"

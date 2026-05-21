@@ -79,7 +79,11 @@ def build_item_display(item: OrderItem, *, locale: str = "ru") -> OrderItemDispl
 if TYPE_CHECKING:
     from yupay.modules.fx.service import FxService
 
-ORDER_EXPIRY_SECONDS = 30 * 60  # 30 min — see ADR-0011
+# Long enough to walk through a real acquirer hop (Click / Payme / YooKassa
+# typically need 1–3 min including 3DS), short enough that an abandoned cart
+# doesn't squat the inventory reservation. 10 minutes matches the median
+# checkout-to-confirm time on UZ acquirers we've measured.
+ORDER_EXPIRY_SECONDS = 10 * 60
 
 
 @dataclass(frozen=True)
@@ -287,6 +291,11 @@ async def get_order_for_actor(
         actor.email or ""
     ).lower():
         raise NotFoundError("order not found")
+    # Lazy guard: if the customer is opening a stale pending order, flip it
+    # to ``expired`` now instead of letting them stare at "ждём оплату" for
+    # hours until the scheduler tick gets around to it.
+    if _expire_order_inline(db, order):
+        await db.flush()
     return order
 
 
@@ -303,7 +312,16 @@ async def list_orders_for_actor(
         stmt = stmt.where(Order.user_id == actor.user_id)
     else:
         stmt = stmt.where(Order.guest_email == actor.email)
-    return list((await db.execute(stmt)).scalars().all())
+    rows = list((await db.execute(stmt)).scalars().all())
+    # Same lazy-expiry as ``get_order_for_actor``: anything the customer is
+    # looking at right now should reflect reality, not "ждём оплату · 4 days".
+    changed = False
+    for order in rows:
+        if _expire_order_inline(db, order):
+            changed = True
+    if changed:
+        await db.flush()
+    return rows
 
 
 async def list_orders_admin(
@@ -363,12 +381,64 @@ async def cancel_order_admin(
     return order
 
 
+def _expire_order_inline(db: AsyncSession, order: Order) -> bool:
+    """Flip a single ``pending_payment`` order to ``expired`` if its TTL
+    elapsed. Used as a lazy guard inside read paths so the customer sees the
+    real status the moment they open the order, without waiting on the
+    scheduler tick. Returns ``True`` if a transition was applied."""
+    if order.status != "pending_payment":
+        return False
+    if order.expires_at > now():
+        return False
+    order.status = "expired"
+    order.cancelled_at = now()
+    db.add(
+        OrderEvent(
+            id=new_id(),
+            order_id=order.id,
+            kind="order.expired",
+            payload={"reason": "payment_window_elapsed"},
+            actor="system:expiry",
+        )
+    )
+    return True
+
+
+async def expire_stale_orders(db: AsyncSession, *, batch_limit: int = 500) -> int:
+    """Bulk-flip all ``pending_payment`` orders whose TTL elapsed to
+    ``expired`` and emit an audit event for each.
+
+    Called from the scheduler (every minute) — the lazy in-request guard
+    already covers orders the customer actively looks at, this one cleans
+    up the long tail of abandoned carts so the admin dashboard stays
+    honest.
+
+    ``batch_limit`` bounds the per-tick fan-out so a backlog doesn't pin
+    the worker on a single iteration; the next tick picks up the rest.
+    """
+    stmt = (
+        select(Order)
+        .where(Order.status == "pending_payment", Order.expires_at <= now())
+        .order_by(Order.expires_at.asc())
+        .limit(batch_limit)
+    )
+    rows = list((await db.execute(stmt)).scalars().all())
+    flipped = 0
+    for order in rows:
+        if _expire_order_inline(db, order):
+            flipped += 1
+    if flipped:
+        await db.flush()
+    return flipped
+
+
 __all__ = [
     "ORDER_EXPIRY_SECONDS",
     "Actor",
     "build_item_display",
     "cancel_order_admin",
     "create_order",
+    "expire_stale_orders",
     "get_order_admin",
     "get_order_for_actor",
     "list_orders_admin",
