@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from yupay.modules.users.schemas import UserAdminOut
 
@@ -172,6 +172,48 @@ class PaymentTriageOut(BaseModel):
     failed_webhooks: list[WebhookTriageRow] = Field(default_factory=list)
 
 
+# ---------- Saved segments ----------
+
+
+class SavedSegmentIn(BaseModel):
+    """Body of ``POST /admin/segments`` — create a bookmark."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: Annotated[str, Field(min_length=1, max_length=80)]
+    # Restrict to admin-SPA-internal routes — saved segments are bookmarks for the
+    # operator's own tool, not a generic link sink. Any starting with ``/``,
+    # without protocol, is fair game.
+    path: Annotated[str, Field(min_length=1, max_length=255)]
+    params: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("path")
+    @classmethod
+    def _path_must_be_internal(cls, value: str) -> str:
+        v = value.strip()
+        if not v.startswith("/") or v.startswith("//") or "://" in v:
+            raise ValueError("path must be an internal admin-SPA route starting with /")
+        return v
+
+
+class SavedSegmentOut(BaseModel):
+    """One saved segment as returned to its owning admin."""
+
+    model_config = ConfigDict(from_attributes=True, frozen=True)
+
+    id: str
+    name: str
+    path: str
+    params: dict[str, Any]
+    created_at: datetime
+
+
+class SavedSegmentListOut(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    items: list[SavedSegmentOut]
+
+
 __all__ = [
     "CustomerBalanceOut",
     "CustomerOrderSummary",
@@ -183,6 +225,9 @@ __all__ = [
     "PaymentTriageOut",
     "PaymentTriageRow",
     "RiskFlag",
+    "SavedSegmentIn",
+    "SavedSegmentListOut",
+    "SavedSegmentOut",
     "SearchHit",
     "SearchOut",
     "WebhookTriageRow",

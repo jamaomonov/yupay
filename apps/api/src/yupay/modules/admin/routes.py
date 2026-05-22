@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
@@ -18,6 +18,9 @@ from yupay.modules.admin.deps import require_admin
 from yupay.modules.admin.schemas import (
     CustomerOverviewOut,
     PaymentTriageOut,
+    SavedSegmentIn,
+    SavedSegmentListOut,
+    SavedSegmentOut,
     SearchOut,
 )
 from yupay.modules.users.models import User
@@ -74,6 +77,54 @@ async def admin_payments_triage(
 ) -> PaymentTriageOut:
     """Two focused buckets for finance / ops to triage payment incidents."""
     return await svc.triage_payments(db, stuck_after_minutes=stuck_after_minutes)
+
+
+# ---------- Saved segments ----------
+
+
+@admin_router.post(
+    "/segments",
+    response_model=SavedSegmentOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a personal saved-filter bookmark",
+)
+async def admin_create_segment(
+    body: SavedSegmentIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+) -> SavedSegmentOut:
+    row = await svc.create_saved_segment(db, owner_user_id=admin.id, body=body)
+    return SavedSegmentOut.model_validate(row)
+
+
+@admin_router.get(
+    "/segments",
+    response_model=SavedSegmentListOut,
+    summary="List the calling admin's saved segments (own only)",
+)
+async def admin_list_segments(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+) -> SavedSegmentListOut:
+    rows = await svc.list_saved_segments(db, owner_user_id=admin.id)
+    return SavedSegmentListOut(
+        items=[SavedSegmentOut.model_validate(r) for r in rows]
+    )
+
+
+@admin_router.delete(
+    "/segments/{segment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete one of the calling admin's saved segments",
+)
+async def admin_delete_segment(
+    segment_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+) -> None:
+    await svc.delete_saved_segment(
+        db, owner_user_id=admin.id, segment_id=segment_id
+    )
 
 
 __all__ = ["admin_router"]

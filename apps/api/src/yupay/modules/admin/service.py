@@ -12,10 +12,14 @@ from datetime import timedelta
 from decimal import Decimal
 
 from sqlalchemy import String, case, cast, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from yupay.core.clock import now
+from yupay.core.errors import ConflictError, NotFoundError
+from yupay.core.ids import new_id
+from yupay.modules.admin.models import AdminSavedSegment
 from yupay.modules.admin.schemas import (
     CustomerBalanceOut,
     CustomerOrderSummary,
@@ -26,6 +30,7 @@ from yupay.modules.admin.schemas import (
     PaymentTriageOut,
     PaymentTriageRow,
     RiskFlag,
+    SavedSegmentIn,
     SearchHit,
     SearchOut,
     WebhookTriageRow,
@@ -430,4 +435,68 @@ def _compute_risk_flags(*, user: User, failed_payments: int) -> list[RiskFlag]:
     return flags
 
 
-__all__ = ["get_customer_overview", "search", "triage_payments"]
+# ---------- Saved segments ----------
+
+
+async def create_saved_segment(
+    db: AsyncSession, *, owner_user_id: str, body: SavedSegmentIn
+) -> AdminSavedSegment:
+    """Persist a per-owner bookmark. Name is unique per owner — duplicates 409."""
+    row = AdminSavedSegment(
+        id=new_id(),
+        owner_user_id=owner_user_id,
+        name=body.name,
+        path=body.path,
+        params=body.params,
+    )
+    db.add(row)
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise ConflictError(
+            "saved segment with this name already exists",
+            extra={"name": body.name},
+        ) from exc
+    await db.commit()
+    return row
+
+
+async def list_saved_segments(
+    db: AsyncSession, *, owner_user_id: str
+) -> list[AdminSavedSegment]:
+    stmt = (
+        select(AdminSavedSegment)
+        .where(AdminSavedSegment.owner_user_id == owner_user_id)
+        .order_by(AdminSavedSegment.created_at.desc())
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def delete_saved_segment(
+    db: AsyncSession, *, owner_user_id: str, segment_id: str
+) -> None:
+    """Remove the bookmark. 404 if not found OR not owned — never leak existence
+    of another admin's segment id."""
+    row = (
+        await db.execute(
+            select(AdminSavedSegment).where(
+                AdminSavedSegment.id == segment_id,
+                AdminSavedSegment.owner_user_id == owner_user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise NotFoundError("saved segment not found")
+    await db.delete(row)
+    await db.commit()
+
+
+__all__ = [
+    "create_saved_segment",
+    "delete_saved_segment",
+    "get_customer_overview",
+    "list_saved_segments",
+    "search",
+    "triage_payments",
+]
