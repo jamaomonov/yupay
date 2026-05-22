@@ -13,6 +13,7 @@ import { ProductsListPage } from "@/features/catalog/products/ProductsListPage";
 import { ProductEditPage } from "@/features/catalog/products/ProductEditPage";
 import { SkuEditPage } from "@/features/catalog/skus/SkuEditPage";
 import { SkusListPage } from "@/features/catalog/skus/SkusListPage";
+import { CustomerPage } from "@/features/customers/CustomerPage";
 import { FulfillmentPage } from "@/features/fulfillment/FulfillmentPage";
 import { ManualQueuePage } from "@/features/manual-fulfillment/ManualQueuePage";
 import { FxPage } from "@/features/fx/FxPage";
@@ -61,6 +62,7 @@ export const router = createBrowserRouter([
           { path: "/audit", element: <AuditPage /> },
           { path: "/fx", element: <FxPage /> },
           { path: "/users", element: <UsersListPage /> },
+          { path: "/customers/:id", element: <CustomerPage /> },
           { path: "/settings", element: <SettingsStub /> },
           { path: "*", element: <Navigate to="/" replace /> },
         ],

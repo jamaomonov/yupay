@@ -92,6 +92,10 @@ export const qk = {
   // global search (cmd+k)
   search: (q: string) => ["admin", "search", q] as const,
 
+  // customer 360 overview
+  customerOverview: (userId: string) =>
+    ["admin", "customers", userId, "overview"] as const,
+
   // wallet
   walletUser: (userId: string) => ["admin", "wallet", "user", userId] as const,
 
