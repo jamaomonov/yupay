@@ -14,8 +14,7 @@ import { ProductEditPage } from "@/features/catalog/products/ProductEditPage";
 import { SkuEditPage } from "@/features/catalog/skus/SkuEditPage";
 import { SkusListPage } from "@/features/catalog/skus/SkusListPage";
 import { CustomerPage } from "@/features/customers/CustomerPage";
-import { FulfillmentPage } from "@/features/fulfillment/FulfillmentPage";
-import { ManualQueuePage } from "@/features/manual-fulfillment/ManualQueuePage";
+import { InboxPage } from "@/features/fulfillment/InboxPage";
 import { FxPage } from "@/features/fx/FxPage";
 import { InventoryPage } from "@/features/inventory/InventoryPage";
 import { OrderDetailPage } from "@/features/orders/OrderDetailPage";
@@ -56,8 +55,11 @@ export const router = createBrowserRouter([
           { path: "/orders/:id", element: <OrderDetailPage /> },
           { path: "/payments", element: <PaymentsPage /> },
           { path: "/webhooks", element: <WebhooksPage /> },
-          { path: "/fulfillment", element: <FulfillmentPage /> },
-          { path: "/manual-fulfillment", element: <ManualQueuePage /> },
+          { path: "/fulfillment", element: <InboxPage /> },
+          {
+            path: "/manual-fulfillment",
+            element: <Navigate to="/fulfillment?tab=manual" replace />,
+          },
           { path: "/wallet", element: <WalletPage /> },
           { path: "/audit", element: <AuditPage /> },
           { path: "/fx", element: <FxPage /> },
