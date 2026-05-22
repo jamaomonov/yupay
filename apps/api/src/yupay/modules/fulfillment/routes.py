@@ -73,6 +73,31 @@ async def _ensure_order_owner(db: AsyncSession, *, actor: Actor, order_id: str) 
 # ---------- customer ----------
 
 
+# Artifact keys that are stored on ``deliveries`` for audit / chargeback
+# evidence but must not leak to the customer over the public API. The DB
+# row keeps them; admins still see them through ``/admin/fulfillment/tasks``
+# (task.external_order_id + task.extra_metadata).
+_CUSTOMER_HIDDEN_ARTIFACT_KEYS: frozenset[str] = frozenset({"external_id"})
+
+
+def _to_customer_delivery_out(row: object) -> DeliveryOut:
+    """Project a ``Delivery`` ORM row into the customer-facing DTO with
+    internal-only keys stripped from ``artifact``."""
+    artifact = {
+        k: v
+        for k, v in (row.artifact or {}).items()  # type: ignore[attr-defined]
+        if k not in _CUSTOMER_HIDDEN_ARTIFACT_KEYS
+    }
+    return DeliveryOut(
+        id=row.id,  # type: ignore[attr-defined]
+        order_item_id=row.order_item_id,  # type: ignore[attr-defined]
+        channel=row.channel,  # type: ignore[attr-defined]
+        artifact_kind=row.artifact_kind,  # type: ignore[attr-defined]
+        artifact=artifact,
+        delivered_at=row.delivered_at,  # type: ignore[attr-defined]
+    )
+
+
 @router.get(
     "/{order_id}/deliveries",
     response_model=DeliveryListOut,
@@ -86,7 +111,7 @@ async def list_order_deliveries(
     actor = await _resolve_actor(request, db)
     await _ensure_order_owner(db, actor=actor, order_id=order_id)
     rows = await svc.list_deliveries_for_order(db, order_id=order_id)
-    return DeliveryListOut(items=[DeliveryOut.model_validate(r) for r in rows])
+    return DeliveryListOut(items=[_to_customer_delivery_out(r) for r in rows])
 
 
 # ---------- admin ----------
