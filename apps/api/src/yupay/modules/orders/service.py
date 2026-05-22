@@ -28,6 +28,7 @@ from yupay.modules.fx.service import FxUnavailableError
 from yupay.modules.orders.models import Order, OrderEvent, OrderItem
 from yupay.modules.orders.schemas import OrderCreate, OrderItemDisplay
 from yupay.modules.orders.validation import validate_fulfillment_data
+from yupay.modules.payments.models import Payment, PaymentAttempt
 
 
 def _order_load_options() -> tuple:
@@ -294,7 +295,7 @@ async def get_order_for_actor(
     # Lazy guard: if the customer is opening a stale pending order, flip it
     # to ``expired`` now instead of letting them stare at "ждём оплату" for
     # hours until the scheduler tick gets around to it.
-    if _expire_order_inline(db, order):
+    if await _expire_order_inline(db, order):
         await db.flush()
     return order
 
@@ -317,7 +318,7 @@ async def list_orders_for_actor(
     # looking at right now should reflect reality, not "ждём оплату · 4 days".
     changed = False
     for order in rows:
-        if _expire_order_inline(db, order):
+        if await _expire_order_inline(db, order):
             changed = True
     if changed:
         await db.flush()
@@ -377,15 +378,64 @@ async def cancel_order_admin(
             actor=f"admin:{admin_id}",
         )
     )
+    await _cascade_cancel_open_payments(
+        db, order_id=order_id, reason="order_cancelled", actor=f"admin:{admin_id}"
+    )
     await db.flush()
     return order
 
 
-def _expire_order_inline(db: AsyncSession, order: Order) -> bool:
+async def _cascade_cancel_open_payments(
+    db: AsyncSession, *, order_id: str, reason: str, actor: str
+) -> int:
+    """Close any pending/requires_action payments tied to a terminating order.
+
+    Without this an expired order leaves a payment row in ``pending`` forever,
+    which then shows up in /admin/payments/triage as a stuck payment that
+    nobody can actually resolve — there's no customer on the other side. We
+    record a ``PaymentAttempt`` row for each cancelled payment so the audit
+    trail (and ``audit_feed``) reflects who terminated it and why.
+    """
+    stmt = select(Payment).where(
+        Payment.order_id == order_id,
+        Payment.status.in_(("pending", "requires_action")),
+    )
+    payments = list((await db.execute(stmt)).scalars().all())
+    moment = now()
+    for payment in payments:
+        payment.status = "cancelled"
+        payment.updated_at = moment
+        db.add(
+            PaymentAttempt(
+                id=new_id(),
+                payment_id=payment.id,
+                kind="cancel",
+                status="ok",
+                payload={"trigger": "order_terminated", "reason": reason, "actor": actor},
+            )
+        )
+    if payments:
+        db.add(
+            OrderEvent(
+                id=new_id(),
+                order_id=order_id,
+                kind="payments.cascaded_cancel",
+                payload={"count": len(payments), "reason": reason},
+                actor=actor,
+            )
+        )
+    return len(payments)
+
+
+async def _expire_order_inline(db: AsyncSession, order: Order) -> bool:
     """Flip a single ``pending_payment`` order to ``expired`` if its TTL
     elapsed. Used as a lazy guard inside read paths so the customer sees the
     real status the moment they open the order, without waiting on the
-    scheduler tick. Returns ``True`` if a transition was applied."""
+    scheduler tick. Returns ``True`` if a transition was applied.
+
+    Cascade: any open payment intent on the order is cancelled too — see
+    :func:`_cascade_cancel_open_payments`.
+    """
     if order.status != "pending_payment":
         return False
     if order.expires_at > now():
@@ -400,6 +450,9 @@ def _expire_order_inline(db: AsyncSession, order: Order) -> bool:
             payload={"reason": "payment_window_elapsed"},
             actor="system:expiry",
         )
+    )
+    await _cascade_cancel_open_payments(
+        db, order_id=order.id, reason="order_expired", actor="system:expiry"
     )
     return True
 
@@ -425,7 +478,7 @@ async def expire_stale_orders(db: AsyncSession, *, batch_limit: int = 500) -> in
     rows = list((await db.execute(stmt)).scalars().all())
     flipped = 0
     for order in rows:
-        if _expire_order_inline(db, order):
+        if await _expire_order_inline(db, order):
             flipped += 1
     if flipped:
         await db.flush()
