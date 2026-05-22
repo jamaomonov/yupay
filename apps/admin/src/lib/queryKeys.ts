@@ -96,6 +96,10 @@ export const qk = {
   customerOverview: (userId: string) =>
     ["admin", "customers", userId, "overview"] as const,
 
+  // payments triage
+  paymentsTriage: (thresholdMinutes: number) =>
+    ["admin", "payments", "triage", thresholdMinutes] as const,
+
   // wallet
   walletUser: (userId: string) => ["admin", "wallet", "user", userId] as const,
 

@@ -15,6 +15,7 @@ import { SkuEditPage } from "@/features/catalog/skus/SkuEditPage";
 import { SkusListPage } from "@/features/catalog/skus/SkusListPage";
 import { CustomerPage } from "@/features/customers/CustomerPage";
 import { InboxPage } from "@/features/fulfillment/InboxPage";
+import { TriagePage } from "@/features/payments-triage/TriagePage";
 import { FxPage } from "@/features/fx/FxPage";
 import { InventoryPage } from "@/features/inventory/InventoryPage";
 import { OrderDetailPage } from "@/features/orders/OrderDetailPage";
@@ -54,6 +55,7 @@ export const router = createBrowserRouter([
           { path: "/orders", element: <OrdersListPage /> },
           { path: "/orders/:id", element: <OrderDetailPage /> },
           { path: "/payments", element: <PaymentsPage /> },
+          { path: "/payments/triage", element: <TriagePage /> },
           { path: "/webhooks", element: <WebhooksPage /> },
           { path: "/fulfillment", element: <InboxPage /> },
           {

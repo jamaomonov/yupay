@@ -1,0 +1,406 @@
+/**
+ * Payments Triage — `/payments/triage`.
+ *
+ * Two focused buckets, both fed by a single aggregate `GET /admin/payments/triage`:
+ *   - Stuck pending — payments that haven't moved past `pending` for longer than
+ *     the chosen threshold (operator can pick 15 / 30 / 60 / 120 min).
+ *   - Failed webhooks — incoming provider events that either failed signature
+ *     verification or never got processed.
+ *
+ * Rows link straight to /orders/{id}; the user column (when present) jumps to
+ * Customer 360. There are no bulk actions in this MVP — see ADR-0017 §"What we
+ * don't do" for the rationale (force-cancel on a real-money payment is the kind
+ * of thing that needs a separate review, not a checkbox).
+ */
+
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { CheckCircle2, ShieldAlert } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+
+import { DataTable, type Column } from "@/components/DataTable";
+import { PageHeader } from "@/components/PageHeader";
+import { type ApiError, apiGet } from "@/lib/api";
+import { qk } from "@/lib/queryKeys";
+import { numberCodec, useSearchParamsState } from "@/lib/useSearchParamsState";
+
+import type { PaymentTriageOut, PaymentTriageRow, WebhookTriageRow } from "./types";
+
+type TriageTab = "stuck" | "webhooks";
+
+const VALID_TABS: ReadonlySet<TriageTab> = new Set<TriageTab>(["stuck", "webhooks"]);
+
+const THRESHOLDS = [15, 30, 60, 120] as const;
+
+export function TriagePage() {
+  const navigate = useNavigate();
+  const [rawTab, setTab] = useSearchParamsState<string>("tab", "stuck");
+  const tab: TriageTab = VALID_TABS.has(rawTab as TriageTab)
+    ? (rawTab as TriageTab)
+    : "stuck";
+  const [threshold, setThreshold] = useSearchParamsState<number>(
+    "after",
+    30,
+    numberCodec,
+  );
+
+  const query = useQuery<PaymentTriageOut, ApiError>({
+    queryKey: qk.paymentsTriage(threshold),
+    queryFn: () =>
+      apiGet<PaymentTriageOut>(
+        `/api/v1/admin/payments/triage?stuck_after_minutes=${threshold.toString()}`,
+      ),
+    refetchInterval: 30_000,
+  });
+
+  const data = query.data;
+  const stuckCount = data?.stuck_pending.length ?? 0;
+  const webhookCount = data?.failed_webhooks.length ?? 0;
+
+  return (
+    <div className="space-y-4">
+      <PageHeader
+        title="Триаж платежей"
+        description="Что требует внимания финансов / тех-поддержки прямо сейчас."
+      />
+
+      <nav
+        className="flex flex-wrap gap-1 border-b border-[--color-border]"
+        aria-label="Вкладки триажа"
+      >
+        <TabButton
+          active={tab === "stuck"}
+          count={stuckCount}
+          onClick={() => { setTab("stuck"); }}
+        >
+          Висящие платежи
+        </TabButton>
+        <TabButton
+          active={tab === "webhooks"}
+          count={webhookCount}
+          onClick={() => { setTab("webhooks"); }}
+        >
+          Сбои webhooks
+        </TabButton>
+      </nav>
+
+      {tab === "stuck" && (
+        <StuckSection
+          threshold={threshold}
+          onThresholdChange={setThreshold}
+          rows={data?.stuck_pending ?? []}
+          loading={query.isPending}
+          error={query.isError}
+          onOpenOrder={(orderId) => { void navigate(`/orders/${orderId}`); }}
+        />
+      )}
+
+      {tab === "webhooks" && (
+        <WebhookSection
+          rows={data?.failed_webhooks ?? []}
+          loading={query.isPending}
+          error={query.isError}
+        />
+      )}
+    </div>
+  );
+}
+
+function TabButton({
+  active,
+  count,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  count: number;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "inline-flex items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
+        active
+          ? "border-[--color-brand] text-[--color-fg]"
+          : "border-transparent text-[--color-muted] hover:text-[--color-fg]",
+      ].join(" ")}
+      aria-current={active ? "page" : undefined}
+    >
+      <span>{children}</span>
+      <span
+        className={[
+          "rounded-full px-1.5 py-0.5 text-[11px]",
+          count > 0
+            ? "bg-[--color-danger]/15 text-[--color-danger]"
+            : "bg-[--color-subtle] text-[--color-muted]",
+        ].join(" ")}
+      >
+        {count.toString()}
+      </span>
+    </button>
+  );
+}
+
+function StuckSection({
+  threshold,
+  onThresholdChange,
+  rows,
+  loading,
+  error,
+  onOpenOrder,
+}: {
+  threshold: number;
+  onThresholdChange: (n: number) => void;
+  rows: PaymentTriageRow[];
+  loading: boolean;
+  error: boolean;
+  onOpenOrder: (orderId: string) => void;
+}) {
+  const totalsByCurrency = useMemo(() => {
+    const sum: Record<string, number> = {};
+    for (const r of rows) {
+      const v = Number.parseFloat(r.amount);
+      if (!Number.isFinite(v)) continue;
+      sum[r.currency] = (sum[r.currency] ?? 0) + v;
+    }
+    return sum;
+  }, [rows]);
+
+  const columns: Column<PaymentTriageRow>[] = [
+    {
+      key: "payment",
+      header: "Платёж",
+      render: (p) => (
+        <div className="flex flex-col font-mono text-xs">
+          <span>{p.id.slice(0, 8)}…</span>
+          <span className="text-[--color-muted]">{p.provider}</span>
+        </div>
+      ),
+      className: "w-32",
+    },
+    {
+      key: "actor",
+      header: "Клиент",
+      render: (p) =>
+        p.user_id ? (
+          <Link
+            to={`/customers/${p.user_id}`}
+            onClick={(e) => { e.stopPropagation(); }}
+            className="font-mono text-xs underline-offset-2 hover:underline"
+          >
+            user {p.user_id.slice(0, 8)}…
+          </Link>
+        ) : (
+          <span className="text-xs text-[--color-muted]">
+            {p.guest_email ?? "—"}
+          </span>
+        ),
+    },
+    {
+      key: "amount",
+      header: "Сумма",
+      render: (p) => (
+        <span className="font-mono">
+          {Number.parseFloat(p.amount).toLocaleString("ru", {
+            maximumFractionDigits: 2,
+          })}{" "}
+          {p.currency}
+        </span>
+      ),
+      className: "w-36 text-right",
+    },
+    {
+      key: "waiting",
+      header: "Ждёт",
+      render: (p) => <SlaBadge minutes={p.waiting_minutes} />,
+      className: "w-28",
+      sortAccessor: (p) => p.waiting_minutes,
+    },
+    {
+      key: "created",
+      header: "Создан",
+      render: (p) =>
+        new Date(p.created_at).toLocaleString("ru", {
+          day: "2-digit",
+          month: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      className: "w-32",
+    },
+  ];
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-[--color-muted]">
+          Платежи в статусе <code>pending</code> дольше выбранного порога.
+        </p>
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-[--color-muted]">Порог:</span>
+          <select
+            value={threshold.toString()}
+            onChange={(e) => { onThresholdChange(Number(e.target.value)); }}
+            className="h-9 rounded-md border border-[--color-border] bg-[--color-bg] px-2 text-sm"
+          >
+            {THRESHOLDS.map((m) => (
+              <option key={m} value={m.toString()}>
+                ≥ {m.toString()} мин
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {Object.keys(totalsByCurrency).length > 0 && (
+        <p className="text-xs text-[--color-muted]">
+          Сумма в очереди:{" "}
+          {Object.entries(totalsByCurrency)
+            .map(([cur, v]) => `${v.toFixed(2)} ${cur}`)
+            .join(" · ")}
+        </p>
+      )}
+
+      {error && (
+        <p className="text-sm text-[--color-danger]">Не удалось загрузить список.</p>
+      )}
+
+      <DataTable
+        rows={rows}
+        columns={columns}
+        rowKey={(p) => p.id}
+        empty={loading ? "Загрузка…" : "Висящих платежей нет."}
+        onRowClick={(p) => { onOpenOrder(p.order_id); }}
+      />
+    </div>
+  );
+}
+
+function WebhookSection({
+  rows,
+  loading,
+  error,
+}: {
+  rows: WebhookTriageRow[];
+  loading: boolean;
+  error: boolean;
+}) {
+  const columns: Column<WebhookTriageRow>[] = [
+    {
+      key: "provider",
+      header: "Провайдер",
+      render: (w) => (
+        <span className="rounded-md bg-[--color-subtle] px-2 py-0.5 font-mono text-xs">
+          {w.provider}
+        </span>
+      ),
+      className: "w-28",
+    },
+    {
+      key: "event",
+      header: "Event ID",
+      render: (w) => (
+        <code className="text-xs">
+          {w.external_event_id.length > 18
+            ? `${w.external_event_id.slice(0, 18)}…`
+            : w.external_event_id}
+        </code>
+      ),
+    },
+    {
+      key: "sig",
+      header: "Подпись",
+      render: (w) =>
+        w.signature_ok ? (
+          <span className="inline-flex items-center gap-1 text-xs text-emerald-700">
+            <CheckCircle2 className="size-3" />
+            OK
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-xs text-rose-700">
+            <ShieldAlert className="size-3" />
+            rejected
+          </span>
+        ),
+      className: "w-28",
+    },
+    {
+      key: "received",
+      header: "Получен",
+      render: (w) =>
+        new Date(w.received_at).toLocaleString("ru", {
+          day: "2-digit",
+          month: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        }),
+      className: "w-40",
+    },
+    {
+      key: "processed",
+      header: "Обработан",
+      render: (w) =>
+        w.processed_at ? (
+          new Date(w.processed_at).toLocaleString("ru")
+        ) : (
+          <span className="text-[--color-muted]">не обработан</span>
+        ),
+      className: "w-44",
+    },
+  ];
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-[--color-muted]">
+        Входящие события с невалидной подписью или те, до которых обработка не
+        дошла. Подробнее — на странице{" "}
+        <Link
+          to="/webhooks"
+          className="underline-offset-2 hover:underline text-[--color-fg]"
+        >
+          /webhooks
+        </Link>
+        .
+      </p>
+      {error && (
+        <p className="text-sm text-[--color-danger]">Не удалось загрузить список.</p>
+      )}
+      <DataTable
+        rows={rows}
+        columns={columns}
+        rowKey={(w) => w.id}
+        empty={loading ? "Загрузка…" : "Сбоев нет — всё хорошо."}
+      />
+    </div>
+  );
+}
+
+function SlaBadge({ minutes }: { minutes: number }) {
+  const tone =
+    minutes >= 120 ? "danger" : minutes >= 60 ? "warn" : "info";
+  return (
+    <span
+      className={[
+        "rounded-full px-2 py-0.5 text-xs font-medium",
+        tone === "danger"
+          ? "bg-[--color-danger]/15 text-[--color-danger]"
+          : tone === "warn"
+            ? "bg-amber-100 text-amber-700"
+            : "bg-zinc-100 text-zinc-700",
+      ].join(" ")}
+    >
+      {formatMinutes(minutes)}
+    </span>
+  );
+}
+
+function formatMinutes(minutes: number): string {
+  if (minutes < 60) return `${minutes.toString()} мин`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours.toString()} ч`;
+  const days = Math.floor(hours / 24);
+  return `${days.toString()} дн`;
+}
