@@ -32,22 +32,24 @@ export function Pagination({
       </span>
       <div className="flex gap-2">
         <Button
-          variant="ghost"
+          variant="secondary"
           size="sm"
           disabled={!canPrev}
           onClick={() => onPageChange(Math.max(0, offset - limit))}
+          aria-label="Предыдущая страница"
         >
-          <ChevronLeft className="size-4" />
+          <ChevronLeft className="size-4" aria-hidden />
           Назад
         </Button>
         <Button
-          variant="ghost"
+          variant="secondary"
           size="sm"
           disabled={!canNext}
           onClick={() => onPageChange(offset + limit)}
+          aria-label="Следующая страница"
         >
           Вперёд
-          <ChevronRight className="size-4" />
+          <ChevronRight className="size-4" aria-hidden />
         </Button>
       </div>
     </div>

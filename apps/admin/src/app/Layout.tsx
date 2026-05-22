@@ -103,10 +103,21 @@ export function Layout() {
 
   return (
     <div className="flex min-h-screen">
+      {/* Skip-link — first focusable element on every page, lets keyboard users
+          jump past the 17-entry sidebar straight into the content area
+          (a11y-audit #13, WCAG 2.4.1). */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-md focus:bg-[--accent] focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-[--text-on-accent] focus:shadow-[var(--shadow-md)]"
+      >
+        Перейти к содержимому
+      </a>
+
       {/* Sidebar: static on md+, off-canvas drawer on <md. */}
       <aside
+        aria-label="Основная навигация"
         className={[
-          "fixed inset-y-0 left-0 z-40 flex h-screen flex-col border-r bg-[--color-bg]",
+          "fixed inset-y-0 left-0 z-40 flex h-screen flex-col border-r border-[--border-default] bg-[--bg-sidebar]",
           "transition-transform duration-200 ease-out",
           "md:static md:translate-x-0",
           drawerOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
@@ -199,13 +210,17 @@ export function Layout() {
               <Search className="size-5" />
             </button>
             <ThemeMenu />
-            <Button variant="ghost" size="sm" onClick={logout}>
-              <LogOut className="size-4" />
+            <Button variant="ghost" size="sm" onClick={logout} aria-label="Выйти">
+              <LogOut className="size-4" aria-hidden />
               <span className="hidden sm:inline">Выйти</span>
             </Button>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex-1 overflow-y-auto p-4 md:p-6 focus-visible:outline-none"
+        >
           <Outlet />
         </main>
       </div>

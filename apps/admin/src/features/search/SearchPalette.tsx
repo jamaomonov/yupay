@@ -53,10 +53,22 @@ export function SearchPalette({ open, onClose }: Props) {
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  // The element that had focus when the palette opened — we restore focus
+  // there on close so the keyboard user lands back where they were.
+  const previousFocus = useRef<HTMLElement | null>(null);
 
-  // Reset on (re)open and focus the input.
+  // Reset on (re)open and focus the input; restore previous focus on close.
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      if (previousFocus.current) {
+        previousFocus.current.focus();
+        previousFocus.current = null;
+      }
+      return;
+    }
+    previousFocus.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setQ("");
     setDebounced("");
     setHighlight(0);
@@ -136,6 +148,26 @@ export function SearchPalette({ open, onClose }: Props) {
     }
   };
 
+  // Focus trap — keep Tab cycling inside the dialog while it's open
+  // (a11y-audit #3, WCAG 2.4.3).
+  const onDialogKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== "Tab" || !dialogRef.current) return;
+    const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+      'input, button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    );
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (!first || !last) return;
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+
   // Assign a flat index per hit so the cursor can walk across groups.
   let cursor = 0;
   const groups = GROUP_ORDER.map((type) => {
@@ -150,6 +182,7 @@ export function SearchPalette({ open, onClose }: Props) {
 
   return (
     <div
+      ref={dialogRef}
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 pt-[8vh] backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
@@ -157,6 +190,7 @@ export function SearchPalette({ open, onClose }: Props) {
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
+      onKeyDown={onDialogKeyDown}
     >
       <div className="relative w-full max-w-xl rounded-lg border border-[--color-border] bg-[--color-bg] text-[--color-fg] shadow-2xl ring-1 ring-black/5">
         <div className="flex items-center gap-2 border-b border-[--color-border] px-4 py-3">
