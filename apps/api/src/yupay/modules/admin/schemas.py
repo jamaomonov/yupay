@@ -7,9 +7,13 @@ render every result group with the same component while keeping per-type metadat
 
 from __future__ import annotations
 
+from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from yupay.modules.users.schemas import UserAdminOut
 
 HitType = Literal["user", "order", "payment", "sku"]
 
@@ -39,4 +43,101 @@ class SearchOut(BaseModel):
     skus: list[SearchHit] = Field(default_factory=list)
 
 
-__all__ = ["HitType", "SearchHit", "SearchOut"]
+# ---------- Customer 360 overview ----------
+
+# Risk flag identifiers. The UI is free to render them however it likes; the backend
+# never returns a localized string here so the admin SPA owns the message catalog.
+RiskFlag = Literal[
+    "no_email",
+    "no_telegram",
+    "fresh_account",
+    "many_failed_payments",
+]
+
+
+class CustomerOrderSummary(BaseModel):
+    """Compact order row for the customer-360 list. Full detail lives at /orders/{id}."""
+
+    model_config = ConfigDict(from_attributes=True, frozen=True)
+
+    id: str
+    status: str
+    currency: str
+    total_charged: Decimal
+    items_count: int
+    created_at: datetime
+    delivered_at: datetime | None
+
+
+class CustomerPaymentSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True, frozen=True)
+
+    id: str
+    order_id: str
+    provider: str
+    status: str
+    amount: Decimal
+    currency: str
+    external_id: str | None
+    created_at: datetime
+
+
+class CustomerTaskSummary(BaseModel):
+    """Open fulfilment task (pending / in_progress / failed) for this customer."""
+
+    model_config = ConfigDict(from_attributes=True, frozen=True)
+
+    id: str
+    order_id: str
+    supplier: str
+    status: str
+    last_error: str | None
+    created_at: datetime
+
+
+class CustomerBalanceOut(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    account_id: str
+    kind: str
+    currency: str
+    balance: Decimal
+
+
+class CustomerStatsOut(BaseModel):
+    """Aggregate counters for the customer header card."""
+
+    model_config = ConfigDict(frozen=True)
+
+    total_orders: int
+    delivered_orders: int
+    total_spent_usd: Decimal
+    failed_payments: int
+
+
+class CustomerOverviewOut(BaseModel):
+    """Aggregated read-only view of a customer for the admin SPA's /customers/{id} page."""
+
+    model_config = ConfigDict(frozen=True)
+
+    user: UserAdminOut
+    stats: CustomerStatsOut
+    recent_orders: list[CustomerOrderSummary] = Field(default_factory=list)
+    recent_payments: list[CustomerPaymentSummary] = Field(default_factory=list)
+    open_fulfillment_tasks: list[CustomerTaskSummary] = Field(default_factory=list)
+    wallet_balances: list[CustomerBalanceOut] = Field(default_factory=list)
+    risk_flags: list[RiskFlag] = Field(default_factory=list)
+
+
+__all__ = [
+    "CustomerBalanceOut",
+    "CustomerOrderSummary",
+    "CustomerOverviewOut",
+    "CustomerPaymentSummary",
+    "CustomerStatsOut",
+    "CustomerTaskSummary",
+    "HitType",
+    "RiskFlag",
+    "SearchHit",
+    "SearchOut",
+]

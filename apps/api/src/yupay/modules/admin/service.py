@@ -8,15 +8,34 @@ too. See ADR-0017.
 
 from __future__ import annotations
 
-from sqlalchemy import String, cast, or_, select
+from datetime import timedelta
+from decimal import Decimal
+
+from sqlalchemy import String, case, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
-from yupay.modules.admin.schemas import SearchHit, SearchOut
+from yupay.core.clock import now
+from yupay.modules.admin.schemas import (
+    CustomerBalanceOut,
+    CustomerOrderSummary,
+    CustomerOverviewOut,
+    CustomerPaymentSummary,
+    CustomerStatsOut,
+    CustomerTaskSummary,
+    RiskFlag,
+    SearchHit,
+    SearchOut,
+)
 from yupay.modules.catalog.models import Sku
-from yupay.modules.orders.models import Order
+from yupay.modules.fulfillment.models import FulfillmentTask
+from yupay.modules.orders.models import Order, OrderItem
 from yupay.modules.payments.models import Payment
+from yupay.modules.users import service as users_svc
 from yupay.modules.users.models import TelegramLink, User
+from yupay.modules.users.schemas import UserAdminOut
+from yupay.modules.wallet.api import NORMAL_SIDE
+from yupay.modules.wallet.models import WalletAccount, WalletPosting
 
 
 async def search(db: AsyncSession, *, q: str, limit: int) -> SearchOut:
@@ -115,7 +134,7 @@ def _user_hit(u: User) -> SearchHit:
         id=u.id,
         label=label,
         sublabel=" · ".join(sub) or None,
-        path=f"/users/{u.id}",
+        path=f"/customers/{u.id}",
     )
 
 
@@ -155,4 +174,185 @@ def _sku_hit(s: Sku) -> SearchHit:
     )
 
 
-__all__ = ["search"]
+# ---------- Customer 360 overview ----------
+
+_OPEN_TASK_STATUSES: tuple[str, ...] = ("pending", "in_progress", "failed")
+_DELIVERED_STATUSES: tuple[str, ...] = ("delivered", "fulfilled")
+_FRESH_ACCOUNT_DAYS = 7
+_FAILED_PAYMENTS_THRESHOLD = 3
+_DEFAULT_LIMIT = 10
+
+
+async def get_customer_overview(
+    db: AsyncSession,
+    *,
+    user_id: str,
+    limit: int = _DEFAULT_LIMIT,
+) -> CustomerOverviewOut:
+    """Aggregate read-only view for the admin SPA's /customers/{user_id} page.
+
+    Composes existing module reads. Bounded SQL: a fixed handful of queries
+    regardless of how many wallet accounts the user has — balances are computed in
+    a single GROUP BY query keyed on the user's accounts.
+    """
+
+    user = await users_svc.get_user_admin(db, user_id)  # 404 if missing.
+
+    order_id_subq = select(Order.id).where(Order.user_id == user_id).scalar_subquery()
+
+    recent_orders = await _fetch_recent_orders(db, user_id=user_id, limit=limit)
+    recent_payments = await _fetch_recent_payments(db, order_id_subq=order_id_subq, limit=limit)
+    open_tasks = await _fetch_open_fulfillment_tasks(
+        db, order_id_subq=order_id_subq, limit=limit
+    )
+    wallet_balances = await _fetch_wallet_balances(db, user_id=user_id)
+    stats = await _fetch_customer_stats(db, user_id=user_id, order_id_subq=order_id_subq)
+
+    risk_flags = _compute_risk_flags(user=user, failed_payments=stats.failed_payments)
+
+    return CustomerOverviewOut(
+        user=UserAdminOut.model_validate(user),
+        stats=stats,
+        recent_orders=recent_orders,
+        recent_payments=recent_payments,
+        open_fulfillment_tasks=open_tasks,
+        wallet_balances=wallet_balances,
+        risk_flags=risk_flags,
+    )
+
+
+async def _fetch_recent_orders(
+    db: AsyncSession, *, user_id: str, limit: int
+) -> list[CustomerOrderSummary]:
+    items_count_col = (
+        select(func.count(OrderItem.id))
+        .where(OrderItem.order_id == Order.id)
+        .correlate(Order)
+        .scalar_subquery()
+    )
+    stmt = (
+        select(
+            Order.id,
+            Order.status,
+            Order.currency,
+            Order.total_charged,
+            items_count_col.label("items_count"),
+            Order.created_at,
+            Order.delivered_at,
+        )
+        .where(Order.user_id == user_id)
+        .order_by(Order.created_at.desc())
+        .limit(limit)
+    )
+    rows = (await db.execute(stmt)).mappings().all()
+    return [CustomerOrderSummary.model_validate(dict(r)) for r in rows]
+
+
+async def _fetch_recent_payments(
+    db: AsyncSession, *, order_id_subq: object, limit: int
+) -> list[CustomerPaymentSummary]:
+    stmt = (
+        select(Payment)
+        .where(Payment.order_id.in_(order_id_subq))  # type: ignore[arg-type]
+        .order_by(Payment.created_at.desc())
+        .limit(limit)
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+    return [CustomerPaymentSummary.model_validate(p) for p in rows]
+
+
+async def _fetch_open_fulfillment_tasks(
+    db: AsyncSession, *, order_id_subq: object, limit: int
+) -> list[CustomerTaskSummary]:
+    stmt = (
+        select(FulfillmentTask)
+        .where(
+            FulfillmentTask.order_id.in_(order_id_subq),  # type: ignore[arg-type]
+            FulfillmentTask.status.in_(_OPEN_TASK_STATUSES),
+        )
+        .order_by(FulfillmentTask.created_at.desc())
+        .limit(limit)
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+    return [CustomerTaskSummary.model_validate(t) for t in rows]
+
+
+async def _fetch_wallet_balances(
+    db: AsyncSession, *, user_id: str
+) -> list[CustomerBalanceOut]:
+    """One query per balance set, no matter how many accounts.
+
+    Each posting is signed according to its account's NORMAL_SIDE (debit-normal vs
+    credit-normal) so the SUM is the on-screen balance directly.
+    """
+    case_branches = [
+        ((WalletAccount.kind == kind) & (WalletPosting.direction == ns), WalletPosting.amount)
+        for kind, ns in NORMAL_SIDE.items()
+    ]
+    signed_expr = case(*case_branches, else_=-WalletPosting.amount)
+    stmt = (
+        select(
+            WalletAccount.id,
+            WalletAccount.kind,
+            WalletAccount.currency,
+            func.coalesce(func.sum(signed_expr), Decimal("0")).label("balance"),
+        )
+        .select_from(WalletAccount)
+        .outerjoin(WalletPosting, WalletPosting.account_id == WalletAccount.id)
+        .where(WalletAccount.owner_type == "user", WalletAccount.owner_id == user_id)
+        .group_by(WalletAccount.id, WalletAccount.kind, WalletAccount.currency)
+        .order_by(WalletAccount.kind, WalletAccount.currency)
+    )
+    rows = (await db.execute(stmt)).all()
+    return [
+        CustomerBalanceOut(
+            account_id=row[0],
+            kind=row[1],
+            currency=row[2],
+            balance=Decimal(row[3] or 0),
+        )
+        for row in rows
+    ]
+
+
+async def _fetch_customer_stats(
+    db: AsyncSession, *, user_id: str, order_id_subq: object
+) -> CustomerStatsOut:
+    orders_stmt = select(
+        func.count(Order.id),
+        func.count(case((Order.status.in_(_DELIVERED_STATUSES), 1))),
+        func.coalesce(
+            func.sum(case((Order.status.in_(_DELIVERED_STATUSES), Order.total_usd))),
+            Decimal("0"),
+        ),
+    ).where(Order.user_id == user_id)
+    total_orders, delivered_orders, total_spent = (await db.execute(orders_stmt)).one()
+
+    failed_stmt = select(func.count(Payment.id)).where(
+        Payment.order_id.in_(order_id_subq),  # type: ignore[arg-type]
+        Payment.status == "failed",
+    )
+    failed_payments = (await db.execute(failed_stmt)).scalar_one()
+
+    return CustomerStatsOut(
+        total_orders=int(total_orders or 0),
+        delivered_orders=int(delivered_orders or 0),
+        total_spent_usd=Decimal(total_spent or 0),
+        failed_payments=int(failed_payments or 0),
+    )
+
+
+def _compute_risk_flags(*, user: User, failed_payments: int) -> list[RiskFlag]:
+    flags: list[RiskFlag] = []
+    if not user.email:
+        flags.append("no_email")
+    if user.telegram_link is None:
+        flags.append("no_telegram")
+    if (now() - user.created_at) < timedelta(days=_FRESH_ACCOUNT_DAYS):
+        flags.append("fresh_account")
+    if failed_payments > _FAILED_PAYMENTS_THRESHOLD:
+        flags.append("many_failed_payments")
+    return flags
+
+
+__all__ = ["get_customer_overview", "search"]

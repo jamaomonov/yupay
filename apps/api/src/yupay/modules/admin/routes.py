@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.api.v1.deps import db_session
 from yupay.modules.admin import service as svc
 from yupay.modules.admin.deps import require_admin
-from yupay.modules.admin.schemas import SearchOut
+from yupay.modules.admin.schemas import CustomerOverviewOut, SearchOut
 from yupay.modules.users.models import User
 
 admin_router = APIRouter(
@@ -38,6 +38,21 @@ async def admin_search(
 ) -> SearchOut:
     """Return up to ``limit`` matches per source for the given query."""
     return await svc.search(db, q=q, limit=limit)
+
+
+@admin_router.get(
+    "/customers/{user_id}/overview",
+    response_model=CustomerOverviewOut,
+    summary="Aggregated customer-360 view (orders, payments, wallet, risk flags)",
+)
+async def admin_customer_overview(
+    user_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+    limit: Annotated[int, Query(ge=1, le=50, description="Rows per section")] = 10,
+) -> CustomerOverviewOut:
+    """Single aggregate read for the /customers/{user_id} page in the admin SPA."""
+    return await svc.get_customer_overview(db, user_id=user_id, limit=limit)
 
 
 __all__ = ["admin_router"]
