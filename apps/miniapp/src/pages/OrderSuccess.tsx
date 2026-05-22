@@ -584,10 +584,6 @@ function TopUpReceipt({
     ? delivery.artifact.fulfillment_data
     : null;
   const fields = artifactSnapshot ?? fulfillmentData;
-  const externalId =
-    typeof delivery.artifact.external_id === "string"
-      ? delivery.artifact.external_id
-      : null;
 
   const entries = Object.entries(fields).filter(
     ([, v]) => typeof v === "string" && (v as string).trim().length > 0,
@@ -635,12 +631,10 @@ function TopUpReceipt({
           ))}
         </div>
       )}
-
-      {externalId && (
-        <p className="text-[10px] text-white/30 font-mono">
-          № операции: {externalId}
-        </p>
-      )}
+      {/* The supplier's external_id is stored in the artifact for support
+          / chargeback evidence, but isn't useful to the customer — and
+          surfacing it invited "что значит этот номер?" support tickets.
+          Admins still see it via /admin/fulfillment task details. */}
     </motion.div>
   );
 }
