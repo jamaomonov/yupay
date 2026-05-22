@@ -6,6 +6,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex,nofollow" />
     <title>YuPay Admin</title>
+    <!--
+      Anti-FOUC: resolve the theme synchronously before any stylesheet or
+      script loads. Sets data-theme on <html> so the first paint already has
+      the right palette. Keep this script tiny and free of imports — every
+      branch must run in a single tick.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("yupay.admin.theme") || "system";
+          var prefersDark =
+            window.matchMedia &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var effective =
+            stored === "dark" || (stored === "system" && prefersDark)
+              ? "dark"
+              : "light";
+          document.documentElement.setAttribute("data-theme", effective);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
   </head>
   <body class="bg-[--color-bg] text-[--color-fg]">
     <div id="root"></div>

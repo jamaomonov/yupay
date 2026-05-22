@@ -1,0 +1,186 @@
+/* Admin-only Dim Slate palette.
+ *
+ * Loaded after the shared @yupay/config-tailwind preset so its declarations
+ * override the (lighter, oklch-based) defaults for both themes. Miniapp and
+ * the public web keep the shared palette untouched.
+ *
+ * Tailwind v4 doesn't see these tokens via @theme — they're plain CSS custom
+ * properties consumed through arbitrary-value classes (e.g. `bg-[--bg-base]`)
+ * or direct `style={{ background: 'var(--bg-base)' }}`. The legacy --color-*
+ * names from the shared preset are kept as aliases to new tokens here, so the
+ * existing ~40 files using `bg-[--color-bg]` etc. keep working unchanged.
+ *
+ * See ADR-0017 §"What we don't do" — no `@media (prefers-color-scheme)`
+ * wrapping: the user's explicit pick (`localStorage.theme`) is authoritative.
+ */
+
+:root,
+[data-theme="light"] {
+  /* ---------- Backgrounds ---------- */
+  --bg-base: #eef1f6;
+  --bg-sidebar: #ffffff;
+  --bg-surface: #ffffff;
+  --bg-surface-2: #f8fafc;
+  --bg-muted: #f3f5f9;
+  --bg-accent-soft: #eef2ff;
+
+  /* ---------- Borders ---------- */
+  --border-default: #e1e6ee;
+  --border-strong: #d8dee8;
+  --border-subtle: #f1f4f8;
+
+  /* ---------- Text ---------- */
+  --text-primary: #1f2937;
+  --text-secondary: #64748b;
+  --text-tertiary: #94a3b8;
+  --text-disabled: #cbd5e1;
+  --text-on-accent: #ffffff;
+
+  /* ---------- Accent (indigo) ---------- */
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-active: #3730a3;
+  --accent-soft-fg: #4f46e5;
+
+  /* ---------- Semantic ---------- */
+  --success: #10b981;
+  --success-soft: #dcfce7;
+  --success-fg: #166534;
+  --warning: #f59e0b;
+  --warning-soft: #fef3c7;
+  --warning-fg: #92400e;
+  --danger: #ef4444;
+  --danger-soft: #fee2e2;
+  --danger-fg: #991b1b;
+  --info: #3b82f6;
+  --info-soft: #dbeafe;
+  --info-fg: #1e40af;
+
+  /* ---------- Effects ---------- */
+  --focus-ring: 0 0 0 3px rgba(79, 70, 229, 0.25);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+
+  /* ---------- Aliases for legacy --color-* names ---------- *
+   * Existing components use `bg-[--color-bg]`, `text-[--color-fg]` etc.
+   * Mapping them to the Dim Slate tokens keeps the whole codebase working
+   * without a 40-file sed; new code should reach for the canonical tokens
+   * (`--bg-surface`, `--text-primary`, ...) above.
+   */
+  --color-bg: var(--bg-base);
+  --color-fg: var(--text-primary);
+  --color-muted: var(--text-secondary);
+  --color-subtle: var(--bg-muted);
+  --color-border: var(--border-default);
+  --color-brand: var(--accent);
+  --color-brand-fg: var(--text-on-accent);
+  --color-brand-hover: var(--accent-hover);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--text-on-accent);
+  --color-success: var(--success);
+  --color-success-fg: #ffffff;
+  --color-danger: var(--danger);
+  --color-danger-fg: #ffffff;
+  --color-warning: var(--warning);
+  --color-warning-fg: #ffffff;
+  --color-info: var(--info);
+  --color-info-fg: #ffffff;
+}
+
+[data-theme="dark"] {
+  /* ---------- Backgrounds ---------- */
+  --bg-base: #22272e;
+  --bg-sidebar: #1c2128;
+  --bg-surface: #2d333b;
+  --bg-surface-2: #353b43;
+  --bg-muted: #22272e;
+  --bg-accent-soft: #312e81;
+
+  /* ---------- Borders ---------- */
+  --border-default: #373e47;
+  --border-strong: #444c56;
+  --border-subtle: #2a3038;
+
+  /* ---------- Text ---------- */
+  --text-primary: #e6edf3;
+  --text-secondary: #909dab;
+  --text-tertiary: #6e7681;
+  --text-disabled: #4b5563;
+  --text-on-accent: #1e1b4b; /* dark text on the lifted indigo button */
+
+  /* ---------- Accent (indigo, lifted) ---------- */
+  --accent: #818cf8;
+  --accent-hover: #a5b4fc;
+  --accent-active: #6366f1;
+  --accent-soft-fg: #c7d2fe;
+
+  /* ---------- Semantic — desaturated for dark backgrounds ---------- */
+  --success: #34d399;
+  --success-soft: rgba(52, 211, 153, 0.15);
+  --success-fg: #6ee7b7;
+  --warning: #fbbf24;
+  --warning-soft: rgba(251, 191, 36, 0.15);
+  --warning-fg: #fcd34d;
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.15);
+  --danger-fg: #fca5a5;
+  --info: #60a5fa;
+  --info-soft: rgba(96, 165, 250, 0.15);
+  --info-fg: #bfdbfe;
+
+  /* ---------- Effects ---------- */
+  --focus-ring: 0 0 0 3px rgba(129, 140, 248, 0.35);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+
+  /* ---------- Aliases ---------- */
+  --color-bg: var(--bg-base);
+  --color-fg: var(--text-primary);
+  --color-muted: var(--text-secondary);
+  --color-subtle: var(--bg-surface-2);
+  --color-border: var(--border-default);
+  --color-brand: var(--accent);
+  --color-brand-fg: var(--text-on-accent);
+  --color-brand-hover: var(--accent-hover);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--text-on-accent);
+  --color-success: var(--success);
+  --color-success-fg: var(--bg-base);
+  --color-danger: var(--danger);
+  --color-danger-fg: var(--bg-base);
+  --color-warning: var(--warning);
+  --color-warning-fg: var(--bg-base);
+  --color-info: var(--info);
+  --color-info-fg: var(--bg-base);
+}
+
+/* Smooth theme transitions on the heavy surfaces only.
+ * Per ADR-0017: keep transitions off `*` so large tables don't lag.
+ */
+html,
+body {
+  transition:
+    background-color 200ms ease,
+    color 200ms ease;
+}
+
+aside,
+header,
+nav,
+section,
+article,
+button,
+input,
+select,
+textarea,
+table,
+thead,
+tbody,
+tr,
+td,
+th {
+  transition:
+    background-color 200ms ease,
+    color 200ms ease,
+    border-color 200ms ease;
+}

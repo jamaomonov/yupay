@@ -1,4 +1,9 @@
 @import "@yupay/config-tailwind/preset.css";
+/* Dim Slate palette overrides the shared preset for the admin app only.
+ * Imported AFTER the preset so its `--color-*` declarations win in both
+ * `:root` and `[data-theme="dark"]` blocks via the cascade.
+ */
+@import "./styles/tokens-dim-slate.css";
 
 /* Admin layout uses a sidebar; reserve some structural variables here. */
 :root {
