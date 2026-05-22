@@ -155,9 +155,9 @@ export function DashboardPage() {
         <AlertCard
           icon={Truck}
           label="В работе"
-          hint="fulfilment task pending / in_progress"
+          hint="Висяки > 30 мин — открыть Stuck-таб"
           value={d?.in_flight_tasks ?? 0}
-          to="/fulfillment?status=pending"
+          to="/fulfillment?tab=stuck"
         />
       </section>
 
