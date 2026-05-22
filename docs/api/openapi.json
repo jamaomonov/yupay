@@ -1727,6 +1727,17 @@
       "FulfillmentTaskOut": {
         "description": "Admin view of a task \u2014 includes attempts.",
         "properties": {
+          "admin_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin Note"
+          },
           "attempts": {
             "items": {
               "$ref": "#/components/schemas/FulfillmentAttemptOut"
@@ -1749,6 +1760,17 @@
               }
             ],
             "title": "Cancelled At"
+          },
+          "completed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed By"
           },
           "created_at": {
             "format": "date-time",
@@ -1953,6 +1975,84 @@
           "refresh_token"
         ],
         "title": "LogoutIn",
+        "type": "object"
+      },
+      "ManualCompleteIn": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /admin/fulfillment/tasks/{id}/complete``.",
+        "properties": {
+          "admin_note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin Note"
+          },
+          "artifact": {
+            "additionalProperties": true,
+            "minProperties": 1,
+            "title": "Artifact",
+            "type": "object"
+          },
+          "artifact_kind": {
+            "enum": [
+              "voucher_code",
+              "topup_receipt",
+              "license_key"
+            ],
+            "title": "Artifact Kind",
+            "type": "string"
+          },
+          "channel": {
+            "default": "in_app",
+            "enum": [
+              "in_app",
+              "email",
+              "telegram"
+            ],
+            "title": "Channel",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_kind",
+          "artifact"
+        ],
+        "title": "ManualCompleteIn",
+        "type": "object"
+      },
+      "ManualFailIn": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /admin/fulfillment/tasks/{id}/fail``.",
+        "properties": {
+          "admin_note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin Note"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "ManualFailIn",
         "type": "object"
       },
       "MeOut": {
@@ -3989,7 +4089,8 @@
             "enum": [
               "auto",
               "force_inventory",
-              "force_supplier"
+              "force_supplier",
+              "manual"
             ],
             "title": "Mode",
             "type": "string"
@@ -4036,7 +4137,8 @@
             "enum": [
               "auto",
               "force_inventory",
-              "force_supplier"
+              "force_supplier",
+              "manual"
             ],
             "title": "Mode",
             "type": "string"
@@ -6088,6 +6190,142 @@
           }
         },
         "summary": "Admin Cancel Task",
+        "tags": [
+          "admin:fulfillment"
+        ]
+      }
+    },
+    "/api/v1/admin/fulfillment/tasks/{task_id}/complete": {
+      "post": {
+        "operationId": "admin_complete_manual_task_api_v1_admin_fulfillment_tasks__task_id__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualCompleteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FulfillmentTaskOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Manually complete a task (creates Delivery, walks order to delivered)",
+        "tags": [
+          "admin:fulfillment"
+        ]
+      }
+    },
+    "/api/v1/admin/fulfillment/tasks/{task_id}/fail": {
+      "post": {
+        "operationId": "admin_fail_manual_task_api_v1_admin_fulfillment_tasks__task_id__fail_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualFailIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FulfillmentTaskOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject a manual task with a reason (order stays in fulfilling)",
         "tags": [
           "admin:fulfillment"
         ]

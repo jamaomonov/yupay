@@ -423,6 +423,163 @@ async def cancel_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
     return task
 
 
+# ---------- manual fulfilment (admin-driven) ----------
+
+
+_VALID_ARTIFACT_KINDS = frozenset({"voucher_code", "topup_receipt", "license_key"})
+_VALID_DELIVERY_CHANNELS = frozenset({"in_app", "email", "telegram"})
+
+
+async def complete_manual_task(
+    db: AsyncSession,
+    *,
+    task_id: str,
+    artifact_kind: str,
+    artifact: dict[str, Any],
+    channel: str | None,
+    admin_note: str | None,
+    admin_id: str,
+) -> FulfillmentTask:
+    """Admin marks a manual task as completed.
+
+    Drops the supplied artifact into ``deliveries``, flips the task to
+    ``succeeded``, the item to ``delivered``, and lets
+    :func:`_try_settle_order` walk the order to ``delivered``. Guarded so
+    only ``supplier="manual"`` tasks in ``in_progress`` can be completed
+    here — pushing a real supplier task through this path would create
+    reconciliation drift we have no way to detect.
+    """
+    task = await _load_task(db, task_id)
+    if task.supplier != "manual":
+        raise ConflictError(
+            "task is not a manual task",
+            extra={"supplier": task.supplier},
+        )
+    if task.status != "in_progress":
+        raise ConflictError(
+            "manual task cannot be completed in its current state",
+            extra={"status": task.status},
+        )
+    if artifact_kind not in _VALID_ARTIFACT_KINDS:
+        from yupay.core.errors import ValidationError  # noqa: PLC0415
+
+        raise ValidationError(
+            f"unsupported artifact_kind: {artifact_kind!r}",
+            extra={"allowed": sorted(_VALID_ARTIFACT_KINDS)},
+        )
+    resolved_channel = channel or "in_app"
+    if resolved_channel not in _VALID_DELIVERY_CHANNELS:
+        from yupay.core.errors import ValidationError  # noqa: PLC0415
+
+        raise ValidationError(
+            f"unsupported delivery channel: {resolved_channel!r}",
+            extra={"allowed": sorted(_VALID_DELIVERY_CHANNELS)},
+        )
+    if not artifact:
+        from yupay.core.errors import ValidationError  # noqa: PLC0415
+
+        raise ValidationError("artifact must contain at least one key")
+
+    item = (
+        await db.execute(select(OrderItem).where(OrderItem.id == task.order_item_id))
+    ).scalar_one()
+
+    db.add(
+        Delivery(
+            id=new_id(),
+            order_item_id=item.id,
+            channel=resolved_channel,
+            artifact_kind=artifact_kind,
+            artifact=artifact,
+        )
+    )
+    moment = now()
+    task.status = "succeeded"
+    task.succeeded_at = moment
+    task.last_error = None
+    task.completed_by = admin_id
+    task.admin_note = admin_note
+    task.updated_at = moment
+    item.fulfillment_state = "delivered"
+    _record_attempt(
+        db,
+        task=task,
+        kind="fulfill",
+        status="ok",
+        payload={"manual": True, "admin_id": admin_id},
+    )
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        # UNIQUE(order_item_id) on ``deliveries`` is the DB-level
+        # idempotency guarantee — even if two admins race the in-process
+        # status guard, only one row lands.
+        await db.rollback()
+        raise ConflictError(
+            "item already has a delivery",
+            extra={"order_item_id": item.id},
+        ) from exc
+    await _try_settle_order(db, order_id=task.order_id)
+    await db.flush()
+    return task
+
+
+async def fail_manual_task(
+    db: AsyncSession,
+    *,
+    task_id: str,
+    reason: str,
+    admin_note: str | None,
+    admin_id: str,
+) -> FulfillmentTask:
+    """Admin rejects a manual task (e.g. account suspended, no stock, …).
+
+    Marks the task as ``failed`` with ``reason`` as ``last_error``. The
+    order stays in ``fulfilling``; refunds are issued separately through
+    ``/admin/payments/{id}/refund`` so the admin keeps explicit control
+    over the money side.
+    """
+    task = await _load_task(db, task_id)
+    if task.supplier != "manual":
+        raise ConflictError(
+            "task is not a manual task",
+            extra={"supplier": task.supplier},
+        )
+    if task.status != "in_progress":
+        raise ConflictError(
+            "manual task cannot be failed in its current state",
+            extra={"status": task.status},
+        )
+    reason_clean = reason.strip()
+    if not reason_clean:
+        from yupay.core.errors import ValidationError  # noqa: PLC0415
+
+        raise ValidationError("reason is required to reject a manual task")
+
+    item = (
+        await db.execute(select(OrderItem).where(OrderItem.id == task.order_item_id))
+    ).scalar_one()
+
+    moment = now()
+    task.status = "failed"
+    task.failed_at = moment
+    task.last_error = reason_clean
+    task.completed_by = admin_id
+    task.admin_note = admin_note
+    task.updated_at = moment
+    item.fulfillment_state = "failed"
+    _record_attempt(
+        db,
+        task=task,
+        kind="fulfill",
+        status="error",
+        payload={"manual": True, "admin_id": admin_id},
+        error=reason_clean,
+    )
+    await db.flush()
+    return task
+
+
 # ---------- order-level settlement ----------
 
 
@@ -527,6 +684,8 @@ async def get_task_admin(db: AsyncSession, task_id: str) -> FulfillmentTask:
 
 __all__ = [
     "cancel_task",
+    "complete_manual_task",
+    "fail_manual_task",
     "get_task_admin",
     "list_deliveries_for_order",
     "list_tasks_admin",

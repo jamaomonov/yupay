@@ -9,7 +9,7 @@
 
 | sku_id | mode | supplier_slug | … |
 |---|---|---|---|
-| UUID | `auto` / `force_inventory` / `force_supplier` | `mock` / `click` / `steam` / … (только для `force_supplier`) | |
+| UUID | `auto` / `force_inventory` / `force_supplier` / `manual` | `mock` / `click` / `steam` / … (только для `force_supplier`) | |
 
 Отсутствие строки = режим `auto`.
 
@@ -29,6 +29,12 @@ class Decision:
 | `auto` (или нет правила) | `inventory` | `supplier:mock` | `False` |
 | `force_inventory` | `inventory` | `None` | `True` |
 | `force_supplier` | `supplier:<slug>` | `None` | `True` |
+| `manual` | `supplier:manual` | `None` | `True` |
+
+`mode="manual"` — для SKU без supplier-API. Slug у этого режима подразумеваемый
+(всегда `manual`), `set_rule` форсит `supplier_slug=NULL`. Заказы по таким SKU
+паркуются у `ManualFulfiller` в статусе `in_progress`, и админ обрабатывает их
+из очереди ручной выдачи (см. `fulfillment/README.md`, секция «Ручная выдача»).
 
 `DEFAULT_FALLBACK_SUPPLIER` сейчас захардкожен в `mock`. Когда появится первый
 живой эквайринг — переедет в `Settings` (отдельный per-currency mapping).

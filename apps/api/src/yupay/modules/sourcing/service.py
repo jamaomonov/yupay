@@ -17,7 +17,7 @@ from yupay.core.clock import now
 from yupay.core.errors import NotFoundError, ValidationError
 from yupay.modules.sourcing.models import SkuSourcingRule
 
-Mode = Literal["auto", "force_inventory", "force_supplier"]
+Mode = Literal["auto", "force_inventory", "force_supplier", "manual"]
 DEFAULT_FALLBACK_SUPPLIER = "mock"
 
 
@@ -51,6 +51,16 @@ async def resolve_for_sku(db: AsyncSession, sku_id: str) -> Decision:
     if rule.mode == "force_inventory":
         return Decision(
             primary="inventory", fallback=None, strict=True, rule_present=True
+        )
+    if rule.mode == "manual":
+        # Manual fulfilment — the order ends up in the admin queue. The slug
+        # is implicit (always ``"manual"``); ``set_rule`` keeps the
+        # ``supplier_slug`` column NULL for this mode.
+        return Decision(
+            primary="supplier:manual",
+            fallback=None,
+            strict=True,
+            rule_present=True,
         )
     # force_supplier
     if not rule.supplier_slug:

@@ -20,10 +20,15 @@ from yupay.modules.fulfillment.suppliers.base import (
     FulfillResult,
     FulfillStatus,
 )
+from yupay.modules.fulfillment.suppliers.manual import ManualFulfiller
 from yupay.modules.fulfillment.suppliers.mock import MockFulfiller
 
 REGISTRY: dict[str, Fulfiller] = {
     "mock": MockFulfiller(),
+    # Not a stub — manual fulfilment is a real path: the customer's order
+    # parks in ``in_progress`` until an admin completes it via
+    # ``/admin/fulfillment/tasks/{id}/complete``.
+    "manual": ManualFulfiller(),
     "steam": StubFulfiller(
         supplier="steam",
         todo_message="Steam supplier not integrated yet; see ADR-0013.",
@@ -74,6 +79,7 @@ __all__ = [
     "FulfillerNotIntegratedError",
     "FulfillResult",
     "FulfillStatus",
+    "ManualFulfiller",
     "MockFulfiller",
     "StubFulfiller",
     "available_suppliers",

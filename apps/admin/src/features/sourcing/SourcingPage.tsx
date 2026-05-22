@@ -32,6 +32,11 @@ const MODES: { value: SourcingMode; label: string; hint: string }[] = [
     label: "Только поставщик",
     hint: "Игнорировать склад. Нужен supplier_slug.",
   },
+  {
+    value: "manual",
+    label: "Вручную",
+    hint: "Без поставщика — оператор обработает в очереди ручной выдачи.",
+  },
 ];
 
 export function SourcingPage() {
@@ -305,6 +310,7 @@ function ModeBadge({ mode }: { mode: SourcingMode }) {
       cls: "bg-emerald-100 text-emerald-700",
     },
     force_supplier: { label: "поставщик", cls: "bg-sky-100 text-sky-700" },
+    manual: { label: "вручную", cls: "bg-amber-100 text-amber-700" },
   };
   const { label, cls } = map[mode];
   return (

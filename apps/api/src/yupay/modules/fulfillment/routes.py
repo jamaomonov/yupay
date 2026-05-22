@@ -20,6 +20,8 @@ from yupay.modules.fulfillment.schemas import (
     DeliveryOut,
     FulfillmentTaskListOut,
     FulfillmentTaskOut,
+    ManualCompleteIn,
+    ManualFailIn,
 )
 from yupay.modules.orders.models import Order
 from yupay.modules.orders.service import Actor
@@ -149,4 +151,50 @@ async def admin_cancel_task(
     _admin: Annotated[User, Depends(require_admin)],
 ) -> FulfillmentTaskOut:
     task = await svc.cancel_task(db, task_id=task_id)
+    return FulfillmentTaskOut.model_validate(task)
+
+
+@admin_router.post(
+    "/tasks/{task_id}/complete",
+    response_model=FulfillmentTaskOut,
+    status_code=status.HTTP_200_OK,
+    summary="Manually complete a task (creates Delivery, walks order to delivered)",
+)
+async def admin_complete_manual_task(
+    task_id: str,
+    body: ManualCompleteIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+) -> FulfillmentTaskOut:
+    task = await svc.complete_manual_task(
+        db,
+        task_id=task_id,
+        artifact_kind=body.artifact_kind,
+        artifact=body.artifact,
+        channel=body.channel,
+        admin_note=body.admin_note,
+        admin_id=admin.id,
+    )
+    return FulfillmentTaskOut.model_validate(task)
+
+
+@admin_router.post(
+    "/tasks/{task_id}/fail",
+    response_model=FulfillmentTaskOut,
+    status_code=status.HTTP_200_OK,
+    summary="Reject a manual task with a reason (order stays in fulfilling)",
+)
+async def admin_fail_manual_task(
+    task_id: str,
+    body: ManualFailIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+) -> FulfillmentTaskOut:
+    task = await svc.fail_manual_task(
+        db,
+        task_id=task_id,
+        reason=body.reason,
+        admin_note=body.admin_note,
+        admin_id=admin.id,
+    )
     return FulfillmentTaskOut.model_validate(task)

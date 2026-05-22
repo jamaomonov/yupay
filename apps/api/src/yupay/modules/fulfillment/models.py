@@ -53,6 +53,11 @@ class FulfillmentTask(Base):
         nullable=False,
         server_default=text("'{}'::jsonb"),
     )
+    # Manual fulfilment audit: the admin id that completed or rejected the
+    # task and an optional free-text note. We keep these as columns (not in
+    # ``extra_metadata``) to avoid colliding with merged supplier metadata.
+    admin_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    completed_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")

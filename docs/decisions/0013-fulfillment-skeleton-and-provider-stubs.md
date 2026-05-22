@@ -201,3 +201,30 @@ No public-API change. The synchronous path remains as a fallback for tests.
 - The synchronous-saga shortcut adds **one extra DB transaction** to the payment
   webhook path. Acceptable while throughput is in the dozens-per-minute range;
   must move to the worker before launch.
+
+---
+
+## Update — manual fulfilment (2026-05-22)
+
+`ManualFulfiller` joins the registry as a non-stub supplier with
+`available=True` regardless of `Settings.is_prod`. Routing happens through
+the existing `sourcing` module (new `mode="manual"`, see ADR-0015 update).
+`fulfill()` returns `outcome="in_progress"`; the task parks in the admin
+queue until an operator finalises it through one of two new admin routes:
+
+- `POST /admin/fulfillment/tasks/{id}/complete` — creates the `Delivery`
+  row with the supplied artifact, flips task → `succeeded`, item →
+  `delivered`, and calls `_try_settle_order` (same path supplier-success
+  uses).
+- `POST /admin/fulfillment/tasks/{id}/fail` — task → `failed` with the
+  admin's reason recorded in `last_error`. The order stays in `fulfilling`;
+  the refund (if any) is initiated separately via
+  `/admin/payments/{id}/refund`, keeping the money side under explicit
+  admin control.
+
+Both endpoints guard on `supplier == "manual" AND status == "in_progress"`.
+Double-completion is also caught at the DB level by the
+`UNIQUE(order_item_id)` constraint on `deliveries`. Audit fields
+`admin_note` and `completed_by` were added to `fulfillment_tasks` as plain
+columns rather than overloading `extra_metadata` (which gets merged with
+supplier-returned metadata in `service.py`).

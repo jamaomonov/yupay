@@ -108,6 +108,10 @@ export const qk = {
     ] as const,
   fulfillmentTask: (taskId: string) =>
     ["admin", "fulfillment", "task", taskId] as const,
+  // Manual-fulfilment queue — same backend listing as fulfillmentTasks
+  // but with the supplier/status filters frozen on the page level, so
+  // it deserves its own key for clean invalidation.
+  manualQueue: () => ["admin", "manual-fulfillment", "queue"] as const,
 
   // payments
   payments: (filters: {

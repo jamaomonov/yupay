@@ -94,7 +94,33 @@ GET  /api/v1/admin/fulfillment/tasks               — admin
 GET  /api/v1/admin/fulfillment/tasks/{id}          — admin detail + attempts
 POST /api/v1/admin/fulfillment/tasks/{id}/retry    — admin перезапуск failed
 POST /api/v1/admin/fulfillment/tasks/{id}/cancel   — admin отмена pending/failed
+POST /api/v1/admin/fulfillment/tasks/{id}/complete — manual: создать Delivery, завершить
+POST /api/v1/admin/fulfillment/tasks/{id}/fail     — manual: отметить как failed с причиной
 ```
+
+## Ручная выдача (`supplier="manual"`)
+
+Для SKU без supplier-API: правило sourcing'а `mode="manual"` (см.
+[`sourcing/README.md`](../sourcing/README.md)) маршрутизирует задачу на
+`ManualFulfiller`. Он всегда возвращает `outcome="in_progress"` — task
+паркуется в админской очереди (`/admin/fulfillment/tasks?supplier=manual&status_filter=in_progress`).
+
+Админ обрабатывает заказ:
+- **Завершить** → `POST /complete` с `{artifact_kind, artifact, channel?, admin_note?}`.
+  Создаётся `Delivery`, task → `succeeded`, item → `delivered`, и
+  `_try_settle_order` продвигает заказ до `delivered` тем же путём, что и для
+  обычных supplier-задач.
+- **Отклонить** → `POST /fail` с `{reason, admin_note?}`. Task → `failed`,
+  `last_error = reason`, item → `failed`. Заказ остаётся в `fulfilling` —
+  рефанд (если нужен) админ инициирует отдельно через
+  `/admin/payments/{id}/refund`, чтобы деньги и выдача оставались под
+  раздельным контролем.
+
+Оба эндпоинта guard'ятся `supplier == "manual" AND status == "in_progress"`,
+двойной `complete` ловится UNIQUE(`order_item_id`) на `deliveries`.
+Метаданные ручной обработки (`admin_note`, `completed_by`) сохраняются в
+отдельных колонках на `fulfillment_tasks` — не в `extra_metadata`, чтобы
+не пересекаться с merged-метаданными supplier'а.
 
 ## Mock-flow (end-to-end в dev)
 

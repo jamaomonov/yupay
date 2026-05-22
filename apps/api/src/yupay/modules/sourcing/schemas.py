@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-Mode = Literal["auto", "force_inventory", "force_supplier"]
+Mode = Literal["auto", "force_inventory", "force_supplier", "manual"]
 
 
 class SourcingRuleIn(BaseModel):

@@ -1,4 +1,8 @@
-export type SourcingMode = "auto" | "force_inventory" | "force_supplier";
+export type SourcingMode =
+  | "auto"
+  | "force_inventory"
+  | "force_supplier"
+  | "manual";
 
 export interface SourcingRuleOut {
   sku_id: string;

@@ -177,3 +177,19 @@ No customer-facing routes. Users only see the issued voucher via the existing
 3. **Key rotation** with `key_version` (ADR-0020).
 4. **CSV/file upload** — for now bulk-upload is JSON only.
 5. **Inventory reporting** — low-stock alerts, daily diff vs supplier price.
+
+---
+
+## Update — manual mode (2026-05-22)
+
+Added a fourth `Mode` value: `"manual"`. `Decision` for it:
+`primary="supplier:manual", fallback=None, strict=True`. `set_rule` forces
+`supplier_slug=NULL` (the slug is implicit). Purpose: SKUs without a
+supplier API — the order ends up in the admin queue
+(`/admin/fulfillment/tasks?supplier=manual&status_filter=in_progress`)
+where an operator completes or rejects it via the new endpoints described
+in the ADR-0013 update.
+
+Migration `0012_manual_fulfillment` relaxes
+`ck_sku_sourcing_rules_mode` to allow the new value (and adds two audit
+columns on `fulfillment_tasks`).

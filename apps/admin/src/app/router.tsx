@@ -14,6 +14,7 @@ import { ProductEditPage } from "@/features/catalog/products/ProductEditPage";
 import { SkuEditPage } from "@/features/catalog/skus/SkuEditPage";
 import { SkusListPage } from "@/features/catalog/skus/SkusListPage";
 import { FulfillmentPage } from "@/features/fulfillment/FulfillmentPage";
+import { ManualQueuePage } from "@/features/manual-fulfillment/ManualQueuePage";
 import { FxPage } from "@/features/fx/FxPage";
 import { InventoryPage } from "@/features/inventory/InventoryPage";
 import { OrderDetailPage } from "@/features/orders/OrderDetailPage";
@@ -55,6 +56,7 @@ export const router = createBrowserRouter([
           { path: "/payments", element: <PaymentsPage /> },
           { path: "/webhooks", element: <WebhooksPage /> },
           { path: "/fulfillment", element: <FulfillmentPage /> },
+          { path: "/manual-fulfillment", element: <ManualQueuePage /> },
           { path: "/wallet", element: <WalletPage /> },
           { path: "/audit", element: <AuditPage /> },
           { path: "/fx", element: <FxPage /> },

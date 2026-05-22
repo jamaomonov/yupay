@@ -22,6 +22,10 @@ export interface TaskAdminOut {
   attempts_count: number;
   last_error: string | null;
   external_order_id: string | null;
+  /** Free-text note the admin recorded when manually completing / rejecting. */
+  admin_note: string | null;
+  /** Admin user id that completed or rejected the task (manual flow only). */
+  completed_by: string | null;
   created_at: string;
   succeeded_at: string | null;
   failed_at: string | null;

@@ -291,3 +291,274 @@ async def test_admin_required_for_fulfillment_admin(
         headers={"Authorization": f"Bearer {user}"},
     )
     assert r.status_code == 403
+
+
+# ---------- manual fulfilment ----------
+
+
+@pytest.fixture
+async def _seed_sku_manual(
+    db_session: AsyncSession, _seed_sku: str
+) -> str:
+    """Bolt a ``mode='manual'`` sourcing rule onto the existing seed SKU so
+    paid orders for it route to ``ManualFulfiller`` and park in
+    ``in_progress`` instead of auto-delivering."""
+    from yupay.modules.sourcing.models import SkuSourcingRule
+
+    db_session.add(
+        SkuSourcingRule(
+            sku_id=_seed_sku,
+            mode="manual",
+            supplier_slug=None,
+            updated_by="test",
+        )
+    )
+    await db_session.commit()
+    return _seed_sku
+
+
+async def _pay_to_in_progress(
+    client: AsyncClient, *, token: str, sku_id: str, key_suffix: str
+) -> str:
+    """Same as ``_pay_and_fulfill`` but used with a ``manual`` SKU — after the
+    webhook the order is ``fulfilling``, not ``delivered``."""
+    create = await client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": f"manual-{key_suffix}",
+        },
+        json={
+            "currency": "USD",
+            "items": [{"sku_id": sku_id, "qty": 1, "fulfillment_data": {}}],
+        },
+    )
+    assert create.status_code == 201, create.text
+    order_id = create.json()["id"]
+    intent = await client.post(
+        "/api/v1/payments/intents",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"order_id": order_id, "provider": "mock"},
+    )
+    external_id = intent.json()["external_id"]
+    wh = await client.post(
+        "/api/v1/webhooks/payments/mock",
+        content=json.dumps(
+            {
+                "event_id": f"evt-manual-{key_suffix}",
+                "payment_id": external_id,
+                "outcome": "succeeded",
+            }
+        ),
+        headers={"content-type": "application/json"},
+    )
+    assert wh.status_code == 200, wh.text
+    return order_id
+
+
+async def _task_for_order(
+    client: AsyncClient, admin_token: str, order_id: str
+) -> dict[str, object]:
+    listing = await client.get(
+        "/api/v1/admin/fulfillment/tasks",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        params={"order_id": order_id},
+    )
+    assert listing.status_code == 200, listing.text
+    items = listing.json()["items"]
+    assert items, "expected at least one task"
+    return items[0]
+
+
+async def test_manual_task_lands_in_progress(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_sku_manual: str,
+) -> None:
+    user = await _login_user(integration_client, tg_id=261)
+    order_id = await _pay_to_in_progress(
+        integration_client, token=user, sku_id=_seed_sku_manual, key_suffix="lands-fff"
+    )
+    detail = await integration_client.get(
+        f"/api/v1/orders/{order_id}",
+        headers={"Authorization": f"Bearer {user}"},
+    )
+    assert detail.json()["status"] == "fulfilling"
+    assert detail.json()["delivered_at"] is None
+
+    admin = await _login_user(integration_client, tg_id=262)
+    await _grant_admin(db_session, tg_id=262)
+    task = await _task_for_order(integration_client, admin, order_id)
+    assert task["supplier"] == "manual"
+    assert task["status"] == "in_progress"
+
+    # No delivery yet.
+    deliveries = await integration_client.get(
+        f"/api/v1/orders/{order_id}/deliveries",
+        headers={"Authorization": f"Bearer {user}"},
+    )
+    assert deliveries.json()["items"] == []
+
+
+async def test_admin_completes_manual_task(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_sku_manual: str,
+) -> None:
+    user = await _login_user(integration_client, tg_id=271)
+    order_id = await _pay_to_in_progress(
+        integration_client, token=user, sku_id=_seed_sku_manual, key_suffix="ok-gggggg"
+    )
+    admin = await _login_user(integration_client, tg_id=272)
+    await _grant_admin(db_session, tg_id=272)
+    headers = {"Authorization": f"Bearer {admin}"}
+
+    task = await _task_for_order(integration_client, admin, order_id)
+    complete = await integration_client.post(
+        f"/api/v1/admin/fulfillment/tasks/{task['id']}/complete",
+        headers=headers,
+        json={
+            "artifact_kind": "voucher_code",
+            "artifact": {"code": "MANUAL-TEST-001"},
+            "admin_note": "выдано вручную",
+        },
+    )
+    assert complete.status_code == 200, complete.text
+    body = complete.json()
+    assert body["status"] == "succeeded"
+    assert body["admin_note"] == "выдано вручную"
+    assert body["completed_by"]
+
+    # Order walks to delivered through _try_settle_order.
+    order = await integration_client.get(
+        f"/api/v1/orders/{order_id}",
+        headers={"Authorization": f"Bearer {user}"},
+    )
+    assert order.json()["status"] == "delivered"
+
+    deliveries = await integration_client.get(
+        f"/api/v1/orders/{order_id}/deliveries",
+        headers={"Authorization": f"Bearer {user}"},
+    )
+    items = deliveries.json()["items"]
+    assert len(items) == 1
+    assert items[0]["artifact_kind"] == "voucher_code"
+    assert items[0]["artifact"]["code"] == "MANUAL-TEST-001"
+
+
+async def test_complete_twice_is_409(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_sku_manual: str,
+) -> None:
+    user = await _login_user(integration_client, tg_id=281)
+    order_id = await _pay_to_in_progress(
+        integration_client, token=user, sku_id=_seed_sku_manual, key_suffix="twice-hhh"
+    )
+    admin = await _login_user(integration_client, tg_id=282)
+    await _grant_admin(db_session, tg_id=282)
+    headers = {"Authorization": f"Bearer {admin}"}
+    task = await _task_for_order(integration_client, admin, order_id)
+    body = {"artifact_kind": "voucher_code", "artifact": {"code": "X-1"}}
+
+    first = await integration_client.post(
+        f"/api/v1/admin/fulfillment/tasks/{task['id']}/complete",
+        headers=headers,
+        json=body,
+    )
+    assert first.status_code == 200, first.text
+
+    second = await integration_client.post(
+        f"/api/v1/admin/fulfillment/tasks/{task['id']}/complete",
+        headers=headers,
+        json=body,
+    )
+    assert second.status_code == 409
+
+
+async def test_complete_on_non_manual_task_is_409(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_sku: str,
+) -> None:
+    """A mock-supplier task must not be ‟completable" through the manual
+    endpoint — that would bypass the supplier's own bookkeeping."""
+    from yupay.modules.fulfillment.models import FulfillmentTask
+
+    user = await _login_user(integration_client, tg_id=291)
+    order_id = await _pay_and_fulfill(
+        integration_client, token=user, sku_id=_seed_sku, key_suffix="nonman-iii"
+    )
+    admin = await _login_user(integration_client, tg_id=292)
+    await _grant_admin(db_session, tg_id=292)
+    headers = {"Authorization": f"Bearer {admin}"}
+    task = await _task_for_order(integration_client, admin, order_id)
+    # Roll the mock task back to in_progress so the status guard isn't the
+    # one rejecting us — we want to assert the supplier guard.
+    await db_session.execute(
+        update(FulfillmentTask)
+        .where(FulfillmentTask.id == task["id"])
+        .values(status="in_progress", succeeded_at=None)
+    )
+    await db_session.commit()
+
+    r = await integration_client.post(
+        f"/api/v1/admin/fulfillment/tasks/{task['id']}/complete",
+        headers=headers,
+        json={"artifact_kind": "voucher_code", "artifact": {"code": "no"}},
+    )
+    assert r.status_code == 409, r.text
+    assert "not a manual task" in r.text.lower()
+
+
+async def test_fail_manual_task_sets_reason(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_sku_manual: str,
+) -> None:
+    user = await _login_user(integration_client, tg_id=301)
+    order_id = await _pay_to_in_progress(
+        integration_client, token=user, sku_id=_seed_sku_manual, key_suffix="fail-jjjj"
+    )
+    admin = await _login_user(integration_client, tg_id=302)
+    await _grant_admin(db_session, tg_id=302)
+    headers = {"Authorization": f"Bearer {admin}"}
+    task = await _task_for_order(integration_client, admin, order_id)
+
+    r = await integration_client.post(
+        f"/api/v1/admin/fulfillment/tasks/{task['id']}/fail",
+        headers=headers,
+        json={"reason": "out of stock", "admin_note": "поставщик не отвечает"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "failed"
+    assert body["last_error"] == "out of stock"
+    assert body["admin_note"] == "поставщик не отвечает"
+
+    # Order stays in fulfilling — admin issues refund separately.
+    order = await integration_client.get(
+        f"/api/v1/orders/{order_id}",
+        headers={"Authorization": f"Bearer {user}"},
+    )
+    assert order.json()["status"] == "fulfilling"
+
+
+async def test_complete_requires_admin(
+    integration_client: AsyncClient,
+    _seed_sku_manual: str,
+) -> None:
+    user = await _login_user(integration_client, tg_id=311)
+    order_id = await _pay_to_in_progress(
+        integration_client, token=user, sku_id=_seed_sku_manual, key_suffix="rbac-kkkkk"
+    )
+    # Non-admin user can't even list tasks, so we cheat and use the same
+    # /complete URL with their own token — should 403.
+    # Use a placeholder task id; the role guard runs before the lookup.
+    r = await integration_client.post(
+        f"/api/v1/admin/fulfillment/tasks/00000000-0000-0000-0000-000000000000/complete",
+        headers={"Authorization": f"Bearer {user}"},
+        json={"artifact_kind": "voucher_code", "artifact": {"code": "x"}},
+    )
+    assert r.status_code == 403
+    assert order_id  # used for fixture side-effect; lint-friendly

@@ -36,13 +36,15 @@ export default defineConfig({
       usePolling: true,
       interval: 200,
     },
-    hmr: hmrHost
+    ...(hmrHost
       ? {
-          host: hmrHost,
-          protocol: hmrProtocol,
-          clientPort: hmrClientPort,
+          hmr: {
+            host: hmrHost,
+            protocol: hmrProtocol,
+            clientPort: hmrClientPort,
+          },
         }
-      : undefined,
+      : {}),
     proxy: {
       "/api": {
         target: apiTarget,
