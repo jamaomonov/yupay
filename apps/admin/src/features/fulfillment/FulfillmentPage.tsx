@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ExternalLink } from "lucide-react";
 
 import { Button, Input } from "@yupay/ui";
 
@@ -277,52 +278,172 @@ function StatusBadge({ status }: { status: TaskStatus }) {
 }
 
 function TaskDetails({ task }: { task: TaskAdminOut }) {
+  const proofUrl = typeof task.extra_metadata.proof_url === "string"
+    ? task.extra_metadata.proof_url
+    : null;
+  const queuedAt = typeof task.extra_metadata.queued_at === "string"
+    ? task.extra_metadata.queued_at
+    : null;
+  const otherMeta = Object.fromEntries(
+    Object.entries(task.extra_metadata).filter(
+      ([k]) => k !== "proof_url" && k !== "queued_at",
+    ),
+  );
+
   return (
-    <article className="rounded-lg border bg-[--color-bg] p-4 text-sm">
-      <h3 className="mb-2 text-sm font-semibold">
-        Аттемпты — {task.attempts.length}
-      </h3>
-      {task.attempts.length === 0 ? (
-        <p className="text-[--color-muted]">Попыток ещё не было.</p>
-      ) : (
-        <ol className="space-y-2">
-          {task.attempts.map((a, i) => (
-            <li
-              key={`${a.kind}-${a.created_at}-${i}`}
-              className="rounded border border-[--color-border]/50 p-2 text-xs"
+    <article className="space-y-4 rounded-lg border bg-[--color-bg] p-4 text-sm">
+      {/* Task header — basic fields + lifecycle timestamps. */}
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        <DetailField label="ID" value={task.id} mono />
+        <DetailField label="Маршрут" value={task.supplier} mono />
+        <DetailField label="Статус" value={task.status} />
+        <DetailField
+          label="Создана"
+          value={new Date(task.created_at).toLocaleString("ru")}
+        />
+        {task.succeeded_at && (
+          <DetailField
+            label="Завершена"
+            value={new Date(task.succeeded_at).toLocaleString("ru")}
+          />
+        )}
+        {task.failed_at && (
+          <DetailField
+            label="Провалена"
+            value={new Date(task.failed_at).toLocaleString("ru")}
+          />
+        )}
+        {task.cancelled_at && (
+          <DetailField
+            label="Отменена"
+            value={new Date(task.cancelled_at).toLocaleString("ru")}
+          />
+        )}
+        {task.external_order_id && (
+          <DetailField label="External order" value={task.external_order_id} mono />
+        )}
+        {queuedAt && (
+          <DetailField
+            label="Поставлена в очередь"
+            value={new Date(queuedAt).toLocaleString("ru")}
+          />
+        )}
+      </section>
+
+      {/* Manual-fulfilment audit. Only show the block when at least one
+          of the manual fields is set — for supplier-driven tasks the
+          whole block stays hidden. */}
+      {(task.completed_by || task.admin_note || proofUrl) && (
+        <section className="space-y-2 rounded-md border border-[--color-border]/60 bg-[--color-subtle]/40 p-3">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-[--color-muted]">
+            Ручная обработка
+          </h4>
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+            {task.completed_by && (
+              <DetailField label="Обработал admin" value={task.completed_by} mono />
+            )}
+            {task.admin_note && (
+              <DetailField label="Заметка" value={task.admin_note} />
+            )}
+          </div>
+          {proofUrl && (
+            <a
+              href={proofUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm text-[--color-brand] hover:underline"
             >
-              <div className="flex justify-between">
-                <span>
-                  <code>{a.kind}</code> ·{" "}
-                  <span
-                    className={
-                      a.status === "ok"
-                        ? "text-[--color-success]"
-                        : "text-[--color-danger]"
-                    }
-                  >
-                    {a.status}
-                  </span>
-                </span>
-                <span className="text-[--color-muted]">
-                  {new Date(a.created_at).toLocaleString("ru")}
-                </span>
-              </div>
-              {a.error && (
-                <pre className="mt-1 whitespace-pre-wrap text-[--color-danger]">
-                  {a.error}
-                </pre>
-              )}
-              {Object.keys(a.payload).length > 0 && (
-                <pre className="mt-1 whitespace-pre-wrap text-[--color-muted]">
-                  {JSON.stringify(a.payload, null, 2)}
-                </pre>
-              )}
-            </li>
-          ))}
-        </ol>
+              <ExternalLink className="size-3.5" />
+              Открыть пруф
+            </a>
+          )}
+        </section>
       )}
+
+      {/* Any extra_metadata keys we don't explicitly render — dump as JSON
+          so they don't get lost when a supplier sets a custom field. */}
+      {Object.keys(otherMeta).length > 0 && (
+        <section>
+          <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[--color-muted]">
+            Метаданные
+          </h4>
+          <pre className="whitespace-pre-wrap rounded border border-[--color-border]/50 bg-[--color-subtle]/40 p-2 text-xs">
+            {JSON.stringify(otherMeta, null, 2)}
+          </pre>
+        </section>
+      )}
+
+      {/* Attempts log. */}
+      <section>
+        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[--color-muted]">
+          Аттемпты — {task.attempts.length}
+        </h4>
+        {task.attempts.length === 0 ? (
+          <p className="text-[--color-muted]">Попыток ещё не было.</p>
+        ) : (
+          <ol className="space-y-2">
+            {task.attempts.map((a, i) => (
+              <li
+                key={`${a.kind}-${a.created_at}-${i}`}
+                className="rounded border border-[--color-border]/50 p-2 text-xs"
+              >
+                <div className="flex justify-between">
+                  <span>
+                    <code>{a.kind}</code> ·{" "}
+                    <span
+                      className={
+                        a.status === "ok"
+                          ? "text-[--color-success]"
+                          : "text-[--color-danger]"
+                      }
+                    >
+                      {a.status}
+                    </span>
+                  </span>
+                  <span className="text-[--color-muted]">
+                    {new Date(a.created_at).toLocaleString("ru")}
+                  </span>
+                </div>
+                {a.error && (
+                  <pre className="mt-1 whitespace-pre-wrap text-[--color-danger]">
+                    {a.error}
+                  </pre>
+                )}
+                {Object.keys(a.payload).length > 0 && (
+                  <pre className="mt-1 whitespace-pre-wrap text-[--color-muted]">
+                    {JSON.stringify(a.payload, null, 2)}
+                  </pre>
+                )}
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
     </article>
+  );
+}
+
+function DetailField({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase text-[--color-muted]">{label}</p>
+      <p
+        className={[
+          "mt-0.5 break-words text-sm",
+          mono ? "font-mono text-xs" : "",
+        ].join(" ")}
+      >
+        {value}
+      </p>
+    </div>
   );
 }
 

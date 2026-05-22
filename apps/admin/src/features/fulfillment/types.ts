@@ -26,6 +26,11 @@ export interface TaskAdminOut {
   admin_note: string | null;
   /** Admin user id that completed or rejected the task (manual flow only). */
   completed_by: string | null;
+  /** Merged supplier-returned + admin-set metadata. Known keys today:
+   *  - ``queued_at`` (ManualFulfiller stamps it on intake)
+   *  - ``proof_url`` (admin-only link to receipt / screenshot, see
+   *    ManualCompleteIn). */
+  extra_metadata: Record<string, unknown>;
   created_at: string;
   succeeded_at: string | null;
   failed_at: string | null;
