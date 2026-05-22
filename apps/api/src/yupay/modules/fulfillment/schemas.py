@@ -96,8 +96,41 @@ class ManualFailIn(BaseModel):
     admin_note: str | None = Field(default=None, max_length=1000)
 
 
+class BulkRetryIn(BaseModel):
+    """Body of ``POST /admin/fulfillment/tasks/bulk-retry``.
+
+    Cap is 100 — large bulks would hold the request-scoped transaction open while each
+    task's saga step runs; a tighter limit forces the operator into reasonable batches.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    task_ids: list[str] = Field(..., min_length=1, max_length=100)
+
+
+class BulkRetrySkipped(BaseModel):
+    """One task that bulk-retry decided not to replay."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    reason: str
+
+
+class BulkRetryOut(BaseModel):
+    """Response of bulk-retry: the tasks we actually replayed plus skip diagnostics."""
+
+    model_config = ConfigDict(frozen=True)
+
+    retried: list[FulfillmentTaskOut]
+    skipped: list[BulkRetrySkipped]
+
+
 __all__ = [
     "ArtifactKind",
+    "BulkRetryIn",
+    "BulkRetryOut",
+    "BulkRetrySkipped",
     "DeliveryChannel",
     "DeliveryListOut",
     "DeliveryOut",

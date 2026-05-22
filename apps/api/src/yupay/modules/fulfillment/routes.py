@@ -16,6 +16,9 @@ from yupay.modules.auth import jwt as authjwt
 from yupay.modules.auth.security import email_hash
 from yupay.modules.fulfillment import service as svc
 from yupay.modules.fulfillment.schemas import (
+    BulkRetryIn,
+    BulkRetryOut,
+    BulkRetrySkipped,
     DeliveryListOut,
     DeliveryOut,
     FulfillmentTaskListOut,
@@ -177,6 +180,24 @@ async def admin_cancel_task(
 ) -> FulfillmentTaskOut:
     task = await svc.cancel_task(db, task_id=task_id)
     return FulfillmentTaskOut.model_validate(task)
+
+
+@admin_router.post(
+    "/tasks/bulk-retry",
+    response_model=BulkRetryOut,
+    status_code=status.HTTP_200_OK,
+    summary="Retry multiple failed / pending tasks; non-retryable ones are reported",
+)
+async def admin_bulk_retry_tasks(
+    body: BulkRetryIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+) -> BulkRetryOut:
+    retried, skipped = await svc.bulk_retry_tasks(db, task_ids=body.task_ids)
+    return BulkRetryOut(
+        retried=[FulfillmentTaskOut.model_validate(t) for t in retried],
+        skipped=[BulkRetrySkipped(id=tid, reason=reason) for tid, reason in skipped],
+    )
 
 
 @admin_router.post(

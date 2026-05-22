@@ -384,6 +384,42 @@ async def retry_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
     return task
 
 
+async def bulk_retry_tasks(
+    db: AsyncSession, *, task_ids: list[str]
+) -> tuple[list[FulfillmentTask], list[tuple[str, str]]]:
+    """Best-effort retry for a batch.
+
+    Each task is replayed via :func:`retry_task`; ones that can't be (unknown id,
+    wrong status) are returned in the second tuple with a short reason instead of
+    aborting the whole batch. Duplicates in ``task_ids`` are deduped, preserving
+    first-seen order.
+    """
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for tid in task_ids:
+        if tid in seen:
+            continue
+        seen.add(tid)
+        deduped.append(tid)
+
+    retried: list[FulfillmentTask] = []
+    skipped: list[tuple[str, str]] = []
+    for tid in deduped:
+        try:
+            task = await retry_task(db, task_id=tid)
+        except NotFoundError as exc:
+            skipped.append((tid, exc.detail))
+        except ConflictError as exc:
+            status_hint = exc.extra.get("status") if exc.extra else None
+            reason = (
+                f"not retryable (status={status_hint})" if status_hint else exc.detail
+            )
+            skipped.append((tid, reason))
+        else:
+            retried.append(task)
+    return retried, skipped
+
+
 async def cancel_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
     """Admin-triggered cancellation. Calls the supplier's cancel hook best-effort."""
     task = await _load_task(db, task_id)
@@ -691,6 +727,7 @@ async def get_task_admin(db: AsyncSession, task_id: str) -> FulfillmentTask:
 
 
 __all__ = [
+    "bulk_retry_tasks",
     "cancel_task",
     "complete_manual_task",
     "fail_manual_task",
