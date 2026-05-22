@@ -139,10 +139,10 @@ export function DashboardPage() {
         <AlertCard
           icon={CreditCard}
           label="Висящие платежи"
-          hint="pending дольше 1 часа"
+          hint="pending дольше порога — открыть триаж"
           value={d?.stuck_payments ?? 0}
           tone={(d?.stuck_payments ?? 0) > 0 ? "warn" : "muted"}
-          to="/payments?status=pending"
+          to="/payments/triage?tab=stuck"
         />
         <AlertCard
           icon={Clock}
