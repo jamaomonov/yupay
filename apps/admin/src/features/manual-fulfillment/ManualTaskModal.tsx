@@ -92,11 +92,15 @@ export function ManualTaskModal({ task, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 md:items-center"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm md:items-center"
       role="dialog"
       aria-modal="true"
     >
-      <div className="relative w-full max-w-2xl rounded-lg border bg-[--color-bg] shadow-xl">
+      {/* ``text-[--color-fg]`` is explicit so the modal renders the same
+          contrast whether the parent tree happens to be in a darker
+          surface (sidebar etc.). The outer backdrop also gets a blur so
+          a light-mode admin can't mistake the modal for "transparent". */}
+      <div className="relative w-full max-w-2xl rounded-lg border border-[--color-border] bg-[--color-bg] text-[--color-fg] shadow-2xl ring-1 ring-black/5">
         <header className="flex items-center justify-between gap-3 border-b px-4 py-3">
           <div className="min-w-0">
             <p className="text-xs uppercase text-[--color-muted]">Задача</p>
