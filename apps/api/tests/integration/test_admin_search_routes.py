@@ -234,7 +234,7 @@ async def test_finds_user_by_email_case_insensitive(
     assert user_id in ids
     hit = next(h for h in body["users"] if h["id"] == user_id)
     assert hit["type"] == "user"
-    assert hit["path"].endswith(user_id)
+    assert hit["path"] == f"/customers/{user_id}"
 
 
 async def test_finds_user_by_telegram_username(

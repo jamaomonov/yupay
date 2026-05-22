@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Ban, Search } from "lucide-react";
 
 import { Button, Input } from "@yupay/ui";
@@ -107,11 +107,19 @@ export function OrdersListPage() {
       render: (o) => (
         <div className="flex flex-col font-mono text-xs">
           <span>{o.id.slice(0, 8)}…</span>
-          <span className="text-[--color-muted]">
-            {o.user_id
-              ? `user ${o.user_id.slice(0, 8)}…`
-              : o.guest_email ?? "—"}
-          </span>
+          {o.user_id ? (
+            <Link
+              to={`/customers/${o.user_id}`}
+              onClick={(e) => { e.stopPropagation(); }}
+              className="text-[--color-muted] underline-offset-2 hover:text-[--color-fg] hover:underline"
+            >
+              user {o.user_id.slice(0, 8)}…
+            </Link>
+          ) : (
+            <span className="text-[--color-muted]">
+              {o.guest_email ?? "—"}
+            </span>
+          )}
         </div>
       ),
     },

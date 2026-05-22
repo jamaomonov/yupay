@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Ban,
@@ -120,9 +120,19 @@ export function OrderDetailPage() {
       <PageHeader
         title={`Заказ ${order.id.slice(0, 8)}…`}
         description={
-          order.user_id
-            ? `Пользователь ${order.user_id}`
-            : order.guest_email ?? "Гость"
+          order.user_id ? (
+            <>
+              Пользователь{" "}
+              <Link
+                to={`/customers/${order.user_id}`}
+                className="font-mono text-[--color-fg] underline-offset-2 hover:underline"
+              >
+                {order.user_id.slice(0, 8)}…
+              </Link>
+            </>
+          ) : (
+            order.guest_email ?? "Гость"
+          )
         }
         actions={
           <>
