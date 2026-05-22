@@ -9,6 +9,7 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { Pagination } from "@/components/Pagination";
 import { ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
+import { useSearchParamsState } from "@/lib/useSearchParamsState";
 
 const PAGE_SIZE = 50;
 
@@ -27,7 +28,9 @@ export function FulfillmentPage() {
   const qc = useQueryClient();
   const [orderId, setOrderId] = useState("");
   const [supplier, setSupplier] = useState("");
-  const [status, setStatus] = useState<TaskStatus | "">("");
+  // Status is URL-bound so Dashboard alerts can deep-link to e.g.
+  // ``/fulfillment?status=pending`` (ADR-0017).
+  const [status, setStatus] = useSearchParamsState<TaskStatus | "">("status", "");
   const [offset, setOffset] = useState(0);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);

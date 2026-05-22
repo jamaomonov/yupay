@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Ban, Search } from "lucide-react";
@@ -10,6 +10,7 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { Pagination } from "@/components/Pagination";
 import { ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
+import { numberCodec, useSearchParamsState } from "@/lib/useSearchParamsState";
 
 const PAGE_SIZE = 50;
 
@@ -36,9 +37,10 @@ const STATUS_FILTERS: { value: OrderStatus | ""; label: string }[] = [
 export function OrdersListPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const [status, setStatus] = useState<OrderStatus | "">("");
-  const [query, setQuery] = useState("");
-  const [offset, setOffset] = useState(0);
+  // Filters live in the URL so the view is shareable and survives reload (ADR-0017).
+  const [status, setStatus] = useSearchParamsState<OrderStatus | "">("status", "");
+  const [query, setQuery] = useSearchParamsState("q", "");
+  const [offset, setOffset] = useSearchParamsState("offset", 0, numberCodec);
 
   const ordersQuery = useQuery<OrderAdminListOut>({
     queryKey: [
@@ -243,7 +245,7 @@ export function OrdersListPage() {
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[--color-muted]" />
           <Input
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); }}
             placeholder="Поиск по order_id / user_id / email…"
             className="pl-9"
           />
@@ -263,6 +265,9 @@ export function OrdersListPage() {
           ))}
         </select>
       </section>
+
+      {/* The Input setter is wired to the local search-param state; the controlled `query`
+          string also flows back through the URL so admins can share their working view. */}
 
       {Object.keys(totalCharged).length > 0 && (
         <p className="mb-3 text-xs text-[--color-muted]">

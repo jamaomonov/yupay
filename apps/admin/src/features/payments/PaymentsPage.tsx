@@ -8,6 +8,7 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { Pagination } from "@/components/Pagination";
 import { ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
+import { useSearchParamsState } from "@/lib/useSearchParamsState";
 
 const PAGE_SIZE = 50;
 
@@ -36,7 +37,9 @@ export function PaymentsPage() {
   const qc = useQueryClient();
   const [orderId, setOrderId] = useState("");
   const [provider, setProvider] = useState("");
-  const [status, setStatus] = useState<PaymentStatus | "">("");
+  // Status comes from the URL so Dashboard alert cards can deep-link straight to e.g.
+  // ``/payments?status=pending`` (ADR-0017).
+  const [status, setStatus] = useSearchParamsState<PaymentStatus | "">("status", "");
   const [offset, setOffset] = useState(0);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
