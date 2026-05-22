@@ -3,23 +3,65 @@ import { type ButtonHTMLAttributes, forwardRef } from "react";
 
 import { cn } from "../../lib/cn";
 
+/**
+ * Button variants — five intentions, each with a clear, distinguishable shape:
+ *
+ *  - `primary`   — the page's main action (one per screen). Filled accent.
+ *  - `secondary` — supporting actions. Bordered surface, never flat.
+ *  - `ghost`     — low-emphasis but still visibly a control: transparent fill,
+ *                  hover reveals a subtle bordered tile. Used for toolbar
+ *                  buttons, icon-only triggers, "Назад".
+ *  - `danger`    — destructive primary. Same weight as `primary`, danger token.
+ *  - `link`      — pure text-link affordance, for the rare case where a button
+ *                  truly should read as inline text (footnotes, "see more").
+ *                  Don't reach for this where a control is expected — use
+ *                  `ghost` instead.
+ *
+ * Active state (`:active`) is intentional on every variant so a click feels
+ * registered even before the route changes. Focus rings sit above an offset
+ * matched to the page background, so they're visible in both Dim Slate themes.
+ */
 export const buttonVariants = cva(
   [
-    "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium",
-    "transition-colors disabled:pointer-events-none disabled:opacity-50",
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
-    "focus-visible:ring-[--color-brand]",
+    "relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium",
+    "transition-[background-color,border-color,color,box-shadow] duration-150 ease-out",
+    "disabled:pointer-events-none disabled:opacity-50",
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--accent]",
+    "focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg-base]",
   ],
   {
     variants: {
       variant: {
-        primary:
-          "bg-[--color-brand] text-[--color-brand-fg] hover:bg-[--color-brand-hover]",
-        secondary:
-          "bg-[--color-subtle] text-[--color-fg] hover:bg-[--color-border]",
-        ghost: "hover:bg-[--color-subtle]",
-        danger:
-          "bg-[--color-danger] text-[--color-danger-fg] hover:opacity-90",
+        primary: [
+          "bg-[--accent] text-[--text-on-accent]",
+          "hover:bg-[--accent-hover]",
+          "active:bg-[--accent-active]",
+          "shadow-[var(--shadow-sm)]",
+        ].join(" "),
+        secondary: [
+          "border border-[--border-default] bg-[--bg-surface] text-[--text-primary]",
+          "hover:bg-[--bg-muted] hover:border-[--border-strong]",
+          "active:bg-[--bg-surface-2]",
+        ].join(" "),
+        ghost: [
+          // Transparent border by default so the hover state can paint one in
+          // place — avoids the box "jumping" 1 px wider on hover.
+          "border border-transparent text-[--text-primary]",
+          "hover:bg-[--bg-muted] hover:border-[--border-default]",
+          "active:bg-[--bg-surface-2]",
+        ].join(" "),
+        danger: [
+          "bg-[--danger] text-white",
+          "hover:bg-[--danger]/90",
+          "active:bg-[--danger]",
+          "shadow-[var(--shadow-sm)]",
+        ].join(" "),
+        link: [
+          "h-auto !p-0 text-[--accent] underline-offset-4",
+          "hover:underline hover:text-[--accent-hover]",
+          "active:text-[--accent-active]",
+          "focus-visible:ring-offset-1",
+        ].join(" "),
       },
       size: {
         sm: "h-8 px-3",
