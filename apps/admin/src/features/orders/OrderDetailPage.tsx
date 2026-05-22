@@ -433,13 +433,13 @@ function PaymentsCard({
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                       p.status === "succeeded"
-                        ? "bg-emerald-100 text-emerald-700"
+                        ? "bg-[--success-soft] text-[--success-fg]"
                         : p.status === "failed"
-                          ? "bg-rose-100 text-rose-700"
+                          ? "bg-[--danger-soft] text-[--danger-fg]"
                           : p.status === "refunded" ||
                               p.status === "partially_refunded"
-                            ? "bg-sky-100 text-sky-700"
-                            : "bg-amber-100 text-amber-700"
+                            ? "bg-[--info-soft] text-[--info-fg]"
+                            : "bg-[--warning-soft] text-[--warning-fg]"
                     }`}
                   >
                     {p.status}
@@ -495,12 +495,12 @@ function FulfillmentCard({ tasks }: { tasks: TaskAdminOut[] }) {
                 <span
                   className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                     t.status === "succeeded"
-                      ? "bg-emerald-100 text-emerald-700"
+                      ? "bg-[--success-soft] text-[--success-fg]"
                       : t.status === "failed"
-                        ? "bg-rose-100 text-rose-700"
+                        ? "bg-[--danger-soft] text-[--danger-fg]"
                         : t.status === "cancelled"
-                          ? "bg-zinc-100 text-zinc-600"
-                          : "bg-amber-100 text-amber-700"
+                          ? "bg-[--bg-muted] text-[--text-secondary]"
+                          : "bg-[--warning-soft] text-[--warning-fg]"
                   }`}
                 >
                   {t.status}

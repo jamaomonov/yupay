@@ -46,11 +46,11 @@ interface AuditListOut {
 }
 
 const SOURCES: { key: Source; label: string; icon: typeof Receipt; tone: string }[] = [
-  { key: "order_event", label: "Заказы", icon: Receipt, tone: "text-violet-600" },
-  { key: "payment_attempt", label: "Платежи", icon: CreditCard, tone: "text-sky-600" },
-  { key: "payment_webhook", label: "Webhooks", icon: Radio, tone: "text-amber-600" },
-  { key: "fulfillment_attempt", label: "Fulfilment", icon: Truck, tone: "text-emerald-600" },
-  { key: "wallet_transaction", label: "Кошелёк", icon: Wallet, tone: "text-rose-600" },
+  { key: "order_event", label: "Заказы", icon: Receipt, tone: "text-[--accent-soft-fg]" },
+  { key: "payment_attempt", label: "Платежи", icon: CreditCard, tone: "text-[--info-fg]" },
+  { key: "payment_webhook", label: "Webhooks", icon: Radio, tone: "text-[--warning]" },
+  { key: "fulfillment_attempt", label: "Fulfilment", icon: Truck, tone: "text-[--success-fg]" },
+  { key: "wallet_transaction", label: "Кошелёк", icon: Wallet, tone: "text-[--danger-fg]" },
 ];
 
 const SOURCE_META: Record<
@@ -309,9 +309,9 @@ function TimelineRow({
             <StateIcon
               className={`size-3 ${
                 isError || isRejected
-                  ? "text-rose-600"
+                  ? "text-[--danger-fg]"
                   : ok
-                    ? "text-emerald-600"
+                    ? "text-[--success-fg]"
                     : "text-[--color-muted]"
               }`}
             />

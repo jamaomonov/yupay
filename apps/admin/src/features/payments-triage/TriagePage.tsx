@@ -317,12 +317,12 @@ function WebhookSection({
       header: "Подпись",
       render: (w) =>
         w.signature_ok ? (
-          <span className="inline-flex items-center gap-1 text-xs text-emerald-700">
+          <span className="inline-flex items-center gap-1 text-xs text-[--success-fg]">
             <CheckCircle2 className="size-3" />
             OK
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 text-xs text-rose-700">
+          <span className="inline-flex items-center gap-1 text-xs text-[--danger-fg]">
             <ShieldAlert className="size-3" />
             rejected
           </span>
@@ -390,8 +390,8 @@ function SlaBadge({ minutes }: { minutes: number }) {
         tone === "danger"
           ? "bg-[--color-danger]/15 text-[--color-danger]"
           : tone === "warn"
-            ? "bg-amber-100 text-amber-700"
-            : "bg-zinc-100 text-zinc-700",
+            ? "bg-[--warning-soft] text-[--warning-fg]"
+            : "bg-[--bg-muted] text-[--text-secondary]",
       ].join(" ")}
     >
       {formatMinutes(minutes)}

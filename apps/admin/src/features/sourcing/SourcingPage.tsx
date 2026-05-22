@@ -304,13 +304,13 @@ export function SourcingPage() {
 
 function ModeBadge({ mode }: { mode: SourcingMode }) {
   const map: Record<SourcingMode, { label: string; cls: string }> = {
-    auto: { label: "auto", cls: "bg-zinc-100 text-zinc-700" },
+    auto: { label: "auto", cls: "bg-[--bg-muted] text-[--text-secondary]" },
     force_inventory: {
       label: "склад",
-      cls: "bg-emerald-100 text-emerald-700",
+      cls: "bg-[--success-soft] text-[--success-fg]",
     },
-    force_supplier: { label: "поставщик", cls: "bg-sky-100 text-sky-700" },
-    manual: { label: "вручную", cls: "bg-amber-100 text-amber-700" },
+    force_supplier: { label: "поставщик", cls: "bg-[--info-soft] text-[--info-fg]" },
+    manual: { label: "вручную", cls: "bg-[--warning-soft] text-[--warning-fg]" },
   };
   const { label, cls } = map[mode];
   return (

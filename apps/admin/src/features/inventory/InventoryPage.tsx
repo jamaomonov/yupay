@@ -273,10 +273,10 @@ function CountsCard({ counts }: { counts: SkuCountsOut }) {
 
 function StateBadge({ state }: { state: CodeState }) {
   const map: Record<CodeState, { label: string; cls: string }> = {
-    available: { label: "доступен", cls: "bg-emerald-100 text-emerald-700" },
-    reserved: { label: "резерв", cls: "bg-amber-100 text-amber-700" },
-    issued: { label: "выдан", cls: "bg-sky-100 text-sky-700" },
-    voided: { label: "воид", cls: "bg-zinc-100 text-zinc-600" },
+    available: { label: "доступен", cls: "bg-[--success-soft] text-[--success-fg]" },
+    reserved: { label: "резерв", cls: "bg-[--warning-soft] text-[--warning-fg]" },
+    issued: { label: "выдан", cls: "bg-[--info-soft] text-[--info-fg]" },
+    voided: { label: "воид", cls: "bg-[--bg-muted] text-[--text-secondary]" },
   };
   const { label, cls } = map[state];
   return (

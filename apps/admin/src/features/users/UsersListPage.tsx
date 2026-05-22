@@ -128,8 +128,8 @@ export function UsersListPage() {
                 key={r}
                 className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
                   r === "admin"
-                    ? "bg-amber-100 text-amber-700"
-                    : "bg-zinc-100 text-zinc-700"
+                    ? "bg-[--warning-soft] text-[--warning-fg]"
+                    : "bg-[--bg-muted] text-[--text-secondary]"
                 }`}
               >
                 {r}
@@ -314,7 +314,7 @@ function UserDetailsDrawer({
         <section className="rounded-lg border border-[--color-border] p-3 space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <ShieldCheck className="size-4 text-amber-500" />
+              <ShieldCheck className="size-4 text-[--warning]" />
               <span className="text-sm font-medium">Админ-доступ</span>
             </div>
             <Button

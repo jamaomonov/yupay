@@ -49,14 +49,14 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const STATUS_TONE: Record<string, string> = {
-  pending_payment: "bg-amber-100 text-amber-700",
-  paid: "bg-sky-100 text-sky-700",
-  fulfilling: "bg-violet-100 text-violet-700",
-  fulfilled: "bg-emerald-100 text-emerald-700",
-  delivered: "bg-emerald-100 text-emerald-800",
-  cancelled: "bg-zinc-100 text-zinc-600",
-  expired: "bg-zinc-100 text-zinc-600",
-  refunded: "bg-rose-100 text-rose-700",
+  pending_payment: "bg-[--warning-soft] text-[--warning-fg]",
+  paid: "bg-[--info-soft] text-[--info-fg]",
+  fulfilling: "bg-[--bg-accent-soft] text-[--accent-soft-fg]",
+  fulfilled: "bg-[--success-soft] text-[--success-fg]",
+  delivered: "bg-[--success-soft] text-[--success-fg]",
+  cancelled: "bg-[--bg-muted] text-[--text-secondary]",
+  expired: "bg-[--bg-muted] text-[--text-secondary]",
+  refunded: "bg-[--danger-soft] text-[--danger-fg]",
 };
 
 export function DashboardPage() {
@@ -199,7 +199,7 @@ export function DashboardPage() {
                 >
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                      STATUS_TONE[s.status] ?? "bg-zinc-100 text-zinc-700"
+                      STATUS_TONE[s.status] ?? "bg-[--bg-muted] text-[--text-secondary]"
                     }`}
                   >
                     {STATUS_LABEL[s.status] ?? s.status}
@@ -268,7 +268,7 @@ function Kpi({
     : tone === "warn"
       ? "text-[--color-danger]"
       : tone === "success"
-        ? "text-emerald-600"
+        ? "text-[--success-fg]"
         : tone === "muted"
           ? "text-[--color-muted]"
           : "text-[--color-fg]";
@@ -360,7 +360,7 @@ function MiniStat({
     tone === "warn"
       ? "text-[--color-danger]"
       : tone === "success"
-        ? "text-emerald-600"
+        ? "text-[--success-fg]"
         : tone === "muted"
           ? "text-[--color-muted]"
           : "text-[--color-fg]";
@@ -399,7 +399,7 @@ function DayBars({
                   b.count === 0
                     ? "var(--color-border)"
                     : "color-mix(in oklab, var(--color-brand) 70%, transparent)",
-                color: b.count === 0 ? "var(--color-muted)" : "#000",
+                color: b.count === 0 ? "var(--color-muted)" : "var(--text-on-accent)",
               }}
             >
               {b.count > 0 && <span className="pb-1">{b.count}</span>}

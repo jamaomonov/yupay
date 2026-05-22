@@ -231,7 +231,7 @@ function Stat({
     : tone === "warn"
       ? "text-[--color-danger]"
       : tone === "success"
-        ? "text-emerald-600"
+        ? "text-[--success-fg]"
         : tone === "muted"
           ? "text-[--color-muted]"
           : "text-[--color-fg]";

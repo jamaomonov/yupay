@@ -267,11 +267,11 @@ export function FulfillmentPage() {
 
 function StatusBadge({ status }: { status: TaskStatus }) {
   const map: Record<TaskStatus, string> = {
-    pending: "bg-zinc-100 text-zinc-700",
-    in_progress: "bg-amber-100 text-amber-700",
-    succeeded: "bg-emerald-100 text-emerald-700",
-    failed: "bg-rose-100 text-rose-700",
-    cancelled: "bg-zinc-100 text-zinc-600",
+    pending: "bg-[--bg-muted] text-[--text-secondary]",
+    in_progress: "bg-[--warning-soft] text-[--warning-fg]",
+    succeeded: "bg-[--success-soft] text-[--success-fg]",
+    failed: "bg-[--danger-soft] text-[--danger-fg]",
+    cancelled: "bg-[--bg-muted] text-[--text-secondary]",
   };
   return (
     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${map[status]}`}>

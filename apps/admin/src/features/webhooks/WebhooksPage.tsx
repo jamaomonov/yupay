@@ -101,12 +101,12 @@ export function WebhooksPage() {
       header: "Подпись",
       render: (w) =>
         w.signature_ok ? (
-          <span className="inline-flex items-center gap-1 text-xs text-emerald-700">
+          <span className="inline-flex items-center gap-1 text-xs text-[--success-fg]">
             <CheckCircle2 className="size-3" />
             OK
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 text-xs text-rose-700">
+          <span className="inline-flex items-center gap-1 text-xs text-[--danger-fg]">
             <ShieldAlert className="size-3" />
             rejected
           </span>

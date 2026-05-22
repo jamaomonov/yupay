@@ -109,8 +109,8 @@ function SlaBadge({ createdAt }: { createdAt: string }) {
         tone === "danger"
           ? "bg-[--color-danger]/15 text-[--color-danger]"
           : tone === "warn"
-            ? "bg-amber-100 text-amber-700"
-            : "bg-zinc-100 text-zinc-700",
+            ? "bg-[--warning-soft] text-[--warning-fg]"
+            : "bg-[--bg-muted] text-[--text-secondary]",
       ].join(" ")}
     >
       {formatAge(ageMs)}
