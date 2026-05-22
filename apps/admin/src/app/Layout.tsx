@@ -8,6 +8,7 @@
 import { Button } from "@yupay/ui";
 import {
   Activity,
+  AlertTriangle,
   Boxes,
   Coins,
   CreditCard,
@@ -46,7 +47,8 @@ const NAV: { to: string; label: string; icon: typeof Gauge; end?: boolean }[] = 
   { to: "/inventory", label: "Склад", icon: Warehouse },
   { to: "/sourcing", label: "Sourcing", icon: RouteIcon },
   { to: "/orders", label: "Заказы", icon: Receipt },
-  { to: "/payments", label: "Платежи", icon: CreditCard },
+  { to: "/payments", label: "Платежи", icon: CreditCard, end: true },
+  { to: "/payments/triage", label: "Триаж платежей", icon: AlertTriangle },
   { to: "/webhooks", label: "Webhooks", icon: Radio },
   { to: "/fulfillment", label: "Fulfilment Inbox", icon: Truck },
   { to: "/wallet", label: "Кошелёк", icon: Wallet },
