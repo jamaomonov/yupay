@@ -439,6 +439,7 @@ async def complete_manual_task(
     channel: str | None,
     admin_note: str | None,
     admin_id: str,
+    proof_url: str | None = None,
 ) -> FulfillmentTask:
     """Admin marks a manual task as completed.
 
@@ -500,6 +501,13 @@ async def complete_manual_task(
     task.completed_by = admin_id
     task.admin_note = admin_note
     task.updated_at = moment
+    if proof_url is not None and proof_url.strip():
+        # Internal-only — kept on the task, never copied to ``Delivery`` so
+        # the customer can't see it on /orders/{id}/deliveries.
+        task.extra_metadata = {
+            **(task.extra_metadata or {}),
+            "proof_url": proof_url.strip(),
+        }
     item.fulfillment_state = "delivered"
     _record_attempt(
         db,

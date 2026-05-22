@@ -11,6 +11,9 @@ export interface ManualCompleteIn {
   artifact: Record<string, unknown>;
   channel?: DeliveryChannel;
   admin_note?: string | null;
+  /** Internal link to proof of fulfilment (screenshot / receipt PDF / chat).
+   *  Stored on the task, never shown to the customer. */
+  proof_url?: string | null;
 }
 
 export interface ManualFailIn {

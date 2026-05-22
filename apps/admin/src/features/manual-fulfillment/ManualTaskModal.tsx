@@ -287,6 +287,9 @@ function CompleteForm({
   const [key, setKey] = useState("");
   const [externalId, setExternalId] = useState("");
   const [receiptNote, setReceiptNote] = useState("");
+  // Internal-only proof link for receipts — screenshot, PDF, ticket URL.
+  // Stays on the task; never copied into the customer-facing delivery.
+  const [proofUrl, setProofUrl] = useState("");
 
   // Escape hatch: raw JSON editor for non-standard artifact shapes.
   const [rawMode, setRawMode] = useState(false);
@@ -339,6 +342,7 @@ function CompleteForm({
       artifact,
       channel,
       admin_note: adminNote.trim() || null,
+      proof_url: proofUrl.trim() || null,
     });
   };
 
@@ -396,23 +400,33 @@ function CompleteForm({
             </FormField>
           )}
           {kind === "topup_receipt" && (
-            <div className="grid grid-cols-2 gap-3">
-              <FormField label="ID операции">
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <FormField label="ID операции">
+                  <Input
+                    value={externalId}
+                    onChange={(e) => setExternalId(e.target.value)}
+                    placeholder="op_123456"
+                    autoFocus
+                  />
+                </FormField>
+                <FormField label="Заметка (необязательно)">
+                  <Input
+                    value={receiptNote}
+                    onChange={(e) => setReceiptNote(e.target.value)}
+                    placeholder="Зачислено 1 000 UC"
+                  />
+                </FormField>
+              </div>
+              <FormField label="URL пруфа (внутреннее, клиент не видит)">
                 <Input
-                  value={externalId}
-                  onChange={(e) => setExternalId(e.target.value)}
-                  placeholder="op_123456"
-                  autoFocus
+                  type="url"
+                  value={proofUrl}
+                  onChange={(e) => setProofUrl(e.target.value)}
+                  placeholder="https://drive.example.com/screenshot.png"
                 />
               </FormField>
-              <FormField label="Заметка (необязательно)">
-                <Input
-                  value={receiptNote}
-                  onChange={(e) => setReceiptNote(e.target.value)}
-                  placeholder="Зачислено 1 000 UC"
-                />
-              </FormField>
-            </div>
+            </>
           )}
         </div>
       ) : (

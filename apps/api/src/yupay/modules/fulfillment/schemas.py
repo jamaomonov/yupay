@@ -80,6 +80,11 @@ class ManualCompleteIn(BaseModel):
     artifact: dict[str, Any] = Field(..., min_length=1)
     channel: DeliveryChannel = "in_app"
     admin_note: str | None = Field(default=None, max_length=1000)
+    # Internal-only link to a screenshot / receipt PDF / chat transcript —
+    # whatever the operator wants to keep as proof of fulfilment. Lands in
+    # ``task.extra_metadata["proof_url"]`` and is **never** included in the
+    # ``Delivery`` row, so the customer never sees it.
+    proof_url: str | None = Field(default=None, max_length=2048)
 
 
 class ManualFailIn(BaseModel):

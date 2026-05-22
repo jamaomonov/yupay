@@ -2017,6 +2017,18 @@
             ],
             "title": "Channel",
             "type": "string"
+          },
+          "proof_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proof Url"
           }
         },
         "required": [

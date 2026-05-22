@@ -174,6 +174,7 @@ async def admin_complete_manual_task(
         channel=body.channel,
         admin_note=body.admin_note,
         admin_id=admin.id,
+        proof_url=body.proof_url,
     )
     return FulfillmentTaskOut.model_validate(task)
 
