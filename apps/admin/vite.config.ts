@@ -46,14 +46,15 @@ export default defineConfig({
         }
       : {}),
     proxy: {
+      // Only ``/api`` is proxied. ``/webhooks`` is a *client-side* React
+      // Router route (the inbound provider-webhook log page) — proxying it
+      // to the FastAPI ``/webhooks/<provider>`` receivers would shadow the
+      // SPA route on every page refresh and the admin would get a real 404
+      // from the backend instead of the SPA shell.
       "/api": {
         target: apiTarget,
         changeOrigin: true,
         ws: true,
-      },
-      "/webhooks": {
-        target: apiTarget,
-        changeOrigin: true,
       },
     },
   },
