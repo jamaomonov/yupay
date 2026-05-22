@@ -38,6 +38,8 @@ import { useAuthStore } from "@/features/auth/authStore";
 import { SearchPalette } from "@/features/search/SearchPalette";
 import { useGlobalSearchHotkey } from "@/features/search/useGlobalSearchHotkey";
 import { SavedSegmentsNav } from "@/features/segments/SavedSegmentsNav";
+import { ThemeMenu } from "@/features/theme/ThemeMenu";
+import { useSystemThemeSubscription } from "@/features/theme/themeStore";
 
 const NAV: { to: string; label: string; icon: typeof Gauge; end?: boolean }[] = [
   { to: "/", label: "Обзор", icon: Gauge, end: true },
@@ -74,6 +76,8 @@ export function Layout() {
   const openSearch = useCallback(() => { setSearchOpen(true); }, []);
   const closeSearch = useCallback(() => { setSearchOpen(false); }, []);
   useGlobalSearchHotkey(openSearch);
+  // Keep `system` mode reactive to OS-level theme flips for the lifetime of the shell.
+  useSystemThemeSubscription();
 
   // Close the mobile drawer whenever the route changes.
   useEffect(() => {
@@ -194,6 +198,7 @@ export function Layout() {
             >
               <Search className="size-5" />
             </button>
+            <ThemeMenu />
             <Button variant="ghost" size="sm" onClick={logout}>
               <LogOut className="size-4" />
               <span className="hidden sm:inline">Выйти</span>
