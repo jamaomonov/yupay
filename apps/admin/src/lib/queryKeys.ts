@@ -100,6 +100,9 @@ export const qk = {
   paymentsTriage: (thresholdMinutes: number) =>
     ["admin", "payments", "triage", thresholdMinutes] as const,
 
+  // saved segments (per-admin bookmarks)
+  savedSegments: () => ["admin", "segments"] as const,
+
   // wallet
   walletUser: (userId: string) => ["admin", "wallet", "user", userId] as const,
 

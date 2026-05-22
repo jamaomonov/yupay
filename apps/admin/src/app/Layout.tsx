@@ -37,6 +37,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuthStore } from "@/features/auth/authStore";
 import { SearchPalette } from "@/features/search/SearchPalette";
 import { useGlobalSearchHotkey } from "@/features/search/useGlobalSearchHotkey";
+import { SavedSegmentsNav } from "@/features/segments/SavedSegmentsNav";
 
 const NAV: { to: string; label: string; icon: typeof Gauge; end?: boolean }[] = [
   { to: "/", label: "Обзор", icon: Gauge, end: true },
@@ -52,7 +53,12 @@ const NAV: { to: string; label: string; icon: typeof Gauge; end?: boolean }[] = 
   { to: "/webhooks", label: "Webhooks", icon: Radio },
   { to: "/fulfillment", label: "Fulfilment Inbox", icon: Truck },
   { to: "/wallet", label: "Кошелёк", icon: Wallet },
-  { to: "/audit", label: "Activity log", icon: Activity },
+  { to: "/audit", label: "Activity log", icon: Activity, end: true },
+  {
+    to: "/audit?admin_only=true",
+    label: "Действия админов",
+    icon: ShieldCheck,
+  },
   { to: "/fx", label: "Курсы", icon: Coins },
   { to: "/users", label: "Пользователи", icon: UsersIcon },
   { to: "/settings", label: "Настройки", icon: Settings },
@@ -136,6 +142,7 @@ export function Layout() {
               {item.label}
             </NavLink>
           ))}
+          <SavedSegmentsNav />
         </nav>
         <div className="border-t p-3 text-xs text-[--color-muted]">v0.0.1</div>
       </aside>

@@ -15,6 +15,7 @@
 import { Hand, ListChecks, Truck, XCircle } from "lucide-react";
 
 import { PageHeader } from "@/components/PageHeader";
+import { SaveSegmentButton } from "@/features/segments/SaveSegmentButton";
 import { useSearchParamsState } from "@/lib/useSearchParamsState";
 
 import { FailedAutomaticTab } from "./FailedAutomaticTab";
@@ -53,6 +54,7 @@ export function InboxPage() {
       <PageHeader
         title="Fulfilment Inbox"
         description="Задачи, требующие внимания оператора: ручная выдача, retry, висяки."
+        actions={<SaveSegmentButton />}
       />
 
       <nav

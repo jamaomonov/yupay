@@ -9,6 +9,7 @@ import { Pagination } from "@/components/Pagination";
 import { ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { useSearchParamsState } from "@/lib/useSearchParamsState";
+import { SaveSegmentButton } from "@/features/segments/SaveSegmentButton";
 
 const PAGE_SIZE = 50;
 
@@ -224,6 +225,7 @@ export function PaymentsPage() {
       <PageHeader
         title="Платежи"
         description="Список intent-ов. Для mock-провайдера — кнопки симуляции webhook'а."
+        actions={<SaveSegmentButton />}
       />
 
       <section className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">

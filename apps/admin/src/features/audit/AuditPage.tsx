@@ -11,6 +11,7 @@ import {
   Receipt,
   RotateCcw,
   Search,
+  ShieldCheck,
   Truck,
   Wallet,
 } from "lucide-react";
@@ -20,6 +21,7 @@ import { Button, Input } from "@yupay/ui";
 import { PageHeader } from "@/components/PageHeader";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
+import { useSearchParamsState } from "@/lib/useSearchParamsState";
 
 type Source =
   | "order_event"
@@ -70,20 +72,32 @@ export function AuditPage() {
   const [target, setTarget] = useState("");
   const [limit, setLimit] = useState(100);
   const [expanded, setExpanded] = useState<string | null>(null);
+  // URL-bound so the sidebar's "Действия админов" link can pre-filter the feed
+  // and the operator can share an admin-only view.
+  const [adminOnlyParam, setAdminOnlyParam] = useSearchParamsState<string>(
+    "admin_only",
+    "",
+  );
+  const adminOnly = adminOnlyParam === "true";
 
   const sources = SOURCES.filter((s) => enabled[s.key]).map((s) => s.key);
 
   const q = useQuery<AuditListOut>({
-    queryKey: qk.audit({
-      sources,
-      actor: actor.trim() || null,
-      target: target.trim() || null,
-    }),
+    queryKey: [
+      ...qk.audit({
+        sources,
+        actor: actor.trim() || null,
+        target: target.trim() || null,
+      }),
+      "admin_only",
+      adminOnly,
+    ],
     queryFn: () => {
       const params = new URLSearchParams();
       sources.forEach((s) => params.append("sources", s));
       if (actor.trim()) params.set("actor", actor.trim());
       if (target.trim()) params.set("target_id", target.trim());
+      if (adminOnly) params.set("admin_only", "true");
       params.set("limit", String(limit));
       return apiGet<AuditListOut>(`/api/v1/admin/audit?${params.toString()}`);
     },
@@ -107,20 +121,40 @@ export function AuditPage() {
   return (
     <div>
       <PageHeader
-        title="Activity / Audit log"
-        description="Сведённый поток событий: заказы, платежи, webhooks, фулфилмент, кошелёк."
+        title={adminOnly ? "Действия админов" : "Activity / Audit log"}
+        description={
+          adminOnly
+            ? "События с actor LIKE 'admin:%' — что админы делали в системе."
+            : "Сведённый поток событий: заказы, платежи, webhooks, фулфилмент, кошелёк."
+        }
         actions={
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => q.refetch()}
-            disabled={q.isFetching}
-          >
-            <RotateCcw
-              className={`size-4 ${q.isFetching ? "animate-spin" : ""}`}
-            />
-            Обновить
-          </Button>
+          <>
+            <button
+              type="button"
+              onClick={() => { setAdminOnlyParam(adminOnly ? "" : "true"); }}
+              className={[
+                "inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors",
+                adminOnly
+                  ? "border-[--color-brand] bg-[--color-brand]/10 text-[--color-fg]"
+                  : "border-[--color-border] text-[--color-muted] hover:bg-[--color-subtle]",
+              ].join(" ")}
+              aria-pressed={adminOnly}
+            >
+              <ShieldCheck className="size-4" />
+              Только админы
+            </button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => q.refetch()}
+              disabled={q.isFetching}
+            >
+              <RotateCcw
+                className={`size-4 ${q.isFetching ? "animate-spin" : ""}`}
+              />
+              Обновить
+            </Button>
+          </>
         }
       />
 

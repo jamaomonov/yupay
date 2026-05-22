@@ -11,6 +11,7 @@ import { Pagination } from "@/components/Pagination";
 import { ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { numberCodec, useSearchParamsState } from "@/lib/useSearchParamsState";
+import { SaveSegmentButton } from "@/features/segments/SaveSegmentButton";
 
 const PAGE_SIZE = 50;
 
@@ -232,6 +233,7 @@ export function OrdersListPage() {
       <PageHeader
         title="Заказы"
         description="Полный жизненный цикл: оплата → фулфилмент → доставка."
+        actions={<SaveSegmentButton />}
       />
 
       <section className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">

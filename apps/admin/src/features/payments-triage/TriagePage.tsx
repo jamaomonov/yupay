@@ -23,6 +23,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { type ApiError, apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { numberCodec, useSearchParamsState } from "@/lib/useSearchParamsState";
+import { SaveSegmentButton } from "@/features/segments/SaveSegmentButton";
 
 import type { PaymentTriageOut, PaymentTriageRow, WebhookTriageRow } from "./types";
 
@@ -62,6 +63,7 @@ export function TriagePage() {
       <PageHeader
         title="Триаж платежей"
         description="Что требует внимания финансов / тех-поддержки прямо сейчас."
+        actions={<SaveSegmentButton />}
       />
 
       <nav
