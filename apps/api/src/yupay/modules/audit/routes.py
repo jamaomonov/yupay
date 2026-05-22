@@ -41,6 +41,10 @@ async def admin_audit_feed(
     until: datetime | None = None,
     actor: str | None = None,
     target_id: str | None = None,
+    admin_only: Annotated[  # noqa: FBT002 — FastAPI binds it as a keyword query param
+        bool,
+        Query(description="Keep only events whose actor starts with `admin:`"),
+    ] = False,
     limit: int = 100,
 ) -> AuditListOut:
     capped = max(1, min(limit, 500))
@@ -51,6 +55,7 @@ async def admin_audit_feed(
         until=until,
         actor=actor,
         target_id=target_id,
+        admin_only=admin_only,
         limit=capped,
     )
     return AuditListOut(

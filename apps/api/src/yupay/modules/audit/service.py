@@ -11,9 +11,10 @@ pg_partman + a materialised audit table; for now this is fine.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Iterable
+from typing import Any
 
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -266,6 +267,15 @@ _ALL_SOURCES: tuple[AuditSourceName, ...] = (
     "wallet_transaction",
 )
 
+# Sources whose rows can carry an admin actor. Webhooks and fulfilment attempts
+# never do (one is inbound from a provider, the other is the saga doing its job),
+# so admin_only filters them out entirely.
+_ADMIN_CAPABLE_SOURCES: tuple[AuditSourceName, ...] = (
+    "order_event",
+    "payment_attempt",
+    "wallet_transaction",
+)
+
 _FETCHERS = {
     "order_event": _fetch_order_events,
     "payment_attempt": _fetch_payment_attempts,
@@ -283,12 +293,22 @@ async def list_audit_events(
     until: datetime | None = None,
     actor: str | None = None,
     target_id: str | None = None,
+    admin_only: bool = False,
     limit: int = 100,
 ) -> list[AuditEvent]:
     """Assemble the timeline. Fetches up to ``limit`` newest rows from each
-    requested source, merges, sorts DESC by timestamp, trims to ``limit``."""
+    requested source, merges, sorts DESC by timestamp, trims to ``limit``.
+
+    ``admin_only=True`` keeps only events whose actor starts with ``admin:`` —
+    i.e. things humans did, with the admin role. Used by the Admin Activity
+    view (UC7, ADR-0017). Sources without an actor (payment webhooks, saga
+    fulfilment attempts) are skipped up front to avoid wasting per-source
+    LIMIT slots on rows we'll discard.
+    """
     chosen = tuple(sources) if sources is not None else _ALL_SOURCES
     chosen = tuple(s for s in chosen if s in _FETCHERS)
+    if admin_only:
+        chosen = tuple(s for s in chosen if s in _ADMIN_CAPABLE_SOURCES)
     if not chosen:
         return []
     capped_per_source = max(1, min(limit, 500))
@@ -303,6 +323,10 @@ async def list_audit_events(
             limit=capped_per_source,
         )
         collected.extend(rows)
+    if admin_only:
+        collected = [
+            e for e in collected if e.actor is not None and e.actor.startswith("admin:")
+        ]
     collected.sort(key=lambda e: e.ts, reverse=True)
     return collected[:limit]
 
