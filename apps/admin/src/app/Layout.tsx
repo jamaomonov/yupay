@@ -5,8 +5,7 @@
  *   hamburger button in the topbar. The drawer auto-closes on route change.
  */
 
-import { useEffect, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { Button } from "@yupay/ui";
 import {
   Activity,
   Boxes,
@@ -21,6 +20,7 @@ import {
   Radio,
   Receipt,
   Route as RouteIcon,
+  Search,
   Settings,
   ShieldCheck,
   Tag,
@@ -30,10 +30,13 @@ import {
   Warehouse,
   X,
 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 
-import { Button } from "@yupay/ui";
 
 import { useAuthStore } from "@/features/auth/authStore";
+import { SearchPalette } from "@/features/search/SearchPalette";
+import { useGlobalSearchHotkey } from "@/features/search/useGlobalSearchHotkey";
 
 const NAV: { to: string; label: string; icon: typeof Gauge; end?: boolean }[] = [
   { to: "/", label: "Обзор", icon: Gauge, end: true },
@@ -60,10 +63,20 @@ export function Layout() {
   const logout = useAuthStore((s) => s.logout);
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  const openSearch = useCallback(() => { setSearchOpen(true); }, []);
+  const closeSearch = useCallback(() => { setSearchOpen(false); }, []);
+  useGlobalSearchHotkey(openSearch);
 
   // Close the mobile drawer whenever the route changes.
   useEffect(() => {
     setDrawerOpen(false);
+  }, [location.pathname]);
+
+  // Close the search palette on navigation as well.
+  useEffect(() => {
+    setSearchOpen(false);
   }, [location.pathname]);
 
   // Keep body from scrolling under the drawer on small screens.
@@ -97,7 +110,7 @@ export function Layout() {
           </div>
           <button
             type="button"
-            onClick={() => setDrawerOpen(false)}
+            onClick={() => { setDrawerOpen(false); }}
             className="md:hidden rounded-md p-1 text-[--color-muted] hover:bg-[--color-subtle]"
             aria-label="Закрыть меню"
           >
@@ -131,7 +144,7 @@ export function Layout() {
       {drawerOpen && (
         <button
           type="button"
-          onClick={() => setDrawerOpen(false)}
+          onClick={() => { setDrawerOpen(false); }}
           aria-label="Закрыть меню"
           className="fixed inset-0 z-30 bg-black/40 md:hidden"
         />
@@ -142,7 +155,7 @@ export function Layout() {
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
-              onClick={() => setDrawerOpen(true)}
+              onClick={() => { setDrawerOpen(true); }}
               className="rounded-md p-1.5 text-[--color-muted] hover:bg-[--color-subtle] md:hidden"
               aria-label="Открыть меню"
             >
@@ -152,15 +165,39 @@ export function Layout() {
               {me?.display_name ?? me?.email ?? ""}
             </span>
           </div>
-          <Button variant="ghost" size="sm" onClick={logout}>
-            <LogOut className="size-4" />
-            <span className="hidden sm:inline">Выйти</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={openSearch}
+              className="hidden items-center gap-2 rounded-md border border-[--color-border] px-3 py-1.5 text-sm text-[--color-muted] hover:bg-[--color-subtle] sm:flex"
+              aria-label="Открыть поиск"
+              data-search-trigger
+            >
+              <Search className="size-4" />
+              <span>Поиск</span>
+              <kbd className="ml-2 rounded border border-[--color-border] px-1 py-0.5 text-[10px] uppercase">
+                ⌘K
+              </kbd>
+            </button>
+            <button
+              type="button"
+              onClick={openSearch}
+              className="rounded-md p-1.5 text-[--color-muted] hover:bg-[--color-subtle] sm:hidden"
+              aria-label="Открыть поиск"
+            >
+              <Search className="size-5" />
+            </button>
+            <Button variant="ghost" size="sm" onClick={logout}>
+              <LogOut className="size-4" />
+              <span className="hidden sm:inline">Выйти</span>
+            </Button>
+          </div>
         </header>
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
           <Outlet />
         </main>
       </div>
+      <SearchPalette open={searchOpen} onClose={closeSearch} />
     </div>
   );
 }

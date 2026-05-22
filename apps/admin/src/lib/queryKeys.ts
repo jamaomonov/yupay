@@ -89,6 +89,9 @@ export const qk = {
   dashboard: (windowHours: number) =>
     ["admin", "stats", "dashboard", windowHours] as const,
 
+  // global search (cmd+k)
+  search: (q: string) => ["admin", "search", q] as const,
+
   // wallet
   walletUser: (userId: string) => ["admin", "wallet", "user", userId] as const,
 
