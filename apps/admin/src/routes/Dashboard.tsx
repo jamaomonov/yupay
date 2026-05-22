@@ -142,7 +142,7 @@ export function DashboardPage() {
           hint="pending дольше 1 часа"
           value={d?.stuck_payments ?? 0}
           tone={(d?.stuck_payments ?? 0) > 0 ? "warn" : "muted"}
-          to="/payments"
+          to="/payments?status=pending"
         />
         <AlertCard
           icon={Clock}
@@ -150,14 +150,14 @@ export function DashboardPage() {
           hint="заказы старше 5 минут без платежа"
           value={d?.pending_orders ?? 0}
           tone={(d?.pending_orders ?? 0) > 0 ? "warn" : "muted"}
-          to="/orders"
+          to="/orders?status=pending_payment"
         />
         <AlertCard
           icon={Truck}
           label="В работе"
           hint="fulfilment task pending / in_progress"
           value={d?.in_flight_tasks ?? 0}
-          to="/fulfillment"
+          to="/fulfillment?status=pending"
         />
       </section>
 
@@ -298,9 +298,13 @@ function AlertCard({
   tone?: "warn" | "muted" | "default";
   to?: string;
 }) {
+  const clickable = Boolean(to);
   const inner = (
     <article
-      className="rounded-lg border bg-[--color-bg] p-4 transition-colors hover:bg-[--color-subtle]/40"
+      className={[
+        "rounded-lg border bg-[--color-bg] p-4 transition-colors",
+        clickable ? "hover:bg-[--color-subtle]/60 hover:border-[--color-fg]/20" : "",
+      ].join(" ")}
       style={
         tone === "warn" && value > 0
           ? {
@@ -332,7 +336,13 @@ function AlertCard({
       <p className="mt-1 text-xs text-[--color-muted]">{hint}</p>
     </article>
   );
-  return to ? <Link to={to}>{inner}</Link> : inner;
+  return to ? (
+    <Link to={to} aria-label={`${label}: ${value.toString()}`}>
+      {inner}
+    </Link>
+  ) : (
+    inner
+  );
 }
 
 function MiniStat({
