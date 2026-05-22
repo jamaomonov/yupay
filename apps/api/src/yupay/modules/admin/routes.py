@@ -15,7 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.api.v1.deps import db_session
 from yupay.modules.admin import service as svc
 from yupay.modules.admin.deps import require_admin
-from yupay.modules.admin.schemas import CustomerOverviewOut, SearchOut
+from yupay.modules.admin.schemas import (
+    CustomerOverviewOut,
+    PaymentTriageOut,
+    SearchOut,
+)
 from yupay.modules.users.models import User
 
 admin_router = APIRouter(
@@ -53,6 +57,23 @@ async def admin_customer_overview(
 ) -> CustomerOverviewOut:
     """Single aggregate read for the /customers/{user_id} page in the admin SPA."""
     return await svc.get_customer_overview(db, user_id=user_id, limit=limit)
+
+
+@admin_router.get(
+    "/payments/triage",
+    response_model=PaymentTriageOut,
+    summary="Stuck-pending payments + failed-webhook backlog for the triage screen",
+)
+async def admin_payments_triage(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+    stuck_after_minutes: Annotated[
+        int,
+        Query(ge=1, le=1440, description="Stuck-pending threshold in minutes"),
+    ] = 30,
+) -> PaymentTriageOut:
+    """Two focused buckets for finance / ops to triage payment incidents."""
+    return await svc.triage_payments(db, stuck_after_minutes=stuck_after_minutes)
 
 
 __all__ = ["admin_router"]

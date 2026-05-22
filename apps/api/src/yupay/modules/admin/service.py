@@ -23,14 +23,17 @@ from yupay.modules.admin.schemas import (
     CustomerPaymentSummary,
     CustomerStatsOut,
     CustomerTaskSummary,
+    PaymentTriageOut,
+    PaymentTriageRow,
     RiskFlag,
     SearchHit,
     SearchOut,
+    WebhookTriageRow,
 )
 from yupay.modules.catalog.models import Sku
 from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.orders.models import Order, OrderItem
-from yupay.modules.payments.models import Payment
+from yupay.modules.payments.models import Payment, PaymentWebhook
 from yupay.modules.users import service as users_svc
 from yupay.modules.users.models import TelegramLink, User
 from yupay.modules.users.schemas import UserAdminOut
@@ -342,6 +345,78 @@ async def _fetch_customer_stats(
     )
 
 
+# ---------- Payments Triage ----------
+
+_DEFAULT_STUCK_AFTER_MINUTES = 30
+_TRIAGE_PER_BUCKET = 100
+
+
+async def triage_payments(
+    db: AsyncSession, *, stuck_after_minutes: int = _DEFAULT_STUCK_AFTER_MINUTES
+) -> PaymentTriageOut:
+    """Two focused buckets for the payment triage screen.
+
+    Stuck-pending = ``payments.status='pending'`` older than ``stuck_after_minutes``.
+    Failed-webhooks = webhooks with ``signature_ok=False`` or ``processed_at IS NULL``.
+    Each bucket is capped at :data:`_TRIAGE_PER_BUCKET` rows; a working day's queue
+    that doesn't fit shouldn't be solved with a bigger LIMIT.
+    """
+    moment = now()
+    cutoff = moment - timedelta(minutes=stuck_after_minutes)
+
+    stuck_stmt = (
+        select(
+            Payment.id,
+            Payment.order_id,
+            Order.user_id,
+            Order.guest_email,
+            Payment.provider,
+            Payment.status,
+            Payment.amount,
+            Payment.currency,
+            Payment.created_at,
+        )
+        .join(Order, Order.id == Payment.order_id)
+        .where(Payment.status == "pending", Payment.created_at < cutoff)
+        .order_by(Payment.created_at.asc())  # oldest first — they're the most urgent
+        .limit(_TRIAGE_PER_BUCKET)
+    )
+    stuck_rows = (await db.execute(stuck_stmt)).all()
+    stuck = [
+        PaymentTriageRow(
+            id=row[0],
+            order_id=row[1],
+            user_id=row[2],
+            guest_email=row[3],
+            provider=row[4],
+            status=row[5],
+            amount=row[6],
+            currency=row[7],
+            created_at=row[8],
+            waiting_minutes=max(0, int((moment - row[8]).total_seconds() // 60)),
+        )
+        for row in stuck_rows
+    ]
+
+    webhook_stmt = (
+        select(PaymentWebhook)
+        .where(
+            (PaymentWebhook.signature_ok.is_(False))
+            | (PaymentWebhook.processed_at.is_(None))
+        )
+        .order_by(PaymentWebhook.received_at.desc())
+        .limit(_TRIAGE_PER_BUCKET)
+    )
+    webhook_rows = (await db.execute(webhook_stmt)).scalars().all()
+    failed_webhooks = [WebhookTriageRow.model_validate(w) for w in webhook_rows]
+
+    return PaymentTriageOut(
+        threshold_minutes=stuck_after_minutes,
+        stuck_pending=stuck,
+        failed_webhooks=failed_webhooks,
+    )
+
+
 def _compute_risk_flags(*, user: User, failed_payments: int) -> list[RiskFlag]:
     flags: list[RiskFlag] = []
     if not user.email:
@@ -355,4 +430,4 @@ def _compute_risk_flags(*, user: User, failed_payments: int) -> list[RiskFlag]:
     return flags
 
 
-__all__ = ["get_customer_overview", "search"]
+__all__ = ["get_customer_overview", "search", "triage_payments"]

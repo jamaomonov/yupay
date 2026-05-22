@@ -129,6 +129,49 @@ class CustomerOverviewOut(BaseModel):
     risk_flags: list[RiskFlag] = Field(default_factory=list)
 
 
+# ---------- Payments Triage ----------
+
+
+class PaymentTriageRow(BaseModel):
+    """One stuck-pending payment row for the triage screen."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    order_id: str
+    user_id: str | None
+    guest_email: str | None
+    provider: str
+    status: str
+    amount: Decimal
+    currency: str
+    created_at: datetime
+    waiting_minutes: int
+
+
+class WebhookTriageRow(BaseModel):
+    """One failed-webhook row for the triage screen."""
+
+    model_config = ConfigDict(from_attributes=True, frozen=True)
+
+    id: str
+    provider: str
+    external_event_id: str
+    received_at: datetime
+    processed_at: datetime | None
+    signature_ok: bool
+
+
+class PaymentTriageOut(BaseModel):
+    """Aggregate response for /admin/payments/triage."""
+
+    model_config = ConfigDict(frozen=True)
+
+    threshold_minutes: int
+    stuck_pending: list[PaymentTriageRow] = Field(default_factory=list)
+    failed_webhooks: list[WebhookTriageRow] = Field(default_factory=list)
+
+
 __all__ = [
     "CustomerBalanceOut",
     "CustomerOrderSummary",
@@ -137,7 +180,10 @@ __all__ = [
     "CustomerStatsOut",
     "CustomerTaskSummary",
     "HitType",
+    "PaymentTriageOut",
+    "PaymentTriageRow",
     "RiskFlag",
     "SearchHit",
     "SearchOut",
+    "WebhookTriageRow",
 ]
