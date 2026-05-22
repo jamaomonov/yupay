@@ -95,20 +95,38 @@ export function DataTable<T>({
           </tr>
         </thead>
         <tbody>
-          {sorted.map((row) => (
-            <tr
-              key={rowKey(row)}
-              className="border-t transition-colors hover:bg-[--color-subtle]/60"
-              onClick={onRowClick ? () => onRowClick(row) : undefined}
-              style={{ cursor: onRowClick ? "pointer" : undefined }}
-            >
-              {columns.map((col) => (
-                <td key={col.key} className={`px-4 py-2 ${col.className ?? ""}`}>
-                  {col.render(row)}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {sorted.map((row) => {
+            const interactive = Boolean(onRowClick);
+            return (
+              <tr
+                key={rowKey(row)}
+                className={[
+                  "border-t border-[--border-subtle] transition-colors hover:bg-[--bg-surface-2]",
+                  interactive
+                    ? "cursor-pointer focus-visible:bg-[--bg-accent-soft] focus-visible:outline-none"
+                    : "",
+                ].join(" ")}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                onKeyDown={
+                  onRowClick
+                    ? (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onRowClick(row);
+                        }
+                      }
+                    : undefined
+                }
+                tabIndex={interactive ? 0 : undefined}
+              >
+                {columns.map((col) => (
+                  <td key={col.key} className={`px-4 py-2 ${col.className ?? ""}`}>
+                    {col.render(row)}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

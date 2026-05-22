@@ -43,6 +43,9 @@ export function SavedSegmentsNav() {
       </p>
       <ul className="space-y-0.5">
         {items.map((s) => (
+          // ``group-focus-within`` reveals the delete button when the segment link
+          // or the button itself receives focus — without it, the button stayed
+          // off-DOM for keyboard / touch users (a11y-audit #2, WCAG 2.1.1 + 2.5.7).
           <li key={s.id} className="group relative">
             <SegmentLink segment={s} />
             <button
@@ -55,7 +58,13 @@ export function SavedSegmentsNav() {
                 }
               }}
               aria-label={`Удалить сегмент ${s.name}`}
-              className="absolute right-2 top-1/2 hidden -translate-y-1/2 rounded p-1 text-[--color-muted] hover:bg-[--color-bg] hover:text-[--color-danger] group-hover:block"
+              className={[
+                "absolute right-2 top-1/2 -translate-y-1/2 grid size-7 place-items-center rounded",
+                "text-[--text-secondary] hover:bg-[--bg-surface] hover:text-[--danger]",
+                "opacity-0 transition-opacity",
+                "group-hover:opacity-100 group-focus-within:opacity-100",
+                "focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--accent] focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg-sidebar]",
+              ].join(" ")}
             >
               <Trash2 className="size-3.5" />
             </button>
