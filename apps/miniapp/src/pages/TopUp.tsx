@@ -42,7 +42,6 @@ import { cn } from "@/lib/utils";
 // Keeps badge/bonus optional for future enrichment.
 type Package = {
   id: string;
-  amount: number;
   label: string;
   region: string | null;
   price: number;
@@ -54,7 +53,6 @@ type Package = {
 function adaptPackage(api: ApiPackage): Package {
   return {
     id: api.id,
-    amount: api.amount,
     label: api.label,
     region: api.region,
     price: api.displayPrice?.amount ?? api.priceUsd,
@@ -823,7 +821,7 @@ function PackageCard({
       <div className="flex items-center gap-2 mb-1.5">
         <PackageThumb pkg={pkg} fallback={fallbackImage} />
         <span className="text-white font-bold text-lg leading-none">
-          {pkg.amount > 0 ? pkg.amount.toLocaleString("ru") : pkg.label}
+          {pkg.label}
         </span>
       </div>
 

@@ -156,7 +156,9 @@ export function useCategoriesList() {
 export interface Package {
   id: string; // sku id
   sku_code: string;
-  amount: number;
+  // The full denomination string as the operator entered it (``"60 UC"``,
+  // ``"Steam 10 USD"``, ``"1 мес"``). We never parse a number out of it —
+  // the storefront shows it as-is so suffixes / units / regions survive.
   label: string;
   region: string | null;
   priceUsd: number;
@@ -166,8 +168,6 @@ export interface Package {
 
 function skuToPackage(sku: SkuApi): Package {
   const denomination = sku.denomination ?? sku.sku_code;
-  const amountMatch = denomination.match(/\d+/);
-  const amount = amountMatch ? Number.parseInt(amountMatch[0], 10) : 0;
   const priceUsd = Number.parseFloat(sku.price_usd) || 0;
   const displayPrice = sku.display_price
     ? {
@@ -178,7 +178,6 @@ function skuToPackage(sku: SkuApi): Package {
   return {
     id: sku.id,
     sku_code: sku.sku_code,
-    amount,
     label: denomination,
     region: sku.region,
     priceUsd,
