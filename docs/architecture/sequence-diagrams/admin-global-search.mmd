@@ -1,0 +1,26 @@
+%% Admin global search — cmd+k palette → /admin/search → grouped hits.
+%% See ADR-0017 for the rationale.
+
+sequenceDiagram
+    autonumber
+    actor Admin
+    participant Palette as SearchPalette (admin SPA)
+    participant API as FastAPI /admin/search
+    participant DB as Postgres
+
+    Admin->>Palette: ⌘K
+    Palette-->>Admin: open modal (focus input)
+    Admin->>Palette: type "alice@" (debounce 200ms)
+    Palette->>API: GET /admin/search?q=alice@&limit=20<br/>Authorization: Bearer …
+    API->>API: require_admin (deps)
+    par parallel SQL — bounded per-source LIMIT
+        API->>DB: SELECT id,email,display_name,tg_user_id<br/>FROM users LEFT JOIN telegram_links<br/>WHERE email ILIKE :q OR display_name ILIKE :q<br/>   OR tg_username ILIKE :q OR tg_user_id = :q_int<br/>LIMIT N
+        API->>DB: SELECT id,status,total_charged,currency,created_at<br/>FROM orders WHERE id::text ILIKE :q_prefix<br/>   OR guest_email ILIKE :q LIMIT N
+        API->>DB: SELECT id,order_id,provider,status,amount,currency<br/>FROM payments WHERE id::text ILIKE :q_prefix<br/>   OR external_id ILIKE :q LIMIT N
+        API->>DB: SELECT id,sku_code,product_id<br/>FROM skus WHERE sku_code ILIKE :q LIMIT N
+    end
+    DB-->>API: rows per source
+    API-->>Palette: { users: [...], orders: [...],<br/>payments: [...], skus: [...] }
+    Palette-->>Admin: render groups; ↑↓ to navigate, Enter to open
+    Admin->>Palette: Enter on "Alice Customer"
+    Palette->>Palette: navigate to /customers/{user_id}<br/>(Sprint 1 — until then /users/{user_id})
