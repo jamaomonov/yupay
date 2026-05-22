@@ -153,8 +153,11 @@ export default function OrderSuccess() {
     return map;
   }, [deliveries]);
 
-  // Elapsed since the order was created. Drives the soft-SLA copy on the
-  // status card. Ticking pauses once the order reaches a terminal state.
+  // Elapsed since the *payment* was confirmed (or since creation when the
+  // order is still ``pending_payment``). Drives the soft-SLA copy on the
+  // status card — "ждём 5 минут" must mean five minutes of *fulfilment*,
+  // not "the customer opened checkout five minutes ago and only just paid".
+  // Ticking pauses once the order reaches a terminal state.
   // IMPORTANT: this hook MUST be called before any early return — otherwise
   // we run a different number of hooks on first render (loading) vs second
   // (data), which is the classic "Rendered more hooks than during the
@@ -163,7 +166,7 @@ export default function OrderSuccess() {
     ? PROCESSING.includes(order.status)
     : false;
   const elapsed = useElapsedSeconds(
-    order?.created_at,
+    order?.paid_at ?? order?.created_at,
     isProcessingOrUnknown,
   );
 
