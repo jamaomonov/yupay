@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -7,7 +8,6 @@ import {
   CheckCircle2,
   Clock3,
   Receipt,
-  RotateCcw,
   Wallet as WalletIcon,
 } from "lucide-react";
 import { Link } from "wouter";
@@ -61,7 +61,21 @@ function shortTime(iso: string): string {
 export default function History() {
   useDocumentTitle("История");
   const me = useMe();
+  const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("orders");
+
+  // Switching the segmented control re-fetches the destination tab's
+  // data so the user sees fresh state every time they flip — replaces
+  // the dedicated refresh button that used to sit on each panel.
+  const onTabChange = (next: Tab) => {
+    if (next === tab) return;
+    setTab(next);
+    if (next === "orders") {
+      void qc.invalidateQueries({ queryKey: ["my-orders"] });
+    } else {
+      void qc.invalidateQueries({ queryKey: ["wallet", "transactions"] });
+    }
+  };
 
   return (
     <motion.div
@@ -93,7 +107,7 @@ export default function History() {
       {me.data && (
         <SegmentedTabs
           value={tab}
-          onChange={setTab}
+          onChange={onTabChange}
           options={[
             { id: "orders", label: "Заказы" },
             { id: "finance", label: "Финансы" },
@@ -155,7 +169,11 @@ function SegmentedTabs<T extends string>({
 // ---------- orders tab ----------
 
 function OrdersTab() {
-  const me = useMe();
+  // Tab content is unmounted/remounted when the segmented switcher
+  // flips, and ``refetchOnMount: "always"`` on the underlying query
+  // makes that remount run a network refresh. So just by toggling
+  // Заказы → Финансы → Заказы the user gets a fresh feed without a
+  // dedicated refresh button.
   const ordersQuery = useMyOrders();
   const orders = ordersQuery.data ?? [];
   const rows: HistoryRow[] = orders.map(orderToHistoryRow);
@@ -169,29 +187,6 @@ function OrdersTab() {
 
   return (
     <div className="space-y-5" role="tabpanel">
-      <div className="flex justify-end">
-        {me.data && (
-          <button
-            type="button"
-            onClick={() => ordersQuery.refetch()}
-            disabled={ordersQuery.isFetching}
-            className="w-9 h-9 rounded-full flex items-center justify-center transition-colors disabled:opacity-40"
-            style={{
-              background: "hsl(var(--surface-2))",
-              border: "1px solid hsl(var(--border))",
-            }}
-            aria-label="Обновить"
-          >
-            <RotateCcw
-              size={14}
-              className={`text-white/60 ${
-                ordersQuery.isFetching ? "animate-spin" : ""
-              }`}
-            />
-          </button>
-        )}
-      </div>
-
       {ordersQuery.isLoading && (
         <div className="py-10 text-center text-white/40 text-sm">Загрузка…</div>
       )}
@@ -364,27 +359,6 @@ function FinanceTab() {
 
   return (
     <div className="space-y-5" role="tabpanel">
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => txQuery.refetch()}
-          disabled={txQuery.isFetching}
-          className="w-9 h-9 rounded-full flex items-center justify-center transition-colors disabled:opacity-40"
-          style={{
-            background: "hsl(var(--surface-2))",
-            border: "1px solid hsl(var(--border))",
-          }}
-          aria-label="Обновить"
-        >
-          <RotateCcw
-            size={14}
-            className={`text-white/60 ${
-              txQuery.isFetching ? "animate-spin" : ""
-            }`}
-          />
-        </button>
-      </div>
-
       {txQuery.isLoading && (
         <div className="py-10 text-center text-white/40 text-sm">Загрузка…</div>
       )}
