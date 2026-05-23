@@ -10,11 +10,13 @@ import {
 } from "lucide-react";
 
 import { useMe } from "@/lib/auth";
+import { useDisplayCurrency } from "@/lib/currency";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import {
   type CurrencyBalance,
   formatBalance,
   groupBalancesByCurrency,
+  pickPrimaryBalance,
   useWallet,
 } from "@/lib/wallet";
 
@@ -25,11 +27,18 @@ export default function Wallet() {
   const wallet = useWallet();
 
   const balances = wallet.data ?? [];
+  const homeCurrency = useDisplayCurrency();
   // Each currency the user holds gets its own row / chip. No more
   // live-rate conversion — 5 USD stays 5 USD whether Click's UZS rate
-  // moved overnight or not.
+  // moved overnight or not. Primary is the user's home currency when
+  // it has a non-zero balance; otherwise the biggest non-zero balance.
   const grouped = groupBalancesByCurrency(balances);
-  const primary = grouped[0] ?? null;
+  const primary = pickPrimaryBalance(grouped, homeCurrency);
+  // Other currencies go into a list below the hero. Drop zero rows
+  // and the headline itself so we don't duplicate it.
+  const others = grouped.filter(
+    (g) => g.amount !== 0 && g.currency !== primary?.currency,
+  );
 
   return (
     <motion.div
@@ -90,9 +99,7 @@ export default function Wallet() {
             <p className="text-white font-bold text-3xl mt-1 tabular-nums">
               {!me.data
                 ? "—"
-                : primary
-                  ? formatBalance(primary.amount, primary.currency)
-                  : formatBalance(0, "USD")}
+                : formatBalance(primary?.amount ?? 0, primary?.currency ?? homeCurrency)}
             </p>
             <p className="text-white/40 text-xs mt-1.5">
               {me.data
@@ -102,12 +109,12 @@ export default function Wallet() {
           </div>
         </div>
 
-        {/* Additional currencies stack below the hero. The user has at
-            most a handful (UZS + USD + maybe RUB) so a vertical list is
-            fine even on the narrowest screen. */}
-        {me.data && grouped.length > 1 && (
+        {/* Additional non-zero currencies stack below the hero. Empty
+            accounts are intentionally skipped — a row of "$0.00" next
+            to a real UZS balance reads as a bug. */}
+        {me.data && others.length > 0 && (
           <div className="grid grid-cols-1 gap-2 mt-3">
-            {grouped.slice(1).map((g) => (
+            {others.map((g) => (
               <CurrencyChip key={g.currency} group={g} />
             ))}
           </div>

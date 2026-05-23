@@ -245,18 +245,28 @@ export function groupBalancesByCurrency(
 
 /**
  * Pick the "headline" balance for places that can only show one figure
- * (header pill, hero one-liner). Priority: USD if present (default
- * pricing currency), then the largest absolute balance, then nothing.
+ * (header pill, hero one-liner). Priority:
+ *
+ * 1. The user's ``preferred`` currency if it has a non-zero balance —
+ *    matches the locale of the UI so a UZ user reads UZS first, even
+ *    when they also happen to hold a legacy USD goodwill credit.
+ * 2. Otherwise the largest non-zero balance by absolute value.
+ * 3. Finally, ``preferred`` itself as a placeholder (0) so the hero
+ *    has something to render before any top-up has happened.
  */
 export function pickPrimaryBalance(
   groups: CurrencyBalance[],
+  preferred: string,
 ): CurrencyBalance | null {
-  if (groups.length === 0) return null;
-  const usd = groups.find((g) => g.currency === "USD");
-  if (usd) return usd;
-  return groups.reduce((max, g) =>
-    Math.abs(g.amount) > Math.abs(max.amount) ? g : max,
-  );
+  const nonZero = groups.filter((g) => g.amount !== 0);
+  const preferredHit = nonZero.find((g) => g.currency === preferred);
+  if (preferredHit) return preferredHit;
+  if (nonZero.length > 0) {
+    return nonZero.reduce((max, g) =>
+      Math.abs(g.amount) > Math.abs(max.amount) ? g : max,
+    );
+  }
+  return { amount: 0, currency: preferred };
 }
 
 /**

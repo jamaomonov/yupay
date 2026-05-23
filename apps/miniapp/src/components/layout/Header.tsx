@@ -3,6 +3,7 @@ import { Plus, Wallet as WalletIcon } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useMe } from "@/lib/auth";
+import { useDisplayCurrency } from "@/lib/currency";
 import {
   formatBalance,
   groupBalancesByCurrency,
@@ -13,13 +14,18 @@ import {
 export function Header() {
   const me = useMe();
   const wallet = useWallet();
+  const homeCurrency = useDisplayCurrency();
   // The pill used to live-convert every balance into the user's
   // displayCurrency and show one figure. Multi-currency wallets break
-  // that — a fixed FX rate would lie. Pick the "headline" currency
-  // (USD if present, else the largest balance) and badge the rest.
+  // that — a fixed FX rate would lie. Show the user's home currency
+  // first (when it has a non-zero balance), badge other non-zero
+  // currencies as ``+N``.
   const grouped = groupBalancesByCurrency(wallet.data ?? []);
-  const balance = pickPrimaryBalance(grouped);
-  const extraCount = grouped.length > 1 ? grouped.length - 1 : 0;
+  const balance = pickPrimaryBalance(grouped, homeCurrency);
+  const others = grouped.filter(
+    (g) => g.amount !== 0 && g.currency !== balance?.currency,
+  );
+  const extraCount = others.length;
   const user = me.data;
 
   return (
@@ -69,8 +75,7 @@ export function Header() {
                   color: "rgba(255,255,255,0.55)",
                 }}
                 aria-label={`Ещё ${extraCount.toString()} валют`}
-                title={grouped
-                  .slice(1)
+                title={others
                   .map((g) => formatBalance(g.amount, g.currency))
                   .join(" · ")}
               >
