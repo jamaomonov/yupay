@@ -75,3 +75,10 @@ docs/api/openapi.json.tmp
 packages/api-client/src/generated/
 playwright-report/
 test-results/
+
+# --- Playwright MCP runtime artefacts ---
+# Console logs, YAML page snapshots, and auto-named screenshots produced by
+# @playwright/mcp during interactive AI sessions. Local-only — never commit.
+.playwright-mcp/
+# Ad-hoc screenshots from dev / agent runs that land in the repo root.
+/admin-*.png
