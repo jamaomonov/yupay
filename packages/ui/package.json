@@ -28,7 +28,7 @@
   "devDependencies": {
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.0.1",
-    "@types/react": "^19.0.0",
+    "@types/react": "^19.2.15",
     "@types/react-dom": "^19.0.0",
     "@yupay/config-eslint": "workspace:*",
     "@yupay/config-tsconfig": "workspace:*",
