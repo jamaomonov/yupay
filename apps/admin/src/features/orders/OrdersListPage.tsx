@@ -4,7 +4,6 @@ import { Link, useNavigate } from "react-router-dom";
 import { Ban, Search } from "lucide-react";
 
 import { Button, Input } from "@yupay/ui";
-import { Spinner } from "@/components/States";
 
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable, type Column } from "@/components/DataTable";
@@ -291,9 +290,6 @@ export function OrdersListPage() {
         </p>
       )}
 
-      {ordersQuery.isLoading && (
-        <Spinner label="Загрузка…" />
-      )}
       {ordersQuery.isError && (
         <p className="text-sm text-[var(--danger)]">Не удалось загрузить.</p>
       )}
@@ -302,6 +298,7 @@ export function OrdersListPage() {
         rows={filtered}
         columns={columns}
         rowKey={(o) => o.id}
+        loading={ordersQuery.isPending}
         onRowClick={(o) => navigate(`/orders/${o.id}`)}
         empty={
           status || query

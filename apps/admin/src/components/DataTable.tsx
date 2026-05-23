@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronUp, Inbox } from "lucide-react";
 
-import { EmptyState } from "./States";
+import { EmptyState, TableSkeleton } from "./States";
 
 export interface Column<T> {
   key: string;
@@ -23,6 +23,9 @@ interface Props<T> {
   ariaLabel?: string;
   /** Sync state for `aria-busy` while parent's query refetches. */
   busy?: boolean;
+  /** Show a `<TableSkeleton>` instead of the empty state on the very first
+   *  load — keeps the layout from jumping when the data arrives. */
+  loading?: boolean;
   onRowClick?: (row: T) => void;
   /** Skip the client-side sort entirely (e.g. table already comes pre-sorted
    *  and the dataset is server-paginated). Headers stay non-clickable. */
@@ -38,6 +41,7 @@ export function DataTable<T>({
   empty,
   ariaLabel,
   busy = false,
+  loading = false,
   onRowClick,
   sortable = true,
 }: Props<T>) {
@@ -62,9 +66,11 @@ export function DataTable<T>({
   }, [rows, columns, sort, sortable]);
 
   if (rows.length === 0) {
-    // Render the empty state outside the <table> so a screen-reader's "table
-    // mode" doesn't pollute the message with empty-row gibberish; the explicit
-    // EmptyState reads better in both visual and assistive contexts.
+    // First load: render a TableSkeleton to preserve the shape; otherwise the
+    // explicit EmptyState reads better both visually and for screen readers.
+    if (loading) {
+      return <TableSkeleton rows={6} columns={columns.length} />;
+    }
     return (
       <EmptyState
         icon={Inbox}

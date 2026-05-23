@@ -279,6 +279,7 @@ export function PaymentsPage() {
         rows={listQuery.data?.items ?? []}
         columns={columns}
         rowKey={(p) => p.id}
+        loading={listQuery.isPending}
         empty="Платежей нет."
       />
 
