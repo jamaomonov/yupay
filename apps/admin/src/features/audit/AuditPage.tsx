@@ -5,6 +5,8 @@ import {
   Activity,
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   CreditCard,
   Filter,
   Radio,
@@ -285,23 +287,20 @@ function TimelineRow({
   const isRejected = event.kind.endsWith(".rejected");
   const StateIcon = isError || isRejected ? AlertTriangle : ok ? CheckCircle2 : Activity;
 
+  // Two interactive elements in this row:
+  //   - The expand toggle (chevron button at the trailing edge).
+  //   - The target link inside the metadata line (e.g. order id).
+  // They used to live nested (`<button>` wrapped `<Link>`), which is invalid
+  // HTML and broke keyboard semantics. Now they are siblings inside a plain
+  // article container.
   return (
-    <article
-      className="rounded-lg border bg-[--color-bg] transition-colors hover:bg-[--color-subtle]/30"
-    >
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-start gap-3 p-3 text-left"
-      >
+    <article className="rounded-lg border border-[--border-default] bg-[--bg-surface] transition-colors hover:bg-[--bg-surface-2]">
+      <div className="flex items-start gap-3 p-3 text-left">
         <span
-          className="mt-0.5 inline-flex size-7 flex-shrink-0 items-center justify-center rounded-full"
-          style={{
-            background: "var(--color-subtle)",
-          }}
+          className="mt-0.5 inline-flex size-7 flex-shrink-0 items-center justify-center rounded-full bg-[--bg-muted]"
           title={meta.label}
         >
-          <Icon className={`size-3.5 ${meta.tone}`} />
+          <Icon className={`size-3.5 ${meta.tone}`} aria-hidden />
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
@@ -312,15 +311,16 @@ function TimelineRow({
                   ? "text-[--danger-fg]"
                   : ok
                     ? "text-[--success-fg]"
-                    : "text-[--color-muted]"
+                    : "text-[--text-secondary]"
               }`}
+              aria-hidden
             />
-            <span className="text-xs text-[--color-muted]">{formatTime(event.ts)}</span>
+            <span className="text-xs text-[--text-secondary]">{formatTime(event.ts)}</span>
           </div>
-          <div className="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs text-[--color-muted]">
+          <div className="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs text-[--text-secondary]">
             {event.actor && (
               <span>
-                actor <code className="text-[--color-fg]">{event.actor}</code>
+                actor <code className="text-[--text-primary]">{event.actor}</code>
               </span>
             )}
             {event.target_id && event.target_kind && (
@@ -331,9 +331,24 @@ function TimelineRow({
             )}
           </div>
         </div>
-      </button>
+        {Object.keys(event.payload).length > 0 && (
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={expanded}
+            aria-label={expanded ? "Свернуть payload" : "Раскрыть payload"}
+            className="grid size-7 flex-shrink-0 place-items-center rounded-md text-[--text-secondary] hover:bg-[--bg-muted] hover:text-[--text-primary] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--accent] focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg-surface]"
+          >
+            {expanded ? (
+              <ChevronUp className="size-4" aria-hidden />
+            ) : (
+              <ChevronDown className="size-4" aria-hidden />
+            )}
+          </button>
+        )}
+      </div>
       {expanded && Object.keys(event.payload).length > 0 && (
-        <pre className="mx-3 mb-3 whitespace-pre-wrap break-all rounded border bg-[--color-subtle] p-3 text-[10px] leading-relaxed text-[--color-muted]">
+        <pre className="mx-3 mb-3 whitespace-pre-wrap break-all rounded border border-[--border-default] bg-[--bg-muted] p-3 text-[10px] leading-relaxed text-[--text-secondary]">
           {JSON.stringify(event.payload, null, 2)}
         </pre>
       )}
@@ -347,14 +362,13 @@ function TargetLink({ kind, id }: { kind: string; id: string }) {
     return (
       <Link
         to={`/orders/${id}`}
-        className="font-mono text-[--color-brand] hover:underline"
-        onClick={(e) => e.stopPropagation()}
+        className="font-mono text-[--accent] underline-offset-2 hover:underline"
       >
         {shortened}
       </Link>
     );
   }
-  return <code className="text-[--color-fg]">{shortened}</code>;
+  return <code className="text-[--text-primary]">{shortened}</code>;
 }
 
 function StatCard({
