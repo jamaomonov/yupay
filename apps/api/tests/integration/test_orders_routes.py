@@ -30,6 +30,7 @@ from yupay.modules.catalog.models import (
     Product,
     ProductTranslation,
     Sku,
+    SkuPrice,
 )
 from yupay.modules.users.models import TelegramLink, User
 
@@ -157,6 +158,54 @@ async def test_create_order_requires_idempotency_key(
     )
     assert r.status_code == 422
     assert "Idempotency-Key" in r.text
+
+
+async def test_create_order_uses_sku_price_override(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_pubg: dict[str, str],
+) -> None:
+    """When the SKU has a SkuPrice override for the order currency, the
+    storefront must charge that exact figure — not a freshly re-converted
+    price.usd × FX (the bug surfaced as "catalog shows 12 000 UZS but
+    checkout shows 10 272.51 UZS"). The override skips the FX snapshot
+    entirely; ``fx_snapshot_id`` stays NULL for an override-only order."""
+    db_session.add(
+        SkuPrice(
+            sku_id=_seed_pubg["sku_id"],
+            currency="UZS",
+            price=Decimal("12000"),
+        )
+    )
+    await db_session.commit()
+
+    token = await _login_user(integration_client, tg_id=22)
+    r = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "override-user22-aaaaaaaa",
+        },
+        json={
+            "currency": "UZS",
+            "items": [
+                {
+                    "sku_id": _seed_pubg["sku_id"],
+                    "qty": 1,
+                    "fulfillment_data": {"player_id": "123456", "server": "as"},
+                }
+            ],
+        },
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["currency"] == "UZS"
+    assert Decimal(body["total_charged"]) == Decimal("12000")
+    # USD remains the catalog's canonical price — used for margin /
+    # cost reporting, even when the user paid native.
+    assert Decimal(body["total_usd"]) == Decimal("0.85")
+    # No FX snapshot needed since every line had an override.
+    assert body["fx_snapshot_id"] is None
 
 
 async def test_create_order_user_happy_path(

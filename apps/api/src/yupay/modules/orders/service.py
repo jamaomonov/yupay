@@ -124,12 +124,17 @@ def _record_event(
 async def _fetch_skus_with_product(
     db: AsyncSession, sku_ids: list[str]
 ) -> dict[str, Sku]:
-    """Load all referenced SKUs along with their product (for required_fields)."""
+    """Load all referenced SKUs along with their product (for required_fields)
+    and per-currency price overrides (so checkout honours the same native
+    price the catalogue showed the customer)."""
     if not sku_ids:
         return {}
     stmt = (
         select(Sku)
-        .options(selectinload(Sku.product))
+        .options(
+            selectinload(Sku.product),
+            selectinload(Sku.price_overrides),
+        )
         .where(Sku.id.in_(sku_ids))
     )
     rows = (await db.execute(stmt)).scalars().all()
@@ -201,25 +206,48 @@ async def create_order(
         )
         total_usd += sku.price_usd * line.qty
 
-    # 3) FX snapshot for non-USD orders.
+    # 3) Per-currency total. Catalog already returned a native price for
+    # SKUs that have a SkuPrice override in the order currency — checkout
+    # must charge that exact figure, otherwise the user sees one number
+    # in the package picker and a different (FX-derived) one at submit.
+    # Falls back to a live FX rate only when no override exists for the
+    # selected currency.
     currency = body.currency.upper()
     fx_snapshot_id: str | None = None
     if currency == "USD":
         total_charged = total_usd
     else:
-        factory = fx_service_factory or build_default_service
-        fx = factory()
-        try:
-            snap = await fx.snapshot(db, base="USD", quote=currency)
-        except FxUnavailableError as exc:
-            raise UpstreamUnavailableError(
-                f"Не удалось получить курс USD→{currency}. Попробуйте позже или "
-                "оплатите в USD.",
-                base="USD",
-                quote=currency,
-            ) from exc
-        fx_snapshot_id = snap.id
-        total_charged = (total_usd * snap.rate).quantize(Decimal("1.000000"))
+        total_charged = Decimal("0")
+        fx_snap = None
+        for line in body.items:
+            sku = skus[line.sku_id]
+            override = next(
+                (
+                    o
+                    for o in sku.price_overrides
+                    if o.currency.upper() == currency
+                ),
+                None,
+            )
+            if override is not None:
+                total_charged += override.price * line.qty
+                continue
+            if fx_snap is None:
+                factory = fx_service_factory or build_default_service
+                fx = factory()
+                try:
+                    fx_snap = await fx.snapshot(db, base="USD", quote=currency)
+                except FxUnavailableError as exc:
+                    raise UpstreamUnavailableError(
+                        f"Не удалось получить курс USD→{currency}. Попробуйте позже или "
+                        "оплатите в USD.",
+                        base="USD",
+                        quote=currency,
+                    ) from exc
+                fx_snapshot_id = fx_snap.id
+            total_charged += (
+                sku.price_usd * line.qty * fx_snap.rate
+            ).quantize(Decimal("1.000000"))
 
     # 4) Persist the order.
     created = now()
