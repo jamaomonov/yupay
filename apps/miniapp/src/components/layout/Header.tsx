@@ -3,24 +3,23 @@ import { Plus, Wallet as WalletIcon } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useMe } from "@/lib/auth";
-import { useDisplayCurrency } from "@/lib/currency";
-import { useFxRate } from "@/lib/fx";
 import {
   formatBalance,
-  totalDisplayBalance,
+  groupBalancesByCurrency,
+  pickPrimaryBalance,
   useWallet,
 } from "@/lib/wallet";
 
 export function Header() {
   const me = useMe();
   const wallet = useWallet();
-  const displayCurrency = useDisplayCurrency();
-  const fx = useFxRate(displayCurrency);
-  const balance = totalDisplayBalance(
-    wallet.data ?? [],
-    displayCurrency,
-    fx.ready ? fx.rate : null,
-  );
+  // The pill used to live-convert every balance into the user's
+  // displayCurrency and show one figure. Multi-currency wallets break
+  // that — a fixed FX rate would lie. Pick the "headline" currency
+  // (USD if present, else the largest balance) and badge the rest.
+  const grouped = groupBalancesByCurrency(wallet.data ?? []);
+  const balance = pickPrimaryBalance(grouped);
+  const extraCount = grouped.length > 1 ? grouped.length - 1 : 0;
   const user = me.data;
 
   return (
@@ -58,10 +57,26 @@ export function Header() {
           >
             <WalletIcon size={12} className="text-white/40" />
             <span className="text-white font-bold text-sm tabular-nums leading-none">
-              {user && balance.ready
+              {user && balance
                 ? formatBalance(balance.amount, balance.currency)
                 : "—"}
             </span>
+            {extraCount > 0 && (
+              <span
+                className="text-[10px] font-bold leading-none px-1.5 py-0.5 rounded-full"
+                style={{
+                  background: "hsl(var(--surface-2))",
+                  color: "rgba(255,255,255,0.55)",
+                }}
+                aria-label={`Ещё ${extraCount.toString()} валют`}
+                title={grouped
+                  .slice(1)
+                  .map((g) => formatBalance(g.amount, g.currency))
+                  .join(" · ")}
+              >
+                +{extraCount.toString()}
+              </span>
+            )}
           </Link>
           <Link
             href="/wallet/topup"

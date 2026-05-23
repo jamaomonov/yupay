@@ -212,34 +212,51 @@ export function useWalletTransactions(limit = 20) {
 }
 
 /**
- * Sum the visible user-side accounts converted into ``target`` via ``rate``.
+ * Group visible balances by currency. The user used to see a single
+ * "converted" total that drifted with the FX rate; we now show each
+ * native currency separately so 5.00 USD stays 5.00 USD no matter what
+ * Click's UZS rate did overnight.
  *
- * "Visible" means: kinds in :data:`VISIBLE_ACCOUNT_KINDS`. While cashback
- * and promo credit are hidden the header pill must reflect only what the
- * customer can actually see; otherwise the chip shows 5 USD while the
- * page below shows 0 USD and the discrepancy looks like a bug.
+ * "Visible" means kinds in :data:`VISIBLE_ACCOUNT_KINDS` — cashback and
+ * promo credit are currently hidden from the customer-facing UI.
  *
- * All wallet accounts currently store USD natively, so ``rate`` is the
- * USD→target multiplier (1 for USD/USDT). When ``rate === null`` we treat
- * the result as "not ready yet" so the caller can show a placeholder
- * instead of a misleading 0.
+ * Returns one entry per currency. Empty list means the user has no
+ * visible accounts (the page should render an empty state rather than
+ * "0 USD", which would be misleading once UZS top-up exists).
  */
-export function totalDisplayBalance(
+export interface CurrencyBalance {
+  amount: number;
+  currency: string;
+}
+
+export function groupBalancesByCurrency(
   balances: ParsedBalance[],
-  target: DisplayCurrency,
-  rate: number | null,
-): { amount: number; currency: DisplayCurrency; ready: boolean } {
-  if (rate === null) {
-    return { amount: 0, currency: target, ready: false };
+): CurrencyBalance[] {
+  const acc = new Map<string, number>();
+  for (const b of balances) {
+    if (!VISIBLE_ACCOUNT_KINDS.includes(b.kind)) continue;
+    acc.set(b.currency, (acc.get(b.currency) ?? 0) + b.amount);
   }
-  const usd = balances.reduce(
-    (sum, b) =>
-      b.currency === "USD" && VISIBLE_ACCOUNT_KINDS.includes(b.kind)
-        ? sum + b.amount
-        : sum,
-    0,
+  return Array.from(acc.entries()).map(([currency, amount]) => ({
+    amount,
+    currency,
+  }));
+}
+
+/**
+ * Pick the "headline" balance for places that can only show one figure
+ * (header pill, hero one-liner). Priority: USD if present (default
+ * pricing currency), then the largest absolute balance, then nothing.
+ */
+export function pickPrimaryBalance(
+  groups: CurrencyBalance[],
+): CurrencyBalance | null {
+  if (groups.length === 0) return null;
+  const usd = groups.find((g) => g.currency === "USD");
+  if (usd) return usd;
+  return groups.reduce((max, g) =>
+    Math.abs(g.amount) > Math.abs(max.amount) ? g : max,
   );
-  return { amount: usd * rate, currency: target, ready: true };
 }
 
 /**
@@ -250,13 +267,14 @@ export function convertFromUsd(amountUsd: number, rate: number): number {
   return amountUsd * rate;
 }
 
-const _RU_FORMATTERS: Partial<Record<DisplayCurrency, Intl.NumberFormat>> = {};
+const _RU_FORMATTERS: Record<string, Intl.NumberFormat> = {};
 
-function getFormatter(currency: DisplayCurrency): Intl.NumberFormat {
+function getFormatter(currency: string): Intl.NumberFormat {
   let cached = _RU_FORMATTERS[currency];
   if (!cached) {
     // We render the symbol ourselves (Telegram's font sometimes mangles ₽);
-    // the formatter is just here for grouping/decimals.
+    // the formatter is just here for grouping/decimals. UZS and RUB are
+    // whole-number currencies in practice, the rest keep 2 decimals.
     const fractionDigits = currency === "UZS" ? 0 : 2;
     cached = new Intl.NumberFormat("ru-RU", {
       minimumFractionDigits: fractionDigits,
@@ -267,9 +285,15 @@ function getFormatter(currency: DisplayCurrency): Intl.NumberFormat {
   return cached;
 }
 
-export function formatBalance(amount: number, currency: DisplayCurrency): string {
+/**
+ * Format a balance in its **native** currency. Accepts any ISO-like
+ * currency string (so unfamiliar values from the ledger don't crash the
+ * UI) and falls back to ``<amount> <code>`` if there's no symbol mapped.
+ */
+export function formatBalance(amount: number, currency: string): string {
   const formatted = getFormatter(currency).format(amount);
   if (currency === "USD") return `$${formatted}`;
   if (currency === "USDT") return `${formatted} USDT`;
-  return `${formatted} ${CURRENCY_SYMBOL[currency]}`;
+  const symbol = (CURRENCY_SYMBOL as Record<string, string | undefined>)[currency];
+  return `${formatted} ${symbol ?? currency}`;
 }

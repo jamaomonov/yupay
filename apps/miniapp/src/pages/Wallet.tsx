@@ -10,17 +10,11 @@ import {
 } from "lucide-react";
 
 import { useMe } from "@/lib/auth";
-import { useDisplayCurrency, type DisplayCurrency } from "@/lib/currency";
-import { useFxRate } from "@/lib/fx";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import {
-  ACCOUNT_META,
-  VISIBLE_ACCOUNT_KINDS,
-  convertFromUsd,
+  type CurrencyBalance,
   formatBalance,
-  type ParsedBalance,
-  totalDisplayBalance,
-  type UserAccountKind,
+  groupBalancesByCurrency,
   useWallet,
 } from "@/lib/wallet";
 
@@ -29,15 +23,13 @@ export default function Wallet() {
   const [, setLocation] = useLocation();
   const me = useMe();
   const wallet = useWallet();
-  const displayCurrency = useDisplayCurrency();
-  const fx = useFxRate(displayCurrency);
 
   const balances = wallet.data ?? [];
-  const total = totalDisplayBalance(
-    balances,
-    displayCurrency,
-    fx.ready ? fx.rate : null,
-  );
+  // Each currency the user holds gets its own row / chip. No more
+  // live-rate conversion — 5 USD stays 5 USD whether Click's UZS rate
+  // moved overnight or not.
+  const grouped = groupBalancesByCurrency(balances);
+  const primary = grouped[0] ?? null;
 
   return (
     <motion.div
@@ -72,7 +64,9 @@ export default function Wallet() {
         </div>
       )}
 
-      {/* Hero balance card */}
+      {/* Hero balance card. With multi-currency wallets the hero shows
+          the first currency big, then the rest as smaller chips below.
+          One currency = clean hero; several = honest split. */}
       <section className="mx-4 mb-5">
         <div
           className="relative rounded-3xl p-5 overflow-hidden"
@@ -91,39 +85,31 @@ export default function Wallet() {
           />
           <div className="relative z-10">
             <p className="text-white/50 text-xs uppercase tracking-[0.08em] font-bold">
-              Доступно к трате
+              На балансе
             </p>
             <p className="text-white font-bold text-3xl mt-1 tabular-nums">
-              {me.data && total.ready
-                ? formatBalance(total.amount, total.currency)
-                : "—"}
+              {!me.data
+                ? "—"
+                : primary
+                  ? formatBalance(primary.amount, primary.currency)
+                  : formatBalance(0, "USD")}
             </p>
             <p className="text-white/40 text-xs mt-1.5">
               {me.data
-                ? "Сумма всех счетов в основной валюте"
+                ? "Баланс показывается в валюте счёта"
                 : "Войдите через Telegram, чтобы увидеть баланс"}
             </p>
           </div>
         </div>
 
-        {/* Per-account chips — currently a single wallet card while
-            cashback / promo earn flows are still off. The list collapses
-            to a single full-width chip so the page doesn't look broken
-            with two ghost slots. */}
-        {me.data && (
+        {/* Additional currencies stack below the hero. The user has at
+            most a handful (UZS + USD + maybe RUB) so a vertical list is
+            fine even on the narrowest screen. */}
+        {me.data && grouped.length > 1 && (
           <div className="grid grid-cols-1 gap-2 mt-3">
-            {VISIBLE_ACCOUNT_KINDS.map((kind) => {
-              const b = balances.find((x) => x.kind === kind);
-              return (
-                <AccountChip
-                  key={kind}
-                  kind={kind}
-                  balance={b}
-                  displayCurrency={displayCurrency}
-                  rate={fx.ready ? fx.rate : null}
-                />
-              );
-            })}
+            {grouped.slice(1).map((g) => (
+              <CurrencyChip key={g.currency} group={g} />
+            ))}
           </div>
         )}
       </section>
@@ -191,51 +177,33 @@ export default function Wallet() {
   );
 }
 
-function AccountChip({
-  kind,
-  balance,
-  displayCurrency,
-  rate,
-}: {
-  kind: UserAccountKind;
-  balance: ParsedBalance | undefined;
-  displayCurrency: DisplayCurrency;
-  rate: number | null;
-}) {
-  const meta = ACCOUNT_META[kind];
-  const tone =
-    meta.tone === "primary"
-      ? { bg: "hsl(var(--primary) / 0.12)", fg: "hsl(var(--primary))" }
-      : meta.tone === "amber"
-        ? { bg: "rgba(251, 191, 36, 0.12)", fg: "rgb(252, 211, 77)" }
-        : { bg: "rgba(167, 139, 250, 0.12)", fg: "rgb(196, 181, 253)" };
-  const Icon = WalletIcon;
-  const usdAmount = balance?.amount ?? 0;
-  const ready = rate !== null;
-  const amount = ready ? convertFromUsd(usdAmount, rate) : 0;
+function CurrencyChip({ group }: { group: CurrencyBalance }) {
   return (
     <div
-      className="rounded-2xl p-3 flex flex-col gap-1.5"
+      className="rounded-2xl px-4 py-3 flex items-center justify-between"
       style={{
         background: "hsl(var(--surface-2))",
         border: "1px solid hsl(var(--border))",
       }}
     >
-      <div className="flex items-center justify-between">
+      <span className="flex items-center gap-2">
         <span
           className="w-6 h-6 rounded-lg flex items-center justify-center"
-          style={{ background: tone.bg, color: tone.fg }}
+          style={{
+            background: "hsl(var(--primary) / 0.12)",
+            color: "hsl(var(--primary))",
+          }}
+          aria-hidden="true"
         >
-          <Icon size={12} />
+          <WalletIcon size={12} />
         </span>
         <span className="text-[10px] uppercase font-bold tracking-wider text-white/40">
-          {displayCurrency}
+          {group.currency}
         </span>
-      </div>
-      <p className="text-white text-base font-bold tabular-nums leading-none">
-        {ready ? formatBalance(amount, displayCurrency) : "—"}
-      </p>
-      <p className="text-white/40 text-[10px] leading-tight line-clamp-1">{meta.label}</p>
+      </span>
+      <span className="text-white text-base font-bold tabular-nums leading-none">
+        {formatBalance(group.amount, group.currency)}
+      </span>
     </div>
   );
 }
