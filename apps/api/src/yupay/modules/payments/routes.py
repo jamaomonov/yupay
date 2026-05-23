@@ -28,6 +28,7 @@ from yupay.modules.payments.schemas import (
     PaymentWebhookOut,
     RefundIn,
     SimulateWebhookIn,
+    WebhookResolveIn,
 )
 from yupay.modules.users.models import User
 
@@ -250,3 +251,24 @@ async def admin_list_webhooks(
     return PaymentWebhookListOut(
         items=[PaymentWebhookOut.model_validate(r) for r in rows]
     )
+
+
+@admin_webhook_router.post(
+    "/{webhook_id}/mark-resolved",
+    response_model=PaymentWebhookOut,
+    summary="Admin: ack a rejected / stuck webhook record",
+)
+async def admin_resolve_webhook(
+    webhook_id: str,
+    body: WebhookResolveIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+) -> PaymentWebhookOut:
+    actor_email = admin.email or f"admin:{admin.id}"
+    webhook = await svc.mark_webhook_resolved(
+        db,
+        webhook_id=webhook_id,
+        actor_email=actor_email,
+        reason=body.reason,
+    )
+    return PaymentWebhookOut.model_validate(webhook)

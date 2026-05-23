@@ -1,13 +1,21 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, RotateCcw, ShieldAlert } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CheckCheck, CheckCircle2, RotateCcw, ShieldAlert } from "lucide-react";
 
 import { Button } from "@yupay/ui";
 
+import { Badge } from "@/components/Badge";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable, type Column } from "@/components/DataTable";
-import { apiGet } from "@/lib/api";
+import { useToast } from "@/components/Toast";
+import { type ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
+
+interface AdminResolved {
+  actor: string;
+  reason: string;
+  at: string;
+}
 
 interface WebhookOut {
   id: string;
@@ -16,7 +24,7 @@ interface WebhookOut {
   received_at: string;
   processed_at: string | null;
   signature_ok: boolean;
-  payload: Record<string, unknown>;
+  payload: Record<string, unknown> & { _admin_resolved?: AdminResolved };
 }
 
 interface WebhookListOut {
@@ -41,18 +49,24 @@ const SIG_OPTIONS: { value: "all" | "ok" | "bad"; label: string }[] = [
 ];
 
 export function WebhooksPage() {
+  const qc = useQueryClient();
+  const toast = useToast();
   const [provider, setProvider] = useState("");
   const [sig, setSig] = useState<"all" | "ok" | "bad">("all");
+  const [onlyProblems, setOnlyProblems] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const sigOk =
     sig === "ok" ? true : sig === "bad" ? false : null;
 
   const q = useQuery<WebhookListOut>({
-    queryKey: qk.webhooks({
-      provider: provider || null,
-      signature_ok: sigOk,
-    }),
+    queryKey: [
+      ...qk.webhooks({
+        provider: provider || null,
+        signature_ok: sigOk,
+      }),
+      onlyProblems ? "problems" : "all",
+    ],
     queryFn: () => {
       const params = new URLSearchParams();
       if (provider) params.set("provider", provider);
@@ -65,14 +79,44 @@ export function WebhooksPage() {
     refetchInterval: 15_000,
   });
 
-  const rows = q.data?.items ?? [];
+  const resolveMutation = useMutation<
+    WebhookOut,
+    ApiError,
+    { id: string; reason: string }
+  >({
+    mutationFn: ({ id, reason }) =>
+      apiPost<WebhookOut>(
+        `/api/v1/admin/webhooks/${id}/mark-resolved`,
+        { reason },
+      ),
+    onSuccess: () => {
+      toast.success("Webhook помечен как разобранный.");
+      void qc.invalidateQueries({ queryKey: ["admin", "webhooks"] });
+    },
+    onError: (err) => {
+      toast.error(formatApiError(err));
+    },
+  });
+
+  const allRows = q.data?.items ?? [];
+  const rows = useMemo(() => {
+    if (!onlyProblems) return allRows;
+    // "Problem" = bad signature OR never processed OR previously stamped
+    // as resolved (so an operator can audit what they already touched).
+    return allRows.filter(
+      (w) =>
+        !w.signature_ok ||
+        w.processed_at === null ||
+        w.payload._admin_resolved !== undefined,
+    );
+  }, [allRows, onlyProblems]);
 
   const counters = useMemo(() => {
-    const total = rows.length;
-    const rejected = rows.filter((w) => !w.signature_ok).length;
-    const providers = new Set(rows.map((w) => w.provider)).size;
+    const total = allRows.length;
+    const rejected = allRows.filter((w) => !w.signature_ok).length;
+    const providers = new Set(allRows.map((w) => w.provider)).size;
     return { total, rejected, providers };
-  }, [rows]);
+  }, [allRows]);
 
   const columns: Column<WebhookOut>[] = [
     {
@@ -125,6 +169,70 @@ export function WebhooksPage() {
       render: (w) =>
         w.processed_at ? formatDate(w.processed_at) : "—",
       className: "w-36",
+    },
+    {
+      key: "resolved",
+      header: "Разбор",
+      render: (w) =>
+        w.payload._admin_resolved ? (
+          <Badge tone="bg-[var(--success-soft)] text-[var(--success-fg)]" dot>
+            разобран
+          </Badge>
+        ) : !w.signature_ok || w.processed_at === null ? (
+          <Badge tone="bg-[var(--warning-soft)] text-[var(--warning-fg)]" dot>
+            требует
+          </Badge>
+        ) : (
+          <span className="text-xs text-[var(--text-secondary)]">—</span>
+        ),
+      className: "w-28",
+    },
+    {
+      key: "actions",
+      header: "",
+      render: (w) => {
+        const alreadyResolved = w.payload._admin_resolved !== undefined;
+        // Only show the action when the row needs operator attention.
+        const needsResolution =
+          !w.signature_ok || w.processed_at === null || alreadyResolved;
+        if (!needsResolution) {
+          return <span className="text-xs text-[var(--text-secondary)]">—</span>;
+        }
+        return (
+          <div
+            className="flex justify-end"
+            onClick={(e) => { e.stopPropagation(); }}
+          >
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={resolveMutation.isPending}
+              onClick={() => {
+                const fallback = alreadyResolved
+                  ? w.payload._admin_resolved?.reason ?? ""
+                  : "";
+                const reason = window.prompt(
+                  `Почему этот webhook разобран?\n${
+                    !w.signature_ok ? "(rejected signature)" : "(не обработан)"
+                  }`,
+                  fallback,
+                );
+                if (reason === null) return;
+                if (!reason.trim()) {
+                  toast.error("Нужна причина — она пишется в аудит.");
+                  return;
+                }
+                resolveMutation.mutate({ id: w.id, reason: reason.trim() });
+              }}
+            >
+              <CheckCheck className="size-4" />
+              {alreadyResolved ? "Уточнить" : "Разобрался"}
+            </Button>
+          </div>
+        );
+      },
+      className: "w-40 text-right",
     },
   ];
 
@@ -184,6 +292,15 @@ export function WebhooksPage() {
             </option>
           ))}
         </select>
+        <label className="inline-flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+          <input
+            type="checkbox"
+            checked={onlyProblems}
+            onChange={(e) => { setOnlyProblems(e.target.checked); }}
+            className="size-4 accent-[var(--accent)]"
+          />
+          Только проблемные
+        </label>
       </section>
 
       {q.isError && (
@@ -198,9 +315,10 @@ export function WebhooksPage() {
         empty="Webhook-ов ещё не приходило."
       />
 
-      {expanded && (
-        <PayloadPreview row={rows.find((w) => w.id === expanded)!} />
-      )}
+      {expanded && (() => {
+        const row = rows.find((w) => w.id === expanded);
+        return row ? <PayloadPreview row={row} /> : null;
+      })()}
 
       <p className="mt-3 text-xs text-[var(--text-secondary)]">
         Запись о невалидной подписи остаётся в аудит-таблице как
@@ -212,6 +330,7 @@ export function WebhooksPage() {
 }
 
 function PayloadPreview({ row }: { row: WebhookOut }) {
+  const resolved = row.payload._admin_resolved;
   return (
     <article className="mt-4 rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4 text-sm">
       <header className="mb-2 flex items-baseline justify-between">
@@ -222,11 +341,22 @@ function PayloadPreview({ row }: { row: WebhookOut }) {
           {formatDate(row.received_at)}
         </span>
       </header>
+      {resolved && (
+        <div className="mb-3 rounded-md border border-[var(--success-fg)]/30 bg-[var(--success-soft)] px-3 py-2 text-xs text-[var(--success-fg)]">
+          <strong>Разобран:</strong> {resolved.actor} · {formatDate(resolved.at)}
+          <p className="mt-1 text-[var(--text-primary)]">{resolved.reason}</p>
+        </div>
+      )}
       <pre className="whitespace-pre-wrap break-all rounded border bg-[var(--bg-muted)] p-3 text-[11px] leading-relaxed text-[var(--text-primary)]">
         {JSON.stringify(row.payload, null, 2)}
       </pre>
     </article>
   );
+}
+
+function formatApiError(err: ApiError): string {
+  const body = err.body as { detail?: string; title?: string } | null;
+  return body?.detail ?? body?.title ?? err.message;
 }
 
 function StatCard({

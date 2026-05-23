@@ -548,6 +548,54 @@ async def list_webhooks_admin(
     return list((await db.execute(stmt)).scalars().all())
 
 
+async def mark_webhook_resolved(
+    db: AsyncSession,
+    *,
+    webhook_id: str,
+    actor_email: str,
+    reason: str,
+) -> PaymentWebhook:
+    """Admin stamp of "I looked at this, it's not stuck — drop from feed".
+
+    Production webhook records do not store the raw HTTP body or signature
+    headers, so a true retry would require re-asking the provider. The
+    realistic operational action is therefore to acknowledge a rejected or
+    unfinished record so it stops surfacing as "broken" in the hospital
+    view. We embed an audit stub in ``payload._admin_resolved``; if the
+    webhook never finished processing, we also set ``processed_at`` so it
+    is no longer counted as pending.
+    """
+    reason = (reason or "").strip()
+    if not reason:
+        raise ValidationError("reason is required")
+
+    webhook = (
+        await db.execute(
+            select(PaymentWebhook).where(PaymentWebhook.id == webhook_id)
+        )
+    ).scalar_one_or_none()
+    if webhook is None:
+        raise NotFoundError("webhook not found")
+
+    payload = dict(webhook.payload or {})
+    payload["_admin_resolved"] = {
+        "actor": actor_email,
+        "reason": reason,
+        "at": now().isoformat(),
+    }
+    webhook.payload = payload
+    if webhook.processed_at is None:
+        webhook.processed_at = now()
+    await db.flush()
+    log.info(
+        "payments.webhook.resolved",
+        webhook_id=webhook.id,
+        provider=webhook.provider,
+        actor=actor_email,
+    )
+    return webhook
+
+
 async def list_payments_admin(
     db: AsyncSession,
     *,
@@ -587,6 +635,7 @@ __all__ = [
     "get_payment",
     "handle_webhook",
     "list_payments_admin",
+    "mark_webhook_resolved",
     "list_webhooks_admin",
     "refund_admin",
     "simulate_webhook",

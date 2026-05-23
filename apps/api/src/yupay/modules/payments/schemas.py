@@ -110,6 +110,14 @@ class PaymentWebhookListOut(BaseModel):
     items: list[PaymentWebhookOut]
 
 
+class WebhookResolveIn(BaseModel):
+    """Body of admin's ``POST /admin/webhooks/{id}/mark-resolved``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=500)
+
+
 __all__ = [
     "PaymentAdminListOut",
     "PaymentAdminOut",
@@ -122,4 +130,5 @@ __all__ = [
     "PaymentWebhookOut",
     "RefundIn",
     "SimulateWebhookIn",
+    "WebhookResolveIn",
 ]
