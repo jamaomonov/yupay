@@ -119,6 +119,10 @@ export function OrderDetailPage() {
   return (
     <div>
       <PageHeader
+        breadcrumbs={[
+          { label: "Заказы", to: "/orders" },
+          { label: `${order.id.slice(0, 8)}…` },
+        ]}
         title={`Заказ ${order.id.slice(0, 8)}…`}
         description={
           order.user_id ? (

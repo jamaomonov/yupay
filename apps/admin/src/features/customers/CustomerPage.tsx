@@ -23,6 +23,7 @@ import {
   ShieldCheck,
   Wallet,
 } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { Button } from "@yupay/ui";
@@ -110,11 +111,28 @@ export function CustomerPage() {
   const goOrder = (orderId: string) => { void navigate(`/orders/${orderId}`); };
   const isAdmin = data.user.roles.includes("admin");
   return (
-    // 2-column layout: the main activity column on the left (2/3 width) carries
-    // the things an operator actively triages — stats + recent orders / payments
-    // / open tasks. The right rail (1/3 width) keeps identity + balances within
-    // reach without forcing the operator to scroll past 4 tables to remember
-    // who they're looking at. Stacks vertically below `lg:`.
+    <div className="space-y-4">
+      <nav
+        aria-label="Breadcrumb"
+        className="flex items-center gap-1 text-xs text-[var(--text-secondary)]"
+      >
+        <Link
+          to="/users"
+          className="rounded transition-colors hover:text-[var(--text-primary)] hover:underline"
+        >
+          Пользователи
+        </Link>
+        <ChevronRight className="size-3 text-[var(--text-tertiary)]" aria-hidden />
+        <span aria-current="page" className="text-[var(--text-primary)]">
+          {data.user.display_name ?? data.user.email ?? data.user.id.slice(0, 8)}
+        </span>
+      </nav>
+    {/* 2-column layout: the main activity column on the left (2/3 width) carries
+        the things an operator actively triages — stats + recent orders /
+        payments / open tasks. The right rail (1/3 width) keeps identity +
+        balances within reach without forcing the operator to scroll past 4
+        tables to remember who they're looking at. Stacks vertically below
+        `lg:`. */}
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       <section className="space-y-6 lg:col-span-2">
         <Stats stats={data.stats} />
@@ -138,6 +156,7 @@ export function CustomerPage() {
         />
         <WalletBalances balances={data.wallet_balances} />
       </aside>
+    </div>
     </div>
   );
 }
