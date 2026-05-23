@@ -9,15 +9,17 @@
  * just a fixed overlay with a small form.
  */
 
-import { useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { Bookmark, X } from "lucide-react";
 
 import { Button, Input } from "@yupay/ui";
 
+import { Field } from "@/components/Field";
 import { type ApiError, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
+import { useDialog } from "@/lib/useDialog";
 
 import type { SavedSegment, SavedSegmentIn } from "./types";
 
@@ -43,6 +45,15 @@ function SaveSegmentDialog({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
   const [name, setName] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const titleId = useId();
+  useDialog({
+    open: true,
+    onClose,
+    containerRef: dialogRef,
+    initialFocus: () => inputRef.current?.focus(),
+  });
 
   const params: Record<string, string> = {};
   for (const [k, v] of new URLSearchParams(location.search).entries()) {
@@ -81,54 +92,58 @@ function SaveSegmentDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <div
+      ref={dialogRef}
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 pt-[12vh] backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
-      aria-label="Сохранение сегмента"
+      aria-labelledby={titleId}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-md rounded-lg border border-[--color-border] bg-[--color-bg] p-4 text-[--color-fg] shadow-2xl"
+        className="w-full max-w-md rounded-lg border border-[--border-default] bg-[--bg-surface] p-4 text-[--text-primary] shadow-[var(--shadow-md)]"
       >
         <header className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Сохранить сегмент</h2>
+          <h2 id={titleId} className="text-sm font-semibold">
+            Сохранить сегмент
+          </h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md p-1 text-[--color-muted] hover:bg-[--color-subtle]"
+            className="rounded-md p-1 text-[--text-secondary] hover:bg-[--bg-muted] hover:text-[--text-primary] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--accent] focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg-surface]"
             aria-label="Закрыть"
           >
-            <X className="size-4" />
+            <X className="size-4" aria-hidden />
           </button>
         </header>
 
-        <label className="block text-sm">
-          <span className="mb-1 block text-xs uppercase text-[--color-muted]">
-            Имя сегмента
-          </span>
-          <Input
-            value={name}
-            onChange={(e) => { setName(e.target.value); }}
-            placeholder="Например: «висящие Click старше 60 мин»"
-            autoFocus
-            maxLength={80}
-          />
-        </label>
+        <Field
+          label="Имя сегмента"
+          hint="не длиннее 80 символов"
+          error={localError ?? undefined}
+          required
+        >
+          {({ inputProps }) => (
+            <Input
+              {...inputProps}
+              ref={inputRef}
+              value={name}
+              onChange={(e) => { setName(e.target.value); }}
+              placeholder="Например: «висящие Click старше 60 мин»"
+              maxLength={80}
+            />
+          )}
+        </Field>
 
-        <p className="mt-3 text-xs text-[--color-muted]">
+        <p className="mt-3 text-xs text-[--text-secondary]">
           Сохраняем текущий URL:{" "}
-          <code className="text-[--color-fg]">
+          <code className="text-[--text-primary]">
             {location.pathname}
             {location.search || ""}
           </code>
         </p>
-
-        {localError && (
-          <p className="mt-3 text-sm text-[--color-danger]">{localError}</p>
-        )}
 
         <div className="mt-4 flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>

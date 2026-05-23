@@ -14,7 +14,7 @@
  * invalidate so the queue page reflects reality on the next paint.
  */
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
 
@@ -22,6 +22,7 @@ import { Button, Input } from "@yupay/ui";
 
 import { ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
+import { useDialog } from "@/lib/useDialog";
 import type { TaskAdminOut } from "@/features/fulfillment/types";
 import type { OrderAdminOut } from "@/features/orders/types";
 
@@ -49,6 +50,13 @@ const CHANNELS: { value: DeliveryChannel; label: string }[] = [
 export function ManualTaskModal({ task, onClose }: Props) {
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("complete");
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const titleId = useId();
+  const tabListIdComplete = useId();
+  const tabListIdFail = useId();
+  const completeTabId = useId();
+  const failTabId = useId();
+  useDialog({ open: true, onClose, containerRef: dialogRef });
 
   // Pull the full order to surface brand/product/customer + the item's
   // fulfillment_data. The queue already pre-fetched this with the same
@@ -90,46 +98,77 @@ export function ManualTaskModal({ task, onClose }: Props) {
     },
   });
 
+  const onTabKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowRight") {
+      e.preventDefault();
+      setTab((t) => (t === "complete" ? "fail" : "complete"));
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      setTab((t) => (t === "fail" ? "complete" : "fail"));
+    }
+  };
+  const panelId = tab === "complete" ? tabListIdComplete : tabListIdFail;
+
   return (
     <div
+      ref={dialogRef}
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm md:items-center"
       role="dialog"
       aria-modal="true"
+      aria-labelledby={titleId}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
-      {/* ``text-[--color-fg]`` is explicit so the modal renders the same
-          contrast whether the parent tree happens to be in a darker
-          surface (sidebar etc.). The outer backdrop also gets a blur so
-          a light-mode admin can't mistake the modal for "transparent". */}
-      <div className="relative w-full max-w-2xl rounded-lg border border-[--color-border] bg-[--color-bg] text-[--color-fg] shadow-2xl ring-1 ring-black/5">
-        <header className="flex items-center justify-between gap-3 border-b px-4 py-3">
+      <div className="relative w-full max-w-2xl rounded-lg border border-[--border-default] bg-[--bg-surface] text-[--text-primary] shadow-[var(--shadow-md)] ring-1 ring-black/5">
+        <header className="flex items-center justify-between gap-3 border-b border-[--border-default] px-4 py-3">
           <div className="min-w-0">
-            <p className="text-xs uppercase text-[--color-muted]">Задача</p>
-            <p className="truncate font-mono text-sm">{task.id}</p>
+            <p className="text-xs uppercase text-[--text-secondary]">Задача</p>
+            <p id={titleId} className="truncate font-mono text-sm">
+              {task.id}
+            </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md p-1.5 text-[--color-muted] hover:bg-[--color-subtle]"
+            className="rounded-md p-1.5 text-[--text-secondary] hover:bg-[--bg-muted] hover:text-[--text-primary] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--accent] focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg-surface]"
             aria-label="Закрыть"
           >
-            <X className="size-4" />
+            <X className="size-4" aria-hidden />
           </button>
         </header>
 
         <ContextBlock task={task} order={orderQuery.data ?? null} item={item} />
 
-        <div className="border-b px-4">
-          <div className="flex gap-1">
-            <TabButton active={tab === "complete"} onClick={() => setTab("complete")}>
+        <div className="border-b border-[--border-default] px-4">
+          <div role="tablist" aria-label="Действия с задачей" className="flex gap-1">
+            <TabButton
+              active={tab === "complete"}
+              id={completeTabId}
+              controls={tabListIdComplete}
+              onClick={() => setTab("complete")}
+              onKeyDown={onTabKeyDown}
+            >
               Завершить
             </TabButton>
-            <TabButton active={tab === "fail"} onClick={() => setTab("fail")}>
+            <TabButton
+              active={tab === "fail"}
+              id={failTabId}
+              controls={tabListIdFail}
+              onClick={() => setTab("fail")}
+              onKeyDown={onTabKeyDown}
+            >
               Отклонить
             </TabButton>
           </div>
         </div>
 
-        <div className="p-4">
+        <div
+          id={panelId}
+          role="tabpanel"
+          aria-labelledby={tab === "complete" ? completeTabId : failTabId}
+          className="p-4"
+        >
           {tab === "complete" ? (
             <CompleteForm
               onSubmit={(body) => complete.mutate(body)}
@@ -151,22 +190,35 @@ export function ManualTaskModal({ task, onClose }: Props) {
 
 function TabButton({
   active,
+  id,
+  controls,
   onClick,
+  onKeyDown,
   children,
 }: {
   active: boolean;
+  id: string;
+  controls: string;
   onClick: () => void;
+  onKeyDown?: (e: React.KeyboardEvent) => void;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
+      role="tab"
+      id={id}
+      aria-selected={active}
+      aria-controls={controls}
+      tabIndex={active ? 0 : -1}
       onClick={onClick}
+      onKeyDown={onKeyDown}
       className={[
         "border-b-2 px-3 py-2 text-sm font-medium transition-colors",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--accent] focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg-surface]",
         active
-          ? "border-[--color-brand] text-[--color-fg]"
-          : "border-transparent text-[--color-muted] hover:text-[--color-fg]",
+          ? "border-[--accent] text-[--text-primary]"
+          : "border-transparent text-[--text-secondary] hover:text-[--text-primary]",
       ].join(" ")}
     >
       {children}
