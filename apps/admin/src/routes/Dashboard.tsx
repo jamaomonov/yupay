@@ -105,6 +105,7 @@ export function DashboardPage() {
           label="Заказы (24ч)"
           value={d?.orders_in_window ?? 0}
           accent
+          sparkline={d?.orders_last_7_days.map((b) => b.count) ?? []}
         />
         <Kpi
           icon={CheckCircle2}
@@ -132,37 +133,22 @@ export function DashboardPage() {
               : "—"
           }
           accent
+          sparkline={
+            d?.orders_last_7_days.map((b) =>
+              Number.parseFloat(b.revenue_usd) || 0,
+            ) ?? []
+          }
         />
       </section>
 
-      <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <AlertCard
-          icon={CreditCard}
-          label="Висящие платежи"
-          hint="pending дольше порога — открыть триаж"
-          value={d?.stuck_payments ?? 0}
-          tone={(d?.stuck_payments ?? 0) > 0 ? "warn" : "muted"}
-          to="/payments/triage?tab=stuck"
-        />
-        <AlertCard
-          icon={Clock}
-          label="Ждут оплаты"
-          hint="заказы старше 5 минут без платежа"
-          value={d?.pending_orders ?? 0}
-          tone={(d?.pending_orders ?? 0) > 0 ? "warn" : "muted"}
-          to="/orders?status=pending_payment"
-        />
-        <AlertCard
-          icon={Truck}
-          label="В работе"
-          hint="Висяки > 30 мин — открыть Stuck-таб"
-          value={d?.in_flight_tasks ?? 0}
-          to="/fulfillment?tab=stuck"
-        />
-      </section>
+      <AlertsBlock
+        stuck={d?.stuck_payments ?? 0}
+        pendingOrders={d?.pending_orders ?? 0}
+        inFlight={d?.in_flight_tasks ?? 0}
+      />
 
       <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <article className="rounded-lg border bg-[var(--bg-surface)] p-4">
+        <article className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
           <header className="mb-3 flex items-baseline justify-between">
             <h2 className="text-sm font-semibold">Заказы за 7 дней</h2>
             <span className="text-xs text-[var(--text-secondary)]">
@@ -177,7 +163,7 @@ export function DashboardPage() {
           )}
         </article>
 
-        <article className="rounded-lg border bg-[var(--bg-surface)] p-4">
+        <article className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
           <header className="mb-3 flex items-baseline justify-between">
             <h2 className="text-sm font-semibold">Статусы за 24ч</h2>
             <Link
@@ -212,7 +198,7 @@ export function DashboardPage() {
         </article>
       </section>
 
-      <section className="rounded-lg border bg-[var(--bg-surface)] p-4">
+      <section className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
         <header className="mb-3 flex items-baseline justify-between">
           <div className="flex items-center gap-2">
             <Boxes className="size-4 text-[var(--text-secondary)]" />
@@ -256,12 +242,15 @@ function Kpi({
   value,
   accent,
   tone,
+  sparkline,
 }: {
   icon: typeof Receipt;
   label: string;
   value: number | string;
   accent?: boolean;
   tone?: "warn" | "success" | "muted";
+  /** Optional 7-day series rendered as a mini sparkline under the value. */
+  sparkline?: number[];
 }) {
   const valueCls = accent
     ? "text-[var(--accent)]"
@@ -272,14 +261,114 @@ function Kpi({
         : tone === "muted"
           ? "text-[var(--text-secondary)]"
           : "text-[var(--text-primary)]";
+  // Each KPI gets a tinted square tile in the corner so the metric reads as a
+  // small visual object instead of a flat label. The tile colour follows the
+  // metric's tone so the eye can scan a row of KPIs by colour alone.
+  const tileCls =
+    tone === "warn"
+      ? "bg-[var(--danger-soft)] text-[var(--danger-fg)]"
+      : tone === "success"
+        ? "bg-[var(--success-soft)] text-[var(--success-fg)]"
+        : tone === "muted"
+          ? "bg-[var(--bg-muted)] text-[var(--text-secondary)]"
+          : "bg-[var(--bg-accent-soft)] text-[var(--accent-soft-fg)]";
   return (
-    <article className="rounded-lg border bg-[var(--bg-surface)] p-4">
-      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-[var(--text-secondary)]">
-        <Icon className="size-3.5" />
-        {label}
+    <article className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">
+          {label}
+        </span>
+        <span className={`grid size-8 place-items-center rounded-md ${tileCls}`}>
+          <Icon className="size-4" aria-hidden />
+        </span>
       </div>
-      <div className={`mt-2 text-2xl font-semibold ${valueCls}`}>{value}</div>
+      <div className={`mt-3 text-2xl font-semibold ${valueCls}`}>{value}</div>
+      {sparkline && sparkline.length > 0 && (
+        <MiniSparkline values={sparkline} />
+      )}
     </article>
+  );
+}
+
+function MiniSparkline({ values }: { values: number[] }) {
+  const max = Math.max(...values, 1);
+  return (
+    <div
+      className="mt-3 flex h-6 items-end gap-[3px]"
+      aria-hidden
+      title={`Динамика за 7 дней: ${values.join(", ")}`}
+    >
+      {values.map((v, i) => {
+        const ratio = v / max;
+        return (
+          <span
+            key={i}
+            className="flex-1 rounded-sm bg-[var(--accent)]"
+            style={{
+              height: `${Math.max(10, ratio * 100).toString()}%`,
+              opacity: 0.35 + 0.65 * ratio,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Combined alerts strip — when everything is at zero the screen turns into a
+ * single calm "Очередей нет" line so the operator doesn't keep staring at three
+ * identical grey-zero cards every shift. The moment any counter goes non-zero,
+ * the expanded three-card layout returns and only the hot alerts get the warn
+ * tone.
+ */
+function AlertsBlock({
+  stuck,
+  pendingOrders,
+  inFlight,
+}: {
+  stuck: number;
+  pendingOrders: number;
+  inFlight: number;
+}) {
+  const total = stuck + pendingOrders + inFlight;
+  if (total === 0) {
+    return (
+      <section className="flex items-center gap-3 rounded-lg border bg-[var(--success-soft)] px-4 py-3 text-sm text-[var(--success-fg)] shadow-[var(--shadow-sm)]">
+        <CheckCircle2 className="size-4" aria-hidden />
+        <span>
+          <strong className="font-semibold">Всё чисто.</strong> Очередей нет.
+        </span>
+      </section>
+    );
+  }
+  return (
+    <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      <AlertCard
+        icon={CreditCard}
+        label="Висящие платежи"
+        hint="pending дольше порога — открыть триаж"
+        value={stuck}
+        tone={stuck > 0 ? "warn" : "muted"}
+        to="/payments/triage?tab=stuck"
+      />
+      <AlertCard
+        icon={Clock}
+        label="Ждут оплаты"
+        hint="заказы старше 5 минут без платежа"
+        value={pendingOrders}
+        tone={pendingOrders > 0 ? "warn" : "muted"}
+        to="/orders?status=pending_payment"
+      />
+      <AlertCard
+        icon={Truck}
+        label="В работе"
+        hint="Висяки > 30 мин — открыть Stuck-таб"
+        value={inFlight}
+        tone={inFlight > 0 ? "warn" : "muted"}
+        to="/fulfillment?tab=stuck"
+      />
+    </section>
   );
 }
 
@@ -302,7 +391,7 @@ function AlertCard({
   const inner = (
     <article
       className={[
-        "rounded-lg border bg-[var(--bg-surface)] p-4 transition-colors",
+        "rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4 transition-colors",
         clickable ? "hover:bg-[var(--bg-muted)]/60 hover:border-[var(--color-fg)]/20" : "",
       ].join(" ")}
       style={
@@ -365,7 +454,7 @@ function MiniStat({
           ? "text-[var(--text-secondary)]"
           : "text-[var(--text-primary)]";
   return (
-    <div className="rounded-md border bg-[var(--bg-surface)] p-3">
+    <div className="rounded-md border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-3">
       <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">
         {Icon && <Icon className="size-3" />}
         {label}
