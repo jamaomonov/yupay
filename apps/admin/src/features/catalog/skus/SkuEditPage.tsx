@@ -43,6 +43,14 @@ const skuSchema = z.object({
   denomination: z.string().max(64).optional().nullable(),
   region: z.string().max(8).optional().nullable(),
   price_usd: z.string().regex(/^\d+(\.\d{1,6})?$/, "число > 0"),
+  // Empty string is "no value" — we strip it before sending so the
+  // backend keeps cost_usdt as NULL for SKUs whose wholesale cost
+  // isn't known yet.
+  cost_usdt: z
+    .string()
+    .regex(/^(\d+(\.\d{1,6})?)?$/, "число > 0 либо пусто")
+    .optional()
+    .nullable(),
   image_url: z.string().url().or(z.literal("")).optional().nullable(),
   sort_order: z.coerce.number().int().default(0),
   active: z.boolean().default(true),
@@ -57,6 +65,7 @@ const EMPTY: FormValues = {
   denomination: "",
   region: "GLOBAL",
   price_usd: "1.00",
+  cost_usdt: "",
   image_url: "",
   sort_order: 0,
   active: true,
@@ -69,6 +78,7 @@ interface SkuCreateBody {
   denomination: string | null;
   region: string | null;
   price_usd: string;
+  cost_usdt: string | null;
   image_url: string | null;
   sort_order: number;
   active: boolean;
@@ -80,6 +90,7 @@ interface SkuPatchBody {
   denomination: string | null;
   region: string | null;
   price_usd: string;
+  cost_usdt: string | null;
   image_url: string | null;
   sort_order: number;
   active: boolean;
@@ -140,6 +151,7 @@ export function SkuEditPage() {
       denomination: existing.denomination ?? "",
       region: existing.region ?? "GLOBAL",
       price_usd: existing.price_usd,
+      cost_usdt: existing.cost_usdt ?? "",
       image_url: existing.image_url ?? "",
       sort_order: existing.sort_order,
       active: existing.active,
@@ -200,6 +212,7 @@ export function SkuEditPage() {
 
   const save = useMutation<Sku, ApiError, FormValues>({
     mutationFn: async (values) => {
+      const costNorm = values.cost_usdt?.trim() || null;
       if (isNew) {
         const body: SkuCreateBody = {
           product_id: values.product_id,
@@ -207,6 +220,7 @@ export function SkuEditPage() {
           denomination: values.denomination?.trim() || null,
           region: values.region?.trim() || null,
           price_usd: values.price_usd,
+          cost_usdt: costNorm,
           image_url: values.image_url?.trim() || null,
           sort_order: values.sort_order,
           active: values.active,
@@ -222,6 +236,7 @@ export function SkuEditPage() {
         denomination: values.denomination?.trim() || null,
         region: values.region?.trim() || null,
         price_usd: values.price_usd,
+        cost_usdt: costNorm,
         image_url: values.image_url?.trim() || null,
         sort_order: values.sort_order,
         active: values.active,
@@ -389,11 +404,11 @@ export function SkuEditPage() {
             </div>
           </Field>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Field
-              label="Цена USD"
+              label="Цена USD (retail)"
               error={form.formState.errors.price_usd?.message}
-              help="Каноническая цена. Конвертируется по FX."
+              help="Каноническая цена для юзера. Конвертируется по FX, если нет override."
             >
               <div className="flex items-center gap-2">
                 <span className="text-sm text-[var(--text-secondary)]">$</span>
@@ -405,6 +420,23 @@ export function SkuEditPage() {
                 />
               </div>
             </Field>
+            <Field
+              label="Cost USDT (поставщику)"
+              error={form.formState.errors.cost_usdt?.message}
+              help="Сколько мы платим поставщику. Из этого считается UZS-цена при bulk-recompute и margin = price − cost."
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-[var(--text-secondary)]">₮</span>
+                <Input
+                  {...form.register("cost_usdt")}
+                  inputMode="decimal"
+                  placeholder="0.60"
+                  className="font-mono"
+                />
+              </div>
+            </Field>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Field label="Сортировка">
               <Input
                 type="number"

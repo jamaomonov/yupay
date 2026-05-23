@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Pencil, Plus, RefreshCcw, Search, Trash2 } from "lucide-react";
 
 import { Button, Input } from "@yupay/ui";
 
 import { PageHeader } from "@/components/PageHeader";
-import { ApiError, apiDelete, apiPatch, apiGet } from "@/lib/api";
+import { useToast } from "@/components/Toast";
+import { ApiError, apiDelete, apiPatch, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
 import type { Brand, Product, Sku } from "../types";
@@ -17,9 +18,17 @@ interface GroupedProduct {
   skus: Sku[];
 }
 
+interface BulkUzsPriceOut {
+  rate: string;
+  fx_snapshot_id: string | null;
+  updated_total: number;
+  skipped_without_cost: number;
+}
+
 export function SkusListPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const toast = useToast();
   const [query, setQuery] = useState("");
   const [onlyInactive, setOnlyInactive] = useState(false);
 
@@ -45,6 +54,23 @@ export function SkusListPage() {
   const remove = useMutation<void, ApiError, Sku>({
     mutationFn: (sku) => apiDelete(`/api/v1/admin/catalog/skus/${sku.id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.skus() }),
+  });
+
+  const bulkSetUzs = useMutation<BulkUzsPriceOut, ApiError, void>({
+    mutationFn: () =>
+      apiPost<BulkUzsPriceOut>("/api/v1/admin/catalog/skus/bulk-set-uzs-prices", {}),
+    onSuccess: (data) => {
+      const rate = Number.parseFloat(data.rate).toLocaleString("ru-RU", {
+        maximumFractionDigits: 2,
+      });
+      toast.success(
+        `UZS-цены пересчитаны: ${data.updated_total.toString()} SKU @ 1 USDT = ${rate} UZS. Пропущено без cost_usdt: ${data.skipped_without_cost.toString()}.`,
+      );
+      void qc.invalidateQueries({ queryKey: qk.skus() });
+    },
+    onError: () => {
+      toast.error("Не удалось пересчитать UZS-цены. Проверь, что FX-провайдер отвечает.");
+    },
   });
 
   const groups = useMemo<GroupedProduct[]>(() => {
@@ -139,10 +165,31 @@ export function SkusListPage() {
         title="SKU"
         description="Конкретные продаваемые позиции — номинал, регион, цена. Сгруппировано по продукту."
         actions={
-          <Button onClick={() => navigate("/skus/new")}>
-            <Plus className="size-4" />
-            Новый SKU
-          </Button>
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                if (
+                  confirm(
+                    "Пересчитать UZS-цены всех активных SKU из cost_usdt × текущий курс? Старые UZS-override'ы будут перезаписаны.",
+                  )
+                ) {
+                  bulkSetUzs.mutate();
+                }
+              }}
+              disabled={bulkSetUzs.isPending}
+              title="UZS price = cost_usdt × текущий курс USDT→UZS"
+            >
+              <RefreshCcw
+                className={`size-4 ${bulkSetUzs.isPending ? "animate-spin" : ""}`}
+              />
+              {bulkSetUzs.isPending ? "Считаем…" : "Обновить UZS-цены"}
+            </Button>
+            <Button onClick={() => navigate("/skus/new")}>
+              <Plus className="size-4" />
+              Новый SKU
+            </Button>
+          </>
         }
       />
 
@@ -296,6 +343,7 @@ function ProductGroup({
               <th className="px-3 py-2 text-left font-medium">Регион</th>
               <th className="px-3 py-2 text-left font-medium">SKU code</th>
               <th className="px-3 py-2 text-right font-medium">USD</th>
+              <th className="px-3 py-2 text-right font-medium">Cost ₮</th>
               <th className="px-3 py-2 text-left font-medium">Override</th>
               <th className="px-3 py-2 text-center font-medium">Активен</th>
               <th className="px-3 py-2 text-right font-medium">∑</th>
@@ -353,6 +401,11 @@ function SkuRow({
       </td>
       <td className="px-3 py-2.5 text-right font-mono">
         {Number.isNaN(usd) ? sku.price_usd : `$${usd.toFixed(2)}`}
+      </td>
+      <td className="px-3 py-2.5 text-right font-mono text-xs">
+        {sku.cost_usdt
+          ? (Number.parseFloat(sku.cost_usdt) || 0).toFixed(2)
+          : <span className="text-[var(--text-secondary)]">—</span>}
       </td>
       <td className="px-3 py-2.5">
         {sku.price_overrides.length === 0 ? (

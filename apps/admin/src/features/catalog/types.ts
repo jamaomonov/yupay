@@ -84,6 +84,10 @@ export interface Sku {
   denomination: string | null;
   region: string | null;
   price_usd: string;
+  /** Wholesale cost paid to the supplier in USDT — drives the bulk
+   *  UZS-price calculation and per-SKU margin reporting. Nullable for
+   *  legacy SKUs created before the field existed. */
+  cost_usdt: string | null;
   image_url: string | null;
   sort_order: number;
   active: boolean;
