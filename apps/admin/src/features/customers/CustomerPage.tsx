@@ -10,7 +10,7 @@
  * cheap drop-in.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -20,6 +20,7 @@ import {
   MessageCircle,
   Receipt,
   Send,
+  ShieldCheck,
   Wallet,
 } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -29,8 +30,11 @@ import { Button } from "@yupay/ui";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { Spinner } from "@/components/States";
-import { type ApiError, apiGet } from "@/lib/api";
+import { useToast } from "@/components/Toast";
+import { type ApiError, api, apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
+
+import type { UserAdminOut } from "@/features/users/types";
 
 import {
   type CustomerOrderSummary,
@@ -45,12 +49,36 @@ export function CustomerPage() {
   const params = useParams<{ id: string }>();
   const userId = params.id ?? "";
   const navigate = useNavigate();
+  const qc = useQueryClient();
+  const toast = useToast();
   const query = useQuery<CustomerOverviewOut, ApiError>({
     queryKey: qk.customerOverview(userId),
     queryFn: () =>
       apiGet<CustomerOverviewOut>(`/api/v1/admin/customers/${userId}/overview`),
     enabled: Boolean(userId),
     refetchInterval: 30_000,
+  });
+
+  // Role management mutation — kept on the page so the header can stay
+  // presentational and the toast / cache invalidation are wired up once.
+  const setRoles = useMutation<UserAdminOut, ApiError, string[]>({
+    mutationFn: (roles) =>
+      api<UserAdminOut>(`/api/v1/admin/users/${userId}/roles`, {
+        method: "PATCH",
+        body: JSON.stringify({ roles }),
+      }),
+    onSuccess: (updated) => {
+      toast.success(
+        updated.roles.includes("admin")
+          ? "Админ-роль выдана."
+          : "Админ-роль снята.",
+      );
+      void qc.invalidateQueries({ queryKey: qk.customerOverview(userId) });
+      void qc.invalidateQueries({ queryKey: ["admin", "users"] });
+    },
+    onError: (err) => {
+      toast.error(formatApiError(err));
+    },
   });
 
   if (query.isError) {
@@ -80,9 +108,22 @@ export function CustomerPage() {
 
   const data = query.data;
   const goOrder = (orderId: string) => { void navigate(`/orders/${orderId}`); };
+  const isAdmin = data.user.roles.includes("admin");
   return (
     <div className="space-y-6">
-      <UserHeader data={data} />
+      <UserHeader
+        data={data}
+        onToggleAdmin={() => {
+          const action = isAdmin ? "снять админ-роль" : "выдать админ-роль";
+          const name = data.user.display_name ?? data.user.email ?? data.user.id.slice(0, 8);
+          if (!window.confirm(`Точно ${action} у ${name}?`)) return;
+          const next = isAdmin
+            ? data.user.roles.filter((r) => r !== "admin")
+            : [...new Set([...data.user.roles, "admin"])];
+          setRoles.mutate(next);
+        }}
+        rolePending={setRoles.isPending}
+      />
       <Stats stats={data.stats} />
       <RecentOrders rows={data.recent_orders} onOpen={goOrder} />
       <RecentPayments rows={data.recent_payments} onOpen={goOrder} />
@@ -92,11 +133,20 @@ export function CustomerPage() {
   );
 }
 
-function UserHeader({ data }: { data: CustomerOverviewOut }) {
+function UserHeader({
+  data,
+  onToggleAdmin,
+  rolePending,
+}: {
+  data: CustomerOverviewOut;
+  onToggleAdmin: () => void;
+  rolePending: boolean;
+}) {
   const u = data.user;
   const tg = u.telegram_link;
   const initials = (u.display_name ?? u.email ?? "??").slice(0, 2).toUpperCase();
   const telegramUrl = tg?.tg_username ? `https://t.me/${tg.tg_username}` : null;
+  const isAdmin = u.roles.includes("admin");
 
   return (
     <header className="rounded-lg border bg-[var(--bg-surface)] p-5">
@@ -197,6 +247,50 @@ function UserHeader({ data }: { data: CustomerOverviewOut }) {
             Аудит
           </Link>
         </div>
+      </div>
+
+      {/* Roles + admin toggle. Lives inside the header so it stays close to
+          the operator's other identity actions (Telegram / Wallet / Audit)
+          without crowding the same row. */}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-subtle)] pt-4">
+        <div className="flex items-center gap-3">
+          <ShieldCheck
+            className={isAdmin ? "size-4 text-[var(--warning)]" : "size-4 text-[var(--text-secondary)]"}
+            aria-hidden
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium">Роли:</span>
+            {u.roles.length === 0 ? (
+              <span className="text-xs text-[var(--text-secondary)]">user</span>
+            ) : (
+              u.roles.map((r) => (
+                <span
+                  key={r}
+                  className={[
+                    "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
+                    r === "admin"
+                      ? "bg-[var(--warning-soft)] text-[var(--warning-fg)]"
+                      : "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
+                  ].join(" ")}
+                >
+                  {r}
+                </span>
+              ))
+            )}
+          </div>
+        </div>
+        <Button
+          size="sm"
+          variant={isAdmin ? "danger" : "primary"}
+          disabled={rolePending}
+          onClick={onToggleAdmin}
+        >
+          {rolePending
+            ? "Сохраняем…"
+            : isAdmin
+              ? "Снять админа"
+              : "Выдать админа"}
+        </Button>
       </div>
     </header>
   );
@@ -461,4 +555,9 @@ function formatMoney(value: string): string {
   const n = Number.parseFloat(value);
   if (!Number.isFinite(n)) return value;
   return n.toLocaleString("ru", { maximumFractionDigits: 2 });
+}
+
+function formatApiError(err: ApiError): string {
+  const body = err.body as { detail?: string } | null;
+  return body?.detail ?? err.message;
 }

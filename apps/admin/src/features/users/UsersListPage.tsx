@@ -1,30 +1,33 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Search,
-  ShieldCheck,
-  User as UserIcon,
-} from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 
 import { Button, Input } from "@yupay/ui";
 
-import { PageHeader } from "@/components/PageHeader";
 import { DataTable, type Column } from "@/components/DataTable";
-import { ApiError, api, apiGet } from "@/lib/api";
+import { PageHeader } from "@/components/PageHeader";
+import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
 import type { UserAdminListOut, UserAdminOut } from "./types";
 
 const PAGE_SIZE = 50;
 
+/**
+ * Users list — opening a row jumps straight to Customer 360 (`/customers/:id`),
+ * where the full profile, recent activity, wallet, and role management live.
+ *
+ * Previously a row click opened a heavy drawer that duplicated half of the
+ * Customer 360 page; that drawer is gone. The list keeps its compact columns
+ * (avatar + name, Telegram link, current roles, locale, sign-up date) so an
+ * operator can scan-and-filter before clicking through.
+ */
 export function UsersListPage() {
-  const qc = useQueryClient();
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
   const [offset, setOffset] = useState(0);
-  const [selected, setSelected] = useState<UserAdminOut | null>(null);
 
   // Tiny debounce so the table doesn't fire a request on every keystroke.
   useDebounce(search, 250, (v) => {
@@ -40,22 +43,6 @@ export function UsersListPage() {
       params.set("limit", String(PAGE_SIZE));
       params.set("offset", String(offset));
       return apiGet<UserAdminListOut>(`/api/v1/admin/users?${params.toString()}`);
-    },
-  });
-
-  const setRoles = useMutation<
-    UserAdminOut,
-    ApiError,
-    { id: string; roles: string[] }
-  >({
-    mutationFn: ({ id, roles }) =>
-      api<UserAdminOut>(`/api/v1/admin/users/${id}/roles`, {
-        method: "PATCH",
-        body: JSON.stringify({ roles }),
-      }),
-    onSuccess: (updated) => {
-      void qc.invalidateQueries({ queryKey: ["admin", "users"] });
-      if (selected?.id === updated.id) setSelected(updated);
     },
   });
 
@@ -187,7 +174,7 @@ export function UsersListPage() {
         rows={rows}
         columns={columns}
         rowKey={(u) => u.id}
-        onRowClick={(u) => setSelected(u)}
+        onRowClick={(u) => { void navigate(`/customers/${u.id}`); }}
         empty={debounced ? "Под этот поиск пользователей нет." : "Пока никто не регистрировался."}
       />
 
@@ -198,168 +185,29 @@ export function UsersListPage() {
           </span>
           <div className="flex gap-2">
             <Button
-              variant="ghost"
+              variant="secondary"
               size="sm"
               disabled={offset === 0}
               onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+              aria-label="Предыдущая страница"
             >
-              <ChevronLeft className="size-4" />
+              <ChevronLeft className="size-4" aria-hidden />
               Назад
             </Button>
             <Button
-              variant="ghost"
+              variant="secondary"
               size="sm"
               disabled={showingTo >= total}
               onClick={() => setOffset(offset + PAGE_SIZE)}
+              aria-label="Следующая страница"
             >
               Вперёд
-              <ChevronRight className="size-4" />
+              <ChevronRight className="size-4" aria-hidden />
             </Button>
           </div>
         </div>
       )}
-
-      {selected && (
-        <UserDetailsDrawer
-          user={selected}
-          onClose={() => setSelected(null)}
-          onToggleAdmin={(next) =>
-            setRoles.mutate({
-              id: selected.id,
-              roles: next ? [...new Set([...selected.roles, "admin"])] : selected.roles.filter((r) => r !== "admin"),
-            })
-          }
-          pending={setRoles.isPending}
-        />
-      )}
     </div>
-  );
-}
-
-function UserDetailsDrawer({
-  user,
-  onClose,
-  onToggleAdmin,
-  pending,
-}: {
-  user: UserAdminOut;
-  onClose: () => void;
-  onToggleAdmin: (next: boolean) => void;
-  pending: boolean;
-}) {
-  const isAdmin = user.roles.includes("admin");
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-lg rounded-t-2xl sm:rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-default)] p-5 space-y-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header className="flex items-center gap-3">
-          {user.photo_url ? (
-            <img
-              src={user.photo_url}
-              alt=""
-              className="size-12 rounded-full object-cover border border-[var(--border-default)]"
-            />
-          ) : (
-            <div className="size-12 rounded-full flex items-center justify-center bg-[var(--bg-muted)] text-sm font-bold text-[var(--text-secondary)]">
-              {initials(user.display_name)}
-            </div>
-          )}
-          <div className="min-w-0">
-            <h2 className="font-semibold truncate">
-              {user.display_name || user.email || user.id.slice(0, 8)}
-            </h2>
-            <code className="block text-xs text-[var(--text-secondary)] truncate">
-              {user.id}
-            </code>
-          </div>
-        </header>
-
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-          <Row label="Email" value={user.email ?? "—"} />
-          <Row label="Локаль" value={user.locale} mono />
-          <Row label="Зарегистрирован" value={formatDateTime(user.created_at)} />
-          <Row label="Последнее обновление" value={formatDateTime(user.updated_at)} />
-          {user.telegram_link && (
-            <>
-              <Row
-                label="Telegram"
-                value={
-                  user.telegram_link.tg_username
-                    ? `@${user.telegram_link.tg_username}`
-                    : "—"
-                }
-              />
-              <Row
-                label="tg_user_id"
-                value={String(user.telegram_link.tg_user_id)}
-                mono
-              />
-              <Row
-                label="Premium"
-                value={user.telegram_link.is_premium ? "да" : "нет"}
-              />
-              <Row
-                label="Последний вход"
-                value={formatDateTime(user.telegram_link.last_seen_at)}
-              />
-            </>
-          )}
-        </dl>
-
-        <section className="rounded-lg border border-[var(--border-default)] p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="size-4 text-[var(--warning)]" />
-              <span className="text-sm font-medium">Админ-доступ</span>
-            </div>
-            <Button
-              size="sm"
-              variant={isAdmin ? "danger" : "primary"}
-              disabled={pending}
-              onClick={() => {
-                const action = isAdmin ? "снять админ-роль" : "выдать админ-роль";
-                if (confirm(`Точно ${action} у пользователя ${user.display_name ?? user.id.slice(0, 8)}?`)) {
-                  onToggleAdmin(!isAdmin);
-                }
-              }}
-            >
-              {pending ? "Сохраняем…" : isAdmin ? "Снять админа" : "Выдать админа"}
-            </Button>
-          </div>
-          <p className="text-xs text-[var(--text-secondary)]">
-            Админ-роль даёт доступ ко всем `/admin/*` эндпоинтам, включая денежные.
-          </p>
-        </section>
-
-        <footer className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>
-            Закрыть
-          </Button>
-        </footer>
-      </div>
-    </div>
-  );
-}
-
-function Row({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
-  return (
-    <>
-      <dt className="text-xs text-[var(--text-secondary)]">{label}</dt>
-      <dd className={mono ? "font-mono text-xs" : "text-sm"}>{value}</dd>
-    </>
   );
 }
 
@@ -375,23 +223,9 @@ function initials(name: string | null): string {
   );
 }
 
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString("ru", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 function useDebounce<T>(value: T, delayMs: number, callback: (v: T) => void): void {
   useEffect(() => {
     const id = setTimeout(() => callback(value), delayMs);
     return () => clearTimeout(id);
   }, [value, delayMs, callback]);
 }
-
-// Tiny visual import — kept for tree-shaking-friendly icon set.
-const _icons = { UserIcon };
-void _icons;
