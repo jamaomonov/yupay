@@ -347,7 +347,7 @@ function StatCard({
       ? "text-[var(--danger)]"
       : "text-[var(--text-primary)]";
   return (
-    <div className="rounded-lg border bg-[var(--bg-surface)] p-4">
+    <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
       <div className={`text-2xl font-semibold ${valueCls}`}>{value}</div>
       <div className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">
         {label}

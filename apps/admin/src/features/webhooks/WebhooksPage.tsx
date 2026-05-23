@@ -213,7 +213,7 @@ export function WebhooksPage() {
 
 function PayloadPreview({ row }: { row: WebhookOut }) {
   return (
-    <article className="mt-4 rounded-lg border bg-[var(--bg-surface)] p-4 text-sm">
+    <article className="mt-4 rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4 text-sm">
       <header className="mb-2 flex items-baseline justify-between">
         <h3 className="font-semibold">
           {row.provider} · {row.external_event_id}
@@ -241,7 +241,7 @@ function StatCard({
   const valueCls =
     tone === "warn" ? "text-[var(--danger)]" : "text-[var(--text-primary)]";
   return (
-    <div className="rounded-lg border bg-[var(--bg-surface)] p-4">
+    <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
       <div className={`text-2xl font-semibold ${valueCls}`}>{value}</div>
       <div className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">
         {label}

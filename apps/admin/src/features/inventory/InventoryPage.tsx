@@ -188,7 +188,7 @@ export function InventoryPage() {
       </section>
 
       {skuId && (
-        <section className="mb-6 rounded-lg border bg-[var(--bg-surface)] p-4">
+        <section className="mb-6 rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
           <h2 className="mb-2 text-sm font-semibold">Загрузить коды</h2>
           <p className="mb-2 text-xs text-[var(--text-secondary)]">
             По одному коду в строке (или через запятую / пробел). Дубли отсеются
@@ -244,7 +244,7 @@ export function InventoryPage() {
       )}
 
       {!skuId && (
-        <div className="rounded-lg border bg-[var(--bg-surface)] p-10 text-center text-sm text-[var(--text-secondary)]">
+        <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-10 text-center text-sm text-[var(--text-secondary)]">
           Выбери SKU, чтобы посмотреть счётчики и список кодов.
         </div>
       )}
@@ -260,7 +260,7 @@ function CountsCard({ counts }: { counts: SkuCountsOut }) {
     { label: "Воид", value: counts.voided, tone: "text-[var(--text-secondary)]" },
   ];
   return (
-    <div className="grid grid-cols-4 gap-2 rounded-lg border bg-[var(--bg-surface)] p-4">
+    <div className="grid grid-cols-4 gap-2 rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
       {cells.map((c) => (
         <div key={c.label} className="text-center">
           <div className={`text-2xl font-semibold ${c.tone}`}>{c.value}</div>

@@ -212,7 +212,7 @@ export function SourcingPage() {
         description="Правила маршрутизации: где брать товар — из склада или у поставщика."
       />
 
-      <section className="mb-6 rounded-lg border bg-[var(--bg-surface)] p-4">
+      <section className="mb-6 rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
         <h2 className="mb-3 text-sm font-semibold">Назначить / изменить правило</h2>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div>
