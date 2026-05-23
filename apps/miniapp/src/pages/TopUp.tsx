@@ -13,6 +13,7 @@ import {
   RotateCcw,
   Send,
   ShieldCheck,
+  Wallet as WalletIcon,
   Zap,
 } from "lucide-react";
 
@@ -31,6 +32,7 @@ import {
 } from "@/lib/catalog";
 import { useDisplayCurrency } from "@/lib/currency";
 import { useAvailableProviders, useCheckout } from "@/lib/orders";
+import { formatBalance, groupBalancesByCurrency, useWallet } from "@/lib/wallet";
 import {
   forgetFulfillment,
   getRecentFulfillment,
@@ -84,6 +86,12 @@ const BOT_USERNAME = (
 ).replace(/^@/, "");
 const TELEGRAM_DEEP_LINK = BOT_USERNAME ? `https://t.me/${BOT_USERNAME}` : null;
 
+/** Internal sentinel for "pay from wallet balance". It is *not* a payment
+ *  provider on the backend yet — submit short-circuits to a toast until the
+ *  WalletGateway lands. Keeping it in the method list lets the UI surface the
+ *  option (with proper enabled/disabled state) before the server flow is in. */
+const WALLET_METHOD_ID = "wallet";
+
 const PROVIDER_BY_METHOD: Record<string, string> = {
   mock: "mock",
   card: "click",
@@ -133,6 +141,85 @@ function Step({ n, title, sub }: { n: number; title: string; sub?: string }) {
   );
 }
 
+// ─── Wallet payment option ────────────────────────────────────────────────────
+function WalletPayOption({
+  active,
+  enough,
+  loading,
+  balance,
+  shortfall,
+  currency,
+  onSelect,
+}: {
+  active: boolean;
+  enough: boolean;
+  loading: boolean;
+  balance: number | null;
+  shortfall: number;
+  currency: string;
+  onSelect: () => void;
+}) {
+  const disabled = !loading && !enough;
+  return (
+    <button
+      type="button"
+      onClick={disabled ? undefined : onSelect}
+      disabled={disabled}
+      aria-disabled={disabled}
+      className="w-full mb-2 rounded-2xl p-3.5 flex items-center gap-3 transition-all duration-150 disabled:cursor-not-allowed"
+      style={{
+        background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
+        border: active
+          ? "1.5px solid hsl(var(--primary) / 0.8)"
+          : "1px solid hsl(var(--border))",
+        opacity: disabled ? 0.6 : 1,
+      }}
+      data-testid="btn-pay-wallet"
+    >
+      <span
+        className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+        style={{
+          background: active
+            ? "hsl(var(--primary) / 0.18)"
+            : "hsl(var(--surface-3))",
+          color: active ? "hsl(var(--primary))" : "rgba(255,255,255,0.6)",
+        }}
+        aria-hidden="true"
+      >
+        <WalletIcon size={18} />
+      </span>
+      <span className="min-w-0 flex-1 text-left">
+        <span className="block text-white font-bold text-sm">
+          Оплата с баланса
+        </span>
+        <span
+          className="block text-[12px] mt-0.5"
+          style={{
+            color: disabled
+              ? "rgb(252, 165, 165)"
+              : "rgba(255,255,255,0.55)",
+          }}
+        >
+          {loading
+            ? "Загружаем баланс…"
+            : disabled
+              ? `Не хватает ${formatBalance(shortfall, currency)}`
+              : `На счёте ${formatBalance(balance ?? 0, currency)}`}
+        </span>
+      </span>
+      {active && !disabled && (
+        <span
+          className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+          style={{ background: "hsl(var(--primary))" }}
+          aria-hidden="true"
+        >
+          <Check size={11} strokeWidth={3} className="text-black" />
+        </span>
+      )}
+    </button>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function TopUp() {
   const { gameId } = useParams();
@@ -176,10 +263,25 @@ export default function TopUp() {
     return new Set(providersQuery.data);
   }, [providersQuery.data]);
   const isMethodAvailable = (methodId: string): boolean => {
+    // Wallet eligibility is computed below from the user's balance — the
+    // payment-provider list on the server does not know about it.
+    if (methodId === WALLET_METHOD_ID) return true;
     if (liveProviderSet === null) return true;
     const provider = PROVIDER_BY_METHOD[methodId];
     return provider !== undefined && liveProviderSet.has(provider);
   };
+
+  // Wallet balance in the SKU's display currency. ``finalPrice`` is set
+  // further down, so the actual sufficiency check happens after that — we
+  // only build the maps here.
+  const walletQuery = useWallet();
+  const walletByCurrency = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const g of groupBalancesByCurrency(walletQuery.data ?? [])) {
+      map.set(g.currency, g.amount);
+    }
+    return map;
+  }, [walletQuery.data]);
   // Checkout requires Telegram initData. Detected once at mount — re-running
   // on every render would let an authenticated user navigate-and-render with
   // a stale answer if their session was just rebuilt.
@@ -256,6 +358,20 @@ export default function TopUp() {
   const priceCode = activePkg?.priceCode ?? currency;
   const finalPrice = activePkg?.price ?? 0;
 
+  // Wallet sufficiency check + nicely-formatted shortfall message for the
+  // disabled-state copy. ``walletBalance === null`` means we don't have
+  // wallet data yet — render the option as enabled-but-uncertain so the
+  // user doesn't see "недостаточно" while we're still loading the balance.
+  const walletBalance = walletQuery.data ? (walletByCurrency.get(priceCode) ?? 0) : null;
+  const walletEnough =
+    walletBalance === null
+      ? true // optimistic during load — submit will re-check
+      : walletBalance >= finalPrice;
+  const walletShortfall =
+    walletBalance === null || walletEnough
+      ? 0
+      : finalPrice - walletBalance;
+
   const accountRequired = requiredFields.length > 0;
   const missingFieldKey = requiredFields.find((f) => {
     if (!f.required) return false;
@@ -300,6 +416,24 @@ export default function TopUp() {
         title: "Способ оплаты недоступен",
         description: "Этот метод временно отключён. Выберите другой.",
         variant: "destructive",
+      });
+      return;
+    }
+    if (paymentMethod === WALLET_METHOD_ID) {
+      if (!walletEnough) {
+        toast({
+          title: "На балансе недостаточно",
+          description: `Не хватает ${formatBalance(walletShortfall, priceCode)}. Пополни кошелёк или выбери другой способ.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      // Backend WalletGateway is not deployed yet — see the wallet-pay
+      // task. We intentionally do not POST /orders for this branch so
+      // we don't leave a half-paid order in the system.
+      toast({
+        title: "Оплата с баланса скоро",
+        description: "Подключаем wallet-checkout. Пока выбери другой способ.",
       });
       return;
     }
@@ -589,6 +723,19 @@ export default function TopUp() {
               n={accountRequired ? 3 : 2}
               title="Способ оплаты"
               sub="Безопасно, без передачи карт"
+            />
+
+            {/* Wallet — separate full-width card on top because it's the
+                cheapest option when funded, and because the disabled copy
+                ("не хватает X") needs more room than a 4-col chip. */}
+            <WalletPayOption
+              active={paymentMethod === WALLET_METHOD_ID}
+              enough={walletEnough}
+              loading={walletQuery.isPending}
+              balance={walletBalance}
+              shortfall={walletShortfall}
+              currency={priceCode}
+              onSelect={() => { setPaymentMethod(WALLET_METHOD_ID); }}
             />
 
             <div className="grid grid-cols-4 gap-2 mb-3">
