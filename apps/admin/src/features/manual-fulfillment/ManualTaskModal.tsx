@@ -20,6 +20,7 @@ import { X } from "lucide-react";
 
 import { Button, Input } from "@yupay/ui";
 
+import { Field } from "@/components/Field";
 import { ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { useDialog } from "@/lib/useDialog";
@@ -252,8 +253,8 @@ function ContextBlock({
   return (
     <section className="space-y-3 border-b px-4 py-3 text-sm">
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Заказ" value={task.order_id} mono />
-        <Field
+        <KeyValue label="Заказ" value={task.order_id} mono />
+        <KeyValue
           label="Создан"
           value={
             order
@@ -266,9 +267,9 @@ function ContextBlock({
               : "…"
           }
         />
-        <Field label="Товар" value={headline} />
-        <Field label="Клиент" value={customer} />
-        <Field
+        <KeyValue label="Товар" value={headline} />
+        <KeyValue label="Клиент" value={customer} />
+        <KeyValue
           label="Сумма"
           value={
             order
@@ -278,7 +279,7 @@ function ContextBlock({
               : "—"
           }
         />
-        <Field label="Кол-во" value={item ? String(item.qty) : "—"} />
+        <KeyValue label="Кол-во" value={item ? String(item.qty) : "—"} />
       </div>
 
       <div>
@@ -302,7 +303,7 @@ function ContextBlock({
   );
 }
 
-function Field({
+function KeyValue({
   label,
   value,
   mono,
@@ -556,34 +557,43 @@ function FailForm({
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
-      <FormField label="Причина (видна в журнале заказа)">
-        <Input
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          placeholder="нет в наличии / аккаунт заблокирован / …"
-          autoFocus
-        />
-      </FormField>
+      <Field
+        label="Причина (видна в журнале заказа)"
+        error={localError ?? undefined}
+        required
+      >
+        {({ inputProps }) => (
+          <Input
+            {...inputProps}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="нет в наличии / аккаунт заблокирован / …"
+            autoFocus
+          />
+        )}
+      </Field>
 
-      <FormField label="Внутренняя заметка (не видна клиенту)">
-        <textarea
-          value={adminNote}
-          onChange={(e) => setAdminNote(e.target.value)}
-          className="min-h-20 w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 py-2 text-sm"
-        />
-      </FormField>
+      <Field label="Внутренняя заметка (не видна клиенту)">
+        {({ inputProps }) => (
+          <textarea
+            {...inputProps}
+            value={adminNote}
+            onChange={(e) => setAdminNote(e.target.value)}
+            className="min-h-20 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 py-2 text-sm text-[--text-primary] focus-visible:outline-none focus-visible:border-[--accent] focus-visible:ring-2 focus-visible:ring-[--accent]/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg-surface]"
+          />
+        )}
+      </Field>
 
-      <p className="rounded-md border border-[--color-border] bg-[--color-subtle]/40 p-3 text-xs text-[--color-muted]">
+      <p className="rounded-md border border-[--border-default] bg-[--bg-muted] p-3 text-xs text-[--text-secondary]">
         Заказ останется в статусе «в работе». Возврат денег инициируется
         отдельно в разделе «Платежи» → «Refund», чтобы выдача и возврат
         оставались под раздельным контролем.
       </p>
 
-      {localError && (
-        <p className="text-sm text-[--color-danger]">{localError}</p>
-      )}
       {error && (
-        <p className="text-sm text-[--color-danger]">{describeError(error)}</p>
+        <p className="text-sm text-[--danger-fg]" role="alert">
+          {describeError(error)}
+        </p>
       )}
 
       <div className="flex justify-end gap-2">
@@ -595,6 +605,10 @@ function FailForm({
   );
 }
 
+// CompleteForm still uses the legacy FormField wrapper because it has 6+ inputs
+// that switch shape per ``artifact_kind`` — porting those onto <Field> needs a
+// design pass, not a mechanical rewrite. Style tokens updated to Dim Slate so
+// it matches the rest of the modal.
 function FormField({
   label,
   children,
@@ -604,7 +618,9 @@ function FormField({
 }) {
   return (
     <label className="block">
-      <span className="text-xs font-medium uppercase text-[--color-muted]">{label}</span>
+      <span className="text-xs font-medium uppercase tracking-wide text-[--text-secondary]">
+        {label}
+      </span>
       <div className="mt-1">{children}</div>
     </label>
   );
