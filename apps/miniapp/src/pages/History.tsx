@@ -177,7 +177,6 @@ function OrdersTab() {
   const ordersQuery = useMyOrders();
   const orders = ordersQuery.data ?? [];
   const rows: HistoryRow[] = orders.map(orderToHistoryRow);
-  const currency = rows[0]?.currency ?? "USD";
 
   const grouped = rows.reduce<Record<string, HistoryRow[]>>((acc, tx) => {
     const key = monthYearKey(tx.raw.created_at);
@@ -219,12 +218,6 @@ function OrdersTab() {
                 {monthYear}
               </span>
               <div className="flex-1 h-px bg-border" />
-              <span className="text-xs text-muted-foreground">
-                {txs.reduce((s, t) => s + t.amount, 0).toLocaleString("ru", {
-                  maximumFractionDigits: 2,
-                })}{" "}
-                {txs[0]?.currency ?? currency}
-              </span>
             </div>
 
             {txs.map((tx, index) => (
