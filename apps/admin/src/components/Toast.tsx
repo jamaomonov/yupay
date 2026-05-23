@@ -75,20 +75,32 @@ const ICONS: Record<ToastTone, typeof CheckCircle2> = {
   info: Info,
 };
 
-const SURFACES: Record<ToastTone, string> = {
-  success: "border-[var(--success-fg)]/40 bg-[var(--success-soft)] text-[var(--success-fg)]",
-  error: "border-[var(--danger-fg)]/40 bg-[var(--danger-soft)] text-[var(--danger-fg)]",
-  info: "border-[var(--info-fg)]/40 bg-[var(--info-soft)] text-[var(--info-fg)]",
+// Each toast paints a solid 4-px bar on its left edge in the semantic colour
+// (success/danger/info). The surface stays neutral (--bg-surface) — pastel
+// backgrounds across the whole toast competed with the data tables behind.
+const BAR_TONE: Record<ToastTone, string> = {
+  success: "bg-[var(--success)]",
+  error: "bg-[var(--danger)]",
+  info: "bg-[var(--info)]",
+};
+
+const ICON_TONE: Record<ToastTone, string> = {
+  success: "text-[var(--success-fg)]",
+  error: "text-[var(--danger-fg)]",
+  info: "text-[var(--info-fg)]",
 };
 
 export function ToastRegion() {
   const items = useToastStore((s) => s.items);
   const dismiss = useToastStore((s) => s.dismiss);
   return (
+    // Top-right under the sticky topbar — close to where the action that
+    // triggered the toast usually lives, and never overlaps Pagination at
+    // the bottom of a long table.
     <div
       aria-live="polite"
       aria-atomic="false"
-      className="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-full max-w-sm flex-col gap-2"
+      className="pointer-events-none fixed right-4 top-[calc(var(--topbar-height)+0.75rem)] z-[60] flex w-full max-w-sm flex-col gap-2"
     >
       {items.map((t) => (
         <ToastCard key={t.id} toast={t} onDismiss={() => { dismiss(t.id); }} />
@@ -107,18 +119,22 @@ function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
   return (
     <div
       role={toast.tone === "error" ? "alert" : "status"}
-      className={[
-        "pointer-events-auto flex items-start gap-3 rounded-lg border px-4 py-3 text-sm shadow-[var(--shadow-md)]",
-        SURFACES[toast.tone],
-      ].join(" ")}
+      className="pointer-events-auto relative flex items-start gap-3 overflow-hidden rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] py-3 pl-4 pr-3 text-sm text-[var(--text-primary)] shadow-[var(--shadow-md)]"
     >
-      <Icon className="mt-0.5 size-4 flex-shrink-0" aria-hidden />
+      <span
+        aria-hidden
+        className={`absolute inset-y-0 left-0 w-1 ${BAR_TONE[toast.tone]}`}
+      />
+      <Icon
+        className={`mt-0.5 size-4 flex-shrink-0 ${ICON_TONE[toast.tone]}`}
+        aria-hidden
+      />
       <p className="min-w-0 flex-1 break-words">{toast.message}</p>
       <button
         type="button"
         onClick={onDismiss}
         aria-label="Закрыть уведомление"
-        className="-mr-1 grid size-6 flex-shrink-0 place-items-center rounded text-current opacity-60 hover:opacity-100 hover:bg-black/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+        className="-mr-1 grid size-6 flex-shrink-0 place-items-center rounded text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)]"
       >
         <X className="size-3.5" aria-hidden />
       </button>
