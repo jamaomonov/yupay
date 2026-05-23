@@ -41,29 +41,38 @@ export function Header() {
         </span>
       </Link>
 
-      {/* Balance pill + top-up + avatar */}
+      {/* Balance pill + top-up + avatar.
+          The balance pill and the + button used to be a single Link to
+          /wallet — operators kept clicking + expecting the top-up screen
+          and landing on the balance overview instead. They're now two
+          adjacent links so the + is a one-tap shortcut to /wallet/topup. */}
       <div className="flex items-center gap-2">
-        <Link
-          href="/wallet"
+        <div
           className="flex items-stretch rounded-full border border-border bg-card overflow-hidden h-9"
           data-testid="header-wallet"
         >
-          <div className="flex items-center gap-1.5 pl-3 pr-2">
+          <Link
+            href="/wallet"
+            className="flex items-center gap-1.5 pl-3 pr-2"
+            aria-label="Открыть кошелёк"
+          >
             <WalletIcon size={12} className="text-white/40" />
             <span className="text-white font-bold text-sm tabular-nums leading-none">
               {user && balance.ready
                 ? formatBalance(balance.amount, balance.currency)
                 : "—"}
             </span>
-          </div>
-          <div
+          </Link>
+          <Link
+            href="/wallet/topup"
             className="flex items-center justify-center w-9 transition-colors"
             style={{ background: "hsl(var(--primary))", color: "#000" }}
             aria-label="Пополнить"
+            data-testid="header-topup"
           >
             <Plus size={16} strokeWidth={3} />
-          </div>
-        </Link>
+          </Link>
+        </div>
 
         <Link href="/settings" aria-label="Профиль">
           <Avatar className="w-9 h-9 border border-border">

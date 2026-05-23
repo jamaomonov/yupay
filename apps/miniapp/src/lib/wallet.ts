@@ -56,6 +56,18 @@ export const ACCOUNT_META: Record<
   },
 };
 
+/**
+ * Account kinds rendered as chips on the wallet page.
+ *
+ * Cashback and promo credit are hidden from the customer-facing UI until
+ * the matching earn / spend flows are live — they're tracked in the
+ * ledger but showing an inert ``0 USD`` chip just confused early users.
+ * The full list still lives in ``UserAccountKind`` so the history view
+ * keeps signing deltas correctly when those legs do move.
+ */
+export const VISIBLE_ACCOUNT_KINDS: UserAccountKind[] = ["user_wallet"];
+
+/** Full list including the currently-hidden kinds. Use for ledger logic. */
 export const ACCOUNT_ORDER: UserAccountKind[] = [
   "user_wallet",
   "user_cashback",
@@ -200,7 +212,12 @@ export function useWalletTransactions(limit = 20) {
 }
 
 /**
- * Sum the three user-side accounts converted into ``target`` via ``rate``.
+ * Sum the visible user-side accounts converted into ``target`` via ``rate``.
+ *
+ * "Visible" means: kinds in :data:`VISIBLE_ACCOUNT_KINDS`. While cashback
+ * and promo credit are hidden the header pill must reflect only what the
+ * customer can actually see; otherwise the chip shows 5 USD while the
+ * page below shows 0 USD and the discrepancy looks like a bug.
  *
  * All wallet accounts currently store USD natively, so ``rate`` is the
  * USD→target multiplier (1 for USD/USDT). When ``rate === null`` we treat
@@ -216,7 +233,10 @@ export function totalDisplayBalance(
     return { amount: 0, currency: target, ready: false };
   }
   const usd = balances.reduce(
-    (sum, b) => (b.currency === "USD" ? sum + b.amount : sum),
+    (sum, b) =>
+      b.currency === "USD" && VISIBLE_ACCOUNT_KINDS.includes(b.kind)
+        ? sum + b.amount
+        : sum,
     0,
   );
   return { amount: usd * rate, currency: target, ready: true };

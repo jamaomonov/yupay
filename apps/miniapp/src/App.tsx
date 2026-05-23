@@ -12,6 +12,7 @@ import TopUp from "@/pages/TopUp";
 import History from "@/pages/History";
 import Settings from "@/pages/Settings";
 import Wallet from "@/pages/Wallet";
+import WalletTopUp from "@/pages/WalletTopUp";
 import OrderSuccess from "@/pages/OrderSuccess";
 import { useEffect } from "react";
 
@@ -30,6 +31,7 @@ function Router() {
         <Route path="/topup/:gameId" component={TopUp} />
         <Route path="/order/:id" component={OrderSuccess} />
         <Route path="/wallet" component={Wallet} />
+        <Route path="/wallet/topup" component={WalletTopUp} />
         <Route path="/history" component={History} />
         <Route path="/settings" component={Settings} />
         <Route component={NotFound} />
