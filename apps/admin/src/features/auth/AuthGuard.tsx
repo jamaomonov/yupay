@@ -16,7 +16,7 @@ export function AuthGuard() {
 
   if (meQuery.isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-[--text-secondary]">
+      <div className="flex min-h-screen items-center justify-center text-[var(--text-secondary)]">
         Загрузка…
       </div>
     );
@@ -31,8 +31,8 @@ export function AuthGuard() {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-6">
         <h1 className="text-3xl font-semibold">403</h1>
-        <p className="text-[--text-secondary]">У этого аккаунта нет роли admin.</p>
-        <p className="text-sm text-[--text-secondary]">
+        <p className="text-[var(--text-secondary)]">У этого аккаунта нет роли admin.</p>
+        <p className="text-sm text-[var(--text-secondary)]">
           Попроси оператора выполнить <code>grant_admin --tg-id …</code>.
         </p>
       </main>

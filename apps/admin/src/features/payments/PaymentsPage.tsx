@@ -113,7 +113,7 @@ export function PaymentsPage() {
       render: (p) => (
         <div className="flex flex-col font-mono text-xs">
           <span>{p.id.slice(0, 8)}…</span>
-          <span className="text-[--text-secondary]">order {p.order_id.slice(0, 8)}…</span>
+          <span className="text-[var(--text-secondary)]">order {p.order_id.slice(0, 8)}…</span>
         </div>
       ),
     },
@@ -226,7 +226,7 @@ export function PaymentsPage() {
 
       <section className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
         <div>
-          <label className="text-xs uppercase text-[--text-secondary]">Order ID</label>
+          <label className="text-xs uppercase text-[var(--text-secondary)]">Order ID</label>
           <Input
             value={orderId}
             onChange={(e) => {
@@ -238,7 +238,7 @@ export function PaymentsPage() {
           />
         </div>
         <div>
-          <label className="text-xs uppercase text-[--text-secondary]">
+          <label className="text-xs uppercase text-[var(--text-secondary)]">
             Провайдер
           </label>
           <select
@@ -247,7 +247,7 @@ export function PaymentsPage() {
               setProvider(e.target.value);
               setOffset(0);
             }}
-            className="mt-1 h-10 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm"
+            className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
           >
             {PROVIDERS.map((p) => (
               <option key={p} value={p}>
@@ -257,14 +257,14 @@ export function PaymentsPage() {
           </select>
         </div>
         <div>
-          <label className="text-xs uppercase text-[--text-secondary]">Статус</label>
+          <label className="text-xs uppercase text-[var(--text-secondary)]">Статус</label>
           <select
             value={status}
             onChange={(e) => {
               setStatus(e.target.value as PaymentStatus | "");
               setOffset(0);
             }}
-            className="mt-1 h-10 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm"
+            className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
           >
             {STATUSES.map((s) => (
               <option key={s.value} value={s.value}>
@@ -294,13 +294,13 @@ export function PaymentsPage() {
 
 function StatusBadge({ status }: { status: PaymentStatus }) {
   const map: Record<PaymentStatus, string> = {
-    pending: "bg-[--bg-muted] text-[--text-secondary]",
-    requires_action: "bg-[--warning-soft] text-[--warning-fg]",
-    succeeded: "bg-[--success-soft] text-[--success-fg]",
-    failed: "bg-[--danger-soft] text-[--danger-fg]",
-    cancelled: "bg-[--bg-muted] text-[--text-secondary]",
-    refunded: "bg-[--info-soft] text-[--info-fg]",
-    partially_refunded: "bg-[--info-soft] text-[--info-fg]",
+    pending: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
+    requires_action: "bg-[var(--warning-soft)] text-[var(--warning-fg)]",
+    succeeded: "bg-[var(--success-soft)] text-[var(--success-fg)]",
+    failed: "bg-[var(--danger-soft)] text-[var(--danger-fg)]",
+    cancelled: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
+    refunded: "bg-[var(--info-soft)] text-[var(--info-fg)]",
+    partially_refunded: "bg-[var(--info-soft)] text-[var(--info-fg)]",
   };
   return (
     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${map[status]}`}>

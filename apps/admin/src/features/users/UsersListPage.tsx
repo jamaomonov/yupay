@@ -74,7 +74,7 @@ export function UsersListPage() {
             <img
               src={u.photo_url}
               alt=""
-              className="size-9 rounded-full object-cover border border-[--border-default] flex-shrink-0"
+              className="size-9 rounded-full object-cover border border-[var(--border-default)] flex-shrink-0"
             />
           ) : (
             <div
@@ -91,7 +91,7 @@ export function UsersListPage() {
             <div className="font-medium truncate">
               {u.display_name || u.email || u.id.slice(0, 8)}
             </div>
-            <div className="text-xs text-[--text-secondary] truncate">
+            <div className="text-xs text-[var(--text-secondary)] truncate">
               {u.email ?? `id ${u.id.slice(0, 8)}…`}
             </div>
           </div>
@@ -105,13 +105,13 @@ export function UsersListPage() {
         u.telegram_link ? (
           <div className="flex flex-col text-xs">
             <code className="text-xs">@{u.telegram_link.tg_username ?? "—"}</code>
-            <span className="text-[--text-secondary]">
+            <span className="text-[var(--text-secondary)]">
               tg_id {u.telegram_link.tg_user_id}
               {u.telegram_link.is_premium ? " · prem" : ""}
             </span>
           </div>
         ) : (
-          <span className="text-xs text-[--text-secondary]">—</span>
+          <span className="text-xs text-[var(--text-secondary)]">—</span>
         ),
       className: "w-44",
     },
@@ -120,7 +120,7 @@ export function UsersListPage() {
       header: "Роли",
       render: (u) =>
         u.roles.length === 0 ? (
-          <span className="text-xs text-[--text-secondary]">user</span>
+          <span className="text-xs text-[var(--text-secondary)]">user</span>
         ) : (
           <div className="flex flex-wrap gap-1">
             {u.roles.map((r) => (
@@ -128,8 +128,8 @@ export function UsersListPage() {
                 key={r}
                 className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
                   r === "admin"
-                    ? "bg-[--warning-soft] text-[--warning-fg]"
-                    : "bg-[--bg-muted] text-[--text-secondary]"
+                    ? "bg-[var(--warning-soft)] text-[var(--warning-fg)]"
+                    : "bg-[var(--bg-muted)] text-[var(--text-secondary)]"
                 }`}
               >
                 {r}
@@ -167,7 +167,7 @@ export function UsersListPage() {
 
       <section className="mb-4">
         <div className="relative max-w-md">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[--text-secondary]" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--text-secondary)]" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -178,7 +178,7 @@ export function UsersListPage() {
       </section>
 
       {usersQuery.isError && (
-        <p className="text-sm text-[--danger] mb-3">
+        <p className="text-sm text-[var(--danger)] mb-3">
           Не удалось загрузить список.
         </p>
       )}
@@ -192,7 +192,7 @@ export function UsersListPage() {
       />
 
       {total > PAGE_SIZE && (
-        <div className="mt-4 flex items-center justify-between text-sm text-[--text-secondary]">
+        <div className="mt-4 flex items-center justify-between text-sm text-[var(--text-secondary)]">
           <span>
             {showingFrom}–{showingTo} из {total}
           </span>
@@ -254,7 +254,7 @@ function UserDetailsDrawer({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-t-2xl sm:rounded-2xl bg-[--bg-surface] border border-[--border-default] p-5 space-y-4"
+        className="w-full max-w-lg rounded-t-2xl sm:rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-default)] p-5 space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center gap-3">
@@ -262,10 +262,10 @@ function UserDetailsDrawer({
             <img
               src={user.photo_url}
               alt=""
-              className="size-12 rounded-full object-cover border border-[--border-default]"
+              className="size-12 rounded-full object-cover border border-[var(--border-default)]"
             />
           ) : (
-            <div className="size-12 rounded-full flex items-center justify-center bg-[--bg-muted] text-sm font-bold text-[--text-secondary]">
+            <div className="size-12 rounded-full flex items-center justify-center bg-[var(--bg-muted)] text-sm font-bold text-[var(--text-secondary)]">
               {initials(user.display_name)}
             </div>
           )}
@@ -273,7 +273,7 @@ function UserDetailsDrawer({
             <h2 className="font-semibold truncate">
               {user.display_name || user.email || user.id.slice(0, 8)}
             </h2>
-            <code className="block text-xs text-[--text-secondary] truncate">
+            <code className="block text-xs text-[var(--text-secondary)] truncate">
               {user.id}
             </code>
           </div>
@@ -311,10 +311,10 @@ function UserDetailsDrawer({
           )}
         </dl>
 
-        <section className="rounded-lg border border-[--border-default] p-3 space-y-2">
+        <section className="rounded-lg border border-[var(--border-default)] p-3 space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <ShieldCheck className="size-4 text-[--warning]" />
+              <ShieldCheck className="size-4 text-[var(--warning)]" />
               <span className="text-sm font-medium">Админ-доступ</span>
             </div>
             <Button
@@ -331,7 +331,7 @@ function UserDetailsDrawer({
               {pending ? "Сохраняем…" : isAdmin ? "Снять админа" : "Выдать админа"}
             </Button>
           </div>
-          <p className="text-xs text-[--text-secondary]">
+          <p className="text-xs text-[var(--text-secondary)]">
             Админ-роль даёт доступ ко всем `/admin/*` эндпоинтам, включая денежные.
           </p>
         </section>
@@ -357,7 +357,7 @@ function Row({
 }) {
   return (
     <>
-      <dt className="text-xs text-[--text-secondary]">{label}</dt>
+      <dt className="text-xs text-[var(--text-secondary)]">{label}</dt>
       <dd className={mono ? "font-mono text-xs" : "text-sm"}>{value}</dd>
     </>
   );

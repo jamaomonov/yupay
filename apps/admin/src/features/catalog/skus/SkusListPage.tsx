@@ -163,7 +163,7 @@ export function SkusListPage() {
 
       <section className="mb-5 flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-64">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[--text-secondary]" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--text-secondary)]" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -171,7 +171,7 @@ export function SkusListPage() {
             className="pl-9"
           />
         </div>
-        <label className="flex items-center gap-2 text-sm text-[--text-secondary]">
+        <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
           <input
             type="checkbox"
             checked={onlyInactive}
@@ -183,14 +183,14 @@ export function SkusListPage() {
       </section>
 
       {isLoading && (
-        <div className="rounded-lg border bg-[--bg-surface] p-10 text-center text-sm text-[--text-secondary]">
+        <div className="rounded-lg border bg-[var(--bg-surface)] p-10 text-center text-sm text-[var(--text-secondary)]">
           Загрузка…
         </div>
       )}
 
       {!isLoading && filtered.length === 0 && (
-        <div className="rounded-lg border bg-[--bg-surface] p-10 text-center">
-          <p className="text-sm text-[--text-secondary]">
+        <div className="rounded-lg border bg-[var(--bg-surface)] p-10 text-center">
+          <p className="text-sm text-[var(--text-secondary)]">
             {query.length > 0
               ? "Ничего не нашлось по этому запросу."
               : "SKU пока нет. Создай первый."}
@@ -235,7 +235,7 @@ function ProductGroup({
   const isEmpty = group.skus.length === 0;
 
   return (
-    <article className="overflow-hidden rounded-lg border bg-[--bg-surface]">
+    <article className="overflow-hidden rounded-lg border bg-[var(--bg-surface)]">
       <header
         className="flex flex-wrap items-baseline justify-between gap-3 border-b px-5 py-3"
         style={{
@@ -245,10 +245,10 @@ function ProductGroup({
         }}
       >
         <div className="flex items-baseline gap-2">
-          <span className="text-xs uppercase tracking-wide text-[--text-secondary]">
+          <span className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">
             {brandName || "—"}
           </span>
-          <span className="text-[--text-secondary]">›</span>
+          <span className="text-[var(--text-secondary)]">›</span>
           <h2 className="text-base font-semibold">
             <Link
               to={`/products/${group.product.id}`}
@@ -257,14 +257,14 @@ function ProductGroup({
               {productName || group.product.slug}
             </Link>
           </h2>
-          <code className="ml-2 text-xs text-[--text-secondary]">
+          <code className="ml-2 text-xs text-[var(--text-secondary)]">
             {group.product.slug}
           </code>
           <span
             className={`ml-2 rounded-full px-2 py-0.5 text-xs ${
               group.skus.length > 0
-                ? "bg-[--bg-surface] text-[--text-primary]"
-                : "bg-[--color-danger]/10 text-[--danger]"
+                ? "bg-[var(--bg-surface)] text-[var(--text-primary)]"
+                : "bg-[var(--color-danger)]/10 text-[var(--danger)]"
             }`}
           >
             {group.skus.length} SKU
@@ -284,13 +284,13 @@ function ProductGroup({
 
       {isEmpty ? (
         <div className="p-8 text-center">
-          <p className="text-sm text-[--text-secondary]">
+          <p className="text-sm text-[var(--text-secondary)]">
             Ни одного SKU. Добавь хотя бы один — без него продукт не продаётся.
           </p>
         </div>
       ) : (
         <table className="w-full text-sm">
-          <thead className="bg-[--bg-surface] text-xs uppercase text-[--text-secondary]">
+          <thead className="bg-[var(--bg-surface)] text-xs uppercase text-[var(--text-secondary)]">
             <tr>
               <th className="px-5 py-2 text-left font-medium">Номинал</th>
               <th className="px-3 py-2 text-left font-medium">Регион</th>
@@ -336,7 +336,7 @@ function SkuRow({
   const usd = Number.parseFloat(sku.price_usd);
   return (
     <tr
-      className={`group border-t transition-colors hover:bg-[--bg-muted]/60 ${
+      className={`group border-t transition-colors hover:bg-[var(--bg-muted)]/60 ${
         sku.active ? "" : "opacity-60"
       }`}
     >
@@ -344,7 +344,7 @@ function SkuRow({
         <span className="font-medium">{sku.denomination ?? "—"}</span>
       </td>
       <td className="px-3 py-2.5">
-        <span className="rounded-md bg-[--bg-muted] px-1.5 py-0.5 font-mono text-xs">
+        <span className="rounded-md bg-[var(--bg-muted)] px-1.5 py-0.5 font-mono text-xs">
           {sku.region ?? "—"}
         </span>
       </td>
@@ -356,13 +356,13 @@ function SkuRow({
       </td>
       <td className="px-3 py-2.5">
         {sku.price_overrides.length === 0 ? (
-          <span className="text-xs text-[--text-secondary]">—</span>
+          <span className="text-xs text-[var(--text-secondary)]">—</span>
         ) : (
           <div className="flex flex-wrap gap-1">
             {sku.price_overrides.map((o) => (
               <span
                 key={o.currency}
-                className="rounded-md border border-[--border-default] bg-[--bg-surface] px-1.5 py-0.5 font-mono text-[10px]"
+                className="rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-1.5 py-0.5 font-mono text-[10px]"
                 title={`${o.price} ${o.currency}`}
               >
                 {o.currency}
@@ -378,7 +378,7 @@ function SkuRow({
           disabled={disabled}
         />
       </td>
-      <td className="px-3 py-2.5 text-right font-mono text-xs text-[--text-secondary]">
+      <td className="px-3 py-2.5 text-right font-mono text-xs text-[var(--text-secondary)]">
         {sku.sort_order}
       </td>
       <td className="px-3 py-2.5 text-right">
@@ -403,7 +403,7 @@ function SkuRow({
             aria-label="Удалить"
             disabled={disabled}
           >
-            <Trash2 className="size-4 text-[--danger]" />
+            <Trash2 className="size-4 text-[var(--danger)]" />
           </Button>
         </div>
       </td>
@@ -429,8 +429,8 @@ function Toggle({
       disabled={disabled}
       className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
         checked
-          ? "bg-[--accent]"
-          : "bg-[--color-border]"
+          ? "bg-[var(--accent)]"
+          : "bg-[var(--color-border)]"
       } disabled:cursor-not-allowed disabled:opacity-50`}
     >
       <span
@@ -454,14 +454,14 @@ function StatCard({
   tone?: "default" | "warn" | "muted";
 }) {
   const valueCls = accent
-    ? "text-[--accent]"
+    ? "text-[var(--accent)]"
     : tone === "warn"
-      ? "text-[--danger]"
-      : "text-[--text-primary]";
+      ? "text-[var(--danger)]"
+      : "text-[var(--text-primary)]";
   return (
-    <div className="rounded-lg border bg-[--bg-surface] p-4">
+    <div className="rounded-lg border bg-[var(--bg-surface)] p-4">
       <div className={`text-2xl font-semibold ${valueCls}`}>{value}</div>
-      <div className="text-xs uppercase tracking-wide text-[--text-secondary]">
+      <div className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">
         {label}
       </div>
     </div>

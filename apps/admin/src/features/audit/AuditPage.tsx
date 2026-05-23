@@ -48,11 +48,11 @@ interface AuditListOut {
 }
 
 const SOURCES: { key: Source; label: string; icon: typeof Receipt; tone: string }[] = [
-  { key: "order_event", label: "Заказы", icon: Receipt, tone: "text-[--accent-soft-fg]" },
-  { key: "payment_attempt", label: "Платежи", icon: CreditCard, tone: "text-[--info-fg]" },
-  { key: "payment_webhook", label: "Webhooks", icon: Radio, tone: "text-[--warning]" },
-  { key: "fulfillment_attempt", label: "Fulfilment", icon: Truck, tone: "text-[--success-fg]" },
-  { key: "wallet_transaction", label: "Кошелёк", icon: Wallet, tone: "text-[--danger-fg]" },
+  { key: "order_event", label: "Заказы", icon: Receipt, tone: "text-[var(--accent-soft-fg)]" },
+  { key: "payment_attempt", label: "Платежи", icon: CreditCard, tone: "text-[var(--info-fg)]" },
+  { key: "payment_webhook", label: "Webhooks", icon: Radio, tone: "text-[var(--warning)]" },
+  { key: "fulfillment_attempt", label: "Fulfilment", icon: Truck, tone: "text-[var(--success-fg)]" },
+  { key: "wallet_transaction", label: "Кошелёк", icon: Wallet, tone: "text-[var(--danger-fg)]" },
 ];
 
 const SOURCE_META: Record<
@@ -136,10 +136,10 @@ export function AuditPage() {
               onClick={() => { setAdminOnlyParam(adminOnly ? "" : "true"); }}
               className={[
                 "inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--accent] focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg-base]",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-base)]",
                 adminOnly
-                  ? "border-[--accent] bg-[--bg-accent-soft] text-[--accent-soft-fg]"
-                  : "border-[--border-default] text-[--text-secondary] hover:bg-[--bg-muted]",
+                  ? "border-[var(--accent)] bg-[var(--bg-accent-soft)] text-[var(--accent-soft-fg)]"
+                  : "border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-muted)]",
               ].join(" ")}
               aria-pressed={adminOnly}
             >
@@ -176,7 +176,7 @@ export function AuditPage() {
 
       <section className="mb-5 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
-          <Filter className="size-4 text-[--text-secondary]" />
+          <Filter className="size-4 text-[var(--text-secondary)]" />
           {SOURCES.map((s) => {
             const on = enabled[s.key];
             const Icon = s.icon;
@@ -189,11 +189,11 @@ export function AuditPage() {
                 }
                 aria-pressed={on}
                 className={[
-                  "inline-flex items-center gap-1.5 rounded-full border border-[--border-default] px-3 py-1.5 text-xs font-medium transition-all",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--accent] focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg-base]",
+                  "inline-flex items-center gap-1.5 rounded-full border border-[var(--border-default)] px-3 py-1.5 text-xs font-medium transition-all",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-base)]",
                   on
-                    ? "bg-[--bg-muted] text-[--text-primary]"
-                    : "text-[--text-secondary] opacity-60 hover:opacity-100",
+                    ? "bg-[var(--bg-muted)] text-[var(--text-primary)]"
+                    : "text-[var(--text-secondary)] opacity-60 hover:opacity-100",
                 ].join(" ")}
               >
                 <Icon className={`size-3.5 ${on ? s.tone : ""}`} aria-hidden />
@@ -212,7 +212,7 @@ export function AuditPage() {
 
         <div className="flex flex-wrap gap-2">
           <div className="relative flex-1 min-w-48">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[--text-secondary]" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--text-secondary)]" />
             <Input
               value={actor}
               onChange={(e) => setActor(e.target.value)}
@@ -221,7 +221,7 @@ export function AuditPage() {
             />
           </div>
           <div className="relative flex-1 min-w-48">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[--text-secondary]" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--text-secondary)]" />
             <Input
               value={target}
               onChange={(e) => setTarget(e.target.value)}
@@ -232,7 +232,7 @@ export function AuditPage() {
           <select
             value={limit}
             onChange={(e) => setLimit(Number(e.target.value))}
-            className="h-10 rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm"
+            className="h-10 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
           >
             <option value={50}>50 событий</option>
             <option value={100}>100</option>
@@ -243,12 +243,12 @@ export function AuditPage() {
       </section>
 
       {q.isError && (
-        <p className="text-sm text-[--danger]">Ошибка загрузки.</p>
+        <p className="text-sm text-[var(--danger)]">Ошибка загрузки.</p>
       )}
 
       <div className="space-y-1">
         {rows.length === 0 && !q.isLoading && (
-          <div className="rounded-lg border border-dashed border-[--border-default] p-10 text-center text-sm text-[--text-secondary]">
+          <div className="rounded-lg border border-dashed border-[var(--border-default)] p-10 text-center text-sm text-[var(--text-secondary)]">
             События не найдены под текущие фильтры.
           </div>
         )}
@@ -262,7 +262,7 @@ export function AuditPage() {
         ))}
       </div>
 
-      <p className="mt-3 text-xs text-[--text-secondary]">
+      <p className="mt-3 text-xs text-[var(--text-secondary)]">
         Источники: ``order_events``, ``payment_attempts``,
         ``payment_webhooks``, ``fulfillment_attempts``, ``wallet_transactions``.
         Сортировка по timestamp. Авто-обновление каждые 15 сек.
@@ -294,10 +294,10 @@ function TimelineRow({
   // HTML and broke keyboard semantics. Now they are siblings inside a plain
   // article container.
   return (
-    <article className="rounded-lg border border-[--border-default] bg-[--bg-surface] transition-colors hover:bg-[--bg-surface-2]">
+    <article className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] transition-colors hover:bg-[var(--bg-surface-2)]">
       <div className="flex items-start gap-3 p-3 text-left">
         <span
-          className="mt-0.5 inline-flex size-7 flex-shrink-0 items-center justify-center rounded-full bg-[--bg-muted]"
+          className="mt-0.5 inline-flex size-7 flex-shrink-0 items-center justify-center rounded-full bg-[var(--bg-muted)]"
           title={meta.label}
         >
           <Icon className={`size-3.5 ${meta.tone}`} aria-hidden />
@@ -308,19 +308,19 @@ function TimelineRow({
             <StateIcon
               className={`size-3 ${
                 isError || isRejected
-                  ? "text-[--danger-fg]"
+                  ? "text-[var(--danger-fg)]"
                   : ok
-                    ? "text-[--success-fg]"
-                    : "text-[--text-secondary]"
+                    ? "text-[var(--success-fg)]"
+                    : "text-[var(--text-secondary)]"
               }`}
               aria-hidden
             />
-            <span className="text-xs text-[--text-secondary]">{formatTime(event.ts)}</span>
+            <span className="text-xs text-[var(--text-secondary)]">{formatTime(event.ts)}</span>
           </div>
-          <div className="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs text-[--text-secondary]">
+          <div className="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs text-[var(--text-secondary)]">
             {event.actor && (
               <span>
-                actor <code className="text-[--text-primary]">{event.actor}</code>
+                actor <code className="text-[var(--text-primary)]">{event.actor}</code>
               </span>
             )}
             {event.target_id && event.target_kind && (
@@ -337,7 +337,7 @@ function TimelineRow({
             onClick={onToggle}
             aria-expanded={expanded}
             aria-label={expanded ? "Свернуть payload" : "Раскрыть payload"}
-            className="grid size-7 flex-shrink-0 place-items-center rounded-md text-[--text-secondary] hover:bg-[--bg-muted] hover:text-[--text-primary] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--accent] focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg-surface]"
+            className="grid size-7 flex-shrink-0 place-items-center rounded-md text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)]"
           >
             {expanded ? (
               <ChevronUp className="size-4" aria-hidden />
@@ -348,7 +348,7 @@ function TimelineRow({
         )}
       </div>
       {expanded && Object.keys(event.payload).length > 0 && (
-        <pre className="mx-3 mb-3 whitespace-pre-wrap break-all rounded border border-[--border-default] bg-[--bg-muted] p-3 text-[10px] leading-relaxed text-[--text-secondary]">
+        <pre className="mx-3 mb-3 whitespace-pre-wrap break-all rounded border border-[var(--border-default)] bg-[var(--bg-muted)] p-3 text-[10px] leading-relaxed text-[var(--text-secondary)]">
           {JSON.stringify(event.payload, null, 2)}
         </pre>
       )}
@@ -362,13 +362,13 @@ function TargetLink({ kind, id }: { kind: string; id: string }) {
     return (
       <Link
         to={`/orders/${id}`}
-        className="font-mono text-[--accent] underline-offset-2 hover:underline"
+        className="font-mono text-[var(--accent)] underline-offset-2 hover:underline"
       >
         {shortened}
       </Link>
     );
   }
-  return <code className="text-[--text-primary]">{shortened}</code>;
+  return <code className="text-[var(--text-primary)]">{shortened}</code>;
 }
 
 function StatCard({
@@ -383,17 +383,17 @@ function StatCard({
   render?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg border bg-[--bg-surface] p-4">
+    <div className="rounded-lg border bg-[var(--bg-surface)] p-4">
       {render ?? (
         <div
           className={`text-2xl font-semibold ${
-            accent ? "text-[--accent]" : "text-[--text-primary]"
+            accent ? "text-[var(--accent)]" : "text-[var(--text-primary)]"
           }`}
         >
           {value ?? 0}
         </div>
       )}
-      <div className="mt-1 text-xs uppercase tracking-wide text-[--text-secondary]">
+      <div className="mt-1 text-xs uppercase tracking-wide text-[var(--text-secondary)]">
         {label}
       </div>
     </div>

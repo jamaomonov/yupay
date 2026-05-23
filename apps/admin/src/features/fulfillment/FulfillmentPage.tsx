@@ -94,7 +94,7 @@ export function FulfillmentPage() {
       render: (t) => (
         <div className="flex flex-col font-mono text-xs">
           <span>{t.order_id.slice(0, 8)}…</span>
-          <span className="text-[--text-secondary]">
+          <span className="text-[var(--text-secondary)]">
             item {t.order_item_id.slice(0, 8)}…
           </span>
         </div>
@@ -128,7 +128,7 @@ export function FulfillmentPage() {
       header: "Ошибка",
       render: (t) =>
         t.last_error ? (
-          <span className="text-xs text-[--danger]">{t.last_error}</span>
+          <span className="text-xs text-[var(--danger)]">{t.last_error}</span>
         ) : (
           "—"
         ),
@@ -178,7 +178,7 @@ export function FulfillmentPage() {
 
       <section className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
         <div>
-          <label className="text-xs uppercase text-[--text-secondary]">
+          <label className="text-xs uppercase text-[var(--text-secondary)]">
             Order ID
           </label>
           <Input
@@ -192,7 +192,7 @@ export function FulfillmentPage() {
           />
         </div>
         <div>
-          <label className="text-xs uppercase text-[--text-secondary]">
+          <label className="text-xs uppercase text-[var(--text-secondary)]">
             Маршрут
           </label>
           <Input
@@ -206,7 +206,7 @@ export function FulfillmentPage() {
           />
         </div>
         <div>
-          <label className="text-xs uppercase text-[--text-secondary]">
+          <label className="text-xs uppercase text-[var(--text-secondary)]">
             Статус
           </label>
           <select
@@ -215,7 +215,7 @@ export function FulfillmentPage() {
               setStatus(e.target.value as TaskStatus | "");
               setOffset(0);
             }}
-            className="mt-1 h-10 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm"
+            className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
           >
             {STATUSES.map((s) => (
               <option key={s.value} value={s.value}>
@@ -256,11 +256,11 @@ export function FulfillmentPage() {
 
 function StatusBadge({ status }: { status: TaskStatus }) {
   const map: Record<TaskStatus, string> = {
-    pending: "bg-[--bg-muted] text-[--text-secondary]",
-    in_progress: "bg-[--warning-soft] text-[--warning-fg]",
-    succeeded: "bg-[--success-soft] text-[--success-fg]",
-    failed: "bg-[--danger-soft] text-[--danger-fg]",
-    cancelled: "bg-[--bg-muted] text-[--text-secondary]",
+    pending: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
+    in_progress: "bg-[var(--warning-soft)] text-[var(--warning-fg)]",
+    succeeded: "bg-[var(--success-soft)] text-[var(--success-fg)]",
+    failed: "bg-[var(--danger-soft)] text-[var(--danger-fg)]",
+    cancelled: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
   };
   return (
     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${map[status]}`}>
@@ -283,7 +283,7 @@ function TaskDetails({ task }: { task: TaskAdminOut }) {
   );
 
   return (
-    <article className="space-y-4 rounded-lg border bg-[--bg-surface] p-4 text-sm">
+    <article className="space-y-4 rounded-lg border bg-[var(--bg-surface)] p-4 text-sm">
       {/* Task header — basic fields + lifecycle timestamps. */}
       <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <DetailField label="ID" value={task.id} mono />
@@ -326,8 +326,8 @@ function TaskDetails({ task }: { task: TaskAdminOut }) {
           of the manual fields is set — for supplier-driven tasks the
           whole block stays hidden. */}
       {(task.completed_by || task.admin_note || proofUrl) && (
-        <section className="space-y-2 rounded-md border border-[--border-default]/60 bg-[--bg-muted]/40 p-3">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-[--text-secondary]">
+        <section className="space-y-2 rounded-md border border-[var(--border-default)]/60 bg-[var(--bg-muted)]/40 p-3">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-secondary)]">
             Ручная обработка
           </h4>
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
@@ -343,7 +343,7 @@ function TaskDetails({ task }: { task: TaskAdminOut }) {
               href={proofUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-sm text-[--accent] hover:underline"
+              className="inline-flex items-center gap-1.5 text-sm text-[var(--accent)] hover:underline"
             >
               <ExternalLink className="size-3.5" />
               Открыть пруф
@@ -356,10 +356,10 @@ function TaskDetails({ task }: { task: TaskAdminOut }) {
           so they don't get lost when a supplier sets a custom field. */}
       {Object.keys(otherMeta).length > 0 && (
         <section>
-          <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[--text-secondary]">
+          <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--text-secondary)]">
             Метаданные
           </h4>
-          <pre className="whitespace-pre-wrap rounded border border-[--border-default]/50 bg-[--bg-muted]/40 p-2 text-xs">
+          <pre className="whitespace-pre-wrap rounded border border-[var(--border-default)]/50 bg-[var(--bg-muted)]/40 p-2 text-xs">
             {JSON.stringify(otherMeta, null, 2)}
           </pre>
         </section>
@@ -367,17 +367,17 @@ function TaskDetails({ task }: { task: TaskAdminOut }) {
 
       {/* Attempts log. */}
       <section>
-        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[--text-secondary]">
+        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-secondary)]">
           Аттемпты — {task.attempts.length}
         </h4>
         {task.attempts.length === 0 ? (
-          <p className="text-[--text-secondary]">Попыток ещё не было.</p>
+          <p className="text-[var(--text-secondary)]">Попыток ещё не было.</p>
         ) : (
           <ol className="space-y-2">
             {task.attempts.map((a, i) => (
               <li
                 key={`${a.kind}-${a.created_at}-${i}`}
-                className="rounded border border-[--border-default]/50 p-2 text-xs"
+                className="rounded border border-[var(--border-default)]/50 p-2 text-xs"
               >
                 <div className="flex justify-between">
                   <span>
@@ -385,24 +385,24 @@ function TaskDetails({ task }: { task: TaskAdminOut }) {
                     <span
                       className={
                         a.status === "ok"
-                          ? "text-[--success]"
-                          : "text-[--danger]"
+                          ? "text-[var(--success)]"
+                          : "text-[var(--danger)]"
                       }
                     >
                       {a.status}
                     </span>
                   </span>
-                  <span className="text-[--text-secondary]">
+                  <span className="text-[var(--text-secondary)]">
                     {new Date(a.created_at).toLocaleString("ru")}
                   </span>
                 </div>
                 {a.error && (
-                  <pre className="mt-1 whitespace-pre-wrap text-[--danger]">
+                  <pre className="mt-1 whitespace-pre-wrap text-[var(--danger)]">
                     {a.error}
                   </pre>
                 )}
                 {Object.keys(a.payload).length > 0 && (
-                  <pre className="mt-1 whitespace-pre-wrap text-[--text-secondary]">
+                  <pre className="mt-1 whitespace-pre-wrap text-[var(--text-secondary)]">
                     {JSON.stringify(a.payload, null, 2)}
                   </pre>
                 )}
@@ -426,7 +426,7 @@ function DetailField({
 }) {
   return (
     <div>
-      <p className="text-xs font-medium uppercase text-[--text-secondary]">{label}</p>
+      <p className="text-xs font-medium uppercase text-[var(--text-secondary)]">{label}</p>
       <p
         className={[
           "mt-0.5 break-words text-sm",

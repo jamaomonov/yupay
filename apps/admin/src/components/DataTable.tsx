@@ -76,14 +76,14 @@ export function DataTable<T>({
 
   return (
     <div
-      className="overflow-x-auto rounded-lg border border-[--border-default] bg-[--bg-surface]"
+      className="overflow-x-auto rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)]"
       aria-busy={busy || undefined}
     >
       <table
         className="w-full text-sm"
         aria-label={ariaLabel}
       >
-        <thead className="bg-[--bg-muted] text-[--text-secondary]">
+        <thead className="bg-[var(--bg-muted)] text-[var(--text-secondary)]">
           <tr>
             {columns.map((col) => {
               const canSort = sortable && Boolean(col.sortAccessor);
@@ -108,8 +108,8 @@ export function DataTable<T>({
                       onClick={() => toggleSort(setSort, sort, col.key)}
                       className={[
                         "inline-flex items-center gap-1 transition-colors",
-                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--accent] focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg-muted] focus-visible:rounded",
-                        active ? "text-[--text-primary]" : "hover:text-[--text-primary]",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-muted)] focus-visible:rounded",
+                        active ? "text-[var(--text-primary)]" : "hover:text-[var(--text-primary)]",
                       ].join(" ")}
                     >
                       <span>{col.header}</span>
@@ -130,9 +130,9 @@ export function DataTable<T>({
               <tr
                 key={rowKey(row)}
                 className={[
-                  "border-t border-[--border-subtle] transition-colors hover:bg-[--bg-surface-2]",
+                  "border-t border-[var(--border-subtle)] transition-colors hover:bg-[var(--bg-surface-2)]",
                   interactive
-                    ? "cursor-pointer focus-visible:bg-[--bg-accent-soft] focus-visible:outline-none"
+                    ? "cursor-pointer focus-visible:bg-[var(--bg-accent-soft)] focus-visible:outline-none"
                     : "",
                 ].join(" ")}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
@@ -181,16 +181,16 @@ function toggleSort(
 function SortIcon({ active, dir }: { active: boolean; dir: SortDir | null }) {
   if (!active) {
     return (
-      <span className="inline-flex flex-col text-[--text-tertiary]" aria-hidden>
+      <span className="inline-flex flex-col text-[var(--text-tertiary)]" aria-hidden>
         <ChevronUp className="size-2.5 -mb-0.5" />
         <ChevronDown className="size-2.5" />
       </span>
     );
   }
   return dir === "asc" ? (
-    <ChevronUp className="size-3 text-[--text-primary]" aria-hidden />
+    <ChevronUp className="size-3 text-[var(--text-primary)]" aria-hidden />
   ) : (
-    <ChevronDown className="size-3 text-[--text-primary]" aria-hidden />
+    <ChevronDown className="size-3 text-[var(--text-primary)]" aria-hidden />
   );
 }
 

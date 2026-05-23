@@ -163,9 +163,9 @@ export function SearchPalette({ open, onClose }: Props) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="relative w-full max-w-xl rounded-lg border border-[--border-default] bg-[--bg-surface] text-[--text-primary] shadow-2xl ring-1 ring-black/5">
-        <div className="flex items-center gap-2 border-b border-[--border-default] px-4 py-3">
-          <Search className="size-4 text-[--text-secondary]" aria-hidden />
+      <div className="relative w-full max-w-xl rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-2xl ring-1 ring-black/5">
+        <div className="flex items-center gap-2 border-b border-[var(--border-default)] px-4 py-3">
+          <Search className="size-4 text-[var(--text-secondary)]" aria-hidden />
           <input
             ref={inputRef}
             type="text"
@@ -173,15 +173,15 @@ export function SearchPalette({ open, onClose }: Props) {
             onChange={(e) => { setQ(e.target.value); }}
             onKeyDown={onKeyDown}
             placeholder="Заказ, email, @username, payment id, SKU…"
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-[--text-secondary]"
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--text-secondary)]"
             aria-label="Поисковый запрос"
             autoComplete="off"
             spellCheck={false}
           />
           {query.isFetching && enabled && (
-            <Loader2 className="size-4 animate-spin text-[--text-secondary]" aria-hidden />
+            <Loader2 className="size-4 animate-spin text-[var(--text-secondary)]" aria-hidden />
           )}
-          <kbd className="rounded border border-[--border-default] px-1.5 py-0.5 text-[10px] uppercase text-[--text-secondary]">
+          <kbd className="rounded border border-[var(--border-default)] px-1.5 py-0.5 text-[10px] uppercase text-[var(--text-secondary)]">
             Esc
           </kbd>
         </div>
@@ -199,7 +199,7 @@ export function SearchPalette({ open, onClose }: Props) {
             groups.map((group) =>
               group.hits.length === 0 ? null : (
                 <div key={group.type}>
-                  <p className="px-4 pb-1 pt-3 text-[10px] font-medium uppercase tracking-wide text-[--text-secondary]">
+                  <p className="px-4 pb-1 pt-3 text-[10px] font-medium uppercase tracking-wide text-[var(--text-secondary)]">
                     {GROUP_LABEL[group.type]}
                   </p>
                   {group.hits.map(({ hit, idx }) => (
@@ -220,7 +220,7 @@ export function SearchPalette({ open, onClose }: Props) {
             )}
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t border-[--border-default] px-4 py-2 text-[11px] text-[--text-secondary]">
+        <div className="flex items-center justify-between gap-3 border-t border-[var(--border-default)] px-4 py-2 text-[11px] text-[var(--text-secondary)]">
           <span className="flex items-center gap-2">
             <Hotkey>↑↓</Hotkey> навигация · <Hotkey>↵</Hotkey> открыть
           </span>
@@ -268,19 +268,19 @@ function HitRow({
       className={[
         "flex w-full items-center gap-3 px-4 py-2 text-left text-sm transition-colors",
         active
-          ? "bg-[--bg-muted] text-[--text-primary]"
-          : "text-[--text-primary] hover:bg-[--bg-muted]/60",
+          ? "bg-[var(--bg-muted)] text-[var(--text-primary)]"
+          : "text-[var(--text-primary)] hover:bg-[var(--bg-muted)]/60",
       ].join(" ")}
     >
       <span className="min-w-0 flex-1">
         <span className="block truncate font-medium">{hit.label}</span>
         {hit.sublabel && (
-          <span className="block truncate text-xs text-[--text-secondary]">
+          <span className="block truncate text-xs text-[var(--text-secondary)]">
             {hit.sublabel}
           </span>
         )}
       </span>
-      <span className="shrink-0 font-mono text-[10px] text-[--text-secondary]">
+      <span className="shrink-0 font-mono text-[10px] text-[var(--text-secondary)]">
         {hit.id.slice(0, 8)}
       </span>
     </button>
@@ -298,7 +298,7 @@ function Hint({
     <p
       className={[
         "px-4 py-6 text-center text-sm",
-        danger ? "text-[--danger]" : "text-[--text-secondary]",
+        danger ? "text-[var(--danger)]" : "text-[var(--text-secondary)]",
       ].join(" ")}
     >
       {children}
@@ -308,7 +308,7 @@ function Hint({
 
 function Hotkey({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="rounded border border-[--border-default] px-1 py-0.5 text-[10px] uppercase">
+    <kbd className="rounded border border-[var(--border-default)] px-1 py-0.5 text-[10px] uppercase">
       {children}
     </kbd>
   );

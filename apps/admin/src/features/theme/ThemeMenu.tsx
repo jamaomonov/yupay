@@ -69,7 +69,7 @@ export function ThemeMenu() {
         aria-label="Theme"
         aria-haspopup="menu"
         aria-expanded={open}
-        className="inline-flex size-9 items-center justify-center rounded-md border border-[--border-default] text-[--text-secondary] hover:bg-[--bg-muted] hover:text-[--text-primary]"
+        className="inline-flex size-9 items-center justify-center rounded-md border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] hover:text-[var(--text-primary)]"
       >
         <CurrentIcon className="size-4" />
       </button>
@@ -78,7 +78,7 @@ export function ThemeMenu() {
         <div
           role="menu"
           aria-label="Theme"
-          className="absolute right-0 z-50 mt-2 w-44 overflow-hidden rounded-lg border border-[--border-default] bg-[--bg-surface] py-1 text-sm shadow-[var(--shadow-md)]"
+          className="absolute right-0 z-50 mt-2 w-44 overflow-hidden rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] py-1 text-sm shadow-[var(--shadow-md)]"
         >
           {OPTIONS.map((opt) => {
             const Icon = opt.icon;
@@ -94,16 +94,16 @@ export function ThemeMenu() {
                   setOpen(false);
                 }}
                 className={[
-                  "flex w-full items-center gap-2 px-3 py-2 text-left text-[--text-primary]",
+                  "flex w-full items-center gap-2 px-3 py-2 text-left text-[var(--text-primary)]",
                   active
-                    ? "bg-[--bg-accent-soft] text-[--accent-soft-fg]"
-                    : "hover:bg-[--bg-muted]",
+                    ? "bg-[var(--bg-accent-soft)] text-[var(--accent-soft-fg)]"
+                    : "hover:bg-[var(--bg-muted)]",
                 ].join(" ")}
               >
                 <Icon className="size-4" />
                 <span className="flex-1">{opt.label}</span>
                 {active && (
-                  <span className="text-[--accent-soft-fg]" aria-hidden>
+                  <span className="text-[var(--accent-soft-fg)]" aria-hidden>
                     ✓
                   </span>
                 )}

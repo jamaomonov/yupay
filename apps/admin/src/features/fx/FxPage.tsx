@@ -55,7 +55,7 @@ export function FxPage() {
           <span className="font-medium">
             {r.base} → {r.quote}
           </span>
-          <code className="text-xs text-[--text-secondary]">{r.base}/{r.quote}</code>
+          <code className="text-xs text-[var(--text-secondary)]">{r.base}/{r.quote}</code>
         </div>
       ),
       className: "w-40",
@@ -74,7 +74,7 @@ export function FxPage() {
       key: "source",
       header: "Источник",
       render: (r) => (
-        <span className="rounded-md bg-[--bg-muted] px-2 py-0.5 font-mono text-xs">
+        <span className="rounded-md bg-[var(--bg-muted)] px-2 py-0.5 font-mono text-xs">
           {r.source}
         </span>
       ),
@@ -85,7 +85,7 @@ export function FxPage() {
       render: (r) => (
         <div className="flex flex-col items-end">
           <span className="text-xs">{formatDateTime(r.fetched_at)}</span>
-          <span className="text-[10px] text-[--text-secondary]">
+          <span className="text-[10px] text-[var(--text-secondary)]">
             {ago(r.fetched_at)}
           </span>
         </div>
@@ -133,13 +133,13 @@ export function FxPage() {
         <Spinner label="Загрузка…" />
       )}
       {ratesQuery.isError && (
-        <p className="text-sm text-[--danger]">
+        <p className="text-sm text-[var(--danger)]">
           Курсы недоступны. Попробуй «принудительно обновить» — это сбросит
           fresh-кэш и сходит к провайдеру.
         </p>
       )}
       {refresh.isError && (
-        <p className="text-sm text-[--danger]">
+        <p className="text-sm text-[var(--danger)]">
           Refresh не удался: {formatError(refresh.error)}
         </p>
       )}
@@ -151,7 +151,7 @@ export function FxPage() {
         empty="Нет пар. Настрой `FX_SUPPORTED_QUOTES` в env."
       />
 
-      <p className="mt-3 text-xs text-[--text-secondary]">
+      <p className="mt-3 text-xs text-[var(--text-secondary)]">
         Кэш TTL: fresh — 15 минут, stale — 24 часа. Обычный GET читает кэш и
         провайдера не дёргает. Refresh сбрасывает fresh-копию для каждой пары и
         форсит сетевой запрос.
@@ -170,11 +170,11 @@ function StatCard({
   mono?: boolean;
 }) {
   return (
-    <div className="rounded-lg border bg-[--bg-surface] p-4">
+    <div className="rounded-lg border bg-[var(--bg-surface)] p-4">
       <div className={`text-2xl font-semibold ${mono ? "font-mono" : ""}`}>
         {value}
       </div>
-      <div className="text-xs uppercase tracking-wide text-[--text-secondary]">
+      <div className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">
         {label}
       </div>
     </div>

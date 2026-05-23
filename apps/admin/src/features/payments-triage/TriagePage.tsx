@@ -139,7 +139,7 @@ function StuckSection({
       render: (p) => (
         <div className="flex flex-col font-mono text-xs">
           <span>{p.id.slice(0, 8)}…</span>
-          <span className="text-[--text-secondary]">{p.provider}</span>
+          <span className="text-[var(--text-secondary)]">{p.provider}</span>
         </div>
       ),
       className: "w-32",
@@ -157,7 +157,7 @@ function StuckSection({
             user {p.user_id.slice(0, 8)}…
           </Link>
         ) : (
-          <span className="text-xs text-[--text-secondary]">
+          <span className="text-xs text-[var(--text-secondary)]">
             {p.guest_email ?? "—"}
           </span>
         ),
@@ -199,15 +199,15 @@ function StuckSection({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-[--text-secondary]">
+        <p className="text-sm text-[var(--text-secondary)]">
           Платежи в статусе <code>pending</code> дольше выбранного порога.
         </p>
         <label className="flex items-center gap-2 text-sm">
-          <span className="text-[--text-secondary]">Порог:</span>
+          <span className="text-[var(--text-secondary)]">Порог:</span>
           <select
             value={threshold.toString()}
             onChange={(e) => { onThresholdChange(Number(e.target.value)); }}
-            className="h-9 rounded-md border border-[--border-default] bg-[--bg-surface] px-2 text-sm"
+            className="h-9 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 text-sm"
           >
             {THRESHOLDS.map((m) => (
               <option key={m} value={m.toString()}>
@@ -219,7 +219,7 @@ function StuckSection({
       </div>
 
       {Object.keys(totalsByCurrency).length > 0 && (
-        <p className="text-xs text-[--text-secondary]">
+        <p className="text-xs text-[var(--text-secondary)]">
           Сумма в очереди:{" "}
           {Object.entries(totalsByCurrency)
             .map(([cur, v]) => `${v.toFixed(2)} ${cur}`)
@@ -228,7 +228,7 @@ function StuckSection({
       )}
 
       {error && (
-        <p className="text-sm text-[--danger]">Не удалось загрузить список.</p>
+        <p className="text-sm text-[var(--danger)]">Не удалось загрузить список.</p>
       )}
 
       <DataTable
@@ -256,7 +256,7 @@ function WebhookSection({
       key: "provider",
       header: "Провайдер",
       render: (w) => (
-        <span className="rounded-md bg-[--bg-muted] px-2 py-0.5 font-mono text-xs">
+        <span className="rounded-md bg-[var(--bg-muted)] px-2 py-0.5 font-mono text-xs">
           {w.provider}
         </span>
       ),
@@ -278,12 +278,12 @@ function WebhookSection({
       header: "Подпись",
       render: (w) =>
         w.signature_ok ? (
-          <span className="inline-flex items-center gap-1 text-xs text-[--success-fg]">
+          <span className="inline-flex items-center gap-1 text-xs text-[var(--success-fg)]">
             <CheckCircle2 className="size-3" />
             OK
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 text-xs text-[--danger-fg]">
+          <span className="inline-flex items-center gap-1 text-xs text-[var(--danger-fg)]">
             <ShieldAlert className="size-3" />
             rejected
           </span>
@@ -310,26 +310,26 @@ function WebhookSection({
         w.processed_at ? (
           new Date(w.processed_at).toLocaleString("ru")
         ) : (
-          <span className="text-[--text-secondary]">не обработан</span>
+          <span className="text-[var(--text-secondary)]">не обработан</span>
         ),
       className: "w-44",
     },
   ];
   return (
     <div className="space-y-3">
-      <p className="text-sm text-[--text-secondary]">
+      <p className="text-sm text-[var(--text-secondary)]">
         Входящие события с невалидной подписью или те, до которых обработка не
         дошла. Подробнее — на странице{" "}
         <Link
           to="/webhooks"
-          className="underline-offset-2 hover:underline text-[--text-primary]"
+          className="underline-offset-2 hover:underline text-[var(--text-primary)]"
         >
           /webhooks
         </Link>
         .
       </p>
       {error && (
-        <p className="text-sm text-[--danger]">Не удалось загрузить список.</p>
+        <p className="text-sm text-[var(--danger)]">Не удалось загрузить список.</p>
       )}
       <DataTable
         rows={rows}
@@ -349,10 +349,10 @@ function SlaBadge({ minutes }: { minutes: number }) {
       className={[
         "rounded-full px-2 py-0.5 text-xs font-medium",
         tone === "danger"
-          ? "bg-[--color-danger]/15 text-[--danger]"
+          ? "bg-[var(--color-danger)]/15 text-[var(--danger)]"
           : tone === "warn"
-            ? "bg-[--warning-soft] text-[--warning-fg]"
-            : "bg-[--bg-muted] text-[--text-secondary]",
+            ? "bg-[var(--warning-soft)] text-[var(--warning-fg)]"
+            : "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
       ].join(" ")}
     >
       {formatMinutes(minutes)}

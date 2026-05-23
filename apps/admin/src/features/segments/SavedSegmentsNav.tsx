@@ -35,10 +35,10 @@ export function SavedSegmentsNav() {
 
   return (
     <section
-      className="border-t border-[--border-default] px-3 pb-2 pt-3"
+      className="border-t border-[var(--border-default)] px-3 pb-2 pt-3"
       aria-label="Мои сегменты"
     >
-      <p className="mb-1 px-3 text-[10px] font-medium uppercase tracking-wide text-[--text-secondary]">
+      <p className="mb-1 px-3 text-[10px] font-medium uppercase tracking-wide text-[var(--text-secondary)]">
         Мои сегменты
       </p>
       <ul className="space-y-0.5">
@@ -60,10 +60,10 @@ export function SavedSegmentsNav() {
               aria-label={`Удалить сегмент ${s.name}`}
               className={[
                 "absolute right-2 top-1/2 -translate-y-1/2 grid size-7 place-items-center rounded",
-                "text-[--text-secondary] hover:bg-[--bg-surface] hover:text-[--danger]",
+                "text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] hover:text-[var(--danger)]",
                 "opacity-0 transition-opacity",
                 "group-hover:opacity-100 group-focus-within:opacity-100",
-                "focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--accent] focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg-sidebar]",
+                "focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-sidebar)]",
               ].join(" ")}
             >
               <Trash2 className="size-3.5" />
@@ -84,8 +84,8 @@ function SegmentLink({ segment }: { segment: SavedSegment }) {
         [
           "flex items-center gap-2 rounded-md px-3 py-1.5 pr-8 text-xs transition-colors",
           isActive
-            ? "bg-[--bg-muted] text-[--text-primary]"
-            : "text-[--text-secondary] hover:bg-[--bg-muted]/60 hover:text-[--text-primary]",
+            ? "bg-[var(--bg-muted)] text-[var(--text-primary)]"
+            : "text-[var(--text-secondary)] hover:bg-[var(--bg-muted)]/60 hover:text-[var(--text-primary)]",
         ].join(" ")
       }
       title={`${segment.path} (${Object.keys(segment.params).length.toString()} параметров)`}

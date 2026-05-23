@@ -79,7 +79,7 @@ export function WebhooksPage() {
       key: "provider",
       header: "Провайдер",
       render: (w) => (
-        <span className="rounded-md bg-[--bg-muted] px-2 py-0.5 font-mono text-xs">
+        <span className="rounded-md bg-[var(--bg-muted)] px-2 py-0.5 font-mono text-xs">
           {w.provider}
         </span>
       ),
@@ -101,12 +101,12 @@ export function WebhooksPage() {
       header: "Подпись",
       render: (w) =>
         w.signature_ok ? (
-          <span className="inline-flex items-center gap-1 text-xs text-[--success-fg]">
+          <span className="inline-flex items-center gap-1 text-xs text-[var(--success-fg)]">
             <CheckCircle2 className="size-3" />
             OK
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 text-xs text-[--danger-fg]">
+          <span className="inline-flex items-center gap-1 text-xs text-[var(--danger-fg)]">
             <ShieldAlert className="size-3" />
             rejected
           </span>
@@ -165,7 +165,7 @@ export function WebhooksPage() {
         <select
           value={provider}
           onChange={(e) => setProvider(e.target.value)}
-          className="h-10 rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm"
+          className="h-10 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
         >
           {PROVIDERS.map((p) => (
             <option key={p.value} value={p.value}>
@@ -176,7 +176,7 @@ export function WebhooksPage() {
         <select
           value={sig}
           onChange={(e) => setSig(e.target.value as "all" | "ok" | "bad")}
-          className="h-10 rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm"
+          className="h-10 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
         >
           {SIG_OPTIONS.map((s) => (
             <option key={s.value} value={s.value}>
@@ -187,7 +187,7 @@ export function WebhooksPage() {
       </section>
 
       {q.isError && (
-        <p className="text-sm text-[--danger]">Ошибка загрузки.</p>
+        <p className="text-sm text-[var(--danger)]">Ошибка загрузки.</p>
       )}
 
       <DataTable
@@ -202,7 +202,7 @@ export function WebhooksPage() {
         <PayloadPreview row={rows.find((w) => w.id === expanded)!} />
       )}
 
-      <p className="mt-3 text-xs text-[--text-secondary]">
+      <p className="mt-3 text-xs text-[var(--text-secondary)]">
         Запись о невалидной подписи остаётся в аудит-таблице как
         ``rejected:&lt;uuid&gt;``, чтобы можно было разобраться при подозрении
         на атаку.
@@ -213,16 +213,16 @@ export function WebhooksPage() {
 
 function PayloadPreview({ row }: { row: WebhookOut }) {
   return (
-    <article className="mt-4 rounded-lg border bg-[--bg-surface] p-4 text-sm">
+    <article className="mt-4 rounded-lg border bg-[var(--bg-surface)] p-4 text-sm">
       <header className="mb-2 flex items-baseline justify-between">
         <h3 className="font-semibold">
           {row.provider} · {row.external_event_id}
         </h3>
-        <span className="text-xs text-[--text-secondary]">
+        <span className="text-xs text-[var(--text-secondary)]">
           {formatDate(row.received_at)}
         </span>
       </header>
-      <pre className="whitespace-pre-wrap break-all rounded border bg-[--bg-muted] p-3 text-[11px] leading-relaxed text-[--text-primary]">
+      <pre className="whitespace-pre-wrap break-all rounded border bg-[var(--bg-muted)] p-3 text-[11px] leading-relaxed text-[var(--text-primary)]">
         {JSON.stringify(row.payload, null, 2)}
       </pre>
     </article>
@@ -239,11 +239,11 @@ function StatCard({
   tone?: "default" | "warn" | "muted";
 }) {
   const valueCls =
-    tone === "warn" ? "text-[--danger]" : "text-[--text-primary]";
+    tone === "warn" ? "text-[var(--danger)]" : "text-[var(--text-primary)]";
   return (
-    <div className="rounded-lg border bg-[--bg-surface] p-4">
+    <div className="rounded-lg border bg-[var(--bg-surface)] p-4">
       <div className={`text-2xl font-semibold ${valueCls}`}>{value}</div>
-      <div className="text-xs uppercase tracking-wide text-[--text-secondary]">
+      <div className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">
         {label}
       </div>
     </div>

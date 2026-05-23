@@ -152,7 +152,7 @@ export function SourcingPage() {
         return (
           <div className="flex flex-col">
             <span className="text-sm">{name}</span>
-            <code className="text-xs text-[--text-secondary]">
+            <code className="text-xs text-[var(--text-secondary)]">
               {sku?.sku_code ?? r.sku_id.slice(0, 8)}
             </code>
           </div>
@@ -212,17 +212,17 @@ export function SourcingPage() {
         description="Правила маршрутизации: где брать товар — из склада или у поставщика."
       />
 
-      <section className="mb-6 rounded-lg border bg-[--bg-surface] p-4">
+      <section className="mb-6 rounded-lg border bg-[var(--bg-surface)] p-4">
         <h2 className="mb-3 text-sm font-semibold">Назначить / изменить правило</h2>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div>
-            <label className="text-xs font-medium uppercase text-[--text-secondary]">
+            <label className="text-xs font-medium uppercase text-[var(--text-secondary)]">
               SKU
             </label>
             <select
               value={selectedSkuId}
               onChange={(e) => setSelectedSkuId(e.target.value)}
-              className="mt-1 h-10 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm"
+              className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
             >
               <option value="">— Выбрать —</option>
               {skusQuery.data?.map((sku) => {
@@ -240,13 +240,13 @@ export function SourcingPage() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium uppercase text-[--text-secondary]">
+            <label className="text-xs font-medium uppercase text-[var(--text-secondary)]">
               Режим
             </label>
             <select
               value={mode}
               onChange={(e) => setMode(e.target.value as SourcingMode)}
-              className="mt-1 h-10 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm"
+              className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
             >
               {MODES.map((m) => (
                 <option key={m.value} value={m.value}>
@@ -254,12 +254,12 @@ export function SourcingPage() {
                 </option>
               ))}
             </select>
-            <p className="mt-1 text-xs text-[--text-secondary]">
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">
               {MODES.find((m) => m.value === mode)?.hint}
             </p>
           </div>
           <div>
-            <label className="text-xs font-medium uppercase text-[--text-secondary]">
+            <label className="text-xs font-medium uppercase text-[var(--text-secondary)]">
               Supplier slug
             </label>
             <input
@@ -268,7 +268,7 @@ export function SourcingPage() {
               onChange={(e) => setSupplierSlug(e.target.value)}
               disabled={mode !== "force_supplier"}
               placeholder="mock / steam / riot / …"
-              className="mt-1 h-10 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm disabled:opacity-50"
+              className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm disabled:opacity-50"
             />
           </div>
         </div>
@@ -283,13 +283,13 @@ export function SourcingPage() {
             <DecisionPreview decision={decisionQuery.data} />
           )}
           {feedback && (
-            <span className="text-sm text-[--success]">{feedback}</span>
+            <span className="text-sm text-[var(--success)]">{feedback}</span>
           )}
-          {error && <span className="text-sm text-[--danger]">{error}</span>}
+          {error && <span className="text-sm text-[var(--danger)]">{error}</span>}
         </div>
       </section>
 
-      <h2 className="mb-3 text-sm font-semibold uppercase text-[--text-secondary]">
+      <h2 className="mb-3 text-sm font-semibold uppercase text-[var(--text-secondary)]">
         Активные правила
       </h2>
       <DataTable
@@ -304,13 +304,13 @@ export function SourcingPage() {
 
 function ModeBadge({ mode }: { mode: SourcingMode }) {
   const map: Record<SourcingMode, { label: string; cls: string }> = {
-    auto: { label: "auto", cls: "bg-[--bg-muted] text-[--text-secondary]" },
+    auto: { label: "auto", cls: "bg-[var(--bg-muted)] text-[var(--text-secondary)]" },
     force_inventory: {
       label: "склад",
-      cls: "bg-[--success-soft] text-[--success-fg]",
+      cls: "bg-[var(--success-soft)] text-[var(--success-fg)]",
     },
-    force_supplier: { label: "поставщик", cls: "bg-[--info-soft] text-[--info-fg]" },
-    manual: { label: "вручную", cls: "bg-[--warning-soft] text-[--warning-fg]" },
+    force_supplier: { label: "поставщик", cls: "bg-[var(--info-soft)] text-[var(--info-fg)]" },
+    manual: { label: "вручную", cls: "bg-[var(--warning-soft)] text-[var(--warning-fg)]" },
   };
   const { label, cls } = map[mode];
   return (
@@ -322,12 +322,12 @@ function ModeBadge({ mode }: { mode: SourcingMode }) {
 
 function DecisionPreview({ decision }: { decision: SourcingDecisionOut }) {
   return (
-    <span className="text-xs text-[--text-secondary]">
-      Сейчас: <code className="text-[--text-primary]">{decision.primary}</code>
+    <span className="text-xs text-[var(--text-secondary)]">
+      Сейчас: <code className="text-[var(--text-primary)]">{decision.primary}</code>
       {decision.fallback && (
         <>
           {" → "}
-          <code className="text-[--text-primary]">{decision.fallback}</code>
+          <code className="text-[var(--text-primary)]">{decision.fallback}</code>
         </>
       )}
       {decision.strict && " (strict)"}

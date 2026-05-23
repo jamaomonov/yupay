@@ -71,7 +71,7 @@ export function Tabs<T extends string>({
       aria-label={ariaLabel}
       onKeyDown={onKeyDown}
       className={[
-        "flex flex-wrap gap-1 border-b border-[--border-default]",
+        "flex flex-wrap gap-1 border-b border-[var(--border-default)]",
         className ?? "",
       ].join(" ")}
     >
@@ -92,10 +92,10 @@ export function Tabs<T extends string>({
             onClick={() => { onChange(tab.id); }}
             className={[
               "inline-flex items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--accent] focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg-base] focus-visible:rounded",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-base)] focus-visible:rounded",
               active
-                ? "border-[--accent] text-[--text-primary]"
-                : "border-transparent text-[--text-secondary] hover:text-[--text-primary]",
+                ? "border-[var(--accent)] text-[var(--text-primary)]"
+                : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
             ].join(" ")}
           >
             {Icon && <Icon className="size-4" aria-hidden />}
@@ -105,8 +105,8 @@ export function Tabs<T extends string>({
                 className={[
                   "rounded-full px-1.5 py-0.5 text-[11px]",
                   tab.badge.count > 0 && tab.badge.tone === "warn"
-                    ? "bg-[--danger-soft] text-[--danger-fg]"
-                    : "bg-[--bg-muted] text-[--text-secondary]",
+                    ? "bg-[var(--danger-soft)] text-[var(--danger-fg)]"
+                    : "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
                 ].join(" ")}
               >
                 {tab.badge.count.toString()}

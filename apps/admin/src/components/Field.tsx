@@ -56,11 +56,11 @@ export function Field({
     <div className={["block", className ?? ""].join(" ")}>
       <label
         htmlFor={inputId}
-        className="mb-1 block text-xs font-medium uppercase tracking-wide text-[--text-secondary]"
+        className="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]"
       >
         {label}
         {required && (
-          <span className="ml-1 text-[--danger]" aria-hidden>
+          <span className="ml-1 text-[var(--danger)]" aria-hidden>
             *
           </span>
         )}
@@ -74,12 +74,12 @@ export function Field({
         },
       })}
       {hint && !error && (
-        <p id={hintId} className="mt-1 text-xs text-[--text-secondary]">
+        <p id={hintId} className="mt-1 text-xs text-[var(--text-secondary)]">
           {hint}
         </p>
       )}
       {error && (
-        <p id={errorId} className="mt-1 text-xs text-[--danger-fg]">
+        <p id={errorId} className="mt-1 text-xs text-[var(--danger-fg)]">
           {error}
         </p>
       )}

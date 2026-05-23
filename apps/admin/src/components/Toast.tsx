@@ -76,9 +76,9 @@ const ICONS: Record<ToastTone, typeof CheckCircle2> = {
 };
 
 const SURFACES: Record<ToastTone, string> = {
-  success: "border-[--success-fg]/40 bg-[--success-soft] text-[--success-fg]",
-  error: "border-[--danger-fg]/40 bg-[--danger-soft] text-[--danger-fg]",
-  info: "border-[--info-fg]/40 bg-[--info-soft] text-[--info-fg]",
+  success: "border-[var(--success-fg)]/40 bg-[var(--success-soft)] text-[var(--success-fg)]",
+  error: "border-[var(--danger-fg)]/40 bg-[var(--danger-soft)] text-[var(--danger-fg)]",
+  info: "border-[var(--info-fg)]/40 bg-[var(--info-soft)] text-[var(--info-fg)]",
 };
 
 export function ToastRegion() {

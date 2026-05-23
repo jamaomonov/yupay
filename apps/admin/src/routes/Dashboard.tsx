@@ -49,14 +49,14 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const STATUS_TONE: Record<string, string> = {
-  pending_payment: "bg-[--warning-soft] text-[--warning-fg]",
-  paid: "bg-[--info-soft] text-[--info-fg]",
-  fulfilling: "bg-[--bg-accent-soft] text-[--accent-soft-fg]",
-  fulfilled: "bg-[--success-soft] text-[--success-fg]",
-  delivered: "bg-[--success-soft] text-[--success-fg]",
-  cancelled: "bg-[--bg-muted] text-[--text-secondary]",
-  expired: "bg-[--bg-muted] text-[--text-secondary]",
-  refunded: "bg-[--danger-soft] text-[--danger-fg]",
+  pending_payment: "bg-[var(--warning-soft)] text-[var(--warning-fg)]",
+  paid: "bg-[var(--info-soft)] text-[var(--info-fg)]",
+  fulfilling: "bg-[var(--bg-accent-soft)] text-[var(--accent-soft-fg)]",
+  fulfilled: "bg-[var(--success-soft)] text-[var(--success-fg)]",
+  delivered: "bg-[var(--success-soft)] text-[var(--success-fg)]",
+  cancelled: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
+  expired: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
+  refunded: "bg-[var(--danger-soft)] text-[var(--danger-fg)]",
 };
 
 export function DashboardPage() {
@@ -77,12 +77,12 @@ export function DashboardPage() {
           <h1 className="text-2xl font-semibold">
             Привет, {me?.display_name ?? "админ"} 👋
           </h1>
-          <p className="mt-1 text-sm text-[--text-secondary]">
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
             Сводка за последние 24 часа. Обновляется автоматически каждые 30 сек.
           </p>
         </div>
         {d && (
-          <span className="text-xs text-[--text-secondary]">
+          <span className="text-xs text-[var(--text-secondary)]">
             обновлено{" "}
             {new Date(d.generated_at).toLocaleTimeString("ru", {
               hour: "2-digit",
@@ -94,7 +94,7 @@ export function DashboardPage() {
       </header>
 
       {q.isError && (
-        <p className="text-sm text-[--danger]">
+        <p className="text-sm text-[var(--danger)]">
           Не удалось загрузить метрики.
         </p>
       )}
@@ -162,10 +162,10 @@ export function DashboardPage() {
       </section>
 
       <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <article className="rounded-lg border bg-[--bg-surface] p-4">
+        <article className="rounded-lg border bg-[var(--bg-surface)] p-4">
           <header className="mb-3 flex items-baseline justify-between">
             <h2 className="text-sm font-semibold">Заказы за 7 дней</h2>
-            <span className="text-xs text-[--text-secondary]">
+            <span className="text-xs text-[var(--text-secondary)]">
               {d?.orders_last_7_days.reduce((s, b) => s + b.count, 0) ?? 0}{" "}
               всего
             </span>
@@ -173,22 +173,22 @@ export function DashboardPage() {
           {d ? (
             <DayBars buckets={d.orders_last_7_days} />
           ) : (
-            <div className="h-32 animate-pulse rounded bg-[--bg-muted]" />
+            <div className="h-32 animate-pulse rounded bg-[var(--bg-muted)]" />
           )}
         </article>
 
-        <article className="rounded-lg border bg-[--bg-surface] p-4">
+        <article className="rounded-lg border bg-[var(--bg-surface)] p-4">
           <header className="mb-3 flex items-baseline justify-between">
             <h2 className="text-sm font-semibold">Статусы за 24ч</h2>
             <Link
               to="/orders"
-              className="text-xs text-[--text-secondary] hover:underline"
+              className="text-xs text-[var(--text-secondary)] hover:underline"
             >
               открыть заказы →
             </Link>
           </header>
           {d?.status_breakdown.length === 0 ? (
-            <p className="text-sm text-[--text-secondary]">За окно ничего нет.</p>
+            <p className="text-sm text-[var(--text-secondary)]">За окно ничего нет.</p>
           ) : (
             <ul className="space-y-1.5">
               {(d?.status_breakdown ?? []).map((s) => (
@@ -199,7 +199,7 @@ export function DashboardPage() {
                 >
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                      STATUS_TONE[s.status] ?? "bg-[--bg-muted] text-[--text-secondary]"
+                      STATUS_TONE[s.status] ?? "bg-[var(--bg-muted)] text-[var(--text-secondary)]"
                     }`}
                   >
                     {STATUS_LABEL[s.status] ?? s.status}
@@ -212,15 +212,15 @@ export function DashboardPage() {
         </article>
       </section>
 
-      <section className="rounded-lg border bg-[--bg-surface] p-4">
+      <section className="rounded-lg border bg-[var(--bg-surface)] p-4">
         <header className="mb-3 flex items-baseline justify-between">
           <div className="flex items-center gap-2">
-            <Boxes className="size-4 text-[--text-secondary]" />
+            <Boxes className="size-4 text-[var(--text-secondary)]" />
             <h2 className="text-sm font-semibold">Склад</h2>
           </div>
           <Link
             to="/inventory"
-            className="text-xs text-[--text-secondary] hover:underline"
+            className="text-xs text-[var(--text-secondary)] hover:underline"
           >
             открыть склад →
           </Link>
@@ -264,17 +264,17 @@ function Kpi({
   tone?: "warn" | "success" | "muted";
 }) {
   const valueCls = accent
-    ? "text-[--accent]"
+    ? "text-[var(--accent)]"
     : tone === "warn"
-      ? "text-[--danger]"
+      ? "text-[var(--danger)]"
       : tone === "success"
-        ? "text-[--success-fg]"
+        ? "text-[var(--success-fg)]"
         : tone === "muted"
-          ? "text-[--text-secondary]"
-          : "text-[--text-primary]";
+          ? "text-[var(--text-secondary)]"
+          : "text-[var(--text-primary)]";
   return (
-    <article className="rounded-lg border bg-[--bg-surface] p-4">
-      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-[--text-secondary]">
+    <article className="rounded-lg border bg-[var(--bg-surface)] p-4">
+      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-[var(--text-secondary)]">
         <Icon className="size-3.5" />
         {label}
       </div>
@@ -302,8 +302,8 @@ function AlertCard({
   const inner = (
     <article
       className={[
-        "rounded-lg border bg-[--bg-surface] p-4 transition-colors",
-        clickable ? "hover:bg-[--bg-muted]/60 hover:border-[--color-fg]/20" : "",
+        "rounded-lg border bg-[var(--bg-surface)] p-4 transition-colors",
+        clickable ? "hover:bg-[var(--bg-muted)]/60 hover:border-[var(--color-fg)]/20" : "",
       ].join(" ")}
       style={
         tone === "warn" && value > 0
@@ -319,21 +319,21 @@ function AlertCard({
           <Icon
             className={`size-4 ${
               tone === "warn" && value > 0
-                ? "text-[--danger]"
-                : "text-[--text-secondary]"
+                ? "text-[var(--danger)]"
+                : "text-[var(--text-secondary)]"
             }`}
           />
           <span className="text-sm font-semibold">{label}</span>
         </div>
         <span
           className={`text-xl font-bold ${
-            tone === "warn" && value > 0 ? "text-[--danger]" : ""
+            tone === "warn" && value > 0 ? "text-[var(--danger)]" : ""
           }`}
         >
           {value}
         </span>
       </div>
-      <p className="mt-1 text-xs text-[--text-secondary]">{hint}</p>
+      <p className="mt-1 text-xs text-[var(--text-secondary)]">{hint}</p>
     </article>
   );
   return to ? (
@@ -358,15 +358,15 @@ function MiniStat({
 }) {
   const valueCls =
     tone === "warn"
-      ? "text-[--danger]"
+      ? "text-[var(--danger)]"
       : tone === "success"
-        ? "text-[--success-fg]"
+        ? "text-[var(--success-fg)]"
         : tone === "muted"
-          ? "text-[--text-secondary]"
-          : "text-[--text-primary]";
+          ? "text-[var(--text-secondary)]"
+          : "text-[var(--text-primary)]";
   return (
-    <div className="rounded-md border bg-[--bg-surface] p-3">
-      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-[--text-secondary]">
+    <div className="rounded-md border bg-[var(--bg-surface)] p-3">
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">
         {Icon && <Icon className="size-3" />}
         {label}
       </div>
@@ -404,7 +404,7 @@ function DayBars({
             >
               {b.count > 0 && <span className="pb-1">{b.count}</span>}
             </div>
-            <span className="text-[10px] text-[--text-secondary]">
+            <span className="text-[10px] text-[var(--text-secondary)]">
               {b.date.slice(5).replace("-", "/")}
             </span>
           </div>

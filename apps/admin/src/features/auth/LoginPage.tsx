@@ -141,16 +141,16 @@ export function LoginPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center p-6">
-      <div className="w-full max-w-md rounded-xl border bg-[--bg-surface] p-8 shadow-md">
+      <div className="w-full max-w-md rounded-xl border bg-[var(--bg-surface)] p-8 shadow-md">
         <h1 className="text-2xl font-semibold">YuPay Admin</h1>
-        <p className="mt-2 text-sm text-[--text-secondary]">
+        <p className="mt-2 text-sm text-[var(--text-secondary)]">
           Доступ только для админов.
         </p>
 
         {showDev && (
           <form onSubmit={onDevSubmit} className="mt-6 space-y-3">
             <label className="block">
-              <span className="text-xs font-medium uppercase text-[--text-secondary]">
+              <span className="text-xs font-medium uppercase text-[var(--text-secondary)]">
                 Логин
               </span>
               <Input
@@ -161,7 +161,7 @@ export function LoginPage() {
               />
             </label>
             <label className="block">
-              <span className="text-xs font-medium uppercase text-[--text-secondary]">
+              <span className="text-xs font-medium uppercase text-[var(--text-secondary)]">
                 Пароль
               </span>
               <Input
@@ -174,7 +174,7 @@ export function LoginPage() {
             <Button type="submit" disabled={busy} className="w-full">
               {busy ? "Вход…" : "Войти"}
             </Button>
-            <p className="text-xs text-[--text-secondary]">
+            <p className="text-xs text-[var(--text-secondary)]">
               Это dev-вход. Отключи в prod через <code>ADMIN_DEV_LOGIN_ENABLED=false</code>.
             </p>
           </form>
@@ -183,10 +183,10 @@ export function LoginPage() {
         {showTelegram && (
           <>
             {showDev && (
-              <div className="my-6 flex items-center gap-3 text-xs uppercase text-[--text-secondary]">
-                <span className="h-px flex-1 bg-[--color-border]" />
+              <div className="my-6 flex items-center gap-3 text-xs uppercase text-[var(--text-secondary)]">
+                <span className="h-px flex-1 bg-[var(--color-border)]" />
                 или
-                <span className="h-px flex-1 bg-[--color-border]" />
+                <span className="h-px flex-1 bg-[var(--color-border)]" />
               </div>
             )}
             <div ref={widgetSlot} className="flex justify-center" />
@@ -194,9 +194,9 @@ export function LoginPage() {
         )}
 
         {!showDev && !showTelegram && (
-          <div className="mt-6 rounded-md bg-[--bg-muted] p-4 text-sm">
+          <div className="mt-6 rounded-md bg-[var(--bg-muted)] p-4 text-sm">
             <p className="font-medium">Способы входа не настроены.</p>
-            <p className="mt-1 text-[--text-secondary]">
+            <p className="mt-1 text-[var(--text-secondary)]">
               Установи <code>VITE_TELEGRAM_BOT_USERNAME</code> или включи{" "}
               <code>ADMIN_DEV_LOGIN_ENABLED=true</code>.
             </p>
@@ -204,7 +204,7 @@ export function LoginPage() {
         )}
 
         {error && (
-          <p className="mt-4 rounded-md bg-[--color-danger]/10 p-3 text-sm text-[--danger]">
+          <p className="mt-4 rounded-md bg-[var(--color-danger)]/10 p-3 text-sm text-[var(--danger)]">
             {error}
           </p>
         )}

@@ -121,10 +121,10 @@ export function ManualTaskModal({ task, onClose }: Props) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="relative w-full max-w-2xl rounded-lg border border-[--border-default] bg-[--bg-surface] text-[--text-primary] shadow-[var(--shadow-md)] ring-1 ring-black/5">
-        <header className="flex items-center justify-between gap-3 border-b border-[--border-default] px-4 py-3">
+      <div className="relative w-full max-w-2xl rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-[var(--shadow-md)] ring-1 ring-black/5">
+        <header className="flex items-center justify-between gap-3 border-b border-[var(--border-default)] px-4 py-3">
           <div className="min-w-0">
-            <p className="text-xs uppercase text-[--text-secondary]">Задача</p>
+            <p className="text-xs uppercase text-[var(--text-secondary)]">Задача</p>
             <p id={titleId} className="truncate font-mono text-sm">
               {task.id}
             </p>
@@ -132,7 +132,7 @@ export function ManualTaskModal({ task, onClose }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md p-1.5 text-[--text-secondary] hover:bg-[--bg-muted] hover:text-[--text-primary] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--accent] focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg-surface]"
+            className="rounded-md p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)]"
             aria-label="Закрыть"
           >
             <X className="size-4" aria-hidden />
@@ -141,7 +141,7 @@ export function ManualTaskModal({ task, onClose }: Props) {
 
         <ContextBlock task={task} order={orderQuery.data ?? null} item={item} />
 
-        <div className="border-b border-[--border-default] px-4">
+        <div className="border-b border-[var(--border-default)] px-4">
           <div role="tablist" aria-label="Действия с задачей" className="flex gap-1">
             <TabButton
               active={tab === "complete"}
@@ -216,10 +216,10 @@ function TabButton({
       onKeyDown={onKeyDown}
       className={[
         "border-b-2 px-3 py-2 text-sm font-medium transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--accent] focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg-surface]",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)]",
         active
-          ? "border-[--accent] text-[--text-primary]"
-          : "border-transparent text-[--text-secondary] hover:text-[--text-primary]",
+          ? "border-[var(--accent)] text-[var(--text-primary)]"
+          : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
       ].join(" ")}
     >
       {children}
@@ -283,16 +283,16 @@ function ContextBlock({
       </div>
 
       <div>
-        <p className="text-xs font-medium uppercase text-[--text-secondary]">
+        <p className="text-xs font-medium uppercase text-[var(--text-secondary)]">
           Данные для выдачи
         </p>
         {dataEntries.length === 0 ? (
-          <p className="mt-1 text-[--text-secondary]">— нет дополнительных полей —</p>
+          <p className="mt-1 text-[var(--text-secondary)]">— нет дополнительных полей —</p>
         ) : (
           <dl className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1">
             {dataEntries.map(([k, v]) => (
               <div key={k} className="flex justify-between gap-3">
-                <dt className="text-[--text-secondary]">{k}</dt>
+                <dt className="text-[var(--text-secondary)]">{k}</dt>
                 <dd className="truncate font-mono">{String(v)}</dd>
               </div>
             ))}
@@ -314,7 +314,7 @@ function KeyValue({
 }) {
   return (
     <div>
-      <p className="text-xs font-medium uppercase text-[--text-secondary]">{label}</p>
+      <p className="text-xs font-medium uppercase text-[var(--text-secondary)]">{label}</p>
       <p className={["truncate", mono ? "font-mono" : ""].join(" ")}>{value}</p>
     </div>
   );
@@ -406,7 +406,7 @@ function CompleteForm({
           <select
             value={kind}
             onChange={(e) => setKind(e.target.value as ArtifactKind)}
-            className="flex h-10 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm"
+            className="flex h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
           >
             {Object.entries(ARTIFACT_KIND_LABEL).map(([v, label]) => (
               <option key={v} value={v}>
@@ -419,7 +419,7 @@ function CompleteForm({
           <select
             value={channel}
             onChange={(e) => setChannel(e.target.value as DeliveryChannel)}
-            className="flex h-10 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm"
+            className="flex h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
           >
             {CHANNELS.map((c) => (
               <option key={c.value} value={c.value}>
@@ -487,13 +487,13 @@ function CompleteForm({
           <textarea
             value={rawJson}
             onChange={(e) => setRawJson(e.target.value)}
-            className="min-h-32 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 py-2 font-mono text-xs"
+            className="min-h-32 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2 font-mono text-xs"
             placeholder='{"code": "ABC-123"}'
           />
         </FormField>
       )}
 
-      <label className="flex items-center gap-2 text-sm text-[--text-secondary]">
+      <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
         <input
           type="checkbox"
           checked={rawMode}
@@ -509,15 +509,15 @@ function CompleteForm({
         <textarea
           value={adminNote}
           onChange={(e) => setAdminNote(e.target.value)}
-          className="min-h-20 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 py-2 text-sm"
+          className="min-h-20 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2 text-sm"
         />
       </FormField>
 
       {rawError && (
-        <p className="text-sm text-[--danger]">{rawError}</p>
+        <p className="text-sm text-[var(--danger)]">{rawError}</p>
       )}
       {error && (
-        <p className="text-sm text-[--danger]">{describeError(error)}</p>
+        <p className="text-sm text-[var(--danger)]">{describeError(error)}</p>
       )}
 
       <div className="flex justify-end gap-2">
@@ -579,19 +579,19 @@ function FailForm({
             {...inputProps}
             value={adminNote}
             onChange={(e) => setAdminNote(e.target.value)}
-            className="min-h-20 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 py-2 text-sm text-[--text-primary] focus-visible:outline-none focus-visible:border-[--accent] focus-visible:ring-2 focus-visible:ring-[--accent]/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg-surface]"
+            className="min-h-20 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus-visible:outline-none focus-visible:border-[var(--accent)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)]"
           />
         )}
       </Field>
 
-      <p className="rounded-md border border-[--border-default] bg-[--bg-muted] p-3 text-xs text-[--text-secondary]">
+      <p className="rounded-md border border-[var(--border-default)] bg-[var(--bg-muted)] p-3 text-xs text-[var(--text-secondary)]">
         Заказ останется в статусе «в работе». Возврат денег инициируется
         отдельно в разделе «Платежи» → «Refund», чтобы выдача и возврат
         оставались под раздельным контролем.
       </p>
 
       {error && (
-        <p className="text-sm text-[--danger-fg]" role="alert">
+        <p className="text-sm text-[var(--danger-fg)]" role="alert">
           {describeError(error)}
         </p>
       )}
@@ -618,7 +618,7 @@ function FormField({
 }) {
   return (
     <label className="block">
-      <span className="text-xs font-medium uppercase tracking-wide text-[--text-secondary]">
+      <span className="text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">
         {label}
       </span>
       <div className="mt-1">{children}</div>

@@ -57,7 +57,7 @@ export function BrandsListPage() {
         }
       />
       {q.isLoading && <Spinner label="Загрузка…" />}
-      {q.isError && <p className="text-sm text-[--danger]">Ошибка загрузки.</p>}
+      {q.isError && <p className="text-sm text-[var(--danger)]">Ошибка загрузки.</p>}
       {q.data && (
         <DataTable
           rows={q.data}
@@ -67,7 +67,7 @@ export function BrandsListPage() {
         />
       )}
       {q.data && q.data.length === 0 && (
-        <p className="mt-4 text-sm text-[--text-secondary]">
+        <p className="mt-4 text-sm text-[var(--text-secondary)]">
           Ничего нет. <Link to="/brands/new" className="underline">Создать первый</Link>?
         </p>
       )}

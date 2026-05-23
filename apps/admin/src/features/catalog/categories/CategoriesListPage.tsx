@@ -120,7 +120,7 @@ export function CategoriesListPage() {
             aria-label="Удалить"
             disabled={remove.isPending}
           >
-            <Trash2 className="size-4 text-[--danger]" />
+            <Trash2 className="size-4 text-[var(--danger)]" />
           </Button>
         </div>
       ),
@@ -141,7 +141,7 @@ export function CategoriesListPage() {
         }
       />
       {q.isLoading && <Spinner label="Загрузка…" />}
-      {q.isError && <p className="text-sm text-[--danger]">Ошибка загрузки.</p>}
+      {q.isError && <p className="text-sm text-[var(--danger)]">Ошибка загрузки.</p>}
       {q.data && (
         <DataTable
           rows={sorted}
@@ -175,7 +175,7 @@ function Toggle({
       }}
       disabled={disabled}
       className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-        checked ? "bg-[--accent]" : "bg-[--color-border]"
+        checked ? "bg-[var(--accent)]" : "bg-[var(--color-border)]"
       } disabled:cursor-not-allowed disabled:opacity-50`}
     >
       <span

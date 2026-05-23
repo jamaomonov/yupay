@@ -31,7 +31,7 @@ export function Spinner({ label, size = "md", className }: SpinnerProps) {
       role="status"
       aria-live="polite"
       className={[
-        "inline-flex items-center gap-2 text-sm text-[--text-secondary]",
+        "inline-flex items-center gap-2 text-sm text-[var(--text-secondary)]",
         className ?? "",
       ].join(" ")}
     >
@@ -55,7 +55,7 @@ export function Skeleton({ className, rows = 1 }: SkeletonProps) {
         <div
           key={i}
           className={[
-            "h-4 rounded bg-[--bg-muted] animate-pulse",
+            "h-4 rounded bg-[var(--bg-muted)] animate-pulse",
             className ?? "",
           ].join(" ")}
         />
@@ -86,19 +86,19 @@ export function EmptyState({
     <div
       role="status"
       className={[
-        "rounded-lg border border-dashed border-[--border-default] bg-[--bg-surface] px-6 py-10 text-center",
-        tone === "muted" ? "bg-[--bg-muted]" : "",
+        "rounded-lg border border-dashed border-[var(--border-default)] bg-[var(--bg-surface)] px-6 py-10 text-center",
+        tone === "muted" ? "bg-[var(--bg-muted)]" : "",
         className ?? "",
       ].join(" ")}
     >
       {Icon && (
-        <div className="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-[--bg-muted] text-[--text-secondary]">
+        <div className="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-[var(--bg-muted)] text-[var(--text-secondary)]">
           <Icon className="size-6" aria-hidden />
         </div>
       )}
-      <p className="text-sm font-medium text-[--text-primary]">{title}</p>
+      <p className="text-sm font-medium text-[var(--text-primary)]">{title}</p>
       {description && (
-        <p className="mt-1 text-sm text-[--text-secondary]">{description}</p>
+        <p className="mt-1 text-sm text-[var(--text-secondary)]">{description}</p>
       )}
       {action && <div className="mt-4 flex justify-center">{action}</div>}
     </div>

@@ -121,9 +121,9 @@ export function FailedAutomaticTab() {
       header: "Ошибка",
       render: (t) =>
         t.last_error ? (
-          <span className="text-xs text-[--danger]">{t.last_error}</span>
+          <span className="text-xs text-[var(--danger)]">{t.last_error}</span>
         ) : (
-          <span className="text-[--text-secondary]">—</span>
+          <span className="text-[var(--text-secondary)]">—</span>
         ),
     },
     {
@@ -139,7 +139,7 @@ export function FailedAutomaticTab() {
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-[--text-secondary]">
+        <p className="text-sm text-[var(--text-secondary)]">
           Автоматические задачи, которые упали. Отметь и нажми «Перезапустить» —
           бэк сам пропустит те, что уже не подлежат retry.
         </p>
@@ -147,7 +147,7 @@ export function FailedAutomaticTab() {
           <button
             type="button"
             onClick={toggleAll}
-            className="text-xs text-[--text-secondary] underline-offset-2 hover:underline disabled:opacity-50"
+            className="text-xs text-[var(--text-secondary)] underline-offset-2 hover:underline disabled:opacity-50"
             disabled={rows.length === 0}
           >
             {selected.size === rows.length && rows.length > 0
@@ -167,7 +167,7 @@ export function FailedAutomaticTab() {
       </div>
 
       {feedback && (
-        <p className="mb-3 text-sm text-[--text-primary]">{feedback}</p>
+        <p className="mb-3 text-sm text-[var(--text-primary)]">{feedback}</p>
       )}
 
       <DataTable

@@ -69,10 +69,10 @@ export function ManualQueuePage() {
       header: "Заказ",
       render: (r) => (
         <div className="flex flex-col">
-          <span className="font-mono text-xs text-[--text-secondary]">
+          <span className="font-mono text-xs text-[var(--text-secondary)]">
             {r.task.order_id.slice(0, 8)}…
           </span>
-          <span className="text-xs text-[--text-secondary]">
+          <span className="text-xs text-[var(--text-secondary)]">
             {r.order
               ? new Date(r.order.created_at).toLocaleString("ru", {
                   day: "2-digit",
@@ -94,14 +94,14 @@ export function ManualQueuePage() {
       render: (r) => {
         const item = orderItem(r);
         const display = item?.display;
-        if (!display) return <span className="text-[--text-secondary]">—</span>;
+        if (!display) return <span className="text-[var(--text-secondary)]">—</span>;
         const denom = display.denomination ?? display.sku_code;
         return (
           <div className="flex flex-col">
             <span className="font-medium">
               {display.brand_name || display.product_name}
             </span>
-            <span className="text-xs text-[--text-secondary]">{denom}</span>
+            <span className="text-xs text-[var(--text-secondary)]">{denom}</span>
           </div>
         );
       },
@@ -123,23 +123,23 @@ export function ManualQueuePage() {
       header: "Данные",
       render: (r) => {
         const item = orderItem(r);
-        if (!item) return <span className="text-[--text-secondary]">…</span>;
+        if (!item) return <span className="text-[var(--text-secondary)]">…</span>;
         const entries = Object.entries(item.fulfillment_data).filter(
           ([, v]) => v !== null && v !== "",
         );
         if (entries.length === 0) {
-          return <span className="text-[--text-secondary]">—</span>;
+          return <span className="text-[var(--text-secondary)]">—</span>;
         }
         return (
           <ul className="space-y-0.5 text-xs">
             {entries.slice(0, 2).map(([k, v]) => (
               <li key={k} className="font-mono">
-                <span className="text-[--text-secondary]">{k}:</span>{" "}
+                <span className="text-[var(--text-secondary)]">{k}:</span>{" "}
                 {String(v).slice(0, 24)}
               </li>
             ))}
             {entries.length > 2 && (
-              <li className="text-[--text-secondary]">
+              <li className="text-[var(--text-secondary)]">
                 +{entries.length - 2}
               </li>
             )}
@@ -167,7 +167,7 @@ export function ManualQueuePage() {
       key: "age",
       header: "Возраст",
       render: (r) => (
-        <span className="text-xs text-[--text-secondary]">
+        <span className="text-xs text-[var(--text-secondary)]">
           {formatAge(r.task.created_at)}
         </span>
       ),
@@ -183,7 +183,7 @@ export function ManualQueuePage() {
       />
 
       {tasksQuery.isError && (
-        <p className="mb-3 text-sm text-[--danger]">
+        <p className="mb-3 text-sm text-[var(--danger)]">
           Не удалось загрузить очередь:{" "}
           {(tasksQuery.error as Error | undefined)?.message ?? "ошибка сети"}
         </p>

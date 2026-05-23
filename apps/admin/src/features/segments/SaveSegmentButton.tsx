@@ -30,7 +30,7 @@ export function SaveSegmentButton() {
       <button
         type="button"
         onClick={() => { setOpen(true); }}
-        className="inline-flex items-center gap-1.5 rounded-md border border-[--border-default] px-3 py-1.5 text-sm text-[--text-secondary] hover:bg-[--bg-muted] hover:text-[--text-primary]"
+        className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-default)] px-3 py-1.5 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] hover:text-[var(--text-primary)]"
       >
         <Bookmark className="size-4" />
         Сохранить фильтр
@@ -103,7 +103,7 @@ function SaveSegmentDialog({ onClose }: { onClose: () => void }) {
     >
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-md rounded-lg border border-[--border-default] bg-[--bg-surface] p-4 text-[--text-primary] shadow-[var(--shadow-md)]"
+        className="w-full max-w-md rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-4 text-[var(--text-primary)] shadow-[var(--shadow-md)]"
       >
         <header className="mb-3 flex items-center justify-between">
           <h2 id={titleId} className="text-sm font-semibold">
@@ -112,7 +112,7 @@ function SaveSegmentDialog({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md p-1 text-[--text-secondary] hover:bg-[--bg-muted] hover:text-[--text-primary] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--accent] focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg-surface]"
+            className="rounded-md p-1 text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)]"
             aria-label="Закрыть"
           >
             <X className="size-4" aria-hidden />
@@ -137,9 +137,9 @@ function SaveSegmentDialog({ onClose }: { onClose: () => void }) {
           )}
         </Field>
 
-        <p className="mt-3 text-xs text-[--text-secondary]">
+        <p className="mt-3 text-xs text-[var(--text-secondary)]">
           Сохраняем текущий URL:{" "}
-          <code className="text-[--text-primary]">
+          <code className="text-[var(--text-primary)]">
             {location.pathname}
             {location.search || ""}
           </code>

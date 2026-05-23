@@ -69,20 +69,20 @@ export function StuckTab() {
       header: "Последняя ошибка",
       render: (t) =>
         t.last_error ? (
-          <span className="text-xs text-[--danger]">{t.last_error}</span>
+          <span className="text-xs text-[var(--danger)]">{t.last_error}</span>
         ) : (
-          <span className="text-[--text-secondary]">—</span>
+          <span className="text-[var(--text-secondary)]">—</span>
         ),
     },
   ];
 
   return (
     <div>
-      <p className="mb-3 text-sm text-[--text-secondary]">
+      <p className="mb-3 text-sm text-[var(--text-secondary)]">
         Задачи в работе дольше 30 минут. Чем дольше ждёт — тем хуже SLA.
       </p>
       {query.isError && (
-        <p className="mb-3 text-sm text-[--danger]">
+        <p className="mb-3 text-sm text-[var(--danger)]">
           Не удалось загрузить список.
         </p>
       )}
@@ -107,10 +107,10 @@ function SlaBadge({ createdAt }: { createdAt: string }) {
       className={[
         "rounded-full px-2 py-0.5 text-xs font-medium",
         tone === "danger"
-          ? "bg-[--color-danger]/15 text-[--danger]"
+          ? "bg-[var(--color-danger)]/15 text-[var(--danger)]"
           : tone === "warn"
-            ? "bg-[--warning-soft] text-[--warning-fg]"
-            : "bg-[--bg-muted] text-[--text-secondary]",
+            ? "bg-[var(--warning-soft)] text-[var(--warning-fg)]"
+            : "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
       ].join(" ")}
     >
       {formatAge(ageMs)}

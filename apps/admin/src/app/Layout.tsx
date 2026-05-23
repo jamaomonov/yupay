@@ -109,7 +109,7 @@ export function Layout() {
           (a11y-audit #13, WCAG 2.4.1). */}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-md focus:bg-[--accent] focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-[--text-on-accent] focus:shadow-[var(--shadow-md)]"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-md focus:bg-[var(--accent)] focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-[var(--text-on-accent)] focus:shadow-[var(--shadow-md)]"
       >
         Перейти к содержимому
       </a>
@@ -118,7 +118,7 @@ export function Layout() {
       <aside
         aria-label="Основная навигация"
         className={[
-          "fixed inset-y-0 left-0 z-40 flex h-screen flex-col border-r border-[--border-default] bg-[--bg-sidebar]",
+          "fixed inset-y-0 left-0 z-40 flex h-screen flex-col border-r border-[var(--border-default)] bg-[var(--bg-sidebar)]",
           "transition-transform duration-200 ease-out",
           "md:static md:translate-x-0",
           drawerOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
@@ -127,13 +127,13 @@ export function Layout() {
       >
         <div className="flex h-[var(--topbar-height)] items-center justify-between gap-2 border-b px-4">
           <div className="flex items-center gap-2">
-            <ShieldCheck className="size-5 text-[--accent]" />
+            <ShieldCheck className="size-5 text-[var(--accent)]" />
             <span className="text-lg font-semibold">YuPay Admin</span>
           </div>
           <button
             type="button"
             onClick={() => { setDrawerOpen(false); }}
-            className="md:hidden rounded-md p-1 text-[--text-secondary] hover:bg-[--bg-muted]"
+            className="md:hidden rounded-md p-1 text-[var(--text-secondary)] hover:bg-[var(--bg-muted)]"
             aria-label="Закрыть меню"
           >
             <X className="size-4" />
@@ -153,8 +153,8 @@ export function Layout() {
                 [
                   "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
                   isActive
-                    ? "bg-[--bg-accent-soft] text-[--accent-soft-fg]"
-                    : "text-[--text-secondary] hover:bg-[--bg-muted] hover:text-[--text-primary]",
+                    ? "bg-[var(--bg-accent-soft)] text-[var(--accent-soft-fg)]"
+                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] hover:text-[var(--text-primary)]",
                 ].join(" ")
               }
             >
@@ -164,7 +164,7 @@ export function Layout() {
           ))}
           <SavedSegmentsNav />
         </nav>
-        <div className="border-t p-3 text-xs text-[--text-secondary]">v0.0.1</div>
+        <div className="border-t p-3 text-xs text-[var(--text-secondary)]">v0.0.1</div>
       </aside>
 
       {/* Drawer backdrop (mobile only). */}
@@ -178,17 +178,17 @@ export function Layout() {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex h-[var(--topbar-height)] items-center justify-between border-b bg-[--bg-surface] px-4 md:px-6">
+        <header className="sticky top-0 z-20 flex h-[var(--topbar-height)] items-center justify-between border-b bg-[var(--bg-surface)] px-4 md:px-6">
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
               onClick={() => { setDrawerOpen(true); }}
-              className="rounded-md p-1.5 text-[--text-secondary] hover:bg-[--bg-muted] md:hidden"
+              className="rounded-md p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] md:hidden"
               aria-label="Открыть меню"
             >
               <Menu className="size-5" />
             </button>
-            <span className="truncate text-sm text-[--text-secondary]">
+            <span className="truncate text-sm text-[var(--text-secondary)]">
               {me?.display_name ?? me?.email ?? ""}
             </span>
           </div>
@@ -196,20 +196,20 @@ export function Layout() {
             <button
               type="button"
               onClick={openSearch}
-              className="hidden items-center gap-2 rounded-md border border-[--border-default] px-3 py-1.5 text-sm text-[--text-secondary] hover:bg-[--bg-muted] sm:flex"
+              className="hidden items-center gap-2 rounded-md border border-[var(--border-default)] px-3 py-1.5 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] sm:flex"
               aria-label="Открыть поиск"
               data-search-trigger
             >
               <Search className="size-4" />
               <span>Поиск</span>
-              <kbd className="ml-2 rounded border border-[--border-default] px-1 py-0.5 text-[10px] uppercase">
+              <kbd className="ml-2 rounded border border-[var(--border-default)] px-1 py-0.5 text-[10px] uppercase">
                 ⌘K
               </kbd>
             </button>
             <button
               type="button"
               onClick={openSearch}
-              className="rounded-md p-1.5 text-[--text-secondary] hover:bg-[--bg-muted] sm:hidden"
+              className="rounded-md p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] sm:hidden"
               aria-label="Открыть поиск"
             >
               <Search className="size-5" />

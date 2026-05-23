@@ -75,12 +75,12 @@ export const STATUS_LABEL: Record<OrderStatus, string> = {
 };
 
 export const STATUS_TONE: Record<OrderStatus, string> = {
-  pending_payment: "bg-[--warning-soft] text-[--warning-fg]",
-  paid: "bg-[--info-soft] text-[--info-fg]",
-  fulfilling: "bg-[--bg-accent-soft] text-[--accent-soft-fg]",
-  fulfilled: "bg-[--success-soft] text-[--success-fg]",
-  delivered: "bg-[--success-soft] text-[--success-fg]",
-  cancelled: "bg-[--bg-muted] text-[--text-secondary]",
-  expired: "bg-[--bg-muted] text-[--text-secondary]",
-  refunded: "bg-[--danger-soft] text-[--danger-fg]",
+  pending_payment: "bg-[var(--warning-soft)] text-[var(--warning-fg)]",
+  paid: "bg-[var(--info-soft)] text-[var(--info-fg)]",
+  fulfilling: "bg-[var(--bg-accent-soft)] text-[var(--accent-soft-fg)]",
+  fulfilled: "bg-[var(--success-soft)] text-[var(--success-fg)]",
+  delivered: "bg-[var(--success-soft)] text-[var(--success-fg)]",
+  cancelled: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
+  expired: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
+  refunded: "bg-[var(--danger-soft)] text-[var(--danger-fg)]",
 };

@@ -101,7 +101,7 @@ export function OrderDetailPage() {
   if (orderQuery.isError || !orderQuery.data) {
     return (
       <div className="space-y-3">
-        <p className="text-sm text-[--danger]">
+        <p className="text-sm text-[var(--danger)]">
           Не удалось загрузить заказ.
         </p>
         <Button variant="ghost" onClick={() => navigate("/orders")}>
@@ -126,7 +126,7 @@ export function OrderDetailPage() {
               Пользователь{" "}
               <Link
                 to={`/customers/${order.user_id}`}
-                className="font-mono text-[--text-primary] underline-offset-2 hover:underline"
+                className="font-mono text-[var(--text-primary)] underline-offset-2 hover:underline"
               >
                 {order.user_id.slice(0, 8)}…
               </Link>
@@ -197,7 +197,7 @@ function SummaryCard({ order }: { order: OrderAdminOut }) {
         <span className="font-medium">
           {Number.parseFloat(order.total_charged).toFixed(2)} {order.currency}
           {order.currency !== "USD" && (
-            <span className="ml-2 text-[--text-secondary] text-xs">
+            <span className="ml-2 text-[var(--text-secondary)] text-xs">
               ≈ ${Number.parseFloat(order.total_usd).toFixed(2)}
             </span>
           )}
@@ -222,14 +222,14 @@ function SummaryCard({ order }: { order: OrderAdminOut }) {
     },
   ];
   return (
-    <div className="rounded-lg border bg-[--bg-surface] p-4">
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[--text-secondary]">
+    <div className="rounded-lg border bg-[var(--bg-surface)] p-4">
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--text-secondary)]">
         Сводка
       </h2>
       <dl className="grid grid-cols-1 gap-x-6 gap-y-2 md:grid-cols-2">
         {rows.map((r) => (
           <div key={r.label} className="flex items-baseline justify-between text-sm">
-            <dt className="text-[--text-secondary]">{r.label}</dt>
+            <dt className="text-[var(--text-secondary)]">{r.label}</dt>
             <dd>{r.value}</dd>
           </div>
         ))}
@@ -240,13 +240,13 @@ function SummaryCard({ order }: { order: OrderAdminOut }) {
 
 function ItemsCard({ order }: { order: OrderAdminOut }) {
   return (
-    <div className="rounded-lg border bg-[--bg-surface]">
+    <div className="rounded-lg border bg-[var(--bg-surface)]">
       <header className="border-b px-4 py-3 flex items-center gap-2">
-        <Package className="size-4 text-[--text-secondary]" />
+        <Package className="size-4 text-[var(--text-secondary)]" />
         <h2 className="text-sm font-semibold">Позиции ({order.items.length})</h2>
       </header>
       <table className="w-full text-sm">
-        <thead className="text-xs uppercase text-[--text-secondary]">
+        <thead className="text-xs uppercase text-[var(--text-secondary)]">
           <tr>
             <th className="px-4 py-2 text-left font-medium">Товар</th>
             <th className="px-3 py-2 text-center font-medium">Кол-во</th>
@@ -276,11 +276,11 @@ function ItemsCard({ order }: { order: OrderAdminOut }) {
                       <img
                         src={d.image_url}
                         alt=""
-                        className="size-10 rounded-md object-cover border border-[--border-default] flex-shrink-0"
+                        className="size-10 rounded-md object-cover border border-[var(--border-default)] flex-shrink-0"
                       />
                     ) : (
                       <div
-                        className="size-10 rounded-md flex items-center justify-center text-xs font-bold text-[--text-secondary] border border-[--border-default] flex-shrink-0"
+                        className="size-10 rounded-md flex items-center justify-center text-xs font-bold text-[var(--text-secondary)] border border-[var(--border-default)] flex-shrink-0"
                         style={{ background: "var(--bg-muted)" }}
                       >
                         {(d?.brand_name?.[0] ?? "?").toUpperCase()}
@@ -288,10 +288,10 @@ function ItemsCard({ order }: { order: OrderAdminOut }) {
                     )}
                     <div className="min-w-0">
                       <div className="font-medium truncate">{headline}</div>
-                      <div className="flex items-center gap-1.5 text-xs text-[--text-secondary] truncate">
+                      <div className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] truncate">
                         {sub && <span>{sub}</span>}
                         {d?.region && d.region !== "GLOBAL" && (
-                          <span className="rounded bg-[--bg-muted] px-1 font-mono">
+                          <span className="rounded bg-[var(--bg-muted)] px-1 font-mono">
                             {d.region}
                           </span>
                         )}
@@ -302,7 +302,7 @@ function ItemsCard({ order }: { order: OrderAdminOut }) {
                         )}
                       </div>
                       {Object.keys(it.fulfillment_data).length > 0 && (
-                        <pre className="mt-1 text-[10px] text-[--text-secondary] whitespace-pre-wrap break-all">
+                        <pre className="mt-1 text-[10px] text-[var(--text-secondary)] whitespace-pre-wrap break-all">
                           {JSON.stringify(it.fulfillment_data, null, 0)}
                         </pre>
                       )}
@@ -322,7 +322,7 @@ function ItemsCard({ order }: { order: OrderAdminOut }) {
                       {it.supplier_order_id.slice(0, 12)}…
                     </code>
                   ) : (
-                    <span className="text-xs text-[--text-secondary]">—</span>
+                    <span className="text-xs text-[var(--text-secondary)]">—</span>
                   )}
                 </td>
               </tr>
@@ -345,23 +345,23 @@ function Timeline({
     a.created_at.localeCompare(b.created_at),
   );
   return (
-    <div className="rounded-lg border bg-[--bg-surface]">
+    <div className="rounded-lg border bg-[var(--bg-surface)]">
       <header className="border-b px-4 py-3 flex items-center gap-2">
-        <Clock className="size-4 text-[--text-secondary]" />
+        <Clock className="size-4 text-[var(--text-secondary)]" />
         <h2 className="text-sm font-semibold">Хронология ({ordered.length})</h2>
       </header>
       {ordered.length === 0 ? (
-        <p className="p-4 text-sm text-[--text-secondary]">Событий ещё нет.</p>
+        <p className="p-4 text-sm text-[var(--text-secondary)]">Событий ещё нет.</p>
       ) : (
         <ol className="relative space-y-4 p-4 pl-10">
           <span
-            className="absolute left-5 top-6 bottom-6 w-px bg-[--color-border]"
+            className="absolute left-5 top-6 bottom-6 w-px bg-[var(--color-border)]"
             aria-hidden
           />
           {ordered.map((ev, idx) => (
             <li key={`${ev.created_at}-${idx}`} className="relative">
               <span
-                className="absolute -left-6 top-1 inline-flex size-3 rounded-full ring-2 ring-[--color-bg]"
+                className="absolute -left-6 top-1 inline-flex size-3 rounded-full ring-2 ring-[var(--color-bg)]"
                 style={{
                   background:
                     ev.kind === "order.paid"
@@ -375,17 +375,17 @@ function Timeline({
               />
               <div className="flex items-baseline justify-between gap-3">
                 <code className="text-sm font-semibold">{ev.kind}</code>
-                <span className="text-xs text-[--text-secondary]">
+                <span className="text-xs text-[var(--text-secondary)]">
                   {formatDate(ev.created_at)}
                 </span>
               </div>
               {ev.actor && (
-                <p className="text-xs text-[--text-secondary] mt-0.5">
+                <p className="text-xs text-[var(--text-secondary)] mt-0.5">
                   by {ev.actor}
                 </p>
               )}
               {Object.keys(ev.payload).length > 0 && (
-                <pre className="mt-1 whitespace-pre-wrap rounded border bg-[--bg-muted] p-2 text-[10px] text-[--text-secondary]">
+                <pre className="mt-1 whitespace-pre-wrap rounded border bg-[var(--bg-muted)] p-2 text-[10px] text-[var(--text-secondary)]">
                   {JSON.stringify(ev.payload, null, 2)}
                 </pre>
               )}
@@ -393,7 +393,7 @@ function Timeline({
           ))}
         </ol>
       )}
-      <footer className="border-t px-4 py-2 text-xs text-[--text-secondary] flex items-center gap-2">
+      <footer className="border-t px-4 py-2 text-xs text-[var(--text-secondary)] flex items-center gap-2">
         <CircleDot className="size-3" />
         Текущий статус: <StatusBadge status={status} />
       </footer>
@@ -411,15 +411,15 @@ function PaymentsCard({
   refunding: boolean;
 }) {
   return (
-    <div className="rounded-lg border bg-[--bg-surface]">
+    <div className="rounded-lg border bg-[var(--bg-surface)]">
       <header className="border-b px-4 py-3 flex items-center gap-2">
-        <CreditCard className="size-4 text-[--text-secondary]" />
+        <CreditCard className="size-4 text-[var(--text-secondary)]" />
         <h2 className="text-sm font-semibold">
           Платежи ({payments.length})
         </h2>
       </header>
       {payments.length === 0 ? (
-        <p className="p-4 text-sm text-[--text-secondary]">
+        <p className="p-4 text-sm text-[var(--text-secondary)]">
           Платежей по заказу пока нет.
         </p>
       ) : (
@@ -434,24 +434,24 @@ function PaymentsCard({
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                       p.status === "succeeded"
-                        ? "bg-[--success-soft] text-[--success-fg]"
+                        ? "bg-[var(--success-soft)] text-[var(--success-fg)]"
                         : p.status === "failed"
-                          ? "bg-[--danger-soft] text-[--danger-fg]"
+                          ? "bg-[var(--danger-soft)] text-[var(--danger-fg)]"
                           : p.status === "refunded" ||
                               p.status === "partially_refunded"
-                            ? "bg-[--info-soft] text-[--info-fg]"
-                            : "bg-[--warning-soft] text-[--warning-fg]"
+                            ? "bg-[var(--info-soft)] text-[var(--info-fg)]"
+                            : "bg-[var(--warning-soft)] text-[var(--warning-fg)]"
                     }`}
                   >
                     {p.status}
                   </span>
                 </div>
-                <p className="mt-1 text-xs text-[--text-secondary]">
+                <p className="mt-1 text-xs text-[var(--text-secondary)]">
                   {p.provider} · {Number.parseFloat(p.amount).toFixed(2)}{" "}
                   {p.currency}
                 </p>
                 {p.intent_url && p.provider === "mock" && (
-                  <p className="mt-1 text-[10px] text-[--text-secondary] break-all">
+                  <p className="mt-1 text-[10px] text-[var(--text-secondary)] break-all">
                     {p.intent_url}
                   </p>
                 )}
@@ -478,13 +478,13 @@ function PaymentsCard({
 
 function FulfillmentCard({ tasks }: { tasks: TaskAdminOut[] }) {
   return (
-    <div className="rounded-lg border bg-[--bg-surface]">
+    <div className="rounded-lg border bg-[var(--bg-surface)]">
       <header className="border-b px-4 py-3 flex items-center gap-2">
-        <Truck className="size-4 text-[--text-secondary]" />
+        <Truck className="size-4 text-[var(--text-secondary)]" />
         <h2 className="text-sm font-semibold">Фулфилмент ({tasks.length})</h2>
       </header>
       {tasks.length === 0 ? (
-        <p className="p-4 text-sm text-[--text-secondary]">
+        <p className="p-4 text-sm text-[var(--text-secondary)]">
           Задач саги ещё не запущено.
         </p>
       ) : (
@@ -496,22 +496,22 @@ function FulfillmentCard({ tasks }: { tasks: TaskAdminOut[] }) {
                 <span
                   className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                     t.status === "succeeded"
-                      ? "bg-[--success-soft] text-[--success-fg]"
+                      ? "bg-[var(--success-soft)] text-[var(--success-fg)]"
                       : t.status === "failed"
-                        ? "bg-[--danger-soft] text-[--danger-fg]"
+                        ? "bg-[var(--danger-soft)] text-[var(--danger-fg)]"
                         : t.status === "cancelled"
-                          ? "bg-[--bg-muted] text-[--text-secondary]"
-                          : "bg-[--warning-soft] text-[--warning-fg]"
+                          ? "bg-[var(--bg-muted)] text-[var(--text-secondary)]"
+                          : "bg-[var(--warning-soft)] text-[var(--warning-fg)]"
                   }`}
                 >
                   {t.status}
                 </span>
               </div>
-              <p className="mt-1 text-xs text-[--text-secondary]">
+              <p className="mt-1 text-xs text-[var(--text-secondary)]">
                 item {t.order_item_id.slice(0, 8)}… · попыток {t.attempts_count}
               </p>
               {t.last_error && (
-                <p className="mt-1 text-xs text-[--danger]">
+                <p className="mt-1 text-xs text-[var(--danger)]">
                   {t.last_error}
                 </p>
               )}
