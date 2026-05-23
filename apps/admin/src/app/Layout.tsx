@@ -127,13 +127,13 @@ export function Layout() {
       >
         <div className="flex h-[var(--topbar-height)] items-center justify-between gap-2 border-b px-4">
           <div className="flex items-center gap-2">
-            <ShieldCheck className="size-5 text-[--color-brand]" />
+            <ShieldCheck className="size-5 text-[--accent]" />
             <span className="text-lg font-semibold">YuPay Admin</span>
           </div>
           <button
             type="button"
             onClick={() => { setDrawerOpen(false); }}
-            className="md:hidden rounded-md p-1 text-[--color-muted] hover:bg-[--color-subtle]"
+            className="md:hidden rounded-md p-1 text-[--text-secondary] hover:bg-[--bg-muted]"
             aria-label="Закрыть меню"
           >
             <X className="size-4" />
@@ -141,6 +141,10 @@ export function Layout() {
         </div>
         <nav className="flex-1 overflow-y-auto p-3">
           {NAV.map((item) => (
+            // Active item gets the indigo accent-soft pair so the operator can
+            // see at a glance where they are in the sidebar — neutral subtle on
+            // hover stays the same so the active marker isn't mistaken for a
+            // hover state on neighbouring items.
             <NavLink
               key={item.to}
               to={item.to}
@@ -149,18 +153,18 @@ export function Layout() {
                 [
                   "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
                   isActive
-                    ? "bg-[--color-subtle] text-[--color-fg]"
-                    : "text-[--color-muted] hover:bg-[--color-subtle]/60 hover:text-[--color-fg]",
+                    ? "bg-[--bg-accent-soft] text-[--accent-soft-fg]"
+                    : "text-[--text-secondary] hover:bg-[--bg-muted] hover:text-[--text-primary]",
                 ].join(" ")
               }
             >
-              <item.icon className="size-4" />
+              <item.icon className="size-4" aria-hidden />
               {item.label}
             </NavLink>
           ))}
           <SavedSegmentsNav />
         </nav>
-        <div className="border-t p-3 text-xs text-[--color-muted]">v0.0.1</div>
+        <div className="border-t p-3 text-xs text-[--text-secondary]">v0.0.1</div>
       </aside>
 
       {/* Drawer backdrop (mobile only). */}
@@ -174,17 +178,17 @@ export function Layout() {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex h-[var(--topbar-height)] items-center justify-between border-b bg-[--color-bg] px-4 md:px-6">
+        <header className="sticky top-0 z-20 flex h-[var(--topbar-height)] items-center justify-between border-b bg-[--bg-surface] px-4 md:px-6">
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
               onClick={() => { setDrawerOpen(true); }}
-              className="rounded-md p-1.5 text-[--color-muted] hover:bg-[--color-subtle] md:hidden"
+              className="rounded-md p-1.5 text-[--text-secondary] hover:bg-[--bg-muted] md:hidden"
               aria-label="Открыть меню"
             >
               <Menu className="size-5" />
             </button>
-            <span className="truncate text-sm text-[--color-muted]">
+            <span className="truncate text-sm text-[--text-secondary]">
               {me?.display_name ?? me?.email ?? ""}
             </span>
           </div>
@@ -192,20 +196,20 @@ export function Layout() {
             <button
               type="button"
               onClick={openSearch}
-              className="hidden items-center gap-2 rounded-md border border-[--color-border] px-3 py-1.5 text-sm text-[--color-muted] hover:bg-[--color-subtle] sm:flex"
+              className="hidden items-center gap-2 rounded-md border border-[--border-default] px-3 py-1.5 text-sm text-[--text-secondary] hover:bg-[--bg-muted] sm:flex"
               aria-label="Открыть поиск"
               data-search-trigger
             >
               <Search className="size-4" />
               <span>Поиск</span>
-              <kbd className="ml-2 rounded border border-[--color-border] px-1 py-0.5 text-[10px] uppercase">
+              <kbd className="ml-2 rounded border border-[--border-default] px-1 py-0.5 text-[10px] uppercase">
                 ⌘K
               </kbd>
             </button>
             <button
               type="button"
               onClick={openSearch}
-              className="rounded-md p-1.5 text-[--color-muted] hover:bg-[--color-subtle] sm:hidden"
+              className="rounded-md p-1.5 text-[--text-secondary] hover:bg-[--bg-muted] sm:hidden"
               aria-label="Открыть поиск"
             >
               <Search className="size-5" />

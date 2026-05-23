@@ -136,9 +136,10 @@ export function AuditPage() {
               onClick={() => { setAdminOnlyParam(adminOnly ? "" : "true"); }}
               className={[
                 "inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--accent] focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg-base]",
                 adminOnly
-                  ? "border-[--color-brand] bg-[--color-brand]/10 text-[--color-fg]"
-                  : "border-[--color-border] text-[--color-muted] hover:bg-[--color-subtle]",
+                  ? "border-[--accent] bg-[--bg-accent-soft] text-[--accent-soft-fg]"
+                  : "border-[--border-default] text-[--text-secondary] hover:bg-[--bg-muted]",
               ].join(" ")}
               aria-pressed={adminOnly}
             >
@@ -175,7 +176,7 @@ export function AuditPage() {
 
       <section className="mb-5 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
-          <Filter className="size-4 text-[--color-muted]" />
+          <Filter className="size-4 text-[--text-secondary]" />
           {SOURCES.map((s) => {
             const on = enabled[s.key];
             const Icon = s.icon;
@@ -211,7 +212,7 @@ export function AuditPage() {
 
         <div className="flex flex-wrap gap-2">
           <div className="relative flex-1 min-w-48">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[--color-muted]" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[--text-secondary]" />
             <Input
               value={actor}
               onChange={(e) => setActor(e.target.value)}
@@ -220,7 +221,7 @@ export function AuditPage() {
             />
           </div>
           <div className="relative flex-1 min-w-48">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[--color-muted]" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[--text-secondary]" />
             <Input
               value={target}
               onChange={(e) => setTarget(e.target.value)}
@@ -231,7 +232,7 @@ export function AuditPage() {
           <select
             value={limit}
             onChange={(e) => setLimit(Number(e.target.value))}
-            className="h-10 rounded-md border border-[--color-border] bg-[--color-bg] px-3 text-sm"
+            className="h-10 rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm"
           >
             <option value={50}>50 событий</option>
             <option value={100}>100</option>
@@ -242,12 +243,12 @@ export function AuditPage() {
       </section>
 
       {q.isError && (
-        <p className="text-sm text-[--color-danger]">Ошибка загрузки.</p>
+        <p className="text-sm text-[--danger]">Ошибка загрузки.</p>
       )}
 
       <div className="space-y-1">
         {rows.length === 0 && !q.isLoading && (
-          <div className="rounded-lg border border-dashed border-[--color-border] p-10 text-center text-sm text-[--color-muted]">
+          <div className="rounded-lg border border-dashed border-[--border-default] p-10 text-center text-sm text-[--text-secondary]">
             События не найдены под текущие фильтры.
           </div>
         )}
@@ -261,7 +262,7 @@ export function AuditPage() {
         ))}
       </div>
 
-      <p className="mt-3 text-xs text-[--color-muted]">
+      <p className="mt-3 text-xs text-[--text-secondary]">
         Источники: ``order_events``, ``payment_attempts``,
         ``payment_webhooks``, ``fulfillment_attempts``, ``wallet_transactions``.
         Сортировка по timestamp. Авто-обновление каждые 15 сек.
@@ -382,17 +383,17 @@ function StatCard({
   render?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg border bg-[--color-bg] p-4">
+    <div className="rounded-lg border bg-[--bg-surface] p-4">
       {render ?? (
         <div
           className={`text-2xl font-semibold ${
-            accent ? "text-[--color-brand]" : "text-[--color-fg]"
+            accent ? "text-[--accent]" : "text-[--text-primary]"
           }`}
         >
           {value ?? 0}
         </div>
       )}
-      <div className="mt-1 text-xs uppercase tracking-wide text-[--color-muted]">
+      <div className="mt-1 text-xs uppercase tracking-wide text-[--text-secondary]">
         {label}
       </div>
     </div>
@@ -412,8 +413,8 @@ function Sparkline({ values }: { values: number[] }) {
             height: `${Math.max(8, (v / max) * 100)}%`,
             background:
               v === 0
-                ? "var(--color-border)"
-                : "color-mix(in oklab, var(--color-brand) 70%, transparent)",
+                ? "var(--border-default)"
+                : "color-mix(in oklab, var(--accent) 70%, transparent)",
           }}
           title={`${v} событий`}
         />
