@@ -2,9 +2,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
-  Check,
   ChevronRight,
-  Coins,
   ExternalLink,
   FileText,
   Info,
@@ -23,14 +21,6 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useLogout, useMe } from "@/lib/auth";
-import {
-  CURRENCY_LABEL,
-  CURRENCY_SYMBOL,
-  DISPLAY_CURRENCIES,
-  type DisplayCurrency,
-  useDisplayCurrency,
-  useUpdateDisplayCurrency,
-} from "@/lib/currency";
 import { getWebApp } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
@@ -71,9 +61,6 @@ export default function Settings() {
   const logout = useLogout();
   const user = me.data;
 
-  const currency = useDisplayCurrency();
-  const updateCurrency = useUpdateDisplayCurrency();
-  const [currencyOpen, setCurrencyOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
 
   const openSupport = () => {
@@ -154,13 +141,11 @@ export default function Settings() {
         </p>
 
         <div className="bg-card border border-border rounded-3xl overflow-hidden">
-          <SettingsRow
-            icon={Coins}
-            iconClass="text-primary"
-            label="Валюта отображения"
-            value={`${CURRENCY_SYMBOL[currency]} · ${currency}`}
-            onClick={() => setCurrencyOpen(true)}
-          />
+          {/* Currency picker hidden while the storefront ships UZ-only.
+              Each region will get its own native currency (UZ→UZS,
+              RU→RUB, EN→USD) on its own catalog. When we re-open the
+              picker, it'll be limited to currencies relevant to the
+              user's market, not a free-form preference. */}
           <SettingsRow
             icon={LifeBuoy}
             iconClass="text-blue-400"
@@ -240,35 +225,6 @@ export default function Settings() {
         </button>
       )}
 
-      {/* Currency sheet */}
-      <Sheet open={currencyOpen} onOpenChange={setCurrencyOpen}>
-        <SheetContent side="bottom" className="rounded-t-3xl">
-          <SheetHeader>
-            <SheetTitle className="flex items-center gap-2">
-              <Coins size={16} className="text-primary" />
-              Валюта отображения
-            </SheetTitle>
-            <SheetDescription className="text-left text-white/60 leading-relaxed">
-              Влияет на цены в каталоге. Балансы и старые заказы остаются в своей
-              валюте.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="mt-4 space-y-2">
-            {DISPLAY_CURRENCIES.map((c) => (
-              <CurrencyOption
-                key={c}
-                code={c}
-                active={currency === c}
-                onSelect={() => {
-                  if (c !== currency) updateCurrency.mutate(c);
-                  setCurrencyOpen(false);
-                }}
-              />
-            ))}
-          </div>
-        </SheetContent>
-      </Sheet>
-
       {/* About sheet */}
       <Sheet open={aboutOpen} onOpenChange={setAboutOpen}>
         <SheetContent side="bottom" className="rounded-t-3xl">
@@ -327,7 +283,7 @@ function SettingsRow({
   chevron,
   last,
 }: {
-  icon: typeof Coins;
+  icon: typeof Info;
   iconClass?: string;
   label: string;
   value?: string;
@@ -360,49 +316,3 @@ function SettingsRow({
   );
 }
 
-function CurrencyOption({
-  code,
-  active,
-  onSelect,
-}: {
-  code: DisplayCurrency;
-  active: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      onClick={onSelect}
-      className="w-full flex items-center justify-between p-3.5 rounded-2xl transition-all"
-      style={{
-        background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
-        border: active
-          ? "1.5px solid hsl(var(--primary) / 0.7)"
-          : "1px solid hsl(var(--border))",
-      }}
-    >
-      <div className="flex items-center gap-3">
-        <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm"
-          style={{
-            background: active ? "hsl(var(--primary) / 0.18)" : "hsl(var(--surface-3))",
-            color: active ? "hsl(var(--primary))" : "rgba(255,255,255,0.7)",
-          }}
-        >
-          {CURRENCY_SYMBOL[code]}
-        </div>
-        <div className="text-left">
-          <p className="text-white font-bold text-sm">{code}</p>
-          <p className="text-white/40 text-xs">{CURRENCY_LABEL[code]}</p>
-        </div>
-      </div>
-      {active && (
-        <div
-          className="w-5 h-5 rounded-full flex items-center justify-center"
-          style={{ background: "hsl(var(--primary))" }}
-        >
-          <Check size={11} strokeWidth={3} className="text-black" />
-        </div>
-      )}
-    </button>
-  );
-}

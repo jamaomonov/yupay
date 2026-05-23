@@ -42,13 +42,20 @@ function isDisplayCurrency(value: string | undefined | null): value is DisplayCu
 }
 
 /**
- * Returns the active display currency. Falls back to ``USD`` whenever the
- * user isn't loaded yet or the stored value is one we no longer support.
+ * Active display currency. Pinned to UZS while the storefront ships
+ * UZ-only — selector in Settings is hidden, and even legacy users with
+ * ``display_currency="USD"`` see the catalog in UZS. When we localise
+ * for RU / EN this will switch back to reading ``me.display_currency``
+ * (or, more likely, derive from ``me.locale`` so each market gets its
+ * own native currency instead of a free-form preference).
  */
 export function useDisplayCurrency(): DisplayCurrency {
-  const me = useMe();
-  const value = me.data?.display_currency;
-  return isDisplayCurrency(value) ? value : "USD";
+  // Tip: ``useMe`` is intentionally still called so the hook keeps its
+  // existing dependency on auth — every page that renders prices stays
+  // gated by login, and switching back to per-user currency later is a
+  // one-line change.
+  useMe();
+  return "UZS";
 }
 
 /**
