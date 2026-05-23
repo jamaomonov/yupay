@@ -76,7 +76,7 @@ export function DataTable<T>({
 
   return (
     <div
-      className="overflow-x-auto rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)]"
+      className="overflow-x-auto rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]"
       aria-busy={busy || undefined}
     >
       <table

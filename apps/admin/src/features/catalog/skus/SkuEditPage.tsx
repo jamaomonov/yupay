@@ -305,7 +305,7 @@ export function SkuEditPage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* ----- left: identity + pricing ----- */}
-        <section className="space-y-4 rounded-lg border bg-[var(--bg-surface)] p-4 lg:col-span-2">
+        <section className="space-y-4 rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4 lg:col-span-2">
           <Field
             label="Продукт"
             error={form.formState.errors.product_id?.message}
@@ -446,7 +446,7 @@ export function SkuEditPage() {
             skuCode={watchedSkuCode}
           />
 
-          <section className="rounded-lg border bg-[var(--bg-surface)] p-4">
+          <section className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
             <div className="mb-3 flex items-baseline justify-between">
               <div>
                 <h3 className="text-sm font-semibold">Цены в других валютах</h3>
@@ -548,7 +548,7 @@ function PricePreview({
   });
   const showLine = denom || region || hasUsd;
   return (
-    <section className="rounded-lg border bg-[var(--bg-surface)] p-4">
+    <section className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
       <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-secondary)]">
         Превью
       </h3>

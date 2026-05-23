@@ -283,7 +283,7 @@ function TaskDetails({ task }: { task: TaskAdminOut }) {
   );
 
   return (
-    <article className="space-y-4 rounded-lg border bg-[var(--bg-surface)] p-4 text-sm">
+    <article className="space-y-4 rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4 text-sm">
       {/* Task header — basic fields + lifecycle timestamps. */}
       <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <DetailField label="ID" value={task.id} mono />

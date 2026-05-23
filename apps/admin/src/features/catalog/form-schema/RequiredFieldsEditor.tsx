@@ -83,7 +83,7 @@ function FieldRow({
   const key = useWatch({ control, name: `${path}.key` }) as string | undefined;
 
   return (
-    <div className="rounded-md border bg-[var(--bg-surface)]">
+    <div className="rounded-md border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]">
       <header className="flex items-center justify-between gap-2 px-3 py-2">
         <button
           type="button"

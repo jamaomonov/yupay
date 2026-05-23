@@ -183,13 +183,13 @@ export function SkusListPage() {
       </section>
 
       {isLoading && (
-        <div className="rounded-lg border bg-[var(--bg-surface)] p-10 text-center text-sm text-[var(--text-secondary)]">
+        <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-10 text-center text-sm text-[var(--text-secondary)]">
           Загрузка…
         </div>
       )}
 
       {!isLoading && filtered.length === 0 && (
-        <div className="rounded-lg border bg-[var(--bg-surface)] p-10 text-center">
+        <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-10 text-center">
           <p className="text-sm text-[var(--text-secondary)]">
             {query.length > 0
               ? "Ничего не нашлось по этому запросу."
@@ -235,7 +235,7 @@ function ProductGroup({
   const isEmpty = group.skus.length === 0;
 
   return (
-    <article className="overflow-hidden rounded-lg border bg-[var(--bg-surface)]">
+    <article className="overflow-hidden rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]">
       <header
         className="flex flex-wrap items-baseline justify-between gap-3 border-b px-5 py-3"
         style={{
@@ -459,7 +459,7 @@ function StatCard({
       ? "text-[var(--danger)]"
       : "text-[var(--text-primary)]";
   return (
-    <div className="rounded-lg border bg-[var(--bg-surface)] p-4">
+    <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
       <div className={`text-2xl font-semibold ${valueCls}`}>{value}</div>
       <div className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">
         {label}

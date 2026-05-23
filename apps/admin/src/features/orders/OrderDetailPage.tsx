@@ -222,7 +222,7 @@ function SummaryCard({ order }: { order: OrderAdminOut }) {
     },
   ];
   return (
-    <div className="rounded-lg border bg-[var(--bg-surface)] p-4">
+    <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--text-secondary)]">
         Сводка
       </h2>
@@ -240,7 +240,7 @@ function SummaryCard({ order }: { order: OrderAdminOut }) {
 
 function ItemsCard({ order }: { order: OrderAdminOut }) {
   return (
-    <div className="rounded-lg border bg-[var(--bg-surface)]">
+    <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]">
       <header className="border-b px-4 py-3 flex items-center gap-2">
         <Package className="size-4 text-[var(--text-secondary)]" />
         <h2 className="text-sm font-semibold">Позиции ({order.items.length})</h2>
@@ -345,7 +345,7 @@ function Timeline({
     a.created_at.localeCompare(b.created_at),
   );
   return (
-    <div className="rounded-lg border bg-[var(--bg-surface)]">
+    <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]">
       <header className="border-b px-4 py-3 flex items-center gap-2">
         <Clock className="size-4 text-[var(--text-secondary)]" />
         <h2 className="text-sm font-semibold">Хронология ({ordered.length})</h2>
@@ -411,7 +411,7 @@ function PaymentsCard({
   refunding: boolean;
 }) {
   return (
-    <div className="rounded-lg border bg-[var(--bg-surface)]">
+    <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]">
       <header className="border-b px-4 py-3 flex items-center gap-2">
         <CreditCard className="size-4 text-[var(--text-secondary)]" />
         <h2 className="text-sm font-semibold">
@@ -478,7 +478,7 @@ function PaymentsCard({
 
 function FulfillmentCard({ tasks }: { tasks: TaskAdminOut[] }) {
   return (
-    <div className="rounded-lg border bg-[var(--bg-surface)]">
+    <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]">
       <header className="border-b px-4 py-3 flex items-center gap-2">
         <Truck className="size-4 text-[var(--text-secondary)]" />
         <h2 className="text-sm font-semibold">Фулфилмент ({tasks.length})</h2>

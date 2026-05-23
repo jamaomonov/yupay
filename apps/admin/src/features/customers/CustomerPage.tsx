@@ -149,7 +149,7 @@ function UserHeader({
   const isAdmin = u.roles.includes("admin");
 
   return (
-    <header className="rounded-lg border bg-[var(--bg-surface)] p-5">
+    <header className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-4 min-w-0">
           {u.photo_url ? (
@@ -336,7 +336,7 @@ function Stat({
           ? "text-[var(--text-secondary)]"
           : "text-[var(--text-primary)]";
   return (
-    <article className="rounded-lg border bg-[var(--bg-surface)] p-4">
+    <article className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
       <div className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">{label}</div>
       <div className={`mt-1 text-2xl font-semibold ${cls}`}>{value}</div>
     </article>
@@ -493,7 +493,7 @@ function WalletBalances({
           {balances.map((b) => (
             <li
               key={b.account_id}
-              className="flex items-center justify-between rounded-md border bg-[var(--bg-surface)] px-3 py-2 text-sm"
+              className="flex items-center justify-between rounded-md border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] px-3 py-2 text-sm"
             >
               <span className="text-[var(--text-secondary)]">{b.kind}</span>
               <span className="font-mono">

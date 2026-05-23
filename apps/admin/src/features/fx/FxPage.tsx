@@ -170,7 +170,7 @@ function StatCard({
   mono?: boolean;
 }) {
   return (
-    <div className="rounded-lg border bg-[var(--bg-surface)] p-4">
+    <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
       <div className={`text-2xl font-semibold ${mono ? "font-mono" : ""}`}>
         {value}
       </div>

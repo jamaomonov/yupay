@@ -383,7 +383,7 @@ function StatCard({
   render?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg border bg-[var(--bg-surface)] p-4">
+    <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
       {render ?? (
         <div
           className={`text-2xl font-semibold ${

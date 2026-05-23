@@ -164,7 +164,7 @@ export function WalletPage() {
             />
           </section>
 
-          <section className="mb-6 rounded-lg border bg-[var(--bg-surface)] p-4">
+          <section className="mb-6 rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
             <h2 className="mb-3 text-sm font-semibold">Ручная корректировка</h2>
             <p className="mb-3 text-xs text-[var(--text-secondary)]">
               Положительная сумма — кредит пользователю; отрицательная — клавбэк.
@@ -253,13 +253,13 @@ export function WalletPage() {
       )}
 
       {activeUserId && ledgerQuery.isError && (
-        <div className="rounded-lg border bg-[var(--bg-surface)] p-6 text-sm text-[var(--danger)]">
+        <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-6 text-sm text-[var(--danger)]">
           Не удалось загрузить ledger пользователя.
         </div>
       )}
 
       {!activeUserId && (
-        <div className="rounded-lg border bg-[var(--bg-surface)] p-10 text-center text-sm text-[var(--text-secondary)]">
+        <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-10 text-center text-sm text-[var(--text-secondary)]">
           Введи user_id, чтобы посмотреть счета и историю.
         </div>
       )}
@@ -279,7 +279,7 @@ interface AdjustBody {
 function TransactionsList({ items }: { items: Transaction[] }) {
   if (items.length === 0) {
     return (
-      <div className="rounded-lg border bg-[var(--bg-surface)] p-6 text-center text-sm text-[var(--text-secondary)]">
+      <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-6 text-center text-sm text-[var(--text-secondary)]">
         История пустая.
       </div>
     );
@@ -289,7 +289,7 @@ function TransactionsList({ items }: { items: Transaction[] }) {
       {items.map((tx) => (
         <article
           key={tx.id}
-          className="rounded-lg border bg-[var(--bg-surface)] p-4 text-sm"
+          className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4 text-sm"
         >
           <header className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
             <div>

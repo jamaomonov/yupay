@@ -164,7 +164,7 @@ export function ProductEditPage() {
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <section className="space-y-4 rounded-lg border bg-[var(--bg-surface)] p-4">
+        <section className="space-y-4 rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
           <Field label="Slug" error={form.formState.errors.slug?.message}>
             <Input {...form.register("slug")} placeholder="pubg-uc" />
           </Field>
@@ -207,7 +207,7 @@ export function ProductEditPage() {
           </div>
         </section>
 
-        <section className="space-y-4 rounded-lg border bg-[var(--bg-surface)] p-4">
+        <section className="space-y-4 rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
           <h2 className="font-medium">Переводы</h2>
           {trans.fields.map((field, idx) => (
             <fieldset key={field.id} className="space-y-2 rounded-md border p-3">
@@ -232,7 +232,7 @@ export function ProductEditPage() {
         </section>
       </div>
 
-      <section className="mt-6 rounded-lg border bg-[var(--bg-surface)] p-4">
+      <section className="mt-6 rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
         <h2 className="mb-3 font-medium">Поля формы (required_fields)</h2>
         <p className="mb-3 text-sm text-[var(--text-secondary)]">
           Эти поля фронт показывает покупателю перед оплатой (player_id, сервер и пр.).

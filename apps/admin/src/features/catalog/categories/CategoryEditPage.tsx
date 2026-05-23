@@ -148,7 +148,7 @@ export function CategoryEditPage() {
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <section className="space-y-4 rounded-lg border bg-[var(--bg-surface)] p-4">
+        <section className="space-y-4 rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
           <Field label="Slug" error={form.formState.errors.slug?.message}>
             <Input {...form.register("slug")} placeholder="games" className="font-mono" />
           </Field>
@@ -175,7 +175,7 @@ export function CategoryEditPage() {
           </div>
         </section>
 
-        <section className="space-y-4 rounded-lg border bg-[var(--bg-surface)] p-4">
+        <section className="space-y-4 rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
           <h2 className="font-medium">Переводы</h2>
           {fields.map((field, idx) => (
             <fieldset key={field.id} className="space-y-2 rounded-md border p-3">
