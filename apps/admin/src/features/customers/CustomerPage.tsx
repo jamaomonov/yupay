@@ -36,6 +36,7 @@ import { type ApiError, api, apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
 import type { UserAdminOut } from "@/features/users/types";
+import type { AdminUserLedgerOut, Transaction } from "@/features/wallet/types";
 
 import {
   type CustomerOrderSummary,
@@ -58,6 +59,17 @@ export function CustomerPage() {
       apiGet<CustomerOverviewOut>(`/api/v1/admin/customers/${userId}/overview`),
     enabled: Boolean(userId),
     refetchInterval: 30_000,
+  });
+
+  // Wallet history is a separate fetch on purpose: customer overview is
+  // already heavy and the right-rail block only needs the 5 most recent
+  // ledger rows. A second query keeps overview cached even while the
+  // operator drills into wallet detail.
+  const walletLedger = useQuery<AdminUserLedgerOut, ApiError>({
+    queryKey: [...qk.walletUser(userId), "rail"],
+    queryFn: () =>
+      apiGet<AdminUserLedgerOut>(`/api/v1/admin/wallet/${userId}?limit=5`),
+    enabled: Boolean(userId),
   });
 
   // Role management mutation — kept on the page so the header can stay
@@ -155,6 +167,11 @@ export function CustomerPage() {
           rolePending={setRoles.isPending}
         />
         <WalletBalances balances={data.wallet_balances} />
+        <WalletHistory
+          ledger={walletLedger.data ?? null}
+          loading={walletLedger.isPending}
+          userId={userId}
+        />
       </aside>
     </div>
     </div>
@@ -504,6 +521,110 @@ function OpenTasks({
         onRowClick={(t) => { onOpen(t.order_id); }}
       />
     </Section>
+  );
+}
+
+function WalletHistory({
+  ledger,
+  loading,
+  userId,
+}: {
+  ledger: AdminUserLedgerOut | null;
+  loading: boolean;
+  userId: string;
+}) {
+  // Build (account_id → kind) once so we can pick the user-side leg and
+  // tell which kind moved without having to nest two finds per row.
+  const userAccountKindById = new Map<string, string>();
+  if (ledger) {
+    for (const acc of ledger.accounts) {
+      if (acc.owner_type === "user") {
+        userAccountKindById.set(acc.id, acc.kind);
+      }
+    }
+  }
+
+  const rows = ledger?.recent_transactions ?? [];
+  const count = rows.length;
+
+  return (
+    <Section title="История кошелька" count={count}>
+      {loading ? (
+        <ul className="space-y-1.5" aria-busy="true">
+          {[0, 1, 2].map((i) => (
+            <li
+              key={i}
+              className="h-12 rounded-md border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] animate-pulse"
+            />
+          ))}
+        </ul>
+      ) : count === 0 ? (
+        <p className="text-sm text-[var(--text-secondary)]">
+          Операций ещё не было.
+        </p>
+      ) : (
+        <>
+          <ul className="space-y-1.5">
+            {rows.map((tx) => (
+              <WalletHistoryRow
+                key={tx.id}
+                tx={tx}
+                userKindById={userAccountKindById}
+              />
+            ))}
+          </ul>
+          <div className="mt-2 text-right">
+            <Link
+              to={`/wallet?user_id=${userId}`}
+              className="text-xs text-[var(--accent)] hover:underline"
+            >
+              Полная история →
+            </Link>
+          </div>
+        </>
+      )}
+    </Section>
+  );
+}
+
+function WalletHistoryRow({
+  tx,
+  userKindById,
+}: {
+  tx: Transaction;
+  userKindById: Map<string, string>;
+}) {
+  const userLeg = tx.postings.find((p) => userKindById.has(p.account_id));
+  if (!userLeg) {
+    return null;
+  }
+  const amount = Number.parseFloat(userLeg.amount) || 0;
+  // user_wallet / user_cashback / user_promo_credit are all normal-D
+  // accounts, so a D posting on them = credit (delta > 0).
+  const delta = userLeg.direction === "D" ? amount : -amount;
+  const positive = delta >= 0;
+  const kind = userKindById.get(userLeg.account_id) ?? "—";
+  return (
+    <li className="rounded-md border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] px-3 py-2 text-xs">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="truncate">{tx.kind}</span>
+        <span
+          className={[
+            "font-mono font-medium whitespace-nowrap",
+            positive
+              ? "text-[var(--success-fg)]"
+              : "text-[var(--danger-fg)]",
+          ].join(" ")}
+        >
+          {positive ? "+" : "−"}
+          {Math.abs(delta).toFixed(2)} {userLeg.currency}
+        </span>
+      </div>
+      <div className="mt-0.5 flex items-baseline justify-between gap-2 text-[10px] text-[var(--text-secondary)]">
+        <span>{kind}</span>
+        <span>{formatDate(tx.created_at)}</span>
+      </div>
+    </li>
   );
 }
 

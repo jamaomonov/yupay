@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ScrollText, Search } from "lucide-react";
 
@@ -70,8 +70,24 @@ export function WalletPage() {
 function LookupTab() {
   const qc = useQueryClient();
   const toast = useToast();
-  const [userIdInput, setUserIdInput] = useState("");
-  const [activeUserId, setActiveUserId] = useState<string>("");
+  const [searchParams] = useSearchParams();
+  // Customer 360 deep-links here via /wallet?user_id=<uuid>; pre-fill
+  // the lookup so the operator does not have to copy-paste the id.
+  const initialUserId = searchParams.get("user_id") ?? "";
+  const [userIdInput, setUserIdInput] = useState(initialUserId);
+  const [activeUserId, setActiveUserId] = useState<string>(initialUserId);
+  // Catch the case where Customer 360 → /wallet swap happens while the
+  // tab is already mounted (React Router does not remount the page).
+  useEffect(() => {
+    const fromUrl = searchParams.get("user_id");
+    if (fromUrl && fromUrl !== activeUserId) {
+      setUserIdInput(fromUrl);
+      setActiveUserId(fromUrl);
+    }
+    // activeUserId deliberately omitted: we only want to react to URL
+    // changes, not loop when the operator clicks lookup manually.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
   const [adjustKind, setAdjustKind] =
     useState<(typeof ADJUST_KINDS)[number]["value"]>("user_cashback");
   const [adjustCurrency, setAdjustCurrency] = useState("USD");
