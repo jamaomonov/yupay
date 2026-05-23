@@ -166,6 +166,9 @@ class SkuCreate(BaseModel):
     denomination: str | None = Field(default=None, max_length=64)
     region: str | None = Field(default=None, max_length=8)
     price_usd: Decimal = Field(gt=0)
+    # Supplier wholesale cost in USDT (we pay vendors in USDT). Optional
+    # so legacy SKUs can be edited before this field is filled in.
+    cost_usdt: Decimal | None = Field(default=None, gt=0)
     image_url: str | None = Field(default=None, max_length=1024)
     sort_order: int = 0
     active: bool = True
@@ -181,6 +184,7 @@ class SkuUpdate(BaseModel):
     denomination: str | None = None
     region: str | None = Field(default=None, max_length=8)
     price_usd: Decimal | None = Field(default=None, gt=0)
+    cost_usdt: Decimal | None = Field(default=None, gt=0)
     image_url: str | None = None
     sort_order: int | None = None
     active: bool | None = None
@@ -247,6 +251,7 @@ class AdminSkuOut(BaseModel):
     denomination: str | None
     region: str | None
     price_usd: Decimal
+    cost_usdt: Decimal | None
     image_url: str | None
     sort_order: int
     active: bool
