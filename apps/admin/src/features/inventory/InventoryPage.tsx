@@ -158,13 +158,13 @@ export function InventoryPage() {
 
       <section className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
-          <label className="text-xs font-medium uppercase text-[--color-muted]">
+          <label className="text-xs font-medium uppercase text-[--text-secondary]">
             SKU
           </label>
           <select
             value={skuId}
             onChange={(e) => setSkuId(e.target.value)}
-            className="mt-1 h-10 w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 text-sm"
+            className="mt-1 h-10 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm"
           >
             <option value="">— Выбрать —</option>
             {skusQuery.data?.map((sku) => {
@@ -188,9 +188,9 @@ export function InventoryPage() {
       </section>
 
       {skuId && (
-        <section className="mb-6 rounded-lg border bg-[--color-bg] p-4">
+        <section className="mb-6 rounded-lg border bg-[--bg-surface] p-4">
           <h2 className="mb-2 text-sm font-semibold">Загрузить коды</h2>
-          <p className="mb-2 text-xs text-[--color-muted]">
+          <p className="mb-2 text-xs text-[--text-secondary]">
             По одному коду в строке (или через запятую / пробел). Дубли отсеются
             автоматически. Максимум 5000 за раз.
           </p>
@@ -198,7 +198,7 @@ export function InventoryPage() {
             value={codesText}
             onChange={(e) => setCodesText(e.target.value)}
             rows={6}
-            className="w-full rounded-md border border-[--color-border] bg-[--color-bg] p-3 font-mono text-xs"
+            className="w-full rounded-md border border-[--border-default] bg-[--bg-surface] p-3 font-mono text-xs"
             placeholder={"AAA-BBB-CCC\nXYZ-123-456"}
           />
           <div className="mt-3 flex items-center gap-3">
@@ -209,9 +209,9 @@ export function InventoryPage() {
               {uploadMutation.isPending ? "Загружаем…" : "Загрузить"}
             </Button>
             {feedback && (
-              <span className="text-sm text-[--color-success]">{feedback}</span>
+              <span className="text-sm text-[--success]">{feedback}</span>
             )}
-            {error && <span className="text-sm text-[--color-danger]">{error}</span>}
+            {error && <span className="text-sm text-[--danger]">{error}</span>}
           </div>
         </section>
       )}
@@ -219,13 +219,13 @@ export function InventoryPage() {
       {skuId && (
         <section>
           <div className="mb-3 flex items-center gap-3">
-            <label className="text-xs font-medium uppercase text-[--color-muted]">
+            <label className="text-xs font-medium uppercase text-[--text-secondary]">
               Фильтр
             </label>
             <select
               value={state}
               onChange={(e) => setState(e.target.value as CodeState | "")}
-              className="h-9 rounded-md border border-[--color-border] bg-[--color-bg] px-3 text-sm"
+              className="h-9 rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm"
             >
               {STATES.map((s) => (
                 <option key={s.value} value={s.value}>
@@ -244,7 +244,7 @@ export function InventoryPage() {
       )}
 
       {!skuId && (
-        <div className="rounded-lg border bg-[--color-bg] p-10 text-center text-sm text-[--color-muted]">
+        <div className="rounded-lg border bg-[--bg-surface] p-10 text-center text-sm text-[--text-secondary]">
           Выбери SKU, чтобы посмотреть счётчики и список кодов.
         </div>
       )}
@@ -254,17 +254,17 @@ export function InventoryPage() {
 
 function CountsCard({ counts }: { counts: SkuCountsOut }) {
   const cells: { label: string; value: number; tone: string }[] = [
-    { label: "Доступно", value: counts.available, tone: "text-[--color-success]" },
-    { label: "Резерв", value: counts.reserved, tone: "text-[--color-fg]" },
-    { label: "Выдано", value: counts.issued, tone: "text-[--color-fg]" },
-    { label: "Воид", value: counts.voided, tone: "text-[--color-muted]" },
+    { label: "Доступно", value: counts.available, tone: "text-[--success]" },
+    { label: "Резерв", value: counts.reserved, tone: "text-[--text-primary]" },
+    { label: "Выдано", value: counts.issued, tone: "text-[--text-primary]" },
+    { label: "Воид", value: counts.voided, tone: "text-[--text-secondary]" },
   ];
   return (
-    <div className="grid grid-cols-4 gap-2 rounded-lg border bg-[--color-bg] p-4">
+    <div className="grid grid-cols-4 gap-2 rounded-lg border bg-[--bg-surface] p-4">
       {cells.map((c) => (
         <div key={c.label} className="text-center">
           <div className={`text-2xl font-semibold ${c.tone}`}>{c.value}</div>
-          <div className="text-xs uppercase text-[--color-muted]">{c.label}</div>
+          <div className="text-xs uppercase text-[--text-secondary]">{c.label}</div>
         </div>
       ))}
     </div>

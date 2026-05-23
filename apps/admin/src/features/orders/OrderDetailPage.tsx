@@ -101,7 +101,7 @@ export function OrderDetailPage() {
   if (orderQuery.isError || !orderQuery.data) {
     return (
       <div className="space-y-3">
-        <p className="text-sm text-[--color-danger]">
+        <p className="text-sm text-[--danger]">
           Не удалось загрузить заказ.
         </p>
         <Button variant="ghost" onClick={() => navigate("/orders")}>
@@ -126,7 +126,7 @@ export function OrderDetailPage() {
               Пользователь{" "}
               <Link
                 to={`/customers/${order.user_id}`}
-                className="font-mono text-[--color-fg] underline-offset-2 hover:underline"
+                className="font-mono text-[--text-primary] underline-offset-2 hover:underline"
               >
                 {order.user_id.slice(0, 8)}…
               </Link>
@@ -197,7 +197,7 @@ function SummaryCard({ order }: { order: OrderAdminOut }) {
         <span className="font-medium">
           {Number.parseFloat(order.total_charged).toFixed(2)} {order.currency}
           {order.currency !== "USD" && (
-            <span className="ml-2 text-[--color-muted] text-xs">
+            <span className="ml-2 text-[--text-secondary] text-xs">
               ≈ ${Number.parseFloat(order.total_usd).toFixed(2)}
             </span>
           )}
@@ -222,14 +222,14 @@ function SummaryCard({ order }: { order: OrderAdminOut }) {
     },
   ];
   return (
-    <div className="rounded-lg border bg-[--color-bg] p-4">
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[--color-muted]">
+    <div className="rounded-lg border bg-[--bg-surface] p-4">
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[--text-secondary]">
         Сводка
       </h2>
       <dl className="grid grid-cols-1 gap-x-6 gap-y-2 md:grid-cols-2">
         {rows.map((r) => (
           <div key={r.label} className="flex items-baseline justify-between text-sm">
-            <dt className="text-[--color-muted]">{r.label}</dt>
+            <dt className="text-[--text-secondary]">{r.label}</dt>
             <dd>{r.value}</dd>
           </div>
         ))}
@@ -240,13 +240,13 @@ function SummaryCard({ order }: { order: OrderAdminOut }) {
 
 function ItemsCard({ order }: { order: OrderAdminOut }) {
   return (
-    <div className="rounded-lg border bg-[--color-bg]">
+    <div className="rounded-lg border bg-[--bg-surface]">
       <header className="border-b px-4 py-3 flex items-center gap-2">
-        <Package className="size-4 text-[--color-muted]" />
+        <Package className="size-4 text-[--text-secondary]" />
         <h2 className="text-sm font-semibold">Позиции ({order.items.length})</h2>
       </header>
       <table className="w-full text-sm">
-        <thead className="text-xs uppercase text-[--color-muted]">
+        <thead className="text-xs uppercase text-[--text-secondary]">
           <tr>
             <th className="px-4 py-2 text-left font-medium">Товар</th>
             <th className="px-3 py-2 text-center font-medium">Кол-во</th>
@@ -276,22 +276,22 @@ function ItemsCard({ order }: { order: OrderAdminOut }) {
                       <img
                         src={d.image_url}
                         alt=""
-                        className="size-10 rounded-md object-cover border border-[--color-border] flex-shrink-0"
+                        className="size-10 rounded-md object-cover border border-[--border-default] flex-shrink-0"
                       />
                     ) : (
                       <div
-                        className="size-10 rounded-md flex items-center justify-center text-xs font-bold text-[--color-muted] border border-[--color-border] flex-shrink-0"
-                        style={{ background: "var(--color-subtle)" }}
+                        className="size-10 rounded-md flex items-center justify-center text-xs font-bold text-[--text-secondary] border border-[--border-default] flex-shrink-0"
+                        style={{ background: "var(--bg-muted)" }}
                       >
                         {(d?.brand_name?.[0] ?? "?").toUpperCase()}
                       </div>
                     )}
                     <div className="min-w-0">
                       <div className="font-medium truncate">{headline}</div>
-                      <div className="flex items-center gap-1.5 text-xs text-[--color-muted] truncate">
+                      <div className="flex items-center gap-1.5 text-xs text-[--text-secondary] truncate">
                         {sub && <span>{sub}</span>}
                         {d?.region && d.region !== "GLOBAL" && (
-                          <span className="rounded bg-[--color-subtle] px-1 font-mono">
+                          <span className="rounded bg-[--bg-muted] px-1 font-mono">
                             {d.region}
                           </span>
                         )}
@@ -302,7 +302,7 @@ function ItemsCard({ order }: { order: OrderAdminOut }) {
                         )}
                       </div>
                       {Object.keys(it.fulfillment_data).length > 0 && (
-                        <pre className="mt-1 text-[10px] text-[--color-muted] whitespace-pre-wrap break-all">
+                        <pre className="mt-1 text-[10px] text-[--text-secondary] whitespace-pre-wrap break-all">
                           {JSON.stringify(it.fulfillment_data, null, 0)}
                         </pre>
                       )}
@@ -322,7 +322,7 @@ function ItemsCard({ order }: { order: OrderAdminOut }) {
                       {it.supplier_order_id.slice(0, 12)}…
                     </code>
                   ) : (
-                    <span className="text-xs text-[--color-muted]">—</span>
+                    <span className="text-xs text-[--text-secondary]">—</span>
                   )}
                 </td>
               </tr>
@@ -345,13 +345,13 @@ function Timeline({
     a.created_at.localeCompare(b.created_at),
   );
   return (
-    <div className="rounded-lg border bg-[--color-bg]">
+    <div className="rounded-lg border bg-[--bg-surface]">
       <header className="border-b px-4 py-3 flex items-center gap-2">
-        <Clock className="size-4 text-[--color-muted]" />
+        <Clock className="size-4 text-[--text-secondary]" />
         <h2 className="text-sm font-semibold">Хронология ({ordered.length})</h2>
       </header>
       {ordered.length === 0 ? (
-        <p className="p-4 text-sm text-[--color-muted]">Событий ещё нет.</p>
+        <p className="p-4 text-sm text-[--text-secondary]">Событий ещё нет.</p>
       ) : (
         <ol className="relative space-y-4 p-4 pl-10">
           <span
@@ -367,25 +367,25 @@ function Timeline({
                     ev.kind === "order.paid"
                       ? "var(--color-success)"
                       : ev.kind === "order.delivered"
-                        ? "var(--color-brand)"
+                        ? "var(--accent)"
                         : ev.kind.startsWith("payment.")
-                          ? "var(--color-fg)"
-                          : "var(--color-muted)",
+                          ? "var(--text-primary)"
+                          : "var(--text-secondary)",
                 }}
               />
               <div className="flex items-baseline justify-between gap-3">
                 <code className="text-sm font-semibold">{ev.kind}</code>
-                <span className="text-xs text-[--color-muted]">
+                <span className="text-xs text-[--text-secondary]">
                   {formatDate(ev.created_at)}
                 </span>
               </div>
               {ev.actor && (
-                <p className="text-xs text-[--color-muted] mt-0.5">
+                <p className="text-xs text-[--text-secondary] mt-0.5">
                   by {ev.actor}
                 </p>
               )}
               {Object.keys(ev.payload).length > 0 && (
-                <pre className="mt-1 whitespace-pre-wrap rounded border bg-[--color-subtle] p-2 text-[10px] text-[--color-muted]">
+                <pre className="mt-1 whitespace-pre-wrap rounded border bg-[--bg-muted] p-2 text-[10px] text-[--text-secondary]">
                   {JSON.stringify(ev.payload, null, 2)}
                 </pre>
               )}
@@ -393,7 +393,7 @@ function Timeline({
           ))}
         </ol>
       )}
-      <footer className="border-t px-4 py-2 text-xs text-[--color-muted] flex items-center gap-2">
+      <footer className="border-t px-4 py-2 text-xs text-[--text-secondary] flex items-center gap-2">
         <CircleDot className="size-3" />
         Текущий статус: <StatusBadge status={status} />
       </footer>
@@ -411,15 +411,15 @@ function PaymentsCard({
   refunding: boolean;
 }) {
   return (
-    <div className="rounded-lg border bg-[--color-bg]">
+    <div className="rounded-lg border bg-[--bg-surface]">
       <header className="border-b px-4 py-3 flex items-center gap-2">
-        <CreditCard className="size-4 text-[--color-muted]" />
+        <CreditCard className="size-4 text-[--text-secondary]" />
         <h2 className="text-sm font-semibold">
           Платежи ({payments.length})
         </h2>
       </header>
       {payments.length === 0 ? (
-        <p className="p-4 text-sm text-[--color-muted]">
+        <p className="p-4 text-sm text-[--text-secondary]">
           Платежей по заказу пока нет.
         </p>
       ) : (
@@ -446,12 +446,12 @@ function PaymentsCard({
                     {p.status}
                   </span>
                 </div>
-                <p className="mt-1 text-xs text-[--color-muted]">
+                <p className="mt-1 text-xs text-[--text-secondary]">
                   {p.provider} · {Number.parseFloat(p.amount).toFixed(2)}{" "}
                   {p.currency}
                 </p>
                 {p.intent_url && p.provider === "mock" && (
-                  <p className="mt-1 text-[10px] text-[--color-muted] break-all">
+                  <p className="mt-1 text-[10px] text-[--text-secondary] break-all">
                     {p.intent_url}
                   </p>
                 )}
@@ -478,13 +478,13 @@ function PaymentsCard({
 
 function FulfillmentCard({ tasks }: { tasks: TaskAdminOut[] }) {
   return (
-    <div className="rounded-lg border bg-[--color-bg]">
+    <div className="rounded-lg border bg-[--bg-surface]">
       <header className="border-b px-4 py-3 flex items-center gap-2">
-        <Truck className="size-4 text-[--color-muted]" />
+        <Truck className="size-4 text-[--text-secondary]" />
         <h2 className="text-sm font-semibold">Фулфилмент ({tasks.length})</h2>
       </header>
       {tasks.length === 0 ? (
-        <p className="p-4 text-sm text-[--color-muted]">
+        <p className="p-4 text-sm text-[--text-secondary]">
           Задач саги ещё не запущено.
         </p>
       ) : (
@@ -507,11 +507,11 @@ function FulfillmentCard({ tasks }: { tasks: TaskAdminOut[] }) {
                   {t.status}
                 </span>
               </div>
-              <p className="mt-1 text-xs text-[--color-muted]">
+              <p className="mt-1 text-xs text-[--text-secondary]">
                 item {t.order_item_id.slice(0, 8)}… · попыток {t.attempts_count}
               </p>
               {t.last_error && (
-                <p className="mt-1 text-xs text-[--color-danger]">
+                <p className="mt-1 text-xs text-[--danger]">
                   {t.last_error}
                 </p>
               )}

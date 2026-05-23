@@ -148,7 +148,7 @@ export function CategoryEditPage() {
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <section className="space-y-4 rounded-lg border bg-[--color-bg] p-4">
+        <section className="space-y-4 rounded-lg border bg-[--bg-surface] p-4">
           <Field label="Slug" error={form.formState.errors.slug?.message}>
             <Input {...form.register("slug")} placeholder="games" className="font-mono" />
           </Field>
@@ -167,7 +167,7 @@ export function CategoryEditPage() {
               />
             </Field>
             <Field label="Статус">
-              <label className="mt-1 flex h-10 items-center gap-2 rounded-md border border-[--color-border] bg-[--color-bg] px-3 text-sm">
+              <label className="mt-1 flex h-10 items-center gap-2 rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm">
                 <input type="checkbox" {...form.register("active")} className="size-4" />
                 Активна
               </label>
@@ -175,11 +175,11 @@ export function CategoryEditPage() {
           </div>
         </section>
 
-        <section className="space-y-4 rounded-lg border bg-[--color-bg] p-4">
+        <section className="space-y-4 rounded-lg border bg-[--bg-surface] p-4">
           <h2 className="font-medium">Переводы</h2>
           {fields.map((field, idx) => (
             <fieldset key={field.id} className="space-y-2 rounded-md border p-3">
-              <legend className="px-1 text-xs uppercase text-[--color-muted]">
+              <legend className="px-1 text-xs uppercase text-[--text-secondary]">
                 {field.locale}
               </legend>
               <Field
@@ -191,7 +191,7 @@ export function CategoryEditPage() {
               <Field label="Описание">
                 <textarea
                   {...form.register(`translations.${idx}.description`)}
-                  className="min-h-20 w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 py-2 text-sm"
+                  className="min-h-20 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 py-2 text-sm"
                 />
               </Field>
             </fieldset>
@@ -200,12 +200,12 @@ export function CategoryEditPage() {
       </div>
 
       {save.isError && (
-        <p className="mt-4 text-sm text-[--color-danger]">
+        <p className="mt-4 text-sm text-[--danger]">
           {save.error instanceof Error ? save.error.message : "Не удалось сохранить"}
         </p>
       )}
       {remove.isError && (
-        <p className="mt-4 text-sm text-[--color-danger]">
+        <p className="mt-4 text-sm text-[--danger]">
           {remove.error instanceof Error ? remove.error.message : "Не удалось удалить"}
         </p>
       )}
@@ -226,15 +226,15 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="text-xs font-medium uppercase tracking-wide text-[--color-muted]">
+      <span className="text-xs font-medium uppercase tracking-wide text-[--text-secondary]">
         {label}
       </span>
       <div className="mt-1">{children}</div>
       {help && !error && (
-        <span className="mt-1 block text-xs text-[--color-muted]">{help}</span>
+        <span className="mt-1 block text-xs text-[--text-secondary]">{help}</span>
       )}
       {error && (
-        <span className="mt-1 block text-xs text-[--color-danger]">{error}</span>
+        <span className="mt-1 block text-xs text-[--danger]">{error}</span>
       )}
     </label>
   );

@@ -12,7 +12,7 @@ export function PageHeader({ title, description, actions }: Props) {
       <div>
         <h1 className="text-2xl font-semibold">{title}</h1>
         {description && (
-          <p className="mt-1 text-sm text-[--color-muted]">{description}</p>
+          <p className="mt-1 text-sm text-[--text-secondary]">{description}</p>
         )}
       </div>
       {actions && <div className="flex gap-2">{actions}</div>}

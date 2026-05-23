@@ -164,14 +164,14 @@ export function ProductEditPage() {
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <section className="space-y-4 rounded-lg border bg-[--color-bg] p-4">
+        <section className="space-y-4 rounded-lg border bg-[--bg-surface] p-4">
           <Field label="Slug" error={form.formState.errors.slug?.message}>
             <Input {...form.register("slug")} placeholder="pubg-uc" />
           </Field>
           <Field label="Brand" error={form.formState.errors.brand_id?.message}>
             <select
               {...form.register("brand_id")}
-              className="flex h-10 w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 text-sm"
+              className="flex h-10 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm"
             >
               <option value="">— Выбери —</option>
               {brandsQuery.data?.map((b) => (
@@ -184,7 +184,7 @@ export function ProductEditPage() {
           <Field label="Тип">
             <select
               {...form.register("kind")}
-              className="flex h-10 w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 text-sm"
+              className="flex h-10 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm"
             >
               <option value="top_up">top_up (прямое пополнение)</option>
               <option value="voucher">voucher (код)</option>
@@ -207,11 +207,11 @@ export function ProductEditPage() {
           </div>
         </section>
 
-        <section className="space-y-4 rounded-lg border bg-[--color-bg] p-4">
+        <section className="space-y-4 rounded-lg border bg-[--bg-surface] p-4">
           <h2 className="font-medium">Переводы</h2>
           {trans.fields.map((field, idx) => (
             <fieldset key={field.id} className="space-y-2 rounded-md border p-3">
-              <legend className="px-1 text-xs uppercase text-[--color-muted]">
+              <legend className="px-1 text-xs uppercase text-[--text-secondary]">
                 {field.locale}
               </legend>
               <Input
@@ -225,16 +225,16 @@ export function ProductEditPage() {
               <textarea
                 placeholder="Описание"
                 {...form.register(`translations.${idx}.description`)}
-                className="min-h-20 w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 py-2 text-sm"
+                className="min-h-20 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 py-2 text-sm"
               />
             </fieldset>
           ))}
         </section>
       </div>
 
-      <section className="mt-6 rounded-lg border bg-[--color-bg] p-4">
+      <section className="mt-6 rounded-lg border bg-[--bg-surface] p-4">
         <h2 className="mb-3 font-medium">Поля формы (required_fields)</h2>
-        <p className="mb-3 text-sm text-[--color-muted]">
+        <p className="mb-3 text-sm text-[--text-secondary]">
           Эти поля фронт показывает покупателю перед оплатой (player_id, сервер и пр.).
         </p>
         <RequiredFieldsEditor
@@ -247,7 +247,7 @@ export function ProductEditPage() {
       </section>
 
       {save.isError && (
-        <p className="mt-4 text-sm text-[--color-danger]">
+        <p className="mt-4 text-sm text-[--danger]">
           {save.error instanceof Error ? save.error.message : "Не удалось сохранить"}
         </p>
       )}
@@ -266,9 +266,9 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="text-xs font-medium uppercase text-[--color-muted]">{label}</span>
+      <span className="text-xs font-medium uppercase text-[--text-secondary]">{label}</span>
       <div className="mt-1">{children}</div>
-      {error && <span className="mt-1 block text-xs text-[--color-danger]">{error}</span>}
+      {error && <span className="mt-1 block text-xs text-[--danger]">{error}</span>}
     </label>
   );
 }

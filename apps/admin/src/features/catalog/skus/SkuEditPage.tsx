@@ -305,7 +305,7 @@ export function SkuEditPage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* ----- left: identity + pricing ----- */}
-        <section className="space-y-4 rounded-lg border bg-[--color-bg] p-4 lg:col-span-2">
+        <section className="space-y-4 rounded-lg border bg-[--bg-surface] p-4 lg:col-span-2">
           <Field
             label="Продукт"
             error={form.formState.errors.product_id?.message}
@@ -314,7 +314,7 @@ export function SkuEditPage() {
             <select
               {...form.register("product_id")}
               disabled={!isNew}
-              className="flex h-10 w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 text-sm disabled:opacity-60"
+              className="flex h-10 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm disabled:opacity-60"
             >
               <option value="">— Выбери продукт —</option>
               {productsQuery.data?.map((p) => {
@@ -334,7 +334,7 @@ export function SkuEditPage() {
               })}
             </select>
             {!isNew && (
-              <p className="mt-1 text-xs text-[--color-muted]">
+              <p className="mt-1 text-xs text-[--text-secondary]">
                 Продукт у существующего SKU поменять нельзя — удали и создай заново.
               </p>
             )}
@@ -353,7 +353,7 @@ export function SkuEditPage() {
             <Field label="Регион" help="GLOBAL — продаётся везде.">
               <select
                 {...form.register("region")}
-                className="flex h-10 w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 text-sm"
+                className="flex h-10 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm"
               >
                 {REGION_PRESETS.map((r) => (
                   <option key={r.value} value={r.value}>
@@ -396,7 +396,7 @@ export function SkuEditPage() {
               help="Каноническая цена. Конвертируется по FX."
             >
               <div className="flex items-center gap-2">
-                <span className="text-sm text-[--color-muted]">$</span>
+                <span className="text-sm text-[--text-secondary]">$</span>
                 <Input
                   {...form.register("price_usd")}
                   inputMode="decimal"
@@ -412,7 +412,7 @@ export function SkuEditPage() {
               />
             </Field>
             <Field label="Статус">
-              <label className="mt-1 flex h-10 items-center gap-2 rounded-md border border-[--color-border] bg-[--color-bg] px-3 text-sm">
+              <label className="mt-1 flex h-10 items-center gap-2 rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm">
                 <input
                   type="checkbox"
                   {...form.register("active")}
@@ -446,11 +446,11 @@ export function SkuEditPage() {
             skuCode={watchedSkuCode}
           />
 
-          <section className="rounded-lg border bg-[--color-bg] p-4">
+          <section className="rounded-lg border bg-[--bg-surface] p-4">
             <div className="mb-3 flex items-baseline justify-between">
               <div>
                 <h3 className="text-sm font-semibold">Цены в других валютах</h3>
-                <p className="text-xs text-[--color-muted]">
+                <p className="text-xs text-[--text-secondary]">
                   Перебивают FX-конвертацию. Оставь пустым — посчитается из USD.
                 </p>
               </div>
@@ -468,7 +468,7 @@ export function SkuEditPage() {
             </div>
 
             {overrides.fields.length === 0 ? (
-              <p className="rounded-md border border-dashed border-[--color-border] p-4 text-center text-xs text-[--color-muted]">
+              <p className="rounded-md border border-dashed border-[--border-default] p-4 text-center text-xs text-[--text-secondary]">
                 Пусто. Все валюты берутся через FX из USD.
               </p>
             ) : (
@@ -480,7 +480,7 @@ export function SkuEditPage() {
                   >
                     <select
                       {...form.register(`price_overrides.${idx}.currency`)}
-                      className="h-9 w-24 rounded-md border border-[--color-border] bg-[--color-bg] px-2 text-sm font-medium"
+                      className="h-9 w-24 rounded-md border border-[--border-default] bg-[--bg-surface] px-2 text-sm font-medium"
                     >
                       {CURRENCIES.map((c) => (
                         <option key={c} value={c}>
@@ -512,12 +512,12 @@ export function SkuEditPage() {
       </div>
 
       {save.isError && (
-        <p className="mt-4 text-sm text-[--color-danger]">
+        <p className="mt-4 text-sm text-[--danger]">
           {extractApiMessage(save.error) ?? "Не удалось сохранить SKU."}
         </p>
       )}
       {remove.isError && (
-        <p className="mt-4 text-sm text-[--color-danger]">
+        <p className="mt-4 text-sm text-[--danger]">
           {extractApiMessage(remove.error) ?? "Не удалось удалить."}
         </p>
       )}
@@ -548,12 +548,12 @@ function PricePreview({
   });
   const showLine = denom || region || hasUsd;
   return (
-    <section className="rounded-lg border bg-[--color-bg] p-4">
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[--color-muted]">
+    <section className="rounded-lg border bg-[--bg-surface] p-4">
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[--text-secondary]">
         Превью
       </h3>
       {!showLine ? (
-        <p className="text-sm text-[--color-muted]">
+        <p className="text-sm text-[--text-secondary]">
           Заполни номинал, регион и цену — здесь появится итог.
         </p>
       ) : (
@@ -561,11 +561,11 @@ function PricePreview({
           <div>
             <div className="text-base font-semibold">
               {productName || "Продукт"} ·{" "}
-              <span className="text-[--color-brand]">{denom || "—"}</span>
+              <span className="text-[--accent]">{denom || "—"}</span>
             </div>
-            <div className="text-xs text-[--color-muted]">
+            <div className="text-xs text-[--text-secondary]">
               регион {region || "—"} · код{" "}
-              <code className="text-[--color-fg]">{skuCode || "—"}</code>
+              <code className="text-[--text-primary]">{skuCode || "—"}</code>
             </div>
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -604,8 +604,8 @@ function PriceChip({
 }) {
   const cls =
     tone === "primary"
-      ? "border-[--color-brand]/30 bg-[--color-brand]/10 text-[--color-brand]"
-      : "border-[--color-border] bg-[--color-subtle] text-[--color-fg]";
+      ? "border-[--accent]/30 bg-[--accent]/10 text-[--accent]"
+      : "border-[--border-default] bg-[--bg-muted] text-[--text-primary]";
   return (
     <span
       className={`inline-flex items-baseline gap-1 rounded-md border px-2 py-1 font-mono text-xs ${cls}`}
@@ -631,15 +631,15 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="text-xs font-medium uppercase tracking-wide text-[--color-muted]">
+      <span className="text-xs font-medium uppercase tracking-wide text-[--text-secondary]">
         {label}
       </span>
       <div className="mt-1">{children}</div>
       {help && !error && (
-        <span className="mt-1 block text-xs text-[--color-muted]">{help}</span>
+        <span className="mt-1 block text-xs text-[--text-secondary]">{help}</span>
       )}
       {error && (
-        <span className="mt-1 block text-xs text-[--color-danger]">{error}</span>
+        <span className="mt-1 block text-xs text-[--danger]">{error}</span>
       )}
     </label>
   );

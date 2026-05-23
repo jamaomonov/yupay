@@ -83,7 +83,7 @@ function FieldRow({
   const key = useWatch({ control, name: `${path}.key` }) as string | undefined;
 
   return (
-    <div className="rounded-md border bg-[--color-bg]">
+    <div className="rounded-md border bg-[--bg-surface]">
       <header className="flex items-center justify-between gap-2 px-3 py-2">
         <button
           type="button"
@@ -96,7 +96,7 @@ function FieldRow({
             <ChevronRight className="size-4" />
           )}
           <code className="text-xs">{key || "(новое поле)"}</code>
-          <span className="text-xs text-[--color-muted]">{type ?? ""}</span>
+          <span className="text-xs text-[--text-secondary]">{type ?? ""}</span>
         </button>
         <Button type="button" variant="ghost" size="sm" onClick={onRemove}>
           <Trash2 className="size-4" />
@@ -112,7 +112,7 @@ function FieldRow({
             <Labeled label="Type">
               <select
                 {...register(`${path}.type`)}
-                className="h-10 w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 text-sm"
+                className="h-10 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm"
               >
                 {FIELD_TYPES.map((t) => (
                   <option key={t} value={t}>
@@ -127,7 +127,7 @@ function FieldRow({
           </div>
 
           <div>
-            <div className="text-xs font-medium uppercase text-[--color-muted]">Label</div>
+            <div className="text-xs font-medium uppercase text-[--text-secondary]">Label</div>
             <div className="mt-1 grid grid-cols-1 gap-2 sm:grid-cols-3">
               {LOCALES.map((l) => (
                 <Input
@@ -140,7 +140,7 @@ function FieldRow({
           </div>
 
           <div>
-            <div className="text-xs font-medium uppercase text-[--color-muted]">
+            <div className="text-xs font-medium uppercase text-[--text-secondary]">
               Placeholder
             </div>
             <div className="mt-1 grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -158,10 +158,10 @@ function FieldRow({
               Per-locale because it's user-facing copy: "Profile → Settings →
               copy your numeric ID at the top". Markdown / newlines welcome. */}
           <div>
-            <div className="text-xs font-medium uppercase text-[--color-muted]">
+            <div className="text-xs font-medium uppercase text-[--text-secondary]">
               Help text — «Где найти?»
             </div>
-            <p className="mt-1 text-[11px] text-[--color-muted]">
+            <p className="mt-1 text-[11px] text-[--text-secondary]">
               Подсказка раскрывается тапом по pill «Где найти?» рядом с полем.
               Если пусто — pill не показывается. Несколько строк допустимо.
             </p>
@@ -172,7 +172,7 @@ function FieldRow({
                   {...register(`${path}.help_text.${l}`)}
                   placeholder={l.toUpperCase()}
                   rows={3}
-                  className="min-h-[72px] w-full resize-y rounded-md border border-[--color-border] bg-[--color-bg] px-3 py-2 text-sm leading-snug"
+                  className="min-h-[72px] w-full resize-y rounded-md border border-[--border-default] bg-[--bg-surface] px-3 py-2 text-sm leading-snug"
                 />
               ))}
             </div>
@@ -200,8 +200,8 @@ function OptionsEditor({
 }) {
   const { fields, append, remove } = useFieldArray({ control, name });
   return (
-    <div className="rounded-md border bg-[--color-subtle]/40 p-3">
-      <div className="mb-2 text-xs font-medium uppercase text-[--color-muted]">
+    <div className="rounded-md border bg-[--bg-muted]/40 p-3">
+      <div className="mb-2 text-xs font-medium uppercase text-[--text-secondary]">
         Options
       </div>
       {fields.map((f, idx) => (
@@ -241,7 +241,7 @@ function OptionsEditor({
 function Labeled({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="text-xs font-medium uppercase text-[--color-muted]">{label}</span>
+      <span className="text-xs font-medium uppercase text-[--text-secondary]">{label}</span>
       <div className="mt-1">{children}</div>
     </label>
   );

@@ -35,10 +35,10 @@ export function SavedSegmentsNav() {
 
   return (
     <section
-      className="border-t border-[--color-border] px-3 pb-2 pt-3"
+      className="border-t border-[--border-default] px-3 pb-2 pt-3"
       aria-label="Мои сегменты"
     >
-      <p className="mb-1 px-3 text-[10px] font-medium uppercase tracking-wide text-[--color-muted]">
+      <p className="mb-1 px-3 text-[10px] font-medium uppercase tracking-wide text-[--text-secondary]">
         Мои сегменты
       </p>
       <ul className="space-y-0.5">
@@ -84,8 +84,8 @@ function SegmentLink({ segment }: { segment: SavedSegment }) {
         [
           "flex items-center gap-2 rounded-md px-3 py-1.5 pr-8 text-xs transition-colors",
           isActive
-            ? "bg-[--color-subtle] text-[--color-fg]"
-            : "text-[--color-muted] hover:bg-[--color-subtle]/60 hover:text-[--color-fg]",
+            ? "bg-[--bg-muted] text-[--text-primary]"
+            : "text-[--text-secondary] hover:bg-[--bg-muted]/60 hover:text-[--text-primary]",
         ].join(" ")
       }
       title={`${segment.path} (${Object.keys(segment.params).length.toString()} параметров)`}

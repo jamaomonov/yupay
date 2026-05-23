@@ -283,16 +283,16 @@ function ContextBlock({
       </div>
 
       <div>
-        <p className="text-xs font-medium uppercase text-[--color-muted]">
+        <p className="text-xs font-medium uppercase text-[--text-secondary]">
           Данные для выдачи
         </p>
         {dataEntries.length === 0 ? (
-          <p className="mt-1 text-[--color-muted]">— нет дополнительных полей —</p>
+          <p className="mt-1 text-[--text-secondary]">— нет дополнительных полей —</p>
         ) : (
           <dl className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1">
             {dataEntries.map(([k, v]) => (
               <div key={k} className="flex justify-between gap-3">
-                <dt className="text-[--color-muted]">{k}</dt>
+                <dt className="text-[--text-secondary]">{k}</dt>
                 <dd className="truncate font-mono">{String(v)}</dd>
               </div>
             ))}
@@ -314,7 +314,7 @@ function KeyValue({
 }) {
   return (
     <div>
-      <p className="text-xs font-medium uppercase text-[--color-muted]">{label}</p>
+      <p className="text-xs font-medium uppercase text-[--text-secondary]">{label}</p>
       <p className={["truncate", mono ? "font-mono" : ""].join(" ")}>{value}</p>
     </div>
   );
@@ -406,7 +406,7 @@ function CompleteForm({
           <select
             value={kind}
             onChange={(e) => setKind(e.target.value as ArtifactKind)}
-            className="flex h-10 w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 text-sm"
+            className="flex h-10 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm"
           >
             {Object.entries(ARTIFACT_KIND_LABEL).map(([v, label]) => (
               <option key={v} value={v}>
@@ -419,7 +419,7 @@ function CompleteForm({
           <select
             value={channel}
             onChange={(e) => setChannel(e.target.value as DeliveryChannel)}
-            className="flex h-10 w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 text-sm"
+            className="flex h-10 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm"
           >
             {CHANNELS.map((c) => (
               <option key={c.value} value={c.value}>
@@ -487,13 +487,13 @@ function CompleteForm({
           <textarea
             value={rawJson}
             onChange={(e) => setRawJson(e.target.value)}
-            className="min-h-32 w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 py-2 font-mono text-xs"
+            className="min-h-32 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 py-2 font-mono text-xs"
             placeholder='{"code": "ABC-123"}'
           />
         </FormField>
       )}
 
-      <label className="flex items-center gap-2 text-sm text-[--color-muted]">
+      <label className="flex items-center gap-2 text-sm text-[--text-secondary]">
         <input
           type="checkbox"
           checked={rawMode}
@@ -509,15 +509,15 @@ function CompleteForm({
         <textarea
           value={adminNote}
           onChange={(e) => setAdminNote(e.target.value)}
-          className="min-h-20 w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 py-2 text-sm"
+          className="min-h-20 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 py-2 text-sm"
         />
       </FormField>
 
       {rawError && (
-        <p className="text-sm text-[--color-danger]">{rawError}</p>
+        <p className="text-sm text-[--danger]">{rawError}</p>
       )}
       {error && (
-        <p className="text-sm text-[--color-danger]">{describeError(error)}</p>
+        <p className="text-sm text-[--danger]">{describeError(error)}</p>
       )}
 
       <div className="flex justify-end gap-2">

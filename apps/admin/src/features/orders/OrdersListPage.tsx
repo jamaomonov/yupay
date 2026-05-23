@@ -113,12 +113,12 @@ export function OrdersListPage() {
             <Link
               to={`/customers/${o.user_id}`}
               onClick={(e) => { e.stopPropagation(); }}
-              className="text-[--color-muted] underline-offset-2 hover:text-[--color-fg] hover:underline"
+              className="text-[--text-secondary] underline-offset-2 hover:text-[--text-primary] hover:underline"
             >
               user {o.user_id.slice(0, 8)}…
             </Link>
           ) : (
-            <span className="text-[--color-muted]">
+            <span className="text-[--text-secondary]">
               {o.guest_email ?? "—"}
             </span>
           )}
@@ -132,7 +132,7 @@ export function OrdersListPage() {
         const first = o.items[0]?.display ?? null;
         if (!first) {
           return (
-            <span className="text-xs text-[--color-muted]">
+            <span className="text-xs text-[--text-secondary]">
               {o.items.length} поз.
             </span>
           );
@@ -147,12 +147,12 @@ export function OrdersListPage() {
               <img
                 src={first.image_url}
                 alt=""
-                className="size-7 rounded object-cover border border-[--color-border] flex-shrink-0"
+                className="size-7 rounded object-cover border border-[--border-default] flex-shrink-0"
               />
             ) : (
               <div
-                className="size-7 rounded flex items-center justify-center text-[10px] font-bold text-[--color-muted] border border-[--color-border] flex-shrink-0"
-                style={{ background: "var(--color-subtle)" }}
+                className="size-7 rounded flex items-center justify-center text-[10px] font-bold text-[--text-secondary] border border-[--border-default] flex-shrink-0"
+                style={{ background: "var(--bg-muted)" }}
               >
                 {(first.brand_name?.[0] ?? "?").toUpperCase()}
               </div>
@@ -160,7 +160,7 @@ export function OrdersListPage() {
             <div className="min-w-0">
               <div className="truncate text-sm">{headline}</div>
               {extra > 0 && (
-                <div className="text-[10px] text-[--color-muted]">
+                <div className="text-[10px] text-[--text-secondary]">
                   +{extra} ещё
                 </div>
               )}
@@ -220,7 +220,7 @@ export function OrdersListPage() {
               disabled={cancel.isPending}
               aria-label="Отменить"
             >
-              <Ban className="size-4 text-[--color-danger]" />
+              <Ban className="size-4 text-[--danger]" />
             </Button>
           )}
         </div>
@@ -253,7 +253,7 @@ export function OrdersListPage() {
 
       <section className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-3">
         <div className="md:col-span-2 relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[--color-muted]" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[--text-secondary]" />
           <Input
             value={query}
             onChange={(e) => { setQuery(e.target.value); }}
@@ -267,7 +267,7 @@ export function OrdersListPage() {
             setStatus(e.target.value as OrderStatus | "");
             setOffset(0);
           }}
-          className="h-10 rounded-md border border-[--color-border] bg-[--color-bg] px-3 text-sm"
+          className="h-10 rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm"
         >
           {STATUS_FILTERS.map((s) => (
             <option key={s.value} value={s.value}>
@@ -281,7 +281,7 @@ export function OrdersListPage() {
           string also flows back through the URL so admins can share their working view. */}
 
       {Object.keys(totalCharged).length > 0 && (
-        <p className="mb-3 text-xs text-[--color-muted]">
+        <p className="mb-3 text-xs text-[--text-secondary]">
           Сумма по списку:{" "}
           {Object.entries(totalCharged)
             .map(
@@ -295,7 +295,7 @@ export function OrdersListPage() {
         <Spinner label="Загрузка…" />
       )}
       {ordersQuery.isError && (
-        <p className="text-sm text-[--color-danger]">Не удалось загрузить.</p>
+        <p className="text-sm text-[--danger]">Не удалось загрузить.</p>
       )}
 
       <DataTable
@@ -342,14 +342,14 @@ function StatCard({
   tone?: "default" | "warn" | "muted";
 }) {
   const valueCls = accent
-    ? "text-[--color-brand]"
+    ? "text-[--accent]"
     : tone === "warn"
-      ? "text-[--color-danger]"
-      : "text-[--color-fg]";
+      ? "text-[--danger]"
+      : "text-[--text-primary]";
   return (
-    <div className="rounded-lg border bg-[--color-bg] p-4">
+    <div className="rounded-lg border bg-[--bg-surface] p-4">
       <div className={`text-2xl font-semibold ${valueCls}`}>{value}</div>
-      <div className="text-xs uppercase tracking-wide text-[--color-muted]">
+      <div className="text-xs uppercase tracking-wide text-[--text-secondary]">
         {label}
       </div>
     </div>

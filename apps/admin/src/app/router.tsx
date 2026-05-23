@@ -83,7 +83,7 @@ function Stub({ title, hint }: { title: string; hint: string }) {
   return (
     <div className="space-y-2">
       <h1 className="text-2xl font-semibold">{title}</h1>
-      <p className="text-sm text-[--color-muted]">{hint}</p>
+      <p className="text-sm text-[--text-secondary]">{hint}</p>
     </div>
   );
 }

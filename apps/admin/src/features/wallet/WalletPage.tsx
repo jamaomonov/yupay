@@ -95,7 +95,7 @@ export function WalletPage() {
       render: (a) => (
         <div className="flex flex-col">
           <span className="text-sm">{a.kind}</span>
-          <span className="text-xs text-[--color-muted]">{a.owner_type}</span>
+          <span className="text-xs text-[--text-secondary]">{a.owner_type}</span>
         </div>
       ),
     },
@@ -115,8 +115,8 @@ export function WalletPage() {
         <span
           className={
             a.status === "active"
-              ? "text-[--color-success]"
-              : "text-[--color-muted]"
+              ? "text-[--success]"
+              : "text-[--text-secondary]"
           }
         >
           {a.status}
@@ -135,7 +135,7 @@ export function WalletPage() {
 
       <section className="mb-6 flex flex-wrap items-end gap-3">
         <div className="grow">
-          <label className="text-xs font-medium uppercase text-[--color-muted]">
+          <label className="text-xs font-medium uppercase text-[--text-secondary]">
             User ID
           </label>
           <Input
@@ -153,7 +153,7 @@ export function WalletPage() {
       {activeUserId && ledgerQuery.data && (
         <>
           <section className="mb-6">
-            <h2 className="mb-3 text-sm font-semibold uppercase text-[--color-muted]">
+            <h2 className="mb-3 text-sm font-semibold uppercase text-[--text-secondary]">
               Счета
             </h2>
             <DataTable
@@ -164,16 +164,16 @@ export function WalletPage() {
             />
           </section>
 
-          <section className="mb-6 rounded-lg border bg-[--color-bg] p-4">
+          <section className="mb-6 rounded-lg border bg-[--bg-surface] p-4">
             <h2 className="mb-3 text-sm font-semibold">Ручная корректировка</h2>
-            <p className="mb-3 text-xs text-[--color-muted]">
+            <p className="mb-3 text-xs text-[--text-secondary]">
               Положительная сумма — кредит пользователю; отрицательная — клавбэк.
               В ledger пишется пара проводок:{" "}
               <code>D user_&lt;kind&gt; / C house_promo_expense</code>.
             </p>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
               <div>
-                <label className="text-xs uppercase text-[--color-muted]">
+                <label className="text-xs uppercase text-[--text-secondary]">
                   Счёт
                 </label>
                 <select
@@ -183,7 +183,7 @@ export function WalletPage() {
                       e.target.value as (typeof ADJUST_KINDS)[number]["value"],
                     )
                   }
-                  className="mt-1 h-10 w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 text-sm"
+                  className="mt-1 h-10 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm"
                 >
                   {ADJUST_KINDS.map((k) => (
                     <option key={k.value} value={k.value}>
@@ -193,7 +193,7 @@ export function WalletPage() {
                 </select>
               </div>
               <div>
-                <label className="text-xs uppercase text-[--color-muted]">
+                <label className="text-xs uppercase text-[--text-secondary]">
                   Валюта
                 </label>
                 <Input
@@ -204,7 +204,7 @@ export function WalletPage() {
                 />
               </div>
               <div>
-                <label className="text-xs uppercase text-[--color-muted]">
+                <label className="text-xs uppercase text-[--text-secondary]">
                   Сумма
                 </label>
                 <Input
@@ -216,7 +216,7 @@ export function WalletPage() {
                 />
               </div>
               <div>
-                <label className="text-xs uppercase text-[--color-muted]">
+                <label className="text-xs uppercase text-[--text-secondary]">
                   Причина
                 </label>
                 <Input
@@ -235,16 +235,16 @@ export function WalletPage() {
                 {adjustMutation.isPending ? "Записываем…" : "Записать"}
               </Button>
               {feedback && (
-                <span className="text-sm text-[--color-success]">{feedback}</span>
+                <span className="text-sm text-[--success]">{feedback}</span>
               )}
               {error && (
-                <span className="text-sm text-[--color-danger]">{error}</span>
+                <span className="text-sm text-[--danger]">{error}</span>
               )}
             </div>
           </section>
 
           <section>
-            <h2 className="mb-3 text-sm font-semibold uppercase text-[--color-muted]">
+            <h2 className="mb-3 text-sm font-semibold uppercase text-[--text-secondary]">
               Последние транзакции
             </h2>
             <TransactionsList items={ledgerQuery.data.recent_transactions} />
@@ -253,13 +253,13 @@ export function WalletPage() {
       )}
 
       {activeUserId && ledgerQuery.isError && (
-        <div className="rounded-lg border bg-[--color-bg] p-6 text-sm text-[--color-danger]">
+        <div className="rounded-lg border bg-[--bg-surface] p-6 text-sm text-[--danger]">
           Не удалось загрузить ledger пользователя.
         </div>
       )}
 
       {!activeUserId && (
-        <div className="rounded-lg border bg-[--color-bg] p-10 text-center text-sm text-[--color-muted]">
+        <div className="rounded-lg border bg-[--bg-surface] p-10 text-center text-sm text-[--text-secondary]">
           Введи user_id, чтобы посмотреть счета и историю.
         </div>
       )}
@@ -279,7 +279,7 @@ interface AdjustBody {
 function TransactionsList({ items }: { items: Transaction[] }) {
   if (items.length === 0) {
     return (
-      <div className="rounded-lg border bg-[--color-bg] p-6 text-center text-sm text-[--color-muted]">
+      <div className="rounded-lg border bg-[--bg-surface] p-6 text-center text-sm text-[--text-secondary]">
         История пустая.
       </div>
     );
@@ -289,18 +289,18 @@ function TransactionsList({ items }: { items: Transaction[] }) {
       {items.map((tx) => (
         <article
           key={tx.id}
-          className="rounded-lg border bg-[--color-bg] p-4 text-sm"
+          className="rounded-lg border bg-[--bg-surface] p-4 text-sm"
         >
           <header className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
             <div>
               <span className="font-medium">{tx.kind}</span>
               {tx.actor && (
-                <span className="ml-2 text-xs text-[--color-muted]">
+                <span className="ml-2 text-xs text-[--text-secondary]">
                   by {tx.actor}
                 </span>
               )}
             </div>
-            <span className="text-xs text-[--color-muted]">
+            <span className="text-xs text-[--text-secondary]">
               {new Date(tx.created_at).toLocaleString("ru")}
             </span>
           </header>
@@ -318,7 +318,7 @@ function TransactionsList({ items }: { items: Transaction[] }) {
           </ul>
           {typeof tx.extra_metadata?.reason === "string" &&
             tx.extra_metadata.reason.length > 0 && (
-              <p className="mt-2 text-xs text-[--color-muted]">
+              <p className="mt-2 text-xs text-[--text-secondary]">
                 «{tx.extra_metadata.reason}»
               </p>
             )}

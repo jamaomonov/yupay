@@ -25,7 +25,7 @@ export function Pagination({
   const canPrev = offset > 0;
   const canNext = to < total;
   return (
-    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-[--color-muted]">
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-[--text-secondary]">
       <span>
         {from}–{to} из {total}
         {pageSizeLabel ? ` · ${pageSizeLabel}` : ""}

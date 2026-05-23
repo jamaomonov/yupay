@@ -77,12 +77,12 @@ export function DashboardPage() {
           <h1 className="text-2xl font-semibold">
             Привет, {me?.display_name ?? "админ"} 👋
           </h1>
-          <p className="mt-1 text-sm text-[--color-muted]">
+          <p className="mt-1 text-sm text-[--text-secondary]">
             Сводка за последние 24 часа. Обновляется автоматически каждые 30 сек.
           </p>
         </div>
         {d && (
-          <span className="text-xs text-[--color-muted]">
+          <span className="text-xs text-[--text-secondary]">
             обновлено{" "}
             {new Date(d.generated_at).toLocaleTimeString("ru", {
               hour: "2-digit",
@@ -94,7 +94,7 @@ export function DashboardPage() {
       </header>
 
       {q.isError && (
-        <p className="text-sm text-[--color-danger]">
+        <p className="text-sm text-[--danger]">
           Не удалось загрузить метрики.
         </p>
       )}
@@ -162,10 +162,10 @@ export function DashboardPage() {
       </section>
 
       <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <article className="rounded-lg border bg-[--color-bg] p-4">
+        <article className="rounded-lg border bg-[--bg-surface] p-4">
           <header className="mb-3 flex items-baseline justify-between">
             <h2 className="text-sm font-semibold">Заказы за 7 дней</h2>
-            <span className="text-xs text-[--color-muted]">
+            <span className="text-xs text-[--text-secondary]">
               {d?.orders_last_7_days.reduce((s, b) => s + b.count, 0) ?? 0}{" "}
               всего
             </span>
@@ -173,29 +173,29 @@ export function DashboardPage() {
           {d ? (
             <DayBars buckets={d.orders_last_7_days} />
           ) : (
-            <div className="h-32 animate-pulse rounded bg-[--color-subtle]" />
+            <div className="h-32 animate-pulse rounded bg-[--bg-muted]" />
           )}
         </article>
 
-        <article className="rounded-lg border bg-[--color-bg] p-4">
+        <article className="rounded-lg border bg-[--bg-surface] p-4">
           <header className="mb-3 flex items-baseline justify-between">
             <h2 className="text-sm font-semibold">Статусы за 24ч</h2>
             <Link
               to="/orders"
-              className="text-xs text-[--color-muted] hover:underline"
+              className="text-xs text-[--text-secondary] hover:underline"
             >
               открыть заказы →
             </Link>
           </header>
           {d?.status_breakdown.length === 0 ? (
-            <p className="text-sm text-[--color-muted]">За окно ничего нет.</p>
+            <p className="text-sm text-[--text-secondary]">За окно ничего нет.</p>
           ) : (
             <ul className="space-y-1.5">
               {(d?.status_breakdown ?? []).map((s) => (
                 <li
                   key={s.status}
                   className="flex items-center justify-between rounded-md px-3 py-1.5"
-                  style={{ background: "var(--color-subtle)" }}
+                  style={{ background: "var(--bg-muted)" }}
                 >
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -212,15 +212,15 @@ export function DashboardPage() {
         </article>
       </section>
 
-      <section className="rounded-lg border bg-[--color-bg] p-4">
+      <section className="rounded-lg border bg-[--bg-surface] p-4">
         <header className="mb-3 flex items-baseline justify-between">
           <div className="flex items-center gap-2">
-            <Boxes className="size-4 text-[--color-muted]" />
+            <Boxes className="size-4 text-[--text-secondary]" />
             <h2 className="text-sm font-semibold">Склад</h2>
           </div>
           <Link
             to="/inventory"
-            className="text-xs text-[--color-muted] hover:underline"
+            className="text-xs text-[--text-secondary] hover:underline"
           >
             открыть склад →
           </Link>
@@ -264,17 +264,17 @@ function Kpi({
   tone?: "warn" | "success" | "muted";
 }) {
   const valueCls = accent
-    ? "text-[--color-brand]"
+    ? "text-[--accent]"
     : tone === "warn"
-      ? "text-[--color-danger]"
+      ? "text-[--danger]"
       : tone === "success"
         ? "text-[--success-fg]"
         : tone === "muted"
-          ? "text-[--color-muted]"
-          : "text-[--color-fg]";
+          ? "text-[--text-secondary]"
+          : "text-[--text-primary]";
   return (
-    <article className="rounded-lg border bg-[--color-bg] p-4">
-      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-[--color-muted]">
+    <article className="rounded-lg border bg-[--bg-surface] p-4">
+      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-[--text-secondary]">
         <Icon className="size-3.5" />
         {label}
       </div>
@@ -302,14 +302,14 @@ function AlertCard({
   const inner = (
     <article
       className={[
-        "rounded-lg border bg-[--color-bg] p-4 transition-colors",
-        clickable ? "hover:bg-[--color-subtle]/60 hover:border-[--color-fg]/20" : "",
+        "rounded-lg border bg-[--bg-surface] p-4 transition-colors",
+        clickable ? "hover:bg-[--bg-muted]/60 hover:border-[--color-fg]/20" : "",
       ].join(" ")}
       style={
         tone === "warn" && value > 0
           ? {
               borderColor:
-                "color-mix(in oklab, var(--color-danger) 50%, var(--color-border))",
+                "color-mix(in oklab, var(--color-danger) 50%, var(--border-default))",
             }
           : undefined
       }
@@ -319,21 +319,21 @@ function AlertCard({
           <Icon
             className={`size-4 ${
               tone === "warn" && value > 0
-                ? "text-[--color-danger]"
-                : "text-[--color-muted]"
+                ? "text-[--danger]"
+                : "text-[--text-secondary]"
             }`}
           />
           <span className="text-sm font-semibold">{label}</span>
         </div>
         <span
           className={`text-xl font-bold ${
-            tone === "warn" && value > 0 ? "text-[--color-danger]" : ""
+            tone === "warn" && value > 0 ? "text-[--danger]" : ""
           }`}
         >
           {value}
         </span>
       </div>
-      <p className="mt-1 text-xs text-[--color-muted]">{hint}</p>
+      <p className="mt-1 text-xs text-[--text-secondary]">{hint}</p>
     </article>
   );
   return to ? (
@@ -358,15 +358,15 @@ function MiniStat({
 }) {
   const valueCls =
     tone === "warn"
-      ? "text-[--color-danger]"
+      ? "text-[--danger]"
       : tone === "success"
         ? "text-[--success-fg]"
         : tone === "muted"
-          ? "text-[--color-muted]"
-          : "text-[--color-fg]";
+          ? "text-[--text-secondary]"
+          : "text-[--text-primary]";
   return (
-    <div className="rounded-md border bg-[--color-bg] p-3">
-      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-[--color-muted]">
+    <div className="rounded-md border bg-[--bg-surface] p-3">
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-[--text-secondary]">
         {Icon && <Icon className="size-3" />}
         {label}
       </div>
@@ -397,14 +397,14 @@ function DayBars({
                 height: `${heightPct}%`,
                 background:
                   b.count === 0
-                    ? "var(--color-border)"
-                    : "color-mix(in oklab, var(--color-brand) 70%, transparent)",
-                color: b.count === 0 ? "var(--color-muted)" : "var(--text-on-accent)",
+                    ? "var(--border-default)"
+                    : "color-mix(in oklab, var(--accent) 70%, transparent)",
+                color: b.count === 0 ? "var(--text-secondary)" : "var(--text-on-accent)",
               }}
             >
               {b.count > 0 && <span className="pb-1">{b.count}</span>}
             </div>
-            <span className="text-[10px] text-[--color-muted]">
+            <span className="text-[10px] text-[--text-secondary]">
               {b.date.slice(5).replace("-", "/")}
             </span>
           </div>

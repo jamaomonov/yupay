@@ -58,7 +58,7 @@ export function CustomerPage() {
     return (
       <div>
         <PageHeader title="Карточка клиента" />
-        <p className="text-sm text-[--color-danger]">
+        <p className="text-sm text-[--danger]">
           {status === 404
             ? "Пользователь не найден."
             : status === 403
@@ -99,19 +99,19 @@ function UserHeader({ data }: { data: CustomerOverviewOut }) {
   const telegramUrl = tg?.tg_username ? `https://t.me/${tg.tg_username}` : null;
 
   return (
-    <header className="rounded-lg border bg-[--color-bg] p-5">
+    <header className="rounded-lg border bg-[--bg-surface] p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-4 min-w-0">
           {u.photo_url ? (
             <img
               src={u.photo_url}
               alt=""
-              className="size-14 rounded-full object-cover border border-[--color-border]"
+              className="size-14 rounded-full object-cover border border-[--border-default]"
             />
           ) : (
             <div
-              className="size-14 rounded-full flex items-center justify-center font-semibold border border-[--color-border]"
-              style={{ background: "var(--color-subtle)" }}
+              className="size-14 rounded-full flex items-center justify-center font-semibold border border-[--border-default]"
+              style={{ background: "var(--bg-muted)" }}
             >
               {initials}
             </div>
@@ -120,8 +120,8 @@ function UserHeader({ data }: { data: CustomerOverviewOut }) {
             <h1 className="text-xl font-semibold truncate">
               {u.display_name ?? u.email ?? "(без имени)"}
             </h1>
-            <p className="font-mono text-xs text-[--color-muted] mt-0.5">{u.id}</p>
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-[--color-muted]">
+            <p className="font-mono text-xs text-[--text-secondary] mt-0.5">{u.id}</p>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-[--text-secondary]">
               {u.email && (
                 <span className="inline-flex items-center gap-1.5">
                   <Mail className="size-3.5" />
@@ -175,23 +175,23 @@ function UserHeader({ data }: { data: CustomerOverviewOut }) {
               href={telegramUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-md border border-[--color-border] px-3 py-1.5 text-sm hover:bg-[--color-subtle]"
+              className="inline-flex items-center gap-2 rounded-md border border-[--border-default] px-3 py-1.5 text-sm hover:bg-[--bg-muted]"
             >
               <Send className="size-4" />
               Telegram
-              <ArrowUpRight className="size-3.5 text-[--color-muted]" />
+              <ArrowUpRight className="size-3.5 text-[--text-secondary]" />
             </a>
           )}
           <Link
             to={`/wallet?user=${u.id}`}
-            className="inline-flex items-center gap-2 rounded-md border border-[--color-border] px-3 py-1.5 text-sm hover:bg-[--color-subtle]"
+            className="inline-flex items-center gap-2 rounded-md border border-[--border-default] px-3 py-1.5 text-sm hover:bg-[--bg-muted]"
           >
             <Wallet className="size-4" />
             Кошелёк
           </Link>
           <Link
             to={`/audit?target_id=${u.id}`}
-            className="inline-flex items-center gap-2 rounded-md border border-[--color-border] px-3 py-1.5 text-sm hover:bg-[--color-subtle]"
+            className="inline-flex items-center gap-2 rounded-md border border-[--border-default] px-3 py-1.5 text-sm hover:bg-[--bg-muted]"
           >
             <Receipt className="size-4" />
             Аудит
@@ -233,17 +233,17 @@ function Stat({
   tone?: "success" | "warn" | "muted" | "default";
 }) {
   const cls = accent
-    ? "text-[--color-brand]"
+    ? "text-[--accent]"
     : tone === "warn"
-      ? "text-[--color-danger]"
+      ? "text-[--danger]"
       : tone === "success"
         ? "text-[--success-fg]"
         : tone === "muted"
-          ? "text-[--color-muted]"
-          : "text-[--color-fg]";
+          ? "text-[--text-secondary]"
+          : "text-[--text-primary]";
   return (
-    <article className="rounded-lg border bg-[--color-bg] p-4">
-      <div className="text-xs uppercase tracking-wide text-[--color-muted]">{label}</div>
+    <article className="rounded-lg border bg-[--bg-surface] p-4">
+      <div className="text-xs uppercase tracking-wide text-[--text-secondary]">{label}</div>
       <div className={`mt-1 text-2xl font-semibold ${cls}`}>{value}</div>
     </article>
   );
@@ -325,7 +325,7 @@ function RecentPayments({
         p.external_id ? (
           <span className="font-mono text-xs">{p.external_id}</span>
         ) : (
-          <span className="text-[--color-muted]">—</span>
+          <span className="text-[--text-secondary]">—</span>
         ),
     },
     { key: "created", header: "Создан", render: (p) => formatDate(p.created_at) },
@@ -365,9 +365,9 @@ function OpenTasks({
       header: "Ошибка",
       render: (t) =>
         t.last_error ? (
-          <span className="text-[--color-danger]">{t.last_error}</span>
+          <span className="text-[--danger]">{t.last_error}</span>
         ) : (
-          <span className="text-[--color-muted]">—</span>
+          <span className="text-[--text-secondary]">—</span>
         ),
     },
     { key: "created", header: "Создан", render: (t) => formatDate(t.created_at) },
@@ -393,15 +393,15 @@ function WalletBalances({
   return (
     <Section title="Кошелёк" count={balances.length}>
       {balances.length === 0 ? (
-        <p className="text-sm text-[--color-muted]">Аккаунтов кошелька нет.</p>
+        <p className="text-sm text-[--text-secondary]">Аккаунтов кошелька нет.</p>
       ) : (
         <ul className="space-y-1.5">
           {balances.map((b) => (
             <li
               key={b.account_id}
-              className="flex items-center justify-between rounded-md border bg-[--color-bg] px-3 py-2 text-sm"
+              className="flex items-center justify-between rounded-md border bg-[--bg-surface] px-3 py-2 text-sm"
             >
-              <span className="text-[--color-muted]">{b.kind}</span>
+              <span className="text-[--text-secondary]">{b.kind}</span>
               <span className="font-mono">
                 {formatMoney(b.balance)} {b.currency}
               </span>
@@ -427,15 +427,15 @@ function Section({
   return (
     <section>
       <div className="mb-2 flex items-baseline justify-between">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-[--color-muted]">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-[--text-secondary]">
           {title}
         </h2>
         <span
           className={[
             "text-xs",
             tone === "warn" && count > 0
-              ? "text-[--color-danger]"
-              : "text-[--color-muted]",
+              ? "text-[--danger]"
+              : "text-[--text-secondary]",
           ].join(" ")}
         >
           {count.toString()}

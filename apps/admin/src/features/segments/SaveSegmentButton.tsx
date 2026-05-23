@@ -30,7 +30,7 @@ export function SaveSegmentButton() {
       <button
         type="button"
         onClick={() => { setOpen(true); }}
-        className="inline-flex items-center gap-1.5 rounded-md border border-[--color-border] px-3 py-1.5 text-sm text-[--color-muted] hover:bg-[--color-subtle] hover:text-[--color-fg]"
+        className="inline-flex items-center gap-1.5 rounded-md border border-[--border-default] px-3 py-1.5 text-sm text-[--text-secondary] hover:bg-[--bg-muted] hover:text-[--text-primary]"
       >
         <Bookmark className="size-4" />
         Сохранить фильтр

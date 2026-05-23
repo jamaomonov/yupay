@@ -113,7 +113,7 @@ export function PaymentsPage() {
       render: (p) => (
         <div className="flex flex-col font-mono text-xs">
           <span>{p.id.slice(0, 8)}…</span>
-          <span className="text-[--color-muted]">order {p.order_id.slice(0, 8)}…</span>
+          <span className="text-[--text-secondary]">order {p.order_id.slice(0, 8)}…</span>
         </div>
       ),
     },
@@ -226,7 +226,7 @@ export function PaymentsPage() {
 
       <section className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
         <div>
-          <label className="text-xs uppercase text-[--color-muted]">Order ID</label>
+          <label className="text-xs uppercase text-[--text-secondary]">Order ID</label>
           <Input
             value={orderId}
             onChange={(e) => {
@@ -238,7 +238,7 @@ export function PaymentsPage() {
           />
         </div>
         <div>
-          <label className="text-xs uppercase text-[--color-muted]">
+          <label className="text-xs uppercase text-[--text-secondary]">
             Провайдер
           </label>
           <select
@@ -247,7 +247,7 @@ export function PaymentsPage() {
               setProvider(e.target.value);
               setOffset(0);
             }}
-            className="mt-1 h-10 w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 text-sm"
+            className="mt-1 h-10 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm"
           >
             {PROVIDERS.map((p) => (
               <option key={p} value={p}>
@@ -257,14 +257,14 @@ export function PaymentsPage() {
           </select>
         </div>
         <div>
-          <label className="text-xs uppercase text-[--color-muted]">Статус</label>
+          <label className="text-xs uppercase text-[--text-secondary]">Статус</label>
           <select
             value={status}
             onChange={(e) => {
               setStatus(e.target.value as PaymentStatus | "");
               setOffset(0);
             }}
-            className="mt-1 h-10 w-full rounded-md border border-[--color-border] bg-[--color-bg] px-3 text-sm"
+            className="mt-1 h-10 w-full rounded-md border border-[--border-default] bg-[--bg-surface] px-3 text-sm"
           >
             {STATUSES.map((s) => (
               <option key={s.value} value={s.value}>
