@@ -266,6 +266,100 @@ async def test_admin_required(integration_client: AsyncClient) -> None:
     assert r.status_code == 403
 
 
+# ---------- /admin/wallet/adjustments (UC4 "Мои корректировки") ----------
+
+
+async def test_recent_adjustments_filters_to_me(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    # Customer that both admins will adjust.
+    customer_id = await _user_id_for_tg(
+        db_session, (await _grant_user_and_login(integration_client, db_session, 530))
+    )
+
+    admin_a_token = await _login_user(integration_client, tg_id=531)
+    admin_a_id = await _grant_admin(db_session, tg_id=531)
+    admin_b_token = await _login_user(integration_client, tg_id=532)
+    await _grant_admin(db_session, tg_id=532)
+
+    await integration_client.post(
+        "/api/v1/admin/wallet/adjust",
+        headers={"Authorization": f"Bearer {admin_a_token}"},
+        json={
+            "user_id": customer_id, "kind": "user_cashback", "currency": "USD",
+            "amount": "1", "reason": "by A",
+            "idempotency_key": "rec-feed-aaaaaa-001",
+        },
+    )
+    await integration_client.post(
+        "/api/v1/admin/wallet/adjust",
+        headers={"Authorization": f"Bearer {admin_b_token}"},
+        json={
+            "user_id": customer_id, "kind": "user_cashback", "currency": "USD",
+            "amount": "2", "reason": "by B",
+            "idempotency_key": "rec-feed-bbbbbb-001",
+        },
+    )
+
+    # admin A asks for "mine" — sees only its own row.
+    mine = await integration_client.get(
+        "/api/v1/admin/wallet/adjustments?actor=me",
+        headers={"Authorization": f"Bearer {admin_a_token}"},
+    )
+    assert mine.status_code == 200
+    items = mine.json()["items"]
+    assert all(t["actor"] == f"admin:{admin_a_id}" for t in items)
+    assert any(t["extra_metadata"]["reason"] == "by A" for t in items)
+    assert not any(t["extra_metadata"]["reason"] == "by B" for t in items)
+
+
+async def test_recent_adjustments_all_actor(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    customer_id = await _user_id_for_tg(
+        db_session, (await _grant_user_and_login(integration_client, db_session, 540))
+    )
+
+    admin_a_token = await _login_user(integration_client, tg_id=541)
+    await _grant_admin(db_session, tg_id=541)
+    admin_b_token = await _login_user(integration_client, tg_id=542)
+    await _grant_admin(db_session, tg_id=542)
+
+    for token, key, reason in (
+        (admin_a_token, "rec-all-aaaaaa-001", "by A"),
+        (admin_b_token, "rec-all-bbbbbb-001", "by B"),
+    ):
+        await integration_client.post(
+            "/api/v1/admin/wallet/adjust",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "user_id": customer_id, "kind": "user_wallet", "currency": "USD",
+                "amount": "1", "reason": reason,
+                "idempotency_key": key,
+            },
+        )
+
+    out = await integration_client.get(
+        "/api/v1/admin/wallet/adjustments?actor=all",
+        headers={"Authorization": f"Bearer {admin_a_token}"},
+    )
+    assert out.status_code == 200
+    reasons = {t["extra_metadata"]["reason"] for t in out.json()["items"]}
+    assert {"by A", "by B"}.issubset(reasons)
+
+
+async def test_recent_adjustments_bad_actor_400(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    token = await _login_user(integration_client, tg_id=551)
+    await _grant_admin(db_session, tg_id=551)
+    r = await integration_client.get(
+        "/api/v1/admin/wallet/adjustments?actor=someone",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 400
+
+
 # ---------- service-level invariants ----------
 
 

@@ -44,3 +44,7 @@ export interface AdminUserLedgerOut {
   accounts: AccountWithBalance[];
   recent_transactions: Transaction[];
 }
+
+export interface AdjustmentsListOut {
+  items: Transaction[];
+}

@@ -96,6 +96,32 @@ async def admin_adjust(
 
 
 @admin_router.get(
+    "/adjustments",
+    response_model=TransactionListOut,
+    summary="Recent admin ledger adjustments (mine / everyone)",
+)
+async def admin_recent_adjustments(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+    actor: str = "me",
+    limit: int = 50,
+) -> TransactionListOut:
+    capped = max(1, min(limit, 200))
+    admin_filter: str | None
+    if actor == "me":
+        admin_filter = admin.id
+    elif actor == "all":
+        admin_filter = None
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="actor must be 'me' or 'all'",
+        )
+    txns = await svc.list_admin_adjustments(db, admin_id=admin_filter, limit=capped)
+    return TransactionListOut(items=[TransactionOut.model_validate(t) for t in txns])
+
+
+@admin_router.get(
     "/{user_id}",
     response_model=AdminUserLedgerOut,
     summary="A user's full ledger (admin)",

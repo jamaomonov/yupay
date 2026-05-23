@@ -271,6 +271,30 @@ async def transactions_for_user(
     return list((await db.execute(stmt)).scalars().all())
 
 
+async def list_admin_adjustments(
+    db: AsyncSession,
+    *,
+    admin_id: str | None = None,
+    limit: int = 50,
+) -> list[WalletTransaction]:
+    """Return recent ``admin.adjust`` ledger entries.
+
+    ``admin_id`` filters to only the entries the given admin performed
+    (matched against ``actor='admin:<id>'``). ``None`` returns every
+    admin's adjustment — used by the "all admins" view.
+    """
+    stmt = (
+        select(WalletTransaction)
+        .options(selectinload(WalletTransaction.postings))
+        .where(WalletTransaction.kind == "admin.adjust")
+        .order_by(WalletTransaction.created_at.desc())
+        .limit(limit)
+    )
+    if admin_id is not None:
+        stmt = stmt.where(WalletTransaction.actor == f"admin:{admin_id}")
+    return list((await db.execute(stmt)).scalars().all())
+
+
 async def admin_adjust(
     db: AsyncSession,
     *,
@@ -352,6 +376,7 @@ __all__ = [
     "admin_adjust",
     "balance",
     "ensure_account",
+    "list_admin_adjustments",
     "post",
     "transactions_for_user",
     "user_accounts",

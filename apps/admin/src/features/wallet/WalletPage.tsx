@@ -1,15 +1,20 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ScrollText, Search } from "lucide-react";
 
 import { Button, Input } from "@yupay/ui";
 
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable, type Column } from "@/components/DataTable";
-import { ApiError, apiGet, apiPost } from "@/lib/api";
+import { Tabs, type TabDescriptor } from "@/components/Tabs";
+import { useToast } from "@/components/Toast";
+import { type ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
 import type {
   AccountWithBalance,
+  AdjustmentsListOut,
   AdminUserLedgerOut,
   Transaction,
 } from "./types";
@@ -20,17 +25,60 @@ const ADJUST_KINDS = [
   { value: "user_promo_credit", label: "user_promo_credit" },
 ] as const;
 
+/** Pre-selected codes finance / support use most often. The select renders
+ *  the human label, but we persist the canonical code in `reason` so the
+ *  ledger feed stays grep-able by `reason: CASHBACK_GRANT`. */
+const REASON_PRESETS = [
+  { code: "CASHBACK_GRANT", label: "Кэшбек — выдача" },
+  { code: "MANUAL_TOPUP", label: "Пополнение вручную" },
+  { code: "REFUND_CORRECTION", label: "Корректировка возврата" },
+  { code: "GOODWILL", label: "Goodwill / компенсация" },
+  { code: "INCIDENT_CREDIT", label: "Кредит после инцидента" },
+  { code: "OTHER", label: "Другое (укажи детально)" },
+] as const;
+
+type WalletTab = "lookup" | "mine";
+
 export function WalletPage() {
+  const [tab, setTab] = useState<WalletTab>("lookup");
+
+  const tabs: TabDescriptor<WalletTab>[] = [
+    { id: "lookup", label: "Поиск пользователя", icon: Search },
+    { id: "mine", label: "Мои корректировки", icon: ScrollText },
+  ];
+
+  return (
+    <div>
+      <PageHeader
+        title="Кошелёк"
+        description="Просмотр ledger'а пользователя + ручная корректировка."
+      />
+      <Tabs
+        value={tab}
+        onChange={setTab}
+        tabs={tabs}
+        ariaLabel="Wallet sections"
+        className="mb-5"
+      />
+      {tab === "lookup" ? <LookupTab /> : <MineTab />}
+    </div>
+  );
+}
+
+// ---------- lookup tab ----------
+
+function LookupTab() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [userIdInput, setUserIdInput] = useState("");
   const [activeUserId, setActiveUserId] = useState<string>("");
   const [adjustKind, setAdjustKind] =
     useState<(typeof ADJUST_KINDS)[number]["value"]>("user_cashback");
   const [adjustCurrency, setAdjustCurrency] = useState("USD");
   const [adjustAmount, setAdjustAmount] = useState("");
-  const [adjustReason, setAdjustReason] = useState("");
-  const [feedback, setFeedback] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [reasonPreset, setReasonPreset] =
+    useState<(typeof REASON_PRESETS)[number]["code"]>("CASHBACK_GRANT");
+  const [reasonDetail, setReasonDetail] = useState("");
 
   const ledgerQuery = useQuery<AdminUserLedgerOut>({
     queryKey: qk.walletUser(activeUserId),
@@ -45,45 +93,43 @@ export function WalletPage() {
     mutationFn: (body) =>
       apiPost<Transaction>("/api/v1/admin/wallet/adjust", body),
     onSuccess: () => {
-      setFeedback("Транзакция записана.");
-      setError(null);
+      toast.success("Транзакция записана в ledger.");
       setAdjustAmount("");
-      setAdjustReason("");
+      setReasonDetail("");
       void qc.invalidateQueries({ queryKey: qk.walletUser(activeUserId) });
+      void qc.invalidateQueries({ queryKey: qk.walletAdjustments });
     },
     onError: (err) => {
-      setError(formatApiError(err));
-      setFeedback(null);
+      toast.error(formatApiError(err));
     },
   });
 
-  const lookup = () => {
-    setActiveUserId(userIdInput.trim());
-    setFeedback(null);
-    setError(null);
-  };
+  const lookup = () => { setActiveUserId(userIdInput.trim()); };
 
   const submitAdjust = () => {
-    setError(null);
-    setFeedback(null);
     if (!activeUserId) {
-      setError("Сначала найди пользователя.");
+      toast.error("Сначала найди пользователя.");
       return;
     }
     if (!adjustAmount.trim()) {
-      setError("Введи сумму.");
+      toast.error("Введи сумму.");
       return;
     }
-    if (adjustReason.trim().length < 4) {
-      setError("Причина: минимум 4 символа.");
+    // OTHER must have a free-text explanation; other presets may stand
+    // on their own, with the detail field used for optional flavour.
+    if (reasonPreset === "OTHER" && reasonDetail.trim().length < 4) {
+      toast.error("Для «Другое» нужны детали (≥ 4 символа).");
       return;
     }
+    const finalReason = reasonDetail.trim()
+      ? `${reasonPreset}: ${reasonDetail.trim()}`
+      : reasonPreset;
     adjustMutation.mutate({
       user_id: activeUserId,
       kind: adjustKind,
       currency: adjustCurrency.toUpperCase(),
       amount: adjustAmount.trim(),
-      reason: adjustReason.trim(),
+      reason: finalReason,
       idempotency_key: `admin-adjust-${crypto.randomUUID()}`,
     });
   };
@@ -115,7 +161,7 @@ export function WalletPage() {
         <span
           className={
             a.status === "active"
-              ? "text-[var(--success)]"
+              ? "text-[var(--success-fg)]"
               : "text-[var(--text-secondary)]"
           }
         >
@@ -128,11 +174,6 @@ export function WalletPage() {
 
   return (
     <div>
-      <PageHeader
-        title="Кошелёк"
-        description="Просмотр ledger'а пользователя + ручная корректировка."
-      />
-
       <section className="mb-6 flex flex-wrap items-end gap-3">
         <div className="grow">
           <label className="text-xs font-medium uppercase text-[var(--text-secondary)]">
@@ -140,7 +181,7 @@ export function WalletPage() {
           </label>
           <Input
             value={userIdInput}
-            onChange={(e) => setUserIdInput(e.target.value)}
+            onChange={(e) => { setUserIdInput(e.target.value); }}
             placeholder="UUID v7"
             className="mt-1 font-mono text-xs"
           />
@@ -179,9 +220,9 @@ export function WalletPage() {
                 <select
                   value={adjustKind}
                   onChange={(e) =>
-                    setAdjustKind(
+                    { setAdjustKind(
                       e.target.value as (typeof ADJUST_KINDS)[number]["value"],
-                    )
+                    ); }
                   }
                   className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
                 >
@@ -198,7 +239,7 @@ export function WalletPage() {
                 </label>
                 <Input
                   value={adjustCurrency}
-                  onChange={(e) => setAdjustCurrency(e.target.value)}
+                  onChange={(e) => { setAdjustCurrency(e.target.value); }}
                   maxLength={3}
                   className="mt-1 uppercase"
                 />
@@ -209,7 +250,7 @@ export function WalletPage() {
                 </label>
                 <Input
                   value={adjustAmount}
-                  onChange={(e) => setAdjustAmount(e.target.value)}
+                  onChange={(e) => { setAdjustAmount(e.target.value); }}
                   inputMode="decimal"
                   placeholder="5.00 или -3.50"
                   className="mt-1 font-mono"
@@ -217,12 +258,39 @@ export function WalletPage() {
               </div>
               <div>
                 <label className="text-xs uppercase text-[var(--text-secondary)]">
-                  Причина
+                  Причина (preset)
+                </label>
+                <select
+                  value={reasonPreset}
+                  onChange={(e) =>
+                    { setReasonPreset(
+                      e.target.value as (typeof REASON_PRESETS)[number]["code"],
+                    ); }
+                  }
+                  className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
+                >
+                  {REASON_PRESETS.map((r) => (
+                    <option key={r.code} value={r.code}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="md:col-span-4">
+                <label className="text-xs uppercase text-[var(--text-secondary)]">
+                  Детали{" "}
+                  {reasonPreset === "OTHER" ? (
+                    <span className="text-[var(--danger-fg)]">
+                      (обязательно для «Другое»)
+                    </span>
+                  ) : (
+                    <span>(опционально, попадёт в audit-feed)</span>
+                  )}
                 </label>
                 <Input
-                  value={adjustReason}
-                  onChange={(e) => setAdjustReason(e.target.value)}
-                  placeholder="например, компенсация инцидента"
+                  value={reasonDetail}
+                  onChange={(e) => { setReasonDetail(e.target.value); }}
+                  placeholder="например: компенсация за задержку выдачи кода"
                   className="mt-1"
                 />
               </div>
@@ -234,12 +302,10 @@ export function WalletPage() {
               >
                 {adjustMutation.isPending ? "Записываем…" : "Записать"}
               </Button>
-              {feedback && (
-                <span className="text-sm text-[var(--success)]">{feedback}</span>
-              )}
-              {error && (
-                <span className="text-sm text-[var(--danger)]">{error}</span>
-              )}
+              <p className="text-xs text-[var(--text-secondary)]">
+                В audit: <code className="font-mono">{reasonPreset}</code>
+                {reasonDetail.trim() ? `: ${reasonDetail.trim()}` : ""}
+              </p>
             </div>
           </section>
 
@@ -264,6 +330,127 @@ export function WalletPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// ---------- mine tab ----------
+
+function MineTab() {
+  const [scope, setScope] = useState<"me" | "all">("me");
+
+  const q = useQuery<AdjustmentsListOut>({
+    queryKey: [...qk.walletAdjustments, scope],
+    queryFn: () =>
+      apiGet<AdjustmentsListOut>(
+        `/api/v1/admin/wallet/adjustments?actor=${scope}&limit=50`,
+      ),
+    refetchInterval: 30_000,
+  });
+
+  const items = q.data?.items ?? [];
+
+  return (
+    <div className="space-y-4">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <p className="text-sm text-[var(--text-secondary)]">
+          Лог последних <code>admin.adjust</code> транзакций. Используй для
+          сверки «что я сегодня правил» или быстрого аудита коллеги.
+        </p>
+        <div className="flex items-center gap-2 text-sm">
+          <label className="text-[var(--text-secondary)]">Видимость:</label>
+          <select
+            value={scope}
+            onChange={(e) => { setScope(e.target.value as "me" | "all"); }}
+            className="h-10 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3"
+          >
+            <option value="me">Только мои</option>
+            <option value="all">Все админы</option>
+          </select>
+        </div>
+      </header>
+
+      {q.isError && (
+        <p className="text-sm text-[var(--danger)]">Ошибка загрузки.</p>
+      )}
+
+      {items.length === 0 && !q.isPending ? (
+        <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-10 text-center text-sm text-[var(--text-secondary)]">
+          Ещё ни одной ручной корректировки.
+        </div>
+      ) : (
+        <AdjustmentsFeed items={items} />
+      )}
+    </div>
+  );
+}
+
+function AdjustmentsFeed({ items }: { items: Transaction[] }) {
+  // Each tx has 2 postings: user-side and house-side. The user-side line
+  // gives us the amount delta (+/-) and the user_id from reference_id.
+  return (
+    <ul className="space-y-3">
+      {items.map((tx) => {
+        const userId = tx.reference_id ?? null;
+        const reason =
+          typeof tx.extra_metadata.reason === "string"
+            ? tx.extra_metadata.reason
+            : "";
+        const presetCode = reason.includes(":") ? reason.split(":")[0]?.trim() : reason;
+        const detail = reason.includes(":") ? reason.split(":").slice(1).join(":").trim() : "";
+        return (
+          <li
+            key={tx.id}
+            className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4 text-sm"
+          >
+            <header className="flex flex-wrap items-baseline justify-between gap-2">
+              <div className="flex flex-wrap items-baseline gap-2">
+                <code className="rounded bg-[var(--bg-muted)] px-1.5 py-0.5 text-xs">
+                  {presetCode || "—"}
+                </code>
+                {userId ? (
+                  <Link
+                    to={`/customers/${userId}`}
+                    className="font-mono text-xs underline-offset-2 hover:underline"
+                  >
+                    user {userId.slice(0, 8)}…
+                  </Link>
+                ) : (
+                  <span className="font-mono text-xs text-[var(--text-secondary)]">
+                    user —
+                  </span>
+                )}
+                {tx.actor && (
+                  <span className="text-xs text-[var(--text-secondary)]">
+                    by {tx.actor}
+                  </span>
+                )}
+              </div>
+              <span className="text-xs text-[var(--text-secondary)]">
+                {new Date(tx.created_at).toLocaleString("ru")}
+              </span>
+            </header>
+            <ul className="mt-2 space-y-0.5 font-mono text-xs">
+              {tx.postings.map((p) => (
+                <li key={p.id} className="flex justify-between">
+                  <span>
+                    {p.direction === "D" ? "↓ D" : "↑ C"} ·{" "}
+                    {p.account_id.slice(0, 8)}…
+                  </span>
+                  <span>
+                    {formatMoney(p.amount)} {p.currency}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {detail && (
+              <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                «{detail}»
+              </p>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -316,7 +503,7 @@ function TransactionsList({ items }: { items: Transaction[] }) {
               </li>
             ))}
           </ul>
-          {typeof tx.extra_metadata?.reason === "string" &&
+          {typeof tx.extra_metadata.reason === "string" &&
             tx.extra_metadata.reason.length > 0 && (
               <p className="mt-2 text-xs text-[var(--text-secondary)]">
                 «{tx.extra_metadata.reason}»

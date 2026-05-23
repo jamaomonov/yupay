@@ -105,6 +105,7 @@ export const qk = {
 
   // wallet
   walletUser: (userId: string) => ["admin", "wallet", "user", userId] as const,
+  walletAdjustments: ["admin", "wallet", "adjustments"] as const,
 
   // fulfillment
   fulfillmentTasks: (filters: {
