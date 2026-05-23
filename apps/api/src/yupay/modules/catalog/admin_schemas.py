@@ -258,11 +258,23 @@ class AdminSkuOut(BaseModel):
     price_overrides: list[SkuPriceOverrideIn]
 
 
+class BulkUzsPriceOut(BaseModel):
+    """Result of ``POST /admin/catalog/skus/bulk-set-uzs-prices``."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    rate: Decimal
+    fx_snapshot_id: str | None
+    updated_total: int
+    skipped_without_cost: int
+
+
 __all__ = [
     "AdminBrandOut",
     "AdminCategoryOut",
     "AdminProductOut",
     "AdminSkuOut",
+    "BulkUzsPriceOut",
     "BrandCreate",
     "BrandUpdate",
     "CategoryCreate",

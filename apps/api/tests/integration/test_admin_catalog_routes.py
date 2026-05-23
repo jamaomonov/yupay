@@ -205,6 +205,124 @@ async def test_full_crud_flow(
     assert all(s["id"] != sku_id for s in r.json())
 
 
+async def test_bulk_set_uzs_prices_recomputes_overrides(
+    integration_client: AsyncClient,
+    _admin_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Operator clicks "recompute UZS" and overrides are written for every
+    SKU with a known cost_usdt, using the same FX service that the
+    storefront uses at checkout."""
+    from decimal import Decimal as _Dec
+    import fakeredis.aioredis
+    from yupay.core.clock import now as _now
+    from yupay.modules.fx.providers.base import FxProvider, Quote
+    from yupay.modules.fx.service import FxService
+
+    class _StubFx(FxProvider):
+        name = "stub"
+
+        def supports(self, base: str, quote: str) -> bool:
+            return base.upper() == "USDT" and quote.upper() == "UZS"
+
+        async def get_rate(self, base: str, quote: str) -> Quote:
+            return Quote(
+                base="USDT",
+                quote="UZS",
+                rate=_Dec("12700.0"),
+                fetched_at=_now(),
+                source=self.name,
+            )
+
+    def _build(*, settings=None, redis=None):
+        return FxService(
+            providers=[_StubFx()],
+            redis=fakeredis.aioredis.FakeRedis(decode_responses=True),
+        )
+
+    monkeypatch.setattr(
+        "yupay.modules.catalog.admin_routes.build_default_service", _build
+    )
+
+    # Seed category/brand/product/two SKUs (one with cost_usdt, one without).
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/categories",
+        headers=_admin_headers,
+        json={"slug": "fx-cat", "translations": [{"locale": "ru", "name": "fx"}]},
+    )
+    assert r.status_code == 201
+    cid = r.json()["id"]
+
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/brands",
+        headers=_admin_headers,
+        json={
+            "slug": "fx-brand",
+            "category_id": cid,
+            "translations": [{"locale": "ru", "name": "b"}],
+        },
+    )
+    bid = r.json()["id"]
+
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/products",
+        headers=_admin_headers,
+        json={
+            "slug": "fx-prod",
+            "brand_id": bid,
+            "kind": "top_up",
+            "translations": [{"locale": "ru", "name": "p"}],
+        },
+    )
+    pid = r.json()["id"]
+
+    # SKU A — has cost_usdt, should get a UZS override.
+    r_a = await integration_client.post(
+        "/api/v1/admin/catalog/skus",
+        headers=_admin_headers,
+        json={
+            "product_id": pid,
+            "sku_code": "fx-a",
+            "price_usd": "5.00",
+            "cost_usdt": "4.00",
+        },
+    )
+    assert r_a.status_code == 201
+    sku_a = r_a.json()
+    assert _Dec(sku_a["cost_usdt"]) == _Dec("4")
+
+    # SKU B — no cost_usdt, should be skipped.
+    r_b = await integration_client.post(
+        "/api/v1/admin/catalog/skus",
+        headers=_admin_headers,
+        json={"product_id": pid, "sku_code": "fx-b", "price_usd": "10.00"},
+    )
+    assert r_b.status_code == 201
+
+    # Trigger the bulk operation.
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/skus/bulk-set-uzs-prices",
+        headers=_admin_headers,
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["updated_total"] == 1
+    assert body["skipped_without_cost"] == 1
+    assert _Dec(body["rate"]) == _Dec("12700.0")
+
+    # Confirm the override on SKU A is exactly cost × rate, and that
+    # listing it back includes the new override row.
+    r = await integration_client.get(
+        "/api/v1/admin/catalog/skus", headers=_admin_headers
+    )
+    skus = {s["sku_code"]: s for s in r.json()}
+    overrides_a = {o["currency"]: o for o in skus["fx-a"]["price_overrides"]}
+    assert "UZS" in overrides_a
+    assert _Dec(overrides_a["UZS"]["price"]) == _Dec("50800")  # 4 × 12700
+    overrides_b = {o["currency"]: o for o in skus["fx-b"]["price_overrides"]}
+    assert "UZS" not in overrides_b
+
+
 async def test_duplicate_slug_returns_409(
     integration_client: AsyncClient, _admin_headers: dict[str, str]
 ) -> None:

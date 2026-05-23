@@ -21,6 +21,7 @@ from yupay.modules.catalog.admin_schemas import (
     AdminSkuOut,
     BrandCreate,
     BrandUpdate,
+    BulkUzsPriceOut,
     CategoryCreate,
     CategoryUpdate,
     ProductCreate,
@@ -28,6 +29,7 @@ from yupay.modules.catalog.admin_schemas import (
     SkuCreate,
     SkuUpdate,
 )
+from yupay.modules.fx.factory import build_default_service
 from yupay.modules.users.models import User
 
 router = APIRouter(
@@ -208,3 +210,25 @@ async def delete_sku(
     _admin: Annotated[User, Depends(require_admin)],
 ) -> None:
     await svc.delete_sku(db, sku_id)
+
+
+@router.post("/skus/bulk-set-uzs-prices", response_model=BulkUzsPriceOut)
+async def bulk_set_uzs_prices(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+) -> BulkUzsPriceOut:
+    """Recompute UZS SkuPrice overrides for every active SKU.
+
+    Uses the same FX service that orders use at checkout (so the rate
+    here matches the rate customers will see today). SKUs whose
+    ``cost_usdt`` is null are skipped — they remain at whatever UZS
+    override they had, or fall back to live FX in catalog reads.
+    """
+    fx = build_default_service()
+    result = await svc.bulk_set_uzs_prices(db, fx_service=fx)
+    return BulkUzsPriceOut(
+        rate=result["rate"],
+        fx_snapshot_id=result["fx_snapshot_id"],
+        updated_total=result["updated_total"],
+        skipped_without_cost=result["skipped_without_cost"],
+    )
