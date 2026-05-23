@@ -15,6 +15,7 @@
 import { Hand, ListChecks, Truck, XCircle } from "lucide-react";
 
 import { PageHeader } from "@/components/PageHeader";
+import { Tabs, type TabDescriptor } from "@/components/Tabs";
 import { SaveSegmentButton } from "@/features/segments/SaveSegmentButton";
 import { useSearchParamsState } from "@/lib/useSearchParamsState";
 
@@ -32,11 +33,7 @@ const VALID_TABS: ReadonlySet<InboxTab> = new Set<InboxTab>([
   "all",
 ]);
 
-const TABS: {
-  id: InboxTab;
-  label: string;
-  icon: typeof Hand;
-}[] = [
+const TABS: TabDescriptor<InboxTab>[] = [
   { id: "manual", label: "Ручная выдача", icon: Hand },
   { id: "failed", label: "Failed", icon: XCircle },
   { id: "stuck", label: "Stuck", icon: Truck },
@@ -57,30 +54,14 @@ export function InboxPage() {
         actions={<SaveSegmentButton />}
       />
 
-      <nav
-        className="flex flex-wrap gap-1 border-b border-[--color-border]"
-        aria-label="Вкладки Inbox"
-      >
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => { setTab(t.id); }}
-            className={[
-              "inline-flex items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
-              tab === t.id
-                ? "border-[--color-brand] text-[--color-fg]"
-                : "border-transparent text-[--color-muted] hover:text-[--color-fg]",
-            ].join(" ")}
-            aria-current={tab === t.id ? "page" : undefined}
-          >
-            <t.icon className="size-4" />
-            {t.label}
-          </button>
-        ))}
-      </nav>
+      <Tabs<InboxTab>
+        value={tab}
+        onChange={setTab}
+        tabs={TABS}
+        ariaLabel="Вкладки Inbox"
+      />
 
-      <div>
+      <div role="tabpanel">
         {tab === "manual" && <ManualQueuePage />}
         {tab === "failed" && <FailedAutomaticTab />}
         {tab === "stuck" && <StuckTab />}

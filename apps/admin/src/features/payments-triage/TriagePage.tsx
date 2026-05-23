@@ -20,6 +20,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
+import { Tabs, type TabDescriptor } from "@/components/Tabs";
 import { type ApiError, apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { numberCodec, useSearchParamsState } from "@/lib/useSearchParamsState";
@@ -66,25 +67,23 @@ export function TriagePage() {
         actions={<SaveSegmentButton />}
       />
 
-      <nav
-        className="flex flex-wrap gap-1 border-b border-[--color-border]"
-        aria-label="Вкладки триажа"
-      >
-        <TabButton
-          active={tab === "stuck"}
-          count={stuckCount}
-          onClick={() => { setTab("stuck"); }}
-        >
-          Висящие платежи
-        </TabButton>
-        <TabButton
-          active={tab === "webhooks"}
-          count={webhookCount}
-          onClick={() => { setTab("webhooks"); }}
-        >
-          Сбои webhooks
-        </TabButton>
-      </nav>
+      <Tabs<TriageTab>
+        value={tab}
+        onChange={setTab}
+        ariaLabel="Вкладки триажа"
+        tabs={[
+          {
+            id: "stuck",
+            label: "Висящие платежи",
+            badge: { count: stuckCount, tone: "warn" },
+          } satisfies TabDescriptor<TriageTab>,
+          {
+            id: "webhooks",
+            label: "Сбои webhooks",
+            badge: { count: webhookCount, tone: "warn" },
+          } satisfies TabDescriptor<TriageTab>,
+        ]}
+      />
 
       {tab === "stuck" && (
         <StuckSection
@@ -105,44 +104,6 @@ export function TriagePage() {
         />
       )}
     </div>
-  );
-}
-
-function TabButton({
-  active,
-  count,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  count: number;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={[
-        "inline-flex items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
-        active
-          ? "border-[--color-brand] text-[--color-fg]"
-          : "border-transparent text-[--color-muted] hover:text-[--color-fg]",
-      ].join(" ")}
-      aria-current={active ? "page" : undefined}
-    >
-      <span>{children}</span>
-      <span
-        className={[
-          "rounded-full px-1.5 py-0.5 text-[11px]",
-          count > 0
-            ? "bg-[--color-danger]/15 text-[--color-danger]"
-            : "bg-[--color-subtle] text-[--color-muted]",
-        ].join(" ")}
-      >
-        {count.toString()}
-      </span>
-    </button>
   );
 }
 
