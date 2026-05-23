@@ -84,6 +84,121 @@ export function useWallet() {
   });
 }
 
+// ---------- transactions / history ----------
+
+export type Direction = "D" | "C";
+
+export interface Posting {
+  id: string;
+  account_id: string;
+  direction: Direction;
+  amount: string;
+  currency: string;
+  created_at: string;
+}
+
+export interface WalletTransaction {
+  id: string;
+  kind: string;
+  reference_type: string | null;
+  reference_id: string | null;
+  actor: string | null;
+  extra_metadata: Record<string, unknown>;
+  created_at: string;
+  postings: Posting[];
+}
+
+interface TransactionListOut {
+  items: WalletTransaction[];
+}
+
+/**
+ * One row of the user-facing history list.
+ *
+ * The ledger stores transactions as double-entry pairs; from the user's
+ * perspective only one leg is relevant — the one touching their own
+ * account. ``delta`` is signed in user's favour: positive = balance went
+ * up (cashback, refund, admin credit), negative = balance went down
+ * (clawback, spend).
+ */
+export interface UserTransactionView {
+  id: string;
+  /** Account kind that moved (user_wallet / user_cashback / user_promo_credit). */
+  accountKind: UserAccountKind;
+  /** Signed amount in account currency. */
+  delta: number;
+  currency: string;
+  /** Transaction kind from the backend (admin.adjust, payment.refund, …). */
+  kind: string;
+  /** Short label suitable for the row's headline. */
+  label: string;
+  reason: string | null;
+  createdAt: string;
+}
+
+export const TX_KIND_LABEL: Record<string, string> = {
+  "admin.adjust": "Корректировка от админа",
+  "payment.refund": "Возврат за заказ",
+  "order.payment": "Оплата заказа",
+  "cashback.grant": "Кэшбэк за покупку",
+  "promo.grant": "Промо-кредит",
+  "topup": "Пополнение",
+};
+
+export function txKindLabel(kind: string): string {
+  return TX_KIND_LABEL[kind] ?? kind;
+}
+
+/**
+ * Project a raw double-entry transaction onto a single user-facing row.
+ *
+ * Returns ``null`` when the transaction did not touch any of the user's
+ * accounts (defence-in-depth — the backend already filters this server-
+ * side, so in practice every row that arrives should produce a view).
+ *
+ * Sign convention: all three user-side kinds (wallet / cashback / promo)
+ * are normal-D, so a ``D`` posting on one of them increases the balance
+ * (delta > 0), and ``C`` decreases it (delta < 0).
+ */
+export function summarizeForUser(
+  tx: WalletTransaction,
+  userAccountIds: ReadonlySet<string>,
+  accountKindById: ReadonlyMap<string, UserAccountKind>,
+): UserTransactionView | null {
+  const userLeg = tx.postings.find((p) => userAccountIds.has(p.account_id));
+  if (!userLeg) return null;
+  const amount = Number.parseFloat(userLeg.amount) || 0;
+  const delta = userLeg.direction === "D" ? amount : -amount;
+  const kind = accountKindById.get(userLeg.account_id);
+  if (!kind) return null;
+  const reasonRaw = tx.extra_metadata.reason;
+  return {
+    id: tx.id,
+    accountKind: kind,
+    delta,
+    currency: userLeg.currency,
+    kind: tx.kind,
+    label: txKindLabel(tx.kind),
+    reason: typeof reasonRaw === "string" ? reasonRaw : null,
+    createdAt: userLeg.created_at,
+  };
+}
+
+export function useWalletTransactions(limit = 20) {
+  const me = useMe();
+  return useQuery<WalletTransaction[]>({
+    queryKey: ["wallet", "transactions", me.data?.id ?? null, limit],
+    enabled: Boolean(me.data),
+    queryFn: async () => {
+      const data = await apiGet<TransactionListOut>(
+        `/api/v1/wallet/transactions?limit=${limit.toString()}`,
+      );
+      return data.items;
+    },
+    staleTime: 30_000,
+  });
+}
+
 /**
  * Sum the three user-side accounts converted into ``target`` via ``rate``.
  *
