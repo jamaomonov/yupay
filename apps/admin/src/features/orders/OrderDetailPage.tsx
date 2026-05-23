@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@yupay/ui";
+import { Spinner } from "@/components/States";
 
 import { PageHeader } from "@/components/PageHeader";
 import { ApiError, apiGet, apiPost } from "@/lib/api";
@@ -95,7 +96,7 @@ export function OrderDetailPage() {
   });
 
   if (orderQuery.isLoading) {
-    return <p className="text-sm text-[--color-muted]">Загрузка…</p>;
+    return <Spinner label="Загрузка…" />;
   }
   if (orderQuery.isError || !orderQuery.data) {
     return (

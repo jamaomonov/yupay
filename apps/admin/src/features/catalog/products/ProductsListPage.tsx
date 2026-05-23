@@ -3,6 +3,7 @@ import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { Button } from "@yupay/ui";
+import { Spinner } from "@/components/States";
 
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable, type Column } from "@/components/DataTable";
@@ -67,7 +68,7 @@ export function ProductsListPage() {
         }
       />
       {productsQuery.isLoading && (
-        <p className="text-sm text-[--color-muted]">Загрузка…</p>
+        <Spinner label="Загрузка…" />
       )}
       {productsQuery.data && (
         <DataTable

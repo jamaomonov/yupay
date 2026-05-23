@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Ban, Search } from "lucide-react";
 
 import { Button, Input } from "@yupay/ui";
+import { Spinner } from "@/components/States";
 
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable, type Column } from "@/components/DataTable";
@@ -291,7 +292,7 @@ export function OrdersListPage() {
       )}
 
       {ordersQuery.isLoading && (
-        <p className="text-sm text-[--color-muted]">Загрузка…</p>
+        <Spinner label="Загрузка…" />
       )}
       {ordersQuery.isError && (
         <p className="text-sm text-[--color-danger]">Не удалось загрузить.</p>

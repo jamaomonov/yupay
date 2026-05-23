@@ -1,5 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Inbox } from "lucide-react";
+
+import { EmptyState } from "./States";
 
 export interface Column<T> {
   key: string;
@@ -17,6 +19,10 @@ interface Props<T> {
   columns: Column<T>[];
   rowKey: (row: T) => string;
   empty?: string;
+  /** Optional caption read by screen-readers — surfaces what this table is for. */
+  ariaLabel?: string;
+  /** Sync state for `aria-busy` while parent's query refetches. */
+  busy?: boolean;
   onRowClick?: (row: T) => void;
   /** Skip the client-side sort entirely (e.g. table already comes pre-sorted
    *  and the dataset is server-paginated). Headers stay non-clickable. */
@@ -30,6 +36,8 @@ export function DataTable<T>({
   columns,
   rowKey,
   empty,
+  ariaLabel,
+  busy = false,
   onRowClick,
   sortable = true,
 }: Props<T>) {
@@ -54,24 +62,44 @@ export function DataTable<T>({
   }, [rows, columns, sort, sortable]);
 
   if (rows.length === 0) {
+    // Render the empty state outside the <table> so a screen-reader's "table
+    // mode" doesn't pollute the message with empty-row gibberish; the explicit
+    // EmptyState reads better in both visual and assistive contexts.
     return (
-      <div className="rounded-lg border bg-[--color-bg] p-10 text-center text-sm text-[--color-muted]">
-        {empty ?? "Пока пусто."}
-      </div>
+      <EmptyState
+        icon={Inbox}
+        title={empty ?? "Пока пусто."}
+        tone="muted"
+      />
     );
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border bg-[--color-bg]">
-      <table className="w-full text-sm">
-        <thead className="bg-[--color-subtle] text-[--color-muted]">
+    <div
+      className="overflow-x-auto rounded-lg border border-[--border-default] bg-[--bg-surface]"
+      aria-busy={busy || undefined}
+    >
+      <table
+        className="w-full text-sm"
+        aria-label={ariaLabel}
+      >
+        <thead className="bg-[--bg-muted] text-[--text-secondary]">
           <tr>
             {columns.map((col) => {
               const canSort = sortable && Boolean(col.sortAccessor);
               const active = canSort && sort?.key === col.key;
+              const ariaSort = canSort
+                ? active
+                  ? sort?.dir === "asc"
+                    ? "ascending"
+                    : "descending"
+                  : "none"
+                : undefined;
               return (
                 <th
                   key={col.key}
+                  scope="col"
+                  aria-sort={ariaSort}
                   className={`px-4 py-2 text-left font-medium ${col.className ?? ""}`}
                 >
                   {canSort ? (
@@ -80,7 +108,8 @@ export function DataTable<T>({
                       onClick={() => toggleSort(setSort, sort, col.key)}
                       className={[
                         "inline-flex items-center gap-1 transition-colors",
-                        active ? "text-[--color-fg]" : "hover:text-[--color-fg]",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--accent] focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg-muted] focus-visible:rounded",
+                        active ? "text-[--text-primary]" : "hover:text-[--text-primary]",
                       ].join(" ")}
                     >
                       <span>{col.header}</span>
@@ -152,16 +181,16 @@ function toggleSort(
 function SortIcon({ active, dir }: { active: boolean; dir: SortDir | null }) {
   if (!active) {
     return (
-      <span className="inline-flex flex-col text-[--color-muted]/50">
+      <span className="inline-flex flex-col text-[--text-tertiary]" aria-hidden>
         <ChevronUp className="size-2.5 -mb-0.5" />
         <ChevronDown className="size-2.5" />
       </span>
     );
   }
   return dir === "asc" ? (
-    <ChevronUp className="size-3 text-[--color-fg]" />
+    <ChevronUp className="size-3 text-[--text-primary]" aria-hidden />
   ) : (
-    <ChevronDown className="size-3 text-[--color-fg]" />
+    <ChevronDown className="size-3 text-[--text-primary]" aria-hidden />
   );
 }
 

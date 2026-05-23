@@ -28,6 +28,7 @@ import { Button } from "@yupay/ui";
 
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
+import { Spinner } from "@/components/States";
 import { type ApiError, apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
@@ -72,7 +73,7 @@ export function CustomerPage() {
     return (
       <div>
         <PageHeader title="Карточка клиента" />
-        <p className="text-sm text-[--color-muted]">Загрузка…</p>
+        <Spinner label="Загрузка карточки клиента…" />
       </div>
     );
   }

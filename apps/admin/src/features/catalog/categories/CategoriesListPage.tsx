@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@yupay/ui";
+import { Spinner } from "@/components/States";
 
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable, type Column } from "@/components/DataTable";
@@ -139,7 +140,7 @@ export function CategoriesListPage() {
           </Button>
         }
       />
-      {q.isLoading && <p className="text-sm text-[--color-muted]">Загрузка…</p>}
+      {q.isLoading && <Spinner label="Загрузка…" />}
       {q.isError && <p className="text-sm text-[--color-danger]">Ошибка загрузки.</p>}
       {q.data && (
         <DataTable

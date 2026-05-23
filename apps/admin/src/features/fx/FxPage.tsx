@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 
 import { Button } from "@yupay/ui";
+import { Spinner } from "@/components/States";
 
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable, type Column } from "@/components/DataTable";
@@ -129,7 +130,7 @@ export function FxPage() {
       </section>
 
       {ratesQuery.isLoading && (
-        <p className="text-sm text-[--color-muted]">Загрузка…</p>
+        <Spinner label="Загрузка…" />
       )}
       {ratesQuery.isError && (
         <p className="text-sm text-[--color-danger]">
