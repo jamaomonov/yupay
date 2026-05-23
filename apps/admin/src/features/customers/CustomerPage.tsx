@@ -110,25 +110,34 @@ export function CustomerPage() {
   const goOrder = (orderId: string) => { void navigate(`/orders/${orderId}`); };
   const isAdmin = data.user.roles.includes("admin");
   return (
-    <div className="space-y-6">
-      <UserHeader
-        data={data}
-        onToggleAdmin={() => {
-          const action = isAdmin ? "снять админ-роль" : "выдать админ-роль";
-          const name = data.user.display_name ?? data.user.email ?? data.user.id.slice(0, 8);
-          if (!window.confirm(`Точно ${action} у ${name}?`)) return;
-          const next = isAdmin
-            ? data.user.roles.filter((r) => r !== "admin")
-            : [...new Set([...data.user.roles, "admin"])];
-          setRoles.mutate(next);
-        }}
-        rolePending={setRoles.isPending}
-      />
-      <Stats stats={data.stats} />
-      <RecentOrders rows={data.recent_orders} onOpen={goOrder} />
-      <RecentPayments rows={data.recent_payments} onOpen={goOrder} />
-      <OpenTasks rows={data.open_fulfillment_tasks} onOpen={goOrder} />
-      <WalletBalances balances={data.wallet_balances} />
+    // 2-column layout: the main activity column on the left (2/3 width) carries
+    // the things an operator actively triages — stats + recent orders / payments
+    // / open tasks. The right rail (1/3 width) keeps identity + balances within
+    // reach without forcing the operator to scroll past 4 tables to remember
+    // who they're looking at. Stacks vertically below `lg:`.
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <section className="space-y-6 lg:col-span-2">
+        <Stats stats={data.stats} />
+        <RecentOrders rows={data.recent_orders} onOpen={goOrder} />
+        <RecentPayments rows={data.recent_payments} onOpen={goOrder} />
+        <OpenTasks rows={data.open_fulfillment_tasks} onOpen={goOrder} />
+      </section>
+      <aside className="space-y-6 lg:sticky lg:top-[calc(var(--topbar-height)+1rem)] lg:self-start">
+        <UserHeader
+          data={data}
+          onToggleAdmin={() => {
+            const action = isAdmin ? "снять админ-роль" : "выдать админ-роль";
+            const name = data.user.display_name ?? data.user.email ?? data.user.id.slice(0, 8);
+            if (!window.confirm(`Точно ${action} у ${name}?`)) return;
+            const next = isAdmin
+              ? data.user.roles.filter((r) => r !== "admin")
+              : [...new Set([...data.user.roles, "admin"])];
+            setRoles.mutate(next);
+          }}
+          rolePending={setRoles.isPending}
+        />
+        <WalletBalances balances={data.wallet_balances} />
+      </aside>
     </div>
   );
 }
