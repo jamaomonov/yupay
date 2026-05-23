@@ -127,12 +127,17 @@ export function DataTable<T>({
           {sorted.map((row) => {
             const interactive = Boolean(onRowClick);
             return (
+              // Zebra striping (odd / even) on the base layer; the hover and
+              // focus-visible states override both with the indigo accent-soft
+              // tint so the active row reads regardless of its parity.
               <tr
                 key={rowKey(row)}
                 className={[
-                  "border-t border-[var(--border-subtle)] transition-colors hover:bg-[var(--bg-surface-2)]",
+                  "border-t border-[var(--border-subtle)] transition-colors",
+                  "odd:bg-[var(--bg-surface)] even:bg-[var(--bg-surface-2)]",
+                  "hover:bg-[var(--bg-accent-soft)]",
                   interactive
-                    ? "cursor-pointer focus-visible:bg-[var(--bg-accent-soft)] focus-visible:outline-none"
+                    ? "cursor-pointer focus-visible:outline-none focus-visible:bg-[var(--bg-accent-soft)]"
                     : "",
                 ].join(" ")}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
