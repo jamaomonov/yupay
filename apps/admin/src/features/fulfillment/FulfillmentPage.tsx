@@ -10,6 +10,7 @@ import { Pagination } from "@/components/Pagination";
 import { ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { useSearchParamsState } from "@/lib/useSearchParamsState";
+import { useToast } from "@/components/Toast";
 
 const PAGE_SIZE = 50;
 
@@ -26,6 +27,7 @@ const STATUSES: { value: TaskStatus | ""; label: string }[] = [
 
 export function FulfillmentPage() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [orderId, setOrderId] = useState("");
   const [supplier, setSupplier] = useState("");
   // Status is URL-bound so Dashboard alerts can deep-link to e.g.
@@ -33,8 +35,6 @@ export function FulfillmentPage() {
   const [status, setStatus] = useSearchParamsState<TaskStatus | "">("status", "");
   const [offset, setOffset] = useState(0);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const tasksQuery = useQuery<TaskListOut>({
     queryKey: [
@@ -63,15 +63,13 @@ export function FulfillmentPage() {
     mutationFn: (id) =>
       apiPost<TaskAdminOut>(`/api/v1/admin/fulfillment/${id}/retry`, {}),
     onSuccess: () => {
-      setFeedback("Retry запущен.");
-      setError(null);
+      toast.success("Retry запущен.");
       void qc.invalidateQueries({
         queryKey: ["admin", "fulfillment"],
       });
     },
     onError: (err) => {
-      setError(formatApiError(err));
-      setFeedback(null);
+      toast.error(formatApiError(err));
     },
   });
 
@@ -79,15 +77,13 @@ export function FulfillmentPage() {
     mutationFn: (id) =>
       apiPost<TaskAdminOut>(`/api/v1/admin/fulfillment/${id}/cancel`, {}),
     onSuccess: () => {
-      setFeedback("Задача отменена.");
-      setError(null);
+      toast.success("Задача отменена.");
       void qc.invalidateQueries({
         queryKey: ["admin", "fulfillment"],
       });
     },
     onError: (err) => {
-      setError(formatApiError(err));
-      setFeedback(null);
+      toast.error(formatApiError(err));
     },
   });
 
@@ -229,13 +225,6 @@ export function FulfillmentPage() {
           </select>
         </div>
       </section>
-
-      {(feedback || error) && (
-        <div className="mb-3 text-sm">
-          {feedback && <span className="text-[--color-success]">{feedback}</span>}
-          {error && <span className="text-[--color-danger]">{error}</span>}
-        </div>
-      )}
 
       <DataTable
         rows={tasksQuery.data?.items ?? []}

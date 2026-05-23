@@ -34,6 +34,7 @@ import { useCallback, useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 
+import { ToastRegion } from "@/components/Toast";
 import { useAuthStore } from "@/features/auth/authStore";
 import { SearchPalette } from "@/features/search/SearchPalette";
 import { useGlobalSearchHotkey } from "@/features/search/useGlobalSearchHotkey";
@@ -225,6 +226,7 @@ export function Layout() {
         </main>
       </div>
       <SearchPalette open={searchOpen} onClose={closeSearch} />
+      <ToastRegion />
     </div>
   );
 }

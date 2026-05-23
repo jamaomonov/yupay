@@ -8,6 +8,7 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { Pagination } from "@/components/Pagination";
 import { ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
+import { useToast } from "@/components/Toast";
 import { useSearchParamsState } from "@/lib/useSearchParamsState";
 import { SaveSegmentButton } from "@/features/segments/SaveSegmentButton";
 
@@ -36,14 +37,13 @@ interface SimulateBody {
 
 export function PaymentsPage() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [orderId, setOrderId] = useState("");
   const [provider, setProvider] = useState("");
   // Status comes from the URL so Dashboard alert cards can deep-link straight to e.g.
   // ``/payments?status=pending`` (ADR-0017).
   const [status, setStatus] = useSearchParamsState<PaymentStatus | "">("status", "");
   const [offset, setOffset] = useState(0);
-  const [feedback, setFeedback] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const listQuery = useQuery<PaymentAdminListOut>({
     queryKey: [
@@ -79,13 +79,11 @@ export function PaymentsPage() {
         body,
       ),
     onSuccess: (data) => {
-      setFeedback(`Webhook доставлен → статус: ${data.status}.`);
-      setError(null);
+      toast.success(`Webhook доставлен → статус: ${data.status}.`);
       void qc.invalidateQueries({ queryKey: ["admin", "payments"] });
     },
     onError: (err) => {
-      setError(formatApiError(err));
-      setFeedback(null);
+      toast.error(formatApiError(err));
     },
   });
 
@@ -99,14 +97,12 @@ export function PaymentsPage() {
         reason,
       }),
     onSuccess: (data) => {
-      setFeedback(`Возврат оформлен → статус: ${data.status}.`);
-      setError(null);
+      toast.success(`Возврат оформлен → статус: ${data.status}.`);
       void qc.invalidateQueries({ queryKey: ["admin", "payments"] });
       void qc.invalidateQueries({ queryKey: ["admin", "orders"] });
     },
     onError: (err) => {
-      setError(formatApiError(err));
-      setFeedback(null);
+      toast.error(formatApiError(err));
     },
   });
 
@@ -278,15 +274,6 @@ export function PaymentsPage() {
           </select>
         </div>
       </section>
-
-      {(feedback || error) && (
-        <div className="mb-3 text-sm">
-          {feedback && (
-            <span className="text-[--color-success]">{feedback}</span>
-          )}
-          {error && <span className="text-[--color-danger]">{error}</span>}
-        </div>
-      )}
 
       <DataTable
         rows={listQuery.data?.items ?? []}
