@@ -470,35 +470,60 @@ function DayBars({
   buckets: { date: string; count: number; revenue_usd: string }[];
 }) {
   const max = Math.max(...buckets.map((b) => b.count), 1);
+  const half = Math.round(max / 2);
   return (
-    <div className="flex h-32 items-end gap-2">
-      {buckets.map((b) => {
-        const heightPct =
-          b.count === 0 ? 4 : Math.max(8, (b.count / max) * 100);
-        return (
-          <div
-            key={b.date}
-            className="group flex flex-1 flex-col items-center gap-1"
-          >
-            <div
-              className="w-full rounded-t flex items-end justify-center text-[10px] font-mono"
-              style={{
-                height: `${heightPct}%`,
-                background:
-                  b.count === 0
-                    ? "var(--border-default)"
-                    : "color-mix(in oklab, var(--accent) 70%, transparent)",
-                color: b.count === 0 ? "var(--text-secondary)" : "var(--text-on-accent)",
-              }}
-            >
-              {b.count > 0 && <span className="pb-1">{b.count}</span>}
-            </div>
-            <span className="text-[10px] text-[var(--text-secondary)]">
-              {b.date.slice(5).replace("-", "/")}
-            </span>
-          </div>
-        );
-      })}
+    <div className="relative">
+      {/* Y-axis labels (max + 0). Mid-line label is the rounded half. */}
+      <div className="pointer-events-none absolute inset-y-0 right-0 flex w-10 flex-col justify-between text-right text-[10px] font-mono text-[var(--text-tertiary)]">
+        <span>{max}</span>
+        <span>{half}</span>
+        <span>0</span>
+      </div>
+      {/* Dashed gridline at the half-way mark — gives the bars a reference
+          point so the magnitudes read without squinting. */}
+      <div className="relative h-32">
+        <div className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-dashed border-[var(--border-default)]" />
+        <div className="relative flex h-full items-end gap-2 pr-12">
+          {buckets.map((b) => {
+            const heightPct =
+              b.count === 0 ? 4 : Math.max(8, (b.count / max) * 100);
+            const revenue = Number.parseFloat(b.revenue_usd) || 0;
+            const tooltip = `${formatDayLabel(b.date)}: ${b.count.toString()} заказов · ${revenue.toFixed(2)} USD`;
+            return (
+              <div
+                key={b.date}
+                title={tooltip}
+                className="group flex flex-1 flex-col items-center gap-1"
+              >
+                <div
+                  className="w-full rounded-t flex items-end justify-center text-[10px] font-mono transition-all group-hover:brightness-110"
+                  style={{
+                    height: `${heightPct.toString()}%`,
+                    background:
+                      b.count === 0
+                        ? "var(--border-default)"
+                        : "color-mix(in oklab, var(--accent) 75%, transparent)",
+                    color:
+                      b.count === 0
+                        ? "var(--text-secondary)"
+                        : "var(--text-on-accent)",
+                  }}
+                >
+                  {b.count > 0 && <span className="pb-1">{b.count}</span>}
+                </div>
+                <span className="text-[10px] text-[var(--text-secondary)]">
+                  {b.date.slice(5).replace("-", "/")}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
+}
+
+function formatDayLabel(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString("ru", { day: "2-digit", month: "short" });
 }
