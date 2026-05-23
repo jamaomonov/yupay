@@ -373,8 +373,6 @@ function FinanceTab() {
 
       <div className="space-y-5">
         {Object.entries(grouped).map(([monthYear, txs]) => {
-          const net = txs.reduce((s, t) => s + t.delta, 0);
-          const currency = txs[0]?.currency ?? "USD";
           return (
             <div key={monthYear} className="space-y-2">
               <div className="flex items-center gap-2">
@@ -382,21 +380,6 @@ function FinanceTab() {
                   {monthYear}
                 </span>
                 <div className="flex-1 h-px bg-border" />
-                <span
-                  className="text-xs"
-                  style={{
-                    color:
-                      net >= 0
-                        ? "rgb(134, 239, 172)"
-                        : "rgb(252, 165, 165)",
-                  }}
-                >
-                  {net >= 0 ? "+" : "−"}
-                  {Math.abs(net).toLocaleString("ru", {
-                    maximumFractionDigits: 2,
-                  })}{" "}
-                  {currency}
-                </span>
               </div>
 
               {txs.map((row, index) => (
