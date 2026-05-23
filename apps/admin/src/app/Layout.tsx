@@ -42,29 +42,70 @@ import { SavedSegmentsNav } from "@/features/segments/SavedSegmentsNav";
 import { ThemeMenu } from "@/features/theme/ThemeMenu";
 import { useSystemThemeSubscription } from "@/features/theme/themeStore";
 
-const NAV: { to: string; label: string; icon: typeof Gauge; end?: boolean }[] = [
-  { to: "/", label: "Обзор", icon: Gauge, end: true },
-  { to: "/categories", label: "Категории", icon: LayoutGrid },
-  { to: "/brands", label: "Бренды", icon: Tag },
-  { to: "/products", label: "Продукты", icon: Package },
-  { to: "/skus", label: "SKU", icon: Boxes },
-  { to: "/inventory", label: "Склад", icon: Warehouse },
-  { to: "/sourcing", label: "Sourcing", icon: RouteIcon },
-  { to: "/orders", label: "Заказы", icon: Receipt },
-  { to: "/payments", label: "Платежи", icon: CreditCard, end: true },
-  { to: "/payments/triage", label: "Триаж платежей", icon: AlertTriangle },
-  { to: "/webhooks", label: "Webhooks", icon: Radio },
-  { to: "/fulfillment", label: "Fulfilment Inbox", icon: Truck },
-  { to: "/wallet", label: "Кошелёк", icon: Wallet },
-  { to: "/audit", label: "Activity log", icon: Activity, end: true },
+interface NavItem {
+  to: string;
+  label: string;
+  icon: typeof Gauge;
+  end?: boolean;
+}
+interface NavGroup {
+  /** Section header label. `null` = pinned items rendered without a heading. */
+  label: string | null;
+  items: NavItem[];
+}
+
+/**
+ * Sidebar layout — 18 entries packed into 6 semantic groups so the operator
+ * doesn't scan through a flat list. The "Главное" group at the top stays
+ * unlabelled and houses the dashboard pin.
+ */
+const NAV_GROUPS: NavGroup[] = [
   {
-    to: "/audit?admin_only=true",
-    label: "Действия админов",
-    icon: ShieldCheck,
+    label: null,
+    items: [{ to: "/", label: "Обзор", icon: Gauge, end: true }],
   },
-  { to: "/fx", label: "Курсы", icon: Coins },
-  { to: "/users", label: "Пользователи", icon: UsersIcon },
-  { to: "/settings", label: "Настройки", icon: Settings },
+  {
+    label: "Каталог",
+    items: [
+      { to: "/categories", label: "Категории", icon: LayoutGrid },
+      { to: "/brands", label: "Бренды", icon: Tag },
+      { to: "/products", label: "Продукты", icon: Package },
+      { to: "/skus", label: "SKU", icon: Boxes },
+    ],
+  },
+  {
+    label: "Операции",
+    items: [
+      { to: "/orders", label: "Заказы", icon: Receipt },
+      { to: "/payments", label: "Платежи", icon: CreditCard, end: true },
+      { to: "/payments/triage", label: "Триаж платежей", icon: AlertTriangle },
+      { to: "/webhooks", label: "Webhooks", icon: Radio },
+      { to: "/fulfillment", label: "Fulfilment Inbox", icon: Truck },
+    ],
+  },
+  {
+    label: "Поддержка",
+    items: [
+      { to: "/users", label: "Пользователи", icon: UsersIcon },
+      { to: "/wallet", label: "Кошелёк", icon: Wallet },
+    ],
+  },
+  {
+    label: "Аудит",
+    items: [
+      { to: "/audit", label: "Activity log", icon: Activity, end: true },
+      { to: "/audit?admin_only=true", label: "Действия админов", icon: ShieldCheck },
+    ],
+  },
+  {
+    label: "Системное",
+    items: [
+      { to: "/inventory", label: "Склад", icon: Warehouse },
+      { to: "/sourcing", label: "Sourcing", icon: RouteIcon },
+      { to: "/fx", label: "Курсы", icon: Coins },
+      { to: "/settings", label: "Настройки", icon: Settings },
+    ],
+  },
 ];
 
 export function Layout() {
@@ -140,27 +181,38 @@ export function Layout() {
           </button>
         </div>
         <nav className="flex-1 overflow-y-auto p-3">
-          {NAV.map((item) => (
-            // Active item gets the indigo accent-soft pair so the operator can
-            // see at a glance where they are in the sidebar — neutral subtle on
-            // hover stays the same so the active marker isn't mistaken for a
-            // hover state on neighbouring items.
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end ?? false}
-              className={({ isActive }) =>
-                [
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
-                  isActive
-                    ? "bg-[var(--bg-accent-soft)] text-[var(--accent-soft-fg)]"
-                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] hover:text-[var(--text-primary)]",
-                ].join(" ")
-              }
+          {NAV_GROUPS.map((group, idx) => (
+            <div
+              key={group.label ?? `pinned-${idx.toString()}`}
+              className={idx > 0 ? "mt-3 border-t border-[var(--border-subtle)] pt-3" : ""}
             >
-              <item.icon className="size-4" aria-hidden />
-              {item.label}
-            </NavLink>
+              {group.label && (
+                <p className="mb-1 px-3 text-[10px] font-medium uppercase tracking-wider text-[var(--text-tertiary)]">
+                  {group.label}
+                </p>
+              )}
+              {group.items.map((item) => (
+                // Active item gets the indigo accent-soft pair so the operator can
+                // see at a glance where they are — neutral subtle on hover stays
+                // distinct so it isn't mistaken for the active marker.
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end ?? false}
+                  className={({ isActive }) =>
+                    [
+                      "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+                      isActive
+                        ? "bg-[var(--bg-accent-soft)] text-[var(--accent-soft-fg)]"
+                        : "text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] hover:text-[var(--text-primary)]",
+                    ].join(" ")
+                  }
+                >
+                  <item.icon className="size-4" aria-hidden />
+                  {item.label}
+                </NavLink>
+              ))}
+            </div>
           ))}
           <SavedSegmentsNav />
         </nav>
