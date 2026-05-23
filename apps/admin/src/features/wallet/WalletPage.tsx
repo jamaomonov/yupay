@@ -25,6 +25,19 @@ const ADJUST_KINDS = [
   { value: "user_promo_credit", label: "user_promo_credit" },
 ] as const;
 
+/** Currencies operators can credit a user in. ``ensure_account``
+ *  creates a fresh ``user_<kind>:<currency>`` account on first use,
+ *  so an unfamiliar code here is fine — but a closed list prevents
+ *  typos like "USС" or "USDS" silently fragmenting balances. */
+const ADJUST_CURRENCIES = [
+  { value: "UZS", label: "UZS · сум" },
+  { value: "USD", label: "USD · доллар" },
+  { value: "RUB", label: "RUB · рубль" },
+  { value: "USDT", label: "USDT · стейблкоин" },
+] as const;
+
+type AdjustCurrency = (typeof ADJUST_CURRENCIES)[number]["value"];
+
 /** Pre-selected codes finance / support use most often. The select renders
  *  the human label, but we persist the canonical code in `reason` so the
  *  ledger feed stays grep-able by `reason: CASHBACK_GRANT`. */
@@ -90,7 +103,11 @@ function LookupTab() {
   }, [searchParams]);
   const [adjustKind, setAdjustKind] =
     useState<(typeof ADJUST_KINDS)[number]["value"]>("user_cashback");
-  const [adjustCurrency, setAdjustCurrency] = useState("USD");
+  // Default UZS — primary market — so the most common ops case is
+  // one click instead of two. Operators creating goodwill credits for
+  // EU / RU users still pick from the same dropdown.
+  const [adjustCurrency, setAdjustCurrency] =
+    useState<AdjustCurrency>("UZS");
   const [adjustAmount, setAdjustAmount] = useState("");
   const [reasonPreset, setReasonPreset] =
     useState<(typeof REASON_PRESETS)[number]["code"]>("CASHBACK_GRANT");
@@ -253,12 +270,19 @@ function LookupTab() {
                 <label className="text-xs uppercase text-[var(--text-secondary)]">
                   Валюта
                 </label>
-                <Input
+                <select
                   value={adjustCurrency}
-                  onChange={(e) => { setAdjustCurrency(e.target.value); }}
-                  maxLength={3}
-                  className="mt-1 uppercase"
-                />
+                  onChange={(e) =>
+                    { setAdjustCurrency(e.target.value as AdjustCurrency); }
+                  }
+                  className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
+                >
+                  {ADJUST_CURRENCIES.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="text-xs uppercase text-[var(--text-secondary)]">
