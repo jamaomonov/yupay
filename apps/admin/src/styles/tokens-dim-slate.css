@@ -156,31 +156,37 @@
 
 /* Smooth theme transitions on the heavy surfaces only.
  * Per ADR-0017: keep transitions off `*` so large tables don't lag.
+ *
+ * The whole block sits behind `prefers-reduced-motion: no-preference` so users
+ * who opt out of motion at the OS level don't get the background fades when
+ * the theme flips (WCAG 2.3.3, a11y-audit #35).
  */
-html,
-body {
-  transition:
-    background-color 200ms ease,
-    color 200ms ease;
-}
+@media (prefers-reduced-motion: no-preference) {
+  html,
+  body {
+    transition:
+      background-color 200ms ease,
+      color 200ms ease;
+  }
 
-aside,
-header,
-nav,
-section,
-article,
-button,
-input,
-select,
-textarea,
-table,
-thead,
-tbody,
-tr,
-td,
-th {
-  transition:
-    background-color 200ms ease,
-    color 200ms ease,
-    border-color 200ms ease;
+  aside,
+  header,
+  nav,
+  section,
+  article,
+  button,
+  input,
+  select,
+  textarea,
+  table,
+  thead,
+  tbody,
+  tr,
+  td,
+  th {
+    transition:
+      background-color 200ms ease,
+      color 200ms ease,
+      border-color 200ms ease;
+  }
 }

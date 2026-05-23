@@ -146,16 +146,21 @@ function UserHeader({ data }: { data: CustomerOverviewOut }) {
             {data.risk_flags.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {data.risk_flags.map((flag) => (
+                  // Semantic --danger-soft / --danger-fg pair passes WCAG AA in both
+                  // themes — the previous `--color-danger/15` mix dropped to 3.4:1
+                  // on the light surface (a11y-audit #5).
                   <span
                     key={flag}
                     className={[
                       "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
                       RISK_FLAG_TONE[flag] === "warn"
-                        ? "bg-[--color-danger]/15 text-[--color-danger]"
-                        : "bg-[--color-subtle] text-[--color-muted]",
+                        ? "bg-[--danger-soft] text-[--danger-fg]"
+                        : "bg-[--bg-muted] text-[--text-secondary]",
                     ].join(" ")}
                   >
-                    {RISK_FLAG_TONE[flag] === "warn" && <AlertTriangle className="size-3" />}
+                    {RISK_FLAG_TONE[flag] === "warn" && (
+                      <AlertTriangle className="size-3" aria-hidden />
+                    )}
                     {RISK_FLAG_LABEL[flag]}
                   </span>
                 ))}

@@ -186,17 +186,16 @@ export function AuditPage() {
                 onClick={() =>
                   setEnabled((prev) => ({ ...prev, [s.key]: !prev[s.key] }))
                 }
-                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all"
-                style={{
-                  background: on ? "var(--color-subtle)" : "transparent",
-                  color: on ? undefined : "var(--color-muted)",
-                  border: on
-                    ? "1.5px solid var(--color-border)"
-                    : "1.5px solid var(--color-border)",
-                  opacity: on ? 1 : 0.55,
-                }}
+                aria-pressed={on}
+                className={[
+                  "inline-flex items-center gap-1.5 rounded-full border border-[--border-default] px-3 py-1.5 text-xs font-medium transition-all",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--accent] focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg-base]",
+                  on
+                    ? "bg-[--bg-muted] text-[--text-primary]"
+                    : "text-[--text-secondary] opacity-60 hover:opacity-100",
+                ].join(" ")}
               >
-                <Icon className={`size-3.5 ${on ? s.tone : ""}`} />
+                <Icon className={`size-3.5 ${on ? s.tone : ""}`} aria-hidden />
                 {s.label}
                 <span
                   className={`ml-1 text-[10px] font-bold ${
