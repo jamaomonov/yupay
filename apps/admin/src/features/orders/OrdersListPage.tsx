@@ -5,6 +5,7 @@ import { Ban, Search } from "lucide-react";
 
 import { Button, Input } from "@yupay/ui";
 
+import { Badge } from "@/components/Badge";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable, type Column } from "@/components/DataTable";
 import { Pagination } from "@/components/Pagination";
@@ -319,11 +320,9 @@ export function OrdersListPage() {
 
 function StatusBadge({ status }: { status: OrderStatus }) {
   return (
-    <span
-      className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_TONE[status]}`}
-    >
+    <Badge tone={STATUS_TONE[status]} dot>
       {STATUS_LABEL[status]}
-    </span>
+    </Badge>
   );
 }
 

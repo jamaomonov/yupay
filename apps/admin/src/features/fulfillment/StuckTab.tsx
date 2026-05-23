@@ -11,6 +11,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 
+import { Badge } from "@/components/Badge";
 import { DataTable, type Column } from "@/components/DataTable";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
@@ -102,19 +103,16 @@ function SlaBadge({ createdAt }: { createdAt: string }) {
   const ageMin = Math.floor(ageMs / 60_000);
   const tone =
     ageMin >= 120 ? "danger" : ageMin >= 60 ? "warn" : "info";
+  const cls =
+    tone === "danger"
+      ? "bg-[var(--danger-soft)] text-[var(--danger-fg)]"
+      : tone === "warn"
+        ? "bg-[var(--warning-soft)] text-[var(--warning-fg)]"
+        : "bg-[var(--bg-muted)] text-[var(--text-secondary)]";
   return (
-    <span
-      className={[
-        "rounded-full px-2 py-0.5 text-xs font-medium",
-        tone === "danger"
-          ? "bg-[var(--color-danger)]/15 text-[var(--danger)]"
-          : tone === "warn"
-            ? "bg-[var(--warning-soft)] text-[var(--warning-fg)]"
-            : "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
-      ].join(" ")}
-    >
+    <Badge tone={cls} dot={tone !== "info"}>
       {formatAge(ageMs)}
-    </span>
+    </Badge>
   );
 }
 

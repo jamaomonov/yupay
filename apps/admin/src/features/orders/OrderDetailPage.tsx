@@ -15,6 +15,7 @@ import {
 import { Button } from "@yupay/ui";
 import { Spinner } from "@/components/States";
 
+import { Badge } from "@/components/Badge";
 import { PageHeader } from "@/components/PageHeader";
 import { ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
@@ -435,8 +436,8 @@ function PaymentsCard({
               <li key={p.id} className="p-3 text-sm">
                 <div className="flex items-baseline justify-between gap-3">
                   <code className="text-xs">{p.id.slice(0, 8)}…</code>
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                  <Badge
+                    tone={
                       p.status === "succeeded"
                         ? "bg-[var(--success-soft)] text-[var(--success-fg)]"
                         : p.status === "failed"
@@ -445,10 +446,11 @@ function PaymentsCard({
                               p.status === "partially_refunded"
                             ? "bg-[var(--info-soft)] text-[var(--info-fg)]"
                             : "bg-[var(--warning-soft)] text-[var(--warning-fg)]"
-                    }`}
+                    }
+                    dot
                   >
                     {p.status}
-                  </span>
+                  </Badge>
                 </div>
                 <p className="mt-1 text-xs text-[var(--text-secondary)]">
                   {p.provider} · {Number.parseFloat(p.amount).toFixed(2)}{" "}
@@ -497,8 +499,8 @@ function FulfillmentCard({ tasks }: { tasks: TaskAdminOut[] }) {
             <li key={t.id} className="p-3 text-sm">
               <div className="flex items-baseline justify-between gap-3">
                 <code className="text-xs">{t.supplier}</code>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                <Badge
+                  tone={
                     t.status === "succeeded"
                       ? "bg-[var(--success-soft)] text-[var(--success-fg)]"
                       : t.status === "failed"
@@ -506,10 +508,11 @@ function FulfillmentCard({ tasks }: { tasks: TaskAdminOut[] }) {
                         : t.status === "cancelled"
                           ? "bg-[var(--bg-muted)] text-[var(--text-secondary)]"
                           : "bg-[var(--warning-soft)] text-[var(--warning-fg)]"
-                  }`}
+                  }
+                  dot
                 >
                   {t.status}
-                </span>
+                </Badge>
               </div>
               <p className="mt-1 text-xs text-[var(--text-secondary)]">
                 item {t.order_item_id.slice(0, 8)}… · попыток {t.attempts_count}
@@ -529,11 +532,9 @@ function FulfillmentCard({ tasks }: { tasks: TaskAdminOut[] }) {
 
 function StatusBadge({ status }: { status: OrderStatus }) {
   return (
-    <span
-      className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_TONE[status]}`}
-    >
+    <Badge tone={STATUS_TONE[status]} dot>
       {STATUS_LABEL[status]}
-    </span>
+    </Badge>
   );
 }
 

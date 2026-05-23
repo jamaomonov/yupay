@@ -15,6 +15,7 @@ import {
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { useAuthStore } from "@/features/auth/authStore";
+import { Badge } from "@/components/Badge";
 
 interface DashboardOut {
   generated_at: string;
@@ -183,13 +184,15 @@ export function DashboardPage() {
                   className="flex items-center justify-between rounded-md px-3 py-1.5"
                   style={{ background: "var(--bg-muted)" }}
                 >
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                      STATUS_TONE[s.status] ?? "bg-[var(--bg-muted)] text-[var(--text-secondary)]"
-                    }`}
+                  <Badge
+                    tone={
+                      STATUS_TONE[s.status] ??
+                      "bg-[var(--bg-muted)] text-[var(--text-secondary)]"
+                    }
+                    dot
                   >
                     {STATUS_LABEL[s.status] ?? s.status}
-                  </span>
+                  </Badge>
                   <span className="font-mono text-sm">{s.count}</span>
                 </li>
               ))}

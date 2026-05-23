@@ -18,6 +18,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, ShieldAlert } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 
+import { Badge } from "@/components/Badge";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { Tabs, type TabDescriptor } from "@/components/Tabs";
@@ -344,19 +345,16 @@ function WebhookSection({
 function SlaBadge({ minutes }: { minutes: number }) {
   const tone =
     minutes >= 120 ? "danger" : minutes >= 60 ? "warn" : "info";
+  const cls =
+    tone === "danger"
+      ? "bg-[var(--danger-soft)] text-[var(--danger-fg)]"
+      : tone === "warn"
+        ? "bg-[var(--warning-soft)] text-[var(--warning-fg)]"
+        : "bg-[var(--bg-muted)] text-[var(--text-secondary)]";
   return (
-    <span
-      className={[
-        "rounded-full px-2 py-0.5 text-xs font-medium",
-        tone === "danger"
-          ? "bg-[var(--color-danger)]/15 text-[var(--danger)]"
-          : tone === "warn"
-            ? "bg-[var(--warning-soft)] text-[var(--warning-fg)]"
-            : "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
-      ].join(" ")}
-    >
+    <Badge tone={cls} dot={tone !== "info"}>
       {formatMinutes(minutes)}
-    </span>
+    </Badge>
   );
 }
 

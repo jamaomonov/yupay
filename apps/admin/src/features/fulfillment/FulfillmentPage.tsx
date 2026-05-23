@@ -4,6 +4,7 @@ import { ExternalLink } from "lucide-react";
 
 import { Button, Input } from "@yupay/ui";
 
+import { Badge } from "@/components/Badge";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable, type Column } from "@/components/DataTable";
 import { Pagination } from "@/components/Pagination";
@@ -263,9 +264,9 @@ function StatusBadge({ status }: { status: TaskStatus }) {
     cancelled: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
   };
   return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${map[status]}`}>
+    <Badge tone={map[status]} dot>
       {status}
-    </span>
+    </Badge>
   );
 }
 

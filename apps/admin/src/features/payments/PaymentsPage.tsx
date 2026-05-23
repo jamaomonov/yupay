@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Button, Input } from "@yupay/ui";
 
+import { Badge } from "@/components/Badge";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable, type Column } from "@/components/DataTable";
 import { Pagination } from "@/components/Pagination";
@@ -304,9 +305,9 @@ function StatusBadge({ status }: { status: PaymentStatus }) {
     partially_refunded: "bg-[var(--info-soft)] text-[var(--info-fg)]",
   };
   return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${map[status]}`}>
+    <Badge tone={map[status]} dot>
       {status}
-    </span>
+    </Badge>
   );
 }
 

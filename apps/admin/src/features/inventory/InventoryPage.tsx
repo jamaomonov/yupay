@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@yupay/ui";
 
+import { Badge } from "@/components/Badge";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable, type Column } from "@/components/DataTable";
 import { ApiError, apiGet, apiPost } from "@/lib/api";
@@ -280,9 +281,9 @@ function StateBadge({ state }: { state: CodeState }) {
   };
   const { label, cls } = map[state];
   return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>
+    <Badge tone={cls} dot>
       {label}
-    </span>
+    </Badge>
   );
 }
 
