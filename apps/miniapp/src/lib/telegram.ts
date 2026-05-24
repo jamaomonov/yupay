@@ -37,8 +37,20 @@ export interface TelegramWebApp {
   version: string;
   platform: string;
   colorScheme: "light" | "dark";
+  isExpanded?: boolean;
+  isFullscreen?: boolean;
+  // Safe-area insets exposed by Bot API 8.0+ (Dec 2024). They also land
+  // on ``document.documentElement`` as ``--tg-safe-area-inset-*`` /
+  // ``--tg-content-safe-area-inset-*`` CSS vars, which is what the UI
+  // actually reads.
+  safeAreaInset?: { top: number; right: number; bottom: number; left: number };
+  contentSafeAreaInset?: { top: number; right: number; bottom: number; left: number };
   ready: () => void;
   expand: () => void;
+  // Bot API 8.0+. Falls back to a no-op on older clients; we feature-detect.
+  requestFullscreen?: () => void;
+  exitFullscreen?: () => void;
+  disableVerticalSwipes?: () => void;
   close: () => void;
   // Available since Bot API 6.1 (mid-2022) — every supported Telegram client
   // has it. When visible the client swaps the title-bar "×" for a "←", so we
@@ -79,6 +91,46 @@ export function readyTelegram(): void {
       wa.ready();
     } catch {
       /* older clients */
+    }
+  }
+}
+
+/**
+ * Maximise viewport real estate inside the Telegram client.
+ *
+ * Calls in this order:
+ *   1. ``expand()`` — widely supported (Bot API 6.0+), turns the mini app
+ *      into a full-height sheet that doesn't collapse on scroll-up.
+ *   2. ``requestFullscreen()`` — Bot API 8.0+ (Dec 2024). Hides the
+ *      Telegram chat headers on supported clients, leaving only the
+ *      close / back controls as a floating overlay.
+ *   3. ``disableVerticalSwipes()`` — also 8.0+. Without it Android
+ *      Telegram dismisses the WebView on a downward swipe even when in
+ *      fullscreen, which conflicts with our scroll containers.
+ *
+ * Every step is feature-detected and try/catch'd so legacy clients are
+ * unaffected.
+ */
+export function maximiseTelegramViewport(): void {
+  const wa = getWebApp();
+  if (!wa) return;
+  try {
+    wa.expand();
+  } catch {
+    /* very old clients */
+  }
+  if (typeof wa.requestFullscreen === "function") {
+    try {
+      wa.requestFullscreen();
+    } catch {
+      /* not supported on this client */
+    }
+  }
+  if (typeof wa.disableVerticalSwipes === "function") {
+    try {
+      wa.disableVerticalSwipes();
+    } catch {
+      /* not supported */
     }
   }
 }

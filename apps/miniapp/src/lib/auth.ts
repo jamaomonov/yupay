@@ -12,7 +12,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ApiError, apiGet, apiPost, clearTokens, getAccessToken, setTokens } from "./api";
-import { isInsideTelegram, readyTelegram, waitForInitData } from "./telegram";
+import {
+  isInsideTelegram,
+  maximiseTelegramViewport,
+  readyTelegram,
+  waitForInitData,
+} from "./telegram";
 
 interface TokensOut {
   access_token: string;
@@ -66,6 +71,11 @@ export async function bootstrapAuth({
   timeoutMs,
 }: { timeoutMs?: number } = {}): Promise<BootstrapResult> {
   readyTelegram();
+  // ``expand()`` + ``requestFullscreen()`` here so the mini app takes
+  // the whole viewport from the very first paint, including the safe
+  // area below Telegram's close/back overlay. Both are no-ops in a
+  // plain browser.
+  maximiseTelegramViewport();
   // Plain browser dev: keep whatever token is stored; UI surfaces "Open in Telegram".
   if (typeof window === "undefined" || !window.Telegram) {
     return { status: "no-telegram" };

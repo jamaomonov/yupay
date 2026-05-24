@@ -27,7 +27,18 @@ export function Header() {
   const user = me.data;
 
   return (
-    <header className="bg-background/80 border-border fixed left-0 right-0 top-0 z-50 mx-auto flex h-16 max-w-[430px] items-center justify-between border-b px-4 backdrop-blur-xl">
+    <header
+      // ``top: var(--tg-content-safe-area-inset-top, env(safe-area-inset-top, 0))``
+      // pushes the bar below Telegram's floating close/back chip in
+      // fullscreen mode. Bot API 8.0+ writes the var on
+      // <documentElement>; the env() fallback covers iOS notch when
+      // we run as a PWA outside Telegram. Pure 0 in the desktop
+      // browser dev case.
+      style={{
+        top: "max(var(--tg-content-safe-area-inset-top, 0px), env(safe-area-inset-top, 0px))",
+      }}
+      className="bg-background/80 border-border fixed left-0 right-0 z-50 mx-auto flex h-16 max-w-[430px] items-center justify-between border-b px-4 backdrop-blur-xl"
+    >
       {/* Brand — full wordmark SVG. Lives in apps/miniapp/public/, the
           path is unhashed because Vite passes /logo-wordmark.svg through
           as-is for public assets. ``alt`` is the brand name so screen
