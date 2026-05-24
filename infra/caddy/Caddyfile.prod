@@ -65,10 +65,10 @@ api.yupay.uz {
 	encode zstd gzip
 	header {
 		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
-		Access-Control-Allow-Origin "https://yupay.uz https://app.yupay.uz https://admin.yupay.uz"
-		Access-Control-Allow-Credentials "true"
-		Access-Control-Allow-Methods "GET, POST, PATCH, DELETE, OPTIONS"
-		Access-Control-Allow-Headers "Authorization, Content-Type, Idempotency-Key"
+		# CORS is handled by FastAPI's ``CORSMiddleware`` (see
+		# ``cors_allow_origins`` in api.env). Doing it here too made the
+		# browser see two ``Access-Control-Allow-Origin`` values in the
+		# response and reject the request.
 	}
 
 	# WebSocket upgrade has to come first — Caddy stops on the first
