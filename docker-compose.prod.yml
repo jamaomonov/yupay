@@ -49,7 +49,7 @@ services:
       - minio-data:/data
 
   api:
-    image: ghcr.io/yupay/api:${IMAGE_TAG:-main}
+    image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-api:${IMAGE_TAG:-main}
     restart: unless-stopped
     environment:
       <<: *app-env
@@ -62,7 +62,7 @@ services:
       interval: 30s
 
   worker:
-    image: ghcr.io/yupay/worker:${IMAGE_TAG:-main}
+    image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-worker:${IMAGE_TAG:-main}
     restart: unless-stopped
     environment:
       <<: *app-env
@@ -70,7 +70,7 @@ services:
     depends_on: [postgres, redis]
 
   scheduler:
-    image: ghcr.io/yupay/scheduler:${IMAGE_TAG:-main}
+    image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-scheduler:${IMAGE_TAG:-main}
     restart: unless-stopped
     environment:
       <<: *app-env
@@ -78,7 +78,7 @@ services:
     depends_on: [postgres, redis]
 
   bot:
-    image: ghcr.io/yupay/bot:${IMAGE_TAG:-main}
+    image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-bot:${IMAGE_TAG:-main}
     restart: unless-stopped
     environment:
       <<: *app-env
@@ -86,12 +86,12 @@ services:
     depends_on: [api]
 
   web:
-    image: ghcr.io/yupay/web:${IMAGE_TAG:-main}
+    image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-web:${IMAGE_TAG:-main}
     restart: unless-stopped
     env_file: /opt/yupay/secrets/web.env
 
   miniapp:
-    image: ghcr.io/yupay/miniapp:${IMAGE_TAG:-main}
+    image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-miniapp:${IMAGE_TAG:-main}
     restart: unless-stopped
     env_file: /opt/yupay/secrets/miniapp.env
 
