@@ -98,6 +98,10 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    # GRAFANA_BASIC_AUTH_HASH lives in grafana.env — Caddy substitutes
+    # it into the {$GRAFANA_BASIC_AUTH_HASH} placeholder on
+    # grafana.yupay.uz. Other keys in the file are ignored.
+    env_file: /opt/yupay/secrets/grafana.env
     ports:
       - "443:443"
       - "80:80"
