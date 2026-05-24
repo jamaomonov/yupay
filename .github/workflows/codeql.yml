@@ -1,12 +1,14 @@
 name: CodeQL
 
+# CodeQL code-scanning requires GitHub Advanced Security, which is
+# free for public repos but paid for private ones. While the repo
+# stays private on the free plan, the workflow exits with
+# "Code scanning is not enabled for this repository" — keep it
+# wired up but only firable manually, so push/PR statuses stay
+# green. Re-enable the cron / push triggers when the repo turns
+# public or GHAS is purchased.
 on:
-  schedule:
-    - cron: "23 4 * * 1"
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   actions: read
