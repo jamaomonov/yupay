@@ -97,6 +97,10 @@ class Settings(BaseSettings):
 
     # --- telegram ---
     telegram_bot_token: str = Field(default="")
+    # Public URL of the miniapp — embedded into the inline ``WebAppInfo``
+    # button the bot attaches to /start. Falls back to the dev Caddy host
+    # when unset so a fresh checkout boots without env tweaks.
+    telegram_miniapp_url: str = Field(default="https://yupay.local/miniapp/")
 
     # --- fx ---
     fx_supported_quotes: list[str] = Field(default_factory=lambda: ["RUB", "UZS", "USDT"])
