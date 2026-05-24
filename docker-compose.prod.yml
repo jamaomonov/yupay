@@ -95,6 +95,12 @@ services:
     restart: unless-stopped
     env_file: /opt/yupay/secrets/miniapp.env
 
+  admin:
+    image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-admin:${IMAGE_TAG:-main}
+    restart: unless-stopped
+    # admin is a static Vite build served by nginx — no env file
+    # because every config is baked into the build at CI time.
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -109,7 +115,7 @@ services:
       - ./infra/caddy/Caddyfile.prod:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
-    depends_on: [api, web, miniapp]
+    depends_on: [api, web, miniapp, admin]
 
   prometheus:
     image: prom/prometheus:latest

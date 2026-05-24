@@ -44,7 +44,7 @@ app.yupay.uz {
 		# the policy for the storefront.
 		Content-Security-Policy "frame-ancestors https://web.telegram.org https://*.telegram.org;"
 	}
-	reverse_proxy miniapp:3000
+	reverse_proxy miniapp:80
 }
 
 # ---------- internal admin SPA ----------
