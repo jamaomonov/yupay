@@ -29,8 +29,14 @@ jobs:
             dockerfile: infra/docker/web.Dockerfile
           - image: miniapp
             dockerfile: infra/docker/miniapp.Dockerfile
+            build_args: |
+              VITE_API_BASE_URL=https://api.yupay.uz
+              VITE_TELEGRAM_BOT_USERNAME=yupayapp_bot
           - image: admin
             dockerfile: infra/docker/admin.Dockerfile
+            build_args: |
+              VITE_API_BASE_URL=https://api.yupay.uz
+              VITE_TELEGRAM_BOT_USERNAME=yupayapp_bot
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -57,5 +63,9 @@ jobs:
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Vite reads VITE_* at build time and inlines into the JS
+          # bundle. Empty for api / worker / scheduler / bot / web —
+          # they read env at runtime and don't need build args.
+          build-args: ${{ matrix.build_args }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
