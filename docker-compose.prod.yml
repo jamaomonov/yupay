@@ -211,3 +211,18 @@ volumes:
   grafana-data:
   loki-data:
   backup-tmp:
+
+# Pin the bridge MTU to 1450. Yandex Cloud's VPC has a smaller
+# effective path MTU than 1500: small packets (TLS handshakes,
+# getUpdates long-polls, getMe responses) survive, but larger ones
+# (e.g. an HTML ``sendMessage`` POST with an inline_keyboard) get
+# fragmented somewhere on the egress and never make it to
+# ``api.telegram.org``. Symptom — only outgoing messages time out
+# while ``get_me`` and ``getUpdates`` work fine.
+# 1450 is the Yandex VPC recommended value and matches most other
+# Russian cloud providers (Selectel / Timeweb / VK Cloud).
+networks:
+  default:
+    driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: "1450"
