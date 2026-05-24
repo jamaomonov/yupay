@@ -30,20 +30,18 @@ export function Header() {
 
   return (
     <header className="fixed top-0 left-0 right-0 h-16 bg-background/80 backdrop-blur-xl border-b border-border z-50 flex items-center justify-between px-4 max-w-[430px] mx-auto">
-      {/* Brand */}
-      <Link href="/" className="flex items-center gap-2">
-        <div
-          className="w-8 h-8 rounded-xl flex items-center justify-center"
-          style={{
-            background: "hsl(var(--primary) / 0.15)",
-            color: "hsl(var(--primary))",
-          }}
-        >
-          <WalletIcon size={16} strokeWidth={2.4} />
-        </div>
-        <span className="font-bold tracking-wider text-lg text-white">
-          YUPAY
-        </span>
+      {/* Brand — full wordmark SVG. Lives in apps/miniapp/public/, the
+          path is unhashed because Vite passes /logo-wordmark.svg through
+          as-is for public assets. ``alt`` is the brand name so screen
+          readers / Telegram link previews still read "YuPay" even if the
+          asset 404s. */}
+      <Link href="/" className="flex items-center" aria-label="YuPay">
+        <img
+          src="/logo-wordmark.svg"
+          alt="YuPay"
+          className="h-6 w-auto"
+          draggable={false}
+        />
       </Link>
 
       {/* Balance pill + top-up + avatar.
