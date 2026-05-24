@@ -112,6 +112,21 @@ export function readyTelegram(): void {
  * unaffected.
  */
 export function maximiseTelegramViewport(): void {
+  // Dev shortcut: when running outside Telegram, append
+  // ``?tg-fullscreen=1`` to the URL to simulate the safe-area offset
+  // locally (Chrome devtools mobile view, etc.). Skipped silently in
+  // SSR / no-window contexts.
+  if (typeof window !== "undefined" && typeof document !== "undefined") {
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("tg-fullscreen") === "1") {
+        document.documentElement.style.setProperty("--app-tg-fullscreen-top", "56px");
+      }
+    } catch {
+      /* malformed URL — ignore */
+    }
+  }
+
   const wa = getWebApp();
   if (!wa) return;
   try {
