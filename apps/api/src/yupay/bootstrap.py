@@ -14,11 +14,38 @@ from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from yupay.api.v1 import router as v1_router
-from yupay.core.config import get_settings
+from yupay.core.config import Settings, get_settings
 from yupay.core.db import dispose_engine
 from yupay.core.errors import AppError, app_error_handler
 from yupay.core.logging import configure_logging, get_logger
 from yupay.core.redis import close_redis
+
+
+def _init_sentry(settings: Settings) -> None:
+    """Initialise Sentry if a DSN is configured.
+
+    Kept inline (not eager-imported) so dev environments without a DSN
+    don't drag in the ~2 MB SDK + integrations. ``traces_sample_rate``
+    comes from settings — usual prod default is ``0.1`` (10% transactions
+    captured for tracing).
+    """
+    if not settings.sentry_dsn:
+        return
+    import sentry_sdk  # noqa: PLC0415 -- lazy import is the point
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.starlette import StarletteIntegration
+
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.environment,
+        release=settings.service_name,
+        traces_sample_rate=settings.sentry_traces_sample_rate,
+        send_default_pii=False,  # never ship PII to Sentry; AGENTS.md §9
+        integrations=[
+            FastApiIntegration(transaction_style="endpoint"),
+            StarletteIntegration(transaction_style="endpoint"),
+        ],
+    )
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -41,6 +68,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     """Build a fresh FastAPI app with all routers, middleware, and exception handlers."""
     settings = get_settings()
+    _init_sentry(settings)
     # NOTE: FastAPI 0.115+ serialises responses directly via Pydantic — no custom
     # response class needed. Explicit `ORJSONResponse` is deprecated.
     app = FastAPI(

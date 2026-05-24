@@ -1,9 +1,23 @@
-# Caddy — production config. Domains are placeholders; replace before first deploy.
+# Caddy — production config.
+#
+# Domain plan for yupay.uz:
+#   yupay.uz, www.yupay.uz  → web (Next.js public storefront)
+#   app.yupay.uz            → miniapp (Telegram Mini App)
+#   admin.yupay.uz          → admin SPA (Vite static)
+#   api.yupay.uz            → FastAPI + WebSocket
+#   grafana.yupay.uz        → Grafana, gated by basic-auth
+#
+# DNS prerequisite: A records for the apex + each subdomain pointing
+# at the server's public IP. Caddy fetches Let's Encrypt certs on
+# first request — no manual cert work required.
+
 {
-	email ops@yupay.io
+	# Replace with a real address — Let's Encrypt expiry warnings land here.
+	email ops@yupay.uz
 }
 
-yupay.io, www.yupay.io {
+# ---------- public storefront ----------
+yupay.uz, www.yupay.uz {
 	encode zstd gzip
 	header {
 		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
@@ -12,48 +26,78 @@ yupay.io, www.yupay.io {
 		X-Frame-Options "DENY"
 		Permissions-Policy "interest-cohort=()"
 	}
-	@redirectWww host www.yupay.io
-	redir @redirectWww https://yupay.io{uri} permanent
+	# Force the canonical apex so SEO does not split between yupay.uz / www.
+	@redirectWww host www.yupay.uz
+	redir @redirectWww https://yupay.uz{uri} permanent
 	reverse_proxy web:3000
 }
 
-app.yupay.io {
+# ---------- Telegram Mini App ----------
+app.yupay.uz {
 	encode zstd gzip
 	header {
 		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		X-Content-Type-Options "nosniff"
+		# Telegram WebApp must be embeddable in the official client — do
+		# NOT add X-Frame-Options: DENY here. CSP frame-ancestors handles
+		# the policy for the storefront.
+		Content-Security-Policy "frame-ancestors https://web.telegram.org https://*.telegram.org;"
 	}
 	reverse_proxy miniapp:3000
 }
 
-api.yupay.io {
+# ---------- internal admin SPA ----------
+admin.yupay.uz {
 	encode zstd gzip
 	header {
 		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
-		Access-Control-Allow-Origin "https://yupay.io https://app.yupay.io"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+	}
+	# admin is a static Vite build served by an nginx container.
+	reverse_proxy admin:80
+}
+
+# ---------- API + websockets ----------
+api.yupay.uz {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		Access-Control-Allow-Origin "https://yupay.uz https://app.yupay.uz https://admin.yupay.uz"
+		Access-Control-Allow-Credentials "true"
+		Access-Control-Allow-Methods "GET, POST, PATCH, DELETE, OPTIONS"
+		Access-Control-Allow-Headers "Authorization, Content-Type, Idempotency-Key"
 	}
 
+	# WebSocket upgrade has to come first — Caddy stops on the first
+	# matching reverse_proxy directive.
 	@websocket {
 		header Connection *Upgrade*
 		header Upgrade websocket
 	}
 	reverse_proxy @websocket api:8000
 
-	rate_limit {
-		zone api 100r/s
-	}
+	# Rate limiting lives inside FastAPI (slowapi). Caddy's
+	# ``rate_limit`` directive ships in a community module that needs
+	# a custom build; not worth dragging in a non-stock image just
+	# for an outer circuit breaker. If volumetric abuse becomes a
+	# real problem, swap to ``caddy/forward-auth`` or front Caddy
+	# with Cloudflare's rate-limit rules.
 
 	reverse_proxy api:8000
 }
 
-grafana.yupay.io {
-	@allowed {
-		# Replace with the office / VPN egress CIDRs before going live.
-		remote_ip 10.0.0.0/8 192.168.0.0/16 172.16.0.0/12
+# ---------- Grafana (operators only) ----------
+grafana.yupay.uz {
+	encode zstd gzip
+	# basic_auth gates the surface even before Grafana's own login —
+	# anyone scanning subdomains for /login pages gets an instant 401
+	# instead. The hash is generated with ``caddy hash-password`` and
+	# injected through GRAFANA_BASIC_AUTH_HASH in the env file.
+	basic_auth {
+		ops {$GRAFANA_BASIC_AUTH_HASH}
 	}
-	handle @allowed {
-		reverse_proxy grafana:3000
-	}
-	respond 403
+	reverse_proxy grafana:3000
 }
