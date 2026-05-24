@@ -55,10 +55,7 @@ export function Skeleton({ className, rows = 1 }: SkeletonProps) {
       {Array.from({ length: rows }, (_, i) => (
         <div
           key={i}
-          className={[
-            "h-4 rounded bg-[var(--bg-muted)] animate-pulse",
-            className ?? "",
-          ].join(" ")}
+          className={["h-4 animate-pulse rounded bg-[var(--bg-muted)]", className ?? ""].join(" ")}
         />
       ))}
     </div>
@@ -153,9 +150,7 @@ export function EmptyState({
         </div>
       )}
       <p className="text-sm font-medium text-[var(--text-primary)]">{title}</p>
-      {description && (
-        <p className="mt-1 text-sm text-[var(--text-secondary)]">{description}</p>
-      )}
+      {description && <p className="mt-1 text-sm text-[var(--text-secondary)]">{description}</p>}
       {action && <div className="mt-4 flex justify-center">{action}</div>}
     </div>
   );

@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@yupay/ui";
 import { useMemo, useState } from "react";
 
-
 import type {
   SourcingDecisionOut,
   SourcingMode,
@@ -16,7 +15,6 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { type ApiError, api, apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
-
 
 const MODES: { value: SourcingMode; label: string; hint: string }[] = [
   {
@@ -59,8 +57,7 @@ export function SourcingPage() {
   });
   const rulesQuery = useQuery<SourcingRuleListOut>({
     queryKey: qk.sourcingRules(),
-    queryFn: () =>
-      apiGet<SourcingRuleListOut>("/api/v1/admin/sourcing/rules"),
+    queryFn: () => apiGet<SourcingRuleListOut>("/api/v1/admin/sourcing/rules"),
   });
 
   const productById = useMemo(() => {
@@ -76,10 +73,7 @@ export function SourcingPage() {
 
   const decisionQuery = useQuery<SourcingDecisionOut>({
     queryKey: qk.sourcingDecision(selectedSkuId),
-    queryFn: () =>
-      apiGet<SourcingDecisionOut>(
-        `/api/v1/admin/sourcing/rules/${selectedSkuId}`,
-      ),
+    queryFn: () => apiGet<SourcingDecisionOut>(`/api/v1/admin/sourcing/rules/${selectedSkuId}`),
     enabled: Boolean(selectedSkuId),
   });
 
@@ -108,8 +102,7 @@ export function SourcingPage() {
   });
 
   const deleteMutation = useMutation<void, ApiError, string>({
-    mutationFn: (skuId) =>
-      api<void>(`/api/v1/admin/sourcing/rules/${skuId}`, { method: "DELETE" }),
+    mutationFn: (skuId) => api<void>(`/api/v1/admin/sourcing/rules/${skuId}`, { method: "DELETE" }),
     onSuccess: (_void, skuId) => {
       setFeedback("Правило удалено — SKU вернулся в auto.");
       setError(null);
@@ -148,9 +141,7 @@ export function SourcingPage() {
         const sku = skuById.get(r.sku_id);
         const product = sku ? productById.get(sku.product_id) : undefined;
         const name =
-          product?.translations.find((t) => t.locale === "ru")?.name ??
-          product?.slug ??
-          "?";
+          product?.translations.find((t) => t.locale === "ru")?.name ?? product?.slug ?? "?";
         return (
           <div className="flex flex-col">
             <span className="text-sm">{name}</span>
@@ -214,7 +205,7 @@ export function SourcingPage() {
         description="Правила маршрутизации: где брать товар — из склада или у поставщика."
       />
 
-      <section className="mb-6 rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
+      <section className="mb-6 rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
         <h2 className="mb-3 text-sm font-semibold">Назначить / изменить правило</h2>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div>
@@ -223,16 +214,16 @@ export function SourcingPage() {
             </label>
             <select
               value={selectedSkuId}
-              onChange={(e) => { setSelectedSkuId(e.target.value); }}
+              onChange={(e) => {
+                setSelectedSkuId(e.target.value);
+              }}
               className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
             >
               <option value="">— Выбрать —</option>
               {skusQuery.data?.map((sku) => {
                 const product = productById.get(sku.product_id);
                 const productName =
-                  product?.translations.find((t) => t.locale === "ru")?.name ??
-                  product?.slug ??
-                  "";
+                  product?.translations.find((t) => t.locale === "ru")?.name ?? product?.slug ?? "";
                 return (
                   <option key={sku.id} value={sku.id}>
                     {productName} — {sku.sku_code}
@@ -247,7 +238,9 @@ export function SourcingPage() {
             </label>
             <select
               value={mode}
-              onChange={(e) => { setMode(e.target.value as SourcingMode); }}
+              onChange={(e) => {
+                setMode(e.target.value as SourcingMode);
+              }}
               className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
             >
               {MODES.map((m) => (
@@ -267,7 +260,9 @@ export function SourcingPage() {
             <input
               type="text"
               value={supplierSlug}
-              onChange={(e) => { setSupplierSlug(e.target.value); }}
+              onChange={(e) => {
+                setSupplierSlug(e.target.value);
+              }}
               disabled={mode !== "force_supplier"}
               placeholder="mock / steam / riot / …"
               className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm disabled:opacity-50"
@@ -275,18 +270,11 @@ export function SourcingPage() {
           </div>
         </div>
         <div className="mt-4 flex items-center gap-3">
-          <Button
-            onClick={handleSave}
-            disabled={upsertMutation.isPending || !selectedSkuId}
-          >
+          <Button onClick={handleSave} disabled={upsertMutation.isPending || !selectedSkuId}>
             {upsertMutation.isPending ? "Сохраняем…" : "Сохранить правило"}
           </Button>
-          {selectedSkuId && decisionQuery.data && (
-            <DecisionPreview decision={decisionQuery.data} />
-          )}
-          {feedback && (
-            <span className="text-sm text-[var(--success)]">{feedback}</span>
-          )}
+          {selectedSkuId && decisionQuery.data && <DecisionPreview decision={decisionQuery.data} />}
+          {feedback && <span className="text-sm text-[var(--success)]">{feedback}</span>}
           {error && <span className="text-sm text-[var(--danger)]">{error}</span>}
         </div>
       </section>

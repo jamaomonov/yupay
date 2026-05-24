@@ -33,25 +33,25 @@ single-VPS deployment that must remain horizontally splittable without rewrites.
 
 ## 2. Tech stack at a glance
 
-| Area | Choice |
-|---|---|
-| Backend | Python 3.12, FastAPI, SQLAlchemy 2 (async), Alembic, Pydantic v2, `uv` |
-| Background work | Dramatiq + Redis (Temporal is a deferred migration option) |
-| Bot | aiogram 3 |
-| Data | PostgreSQL 16, Redis 7, MinIO (S3-compatible) |
-| Frontend | Next.js 15 (App Router, RSC), TypeScript 5.6+ strict, Tailwind v4, shadcn/ui, TanStack Query v5, Zustand, react-hook-form + zod, next-intl v4 |
-| Admin SPA | Vite 5 + React 19 + React Router 7 (data API). No SSR — see ADR-0010 |
-| Mini App | `@telegram-apps/sdk-react` v3 |
-| API client | `@hey-api/openapi-ts` generated from FastAPI's OpenAPI 3.1 schema |
-| Monorepo | pnpm workspaces + Turborepo (TS) + uv workspace (Python) + top-level Makefile |
-| Reverse proxy / TLS | Caddy 2 (auto Let's Encrypt) |
-| Observability | Prometheus + Grafana + Loki + Promtail, Sentry SaaS |
-| Email | Resend or Postmark (SaaS) |
-| Secrets | env files + `sops` + `age` (encrypted secrets committed to repo) |
-| Backups | `pg_dump` → age → rclone → Cloudflare R2 |
-| CI/CD | GitHub Actions + GHCR + SSH deploy |
-| Tests | pytest + testcontainers + respx + hypothesis (Py); Vitest + Playwright + Testing Library (TS) |
-| Lint / format | ruff, mypy --strict (Py); eslint flat config, prettier, tsc (TS); pre-commit + commitlint + gitleaks |
+| Area                | Choice                                                                                                                                        |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Backend             | Python 3.12, FastAPI, SQLAlchemy 2 (async), Alembic, Pydantic v2, `uv`                                                                        |
+| Background work     | Dramatiq + Redis (Temporal is a deferred migration option)                                                                                    |
+| Bot                 | aiogram 3                                                                                                                                     |
+| Data                | PostgreSQL 16, Redis 7, MinIO (S3-compatible)                                                                                                 |
+| Frontend            | Next.js 15 (App Router, RSC), TypeScript 5.6+ strict, Tailwind v4, shadcn/ui, TanStack Query v5, Zustand, react-hook-form + zod, next-intl v4 |
+| Admin SPA           | Vite 5 + React 19 + React Router 7 (data API). No SSR — see ADR-0010                                                                          |
+| Mini App            | `@telegram-apps/sdk-react` v3                                                                                                                 |
+| API client          | `@hey-api/openapi-ts` generated from FastAPI's OpenAPI 3.1 schema                                                                             |
+| Monorepo            | pnpm workspaces + Turborepo (TS) + uv workspace (Python) + top-level Makefile                                                                 |
+| Reverse proxy / TLS | Caddy 2 (auto Let's Encrypt)                                                                                                                  |
+| Observability       | Prometheus + Grafana + Loki + Promtail, Sentry SaaS                                                                                           |
+| Email               | Resend or Postmark (SaaS)                                                                                                                     |
+| Secrets             | env files + `sops` + `age` (encrypted secrets committed to repo)                                                                              |
+| Backups             | `pg_dump` → age → rclone → Cloudflare R2                                                                                                      |
+| CI/CD               | GitHub Actions + GHCR + SSH deploy                                                                                                            |
+| Tests               | pytest + testcontainers + respx + hypothesis (Py); Vitest + Playwright + Testing Library (TS)                                                 |
+| Lint / format       | ruff, mypy --strict (Py); eslint flat config, prettier, tsc (TS); pre-commit + commitlint + gitleaks                                          |
 
 ---
 
@@ -107,18 +107,18 @@ yupay/
 
 ## 4. Where to put new code
 
-| You are adding... | It goes in... |
-|---|---|
+| You are adding...                          | It goes in...                                                                                                                                                                                      |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A new backend domain module (e.g. refunds) | `apps/api/src/yupay/modules/<name>/` with `api.py` (public interface), `routes.py`, `service.py`, `models.py`, `schemas.py`, `tests/`. Mount the router in `apps/api/src/yupay/api/v1/__init__.py` |
-| A new supplier integration | `apps/api/src/yupay/modules/integrations/adapters/<vendor>.py` implementing the `SupplierClient` protocol. Register in `integrations/registry.py` |
-| A new payment provider | `apps/api/src/yupay/modules/payments/gateways/<provider>.py` implementing the `PaymentGateway` protocol. Mount a webhook route in `apps/api/src/yupay/api/webhooks/<provider>.py` |
-| A new background task | `apps/worker/src/yupay_worker/tasks/<module>.py`. Tasks must be idempotent and accept an `idempotency_key` |
-| A periodic job | `apps/scheduler/src/yupay_scheduler/jobs/<name>.py` |
-| A reusable UI component | `packages/ui/src/components/<Component>/` with `Component.tsx`, `Component.stories.tsx`, `Component.test.tsx`, `index.ts` |
-| A page in web/miniapp | `apps/{web,miniapp}/src/app/[locale]/<segment>/page.tsx`. Add `loading.tsx`, `error.tsx`, optionally `metadata.ts` |
-| Translations | `packages/i18n/locales/{ru,en,uz}/<namespace>.json` — **all three locales updated in the same PR** |
-| A shared TS utility | `packages/utils/src/<feature>.ts`, with tests next to it |
-| Infra change | `infra/<service>/`, update both `docker-compose.yml` and `docker-compose.prod.yml` if applicable |
+| A new supplier integration                 | `apps/api/src/yupay/modules/integrations/adapters/<vendor>.py` implementing the `SupplierClient` protocol. Register in `integrations/registry.py`                                                  |
+| A new payment provider                     | `apps/api/src/yupay/modules/payments/gateways/<provider>.py` implementing the `PaymentGateway` protocol. Mount a webhook route in `apps/api/src/yupay/api/webhooks/<provider>.py`                  |
+| A new background task                      | `apps/worker/src/yupay_worker/tasks/<module>.py`. Tasks must be idempotent and accept an `idempotency_key`                                                                                         |
+| A periodic job                             | `apps/scheduler/src/yupay_scheduler/jobs/<name>.py`                                                                                                                                                |
+| A reusable UI component                    | `packages/ui/src/components/<Component>/` with `Component.tsx`, `Component.stories.tsx`, `Component.test.tsx`, `index.ts`                                                                          |
+| A page in web/miniapp                      | `apps/{web,miniapp}/src/app/[locale]/<segment>/page.tsx`. Add `loading.tsx`, `error.tsx`, optionally `metadata.ts`                                                                                 |
+| Translations                               | `packages/i18n/locales/{ru,en,uz}/<namespace>.json` — **all three locales updated in the same PR**                                                                                                 |
+| A shared TS utility                        | `packages/utils/src/<feature>.ts`, with tests next to it                                                                                                                                           |
+| Infra change                               | `infra/<service>/`, update both `docker-compose.yml` and `docker-compose.prod.yml` if applicable                                                                                                   |
 
 ---
 
@@ -128,14 +128,14 @@ yupay/
 > `docs-check` step flags suspicious mismatches between touched code paths and touched doc
 > paths. When unsure: **document first, code second** — the doc forces the design.
 
-| Change | Required doc update |
-|---|---|
-| New module or boundary change | `docs/architecture/module-map.md` + a Mermaid sequence diagram in `docs/architecture/sequence-diagrams/<flow>.mmd` + a `README.md` inside the module folder |
-| Architectural decision (new dep, new pattern, new infra service, framework upgrade, library swap) | New ADR at `docs/decisions/NNNN-<title>.md` using the MADR template (`docs/decisions/0000-template.md`) |
-| New operational concern (alert, failure mode, manual step) | New or updated file in `docs/runbooks/` |
-| New endpoint | Regenerate `docs/api/openapi.json` via `make gen-api` + add notes to `docs/api/README.md` if auth/idempotency/rate-limit details apply |
-| User-facing flow change | Update `docs/product/flows/<flow>.md` with a Mermaid sequence diagram |
-| Security-relevant change | Update `docs/security/threat-model.md` and `docs/security/pii-handling.md` as needed |
+| Change                                                                                            | Required doc update                                                                                                                                         |
+| ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| New module or boundary change                                                                     | `docs/architecture/module-map.md` + a Mermaid sequence diagram in `docs/architecture/sequence-diagrams/<flow>.mmd` + a `README.md` inside the module folder |
+| Architectural decision (new dep, new pattern, new infra service, framework upgrade, library swap) | New ADR at `docs/decisions/NNNN-<title>.md` using the MADR template (`docs/decisions/0000-template.md`)                                                     |
+| New operational concern (alert, failure mode, manual step)                                        | New or updated file in `docs/runbooks/`                                                                                                                     |
+| New endpoint                                                                                      | Regenerate `docs/api/openapi.json` via `make gen-api` + add notes to `docs/api/README.md` if auth/idempotency/rate-limit details apply                      |
+| User-facing flow change                                                                           | Update `docs/product/flows/<flow>.md` with a Mermaid sequence diagram                                                                                       |
+| Security-relevant change                                                                          | Update `docs/security/threat-model.md` and `docs/security/pii-handling.md` as needed                                                                        |
 
 ---
 
@@ -256,22 +256,22 @@ yupay/
 
 All entrypoints live in the root `Makefile`. **Prefer `make` targets over invoking raw tools.**
 
-| Target | What it does |
-|---|---|
-| `make bootstrap` | Install all deps (pnpm + uv), set up pre-commit, generate API client |
-| `make dev` | Bring up the full dev stack via docker-compose |
-| `make dev-api` / `make dev-web` / `make dev-miniapp` | Run one app in foreground |
-| `make migrate` | `alembic upgrade head` inside the api container |
-| `make migration name=add_x` | Create a new Alembic migration |
-| `make test` | Run all tests across Python and TS |
-| `make test-py` / `make test-ts` / `make test-e2e` | Targeted suites |
-| `make lint` / `make lint-fix` | Lint everything / autofix |
-| `make typecheck` | mypy + tsc |
-| `make gen-api` | Regenerate `docs/api/openapi.json` + `packages/api-client/` |
-| `make build` | Build all Docker images locally |
-| `make deploy env=prod` | Trigger deploy (only from CI; locally for staging) |
-| `make logs service=api` | Tail a service's logs |
-| `make backup` / `make restore file=...` | DB backup / restore |
+| Target                                               | What it does                                                         |
+| ---------------------------------------------------- | -------------------------------------------------------------------- |
+| `make bootstrap`                                     | Install all deps (pnpm + uv), set up pre-commit, generate API client |
+| `make dev`                                           | Bring up the full dev stack via docker-compose                       |
+| `make dev-api` / `make dev-web` / `make dev-miniapp` | Run one app in foreground                                            |
+| `make migrate`                                       | `alembic upgrade head` inside the api container                      |
+| `make migration name=add_x`                          | Create a new Alembic migration                                       |
+| `make test`                                          | Run all tests across Python and TS                                   |
+| `make test-py` / `make test-ts` / `make test-e2e`    | Targeted suites                                                      |
+| `make lint` / `make lint-fix`                        | Lint everything / autofix                                            |
+| `make typecheck`                                     | mypy + tsc                                                           |
+| `make gen-api`                                       | Regenerate `docs/api/openapi.json` + `packages/api-client/`          |
+| `make build`                                         | Build all Docker images locally                                      |
+| `make deploy env=prod`                               | Trigger deploy (only from CI; locally for staging)                   |
+| `make logs service=api`                              | Tail a service's logs                                                |
+| `make backup` / `make restore file=...`              | DB backup / restore                                                  |
 
 ---
 

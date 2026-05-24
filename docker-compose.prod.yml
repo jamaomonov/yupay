@@ -205,7 +205,12 @@ services:
       - ./infra/backup:/scripts:ro
       - backup-tmp:/tmp/backup
     depends_on: [postgres]
-    entrypoint: ["/bin/sh", "-c", "apk add --no-cache postgresql-client age rclone bash && /scripts/pg_backup.sh"]
+    entrypoint:
+      [
+        "/bin/sh",
+        "-c",
+        "apk add --no-cache postgresql-client age rclone bash && /scripts/pg_backup.sh",
+      ]
 
 volumes:
   postgres-data:

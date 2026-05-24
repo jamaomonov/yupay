@@ -6,6 +6,7 @@ admin-мутация. Cashback-правила, рефанды, FX-проводк
 прицепятся, когда заработают `promotions` и реальные эквайринги.
 
 См. также:
+
 - [`docs/decisions/0004-double-entry-ledger.md`](../../../../../docs/decisions/0004-double-entry-ledger.md) — почему double-entry
 - [`docs/decisions/0014-wallet-skeleton.md`](../../../../../docs/decisions/0014-wallet-skeleton.md) — что входит в скелет
 
@@ -16,17 +17,17 @@ admin-мутация. Cashback-правила, рефанды, FX-проводк
 
 ## Таксономия счетов
 
-| Kind | Normal side | Что значит |
-|---|---|---|
-| `user_wallet` | D | тратимый баланс пользователя |
-| `user_cashback` | D | накопленный кэшбэк |
-| `user_promo_credit` | D | промо/реферальный кредит |
-| `house_revenue` | C | выручка |
-| `house_cogs` | D | себестоимость |
-| `house_promo_expense` | D | промо-расходы |
-| `house_refunds` | D | контр-выручка |
-| `house_fx_pnl` | C | FX P&L |
-| `provider_clearing` | C | клиринг с эквайрингом (owner_id = slug) |
+| Kind                  | Normal side | Что значит                              |
+| --------------------- | ----------- | --------------------------------------- |
+| `user_wallet`         | D           | тратимый баланс пользователя            |
+| `user_cashback`       | D           | накопленный кэшбэк                      |
+| `user_promo_credit`   | D           | промо/реферальный кредит                |
+| `house_revenue`       | C           | выручка                                 |
+| `house_cogs`          | D           | себестоимость                           |
+| `house_promo_expense` | D           | промо-расходы                           |
+| `house_refunds`       | D           | контр-выручка                           |
+| `house_fx_pnl`        | C           | FX P&L                                  |
+| `provider_clearing`   | C           | клиринг с эквайрингом (owner_id = slug) |
 
 `balance(account)` = `SUM(amount WHERE direction = normal_side) − SUM(amount WHERE direction ≠ normal_side)`. Положительное число всегда означает «есть в кошельке».
 
@@ -48,6 +49,7 @@ async def admin_adjust(db, *, user_id, kind, currency, amount, reason, idempoten
 ```
 
 `post()`:
+
 - Реджектит `len(legs) < 2`, `amount ≤ 0`, валюту, не совпадающую со счётом, frozen-счёт.
 - Реплей по `idempotency_key` возвращает существующую транзакцию (без второго набора проводок).
 

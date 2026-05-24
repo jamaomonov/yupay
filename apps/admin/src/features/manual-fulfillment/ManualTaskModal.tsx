@@ -35,7 +35,6 @@ import { type ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { useDialog } from "@/lib/useDialog";
 
-
 interface Props {
   task: TaskAdminOut;
   onClose: () => void;
@@ -74,10 +73,7 @@ export function ManualTaskModal({ task, onClose }: Props) {
 
   const complete = useMutation<TaskAdminOut, ApiError, ManualCompleteIn>({
     mutationFn: (body) =>
-      apiPost<TaskAdminOut>(
-        `/api/v1/admin/fulfillment/tasks/${task.id}/complete`,
-        body,
-      ),
+      apiPost<TaskAdminOut>(`/api/v1/admin/fulfillment/tasks/${task.id}/complete`, body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: qk.manualQueue() });
       void qc.invalidateQueries({ queryKey: qk.fulfillmentTasks({}) });
@@ -88,10 +84,7 @@ export function ManualTaskModal({ task, onClose }: Props) {
 
   const fail = useMutation<TaskAdminOut, ApiError, ManualFailIn>({
     mutationFn: (body) =>
-      apiPost<TaskAdminOut>(
-        `/api/v1/admin/fulfillment/tasks/${task.id}/fail`,
-        body,
-      ),
+      apiPost<TaskAdminOut>(`/api/v1/admin/fulfillment/tasks/${task.id}/fail`, body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: qk.manualQueue() });
       void qc.invalidateQueries({ queryKey: qk.fulfillmentTasks({}) });
@@ -148,7 +141,9 @@ export function ManualTaskModal({ task, onClose }: Props) {
               active={tab === "complete"}
               id={completeTabId}
               controls={tabListIdComplete}
-              onClick={() => { setTab("complete"); }}
+              onClick={() => {
+                setTab("complete");
+              }}
               onKeyDown={onTabKeyDown}
             >
               Завершить
@@ -157,7 +152,9 @@ export function ManualTaskModal({ task, onClose }: Props) {
               active={tab === "fail"}
               id={failTabId}
               controls={tabListIdFail}
-              onClick={() => { setTab("fail"); }}
+              onClick={() => {
+                setTab("fail");
+              }}
               onKeyDown={onTabKeyDown}
             >
               Отклонить
@@ -173,13 +170,17 @@ export function ManualTaskModal({ task, onClose }: Props) {
         >
           {tab === "complete" ? (
             <CompleteForm
-              onSubmit={(body) => { complete.mutate(body); }}
+              onSubmit={(body) => {
+                complete.mutate(body);
+              }}
               pending={complete.isPending}
               error={complete.error}
             />
           ) : (
             <FailForm
-              onSubmit={(body) => { fail.mutate(body); }}
+              onSubmit={(body) => {
+                fail.mutate(body);
+              }}
               pending={fail.isPending}
               error={fail.error}
             />
@@ -242,14 +243,12 @@ function ContextBlock({
     ? display.brand_name
       ? `${display.brand_name} · ${display.denomination ?? display.sku_code}`
       : `${display.product_name || display.product_slug} · ${display.denomination ?? display.sku_code}`
-    : item?.sku_id ?? "—";
+    : (item?.sku_id ?? "—");
   const customer = order
-    ? order.guest_email ?? (order.user_id ? `user:${order.user_id}` : "—")
+    ? (order.guest_email ?? (order.user_id ? `user:${order.user_id}` : "—"))
     : "…";
   const fulfillmentData = item?.fulfillment_data ?? {};
-  const dataEntries = Object.entries(fulfillmentData).filter(
-    ([, v]) => v !== null && v !== "",
-  );
+  const dataEntries = Object.entries(fulfillmentData).filter(([, v]) => v !== null && v !== "");
 
   return (
     <section className="space-y-3 border-b px-4 py-3 text-sm">
@@ -304,15 +303,7 @@ function ContextBlock({
   );
 }
 
-function KeyValue({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
+function KeyValue({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div>
       <p className="text-xs font-medium uppercase text-[var(--text-secondary)]">{label}</p>
@@ -354,11 +345,7 @@ function CompleteForm({
     if (rawMode) {
       try {
         const parsed: unknown = JSON.parse(rawJson);
-        if (
-          !parsed ||
-          typeof parsed !== "object" ||
-          Array.isArray(parsed)
-        ) {
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
           setRawError("Артефакт должен быть JSON-объектом");
           return null;
         }
@@ -406,7 +393,9 @@ function CompleteForm({
         <FormField label="Тип артефакта">
           <select
             value={kind}
-            onChange={(e) => { setKind(e.target.value as ArtifactKind); }}
+            onChange={(e) => {
+              setKind(e.target.value as ArtifactKind);
+            }}
             className="flex h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
           >
             {Object.entries(ARTIFACT_KIND_LABEL).map(([v, label]) => (
@@ -419,7 +408,9 @@ function CompleteForm({
         <FormField label="Канал доставки">
           <select
             value={channel}
-            onChange={(e) => { setChannel(e.target.value as DeliveryChannel); }}
+            onChange={(e) => {
+              setChannel(e.target.value as DeliveryChannel);
+            }}
             className="flex h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
           >
             {CHANNELS.map((c) => (
@@ -437,7 +428,9 @@ function CompleteForm({
             <FormField label="Код">
               <Input
                 value={code}
-                onChange={(e) => { setCode(e.target.value); }}
+                onChange={(e) => {
+                  setCode(e.target.value);
+                }}
                 placeholder="MANUAL-XXXX-YYYY"
                 autoFocus
               />
@@ -447,7 +440,9 @@ function CompleteForm({
             <FormField label="Ключ">
               <Input
                 value={key}
-                onChange={(e) => { setKey(e.target.value); }}
+                onChange={(e) => {
+                  setKey(e.target.value);
+                }}
                 placeholder="AAAA-BBBB-CCCC-DDDD"
                 autoFocus
               />
@@ -459,7 +454,9 @@ function CompleteForm({
                 <FormField label="ID операции">
                   <Input
                     value={externalId}
-                    onChange={(e) => { setExternalId(e.target.value); }}
+                    onChange={(e) => {
+                      setExternalId(e.target.value);
+                    }}
                     placeholder="op_123456"
                     autoFocus
                   />
@@ -467,7 +464,9 @@ function CompleteForm({
                 <FormField label="Заметка (необязательно)">
                   <Input
                     value={receiptNote}
-                    onChange={(e) => { setReceiptNote(e.target.value); }}
+                    onChange={(e) => {
+                      setReceiptNote(e.target.value);
+                    }}
                     placeholder="Зачислено 1 000 UC"
                   />
                 </FormField>
@@ -476,7 +475,9 @@ function CompleteForm({
                 <Input
                   type="url"
                   value={proofUrl}
-                  onChange={(e) => { setProofUrl(e.target.value); }}
+                  onChange={(e) => {
+                    setProofUrl(e.target.value);
+                  }}
                   placeholder="https://drive.example.com/screenshot.png"
                 />
               </FormField>
@@ -487,7 +488,9 @@ function CompleteForm({
         <FormField label="JSON артефакта">
           <textarea
             value={rawJson}
-            onChange={(e) => { setRawJson(e.target.value); }}
+            onChange={(e) => {
+              setRawJson(e.target.value);
+            }}
             className="min-h-32 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2 font-mono text-xs"
             placeholder='{"code": "ABC-123"}'
           />
@@ -509,17 +512,15 @@ function CompleteForm({
       <FormField label="Внутренняя заметка (не видна клиенту)">
         <textarea
           value={adminNote}
-          onChange={(e) => { setAdminNote(e.target.value); }}
+          onChange={(e) => {
+            setAdminNote(e.target.value);
+          }}
           className="min-h-20 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2 text-sm"
         />
       </FormField>
 
-      {rawError && (
-        <p className="text-sm text-[var(--danger)]">{rawError}</p>
-      )}
-      {error && (
-        <p className="text-sm text-[var(--danger)]">{describeError(error)}</p>
-      )}
+      {rawError && <p className="text-sm text-[var(--danger)]">{rawError}</p>}
+      {error && <p className="text-sm text-[var(--danger)]">{describeError(error)}</p>}
 
       <div className="flex justify-end gap-2">
         <Button type="submit" disabled={pending}>
@@ -558,16 +559,14 @@ function FailForm({
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
-      <Field
-        label="Причина (видна в журнале заказа)"
-        error={localError ?? undefined}
-        required
-      >
+      <Field label="Причина (видна в журнале заказа)" error={localError ?? undefined} required>
         {({ inputProps }) => (
           <Input
             {...inputProps}
             value={reason}
-            onChange={(e) => { setReason(e.target.value); }}
+            onChange={(e) => {
+              setReason(e.target.value);
+            }}
             placeholder="нет в наличии / аккаунт заблокирован / …"
             autoFocus
           />
@@ -579,16 +578,17 @@ function FailForm({
           <textarea
             {...inputProps}
             value={adminNote}
-            onChange={(e) => { setAdminNote(e.target.value); }}
-            className="min-h-20 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus-visible:outline-none focus-visible:border-[var(--accent)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)]"
+            onChange={(e) => {
+              setAdminNote(e.target.value);
+            }}
+            className="focus-visible:ring-[var(--accent)]/30 min-h-20 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus-visible:border-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)]"
           />
         )}
       </Field>
 
       <p className="rounded-md border border-[var(--border-default)] bg-[var(--bg-muted)] p-3 text-xs text-[var(--text-secondary)]">
-        Заказ останется в статусе «в работе». Возврат денег инициируется
-        отдельно в разделе «Платежи» → «Refund», чтобы выдача и возврат
-        оставались под раздельным контролем.
+        Заказ останется в статусе «в работе». Возврат денег инициируется отдельно в разделе
+        «Платежи» → «Refund», чтобы выдача и возврат оставались под раздельным контролем.
       </p>
 
       {error && (
@@ -610,13 +610,7 @@ function FailForm({
 // that switch shape per ``artifact_kind`` — porting those onto <Field> needs a
 // design pass, not a mechanical rewrite. Style tokens updated to Dim Slate so
 // it matches the rest of the modal.
-function FormField({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function FormField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
       <span className="text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">

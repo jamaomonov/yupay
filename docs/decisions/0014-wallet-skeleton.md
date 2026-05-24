@@ -74,17 +74,17 @@ this order".
 
 ### Account taxonomy
 
-| Kind | Normal side | Meaning |
-|---|---|---|
-| `user_wallet` | D | Spendable balance (top-ups, FX in) |
-| `user_cashback` | D | Accrued cashback waiting for redemption |
-| `user_promo_credit` | D | Promo/referral credit |
-| `house_revenue` | C | Gross revenue |
-| `house_cogs` | D | Cost of goods sold |
-| `house_promo_expense` | D | Promo/cashback expense |
-| `house_refunds` | D | Contra-revenue (refunds out) |
-| `house_fx_pnl` | C | FX gain/loss bucket |
-| `provider_clearing` | C | Clearing per acquirer (owner_id = provider slug) |
+| Kind                  | Normal side | Meaning                                          |
+| --------------------- | ----------- | ------------------------------------------------ |
+| `user_wallet`         | D           | Spendable balance (top-ups, FX in)               |
+| `user_cashback`       | D           | Accrued cashback waiting for redemption          |
+| `user_promo_credit`   | D           | Promo/referral credit                            |
+| `house_revenue`       | C           | Gross revenue                                    |
+| `house_cogs`          | D           | Cost of goods sold                               |
+| `house_promo_expense` | D           | Promo/cashback expense                           |
+| `house_refunds`       | D           | Contra-revenue (refunds out)                     |
+| `house_fx_pnl`        | C           | FX gain/loss bucket                              |
+| `provider_clearing`   | C           | Clearing per acquirer (owner_id = provider slug) |
 
 The "normal side" determines which direction increases the balance. `balance()`
 returns `SUM(amount WHERE direction=normal_side) − SUM(amount WHERE direction≠normal_side)`.

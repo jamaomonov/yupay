@@ -26,12 +26,9 @@
         try {
           var stored = localStorage.getItem("yupay.admin.theme") || "system";
           var prefersDark =
-            window.matchMedia &&
-            window.matchMedia("(prefers-color-scheme: dark)").matches;
+            window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
           var effective =
-            stored === "dark" || (stored === "system" && prefersDark)
-              ? "dark"
-              : "light";
+            stored === "dark" || (stored === "system" && prefersDark) ? "dark" : "light";
           document.documentElement.setAttribute("data-theme", effective);
         } catch (e) {
           document.documentElement.setAttribute("data-theme", "light");

@@ -11,7 +11,6 @@ import { useToast } from "@/components/Toast";
 import { type ApiError, apiDelete, apiPatch, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
-
 interface GroupedProduct {
   product: Product;
   brand: Brand | undefined;
@@ -156,8 +155,7 @@ export function SkusListPage() {
     };
   }, [groups]);
 
-  const isLoading =
-    productsQuery.isLoading || brandsQuery.isLoading || skusQuery.isLoading;
+  const isLoading = productsQuery.isLoading || brandsQuery.isLoading || skusQuery.isLoading;
 
   return (
     <div>
@@ -180,9 +178,7 @@ export function SkusListPage() {
               disabled={bulkSetUzs.isPending}
               title="UZS price = cost_usdt × текущий курс USDT→UZS"
             >
-              <RefreshCcw
-                className={`size-4 ${bulkSetUzs.isPending ? "animate-spin" : ""}`}
-              />
+              <RefreshCcw className={`size-4 ${bulkSetUzs.isPending ? "animate-spin" : ""}`} />
               {bulkSetUzs.isPending ? "Считаем…" : "Обновить UZS-цены"}
             </Button>
             <Button onClick={() => navigate("/skus/new")}>
@@ -209,11 +205,13 @@ export function SkusListPage() {
       </section>
 
       <section className="mb-5 flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-64">
+        <div className="relative min-w-64 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--text-secondary)]" />
           <Input
             value={query}
-            onChange={(e) => { setQuery(e.target.value); }}
+            onChange={(e) => {
+              setQuery(e.target.value);
+            }}
             placeholder="Поиск по бренду, продукту, sku-code, региону…"
             className="pl-9"
           />
@@ -222,7 +220,9 @@ export function SkusListPage() {
           <input
             type="checkbox"
             checked={onlyInactive}
-            onChange={(e) => { setOnlyInactive(e.target.checked); }}
+            onChange={(e) => {
+              setOnlyInactive(e.target.checked);
+            }}
             className="size-4"
           />
           только неактивные
@@ -230,13 +230,13 @@ export function SkusListPage() {
       </section>
 
       {isLoading && (
-        <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-10 text-center text-sm text-[var(--text-secondary)]">
+        <div className="rounded-lg border bg-[var(--bg-surface)] p-10 text-center text-sm text-[var(--text-secondary)] shadow-[var(--shadow-sm)]">
           Загрузка…
         </div>
       )}
 
       {!isLoading && filtered.length === 0 && (
-        <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-10 text-center">
+        <div className="rounded-lg border bg-[var(--bg-surface)] p-10 text-center shadow-[var(--shadow-sm)]">
           <p className="text-sm text-[var(--text-secondary)]">
             {query.length > 0
               ? "Ничего не нашлось по этому запросу."
@@ -250,7 +250,9 @@ export function SkusListPage() {
           <ProductGroup
             key={g.product.id}
             group={g}
-            onToggle={(sku, next) => { toggleActive.mutate({ sku, next }); }}
+            onToggle={(sku, next) => {
+              toggleActive.mutate({ sku, next });
+            }}
             onDelete={(sku) => {
               if (confirm(`Удалить SKU «${sku.sku_code}»?`)) remove.mutate(sku);
             }}
@@ -297,16 +299,11 @@ function ProductGroup({
           </span>
           <span className="text-[var(--text-secondary)]">›</span>
           <h2 className="text-base font-semibold">
-            <Link
-              to={`/products/${group.product.id}`}
-              className="hover:underline"
-            >
+            <Link to={`/products/${group.product.id}`} className="hover:underline">
               {productName || group.product.slug}
             </Link>
           </h2>
-          <code className="ml-2 text-xs text-[var(--text-secondary)]">
-            {group.product.slug}
-          </code>
+          <code className="ml-2 text-xs text-[var(--text-secondary)]">{group.product.slug}</code>
           <span
             className={`ml-2 rounded-full px-2 py-0.5 text-xs ${
               group.skus.length > 0
@@ -320,9 +317,7 @@ function ProductGroup({
         <Button
           variant="secondary"
           size="sm"
-          onClick={() =>
-            navigate(`/skus/new?product_id=${group.product.id}`)
-          }
+          onClick={() => navigate(`/skus/new?product_id=${group.product.id}`)}
         >
           <Plus className="size-4" />
           Добавить SKU
@@ -355,9 +350,13 @@ function ProductGroup({
               <SkuRow
                 key={sku.id}
                 sku={sku}
-                onToggle={(next) => { onToggle(sku, next); }}
+                onToggle={(next) => {
+                  onToggle(sku, next);
+                }}
                 onEdit={() => navigate(`/skus/${sku.id}`)}
-                onDelete={() => { onDelete(sku); }}
+                onDelete={() => {
+                  onDelete(sku);
+                }}
                 disabled={isToggling || isDeleting}
               />
             ))}
@@ -384,7 +383,7 @@ function SkuRow({
   const usd = Number.parseFloat(sku.price_usd);
   return (
     <tr
-      className={`group border-t transition-colors hover:bg-[var(--bg-muted)]/60 ${
+      className={`hover:bg-[var(--bg-muted)]/60 group border-t transition-colors ${
         sku.active ? "" : "opacity-60"
       }`}
     >
@@ -403,9 +402,11 @@ function SkuRow({
         {Number.isNaN(usd) ? sku.price_usd : `$${usd.toFixed(2)}`}
       </td>
       <td className="px-3 py-2.5 text-right font-mono text-xs">
-        {sku.cost_usdt
-          ? (Number.parseFloat(sku.cost_usdt) || 0).toFixed(2)
-          : <span className="text-[var(--text-secondary)]">—</span>}
+        {sku.cost_usdt ? (
+          (Number.parseFloat(sku.cost_usdt) || 0).toFixed(2)
+        ) : (
+          <span className="text-[var(--text-secondary)]">—</span>
+        )}
       </td>
       <td className="px-3 py-2.5">
         {sku.price_overrides.length === 0 ? (
@@ -425,11 +426,7 @@ function SkuRow({
         )}
       </td>
       <td className="px-3 py-2.5 text-center">
-        <Toggle
-          checked={sku.active}
-          onChange={onToggle}
-          disabled={disabled}
-        />
+        <Toggle checked={sku.active} onChange={onToggle} disabled={disabled} />
       </td>
       <td className="px-3 py-2.5 text-right font-mono text-xs text-[var(--text-secondary)]">
         {sku.sort_order}
@@ -437,7 +434,9 @@ function SkuRow({
       <td className="px-3 py-2.5 text-right">
         <div
           className="flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100"
-          onClick={(e) => { e.stopPropagation(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
         >
           <Button
             type="button"
@@ -478,12 +477,12 @@ function Toggle({
       type="button"
       role="switch"
       aria-checked={checked}
-      onClick={() => { onChange(!checked); }}
+      onClick={() => {
+        onChange(!checked);
+      }}
       disabled={disabled}
       className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-        checked
-          ? "bg-[var(--accent)]"
-          : "bg-[var(--color-border)]"
+        checked ? "bg-[var(--accent)]" : "bg-[var(--color-border)]"
       } disabled:cursor-not-allowed disabled:opacity-50`}
     >
       <span
@@ -512,11 +511,9 @@ function StatCard({
       ? "text-[var(--danger)]"
       : "text-[var(--text-primary)]";
   return (
-    <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
+    <div className="rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
       <div className={`text-2xl font-semibold ${valueCls}`}>{value}</div>
-      <div className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">
-        {label}
-      </div>
+      <div className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">{label}</div>
     </div>
   );
 }

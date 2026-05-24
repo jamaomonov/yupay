@@ -36,9 +36,7 @@ export const CURRENCY_SYMBOL: Record<DisplayCurrency, string> = {
 };
 
 function isDisplayCurrency(value: string | undefined | null): value is DisplayCurrency {
-  return (
-    value != null && (DISPLAY_CURRENCIES as readonly string[]).includes(value)
-  );
+  return value != null && (DISPLAY_CURRENCIES as readonly string[]).includes(value);
 }
 
 /**

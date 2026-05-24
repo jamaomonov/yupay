@@ -37,12 +37,7 @@ import {
 } from "@/lib/orders";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
-const PROCESSING: OrderStatus[] = [
-  "pending_payment",
-  "paid",
-  "fulfilling",
-  "fulfilled",
-];
+const PROCESSING: OrderStatus[] = ["pending_payment", "paid", "fulfilling", "fulfilled"];
 
 const TERMINAL_FAIL: OrderStatus[] = ["cancelled", "expired", "refunded"];
 
@@ -78,8 +73,12 @@ function useElapsedSeconds(start: string | null | undefined, active: boolean): n
     if (!active) return;
     // 5s tick is enough — thresholds are minute-grained, sub-second precision
     // is wasted CPU and battery.
-    const id = window.setInterval(() => { setNow(Date.now()); }, 5_000);
-    return () => { window.clearInterval(id); };
+    const id = window.setInterval(() => {
+      setNow(Date.now());
+    }, 5_000);
+    return () => {
+      window.clearInterval(id);
+    };
   }, [active]);
   if (!start) return 0;
   const startedAt = new Date(start).getTime();
@@ -162,26 +161,29 @@ export default function OrderSuccess() {
   // we run a different number of hooks on first render (loading) vs second
   // (data), which is the classic "Rendered more hooks than during the
   // previous render" violation.
-  const isProcessingOrUnknown = order
-    ? PROCESSING.includes(order.status)
-    : false;
-  const elapsed = useElapsedSeconds(
-    order?.paid_at ?? order?.created_at,
-    isProcessingOrUnknown,
-  );
+  const isProcessingOrUnknown = order ? PROCESSING.includes(order.status) : false;
+  const elapsed = useElapsedSeconds(order?.paid_at ?? order?.created_at, isProcessingOrUnknown);
 
   if (!orderId) {
     return (
       <ErrorView
         title="Заказ не найден"
         subtitle="Попробуйте открыть страницу из истории."
-        onHome={() => { setLocation("/"); }}
+        onHome={() => {
+          setLocation("/");
+        }}
       />
     );
   }
 
   if (orderQuery.isLoading || !order) {
-    return <SkeletonView onBack={() => { setLocation("/"); }} />;
+    return (
+      <SkeletonView
+        onBack={() => {
+          setLocation("/");
+        }}
+      />
+    );
   }
 
   const stage = STAGE[order.status];
@@ -197,10 +199,12 @@ export default function OrderSuccess() {
       transition={{ duration: 0.22 }}
       className="space-y-4 pb-6"
     >
-      <header className="px-4 pt-3 flex items-center gap-3">
+      <header className="flex items-center gap-3 px-4 pt-3">
         <button
-          onClick={() => { setLocation("/history"); }}
-          className="size-9 rounded-xl flex items-center justify-center"
+          onClick={() => {
+            setLocation("/history");
+          }}
+          className="flex size-9 items-center justify-center rounded-xl"
           style={{
             background: "hsl(var(--card))",
             border: "1px solid hsl(var(--border))",
@@ -209,11 +213,9 @@ export default function OrderSuccess() {
         >
           <ArrowLeft size={15} className="text-white/60" />
         </button>
-        <div className="flex-1 min-w-0">
-          <p className="text-[10px] uppercase tracking-[0.08em] text-white/35">
-            Заказ
-          </p>
-          <p className="text-white text-sm font-mono leading-tight truncate">
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] uppercase tracking-[0.08em] text-white/35">Заказ</p>
+          <p className="truncate font-mono text-sm leading-tight text-white">
             {order.id.slice(0, 8)}…
           </p>
         </div>
@@ -231,7 +233,7 @@ export default function OrderSuccess() {
       {/* Per-item delivery artifacts. The "awaiting" placeholder is gated
           on actual fulfilment activity (see AWAITING_DELIVERY) — for
           unpaid / expired / cancelled orders we render just the item line. */}
-      <section className="px-4 space-y-2">
+      <section className="space-y-2 px-4">
         {order.items.map((item) => (
           <ItemCard
             key={item.id}
@@ -245,22 +247,18 @@ export default function OrderSuccess() {
 
       <Summary order={order} />
 
-      <div className="px-4 grid grid-cols-2 gap-3 pt-2">
+      <div className="grid grid-cols-2 gap-3 px-4 pt-2">
         <Link
-          href={order.items[0]?.display?.brand_slug ? `/topup/${order.items[0].display.brand_slug}` : "/"}
+          href={
+            order.items[0]?.display?.brand_slug
+              ? `/topup/${order.items[0].display.brand_slug}`
+              : "/"
+          }
         >
-          <ActionButton
-            icon={<Sparkles size={15} />}
-            label="Купить ещё"
-            variant="primary"
-          />
+          <ActionButton icon={<Sparkles size={15} />} label="Купить ещё" variant="primary" />
         </Link>
         <Link href="/history">
-          <ActionButton
-            icon={<Receipt size={15} />}
-            label="История"
-            variant="secondary"
-          />
+          <ActionButton icon={<Receipt size={15} />} label="История" variant="secondary" />
         </Link>
       </div>
     </motion.div>
@@ -318,7 +316,7 @@ function StatusCard({
       >
         {/* Glow */}
         <div
-          className="pointer-events-none absolute -top-12 -right-12 size-44 rounded-full blur-3xl opacity-30"
+          className="pointer-events-none absolute -right-12 -top-12 size-44 rounded-full opacity-30 blur-3xl"
           style={{ background: accent }}
         />
 
@@ -334,26 +332,22 @@ function StatusCard({
         >
           <StatusIcon tone={tone} />
           <div className="min-w-0 flex-1">
-            <div className="flex items-baseline gap-2 flex-wrap">
-              <h1 className="text-white text-lg font-bold leading-tight">
-                {stage.title}
-              </h1>
+            <div className="flex flex-wrap items-baseline gap-2">
+              <h1 className="text-lg font-bold leading-tight text-white">{stage.title}</h1>
               {isProcessing && elapsedSeconds > 0 && (
-                <span className="text-[11px] text-white/35 font-medium tabular-nums">
+                <span className="text-[11px] font-medium tabular-nums text-white/35">
                   · {formatElapsed(elapsedSeconds)}
                 </span>
               )}
             </div>
-            <p className="text-white/55 text-xs mt-0.5 leading-snug">
-              {subtitle}
-            </p>
+            <p className="mt-0.5 text-xs leading-snug text-white/55">{subtitle}</p>
           </div>
         </div>
 
         {/* Progress strip — only while in motion. */}
         {isProcessing && (
           <div
-            className="relative mt-4 h-1 rounded-full bg-white/5 overflow-hidden"
+            className="relative mt-4 h-1 overflow-hidden rounded-full bg-white/5"
             role="progressbar"
             aria-valuetext="Обработка заказа"
             aria-busy="true"
@@ -386,9 +380,9 @@ function StatusCard({
               border: "1px solid hsl(var(--border))",
             }}
           >
-            <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex min-w-0 items-center gap-2.5">
               <div
-                className="size-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                className="flex size-7 flex-shrink-0 items-center justify-center rounded-lg"
                 style={{
                   background: "hsl(var(--primary) / 0.15)",
                   color: "hsl(var(--primary))",
@@ -398,17 +392,15 @@ function StatusCard({
                 <HeadphonesIcon size={13} />
               </div>
               <div className="min-w-0">
-                <p className="text-white text-xs font-semibold leading-tight">
-                  {isDelayed
-                    ? "Написать в поддержку"
-                    : "Долго? Напишите в поддержку"}
+                <p className="text-xs font-semibold leading-tight text-white">
+                  {isDelayed ? "Написать в поддержку" : "Долго? Напишите в поддержку"}
                 </p>
-                <p className="text-white/40 text-[10px] mt-0.5 leading-tight truncate">
+                <p className="mt-0.5 truncate text-[10px] leading-tight text-white/40">
                   Скопируем номер заказа автоматически
                 </p>
               </div>
             </div>
-            <ExternalLink size={13} className="text-white/40 flex-shrink-0" />
+            <ExternalLink size={13} className="flex-shrink-0 text-white/40" />
           </motion.a>
         )}
       </div>
@@ -416,21 +408,16 @@ function StatusCard({
   );
 }
 
-function StatusIcon({
-  tone,
-}: {
-  tone: "delivered" | "failed" | "processing" | "neutral";
-}) {
+function StatusIcon({ tone }: { tone: "delivered" | "failed" | "processing" | "neutral" }) {
   if (tone === "delivered") {
     return (
       <motion.div
         initial={{ scale: 0.6, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ type: "spring", stiffness: 280, damping: 18 }}
-        className="size-11 rounded-2xl flex items-center justify-center flex-shrink-0"
+        className="flex size-11 flex-shrink-0 items-center justify-center rounded-2xl"
         style={{
-          background:
-            "linear-gradient(140deg, hsl(var(--primary)) 0%, hsl(84 100% 70%) 100%)",
+          background: "linear-gradient(140deg, hsl(var(--primary)) 0%, hsl(84 100% 70%) 100%)",
           boxShadow: "0 8px 24px hsl(var(--primary) / 0.4)",
         }}
       >
@@ -441,7 +428,7 @@ function StatusIcon({
   if (tone === "failed") {
     return (
       <div
-        className="size-11 rounded-2xl flex items-center justify-center flex-shrink-0"
+        className="flex size-11 flex-shrink-0 items-center justify-center rounded-2xl"
         style={{ background: "rgba(239, 68, 68, 0.18)" }}
       >
         <XCircle size={22} className="text-red-400" />
@@ -450,10 +437,10 @@ function StatusIcon({
   }
   return (
     <div
-      className="size-11 rounded-2xl flex items-center justify-center flex-shrink-0"
+      className="flex size-11 flex-shrink-0 items-center justify-center rounded-2xl"
       style={{ background: "rgba(255, 255, 255, 0.05)" }}
     >
-      <Loader2 size={20} className="text-white/70 animate-spin" />
+      <Loader2 size={20} className="animate-spin text-white/70" />
     </div>
   );
 }
@@ -492,25 +479,21 @@ function ItemCard({
         {display?.image_url ? (
           <img
             src={display.image_url}
-            className="size-11 rounded-xl object-cover flex-shrink-0"
+            className="size-11 flex-shrink-0 rounded-xl object-cover"
             alt=""
           />
         ) : (
           <div
-            className="size-11 rounded-xl flex items-center justify-center flex-shrink-0 text-sm font-bold text-white/40"
+            className="flex size-11 flex-shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white/40"
             style={{ background: "hsl(var(--surface-2))" }}
           >
             {display?.brand_name?.[0]?.toUpperCase() ?? "?"}
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <p className="text-white text-sm font-semibold leading-tight truncate">
-            {headline}
-          </p>
-          <p className="text-white/40 text-[11px] mt-0.5 flex items-center gap-1.5">
-            <span>
-              {Number.parseFloat(item.unit_price_usd).toFixed(2)} USD
-            </span>
+          <p className="truncate text-sm font-semibold leading-tight text-white">{headline}</p>
+          <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-white/40">
+            <span>{Number.parseFloat(item.unit_price_usd).toFixed(2)} USD</span>
             {item.qty > 1 && (
               <>
                 <span>·</span>
@@ -524,10 +507,7 @@ function ItemCard({
       <AnimatePresence>
         {delivery ? (
           isTopUp ? (
-            <TopUpReceipt
-              delivery={delivery}
-              fulfillmentData={item.fulfillment_data}
-            />
+            <TopUpReceipt delivery={delivery} fulfillmentData={item.fulfillment_data} />
           ) : (
             <ArtifactBlock delivery={delivery} />
           )
@@ -586,7 +566,7 @@ function TopUpReceipt({
   const fields = artifactSnapshot ?? fulfillmentData;
 
   const entries = Object.entries(fields).filter(
-    ([, v]) => typeof v === "string" && (v).trim().length > 0,
+    ([, v]) => typeof v === "string" && v.trim().length > 0,
   ) as [string, string][];
 
   return (
@@ -597,13 +577,13 @@ function TopUpReceipt({
     >
       <div className="flex items-center gap-1.5">
         <span
-          className="text-[10px] uppercase tracking-[0.08em] font-semibold"
+          className="text-[10px] font-semibold uppercase tracking-[0.08em]"
           style={{ color: "hsl(var(--primary))" }}
         >
           Зачислено
         </span>
-        <span className="text-white/25 text-[10px]">·</span>
-        <span className="text-white/35 text-[10px]">
+        <span className="text-[10px] text-white/25">·</span>
+        <span className="text-[10px] text-white/35">
           {new Date(delivery.delivered_at).toLocaleString("ru", {
             day: "2-digit",
             month: "short",
@@ -615,7 +595,7 @@ function TopUpReceipt({
 
       {entries.length > 0 && (
         <div
-          className="rounded-xl p-3 space-y-1.5"
+          className="space-y-1.5 rounded-xl p-3"
           style={{
             background: "hsl(var(--surface-2))",
             border: "1px solid hsl(var(--border))",
@@ -624,9 +604,7 @@ function TopUpReceipt({
           {entries.map(([key, value]) => (
             <div key={key} className="flex items-baseline justify-between gap-3 text-xs">
               <span className="text-white/50">{labelForField(key)}</span>
-              <span className="text-white font-mono text-right truncate max-w-[60%]">
-                {value}
-              </span>
+              <span className="max-w-[60%] truncate text-right font-mono text-white">{value}</span>
             </div>
           ))}
         </div>
@@ -664,25 +642,19 @@ function ArtifactBlock({ delivery }: { delivery: DeliveryOut }) {
   const code = typeof delivery.artifact.code === "string" ? delivery.artifact.code : null;
   const key = typeof delivery.artifact.key === "string" ? delivery.artifact.key : null;
   const receipt =
-    typeof delivery.artifact.external_id === "string"
-      ? delivery.artifact.external_id
-      : null;
+    typeof delivery.artifact.external_id === "string" ? delivery.artifact.external_id : null;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: -8 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="mt-3"
-    >
-      <div className="flex items-center gap-1.5 mb-1.5">
+    <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mt-3">
+      <div className="mb-1.5 flex items-center gap-1.5">
         <span
-          className="text-[10px] uppercase tracking-[0.08em] font-semibold"
+          className="text-[10px] font-semibold uppercase tracking-[0.08em]"
           style={{ color: "hsl(var(--primary))" }}
         >
           {labelForKind(delivery.artifact_kind)}
         </span>
-        <span className="text-white/25 text-[10px]">·</span>
-        <span className="text-white/35 text-[10px]">
+        <span className="text-[10px] text-white/25">·</span>
+        <span className="text-[10px] text-white/35">
           {new Date(delivery.delivered_at).toLocaleString("ru", {
             day: "2-digit",
             month: "short",
@@ -692,23 +664,13 @@ function ArtifactBlock({ delivery }: { delivery: DeliveryOut }) {
         </span>
       </div>
 
-      {code && (
-        <CopyableValue
-          value={code}
-          label="Код"
-          onCopy={(v) => void onCopy(v, "Код")}
-        />
-      )}
+      {code && <CopyableValue value={code} label="Код" onCopy={(v) => void onCopy(v, "Код")} />}
       {!code && key && (
-        <CopyableValue
-          value={key}
-          label="Ключ"
-          onCopy={(v) => void onCopy(v, "Ключ")}
-        />
+        <CopyableValue value={key} label="Ключ" onCopy={(v) => void onCopy(v, "Ключ")} />
       )}
       {!code && !key && receipt && (
         <div
-          className="rounded-xl px-3 py-2.5 text-xs text-white/75 leading-snug"
+          className="rounded-xl px-3 py-2.5 text-xs leading-snug text-white/75"
           style={{
             background: "hsl(var(--surface-2))",
             border: "1px solid hsl(var(--border))",
@@ -720,7 +682,7 @@ function ArtifactBlock({ delivery }: { delivery: DeliveryOut }) {
       )}
       {!code && !key && !receipt && (
         <pre
-          className="rounded-xl px-3 py-2.5 text-[11px] text-white/65 leading-snug whitespace-pre-wrap font-mono overflow-x-auto"
+          className="overflow-x-auto whitespace-pre-wrap rounded-xl px-3 py-2.5 font-mono text-[11px] leading-snug text-white/65"
           style={{
             background: "hsl(var(--surface-2))",
             border: "1px solid hsl(var(--border))",
@@ -755,21 +717,21 @@ function CopyableValue({
 }) {
   return (
     <button
-      onClick={() => { onCopy(value); }}
-      className="group w-full text-left rounded-xl px-3 py-3 flex items-center gap-3 transition-colors active:scale-[0.99]"
+      onClick={() => {
+        onCopy(value);
+      }}
+      className="group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors active:scale-[0.99]"
       style={{
         background: "hsl(var(--surface-2))",
         border: "1.5px solid hsl(var(--primary) / 0.45)",
       }}
     >
-      <div className="flex-1 min-w-0">
-        <p className="text-white/40 text-[10px] uppercase tracking-wide">
-          {label}
-        </p>
-        <p className="text-white text-sm font-mono mt-0.5 break-all">{value}</p>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] uppercase tracking-wide text-white/40">{label}</p>
+        <p className="mt-0.5 break-all font-mono text-sm text-white">{value}</p>
       </div>
       <div
-        className="size-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors"
+        className="flex size-8 flex-shrink-0 items-center justify-center rounded-lg transition-colors"
         style={{ background: "hsl(var(--primary) / 0.18)" }}
       >
         <Copy size={13} style={{ color: "hsl(var(--primary))" }} />
@@ -784,7 +746,7 @@ function Summary({ order }: { order: OrderOut }) {
   return (
     <div className="px-4">
       <div
-        className="rounded-2xl p-4 space-y-1.5 text-xs"
+        className="space-y-1.5 rounded-2xl p-4 text-xs"
         style={{
           background: "hsl(var(--surface-1))",
           border: "1px solid hsl(var(--border))",
@@ -796,9 +758,7 @@ function Summary({ order }: { order: OrderOut }) {
         />
         <Row label="Создан" value={fmtDate(order.created_at)} />
         {order.paid_at && <Row label="Оплачен" value={fmtDate(order.paid_at)} />}
-        {order.delivered_at && (
-          <Row label="Выдан" value={fmtDate(order.delivered_at)} />
-        )}
+        {order.delivered_at && <Row label="Выдан" value={fmtDate(order.delivered_at)} />}
       </div>
     </div>
   );
@@ -808,7 +768,7 @@ function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between">
       <span className="text-white/45">{label}</span>
-      <span className="text-white font-medium">{value}</span>
+      <span className="font-medium text-white">{value}</span>
     </div>
   );
 }
@@ -837,13 +797,11 @@ function ActionButton({
   return (
     <button
       type="button"
-      className="w-full rounded-2xl py-3 flex items-center justify-center gap-2 text-sm font-semibold transition-transform active:scale-[0.97]"
+      className="flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-sm font-semibold transition-transform active:scale-[0.97]"
       style={{
         background: primary ? "hsl(var(--primary))" : "hsl(var(--surface-2))",
         color: primary ? "hsl(var(--primary-foreground))" : "rgba(255,255,255,0.85)",
-        border: primary
-          ? "1px solid hsl(var(--primary))"
-          : "1px solid hsl(var(--border))",
+        border: primary ? "1px solid hsl(var(--primary))" : "1px solid hsl(var(--border))",
       }}
     >
       {icon}
@@ -857,10 +815,10 @@ function ActionButton({
 function SkeletonView({ onBack }: { onBack: () => void }) {
   return (
     <div className="space-y-4 pb-6">
-      <header className="px-4 pt-3 flex items-center gap-3">
+      <header className="flex items-center gap-3 px-4 pt-3">
         <button
           onClick={onBack}
-          className="size-9 rounded-xl flex items-center justify-center"
+          className="flex size-9 items-center justify-center rounded-xl"
           style={{
             background: "hsl(var(--card))",
             border: "1px solid hsl(var(--border))",
@@ -869,21 +827,21 @@ function SkeletonView({ onBack }: { onBack: () => void }) {
           <ArrowLeft size={15} className="text-white/60" />
         </button>
         <div
-          className="flex-1 h-3 rounded animate-pulse"
+          className="h-3 flex-1 animate-pulse rounded"
           style={{ background: "hsl(var(--surface-2))" }}
         />
       </header>
       <div className="px-4">
         <div
-          className="h-28 rounded-3xl animate-pulse"
+          className="h-28 animate-pulse rounded-3xl"
           style={{ background: "hsl(var(--surface-1))" }}
         />
       </div>
-      <div className="px-4 space-y-2">
+      <div className="space-y-2 px-4">
         {Array.from({ length: 2 }).map((_, i) => (
           <div
             key={i}
-            className="h-20 rounded-2xl animate-pulse"
+            className="h-20 animate-pulse rounded-2xl"
             style={{ background: "hsl(var(--surface-1))" }}
           />
         ))}
@@ -902,15 +860,15 @@ function ErrorView({
   onHome: () => void;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center px-6 py-16 gap-4 text-center">
+    <div className="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
       <ShoppingBag size={40} className="text-white/20" />
       <div>
-        <p className="text-white font-semibold">{title}</p>
-        <p className="text-white/45 text-xs mt-1">{subtitle}</p>
+        <p className="font-semibold text-white">{title}</p>
+        <p className="mt-1 text-xs text-white/45">{subtitle}</p>
       </div>
       <button
         onClick={onHome}
-        className="px-5 py-2 rounded-full text-sm font-semibold"
+        className="rounded-full px-5 py-2 text-sm font-semibold"
         style={{
           background: "hsl(var(--primary))",
           color: "hsl(var(--primary-foreground))",

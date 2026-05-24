@@ -17,5 +17,8 @@
       "default": "./tokens.css"
     }
   },
-  "files": ["preset.css", "tokens.css"]
+  "files": [
+    "preset.css",
+    "tokens.css"
+  ]
 }

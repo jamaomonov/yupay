@@ -18,7 +18,6 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
-
 const STUCK_AFTER_MS = 30 * 60_000;
 
 export function StuckTab() {
@@ -26,9 +25,7 @@ export function StuckTab() {
   const query = useQuery<TaskListOut>({
     queryKey: [...qk.fulfillmentTasks({ status: "in_progress" }), "stuck"],
     queryFn: () =>
-      apiGet<TaskListOut>(
-        "/api/v1/admin/fulfillment/tasks?status_filter=in_progress&limit=200",
-      ),
+      apiGet<TaskListOut>("/api/v1/admin/fulfillment/tasks?status_filter=in_progress&limit=200"),
     refetchInterval: 30_000,
   });
 
@@ -42,9 +39,7 @@ export function StuckTab() {
     {
       key: "order",
       header: "Order",
-      render: (t) => (
-        <span className="font-mono text-xs">{t.order_id.slice(0, 8)}…</span>
-      ),
+      render: (t) => <span className="font-mono text-xs">{t.order_id.slice(0, 8)}…</span>,
       className: "w-28",
     },
     {
@@ -84,16 +79,16 @@ export function StuckTab() {
         Задачи в работе дольше 30 минут. Чем дольше ждёт — тем хуже SLA.
       </p>
       {query.isError && (
-        <p className="mb-3 text-sm text-[var(--danger)]">
-          Не удалось загрузить список.
-        </p>
+        <p className="mb-3 text-sm text-[var(--danger)]">Не удалось загрузить список.</p>
       )}
       <DataTable
         rows={stuck}
         columns={columns}
         rowKey={(t) => t.id}
         empty="Нет задач, пересидевших порог 30 мин."
-        onRowClick={(t) => { void navigate(`/orders/${t.order_id}`); }}
+        onRowClick={(t) => {
+          void navigate(`/orders/${t.order_id}`);
+        }}
       />
     </div>
   );
@@ -102,8 +97,7 @@ export function StuckTab() {
 function SlaBadge({ createdAt }: { createdAt: string }) {
   const ageMs = Date.now() - new Date(createdAt).getTime();
   const ageMin = Math.floor(ageMs / 60_000);
-  const tone =
-    ageMin >= 120 ? "danger" : ageMin >= 60 ? "warn" : "info";
+  const tone = ageMin >= 120 ? "danger" : ageMin >= 60 ? "warn" : "info";
   const cls =
     tone === "danger"
       ? "bg-[var(--danger-soft)] text-[var(--danger-fg)]"

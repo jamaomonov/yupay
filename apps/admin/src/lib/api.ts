@@ -8,7 +8,7 @@
 const TOKEN_KEY = "yupay.admin.access_token";
 const REFRESH_KEY = "yupay.admin.refresh_token";
 
-const apiBase = (import.meta.env.VITE_API_BASE_URL) ?? "";
+const apiBase = import.meta.env.VITE_API_BASE_URL ?? "";
 
 export class ApiError extends Error {
   constructor(
@@ -44,10 +44,7 @@ export interface RequestOptions extends RequestInit {
   anonymous?: boolean;
 }
 
-export async function api<T = unknown>(
-  path: string,
-  options: RequestOptions = {},
-): Promise<T> {
+export async function api<T = unknown>(path: string, options: RequestOptions = {}): Promise<T> {
   const { anonymous, headers, ...init } = options;
   const url = path.startsWith("http") ? path : `${apiBase}${path}`;
   const h = new Headers(headers);

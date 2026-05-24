@@ -55,8 +55,7 @@ export function WebhooksPage() {
   const [onlyProblems, setOnlyProblems] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  const sigOk =
-    sig === "ok" ? true : sig === "bad" ? false : null;
+  const sigOk = sig === "ok" ? true : sig === "bad" ? false : null;
 
   const q = useQuery<WebhookListOut>({
     queryKey: [
@@ -71,23 +70,14 @@ export function WebhooksPage() {
       if (provider) params.set("provider", provider);
       if (sigOk !== null) params.set("signature_ok", String(sigOk));
       params.set("limit", "200");
-      return apiGet<WebhookListOut>(
-        `/api/v1/admin/webhooks?${params.toString()}`,
-      );
+      return apiGet<WebhookListOut>(`/api/v1/admin/webhooks?${params.toString()}`);
     },
     refetchInterval: 15_000,
   });
 
-  const resolveMutation = useMutation<
-    WebhookOut,
-    ApiError,
-    { id: string; reason: string }
-  >({
+  const resolveMutation = useMutation<WebhookOut, ApiError, { id: string; reason: string }>({
     mutationFn: ({ id, reason }) =>
-      apiPost<WebhookOut>(
-        `/api/v1/admin/webhooks/${id}/mark-resolved`,
-        { reason },
-      ),
+      apiPost<WebhookOut>(`/api/v1/admin/webhooks/${id}/mark-resolved`, { reason }),
     onSuccess: () => {
       toast.success("Webhook помечен как разобранный.");
       void qc.invalidateQueries({ queryKey: ["admin", "webhooks"] });
@@ -103,10 +93,7 @@ export function WebhooksPage() {
     // "Problem" = bad signature OR never processed OR previously stamped
     // as resolved (so an operator can audit what they already touched).
     return allRows.filter(
-      (w) =>
-        !w.signature_ok ||
-        w.processed_at === null ||
-        w.payload._admin_resolved !== undefined,
+      (w) => !w.signature_ok || w.processed_at === null || w.payload._admin_resolved !== undefined,
     );
   }, [allRows, onlyProblems]);
 
@@ -165,8 +152,7 @@ export function WebhooksPage() {
     {
       key: "processed",
       header: "Обработан",
-      render: (w) =>
-        w.processed_at ? formatDate(w.processed_at) : "—",
+      render: (w) => (w.processed_at ? formatDate(w.processed_at) : "—"),
       className: "w-36",
     },
     {
@@ -192,15 +178,16 @@ export function WebhooksPage() {
       render: (w) => {
         const alreadyResolved = w.payload._admin_resolved !== undefined;
         // Only show the action when the row needs operator attention.
-        const needsResolution =
-          !w.signature_ok || w.processed_at === null || alreadyResolved;
+        const needsResolution = !w.signature_ok || w.processed_at === null || alreadyResolved;
         if (!needsResolution) {
           return <span className="text-xs text-[var(--text-secondary)]">—</span>;
         }
         return (
           <div
             className="flex justify-end"
-            onClick={(e) => { e.stopPropagation(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
           >
             <Button
               type="button"
@@ -208,9 +195,7 @@ export function WebhooksPage() {
               size="sm"
               disabled={resolveMutation.isPending}
               onClick={() => {
-                const fallback = alreadyResolved
-                  ? w.payload._admin_resolved?.reason ?? ""
-                  : "";
+                const fallback = alreadyResolved ? (w.payload._admin_resolved?.reason ?? "") : "";
                 const reason = window.prompt(
                   `Почему этот webhook разобран?\n${
                     !w.signature_ok ? "(rejected signature)" : "(не обработан)"
@@ -241,15 +226,8 @@ export function WebhooksPage() {
         title="Входящие webhooks"
         description="Аудит подписей и payload-ов. Полезно для разбора, почему провайдер прислал событие со странной shape."
         actions={
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => q.refetch()}
-            disabled={q.isFetching}
-          >
-            <RotateCcw
-              className={`size-4 ${q.isFetching ? "animate-spin" : ""}`}
-            />
+          <Button type="button" variant="ghost" onClick={() => q.refetch()} disabled={q.isFetching}>
+            <RotateCcw className={`size-4 ${q.isFetching ? "animate-spin" : ""}`} />
             Обновить
           </Button>
         }
@@ -262,16 +240,15 @@ export function WebhooksPage() {
           value={counters.rejected}
           tone={counters.rejected > 0 ? "warn" : "muted"}
         />
-        <StatCard
-          label="Провайдеров"
-          value={counters.providers}
-        />
+        <StatCard label="Провайдеров" value={counters.providers} />
       </section>
 
       <section className="mb-5 flex flex-wrap items-center gap-3">
         <select
           value={provider}
-          onChange={(e) => { setProvider(e.target.value); }}
+          onChange={(e) => {
+            setProvider(e.target.value);
+          }}
           className="h-10 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
         >
           {PROVIDERS.map((p) => (
@@ -282,7 +259,9 @@ export function WebhooksPage() {
         </select>
         <select
           value={sig}
-          onChange={(e) => { setSig(e.target.value as "all" | "ok" | "bad"); }}
+          onChange={(e) => {
+            setSig(e.target.value as "all" | "ok" | "bad");
+          }}
           className="h-10 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
         >
           {SIG_OPTIONS.map((s) => (
@@ -295,34 +274,36 @@ export function WebhooksPage() {
           <input
             type="checkbox"
             checked={onlyProblems}
-            onChange={(e) => { setOnlyProblems(e.target.checked); }}
+            onChange={(e) => {
+              setOnlyProblems(e.target.checked);
+            }}
             className="size-4 accent-[var(--accent)]"
           />
           Только проблемные
         </label>
       </section>
 
-      {q.isError && (
-        <p className="text-sm text-[var(--danger)]">Ошибка загрузки.</p>
-      )}
+      {q.isError && <p className="text-sm text-[var(--danger)]">Ошибка загрузки.</p>}
 
       <DataTable
         rows={rows}
         columns={columns}
         rowKey={(w) => w.id}
-        onRowClick={(w) => { setExpanded(expanded === w.id ? null : w.id); }}
+        onRowClick={(w) => {
+          setExpanded(expanded === w.id ? null : w.id);
+        }}
         empty="Webhook-ов ещё не приходило."
       />
 
-      {expanded && (() => {
-        const row = rows.find((w) => w.id === expanded);
-        return row ? <PayloadPreview row={row} /> : null;
-      })()}
+      {expanded &&
+        (() => {
+          const row = rows.find((w) => w.id === expanded);
+          return row ? <PayloadPreview row={row} /> : null;
+        })()}
 
       <p className="mt-3 text-xs text-[var(--text-secondary)]">
-        Запись о невалидной подписи остаётся в аудит-таблице как
-        ``rejected:&lt;uuid&gt;``, чтобы можно было разобраться при подозрении
-        на атаку.
+        Запись о невалидной подписи остаётся в аудит-таблице как ``rejected:&lt;uuid&gt;``, чтобы
+        можно было разобраться при подозрении на атаку.
       </p>
     </div>
   );
@@ -331,17 +312,15 @@ export function WebhooksPage() {
 function PayloadPreview({ row }: { row: WebhookOut }) {
   const resolved = row.payload._admin_resolved;
   return (
-    <article className="mt-4 rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4 text-sm">
+    <article className="mt-4 rounded-lg border bg-[var(--bg-surface)] p-4 text-sm shadow-[var(--shadow-sm)]">
       <header className="mb-2 flex items-baseline justify-between">
         <h3 className="font-semibold">
           {row.provider} · {row.external_event_id}
         </h3>
-        <span className="text-xs text-[var(--text-secondary)]">
-          {formatDate(row.received_at)}
-        </span>
+        <span className="text-xs text-[var(--text-secondary)]">{formatDate(row.received_at)}</span>
       </header>
       {resolved && (
-        <div className="mb-3 rounded-md border border-[var(--success-fg)]/30 bg-[var(--success-soft)] px-3 py-2 text-xs text-[var(--success-fg)]">
+        <div className="border-[var(--success-fg)]/30 mb-3 rounded-md border bg-[var(--success-soft)] px-3 py-2 text-xs text-[var(--success-fg)]">
           <strong>Разобран:</strong> {resolved.actor} · {formatDate(resolved.at)}
           <p className="mt-1 text-[var(--text-primary)]">{resolved.reason}</p>
         </div>
@@ -367,14 +346,11 @@ function StatCard({
   value: number;
   tone?: "default" | "warn" | "muted";
 }) {
-  const valueCls =
-    tone === "warn" ? "text-[var(--danger)]" : "text-[var(--text-primary)]";
+  const valueCls = tone === "warn" ? "text-[var(--danger)]" : "text-[var(--text-primary)]";
   return (
-    <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
+    <div className="rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
       <div className={`text-2xl font-semibold ${valueCls}`}>{value}</div>
-      <div className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">
-        {label}
-      </div>
+      <div className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">{label}</div>
     </div>
   );
 }

@@ -14,11 +14,11 @@ See [ADR-0011](../../../../../docs/decisions/0011-order-fsm-and-snapshots.md).
 
 ## Tables
 
-| Table | Notes |
-|---|---|
-| `orders` | Either `user_id` or `guest_email` is set (CHECK enforced). Per-actor partial UNIQUE on `idempotency_key`. `total_charged = total_usd × fx_snapshot.rate` (frozen). |
-| `order_items` | `unit_price_usd` frozen, `fulfillment_data` validated. `fulfillment_state` runs its own micro-FSM (`pending → reserved → in_progress → delivered`). |
-| `order_events` | Append-only audit. Outbox reads from here when `payments` + `fulfillment` land. |
+| Table          | Notes                                                                                                                                                              |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `orders`       | Either `user_id` or `guest_email` is set (CHECK enforced). Per-actor partial UNIQUE on `idempotency_key`. `total_charged = total_usd × fx_snapshot.rate` (frozen). |
+| `order_items`  | `unit_price_usd` frozen, `fulfillment_data` validated. `fulfillment_state` runs its own micro-FSM (`pending → reserved → in_progress → delivered`).                |
+| `order_events` | Append-only audit. Outbox reads from here when `payments` + `fulfillment` land.                                                                                    |
 
 ## Public interface
 
@@ -37,14 +37,14 @@ from yupay.modules.orders.api import (
 
 ## HTTP surface
 
-| Method | Path | Auth | Purpose |
-|---|---|---|---|
-| `POST` | `/api/v1/orders` | Bearer or Guest | Create order. Requires `Idempotency-Key` (≥16 chars). |
-| `GET`  | `/api/v1/orders/{id}` | Bearer or Guest+`?email=` | Owner-only detail. 404 on mismatch. |
-| `GET`  | `/api/v1/orders` | Bearer | List my orders (DESC, capped at 50). |
-| `GET`  | `/api/v1/admin/orders` | admin role | All orders, optional `status` filter. |
-| `GET`  | `/api/v1/admin/orders/{id}` | admin role | Detail with full event log. |
-| `POST` | `/api/v1/admin/orders/{id}/cancel` | admin role | Only valid from `pending_payment`. |
+| Method | Path                               | Auth                      | Purpose                                               |
+| ------ | ---------------------------------- | ------------------------- | ----------------------------------------------------- |
+| `POST` | `/api/v1/orders`                   | Bearer or Guest           | Create order. Requires `Idempotency-Key` (≥16 chars). |
+| `GET`  | `/api/v1/orders/{id}`              | Bearer or Guest+`?email=` | Owner-only detail. 404 on mismatch.                   |
+| `GET`  | `/api/v1/orders`                   | Bearer                    | List my orders (DESC, capped at 50).                  |
+| `GET`  | `/api/v1/admin/orders`             | admin role                | All orders, optional `status` filter.                 |
+| `GET`  | `/api/v1/admin/orders/{id}`        | admin role                | Detail with full event log.                           |
+| `POST` | `/api/v1/admin/orders/{id}/cancel` | admin role                | Only valid from `pending_payment`.                    |
 
 ## FSM
 

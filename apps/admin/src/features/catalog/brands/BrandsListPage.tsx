@@ -11,7 +11,6 @@ import { Spinner } from "@/components/States";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
-
 export function BrandsListPage() {
   const navigate = useNavigate();
   const q = useQuery<Brand[]>({
@@ -69,7 +68,11 @@ export function BrandsListPage() {
       )}
       {q.data?.length === 0 && (
         <p className="mt-4 text-sm text-[var(--text-secondary)]">
-          Ничего нет. <Link to="/brands/new" className="underline">Создать первый</Link>?
+          Ничего нет.{" "}
+          <Link to="/brands/new" className="underline">
+            Создать первый
+          </Link>
+          ?
         </p>
       )}
     </div>

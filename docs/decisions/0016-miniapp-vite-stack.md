@@ -31,8 +31,9 @@ stack" guideline only really applies to surfaces that benefit from SSR.
 
 Move `apps/miniapp` to **Vite 6 + React 19 + wouter + Tailwind v4** and pull
 the prototype's UI in 1:1 (~1500 LOC across 4 pages + Shell/Header/BottomNav
-+ 14 shadcn-style components). Drop Next.js, `next-intl`, and the Next-only
-helpers from this app.
+
+- 14 shadcn-style components). Drop Next.js, `next-intl`, and the Next-only
+  helpers from this app.
 
 ### What we lose
 
@@ -45,7 +46,7 @@ helpers from this app.
   still revisit this when traffic and bandwidth warrant it.
 - Server actions and middleware. Not relevant: the miniapp talks to
   `apps/api` from the client like every other client (with `Authorization: tma
-  <initData>` for HMAC-validated requests).
+<initData>` for HMAC-validated requests).
 
 ### What we gain
 
@@ -61,16 +62,16 @@ helpers from this app.
 
 ### Stack details
 
-| Concern | Choice |
-|---|---|
-| Bundler / dev | Vite 6 + `@vitejs/plugin-react` |
-| Router | `wouter` (matches the prototype) |
-| State | TanStack Query v5 (already on the team) |
-| Forms | `react-hook-form` + `zod` |
+| Concern       | Choice                                                                      |
+| ------------- | --------------------------------------------------------------------------- |
+| Bundler / dev | Vite 6 + `@vitejs/plugin-react`                                             |
+| Router        | `wouter` (matches the prototype)                                            |
+| State         | TanStack Query v5 (already on the team)                                     |
+| Forms         | `react-hook-form` + `zod`                                                   |
 | UI primitives | Radix UI + bespoke shadcn-style components copied into `src/components/ui/` |
-| Motion | `framer-motion` |
-| Style | Tailwind v4 via `@tailwindcss/vite` |
-| Telegram | `@telegram-apps/sdk-react` (kept) |
+| Motion        | `framer-motion`                                                             |
+| Style         | Tailwind v4 via `@tailwindcss/vite`                                         |
+| Telegram      | `@telegram-apps/sdk-react` (kept)                                           |
 
 The miniapp does **not** import `@yupay/ui` for now. Its visual language —
 "Deep Space Dark + Electric Lime" — diverges from the admin's brand-neutral

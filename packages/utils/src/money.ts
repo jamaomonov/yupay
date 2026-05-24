@@ -5,11 +5,7 @@
  * Amounts always travel as strings to preserve decimal precision; we accept a string here
  * to discourage Number arithmetic at the call site.
  */
-export function formatMoney(
-  amount: string,
-  currency: string,
-  locale = "ru-RU",
-): string {
+export function formatMoney(amount: string, currency: string, locale = "ru-RU"): string {
   const num = Number.parseFloat(amount);
   if (!Number.isFinite(num)) return `${amount} ${currency}`;
   try {

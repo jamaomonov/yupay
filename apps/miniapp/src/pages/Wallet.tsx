@@ -36,9 +36,7 @@ export default function Wallet() {
   const primary = pickPrimaryBalance(grouped, homeCurrency);
   // Other currencies go into a list below the hero. Drop zero rows
   // and the headline itself so we don't duplicate it.
-  const others = grouped.filter(
-    (g) => g.amount !== 0 && g.currency !== primary?.currency,
-  );
+  const others = grouped.filter((g) => g.amount !== 0 && g.currency !== primary?.currency);
 
   return (
     <motion.div
@@ -49,10 +47,12 @@ export default function Wallet() {
       className="pb-28"
     >
       {/* Top bar */}
-      <div className="flex items-center justify-between px-4 pt-4 pb-3">
+      <div className="flex items-center justify-between px-4 pb-3 pt-4">
         <button
-          onClick={() => { setLocation("/"); }}
-          className="w-9 h-9 rounded-full bg-card border border-border flex items-center justify-center"
+          onClick={() => {
+            setLocation("/");
+          }}
+          className="bg-card border-border flex h-9 w-9 items-center justify-center rounded-full border"
           aria-label="Назад"
         >
           <ArrowLeft size={16} className="text-white/70" />
@@ -62,11 +62,11 @@ export default function Wallet() {
       </div>
 
       {!me.data && !me.isLoading && (
-        <div className="mx-4 mb-4 rounded-2xl border border-yellow-400/30 bg-yellow-400/5 p-4 flex items-start gap-3">
-          <AlertTriangle size={18} className="text-yellow-400 flex-shrink-0 mt-0.5" />
+        <div className="mx-4 mb-4 flex items-start gap-3 rounded-2xl border border-yellow-400/30 bg-yellow-400/5 p-4">
+          <AlertTriangle size={18} className="mt-0.5 flex-shrink-0 text-yellow-400" />
           <div className="text-sm">
             <p className="font-semibold text-yellow-200">Откройте в Telegram</p>
-            <p className="text-yellow-100/70 text-xs mt-1">
+            <p className="mt-1 text-xs text-yellow-100/70">
               Баланс и пополнение доступны после авторизации.
             </p>
           </div>
@@ -78,7 +78,7 @@ export default function Wallet() {
           One currency = clean hero; several = honest split. */}
       <section className="mx-4 mb-5">
         <div
-          className="relative rounded-3xl p-5 overflow-hidden"
+          className="relative overflow-hidden rounded-3xl p-5"
           style={{
             background:
               "linear-gradient(135deg, hsl(var(--surface-2)) 0%, hsl(var(--background)) 100%)",
@@ -86,22 +86,21 @@ export default function Wallet() {
           }}
         >
           <div
-            className="absolute -top-20 -right-20 w-56 h-56 rounded-full pointer-events-none"
+            className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full"
             style={{
-              background:
-                "radial-gradient(circle, hsl(var(--primary) / 0.22) 0%, transparent 70%)",
+              background: "radial-gradient(circle, hsl(var(--primary) / 0.22) 0%, transparent 70%)",
             }}
           />
           <div className="relative z-10">
-            <p className="text-white/50 text-xs uppercase tracking-[0.08em] font-bold">
+            <p className="text-xs font-bold uppercase tracking-[0.08em] text-white/50">
               На балансе
             </p>
-            <p className="text-white font-bold text-3xl mt-1 tabular-nums">
+            <p className="mt-1 text-3xl font-bold tabular-nums text-white">
               {!me.data
                 ? "—"
                 : formatBalance(primary?.amount ?? 0, primary?.currency ?? homeCurrency)}
             </p>
-            <p className="text-white/40 text-xs mt-1.5">
+            <p className="mt-1.5 text-xs text-white/40">
               {me.data
                 ? "Баланс показывается в валюте счёта"
                 : "Войдите через Telegram, чтобы увидеть баланс"}
@@ -113,7 +112,7 @@ export default function Wallet() {
             accounts are intentionally skipped — a row of "$0.00" next
             to a real UZS balance reads as a bug. */}
         {me.data && others.length > 0 && (
-          <div className="grid grid-cols-1 gap-2 mt-3">
+          <div className="mt-3 grid grid-cols-1 gap-2">
             {others.map((g) => (
               <CurrencyChip key={g.currency} group={g} />
             ))}
@@ -129,8 +128,10 @@ export default function Wallet() {
         <section className="mx-4 mb-5">
           <button
             type="button"
-            onClick={() => { setLocation("/wallet/topup"); }}
-            className="w-full rounded-3xl p-4 flex items-center gap-3 active:scale-[0.99] transition-transform"
+            onClick={() => {
+              setLocation("/wallet/topup");
+            }}
+            className="flex w-full items-center gap-3 rounded-3xl p-4 transition-transform active:scale-[0.99]"
             style={{
               background: "hsl(var(--primary))",
               color: "#000",
@@ -138,15 +139,15 @@ export default function Wallet() {
             data-testid="wallet-topup-cta"
           >
             <span
-              className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0"
+              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl"
               style={{ background: "rgba(0,0,0,0.12)" }}
               aria-hidden="true"
             >
               <Plus size={18} strokeWidth={3} />
             </span>
             <span className="min-w-0 flex-1 text-left">
-              <span className="block font-bold text-sm">Пополнить кошелёк</span>
-              <span className="block text-[12px] opacity-70 mt-0.5">
+              <span className="block text-sm font-bold">Пополнить кошелёк</span>
+              <span className="mt-0.5 block text-[12px] opacity-70">
                 Click · Payme · Uzum · СБП · USDT
               </span>
             </span>
@@ -161,18 +162,18 @@ export default function Wallet() {
         <section className="mx-4 mb-5">
           <button
             type="button"
-            onClick={() => { setLocation("/history"); }}
-            className="w-full rounded-2xl p-3.5 flex items-center gap-3 active:scale-[0.99] transition-transform"
+            onClick={() => {
+              setLocation("/history");
+            }}
+            className="flex w-full items-center gap-3 rounded-2xl p-3.5 transition-transform active:scale-[0.99]"
             style={{
               background: "hsl(var(--surface-1))",
               border: "1px solid hsl(var(--border))",
             }}
           >
             <span className="min-w-0 flex-1 text-left">
-              <span className="block text-white font-medium text-sm">
-                История операций
-              </span>
-              <span className="block text-white/45 text-[12px] mt-0.5">
+              <span className="block text-sm font-medium text-white">История операций</span>
+              <span className="mt-0.5 block text-[12px] text-white/45">
                 Заказы и движения по балансу
               </span>
             </span>
@@ -187,7 +188,7 @@ export default function Wallet() {
 function CurrencyChip({ group }: { group: CurrencyBalance }) {
   return (
     <div
-      className="rounded-2xl px-4 py-3 flex items-center justify-between"
+      className="flex items-center justify-between rounded-2xl px-4 py-3"
       style={{
         background: "hsl(var(--surface-2))",
         border: "1px solid hsl(var(--border))",
@@ -195,7 +196,7 @@ function CurrencyChip({ group }: { group: CurrencyBalance }) {
     >
       <span className="flex items-center gap-2">
         <span
-          className="w-6 h-6 rounded-lg flex items-center justify-center"
+          className="flex h-6 w-6 items-center justify-center rounded-lg"
           style={{
             background: "hsl(var(--primary) / 0.12)",
             color: "hsl(var(--primary))",
@@ -204,11 +205,11 @@ function CurrencyChip({ group }: { group: CurrencyBalance }) {
         >
           <WalletIcon size={12} />
         </span>
-        <span className="text-[10px] uppercase font-bold tracking-wider text-white/40">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">
           {group.currency}
         </span>
       </span>
-      <span className="text-white text-base font-bold tabular-nums leading-none">
+      <span className="text-base font-bold tabular-nums leading-none text-white">
         {formatBalance(group.amount, group.currency)}
       </span>
     </div>

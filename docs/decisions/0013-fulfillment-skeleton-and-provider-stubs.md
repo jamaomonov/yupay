@@ -96,6 +96,7 @@ class Fulfiller(Protocol):
 ```
 
 `FulfillResult` carries:
+
 - `external_order_id: str | None` — supplier-side reference for reconciliation
 - `outcome: Literal["succeeded", "in_progress", "failed"]`
 - `artifact: dict | None` — populated when `succeeded` and the supplier hands us
@@ -104,15 +105,15 @@ class Fulfiller(Protocol):
 
 ### Providers
 
-| Slug | Status | Behaviour |
-|---|---|---|
-| `mock` | functional in dev/staging | Always returns `succeeded` immediately with a fake artifact (`voucher_code = "MOCK-<order_item_id>"`). Disabled in prod. |
-| `steam` | stub | `available=False`, every method → `FulfillerNotIntegratedError` |
-| `riot` | stub | idem |
-| `pubg` | stub | idem (Tencent / Midasbuy) |
-| `spotify` | stub | idem |
-| `apple` | stub | idem |
-| `voucher_inventory` | stub | will read codes from the future `inventory_codes` table |
+| Slug                | Status                    | Behaviour                                                                                                                |
+| ------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `mock`              | functional in dev/staging | Always returns `succeeded` immediately with a fake artifact (`voucher_code = "MOCK-<order_item_id>"`). Disabled in prod. |
+| `steam`             | stub                      | `available=False`, every method → `FulfillerNotIntegratedError`                                                          |
+| `riot`              | stub                      | idem                                                                                                                     |
+| `pubg`              | stub                      | idem (Tencent / Midasbuy)                                                                                                |
+| `spotify`           | stub                      | idem                                                                                                                     |
+| `apple`             | stub                      | idem                                                                                                                     |
+| `voucher_inventory` | stub                      | will read codes from the future `inventory_codes` table                                                                  |
 
 ### Orchestration (saga today, in-process)
 
@@ -126,7 +127,7 @@ class Fulfiller(Protocol):
 4. **Execute.** Each task is processed (`process_task`): set `in_progress` →
    call `fulfiller.fulfill(...)` → on success persist `FulfillmentAttempt(ok)`,
    set task `succeeded`, write `Delivery` row, set `order_items.fulfillment_state
-   = "fulfilled"`. On failure: persist attempt as `error`, set task to `failed`
+= "fulfilled"`. On failure: persist attempt as `error`, set task to `failed`
    (skeleton stage — no retry policy yet).
 5. **Settle order.** When every item is `fulfilled` the order moves
    `fulfilling → fulfilled → delivered` (the skeleton collapses the two — once
@@ -184,8 +185,9 @@ POST /api/v1/admin/fulfillment/tasks/{id}/cancel    — admin cancels a pending/
 ## Migration to async worker
 
 When Dramatiq is wired in:
+
 1. `payments._mark_payment_succeeded` writes `outbox_messages(kind="order.paid",
-   payload={order_id})` instead of calling the service directly.
+payload={order_id})` instead of calling the service directly.
 2. A Dramatiq actor reads outbox + calls `fulfillment.api.start_for_order`.
 3. `process_task` itself is dispatched as a separate actor per task with
    `tenacity` retries + `purgatory` circuit breaker per supplier.

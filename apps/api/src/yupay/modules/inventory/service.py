@@ -208,7 +208,7 @@ async def void_for_order_item(db: AsyncSession, *, order_item_id: str, reason: s
         )
         .values(state="voided", voided_at=now())
     )
-    count = result.rowcount or 0
+    count = result.rowcount or 0  # type: ignore[attr-defined]
     if count:
         log.info("inventory.void", order_item_id=order_item_id, count=count, reason=reason)
     return count

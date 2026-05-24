@@ -54,7 +54,9 @@ export function FxPage() {
           <span className="font-medium">
             {r.base} → {r.quote}
           </span>
-          <code className="text-xs text-[var(--text-secondary)]">{r.base}/{r.quote}</code>
+          <code className="text-xs text-[var(--text-secondary)]">
+            {r.base}/{r.quote}
+          </code>
         </div>
       ),
       className: "w-40",
@@ -62,11 +64,7 @@ export function FxPage() {
     {
       key: "rate",
       header: "Курс",
-      render: (r) => (
-        <span className="font-mono text-base">
-          {formatRate(r.rate)}
-        </span>
-      ),
+      render: (r) => <span className="font-mono text-base">{formatRate(r.rate)}</span>,
       className: "w-40 text-right",
     },
     {
@@ -84,9 +82,7 @@ export function FxPage() {
       render: (r) => (
         <div className="flex flex-col items-end">
           <span className="text-xs">{formatDateTime(r.fetched_at)}</span>
-          <span className="text-[10px] text-[var(--text-secondary)]">
-            {ago(r.fetched_at)}
-          </span>
+          <span className="text-[10px] text-[var(--text-secondary)]">{ago(r.fetched_at)}</span>
         </div>
       ),
       className: "w-40 text-right",
@@ -100,12 +96,12 @@ export function FxPage() {
         description={`Через провайдер-цепочку из ADR-0008 (exchangerate-api → exchangerate.host → openexchangerates → coingecko). База — ${base}.`}
         actions={
           <Button
-            onClick={() => { refresh.mutate(); }}
+            onClick={() => {
+              refresh.mutate();
+            }}
             disabled={refresh.isPending}
           >
-            <RefreshCw
-              className={`size-4 ${refresh.isPending ? "animate-spin" : ""}`}
-            />
+            <RefreshCw className={`size-4 ${refresh.isPending ? "animate-spin" : ""}`} />
             {refresh.isPending ? "Обновляем…" : "Принудительно обновить"}
           </Button>
         }
@@ -113,28 +109,19 @@ export function FxPage() {
 
       <section className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label="Активных пар" value={rates.length.toString()} />
-        <StatCard
-          label="Самый старый"
-          value={oldest ? ago(new Date(oldest).toISOString()) : "—"}
-        />
+        <StatCard label="Самый старый" value={oldest ? ago(new Date(oldest).toISOString()) : "—"} />
         <StatCard
           label="Уникальных источников"
           value={new Set(rates.map((r) => r.source)).size.toString()}
         />
-        <StatCard
-          label="База"
-          value={base}
-          mono
-        />
+        <StatCard label="База" value={base} mono />
       </section>
 
-      {ratesQuery.isLoading && (
-        <Spinner label="Загрузка…" />
-      )}
+      {ratesQuery.isLoading && <Spinner label="Загрузка…" />}
       {ratesQuery.isError && (
         <p className="text-sm text-[var(--danger)]">
-          Курсы недоступны. Попробуй «принудительно обновить» — это сбросит
-          fresh-кэш и сходит к провайдеру.
+          Курсы недоступны. Попробуй «принудительно обновить» — это сбросит fresh-кэш и сходит к
+          провайдеру.
         </p>
       )}
       {refresh.isError && (
@@ -151,31 +138,18 @@ export function FxPage() {
       />
 
       <p className="mt-3 text-xs text-[var(--text-secondary)]">
-        Кэш TTL: fresh — 15 минут, stale — 24 часа. Обычный GET читает кэш и
-        провайдера не дёргает. Refresh сбрасывает fresh-копию для каждой пары и
-        форсит сетевой запрос.
+        Кэш TTL: fresh — 15 минут, stale — 24 часа. Обычный GET читает кэш и провайдера не дёргает.
+        Refresh сбрасывает fresh-копию для каждой пары и форсит сетевой запрос.
       </p>
     </div>
   );
 }
 
-function StatCard({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
+function StatCard({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
-      <div className={`text-2xl font-semibold ${mono ? "font-mono" : ""}`}>
-        {value}
-      </div>
-      <div className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">
-        {label}
-      </div>
+    <div className="rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
+      <div className={`text-2xl font-semibold ${mono ? "font-mono" : ""}`}>{value}</div>
+      <div className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">{label}</div>
     </div>
   );
 }

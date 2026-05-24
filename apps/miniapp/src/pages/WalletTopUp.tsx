@@ -30,12 +30,54 @@ interface ProviderOption {
 }
 
 const PROVIDERS: ProviderOption[] = [
-  { id: "click", label: "Click", hint: "UZ · карта / Humo / Uzcard", currency: "UZS", Icon: CreditCard, status: "soon" },
-  { id: "payme", label: "Payme", hint: "UZ · карта", currency: "UZS", Icon: Smartphone, status: "soon" },
-  { id: "uzum", label: "Uzum", hint: "UZ · Humo / Uzcard", currency: "UZS", Icon: Banknote, status: "soon" },
-  { id: "sbp", label: "СБП", hint: "RU · банк-переводом", currency: "RUB", Icon: Smartphone, status: "soon" },
-  { id: "yookassa", label: "YooKassa", hint: "RU · карта", currency: "RUB", Icon: CreditCard, status: "soon" },
-  { id: "usdt", label: "USDT", hint: "TRC-20 / ERC-20", currency: "USDT", Icon: Bitcoin, status: "soon" },
+  {
+    id: "click",
+    label: "Click",
+    hint: "UZ · карта / Humo / Uzcard",
+    currency: "UZS",
+    Icon: CreditCard,
+    status: "soon",
+  },
+  {
+    id: "payme",
+    label: "Payme",
+    hint: "UZ · карта",
+    currency: "UZS",
+    Icon: Smartphone,
+    status: "soon",
+  },
+  {
+    id: "uzum",
+    label: "Uzum",
+    hint: "UZ · Humo / Uzcard",
+    currency: "UZS",
+    Icon: Banknote,
+    status: "soon",
+  },
+  {
+    id: "sbp",
+    label: "СБП",
+    hint: "RU · банк-переводом",
+    currency: "RUB",
+    Icon: Smartphone,
+    status: "soon",
+  },
+  {
+    id: "yookassa",
+    label: "YooKassa",
+    hint: "RU · карта",
+    currency: "RUB",
+    Icon: CreditCard,
+    status: "soon",
+  },
+  {
+    id: "usdt",
+    label: "USDT",
+    hint: "TRC-20 / ERC-20",
+    currency: "USDT",
+    Icon: Bitcoin,
+    status: "soon",
+  },
 ];
 
 /**
@@ -64,8 +106,7 @@ export default function WalletTopUp() {
   const [amount, setAmount] = useState("");
   const [provider, setProvider] = useState<string>(DEFAULT_PROVIDER_ID);
 
-  const selectedProvider =
-    PROVIDERS.find((p) => p.id === provider) ?? PROVIDERS[0]!;
+  const selectedProvider = PROVIDERS.find((p) => p.id === provider) ?? PROVIDERS[0]!;
   const currency = selectedProvider.currency;
   const quickAmounts = QUICK_AMOUNTS[currency] ?? QUICK_AMOUNTS.USD!;
 
@@ -106,11 +147,13 @@ export default function WalletTopUp() {
       className="pb-28"
     >
       {/* Top bar */}
-      <div className="flex items-center justify-between px-4 pt-4 pb-3">
+      <div className="flex items-center justify-between px-4 pb-3 pt-4">
         <button
           type="button"
-          onClick={() => { setLocation("/wallet"); }}
-          className="w-9 h-9 rounded-full bg-card border border-border flex items-center justify-center"
+          onClick={() => {
+            setLocation("/wallet");
+          }}
+          className="bg-card border-border flex h-9 w-9 items-center justify-center rounded-full border"
           aria-label="Назад к кошельку"
         >
           <ArrowLeft size={16} className="text-white/70" />
@@ -129,7 +172,7 @@ export default function WalletTopUp() {
           }}
         >
           <label className="block">
-            <span className="text-white/50 text-xs uppercase tracking-[0.08em] font-bold">
+            <span className="text-xs font-bold uppercase tracking-[0.08em] text-white/50">
               Сумма пополнения
             </span>
             <div className="mt-2 flex items-baseline gap-2">
@@ -144,25 +187,25 @@ export default function WalletTopUp() {
                   setAmount(v);
                 }}
                 placeholder="0"
-                className="bg-transparent text-white font-bold text-4xl tabular-nums outline-none w-full"
+                className="w-full bg-transparent text-4xl font-bold tabular-nums text-white outline-none"
               />
-              <span className="text-white/40 text-base font-bold uppercase">
-                {currency}
-              </span>
+              <span className="text-base font-bold uppercase text-white/40">{currency}</span>
             </div>
           </label>
         </div>
 
         {/* Quick-amount chips — labels change with the provider's
             currency (50 000 UZS ↔ 50 USD ↔ 500 RUB). */}
-        <div className="grid grid-cols-5 gap-1.5 mt-3">
+        <div className="mt-3 grid grid-cols-5 gap-1.5">
           {quickAmounts.map((value) => {
             const active = Number.parseFloat(amount) === value;
             return (
               <button
                 key={value}
                 type="button"
-                onClick={() => { setAmount(value.toString()); }}
+                onClick={() => {
+                  setAmount(value.toString());
+                }}
                 className="rounded-2xl py-2 text-[12px] font-bold tabular-nums transition-colors"
                 style={
                   active
@@ -174,9 +217,7 @@ export default function WalletTopUp() {
                       }
                 }
               >
-                {currency === "UZS"
-                  ? value.toLocaleString("ru-RU")
-                  : value.toString()}
+                {currency === "UZS" ? value.toLocaleString("ru-RU") : value.toString()}
               </button>
             );
           })}
@@ -185,7 +226,7 @@ export default function WalletTopUp() {
 
       {/* Provider list */}
       <section className="mx-4 mb-5">
-        <h2 className="text-white/50 text-xs uppercase tracking-[0.08em] font-bold px-1 mb-2">
+        <h2 className="mb-2 px-1 text-xs font-bold uppercase tracking-[0.08em] text-white/50">
           Способ оплаты
         </h2>
         <ul className="space-y-2">
@@ -196,12 +237,12 @@ export default function WalletTopUp() {
               <li key={p.id}>
                 <button
                   type="button"
-                  onClick={() => { onProviderChange(p); }}
-                  className="w-full rounded-2xl p-3.5 flex items-center gap-3 transition-colors"
+                  onClick={() => {
+                    onProviderChange(p);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-2xl p-3.5 transition-colors"
                   style={{
-                    background: active
-                      ? "hsl(var(--primary) / 0.12)"
-                      : "hsl(var(--surface-1))",
+                    background: active ? "hsl(var(--primary) / 0.12)" : "hsl(var(--surface-1))",
                     border: active
                       ? "1.5px solid hsl(var(--primary))"
                       : "1px solid hsl(var(--border))",
@@ -209,7 +250,7 @@ export default function WalletTopUp() {
                   data-testid={`provider-${p.id}`}
                 >
                   <span
-                    className="w-10 h-10 rounded-xl flex items-center justify-center"
+                    className="flex h-10 w-10 items-center justify-center rounded-xl"
                     style={{
                       background: "hsl(var(--surface-2))",
                       color: "hsl(var(--primary))",
@@ -219,10 +260,10 @@ export default function WalletTopUp() {
                     <Icon size={18} />
                   </span>
                   <span className="min-w-0 flex-1 text-left">
-                    <span className="block text-white font-bold text-sm flex items-center gap-2">
+                    <span className="block flex items-center gap-2 text-sm font-bold text-white">
                       {p.label}
                       <span
-                        className="text-[9px] uppercase tracking-[0.08em] font-bold px-1.5 py-0.5 rounded-full"
+                        className="rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em]"
                         style={{
                           background: "hsl(var(--surface-2))",
                           color: "rgba(255,255,255,0.55)",
@@ -232,7 +273,7 @@ export default function WalletTopUp() {
                       </span>
                       {p.status === "soon" && (
                         <span
-                          className="text-[9px] uppercase tracking-[0.08em] font-bold px-1.5 py-0.5 rounded-full"
+                          className="rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em]"
                           style={{
                             background: "rgba(255,255,255,0.08)",
                             color: "rgba(255,255,255,0.5)",
@@ -242,12 +283,12 @@ export default function WalletTopUp() {
                         </span>
                       )}
                     </span>
-                    <span className="block text-white/45 text-[12px] mt-0.5 truncate">
+                    <span className="mt-0.5 block truncate text-[12px] text-white/45">
                       {p.hint}
                     </span>
                   </span>
                   <span
-                    className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0"
+                    className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full"
                     style={{
                       border: active
                         ? "5px solid hsl(var(--primary))"
@@ -268,7 +309,7 @@ export default function WalletTopUp() {
           type="button"
           onClick={onSubmit}
           disabled={!canSubmit}
-          className="w-full rounded-2xl py-3.5 font-bold text-sm transition-colors disabled:cursor-not-allowed"
+          className="w-full rounded-2xl py-3.5 text-sm font-bold transition-colors disabled:cursor-not-allowed"
           style={
             canSubmit
               ? { background: "hsl(var(--primary))", color: "#000" }
@@ -279,17 +320,15 @@ export default function WalletTopUp() {
                 }
           }
         >
-          {canSubmit
-            ? `Пополнить на ${formatBalance(numericAmount, currency)}`
-            : "Введите сумму"}
+          {canSubmit ? `Пополнить на ${formatBalance(numericAmount, currency)}` : "Введите сумму"}
         </button>
 
-        <p className="mt-3 text-[11px] text-white/40 flex items-start gap-2">
-          <Shield size={12} className="text-white/40 flex-shrink-0 mt-0.5" />
+        <p className="mt-3 flex items-start gap-2 text-[11px] text-white/40">
+          <Shield size={12} className="mt-0.5 flex-shrink-0 text-white/40" />
           <span>
             Деньги попадают на счёт <WalletIcon size={11} className="inline" />{" "}
-            <strong className="text-white/60">Кошелёк</strong> в той же валюте,
-            которой вы платите. Возвраты возвращаются туда же.
+            <strong className="text-white/60">Кошелёк</strong> в той же валюте, которой вы платите.
+            Возвраты возвращаются туда же.
           </span>
         </p>
       </section>

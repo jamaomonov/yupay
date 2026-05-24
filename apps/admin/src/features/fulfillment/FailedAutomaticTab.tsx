@@ -19,7 +19,6 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
-
 interface BulkRetryResponse {
   retried: TaskAdminOut[];
   skipped: { id: string; reason: string }[];
@@ -34,9 +33,7 @@ export function FailedAutomaticTab() {
   const query = useQuery<TaskListOut>({
     queryKey: [...qk.fulfillmentTasks({ status: "failed" }), "no-manual"],
     queryFn: () =>
-      apiGet<TaskListOut>(
-        "/api/v1/admin/fulfillment/tasks?status_filter=failed&limit=200",
-      ),
+      apiGet<TaskListOut>("/api/v1/admin/fulfillment/tasks?status_filter=failed&limit=200"),
     refetchInterval: 30_000,
   });
 
@@ -49,10 +46,7 @@ export function FailedAutomaticTab() {
 
   const bulkRetry = useMutation<BulkRetryResponse, ApiError, string[]>({
     mutationFn: (ids) =>
-      apiPost<BulkRetryResponse>(
-        "/api/v1/admin/fulfillment/tasks/bulk-retry",
-        { task_ids: ids },
-      ),
+      apiPost<BulkRetryResponse>("/api/v1/admin/fulfillment/tasks/bulk-retry", { task_ids: ids }),
     onSuccess: (data) => {
       const retriedN = data.retried.length;
       const skippedN = data.skipped.length;
@@ -76,9 +70,7 @@ export function FailedAutomaticTab() {
     });
   };
   const toggleAll = () => {
-    setSelected((prev) =>
-      prev.size === rows.length ? new Set() : new Set(rows.map((r) => r.id)),
-    );
+    setSelected((prev) => (prev.size === rows.length ? new Set() : new Set(rows.map((r) => r.id))));
   };
 
   const columns: Column<TaskAdminOut>[] = [
@@ -89,8 +81,12 @@ export function FailedAutomaticTab() {
         <input
           type="checkbox"
           checked={selected.has(t.id)}
-          onClick={(e) => { e.stopPropagation(); }}
-          onChange={() => { toggle(t.id); }}
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
+          onChange={() => {
+            toggle(t.id);
+          }}
           aria-label={`Выбрать ${t.id.slice(0, 8)}`}
         />
       ),
@@ -99,9 +95,7 @@ export function FailedAutomaticTab() {
     {
       key: "order",
       header: "Order",
-      render: (t) => (
-        <span className="font-mono text-xs">{t.order_id.slice(0, 8)}…</span>
-      ),
+      render: (t) => <span className="font-mono text-xs">{t.order_id.slice(0, 8)}…</span>,
       className: "w-28",
     },
     {
@@ -129,8 +123,7 @@ export function FailedAutomaticTab() {
     {
       key: "age",
       header: "Failed",
-      render: (t) =>
-        t.failed_at ? new Date(t.failed_at).toLocaleString("ru") : "—",
+      render: (t) => (t.failed_at ? new Date(t.failed_at).toLocaleString("ru") : "—"),
       className: "w-40",
       sortAccessor: (t) => t.failed_at,
     },
@@ -140,8 +133,8 @@ export function FailedAutomaticTab() {
     <div>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-[var(--text-secondary)]">
-          Автоматические задачи, которые упали. Отметь и нажми «Перезапустить» —
-          бэк сам пропустит те, что уже не подлежат retry.
+          Автоматические задачи, которые упали. Отметь и нажми «Перезапустить» — бэк сам пропустит
+          те, что уже не подлежат retry.
         </p>
         <div className="flex items-center gap-2">
           <button
@@ -150,32 +143,30 @@ export function FailedAutomaticTab() {
             className="text-xs text-[var(--text-secondary)] underline-offset-2 hover:underline disabled:opacity-50"
             disabled={rows.length === 0}
           >
-            {selected.size === rows.length && rows.length > 0
-              ? "Снять выбор"
-              : "Выбрать все"}
+            {selected.size === rows.length && rows.length > 0 ? "Снять выбор" : "Выбрать все"}
           </button>
           <Button
             type="button"
-            onClick={() => { bulkRetry.mutate([...selected]); }}
+            onClick={() => {
+              bulkRetry.mutate([...selected]);
+            }}
             disabled={selected.size === 0 || bulkRetry.isPending}
           >
-            {bulkRetry.isPending
-              ? "Перезапуск…"
-              : `Перезапустить ${selected.size.toString()}`}
+            {bulkRetry.isPending ? "Перезапуск…" : `Перезапустить ${selected.size.toString()}`}
           </Button>
         </div>
       </div>
 
-      {feedback && (
-        <p className="mb-3 text-sm text-[var(--text-primary)]">{feedback}</p>
-      )}
+      {feedback && <p className="mb-3 text-sm text-[var(--text-primary)]">{feedback}</p>}
 
       <DataTable
         rows={rows}
         columns={columns}
         rowKey={(t) => t.id}
         empty="Нет failed-задач — всё хорошо."
-        onRowClick={(t) => { void navigate(`/orders/${t.order_id}`); }}
+        onRowClick={(t) => {
+          void navigate(`/orders/${t.order_id}`);
+        }}
       />
     </div>
   );

@@ -52,7 +52,7 @@ async def _resolve_chat_id(
     return link.tg_user_id, name
 
 
-def _format_amount(value: str, currency: str) -> str:
+def _format_amount(value: str | Decimal, currency: str) -> str:
     try:
         amount = Decimal(value)
     except (ArithmeticError, ValueError):

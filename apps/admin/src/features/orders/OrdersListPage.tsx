@@ -23,7 +23,6 @@ import { numberCodec, useSearchParamsState } from "@/lib/useSearchParamsState";
 
 const PAGE_SIZE = 50;
 
-
 const STATUS_FILTERS: { value: OrderStatus | ""; label: string }[] = [
   { value: "", label: "Все" },
   { value: "pending_payment", label: "Ждёт оплаты" },
@@ -45,26 +44,19 @@ export function OrdersListPage() {
   const [offset, setOffset] = useSearchParamsState("offset", 0, numberCodec);
 
   const ordersQuery = useQuery<OrderAdminListOut>({
-    queryKey: [
-      ...qk.orders({ status: status || null }),
-      "page",
-      offset,
-    ],
+    queryKey: [...qk.orders({ status: status || null }), "page", offset],
     queryFn: () => {
       const params = new URLSearchParams();
       if (status) params.set("status_filter", status);
       params.set("limit", String(PAGE_SIZE));
       params.set("offset", String(offset));
-      return apiGet<OrderAdminListOut>(
-        `/api/v1/admin/orders?${params.toString()}`,
-      );
+      return apiGet<OrderAdminListOut>(`/api/v1/admin/orders?${params.toString()}`);
     },
     refetchInterval: 10_000,
   });
 
   const cancel = useMutation<OrderAdminOut, ApiError, OrderAdminOut>({
-    mutationFn: (o) =>
-      apiPost<OrderAdminOut>(`/api/v1/admin/orders/${o.id}/cancel`, {}),
+    mutationFn: (o) => apiPost<OrderAdminOut>(`/api/v1/admin/orders/${o.id}/cancel`, {}),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "orders"] });
     },
@@ -90,15 +82,12 @@ export function OrdersListPage() {
 
   const totalCharged = useMemo(
     () =>
-      rows.reduce<Record<string, number>>(
-        (acc, o) => {
-          const key = o.currency;
-          const v = Number.parseFloat(o.total_charged) || 0;
-          acc[key] = (acc[key] ?? 0) + v;
-          return acc;
-        },
-        {},
-      ),
+      rows.reduce<Record<string, number>>((acc, o) => {
+        const key = o.currency;
+        const v = Number.parseFloat(o.total_charged) || 0;
+        acc[key] = (acc[key] ?? 0) + v;
+        return acc;
+      }, {}),
     [rows],
   );
 
@@ -112,15 +101,15 @@ export function OrdersListPage() {
           {o.user_id ? (
             <Link
               to={`/customers/${o.user_id}`}
-              onClick={(e) => { e.stopPropagation(); }}
+              onClick={(e) => {
+                e.stopPropagation();
+              }}
               className="text-[var(--text-secondary)] underline-offset-2 hover:text-[var(--text-primary)] hover:underline"
             >
               user {o.user_id.slice(0, 8)}…
             </Link>
           ) : (
-            <span className="text-[var(--text-secondary)]">
-              {o.guest_email ?? "—"}
-            </span>
+            <span className="text-[var(--text-secondary)]">{o.guest_email ?? "—"}</span>
           )}
         </div>
       ),
@@ -132,9 +121,7 @@ export function OrdersListPage() {
         const first = o.items[0]?.display ?? null;
         if (!first) {
           return (
-            <span className="text-xs text-[var(--text-secondary)]">
-              {o.items.length} поз.
-            </span>
+            <span className="text-xs text-[var(--text-secondary)]">{o.items.length} поз.</span>
           );
         }
         const extra = o.items.length - 1;
@@ -142,16 +129,16 @@ export function OrdersListPage() {
           ? `${first.brand_name} · ${first.denomination ?? first.sku_code}`
           : `${first.product_name || first.product_slug} · ${first.denomination ?? first.sku_code}`;
         return (
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
             {first.image_url ? (
               <img
                 src={first.image_url}
                 alt=""
-                className="size-7 rounded object-cover border border-[var(--border-default)] flex-shrink-0"
+                className="size-7 flex-shrink-0 rounded border border-[var(--border-default)] object-cover"
               />
             ) : (
               <div
-                className="size-7 rounded flex items-center justify-center text-[10px] font-bold text-[var(--text-secondary)] border border-[var(--border-default)] flex-shrink-0"
+                className="flex size-7 flex-shrink-0 items-center justify-center rounded border border-[var(--border-default)] text-[10px] font-bold text-[var(--text-secondary)]"
                 style={{ background: "var(--bg-muted)" }}
               >
                 {(first.brand_name?.[0] ?? "?").toUpperCase()}
@@ -160,9 +147,7 @@ export function OrdersListPage() {
             <div className="min-w-0">
               <div className="truncate text-sm">{headline}</div>
               {extra > 0 && (
-                <div className="text-[10px] text-[var(--text-secondary)]">
-                  +{extra} ещё
-                </div>
+                <div className="text-[10px] text-[var(--text-secondary)]">+{extra} ещё</div>
               )}
             </div>
           </div>
@@ -206,7 +191,9 @@ export function OrdersListPage() {
       render: (o) => (
         <div
           className="flex justify-end gap-1"
-          onClick={(e) => { e.stopPropagation(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
         >
           {o.status === "pending_payment" && (
             <Button
@@ -244,19 +231,18 @@ export function OrdersListPage() {
           value={counters.pending_payment ?? 0}
           tone={counters.pending_payment ? "warn" : "muted"}
         />
-        <StatCard
-          label="В работе"
-          value={(counters.paid ?? 0) + (counters.fulfilling ?? 0)}
-        />
+        <StatCard label="В работе" value={(counters.paid ?? 0) + (counters.fulfilling ?? 0)} />
         <StatCard label="Доставлено" value={counters.delivered ?? 0} />
       </section>
 
       <section className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-3">
-        <div className="md:col-span-2 relative">
+        <div className="relative md:col-span-2">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--text-secondary)]" />
           <Input
             value={query}
-            onChange={(e) => { setQuery(e.target.value); }}
+            onChange={(e) => {
+              setQuery(e.target.value);
+            }}
             placeholder="Поиск по order_id / user_id / email…"
             className="pl-9"
           />
@@ -284,16 +270,12 @@ export function OrdersListPage() {
         <p className="mb-3 text-xs text-[var(--text-secondary)]">
           Сумма по списку:{" "}
           {Object.entries(totalCharged)
-            .map(
-              ([cur, v]) => `${v.toFixed(2)} ${cur}`,
-            )
+            .map(([cur, v]) => `${v.toFixed(2)} ${cur}`)
             .join(" · ")}
         </p>
       )}
 
-      {ordersQuery.isError && (
-        <p className="text-sm text-[var(--danger)]">Не удалось загрузить.</p>
-      )}
+      {ordersQuery.isError && <p className="text-sm text-[var(--danger)]">Не удалось загрузить.</p>}
 
       <DataTable
         rows={filtered}
@@ -301,11 +283,7 @@ export function OrdersListPage() {
         rowKey={(o) => o.id}
         loading={ordersQuery.isPending}
         onRowClick={(o) => navigate(`/orders/${o.id}`)}
-        empty={
-          status || query
-            ? "Под фильтр / поиск ничего не подошло."
-            : "Заказов пока нет."
-        }
+        empty={status || query ? "Под фильтр / поиск ничего не подошло." : "Заказов пока нет."}
       />
 
       <Pagination
@@ -343,11 +321,9 @@ function StatCard({
       ? "text-[var(--danger)]"
       : "text-[var(--text-primary)]";
   return (
-    <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
+    <div className="rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
       <div className={`text-2xl font-semibold ${valueCls}`}>{value}</div>
-      <div className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">
-        {label}
-      </div>
+      <div className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">{label}</div>
     </div>
   );
 }

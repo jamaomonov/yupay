@@ -17,8 +17,9 @@ import TopUp from "@/pages/TopUp";
 import Wallet from "@/pages/Wallet";
 import WalletTopUp from "@/pages/WalletTopUp";
 
-
-function NotFound() { return <div className="p-4 text-center mt-20">404 - Не найдено</div>; }
+function NotFound() {
+  return <div className="mt-20 p-4 text-center">404 - Не найдено</div>;
+}
 
 const queryClient = new QueryClient();
 
@@ -44,7 +45,7 @@ function Router() {
 
 function App() {
   useEffect(() => {
-    document.documentElement.classList.add('dark');
+    document.documentElement.classList.add("dark");
   }, []);
 
   return (

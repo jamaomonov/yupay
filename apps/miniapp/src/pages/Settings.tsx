@@ -35,8 +35,7 @@ function initials(name: string | null | undefined): string {
 }
 
 const SUPPORT_URL =
-  (import.meta.env.VITE_SUPPORT_URL as string | undefined) ??
-  "https://t.me/yupay_support";
+  (import.meta.env.VITE_SUPPORT_URL as string | undefined) ?? "https://t.me/yupay_support";
 const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "0.1.0";
 
 // Legal doc URLs — surfaced only when set so we don't ship rows that link
@@ -48,12 +47,9 @@ const REFUND_URL = import.meta.env.VITE_REFUND_URL as string | undefined;
 const HAS_LEGAL_DOCS = Boolean(TERMS_URL || PRIVACY_URL || REFUND_URL);
 
 const COMPANY_NAME = import.meta.env.VITE_COMPANY_NAME as string | undefined;
-const COMPANY_REGISTRATION = import.meta.env
-  .VITE_COMPANY_REGISTRATION as string | undefined;
+const COMPANY_REGISTRATION = import.meta.env.VITE_COMPANY_REGISTRATION as string | undefined;
 const COMPANY_SINCE = import.meta.env.VITE_COMPANY_SINCE as string | undefined;
-const HAS_COMPANY_INFO = Boolean(
-  COMPANY_NAME || COMPANY_REGISTRATION || COMPANY_SINCE,
-);
+const HAS_COMPANY_INFO = Boolean(COMPANY_NAME || COMPANY_REGISTRATION || COMPANY_SINCE);
 
 export default function Settings() {
   useDocumentTitle("Настройки");
@@ -80,16 +76,16 @@ export default function Settings() {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.22 }}
-      className="p-4 space-y-4"
+      className="space-y-4 p-4"
     >
-      <h1 className="text-2xl font-bold tracking-tight text-white mb-2">Настройки</h1>
+      <h1 className="mb-2 text-2xl font-bold tracking-tight text-white">Настройки</h1>
 
       {!user && !me.isLoading && (
-        <div className="rounded-2xl border border-yellow-400/30 bg-yellow-400/5 p-4 flex items-start gap-3">
-          <AlertTriangle size={18} className="text-yellow-400 flex-shrink-0 mt-0.5" />
+        <div className="flex items-start gap-3 rounded-2xl border border-yellow-400/30 bg-yellow-400/5 p-4">
+          <AlertTriangle size={18} className="mt-0.5 flex-shrink-0 text-yellow-400" />
           <div className="text-sm">
             <p className="font-semibold text-yellow-200">Не авторизованы</p>
-            <p className="text-yellow-100/70 text-xs mt-1">
+            <p className="mt-1 text-xs text-yellow-100/70">
               Откройте приложение из Telegram, чтобы войти и видеть свой профиль.
             </p>
           </div>
@@ -97,11 +93,11 @@ export default function Settings() {
       )}
 
       {/* Profile card */}
-      <div className="bg-card border border-border rounded-3xl p-4 relative overflow-hidden">
-        <div className="absolute right-0 top-0 w-40 h-40 bg-primary/8 rounded-full blur-3xl -mr-12 -mt-12 pointer-events-none" />
+      <div className="bg-card border-border relative overflow-hidden rounded-3xl border p-4">
+        <div className="bg-primary/8 pointer-events-none absolute right-0 top-0 -mr-12 -mt-12 h-40 w-40 rounded-full blur-3xl" />
 
-        <div className="flex items-center gap-4 z-10 relative">
-          <Avatar className="w-16 h-16 border-2 border-primary/30 shadow-lg shrink-0">
+        <div className="relative z-10 flex items-center gap-4">
+          <Avatar className="border-primary/30 h-16 w-16 shrink-0 border-2 shadow-lg">
             {user?.photo_url ? (
               <AvatarImage src={user.photo_url} alt={user.display_name ?? "user"} />
             ) : (
@@ -111,24 +107,22 @@ export default function Settings() {
                 }&backgroundColor=1e2a3a`}
               />
             )}
-            <AvatarFallback className="bg-primary/20 text-primary font-bold text-lg">
+            <AvatarFallback className="bg-primary/20 text-primary text-lg font-bold">
               {initials(user?.display_name) || "👤"}
             </AvatarFallback>
           </Avatar>
 
-          <div className="flex-1 min-w-0">
-            <h2 className="font-bold text-lg text-white leading-tight truncate">
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-lg font-bold leading-tight text-white">
               {user?.display_name ?? "Гость"}
             </h2>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="text-xs text-muted-foreground">
+            <div className="mt-0.5 flex items-center gap-1.5">
+              <span className="text-muted-foreground text-xs">
                 {user ? `ID: ${user.id.slice(0, 8)}…` : "Авторизация через Telegram"}
               </span>
             </div>
             {user?.email && (
-              <p className="text-[11px] text-muted-foreground/70 mt-0.5 truncate">
-                {user.email}
-              </p>
+              <p className="text-muted-foreground/70 mt-0.5 truncate text-[11px]">{user.email}</p>
             )}
           </div>
         </div>
@@ -136,11 +130,11 @@ export default function Settings() {
 
       {/* Real settings */}
       <div className="space-y-1.5">
-        <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-[0.08em] px-1 mb-2">
+        <p className="text-muted-foreground mb-2 px-1 text-[11px] font-bold uppercase tracking-[0.08em]">
           Приложение
         </p>
 
-        <div className="bg-card border border-border rounded-3xl overflow-hidden">
+        <div className="bg-card border-border overflow-hidden rounded-3xl border">
           {/* Currency picker hidden while the storefront ships UZ-only.
               Each region will get its own native currency (UZ→UZS,
               RU→RUB, EN→USD) on its own catalog. When we re-open the
@@ -159,7 +153,9 @@ export default function Settings() {
             iconClass="text-muted-foreground"
             label="О приложении"
             value={`v${APP_VERSION}`}
-            onClick={() => { setAboutOpen(true); }}
+            onClick={() => {
+              setAboutOpen(true);
+            }}
             last
           />
         </div>
@@ -169,19 +165,17 @@ export default function Settings() {
           dead links during the pre-launch period. */}
       {HAS_LEGAL_DOCS && (
         <div className="space-y-1.5">
-          <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-[0.08em] px-1 mb-2">
+          <p className="text-muted-foreground mb-2 px-1 text-[11px] font-bold uppercase tracking-[0.08em]">
             Документы
           </p>
-          <div className="bg-card border border-border rounded-3xl overflow-hidden">
+          <div className="bg-card border-border overflow-hidden rounded-3xl border">
             {TERMS_URL && (
               <SettingsRow
                 icon={FileText}
                 iconClass="text-blue-400"
                 label="Условия использования"
                 onClick={() => window.open(TERMS_URL, "_blank", "noopener")}
-                chevron={
-                  <ExternalLink size={14} className="text-muted-foreground/50" />
-                }
+                chevron={<ExternalLink size={14} className="text-muted-foreground/50" />}
                 last={!PRIVACY_URL && !REFUND_URL}
               />
             )}
@@ -191,9 +185,7 @@ export default function Settings() {
                 iconClass="text-emerald-400"
                 label="Политика конфиденциальности"
                 onClick={() => window.open(PRIVACY_URL, "_blank", "noopener")}
-                chevron={
-                  <ExternalLink size={14} className="text-muted-foreground/50" />
-                }
+                chevron={<ExternalLink size={14} className="text-muted-foreground/50" />}
                 last={!REFUND_URL}
               />
             )}
@@ -203,9 +195,7 @@ export default function Settings() {
                 iconClass="text-amber-400"
                 label="Условия возврата"
                 onClick={() => window.open(REFUND_URL, "_blank", "noopener")}
-                chevron={
-                  <ExternalLink size={14} className="text-muted-foreground/50" />
-                }
+                chevron={<ExternalLink size={14} className="text-muted-foreground/50" />}
                 last
               />
             )}
@@ -216,8 +206,10 @@ export default function Settings() {
       {/* Logout */}
       {user && (
         <button
-          onClick={() => { logout.mutate(); }}
-          className="w-full flex items-center justify-center gap-2 py-3.5 text-muted-foreground text-sm font-medium hover:text-destructive transition-colors"
+          onClick={() => {
+            logout.mutate();
+          }}
+          className="text-muted-foreground hover:text-destructive flex w-full items-center justify-center gap-2 py-3.5 text-sm font-medium transition-colors"
           data-testid="btn-logout"
         >
           <LogOut size={15} />
@@ -230,41 +222,38 @@ export default function Settings() {
         <SheetContent side="bottom" className="rounded-t-3xl">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
-              <Info size={16} className="text-primary" aria-hidden="true" />
-              О приложении
+              <Info size={16} className="text-primary" aria-hidden="true" />О приложении
             </SheetTitle>
           </SheetHeader>
           <div className="mt-4 space-y-3 text-sm">
-            <div className="rounded-2xl border border-border p-3 flex items-center justify-between">
+            <div className="border-border flex items-center justify-between rounded-2xl border p-3">
               <span className="text-white/60">Версия</span>
               <code className="font-mono text-white">v{APP_VERSION}</code>
             </div>
 
             {HAS_COMPANY_INFO && (
-              <div className="rounded-2xl border border-border p-3 space-y-1.5">
+              <div className="border-border space-y-1.5 rounded-2xl border p-3">
                 {COMPANY_NAME && (
-                  <p className="text-white font-semibold leading-tight">
-                    {COMPANY_NAME}
-                  </p>
+                  <p className="font-semibold leading-tight text-white">{COMPANY_NAME}</p>
                 )}
                 {COMPANY_REGISTRATION && (
-                  <p className="text-white/55 text-xs leading-snug font-mono">
+                  <p className="font-mono text-xs leading-snug text-white/55">
                     {COMPANY_REGISTRATION}
                   </p>
                 )}
                 {COMPANY_SINCE && (
-                  <p className="text-white/40 text-[11px] leading-snug">
+                  <p className="text-[11px] leading-snug text-white/40">
                     Работаем с {COMPANY_SINCE} года
                   </p>
                 )}
               </div>
             )}
 
-            <p className="text-white/60 leading-relaxed">
-              YuPay — пополнение игр, ваучеры и подписки. Лицензия —
-              проприетарная; код в приватном репо.
+            <p className="leading-relaxed text-white/60">
+              YuPay — пополнение игр, ваучеры и подписки. Лицензия — проприетарная; код в приватном
+              репо.
             </p>
-            <p className="text-white/40 text-xs leading-relaxed">
+            <p className="text-xs leading-relaxed text-white/40">
               По любым вопросам пишите в поддержку — ответим в течение часа.
             </p>
           </div>
@@ -294,25 +283,20 @@ function SettingsRow({
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center justify-between px-4 py-3.5 hover:bg-white/5 transition-colors ${
-        last ? "" : "border-b border-border/40"
+      className={`flex w-full items-center justify-between px-4 py-3.5 transition-colors hover:bg-white/5 ${
+        last ? "" : "border-border/40 border-b"
       }`}
     >
       <div className="flex items-center gap-3">
-        <div className="w-8 h-8 rounded-xl bg-background/80 border border-border/60 flex items-center justify-center">
+        <div className="bg-background/80 border-border/60 flex h-8 w-8 items-center justify-center rounded-xl border">
           <Icon size={15} className={iconClass} />
         </div>
-        <span className="font-medium text-sm text-foreground">{label}</span>
+        <span className="text-foreground text-sm font-medium">{label}</span>
       </div>
       <div className="flex items-center gap-2">
-        {value && (
-          <span className="text-xs text-muted-foreground font-medium">{value}</span>
-        )}
-        {chevron ?? (
-          <ChevronRight size={16} className="text-muted-foreground/50" />
-        )}
+        {value && <span className="text-muted-foreground text-xs font-medium">{value}</span>}
+        {chevron ?? <ChevronRight size={16} className="text-muted-foreground/50" />}
       </div>
     </button>
   );
 }
-

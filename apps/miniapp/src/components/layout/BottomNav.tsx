@@ -15,9 +15,9 @@ export function BottomNav() {
   return (
     <nav
       aria-label="Основная навигация"
-      className="fixed bottom-4 left-0 right-0 z-50 flex justify-center max-w-[430px] mx-auto px-6"
+      className="fixed bottom-4 left-0 right-0 z-50 mx-auto flex max-w-[430px] justify-center px-6"
     >
-      <div className="flex items-center justify-around w-full px-3 py-2 rounded-[22px] bg-card/80 backdrop-blur-2xl border border-border/60 shadow-[0_8px_32px_rgba(0,0,0,0.45)]">
+      <div className="bg-card/80 border-border/60 flex w-full items-center justify-around rounded-[22px] border px-3 py-2 shadow-[0_8px_32px_rgba(0,0,0,0.45)] backdrop-blur-2xl">
         {navItems.map((item) => {
           const isActive = location === item.href;
           const Icon = item.icon;
@@ -27,13 +27,27 @@ export function BottomNav() {
               href={item.href}
               aria-current={isActive ? "page" : undefined}
               aria-label={item.label}
-              className="flex flex-col items-center gap-0.5 min-w-[56px]"
+              className="flex min-w-[56px] flex-col items-center gap-0.5"
               data-testid={`nav-${item.href.replace("/", "") || "home"}`}
             >
-              <div className={cn("p-1.5 rounded-xl transition-all duration-200", isActive ? "text-primary" : "text-muted-foreground")}>
-                <Icon size={20} aria-hidden="true" className={cn("transition-transform duration-200", isActive && "scale-110")} />
+              <div
+                className={cn(
+                  "rounded-xl p-1.5 transition-all duration-200",
+                  isActive ? "text-primary" : "text-muted-foreground",
+                )}
+              >
+                <Icon
+                  size={20}
+                  aria-hidden="true"
+                  className={cn("transition-transform duration-200", isActive && "scale-110")}
+                />
               </div>
-              <span className={cn("text-[10px] font-medium transition-colors", isActive ? "text-primary" : "text-muted-foreground")}>
+              <span
+                className={cn(
+                  "text-[10px] font-medium transition-colors",
+                  isActive ? "text-primary" : "text-muted-foreground",
+                )}
+              >
                 {item.label}
               </span>
             </Link>

@@ -30,9 +30,9 @@ from yupay.modules.auth.api import (
 
 ## Tables owned
 
-| Table | Owned by |
-|---|---|
-| `auth_sessions` | this module |
+| Table                     | Owned by                                               |
+| ------------------------- | ------------------------------------------------------ |
+| `auth_sessions`           | this module                                            |
 | `users`, `telegram_links` | the `users` module (this module is the primary writer) |
 
 ## Token model
@@ -40,23 +40,23 @@ from yupay.modules.auth.api import (
 See [ADR-0007](../../../../../docs/decisions/0007-jwt-format-and-rotation.md) for the
 full spec. Summary:
 
-| Kind | TTL | Storage | Use |
-|---|---|---|---|
-| `access` | 15 min | stateless JWT | `Authorization: Bearer <access>` |
-| `refresh` | 30 days | hash in `auth_sessions`, plaintext to client | `POST /auth/refresh` |
-| `guest` | 30 min | session row in `auth_sessions(kind='guest')` | `Authorization: Guest <jwt>` |
-| `ws` | 60 s | stateless JWT | WebSocket `Upgrade` query string |
+| Kind      | TTL     | Storage                                      | Use                              |
+| --------- | ------- | -------------------------------------------- | -------------------------------- |
+| `access`  | 15 min  | stateless JWT                                | `Authorization: Bearer <access>` |
+| `refresh` | 30 days | hash in `auth_sessions`, plaintext to client | `POST /auth/refresh`             |
+| `guest`   | 30 min  | session row in `auth_sessions(kind='guest')` | `Authorization: Guest <jwt>`     |
+| `ws`      | 60 s    | stateless JWT                                | WebSocket `Upgrade` query string |
 
 ## HTTP surface
 
-| Method | Path | Body | Returns |
-|---|---|---|---|
-| `POST` | `/api/v1/auth/telegram/webapp` | `{init_data}` | `TokensOut` |
-| `POST` | `/api/v1/auth/telegram/widget` | Login Widget JSON | `TokensOut` |
-| `POST` | `/api/v1/auth/guest` | `{email}` | `GuestTokenOut` |
-| `POST` | `/api/v1/auth/refresh` | `{refresh_token}` | `TokensOut` |
-| `POST` | `/api/v1/auth/logout` | `{refresh_token}` | `204 No Content` |
-| `GET` | `/api/v1/auth/me` | — (Bearer) | `MeOut` |
+| Method | Path                           | Body              | Returns          |
+| ------ | ------------------------------ | ----------------- | ---------------- |
+| `POST` | `/api/v1/auth/telegram/webapp` | `{init_data}`     | `TokensOut`      |
+| `POST` | `/api/v1/auth/telegram/widget` | Login Widget JSON | `TokensOut`      |
+| `POST` | `/api/v1/auth/guest`           | `{email}`         | `GuestTokenOut`  |
+| `POST` | `/api/v1/auth/refresh`         | `{refresh_token}` | `TokensOut`      |
+| `POST` | `/api/v1/auth/logout`          | `{refresh_token}` | `204 No Content` |
+| `GET`  | `/api/v1/auth/me`              | — (Bearer)        | `MeOut`          |
 
 ## Sequence diagrams
 

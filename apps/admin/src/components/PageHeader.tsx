@@ -47,10 +47,7 @@ export function PageHeader({ title, description, breadcrumbs, actions }: Props) 
                     </span>
                   )}
                   {!last && (
-                    <ChevronRight
-                      className="size-3 text-[var(--text-tertiary)]"
-                      aria-hidden
-                    />
+                    <ChevronRight className="size-3 text-[var(--text-tertiary)]" aria-hidden />
                   )}
                 </span>
               );
@@ -58,9 +55,7 @@ export function PageHeader({ title, description, breadcrumbs, actions }: Props) 
           </nav>
         )}
         <h1 className="text-2xl font-semibold">{title}</h1>
-        {description && (
-          <p className="mt-1 text-sm text-[var(--text-secondary)]">{description}</p>
-        )}
+        {description && <p className="mt-1 text-sm text-[var(--text-secondary)]">{description}</p>}
       </div>
       {actions && <div className="flex gap-2">{actions}</div>}
     </header>

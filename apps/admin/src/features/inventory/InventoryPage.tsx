@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@yupay/ui";
 import { useMemo, useState } from "react";
 
-
 import type {
   BulkUploadOut,
   CodeAdminListOut,
@@ -17,7 +16,6 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
-
 
 const STATES: { value: CodeState | ""; label: string }[] = [
   { value: "", label: "Все" },
@@ -62,24 +60,15 @@ export function InventoryPage() {
       if (skuId) params.set("sku_id", skuId);
       if (state) params.set("state", state);
       params.set("limit", "200");
-      return apiGet<CodeAdminListOut>(
-        `/api/v1/admin/inventory/codes?${params.toString()}`,
-      );
+      return apiGet<CodeAdminListOut>(`/api/v1/admin/inventory/codes?${params.toString()}`);
     },
     enabled: Boolean(skuId),
   });
 
-  const uploadMutation = useMutation<
-    BulkUploadOut,
-    ApiError,
-    { sku_id: string; codes: string[] }
-  >({
-    mutationFn: (body) =>
-      apiPost<BulkUploadOut>("/api/v1/admin/inventory/bulk-upload", body),
+  const uploadMutation = useMutation<BulkUploadOut, ApiError, { sku_id: string; codes: string[] }>({
+    mutationFn: (body) => apiPost<BulkUploadOut>("/api/v1/admin/inventory/bulk-upload", body),
     onSuccess: (data) => {
-      setFeedback(
-        `Загружено ${data.succeeded}/${data.total}, дублей: ${data.duplicates}`,
-      );
+      setFeedback(`Загружено ${data.succeeded}/${data.total}, дублей: ${data.duplicates}`);
       setError(null);
       setCodesText("");
       void qc.invalidateQueries({ queryKey: qk.inventoryCounts(skuId) });
@@ -131,11 +120,7 @@ export function InventoryPage() {
       key: "order",
       header: "Order item",
       render: (c) =>
-        c.order_item_id ? (
-          <code className="text-xs">{c.order_item_id.slice(0, 8)}…</code>
-        ) : (
-          "—"
-        ),
+        c.order_item_id ? <code className="text-xs">{c.order_item_id.slice(0, 8)}…</code> : "—",
     },
     {
       key: "issued",
@@ -160,12 +145,12 @@ export function InventoryPage() {
 
       <section className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
-          <label className="text-xs font-medium uppercase text-[var(--text-secondary)]">
-            SKU
-          </label>
+          <label className="text-xs font-medium uppercase text-[var(--text-secondary)]">SKU</label>
           <select
             value={skuId}
-            onChange={(e) => { setSkuId(e.target.value); }}
+            onChange={(e) => {
+              setSkuId(e.target.value);
+            }}
             className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
           >
             <option value="">— Выбрать —</option>
@@ -184,35 +169,30 @@ export function InventoryPage() {
           </select>
         </div>
 
-        {skuId && countsQuery.data && (
-          <CountsCard counts={countsQuery.data} />
-        )}
+        {skuId && countsQuery.data && <CountsCard counts={countsQuery.data} />}
       </section>
 
       {skuId && (
-        <section className="mb-6 rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
+        <section className="mb-6 rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
           <h2 className="mb-2 text-sm font-semibold">Загрузить коды</h2>
           <p className="mb-2 text-xs text-[var(--text-secondary)]">
-            По одному коду в строке (или через запятую / пробел). Дубли отсеются
-            автоматически. Максимум 5000 за раз.
+            По одному коду в строке (или через запятую / пробел). Дубли отсеются автоматически.
+            Максимум 5000 за раз.
           </p>
           <textarea
             value={codesText}
-            onChange={(e) => { setCodesText(e.target.value); }}
+            onChange={(e) => {
+              setCodesText(e.target.value);
+            }}
             rows={6}
             className="w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] p-3 font-mono text-xs"
             placeholder={"AAA-BBB-CCC\nXYZ-123-456"}
           />
           <div className="mt-3 flex items-center gap-3">
-            <Button
-              onClick={handleUpload}
-              disabled={uploadMutation.isPending}
-            >
+            <Button onClick={handleUpload} disabled={uploadMutation.isPending}>
               {uploadMutation.isPending ? "Загружаем…" : "Загрузить"}
             </Button>
-            {feedback && (
-              <span className="text-sm text-[var(--success)]">{feedback}</span>
-            )}
+            {feedback && <span className="text-sm text-[var(--success)]">{feedback}</span>}
             {error && <span className="text-sm text-[var(--danger)]">{error}</span>}
           </div>
         </section>
@@ -226,7 +206,9 @@ export function InventoryPage() {
             </label>
             <select
               value={state}
-              onChange={(e) => { setState(e.target.value as CodeState | ""); }}
+              onChange={(e) => {
+                setState(e.target.value as CodeState | "");
+              }}
               className="h-9 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
             >
               {STATES.map((s) => (
@@ -246,7 +228,7 @@ export function InventoryPage() {
       )}
 
       {!skuId && (
-        <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-10 text-center text-sm text-[var(--text-secondary)]">
+        <div className="rounded-lg border bg-[var(--bg-surface)] p-10 text-center text-sm text-[var(--text-secondary)] shadow-[var(--shadow-sm)]">
           Выбери SKU, чтобы посмотреть счётчики и список кодов.
         </div>
       )}
@@ -262,7 +244,7 @@ function CountsCard({ counts }: { counts: SkuCountsOut }) {
     { label: "Воид", value: counts.voided, tone: "text-[var(--text-secondary)]" },
   ];
   return (
-    <div className="grid grid-cols-4 gap-2 rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
+    <div className="grid grid-cols-4 gap-2 rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
       {cells.map((c) => (
         <div key={c.label} className="text-center">
           <div className={`text-2xl font-semibold ${c.tone}`}>{c.value}</div>

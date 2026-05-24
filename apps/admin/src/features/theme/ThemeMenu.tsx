@@ -40,11 +40,7 @@ export function ThemeMenu() {
   useEffect(() => {
     if (!open) return;
     const onClick = (e: MouseEvent) => {
-      if (
-        wrapRef.current &&
-        e.target instanceof Node &&
-        !wrapRef.current.contains(e.target)
-      ) {
+      if (wrapRef.current && e.target instanceof Node && !wrapRef.current.contains(e.target)) {
         setOpen(false);
       }
     };
@@ -65,7 +61,9 @@ export function ThemeMenu() {
     <div ref={wrapRef} className="relative">
       <button
         type="button"
-        onClick={() => { setOpen((v) => !v); }}
+        onClick={() => {
+          setOpen((v) => !v);
+        }}
         aria-label="Theme"
         aria-haspopup="menu"
         aria-expanded={open}

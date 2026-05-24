@@ -45,9 +45,7 @@ export function useFxRate(target: DisplayCurrency): {
     enabled: !isPassthrough,
     queryFn: async () => {
       const data = await apiGet<FxRatesApi>("/api/v1/fx/rates");
-      const hit = data.rates.find(
-        (r) => r.base === "USD" && r.quote === target,
-      );
+      const hit = data.rates.find((r) => r.base === "USD" && r.quote === target);
       if (!hit) {
         // Backend lists only the configured fx_supported_quotes. Failing
         // loudly is better than silently rendering a wrong number.

@@ -36,12 +36,12 @@ breakers at the service layer.
 
 ## Cache
 
-| Redis key | TTL | Set by |
-|---|---|---|
-| `fx:rate:{base}:{quote}` | 15 min | Every successful provider call |
-| `fx:rate:{base}:{quote}:stale` | 24 h | Same as above (parallel write) |
+| Redis key                      | TTL    | Set by                         |
+| ------------------------------ | ------ | ------------------------------ |
+| `fx:rate:{base}:{quote}`       | 15 min | Every successful provider call |
+| `fx:rate:{base}:{quote}:stale` | 24 h   | Same as above (parallel write) |
 
-The scheduled job ``fx_refresh`` (planned, will live in `apps/scheduler`) walks the
+The scheduled job `fx_refresh` (planned, will live in `apps/scheduler`) walks the
 matrix every 5 min so demand reads only ever hit Redis under steady state.
 
 ## Tables owned
@@ -52,9 +52,9 @@ matrix every 5 min so demand reads only ever hit Redis under steady state.
 
 ## HTTP surface
 
-| Method | Path | Returns |
-|---|---|---|
-| `GET` | `/api/v1/fx/rates` | `RatesOut` — list of `{base, quote, rate, fetched_at, source}` |
+| Method | Path               | Returns                                                        |
+| ------ | ------------------ | -------------------------------------------------------------- |
+| `GET`  | `/api/v1/fx/rates` | `RatesOut` — list of `{base, quote, rate, fetched_at, source}` |
 
 ## Tests
 

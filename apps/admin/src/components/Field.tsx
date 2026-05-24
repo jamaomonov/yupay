@@ -38,14 +38,7 @@ interface Props {
   children: (props: FieldRenderProps) => ReactNode;
 }
 
-export function Field({
-  label,
-  hint,
-  error,
-  required,
-  className,
-  children,
-}: Props) {
+export function Field({ label, hint, error, required, className, children }: Props) {
   const baseId = useId();
   const inputId = `${baseId}-input`;
   const hintId = hint ? `${baseId}-hint` : undefined;

@@ -13,8 +13,8 @@ Two reasonable models:
 1. A separate `admin_users` table with email + password + MFA, fully isolated from the
    customer auth surface.
 2. A `roles` field on the existing `users` table; admins log in through the same
-   Telegram path as customers, and admin endpoints simply require ``admin`` in
-   ``users.roles``.
+   Telegram path as customers, and admin endpoints simply require `admin` in
+   `users.roles`.
 
 Both work. The first gives the strongest blast-radius isolation (a compromised
 customer account can never escalate to admin). The second is dramatically simpler:
@@ -33,26 +33,26 @@ CREATE INDEX ix_users_roles_admin ON users USING gin (roles jsonb_path_ops)
   WHERE roles ? 'admin';
 ```
 
-`roles` is an array of strings. Today the only role is ``admin``; ``support``,
-``operator``, ``finance`` are reserved for the obvious near-term expansion.
+`roles` is an array of strings. Today the only role is `admin`; `support`,
+`operator`, `finance` are reserved for the obvious near-term expansion.
 
 ### Auth flow
 
 1. The admin SPA renders the same Telegram Login Widget as the public web.
 2. The backend's `POST /api/v1/auth/telegram/widget` mints an access JWT — identical
    to the customer flow.
-3. Admin endpoints depend on ``require_admin``: it resolves ``current_user`` and
-   checks ``"admin" in user.roles``. Non-admin tokens get **403 Forbidden** (not 401,
+3. Admin endpoints depend on `require_admin`: it resolves `current_user` and
+   checks `"admin" in user.roles`. Non-admin tokens get **403 Forbidden** (not 401,
    so the SPA can distinguish "not logged in" from "logged in but not allowed").
 
 ### Bootstrapping the first admin
 
-`scripts/grant_admin.py` adds ``admin`` to a user's ``roles`` array by telegram id
+`scripts/grant_admin.py` adds `admin` to a user's `roles` array by telegram id
 or user id. Run via:
 
 ```
 docker compose exec api python -m yupay.scripts.grant_admin --tg-id 123456789
-docker compose exec api python -m yupay.scripts.grant_admin --user-id 019e2a0f-... 
+docker compose exec api python -m yupay.scripts.grant_admin --user-id 019e2a0f-...
 ```
 
 The first admin logs in via Telegram once (creating the `users` row), then a
@@ -61,7 +61,7 @@ deployer runs the script with the tg-id from the logs.
 ### Token surface
 
 The admin SPA uses the **same** access JWT as web / mini-app. No separate token
-kind. The JWT already carries ``sub`` (the user id); the role check happens at the
+kind. The JWT already carries `sub` (the user id); the role check happens at the
 DB layer per-request — that costs one indexed lookup but lets us revoke admin in
 real time (just remove `admin` from `roles`).
 

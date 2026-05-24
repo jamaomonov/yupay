@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -31,7 +31,7 @@ from yupay.modules.orders.validation import validate_fulfillment_data
 from yupay.modules.payments.models import Payment, PaymentAttempt
 
 
-def _order_load_options() -> tuple:
+def _order_load_options() -> tuple[Any, ...]:
     """Eager-loading chain used by every read of an Order — keeps the
     OrderItemOut.display field populatable without a separate fetch."""
     return (
@@ -46,7 +46,7 @@ def _order_load_options() -> tuple:
     )
 
 
-def _tr_name(translations: list, locale: str = "ru") -> str:
+def _tr_name(translations: list[Any], locale: str = "ru") -> str:
     """Pick the localised name from a translations relationship, falling back
     to the first available row when the asked locale is missing."""
     if not translations:
@@ -62,7 +62,7 @@ def build_item_display(item: OrderItem, *, locale: str = "ru") -> OrderItemDispl
     SKU → product → brand chain has been eagerly loaded."""
     sku = item.sku
     if sku is None:
-        return None
+        return None  # type: ignore[unreachable]
     product = sku.product
     brand = product.brand if product is not None else None
     return OrderItemDisplay(

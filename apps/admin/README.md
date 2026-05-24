@@ -42,13 +42,13 @@ Vite dev server proxies `/api/*` to the backend on `:8000`.
 
 ## Routes
 
-| Path | What |
-|---|---|
-| `/login` | Telegram Login Widget |
-| `/` | Dashboard (placeholder) |
-| `/categories` | Categories list/edit |
-| `/brands` | Brands list/edit/create |
-| `/brands/:id` | Brand detail + products |
-| `/products` | Products list |
+| Path            | What                                |
+| --------------- | ----------------------------------- |
+| `/login`        | Telegram Login Widget               |
+| `/`             | Dashboard (placeholder)             |
+| `/categories`   | Categories list/edit                |
+| `/brands`       | Brands list/edit/create             |
+| `/brands/:id`   | Brand detail + products             |
+| `/products`     | Products list                       |
 | `/products/:id` | Product detail + form-schema editor |
-| `/skus` | SKUs list with per-product filter |
+| `/skus`         | SKUs list with per-product filter   |

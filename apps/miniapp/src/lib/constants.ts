@@ -1,4 +1,3 @@
-
 import arenaLogo from "@assets/arenabreakout_1778456340557.svg";
 import arenaBg from "@assets/arenabreakout_bg_1778456340546.png";
 import deltaforceAppIcon from "@assets/deltaforce_1778598588753.webp";
@@ -8,7 +7,14 @@ import pubgBg from "@assets/pubgmobile_bg_1778456340557.png";
 import steamBg from "@assets/steam_bg_1778459971795.jpg";
 import telegramBg from "@assets/telegram-bg_1778459971796.jpg";
 import telegramAppIcon from "@assets/telegram_1778598588753.webp";
-import { SiSteam, SiRiotgames, SiRoblox, SiEpicgames, SiTelegram, SiGoogleplay } from "react-icons/si";
+import {
+  SiSteam,
+  SiRiotgames,
+  SiRoblox,
+  SiEpicgames,
+  SiTelegram,
+  SiGoogleplay,
+} from "react-icons/si";
 
 export type Category = "games" | "services" | "cards";
 

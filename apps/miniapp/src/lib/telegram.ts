@@ -94,10 +94,7 @@ export function readyTelegram(): void {
  * Returns the raw initData string, or ``null`` if it never appeared within the
  * timeout (e.g. running in a plain browser).
  */
-export async function waitForInitData(
-  timeoutMs = 2_000,
-  stepMs = 50,
-): Promise<string | null> {
+export async function waitForInitData(timeoutMs = 2_000, stepMs = 50): Promise<string | null> {
   const start = Date.now();
   let initData = getWebApp()?.initData ?? "";
   while (!initData && Date.now() - start < timeoutMs) {

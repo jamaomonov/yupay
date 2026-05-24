@@ -1,9 +1,4 @@
-export type TaskStatus =
-  | "pending"
-  | "in_progress"
-  | "succeeded"
-  | "failed"
-  | "cancelled";
+export type TaskStatus = "pending" | "in_progress" | "succeeded" | "failed" | "cancelled";
 
 export interface AttemptOut {
   kind: string;

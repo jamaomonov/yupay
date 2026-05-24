@@ -19,6 +19,7 @@ Only the latest `main` branch and the most recent tagged release receive securit
 ## Scope
 
 In scope:
+
 - Authentication and authorization flaws
 - Payment processing vulnerabilities
 - Data exposure (PII, tokens, secrets)
@@ -28,6 +29,7 @@ In scope:
 - Webhook signature bypass
 
 Out of scope:
+
 - Best-practice suggestions without an exploit
 - Issues in third-party services we depend on (report to the vendor)
 - Social engineering

@@ -39,26 +39,26 @@ class Fulfiller(Protocol):
 
 ### Поставщики
 
-| Slug | Статус | Что делает |
-|---|---|---|
-| `mock` | функционален в dev/staging | сразу возвращает `succeeded` + фейковый ваучер `MOCK-<order_item_id>` |
-| `steam` | заглушка | `available=False`, все методы → `FulfillerNotIntegratedError` |
-| `riot` | заглушка | то же |
-| `pubg` | заглушка | то же (Tencent / Midasbuy) |
-| `spotify` | заглушка | то же |
-| `apple` | заглушка | то же |
-| `voucher_inventory` | заглушка | подберёт код из будущего модуля `inventory` |
+| Slug                | Статус                     | Что делает                                                            |
+| ------------------- | -------------------------- | --------------------------------------------------------------------- |
+| `mock`              | функционален в dev/staging | сразу возвращает `succeeded` + фейковый ваучер `MOCK-<order_item_id>` |
+| `steam`             | заглушка                   | `available=False`, все методы → `FulfillerNotIntegratedError`         |
+| `riot`              | заглушка                   | то же                                                                 |
+| `pubg`              | заглушка                   | то же (Tencent / Midasbuy)                                            |
+| `spotify`           | заглушка                   | то же                                                                 |
+| `apple`             | заглушка                   | то же                                                                 |
+| `voucher_inventory` | заглушка                   | подберёт код из будущего модуля `inventory`                           |
 
 Реестр в `suppliers/__init__.py:REGISTRY`. Добавление нового поставщика =
 реализовать класс + зарегистрировать slug.
 
 ## Таблицы
 
-| Таблица | Что хранит |
-|---|---|
-| `fulfillment_tasks` | один task на `OrderItem` (UNIQUE), `status` ∈ pending/in_progress/succeeded/failed/cancelled, `supplier`, `external_order_id`, `attempts_count`, `metadata jsonb`, таймстемпы (`succeeded_at`/`failed_at`/`cancelled_at`). Partial UNIQUE `(supplier, external_order_id) WHERE NOT NULL`. |
-| `fulfillment_attempts` | append-only аудит каждого тика (`kind` ∈ fulfill/status_check/cancel, `status` ∈ ok/error, `payload jsonb`, `error text`). |
-| `deliveries` | финальный артефакт. UNIQUE `(order_item_id)`. `channel` (today всегда `in_app`), `artifact_kind`, `artifact jsonb`. |
+| Таблица                | Что хранит                                                                                                                                                                                                                                                                                |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fulfillment_tasks`    | один task на `OrderItem` (UNIQUE), `status` ∈ pending/in_progress/succeeded/failed/cancelled, `supplier`, `external_order_id`, `attempts_count`, `metadata jsonb`, таймстемпы (`succeeded_at`/`failed_at`/`cancelled_at`). Partial UNIQUE `(supplier, external_order_id) WHERE NOT NULL`. |
+| `fulfillment_attempts` | append-only аудит каждого тика (`kind` ∈ fulfill/status_check/cancel, `status` ∈ ok/error, `payload jsonb`, `error text`).                                                                                                                                                                |
+| `deliveries`           | финальный артефакт. UNIQUE `(order_item_id)`. `channel` (today всегда `in_app`), `artifact_kind`, `artifact jsonb`.                                                                                                                                                                       |
 
 Миграция: `0008_fulfillment_init`.
 
@@ -106,6 +106,7 @@ POST /api/v1/admin/fulfillment/tasks/{id}/fail     — manual: отметить 
 паркуется в админской очереди (`/admin/fulfillment/tasks?supplier=manual&status_filter=in_progress`).
 
 Админ обрабатывает заказ:
+
 - **Завершить** → `POST /complete` с `{artifact_kind, artifact, channel?, admin_note?}`.
   Создаётся `Delivery`, task → `succeeded`, item → `delivered`, и
   `_try_settle_order` продвигает заказ до `delivered` тем же путём, что и для

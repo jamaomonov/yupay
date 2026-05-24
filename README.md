@@ -16,15 +16,15 @@
 
 ## Stack at a glance
 
-| Area | Choice |
-|---|---|
-| Backend | Python 3.12, FastAPI, SQLAlchemy 2 (async), Alembic, Pydantic v2, Dramatiq, Redis |
-| Frontend | Next.js 15 (App Router, RSC), TypeScript strict, Tailwind v4, shadcn/ui |
-| Mini App | `@telegram-apps/sdk-react` v3 |
-| Data | PostgreSQL 16, Redis 7, MinIO |
-| Monorepo | pnpm workspaces + Turborepo + uv workspace + Makefile |
-| Infra | Docker Compose, Caddy 2, Prometheus + Grafana + Loki, Sentry SaaS |
-| CI/CD | GitHub Actions + GHCR + SSH deploy |
+| Area     | Choice                                                                            |
+| -------- | --------------------------------------------------------------------------------- |
+| Backend  | Python 3.12, FastAPI, SQLAlchemy 2 (async), Alembic, Pydantic v2, Dramatiq, Redis |
+| Frontend | Next.js 15 (App Router, RSC), TypeScript strict, Tailwind v4, shadcn/ui           |
+| Mini App | `@telegram-apps/sdk-react` v3                                                     |
+| Data     | PostgreSQL 16, Redis 7, MinIO                                                     |
+| Monorepo | pnpm workspaces + Turborepo + uv workspace + Makefile                             |
+| Infra    | Docker Compose, Caddy 2, Prometheus + Grafana + Loki, Sentry SaaS                 |
+| CI/CD    | GitHub Actions + GHCR + SSH deploy                                                |
 
 ---
 

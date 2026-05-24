@@ -8,7 +8,6 @@ import { useAuthStore, type AuthMe } from "./authStore";
 import { apiGet, ApiError } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
-
 export function useMe(enabled = true) {
   const token = useAuthStore((s) => s.token);
   const setMe = useAuthStore((s) => s.setMe);

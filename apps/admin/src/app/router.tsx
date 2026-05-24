@@ -29,7 +29,6 @@ import { WalletPage } from "@/features/wallet/WalletPage";
 import { WebhooksPage } from "@/features/webhooks/WebhooksPage";
 import { DashboardPage } from "@/routes/Dashboard";
 
-
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
   {

@@ -13,7 +13,6 @@ import { PageHeader } from "@/components/PageHeader";
 import { ApiError, apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
-
 const CURRENCIES = ["USD", "USDT", "RUB", "UZS", "KZT", "EUR"] as const;
 const REGION_PRESETS = [
   { value: "GLOBAL", label: "GLOBAL" },
@@ -179,20 +178,14 @@ export function SkuEditPage() {
   const watchedPriceUsd = form.watch("price_usd");
   const watchedSkuCode = form.watch("sku_code");
 
-  const selectedProduct = watchedProductId
-    ? productById.get(watchedProductId)
-    : undefined;
-  const selectedBrand = selectedProduct
-    ? brandById.get(selectedProduct.brand_id)
-    : undefined;
+  const selectedProduct = watchedProductId ? productById.get(watchedProductId) : undefined;
+  const selectedBrand = selectedProduct ? brandById.get(selectedProduct.brand_id) : undefined;
   const productName =
     selectedProduct?.translations.find((t) => t.locale === "ru")?.name ??
     selectedProduct?.slug ??
     "";
   const brandName =
-    selectedBrand?.translations.find((t) => t.locale === "ru")?.name ??
-    selectedBrand?.slug ??
-    "";
+    selectedBrand?.translations.find((t) => t.locale === "ru")?.name ?? selectedBrand?.slug ?? "";
 
   const suggestSkuCode = () => {
     if (!selectedProduct) return;
@@ -245,10 +238,7 @@ export function SkuEditPage() {
           price: o.price,
         })),
       };
-      return apiPatch<Sku>(
-        `/api/v1/admin/catalog/skus/${params.id ?? ""}`,
-        body,
-      );
+      return apiPatch<Sku>(`/api/v1/admin/catalog/skus/${params.id ?? ""}`, body);
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: qk.skus() });
@@ -257,8 +247,7 @@ export function SkuEditPage() {
   });
 
   const remove = useMutation<void, ApiError>({
-    mutationFn: () =>
-      apiDelete(`/api/v1/admin/catalog/skus/${params.id ?? ""}`),
+    mutationFn: () => apiDelete(`/api/v1/admin/catalog/skus/${params.id ?? ""}`),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: qk.skus() });
       navigate("/skus");
@@ -271,13 +260,13 @@ export function SkuEditPage() {
       : "Например: «60 UC», «120 UC», «660 UC», «Royale Pass»";
 
   return (
-    <form onSubmit={form.handleSubmit((v) => { save.mutate(v); })}>
+    <form
+      onSubmit={form.handleSubmit((v) => {
+        save.mutate(v);
+      })}
+    >
       <PageHeader
-        title={
-          isNew
-            ? "Новый SKU"
-            : `SKU · ${existing?.sku_code ?? params.id?.slice(0, 8) ?? ""}`
-        }
+        title={isNew ? "Новый SKU" : `SKU · ${existing?.sku_code ?? params.id?.slice(0, 8) ?? ""}`}
         description={
           selectedProduct
             ? `${brandName} → ${productName} → конкретная позиция к продаже.`
@@ -285,11 +274,7 @@ export function SkuEditPage() {
         }
         actions={
           <>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => navigate("/skus")}
-            >
+            <Button type="button" variant="ghost" onClick={() => navigate("/skus")}>
               Отмена
             </Button>
             {!isNew && (
@@ -297,11 +282,7 @@ export function SkuEditPage() {
                 type="button"
                 variant="danger"
                 onClick={() => {
-                  if (
-                    confirm(
-                      `Удалить SKU «${existing?.sku_code ?? ""}»? Действие необратимо.`,
-                    )
-                  ) {
+                  if (confirm(`Удалить SKU «${existing?.sku_code ?? ""}»? Действие необратимо.`)) {
                     remove.mutate();
                   }
                 }}
@@ -320,7 +301,7 @@ export function SkuEditPage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* ----- left: identity + pricing ----- */}
-        <section className="space-y-4 rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4 lg:col-span-2">
+        <section className="space-y-4 rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)] lg:col-span-2">
           <Field
             label="Продукт"
             error={form.formState.errors.product_id?.message}
@@ -335,12 +316,8 @@ export function SkuEditPage() {
               {productsQuery.data?.map((p) => {
                 const brand = brandById.get(p.brand_id);
                 const brandLabel =
-                  brand?.translations.find((t) => t.locale === "ru")?.name ??
-                  brand?.slug ??
-                  "?";
-                const pName =
-                  p.translations.find((t) => t.locale === "ru")?.name ??
-                  p.slug;
+                  brand?.translations.find((t) => t.locale === "ru")?.name ?? brand?.slug ?? "?";
+                const pName = p.translations.find((t) => t.locale === "ru")?.name ?? p.slug;
                 return (
                   <option key={p.id} value={p.id}>
                     {brandLabel} — {pName}
@@ -356,14 +333,8 @@ export function SkuEditPage() {
           </Field>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Field
-              label="Номинал"
-              help={denominationHint}
-            >
-              <Input
-                {...form.register("denomination")}
-                placeholder="60 UC"
-              />
+            <Field label="Номинал" help={denominationHint}>
+              <Input {...form.register("denomination")} placeholder="60 UC" />
             </Field>
             <Field label="Регион" help="GLOBAL — продаётся везде.">
               <select
@@ -438,18 +409,11 @@ export function SkuEditPage() {
           </div>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Field label="Сортировка">
-              <Input
-                type="number"
-                {...form.register("sort_order")}
-              />
+              <Input type="number" {...form.register("sort_order")} />
             </Field>
             <Field label="Статус">
               <label className="mt-1 flex h-10 items-center gap-2 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm">
-                <input
-                  type="checkbox"
-                  {...form.register("active")}
-                  className="size-4"
-                />
+                <input type="checkbox" {...form.register("active")} className="size-4" />
                 Активен
               </label>
             </Field>
@@ -460,10 +424,7 @@ export function SkuEditPage() {
             error={form.formState.errors.image_url?.message}
             help="Опционально. Переопределяет картинку продукта."
           >
-            <Input
-              {...form.register("image_url")}
-              placeholder="https://…"
-            />
+            <Input {...form.register("image_url")} placeholder="https://…" />
           </Field>
         </section>
 
@@ -478,7 +439,7 @@ export function SkuEditPage() {
             skuCode={watchedSkuCode}
           />
 
-          <section className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
+          <section className="rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
             <div className="mb-3 flex items-baseline justify-between">
               <div>
                 <h3 className="text-sm font-semibold">Цены в других валютах</h3>
@@ -490,9 +451,9 @@ export function SkuEditPage() {
                 type="button"
                 variant="ghost"
                 size="sm"
-                onClick={() =>
-                  { overrides.append({ currency: "UZS", price: "" }); }
-                }
+                onClick={() => {
+                  overrides.append({ currency: "UZS", price: "" });
+                }}
               >
                 <Plus className="size-4" />
                 Добавить
@@ -506,10 +467,7 @@ export function SkuEditPage() {
             ) : (
               <ul className="space-y-2">
                 {overrides.fields.map((field, idx) => (
-                  <li
-                    key={field.id}
-                    className="flex items-center gap-2"
-                  >
+                  <li key={field.id} className="flex items-center gap-2">
                     <select
                       {...form.register(`price_overrides.${idx}.currency`)}
                       className="h-9 w-24 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 text-sm font-medium"
@@ -530,7 +488,9 @@ export function SkuEditPage() {
                       type="button"
                       variant="ghost"
                       size="sm"
-                      onClick={() => { overrides.remove(idx); }}
+                      onClick={() => {
+                        overrides.remove(idx);
+                      }}
                       aria-label="Убрать"
                     >
                       <Trash2 className="size-4" />
@@ -580,7 +540,7 @@ function PricePreview({
   });
   const showLine = denom || region || hasUsd;
   return (
-    <section className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
+    <section className="rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
       <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-secondary)]">
         Превью
       </h3>
@@ -601,13 +561,7 @@ function PricePreview({
             </div>
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {hasUsd && (
-              <PriceChip
-                currency="USD"
-                value={usdNum.toFixed(2)}
-                tone="primary"
-              />
-            )}
+            {hasUsd && <PriceChip currency="USD" value={usdNum.toFixed(2)} tone="primary" />}
             {validOverrides.map((o, i) => (
               <PriceChip
                 key={`${o.currency}-${i}`}
@@ -642,9 +596,7 @@ function PriceChip({
     <span
       className={`inline-flex items-baseline gap-1 rounded-md border px-2 py-1 font-mono text-xs ${cls}`}
     >
-      <span className="text-[10px] uppercase tracking-wide opacity-70">
-        {currency}
-      </span>
+      <span className="text-[10px] uppercase tracking-wide opacity-70">{currency}</span>
       <span className="text-sm font-semibold">{value}</span>
     </span>
   );
@@ -670,9 +622,7 @@ function Field({
       {help && !error && (
         <span className="mt-1 block text-xs text-[var(--text-secondary)]">{help}</span>
       )}
-      {error && (
-        <span className="mt-1 block text-xs text-[var(--danger)]">{error}</span>
-      )}
+      {error && <span className="mt-1 block text-xs text-[var(--danger)]">{error}</span>}
     </label>
   );
 }

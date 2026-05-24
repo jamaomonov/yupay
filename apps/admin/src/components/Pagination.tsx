@@ -1,7 +1,6 @@
 import { Button } from "@yupay/ui";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
-
 interface Props {
   total: number;
   limit: number;
@@ -12,13 +11,7 @@ interface Props {
   pageSizeLabel?: string;
 }
 
-export function Pagination({
-  total,
-  limit,
-  offset,
-  onPageChange,
-  pageSizeLabel,
-}: Props) {
+export function Pagination({ total, limit, offset, onPageChange, pageSizeLabel }: Props) {
   if (total <= limit) return null;
   const from = total === 0 ? 0 : offset + 1;
   const to = Math.min(offset + limit, total);
@@ -35,7 +28,9 @@ export function Pagination({
           variant="secondary"
           size="sm"
           disabled={!canPrev}
-          onClick={() => { onPageChange(Math.max(0, offset - limit)); }}
+          onClick={() => {
+            onPageChange(Math.max(0, offset - limit));
+          }}
           aria-label="Предыдущая страница"
         >
           <ChevronLeft className="size-4" aria-hidden />
@@ -45,7 +40,9 @@ export function Pagination({
           variant="secondary"
           size="sm"
           disabled={!canNext}
-          onClick={() => { onPageChange(offset + limit); }}
+          onClick={() => {
+            onPageChange(offset + limit);
+          }}
           aria-label="Следующая страница"
         >
           Вперёд

@@ -2,15 +2,15 @@
 
 ## Prerequisites
 
-| Tool | Version | Install hint |
-|---|---|---|
-| Docker | 24+ | https://docs.docker.com/get-docker/ |
-| Docker Compose v2 | — | bundled with Docker Desktop / `docker compose plugin` |
-| Node | 22 LTS | `nvm install` (uses `.nvmrc`) |
-| pnpm | 9.x | `corepack enable && corepack prepare pnpm@9 --activate` |
-| Python | 3.12 | `pyenv install 3.12` (uses `.python-version`) |
-| uv | latest | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
-| Make | any | preinstalled on macOS/Linux |
+| Tool              | Version | Install hint                                            |
+| ----------------- | ------- | ------------------------------------------------------- |
+| Docker            | 24+     | https://docs.docker.com/get-docker/                     |
+| Docker Compose v2 | —       | bundled with Docker Desktop / `docker compose plugin`   |
+| Node              | 22 LTS  | `nvm install` (uses `.nvmrc`)                           |
+| pnpm              | 9.x     | `corepack enable && corepack prepare pnpm@9 --activate` |
+| Python            | 3.12    | `pyenv install 3.12` (uses `.python-version`)           |
+| uv                | latest  | `curl -LsSf https://astral.sh/uv/install.sh \| sh`      |
+| Make              | any     | preinstalled on macOS/Linux                             |
 
 ## First-time bootstrap
 

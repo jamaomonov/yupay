@@ -27,7 +27,6 @@ import {
 import { ChevronRight } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-
 import {
   type CustomerOrderSummary,
   type CustomerOverviewOut,
@@ -47,8 +46,6 @@ import { useToast } from "@/components/Toast";
 import { type ApiError, api, apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
-
-
 export function CustomerPage() {
   const params = useParams<{ id: string }>();
   const userId = params.id ?? "";
@@ -57,8 +54,7 @@ export function CustomerPage() {
   const toast = useToast();
   const query = useQuery<CustomerOverviewOut, ApiError>({
     queryKey: qk.customerOverview(userId),
-    queryFn: () =>
-      apiGet<CustomerOverviewOut>(`/api/v1/admin/customers/${userId}/overview`),
+    queryFn: () => apiGet<CustomerOverviewOut>(`/api/v1/admin/customers/${userId}/overview`),
     enabled: Boolean(userId),
     refetchInterval: 30_000,
   });
@@ -69,8 +65,7 @@ export function CustomerPage() {
   // operator drills into wallet detail.
   const walletLedger = useQuery<AdminUserLedgerOut, ApiError>({
     queryKey: [...qk.walletUser(userId), "rail"],
-    queryFn: () =>
-      apiGet<AdminUserLedgerOut>(`/api/v1/admin/wallet/${userId}?limit=5`),
+    queryFn: () => apiGet<AdminUserLedgerOut>(`/api/v1/admin/wallet/${userId}?limit=5`),
     enabled: Boolean(userId),
   });
 
@@ -83,11 +78,7 @@ export function CustomerPage() {
         body: JSON.stringify({ roles }),
       }),
     onSuccess: (updated) => {
-      toast.success(
-        updated.roles.includes("admin")
-          ? "Админ-роль выдана."
-          : "Админ-роль снята.",
-      );
+      toast.success(updated.roles.includes("admin") ? "Админ-роль выдана." : "Админ-роль снята.");
       void qc.invalidateQueries({ queryKey: qk.customerOverview(userId) });
       void qc.invalidateQueries({ queryKey: ["admin", "users"] });
     },
@@ -122,7 +113,9 @@ export function CustomerPage() {
   }
 
   const data = query.data;
-  const goOrder = (orderId: string) => { void navigate(`/orders/${orderId}`); };
+  const goOrder = (orderId: string) => {
+    void navigate(`/orders/${orderId}`);
+  };
   const isAdmin = data.user.roles.includes("admin");
   return (
     <div className="space-y-4">
@@ -141,41 +134,41 @@ export function CustomerPage() {
           {data.user.display_name ?? data.user.email ?? data.user.id.slice(0, 8)}
         </span>
       </nav>
-    {/* 2-column layout: the main activity column on the left (2/3 width) carries
+      {/* 2-column layout: the main activity column on the left (2/3 width) carries
         the things an operator actively triages — stats + recent orders /
         payments / open tasks. The right rail (1/3 width) keeps identity +
         balances within reach without forcing the operator to scroll past 4
         tables to remember who they're looking at. Stacks vertically below
         `lg:`. */}
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-      <section className="space-y-6 lg:col-span-2">
-        <Stats stats={data.stats} />
-        <RecentOrders rows={data.recent_orders} onOpen={goOrder} />
-        <RecentPayments rows={data.recent_payments} onOpen={goOrder} />
-        <OpenTasks rows={data.open_fulfillment_tasks} onOpen={goOrder} />
-      </section>
-      <aside className="space-y-6 lg:sticky lg:top-[calc(var(--topbar-height)+1rem)] lg:self-start">
-        <UserHeader
-          data={data}
-          onToggleAdmin={() => {
-            const action = isAdmin ? "снять админ-роль" : "выдать админ-роль";
-            const name = data.user.display_name ?? data.user.email ?? data.user.id.slice(0, 8);
-            if (!window.confirm(`Точно ${action} у ${name}?`)) return;
-            const next = isAdmin
-              ? data.user.roles.filter((r) => r !== "admin")
-              : [...new Set([...data.user.roles, "admin"])];
-            setRoles.mutate(next);
-          }}
-          rolePending={setRoles.isPending}
-        />
-        <WalletBalances balances={data.wallet_balances} />
-        <WalletHistory
-          ledger={walletLedger.data ?? null}
-          loading={walletLedger.isPending}
-          userId={userId}
-        />
-      </aside>
-    </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <section className="space-y-6 lg:col-span-2">
+          <Stats stats={data.stats} />
+          <RecentOrders rows={data.recent_orders} onOpen={goOrder} />
+          <RecentPayments rows={data.recent_payments} onOpen={goOrder} />
+          <OpenTasks rows={data.open_fulfillment_tasks} onOpen={goOrder} />
+        </section>
+        <aside className="space-y-6 lg:sticky lg:top-[calc(var(--topbar-height)+1rem)] lg:self-start">
+          <UserHeader
+            data={data}
+            onToggleAdmin={() => {
+              const action = isAdmin ? "снять админ-роль" : "выдать админ-роль";
+              const name = data.user.display_name ?? data.user.email ?? data.user.id.slice(0, 8);
+              if (!window.confirm(`Точно ${action} у ${name}?`)) return;
+              const next = isAdmin
+                ? data.user.roles.filter((r) => r !== "admin")
+                : [...new Set([...data.user.roles, "admin"])];
+              setRoles.mutate(next);
+            }}
+            rolePending={setRoles.isPending}
+          />
+          <WalletBalances balances={data.wallet_balances} />
+          <WalletHistory
+            ledger={walletLedger.data ?? null}
+            loading={walletLedger.isPending}
+            userId={userId}
+          />
+        </aside>
+      </div>
     </div>
   );
 }
@@ -196,28 +189,28 @@ function UserHeader({
   const isAdmin = u.roles.includes("admin");
 
   return (
-    <header className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-5">
+    <header className="rounded-lg border bg-[var(--bg-surface)] p-5 shadow-[var(--shadow-sm)]">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-start gap-4 min-w-0">
+        <div className="flex min-w-0 items-start gap-4">
           {u.photo_url ? (
             <img
               src={u.photo_url}
               alt=""
-              className="size-14 rounded-full object-cover border border-[var(--border-default)]"
+              className="size-14 rounded-full border border-[var(--border-default)] object-cover"
             />
           ) : (
             <div
-              className="size-14 rounded-full flex items-center justify-center font-semibold border border-[var(--border-default)]"
+              className="flex size-14 items-center justify-center rounded-full border border-[var(--border-default)] font-semibold"
               style={{ background: "var(--bg-muted)" }}
             >
               {initials}
             </div>
           )}
           <div className="min-w-0">
-            <h1 className="text-xl font-semibold truncate">
+            <h1 className="truncate text-xl font-semibold">
               {u.display_name ?? u.email ?? "(без имени)"}
             </h1>
-            <p className="font-mono text-xs text-[var(--text-secondary)] mt-0.5">{u.id}</p>
+            <p className="mt-0.5 font-mono text-xs text-[var(--text-secondary)]">{u.id}</p>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-[var(--text-secondary)]">
               {u.email && (
                 <span className="inline-flex items-center gap-1.5">
@@ -302,7 +295,9 @@ function UserHeader({
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-subtle)] pt-4">
         <div className="flex items-center gap-3">
           <ShieldCheck
-            className={isAdmin ? "size-4 text-[var(--warning)]" : "size-4 text-[var(--text-secondary)]"}
+            className={
+              isAdmin ? "size-4 text-[var(--warning)]" : "size-4 text-[var(--text-secondary)]"
+            }
             aria-hidden
           />
           <div className="flex flex-wrap items-center gap-2">
@@ -332,11 +327,7 @@ function UserHeader({
           disabled={rolePending}
           onClick={onToggleAdmin}
         >
-          {rolePending
-            ? "Сохраняем…"
-            : isAdmin
-              ? "Снять админа"
-              : "Выдать админа"}
+          {rolePending ? "Сохраняем…" : isAdmin ? "Снять админа" : "Выдать админа"}
         </Button>
       </div>
     </header>
@@ -348,11 +339,7 @@ function Stats({ stats }: { stats: CustomerOverviewOut["stats"] }) {
     <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
       <Stat label="Заказов всего" value={stats.total_orders} />
       <Stat label="Доставлено" value={stats.delivered_orders} tone="success" />
-      <Stat
-        label="Потрачено (USD)"
-        value={formatMoney(stats.total_spent_usd)}
-        accent
-      />
+      <Stat label="Потрачено (USD)" value={formatMoney(stats.total_spent_usd)} accent />
       <Stat
         label="Failed-платежей"
         value={stats.failed_payments}
@@ -383,7 +370,7 @@ function Stat({
           ? "text-[var(--text-secondary)]"
           : "text-[var(--text-primary)]";
   return (
-    <article className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
+    <article className="rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
       <div className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">{label}</div>
       <div className={`mt-1 text-2xl font-semibold ${cls}`}>{value}</div>
     </article>
@@ -431,7 +418,9 @@ function RecentOrders({
         columns={columns}
         rowKey={(o) => o.id}
         empty="Заказов пока нет."
-        onRowClick={(o) => { onOpen(o.id); }}
+        onRowClick={(o) => {
+          onOpen(o.id);
+        }}
       />
     </Section>
   );
@@ -478,7 +467,9 @@ function RecentPayments({
         columns={columns}
         rowKey={(p) => p.id}
         empty="Платежей нет."
-        onRowClick={(p) => { onOpen(p.order_id); }}
+        onRowClick={(p) => {
+          onOpen(p.order_id);
+        }}
       />
     </Section>
   );
@@ -520,7 +511,9 @@ function OpenTasks({
         columns={columns}
         rowKey={(t) => t.id}
         empty="Открытых задач нет."
-        onRowClick={(t) => { onOpen(t.order_id); }}
+        onRowClick={(t) => {
+          onOpen(t.order_id);
+        }}
       />
     </Section>
   );
@@ -556,23 +549,17 @@ function WalletHistory({
           {[0, 1, 2].map((i) => (
             <li
               key={i}
-              className="h-12 rounded-md border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] animate-pulse"
+              className="h-12 animate-pulse rounded-md border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]"
             />
           ))}
         </ul>
       ) : count === 0 ? (
-        <p className="text-sm text-[var(--text-secondary)]">
-          Операций ещё не было.
-        </p>
+        <p className="text-sm text-[var(--text-secondary)]">Операций ещё не было.</p>
       ) : (
         <>
           <ul className="space-y-1.5">
             {rows.map((tx) => (
-              <WalletHistoryRow
-                key={tx.id}
-                tx={tx}
-                userKindById={userAccountKindById}
-              />
+              <WalletHistoryRow key={tx.id} tx={tx} userKindById={userAccountKindById} />
             ))}
           </ul>
           <div className="mt-2 text-right">
@@ -607,15 +594,13 @@ function WalletHistoryRow({
   const positive = delta >= 0;
   const kind = userKindById.get(userLeg.account_id) ?? "—";
   return (
-    <li className="rounded-md border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] px-3 py-2 text-xs">
+    <li className="rounded-md border bg-[var(--bg-surface)] px-3 py-2 text-xs shadow-[var(--shadow-sm)]">
       <div className="flex items-baseline justify-between gap-2">
         <span className="truncate">{tx.kind}</span>
         <span
           className={[
-            "font-mono font-medium whitespace-nowrap",
-            positive
-              ? "text-[var(--success-fg)]"
-              : "text-[var(--danger-fg)]",
+            "whitespace-nowrap font-mono font-medium",
+            positive ? "text-[var(--success-fg)]" : "text-[var(--danger-fg)]",
           ].join(" ")}
         >
           {positive ? "+" : "−"}
@@ -630,11 +615,7 @@ function WalletHistoryRow({
   );
 }
 
-function WalletBalances({
-  balances,
-}: {
-  balances: CustomerOverviewOut["wallet_balances"];
-}) {
+function WalletBalances({ balances }: { balances: CustomerOverviewOut["wallet_balances"] }) {
   return (
     <Section title="Кошелёк" count={balances.length}>
       {balances.length === 0 ? (
@@ -644,7 +625,7 @@ function WalletBalances({
           {balances.map((b) => (
             <li
               key={b.account_id}
-              className="flex items-center justify-between rounded-md border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] px-3 py-2 text-sm"
+              className="flex items-center justify-between rounded-md border bg-[var(--bg-surface)] px-3 py-2 text-sm shadow-[var(--shadow-sm)]"
             >
               <span className="text-[var(--text-secondary)]">{b.kind}</span>
               <span className="font-mono">
@@ -678,9 +659,7 @@ function Section({
         <span
           className={[
             "text-xs",
-            tone === "warn" && count > 0
-              ? "text-[var(--danger)]"
-              : "text-[var(--text-secondary)]",
+            tone === "warn" && count > 0 ? "text-[var(--danger)]" : "text-[var(--text-secondary)]",
           ].join(" ")}
         >
           {count.toString()}

@@ -11,7 +11,6 @@ import { PageHeader } from "@/components/PageHeader";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
-
 const PAGE_SIZE = 50;
 
 /**
@@ -61,11 +60,11 @@ export function UsersListPage() {
             <img
               src={u.photo_url}
               alt=""
-              className="size-9 rounded-full object-cover border border-[var(--border-default)] flex-shrink-0"
+              className="size-9 flex-shrink-0 rounded-full border border-[var(--border-default)] object-cover"
             />
           ) : (
             <div
-              className="size-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+              className="flex size-9 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold"
               style={{
                 background: "var(--bg-muted)",
                 color: "var(--text-secondary)",
@@ -75,10 +74,10 @@ export function UsersListPage() {
             </div>
           )}
           <div className="min-w-0">
-            <div className="font-medium truncate">
+            <div className="truncate font-medium">
               {u.display_name || u.email || u.id.slice(0, 8)}
             </div>
-            <div className="text-xs text-[var(--text-secondary)] truncate">
+            <div className="truncate text-xs text-[var(--text-secondary)]">
               {u.email ?? `id ${u.id.slice(0, 8)}…`}
             </div>
           </div>
@@ -157,7 +156,9 @@ export function UsersListPage() {
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--text-secondary)]" />
           <Input
             value={search}
-            onChange={(e) => { setSearch(e.target.value); }}
+            onChange={(e) => {
+              setSearch(e.target.value);
+            }}
             placeholder="Поиск…"
             className="pl-9"
           />
@@ -165,16 +166,16 @@ export function UsersListPage() {
       </section>
 
       {usersQuery.isError && (
-        <p className="text-sm text-[var(--danger)] mb-3">
-          Не удалось загрузить список.
-        </p>
+        <p className="mb-3 text-sm text-[var(--danger)]">Не удалось загрузить список.</p>
       )}
 
       <DataTable
         rows={rows}
         columns={columns}
         rowKey={(u) => u.id}
-        onRowClick={(u) => { void navigate(`/customers/${u.id}`); }}
+        onRowClick={(u) => {
+          void navigate(`/customers/${u.id}`);
+        }}
         empty={debounced ? "Под этот поиск пользователей нет." : "Пока никто не регистрировался."}
       />
 
@@ -188,7 +189,9 @@ export function UsersListPage() {
               variant="secondary"
               size="sm"
               disabled={offset === 0}
-              onClick={() => { setOffset(Math.max(0, offset - PAGE_SIZE)); }}
+              onClick={() => {
+                setOffset(Math.max(0, offset - PAGE_SIZE));
+              }}
               aria-label="Предыдущая страница"
             >
               <ChevronLeft className="size-4" aria-hidden />
@@ -198,7 +201,9 @@ export function UsersListPage() {
               variant="secondary"
               size="sm"
               disabled={showingTo >= total}
-              onClick={() => { setOffset(offset + PAGE_SIZE); }}
+              onClick={() => {
+                setOffset(offset + PAGE_SIZE);
+              }}
               aria-label="Следующая страница"
             >
               Вперёд
@@ -225,7 +230,11 @@ function initials(name: string | null): string {
 
 function useDebounce<T>(value: T, delayMs: number, callback: (v: T) => void): void {
   useEffect(() => {
-    const id = setTimeout(() => { callback(value); }, delayMs);
-    return () => { clearTimeout(id); };
+    const id = setTimeout(() => {
+      callback(value);
+    }, delayMs);
+    return () => {
+      clearTimeout(id);
+    };
   }, [value, delayMs, callback]);
 }

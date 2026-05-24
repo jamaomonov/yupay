@@ -10,7 +10,6 @@ import { CATEGORY_LABELS } from "@/lib/constants";
 import { useMyOrders } from "@/lib/orders";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
-
 const ALL_KEY = "__all__";
 
 const FEATURED_IDS = ["pubg", "telegram", "delta-force", "steam", "valorant"];
@@ -38,22 +37,18 @@ const PAYMENT_METHODS_STRIP: { label: string; dot: string }[] = [
 function PaymentMethodsBar() {
   return (
     <div
-      className="flex items-center gap-2 mx-4 px-3 py-2.5 rounded-2xl bg-surface-2 border border-border overflow-x-auto no-scrollbar"
+      className="bg-surface-2 border-border no-scrollbar mx-4 flex items-center gap-2 overflow-x-auto rounded-2xl border px-3 py-2.5"
       role="list"
       aria-label="Поддерживаемые способы оплаты"
     >
       {PAYMENT_METHODS_STRIP.map(({ label, dot }) => (
-        <div
-          key={label}
-          role="listitem"
-          className="flex items-center gap-1.5 flex-shrink-0 pr-2"
-        >
+        <div key={label} role="listitem" className="flex flex-shrink-0 items-center gap-1.5 pr-2">
           <span
-            className="size-1.5 rounded-full flex-shrink-0"
+            className="size-1.5 flex-shrink-0 rounded-full"
             style={{ background: dot }}
             aria-hidden="true"
           />
-          <span className="text-[11px] text-body-muted font-semibold whitespace-nowrap tracking-wide">
+          <span className="text-body-muted whitespace-nowrap text-[11px] font-semibold tracking-wide">
             {label}
           </span>
         </div>
@@ -72,23 +67,21 @@ function RecentStrip() {
 
   return (
     <div className="px-4">
-      <div className="flex items-center gap-2 mb-2.5">
+      <div className="mb-2.5 flex items-center gap-2">
         <RotateCcw size={13} className="text-body-faint" />
-        <span className="text-xs font-semibold text-body-muted uppercase tracking-wide">
+        <span className="text-body-muted text-xs font-semibold uppercase tracking-wide">
           Купить ещё раз
         </span>
       </div>
-      <div className="flex gap-2 overflow-x-auto no-scrollbar">
+      <div className="no-scrollbar flex gap-2 overflow-x-auto">
         {recent.map((order, i) => {
           const first = order.items[0]?.display ?? null;
-          const href = first?.brand_slug
-            ? `/topup/${first.brand_slug}`
-            : "/history";
+          const href = first?.brand_slug ? `/topup/${first.brand_slug}` : "/history";
           const title = first
             ? first.brand_name || first.product_name || first.product_slug
             : `Заказ ${order.id.slice(0, 6)}`;
           const subtitle = first
-            ? first.denomination ?? first.sku_code
+            ? (first.denomination ?? first.sku_code)
             : `${Number.parseFloat(order.total_charged).toLocaleString("ru", { maximumFractionDigits: 2 })} ${order.currency}`;
           return (
             <Link key={order.id} href={href}>
@@ -97,19 +90,15 @@ function RecentStrip() {
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.05 }}
-                className="flex items-center gap-2.5 flex-shrink-0 px-3 py-2 rounded-2xl cursor-pointer"
+                className="flex flex-shrink-0 cursor-pointer items-center gap-2.5 rounded-2xl px-3 py-2"
                 style={{
                   background: "hsl(var(--surface-2))",
                   border: "1px solid hsl(var(--border))",
                 }}
               >
-                <div className="w-8 h-8 rounded-2xl overflow-hidden flex-shrink-0 bg-black/30 flex items-center justify-center">
+                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-black/30">
                   {first?.image_url ? (
-                    <img
-                      src={first.image_url}
-                      className="w-full h-full object-cover"
-                      alt=""
-                    />
+                    <img src={first.image_url} className="h-full w-full object-cover" alt="" />
                   ) : (
                     <span
                       className="text-[10px] font-bold uppercase"
@@ -120,10 +109,10 @@ function RecentStrip() {
                   )}
                 </div>
                 <div>
-                  <p className="text-white text-xs font-semibold leading-tight line-clamp-1 max-w-[110px]">
+                  <p className="line-clamp-1 max-w-[110px] text-xs font-semibold leading-tight text-white">
                     {title}
                   </p>
-                  <p className="text-body-faint text-[10px] mt-0.5 line-clamp-1 max-w-[110px]">
+                  <p className="text-body-faint mt-0.5 line-clamp-1 max-w-[110px] text-[10px]">
                     {subtitle}
                   </p>
                 </div>
@@ -143,14 +132,14 @@ function PromoStrip({ games }: { games: Game[] }) {
 
   return (
     <div>
-      <div className="flex items-center justify-between px-4 mb-3">
+      <div className="mb-3 flex items-center justify-between px-4">
         <div className="flex items-center gap-2">
           <TrendingUp size={14} className="text-primary" />
           <span className="text-sm font-semibold text-white">Популярное</span>
         </div>
-        <span className="text-xs text-body-faint">{featured.length} сервисов</span>
+        <span className="text-body-faint text-xs">{featured.length} сервисов</span>
       </div>
-      <div className="flex gap-3 overflow-x-auto no-scrollbar px-4 pb-1">
+      <div className="no-scrollbar flex gap-3 overflow-x-auto px-4 pb-1">
         {featured.map((game, i) => {
           const badge = PROMO_BADGES[game.id];
           return (
@@ -160,31 +149,38 @@ function PromoStrip({ games }: { games: Game[] }) {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.06 }}
-                className="relative flex-shrink-0 w-[148px] h-[108px] rounded-2xl overflow-hidden cursor-pointer"
+                className="relative h-[108px] w-[148px] flex-shrink-0 cursor-pointer overflow-hidden rounded-2xl"
               >
                 {game.bgUrl || game.appIcon ? (
                   <img
                     src={game.bgUrl || game.appIcon}
-                    className="absolute inset-0 w-full h-full object-cover"
+                    className="absolute inset-0 h-full w-full object-cover"
                     alt={game.name}
                   />
                 ) : (
-                  <div className={`absolute inset-0 bg-gradient-to-br ${game.gradient || "from-card to-background"}`} />
+                  <div
+                    className={`absolute inset-0 bg-gradient-to-br ${game.gradient || "from-card to-background"}`}
+                  />
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
 
                 {badge && (
                   <div
-                    className="absolute top-2 left-2 px-1.5 py-0.5 rounded-md text-[10px] font-bold tracking-wider"
-                    style={{ background: badge.color, color: badge.color === "hsl(var(--primary))" ? "#000" : "#fff" }}
+                    className="absolute left-2 top-2 rounded-md px-1.5 py-0.5 text-[10px] font-bold tracking-wider"
+                    style={{
+                      background: badge.color,
+                      color: badge.color === "hsl(var(--primary))" ? "#000" : "#fff",
+                    }}
                   >
                     {badge.label}
                   </div>
                 )}
 
                 <div className="absolute bottom-0 left-0 right-0 p-3">
-                  <p className="text-white font-semibold text-xs leading-tight line-clamp-1">{game.name}</p>
-                  <p className="text-body-muted text-[10px] mt-0.5">{game.publisher}</p>
+                  <p className="line-clamp-1 text-xs font-semibold leading-tight text-white">
+                    {game.name}
+                  </p>
+                  <p className="text-body-muted mt-0.5 text-[10px]">{game.publisher}</p>
                 </div>
               </motion.div>
             </Link>
@@ -207,18 +203,22 @@ function GameCard({ game, index }: { game: Game; index: number }) {
         className="flex flex-col items-center gap-1.5"
         data-testid={`card-game-${game.id}`}
       >
-        <div className="w-full aspect-square rounded-2xl overflow-hidden shadow-md">
+        <div className="aspect-square w-full overflow-hidden rounded-2xl shadow-md">
           {game.appIcon ? (
-            <img src={game.appIcon} className="w-full h-full object-cover" alt={game.name} />
+            <img src={game.appIcon} className="h-full w-full object-cover" alt={game.name} />
           ) : game.bgUrl ? (
-            <img src={game.bgUrl} className="w-full h-full object-cover" alt={game.name} />
+            <img src={game.bgUrl} className="h-full w-full object-cover" alt={game.name} />
           ) : (
-            <div className={`w-full h-full bg-gradient-to-br ${game.gradient || "from-card to-background"} flex items-center justify-center`}>
-              {game.icon && <game.icon style={{ width: 34, height: 34, color: game.iconColor || "#fff" }} />}
+            <div
+              className={`h-full w-full bg-gradient-to-br ${game.gradient || "from-card to-background"} flex items-center justify-center`}
+            >
+              {game.icon && (
+                <game.icon style={{ width: 34, height: 34, color: game.iconColor || "#fff" }} />
+              )}
             </div>
           )}
         </div>
-        <p className="text-white/80 text-[11px] font-medium text-center leading-tight line-clamp-1 w-full px-0.5">
+        <p className="line-clamp-1 w-full px-0.5 text-center text-[11px] font-medium leading-tight text-white/80">
           {game.name}
         </p>
       </motion.div>
@@ -235,24 +235,28 @@ function SearchResultCard({ game, index }: { game: Game; index: number }) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: index * 0.04 }}
         whileTap={{ scale: 0.97 }}
-        className="flex items-center gap-3 p-3 rounded-2xl bg-card border border-border"
+        className="bg-card border-border flex items-center gap-3 rounded-2xl border p-3"
       >
-        <div className="w-11 h-11 rounded-2xl overflow-hidden flex-shrink-0">
+        <div className="h-11 w-11 flex-shrink-0 overflow-hidden rounded-2xl">
           {game.appIcon ? (
-            <img src={game.appIcon} className="w-full h-full object-cover" alt={game.name} />
+            <img src={game.appIcon} className="h-full w-full object-cover" alt={game.name} />
           ) : game.bgUrl ? (
-            <img src={game.bgUrl} className="w-full h-full object-cover" alt={game.name} />
+            <img src={game.bgUrl} className="h-full w-full object-cover" alt={game.name} />
           ) : (
-            <div className={`w-full h-full bg-gradient-to-br ${game.gradient || "from-card to-background"} flex items-center justify-center`}>
-              {game.icon && <game.icon style={{ width: 20, height: 20, color: game.iconColor || "#fff" }} />}
+            <div
+              className={`h-full w-full bg-gradient-to-br ${game.gradient || "from-card to-background"} flex items-center justify-center`}
+            >
+              {game.icon && (
+                <game.icon style={{ width: 20, height: 20, color: game.iconColor || "#fff" }} />
+              )}
             </div>
           )}
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-white text-sm font-semibold line-clamp-1">{game.name}</p>
-          <p className="text-body-faint text-xs mt-0.5">{game.publisher}</p>
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-1 text-sm font-semibold text-white">{game.name}</p>
+          <p className="text-body-faint mt-0.5 text-xs">{game.publisher}</p>
         </div>
-        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border border-white/10 text-body-faint flex-shrink-0">
+        <span className="text-body-faint flex-shrink-0 rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-medium">
           {CATEGORY_LABELS[game.category]}
         </span>
       </motion.div>
@@ -304,9 +308,7 @@ export default function Home() {
   }, [search, games]);
 
   const filtered =
-    activeCategory === ALL_KEY
-      ? games
-      : games.filter((g) => g.category_slug === activeCategory);
+    activeCategory === ALL_KEY ? games : games.filter((g) => g.category_slug === activeCategory);
 
   const displayGames = searchOpen && search.trim() ? searchResults : filtered;
 
@@ -320,10 +322,12 @@ export default function Home() {
     >
       {/* ── Header ── */}
       <div className="px-4 pt-4">
-        <h1 className="text-xl font-bold tracking-tight text-white leading-tight">
+        <h1 className="text-xl font-bold leading-tight tracking-tight text-white">
           Пополнение игр
         </h1>
-        <p className="text-body-muted text-xs mt-0.5">{games.length} сервисов · Оплата картой и СБП</p>
+        <p className="text-body-muted mt-0.5 text-xs">
+          {games.length} сервисов · Оплата картой и СБП
+        </p>
       </div>
 
       <AnimatePresence>
@@ -357,7 +361,7 @@ export default function Home() {
             >
               <button
                 onClick={closeSearch}
-                className="flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center"
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl"
                 style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}
               >
                 <ArrowLeft size={15} className="text-white/60" />
@@ -365,7 +369,7 @@ export default function Home() {
               <div className="relative flex-1">
                 <Search
                   size={15}
-                  className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                  className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2"
                   style={{ color: "hsl(var(--primary) / 0.7)" }}
                 />
                 <input
@@ -375,8 +379,10 @@ export default function Home() {
                   aria-label="Поиск по играм"
                   placeholder="Найти игру..."
                   value={search}
-                  onChange={(e) => { setSearch(e.target.value); }}
-                  className="w-full rounded-xl pl-9 pr-9 py-2.5 text-sm text-white placeholder:text-body-faint outline-none transition-all"
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                  }}
+                  className="placeholder:text-body-faint w-full rounded-xl py-2.5 pl-9 pr-9 text-sm text-white outline-none transition-all"
                   style={{
                     background: "hsl(var(--surface-2))",
                     border: "1.5px solid hsl(var(--primary) / 0.45)",
@@ -385,9 +391,11 @@ export default function Home() {
                 />
                 {search && (
                   <button
-                    onClick={() => { setSearch(""); }}
+                    onClick={() => {
+                      setSearch("");
+                    }}
                     aria-label="Очистить поиск"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-full bg-white/10"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-white/10 p-0.5"
                   >
                     <X size={12} className="text-white/60" aria-hidden="true" />
                   </button>
@@ -401,12 +409,12 @@ export default function Home() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
-              className="flex gap-2 overflow-x-auto no-scrollbar"
+              className="no-scrollbar flex gap-2 overflow-x-auto"
             >
               {/* Search button on the LEFT */}
               <button
                 onClick={openSearch}
-                className="flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-all"
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl transition-all"
                 style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}
                 data-testid="open-search"
               >
@@ -415,14 +423,18 @@ export default function Home() {
               {categoryChips.map((cat) => (
                 <button
                   key={cat.key}
-                  onClick={() => { setActiveCategory(cat.key); }}
-                  className="whitespace-nowrap rounded-xl px-3.5 py-2 text-xs font-semibold transition-all duration-200 flex-shrink-0"
+                  onClick={() => {
+                    setActiveCategory(cat.key);
+                  }}
+                  className="flex-shrink-0 whitespace-nowrap rounded-xl px-3.5 py-2 text-xs font-semibold transition-all duration-200"
                   style={{
-                    background: activeCategory === cat.key ? "hsl(var(--primary))" : "hsl(var(--card))",
+                    background:
+                      activeCategory === cat.key ? "hsl(var(--primary))" : "hsl(var(--card))",
                     color: activeCategory === cat.key ? "#000" : "rgba(255,255,255,0.5)",
-                    border: activeCategory === cat.key
-                      ? "1px solid hsl(var(--primary))"
-                      : "1px solid hsl(var(--border))",
+                    border:
+                      activeCategory === cat.key
+                        ? "1px solid hsl(var(--primary))"
+                        : "1px solid hsl(var(--border))",
                   }}
                   data-testid={`filter-${cat.key}`}
                 >
@@ -444,19 +456,17 @@ export default function Home() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.16 }}
           >
-            <div className="flex items-center justify-between mb-3">
+            <div className="mb-3 flex items-center justify-between">
               <span className="text-sm font-semibold text-white">
                 {searchOpen && search.trim() ? "Результаты" : "Все сервисы"}
               </span>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-body-faint">
-                  {displayGames.length} позиций
-                </span>
+                <span className="text-body-faint text-xs">{displayGames.length} позиций</span>
                 <button
                   type="button"
                   onClick={() => gamesQuery.refetch()}
                   disabled={gamesQuery.isFetching}
-                  className="w-7 h-7 rounded-full flex items-center justify-center transition-colors disabled:opacity-40"
+                  className="flex h-7 w-7 items-center justify-center rounded-full transition-colors disabled:opacity-40"
                   style={{
                     background: "hsl(var(--surface-2))",
                     border: "1px solid hsl(var(--border))",
@@ -465,9 +475,7 @@ export default function Home() {
                 >
                   <RotateCcw
                     size={11}
-                    className={`text-white/60 ${
-                      gamesQuery.isFetching ? "animate-spin" : ""
-                    }`}
+                    className={`text-white/60 ${gamesQuery.isFetching ? "animate-spin" : ""}`}
                   />
                 </button>
               </div>
@@ -478,18 +486,18 @@ export default function Home() {
                 {Array.from({ length: 8 }).map((_, i) => (
                   <div key={i} className="flex flex-col items-center gap-1.5">
                     <div
-                      className="w-full aspect-square rounded-2xl animate-pulse"
+                      className="aspect-square w-full animate-pulse rounded-2xl"
                       style={{ background: "hsl(var(--surface-2))" }}
                     />
                     <div
-                      className="h-2 w-3/4 rounded animate-pulse"
+                      className="h-2 w-3/4 animate-pulse rounded"
                       style={{ background: "hsl(var(--surface-2))" }}
                     />
                   </div>
                 ))}
               </div>
             ) : displayGames.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-14 gap-2">
+              <div className="flex flex-col items-center justify-center gap-2 py-14">
                 <Search size={28} className="text-white/15" />
                 <p className="text-body-faint text-sm">Ничего не найдено</p>
               </div>

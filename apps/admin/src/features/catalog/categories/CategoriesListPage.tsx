@@ -3,7 +3,6 @@ import { Button } from "@yupay/ui";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-
 import type { Category } from "../types";
 
 import { DataTable, type Column } from "@/components/DataTable";
@@ -11,7 +10,6 @@ import { PageHeader } from "@/components/PageHeader";
 import { Spinner } from "@/components/States";
 import { type ApiError, apiDelete, apiGet, apiPatch } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
-
 
 export function CategoriesListPage() {
   const qc = useQueryClient();
@@ -22,11 +20,7 @@ export function CategoriesListPage() {
     queryFn: () => apiGet<Category[]>("/api/v1/admin/catalog/categories"),
   });
 
-  const toggleActive = useMutation<
-    Category,
-    ApiError,
-    { cat: Category; next: boolean }
-  >({
+  const toggleActive = useMutation<Category, ApiError, { cat: Category; next: boolean }>({
     mutationFn: ({ cat, next }) =>
       apiPatch<Category>(`/api/v1/admin/catalog/categories/${cat.id}`, {
         active: next,
@@ -42,9 +36,7 @@ export function CategoriesListPage() {
   const sorted = (q.data ?? [])
     .slice()
     .sort((a, b) =>
-      a.sort_order !== b.sort_order
-        ? a.sort_order - b.sort_order
-        : a.slug.localeCompare(b.slug),
+      a.sort_order !== b.sort_order ? a.sort_order - b.sort_order : a.slug.localeCompare(b.slug),
     );
 
   const columns: Column<Category>[] = [
@@ -65,8 +57,7 @@ export function CategoriesListPage() {
     {
       key: "icon",
       header: "Иконка",
-      render: (c) =>
-        c.icon ? <code className="text-xs">{c.icon}</code> : "—",
+      render: (c) => (c.icon ? <code className="text-xs">{c.icon}</code> : "—"),
       className: "w-28",
     },
     {
@@ -81,7 +72,9 @@ export function CategoriesListPage() {
       render: (c) => (
         <Toggle
           checked={c.active}
-          onChange={(next) => { toggleActive.mutate({ cat: c, next }); }}
+          onChange={(next) => {
+            toggleActive.mutate({ cat: c, next });
+          }}
           disabled={toggleActive.isPending}
         />
       ),
@@ -93,7 +86,9 @@ export function CategoriesListPage() {
       render: (c) => (
         <div
           className="flex justify-end gap-1"
-          onClick={(e) => { e.stopPropagation(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
         >
           <Button
             type="button"

@@ -9,7 +9,7 @@
 
 Orders are the central transactional entity. The flow:
 
-1. Customer selects a SKU, fills the product's ``required_fields``, hits "pay".
+1. Customer selects a SKU, fills the product's `required_fields`, hits "pay".
 2. We need a stable order record with a frozen total **before** redirecting to the
    payment gateway. Without that, every refund / dispute / audit reopens "what did
    they actually owe us?"
@@ -93,17 +93,17 @@ outbox relay reads from when `payments` and `fulfillment` land.
 
 Allowed transitions:
 
-| From                | To                                  | Actor          |
-|---|---|---|
-| `pending_payment`   | `paid`                              | payments saga |
-| `pending_payment`   | `cancelled`                         | user / admin |
-| `pending_payment`   | `expired`                           | scheduled job |
-| `paid`              | `fulfilling`                        | fulfillment saga |
-| `fulfilling`        | `fulfilled`                         | fulfillment saga |
-| `fulfilling`        | `failed`                            | fulfillment saga |
-| `fulfilled`         | `delivered`                         | delivery |
-| `delivered`         | `refunded` / `partially_refunded`  | admin |
-| `failed`            | `refunded`                          | automatic / admin |
+| From              | To                                | Actor             |
+| ----------------- | --------------------------------- | ----------------- |
+| `pending_payment` | `paid`                            | payments saga     |
+| `pending_payment` | `cancelled`                       | user / admin      |
+| `pending_payment` | `expired`                         | scheduled job     |
+| `paid`            | `fulfilling`                      | fulfillment saga  |
+| `fulfilling`      | `fulfilled`                       | fulfillment saga  |
+| `fulfilling`      | `failed`                          | fulfillment saga  |
+| `fulfilled`       | `delivered`                       | delivery          |
+| `delivered`       | `refunded` / `partially_refunded` | admin             |
+| `failed`          | `refunded`                        | automatic / admin |
 
 Every transition writes an `order_events` row with the kind matching the verb
 (`order.paid`, `order.fulfilled`, ...). Illegal transitions raise `ConflictError`.
@@ -169,7 +169,7 @@ to `expired`. Implementation lands with `apps/scheduler`.
   produces ambiguous numbers in disputes.
 - **Embed `required_fields` into `order_items` as a copy of the schema** —
   considered, but the schema is already immutable per-product (admin edits create
-  a new version); for v1 we store only the *filled* data, not the schema.
+  a new version); for v1 we store only the _filled_ data, not the schema.
 - **Soft-delete orders** — rejected: orders never disappear; we use `cancelled`
   / `refunded` statuses instead.
 

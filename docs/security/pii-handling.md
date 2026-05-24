@@ -2,15 +2,15 @@
 
 ## What we collect
 
-| Field | Source | Stored in | Encrypted? |
-|---|---|---|---|
-| Email | Guest checkout, registration | `users.email` | At-rest via PG encryption (volume-level); column-level on roadmap |
-| Telegram user ID | Telegram OAuth / initData | `telegram_links.tg_user_id` | No (operational need) |
-| Telegram username / first name | Telegram OAuth | `users.profile_jsonb` | No |
-| IP address | All HTTP requests | Logs only (Loki) | Retained 14 days hot, 90 days cold, then deleted |
-| User agent | All HTTP requests | Logs only | Same retention as IP |
-| Voucher codes (issued) | Inventory / supplier | `inventory_codes.code_ciphertext`, `deliveries.payload_ciphertext` | **Yes, column-level (libsodium)** |
-| Payment provider metadata | Webhooks | `payment_webhooks.payload jsonb` | Provider's own redaction policy; we never store PAN |
+| Field                          | Source                       | Stored in                                                          | Encrypted?                                                        |
+| ------------------------------ | ---------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| Email                          | Guest checkout, registration | `users.email`                                                      | At-rest via PG encryption (volume-level); column-level on roadmap |
+| Telegram user ID               | Telegram OAuth / initData    | `telegram_links.tg_user_id`                                        | No (operational need)                                             |
+| Telegram username / first name | Telegram OAuth               | `users.profile_jsonb`                                              | No                                                                |
+| IP address                     | All HTTP requests            | Logs only (Loki)                                                   | Retained 14 days hot, 90 days cold, then deleted                  |
+| User agent                     | All HTTP requests            | Logs only                                                          | Same retention as IP                                              |
+| Voucher codes (issued)         | Inventory / supplier         | `inventory_codes.code_ciphertext`, `deliveries.payload_ciphertext` | **Yes, column-level (libsodium)**                                 |
+| Payment provider metadata      | Webhooks                     | `payment_webhooks.payload jsonb`                                   | Provider's own redaction policy; we never store PAN               |
 
 ## What we never log
 

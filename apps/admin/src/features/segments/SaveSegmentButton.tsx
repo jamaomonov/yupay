@@ -22,20 +22,27 @@ import { type ApiError, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { useDialog } from "@/lib/useDialog";
 
-
 export function SaveSegmentButton() {
   const [open, setOpen] = useState(false);
   return (
     <>
       <button
         type="button"
-        onClick={() => { setOpen(true); }}
+        onClick={() => {
+          setOpen(true);
+        }}
         className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-default)] px-3 py-1.5 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] hover:text-[var(--text-primary)]"
       >
         <Bookmark className="size-4" />
         Сохранить фильтр
       </button>
-      {open && <SaveSegmentDialog onClose={() => { setOpen(false); }} />}
+      {open && (
+        <SaveSegmentDialog
+          onClose={() => {
+            setOpen(false);
+          }}
+        />
+      )}
     </>
   );
 }
@@ -130,7 +137,9 @@ function SaveSegmentDialog({ onClose }: { onClose: () => void }) {
               {...inputProps}
               ref={inputRef}
               value={name}
-              onChange={(e) => { setName(e.target.value); }}
+              onChange={(e) => {
+                setName(e.target.value);
+              }}
               placeholder="Например: «висящие Click старше 60 мин»"
               maxLength={80}
             />

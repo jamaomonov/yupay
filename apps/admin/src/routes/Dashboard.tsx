@@ -64,8 +64,7 @@ export function DashboardPage() {
   const me = useAuthStore((s) => s.me);
   const q = useQuery<DashboardOut>({
     queryKey: qk.dashboard(24),
-    queryFn: () =>
-      apiGet<DashboardOut>("/api/v1/admin/stats/dashboard?window_hours=24"),
+    queryFn: () => apiGet<DashboardOut>("/api/v1/admin/stats/dashboard?window_hours=24"),
     refetchInterval: 30_000,
   });
 
@@ -73,11 +72,9 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex items-baseline justify-between flex-wrap gap-3">
+      <header className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">
-            Привет, {me?.display_name ?? "админ"} 👋
-          </h1>
+          <h1 className="text-2xl font-semibold">Привет, {me?.display_name ?? "админ"} 👋</h1>
           <p className="mt-1 text-sm text-[var(--text-secondary)]">
             Сводка за последние 24 часа. Обновляется автоматически каждые 30 сек.
           </p>
@@ -94,11 +91,7 @@ export function DashboardPage() {
         )}
       </header>
 
-      {q.isError && (
-        <p className="text-sm text-[var(--danger)]">
-          Не удалось загрузить метрики.
-        </p>
-      )}
+      {q.isError && <p className="text-sm text-[var(--danger)]">Не удалось загрузить метрики.</p>}
 
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Kpi
@@ -126,19 +119,12 @@ export function DashboardPage() {
           value={
             d && d.revenue_in_window.length > 0
               ? d.revenue_in_window
-                  .map(
-                    (r) =>
-                      `${Number.parseFloat(r.amount).toFixed(2)} ${r.currency}`,
-                  )
+                  .map((r) => `${Number.parseFloat(r.amount).toFixed(2)} ${r.currency}`)
                   .join(" · ")
               : "—"
           }
           accent
-          sparkline={
-            d?.orders_last_7_days.map((b) =>
-              Number.parseFloat(b.revenue_usd) || 0,
-            ) ?? []
-          }
+          sparkline={d?.orders_last_7_days.map((b) => Number.parseFloat(b.revenue_usd) || 0) ?? []}
         />
       </section>
 
@@ -149,12 +135,11 @@ export function DashboardPage() {
       />
 
       <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <article className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
+        <article className="rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
           <header className="mb-3 flex items-baseline justify-between">
             <h2 className="text-sm font-semibold">Заказы за 7 дней</h2>
             <span className="text-xs text-[var(--text-secondary)]">
-              {d?.orders_last_7_days.reduce((s, b) => s + b.count, 0) ?? 0}{" "}
-              всего
+              {d?.orders_last_7_days.reduce((s, b) => s + b.count, 0) ?? 0} всего
             </span>
           </header>
           {d ? (
@@ -164,13 +149,10 @@ export function DashboardPage() {
           )}
         </article>
 
-        <article className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
+        <article className="rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
           <header className="mb-3 flex items-baseline justify-between">
             <h2 className="text-sm font-semibold">Статусы за 24ч</h2>
-            <Link
-              to="/orders"
-              className="text-xs text-[var(--text-secondary)] hover:underline"
-            >
+            <Link to="/orders" className="text-xs text-[var(--text-secondary)] hover:underline">
               открыть заказы →
             </Link>
           </header>
@@ -186,8 +168,7 @@ export function DashboardPage() {
                 >
                   <Badge
                     tone={
-                      STATUS_TONE[s.status] ??
-                      "bg-[var(--bg-muted)] text-[var(--text-secondary)]"
+                      STATUS_TONE[s.status] ?? "bg-[var(--bg-muted)] text-[var(--text-secondary)]"
                     }
                     dot
                   >
@@ -201,32 +182,21 @@ export function DashboardPage() {
         </article>
       </section>
 
-      <section className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
+      <section className="rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
         <header className="mb-3 flex items-baseline justify-between">
           <div className="flex items-center gap-2">
             <Boxes className="size-4 text-[var(--text-secondary)]" />
             <h2 className="text-sm font-semibold">Склад</h2>
           </div>
-          <Link
-            to="/inventory"
-            className="text-xs text-[var(--text-secondary)] hover:underline"
-          >
+          <Link to="/inventory" className="text-xs text-[var(--text-secondary)] hover:underline">
             открыть склад →
           </Link>
         </header>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-          <MiniStat
-            label="Доступно"
-            value={d?.inventory.available ?? 0}
-            tone="success"
-          />
+          <MiniStat label="Доступно" value={d?.inventory.available ?? 0} tone="success" />
           <MiniStat label="Резерв" value={d?.inventory.reserved ?? 0} />
           <MiniStat label="Выдано" value={d?.inventory.issued ?? 0} />
-          <MiniStat
-            label="Воид"
-            value={d?.inventory.voided ?? 0}
-            tone="muted"
-          />
+          <MiniStat label="Воид" value={d?.inventory.voided ?? 0} tone="muted" />
           <MiniStat
             icon={Package}
             label="SKU без запаса"
@@ -276,7 +246,7 @@ function Kpi({
           ? "bg-[var(--bg-muted)] text-[var(--text-secondary)]"
           : "bg-[var(--bg-accent-soft)] text-[var(--accent-soft-fg)]";
   return (
-    <article className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
+    <article className="rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
       <div className="flex items-start justify-between gap-2">
         <span className="text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">
           {label}
@@ -286,9 +256,7 @@ function Kpi({
         </span>
       </div>
       <div className={`mt-3 text-2xl font-semibold ${valueCls}`}>{value}</div>
-      {sparkline && sparkline.length > 0 && (
-        <MiniSparkline values={sparkline} />
-      )}
+      {sparkline && sparkline.length > 0 && <MiniSparkline values={sparkline} />}
     </article>
   );
 }
@@ -394,14 +362,13 @@ function AlertCard({
   const inner = (
     <article
       className={[
-        "rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4 transition-colors",
+        "rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)] transition-colors",
         clickable ? "hover:bg-[var(--bg-muted)]/60 hover:border-[var(--color-fg)]/20" : "",
       ].join(" ")}
       style={
         tone === "warn" && value > 0
           ? {
-              borderColor:
-                "color-mix(in oklab, var(--color-danger) 50%, var(--border-default))",
+              borderColor: "color-mix(in oklab, var(--color-danger) 50%, var(--border-default))",
             }
           : undefined
       }
@@ -410,9 +377,7 @@ function AlertCard({
         <div className="flex items-center gap-2">
           <Icon
             className={`size-4 ${
-              tone === "warn" && value > 0
-                ? "text-[var(--danger)]"
-                : "text-[var(--text-secondary)]"
+              tone === "warn" && value > 0 ? "text-[var(--danger)]" : "text-[var(--text-secondary)]"
             }`}
           />
           <span className="text-sm font-semibold">{label}</span>
@@ -457,7 +422,7 @@ function MiniStat({
           ? "text-[var(--text-secondary)]"
           : "text-[var(--text-primary)]";
   return (
-    <div className="rounded-md border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-3">
+    <div className="rounded-md border bg-[var(--bg-surface)] p-3 shadow-[var(--shadow-sm)]">
       <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">
         {Icon && <Icon className="size-3" />}
         {label}
@@ -467,17 +432,13 @@ function MiniStat({
   );
 }
 
-function DayBars({
-  buckets,
-}: {
-  buckets: { date: string; count: number; revenue_usd: string }[];
-}) {
+function DayBars({ buckets }: { buckets: { date: string; count: number; revenue_usd: string }[] }) {
   const max = Math.max(...buckets.map((b) => b.count), 1);
   const half = Math.round(max / 2);
   return (
     <div className="relative">
       {/* Y-axis labels (max + 0). Mid-line label is the rounded half. */}
-      <div className="pointer-events-none absolute inset-y-0 right-0 flex w-10 flex-col justify-between text-right text-[10px] font-mono text-[var(--text-tertiary)]">
+      <div className="pointer-events-none absolute inset-y-0 right-0 flex w-10 flex-col justify-between text-right font-mono text-[10px] text-[var(--text-tertiary)]">
         <span>{max}</span>
         <span>{half}</span>
         <span>0</span>
@@ -488,8 +449,7 @@ function DayBars({
         <div className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-dashed border-[var(--border-default)]" />
         <div className="relative flex h-full items-end gap-2 pr-12">
           {buckets.map((b) => {
-            const heightPct =
-              b.count === 0 ? 4 : Math.max(8, (b.count / max) * 100);
+            const heightPct = b.count === 0 ? 4 : Math.max(8, (b.count / max) * 100);
             const revenue = Number.parseFloat(b.revenue_usd) || 0;
             const tooltip = `${formatDayLabel(b.date)}: ${b.count.toString()} заказов · ${revenue.toFixed(2)} USD`;
             return (
@@ -499,17 +459,14 @@ function DayBars({
                 className="group flex flex-1 flex-col items-center gap-1"
               >
                 <div
-                  className="w-full rounded-t flex items-end justify-center text-[10px] font-mono transition-all group-hover:brightness-110"
+                  className="flex w-full items-end justify-center rounded-t font-mono text-[10px] transition-all group-hover:brightness-110"
                   style={{
                     height: `${heightPct.toString()}%`,
                     background:
                       b.count === 0
                         ? "var(--border-default)"
                         : "color-mix(in oklab, var(--accent) 75%, transparent)",
-                    color:
-                      b.count === 0
-                        ? "var(--text-secondary)"
-                        : "var(--text-on-accent)",
+                    color: b.count === 0 ? "var(--text-secondary)" : "var(--text-on-accent)",
                   }}
                 >
                   {b.count > 0 && <span className="pb-1">{b.count}</span>}

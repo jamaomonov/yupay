@@ -11,7 +11,6 @@ import { Spinner } from "@/components/States";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
-
 export function ProductsListPage() {
   const navigate = useNavigate();
   const productsQuery = useQuery<Product[]>({
@@ -36,9 +35,7 @@ export function ProductsListPage() {
       header: "Бренд",
       render: (p) => {
         const b = brandsById.get(p.brand_id);
-        return (
-          b?.translations.find((t) => t.locale === "ru")?.name ?? b?.slug ?? p.brand_id
-        );
+        return b?.translations.find((t) => t.locale === "ru")?.name ?? b?.slug ?? p.brand_id;
       },
     },
     { key: "kind", header: "Тип", render: (p) => p.kind, className: "w-24" },
@@ -68,9 +65,7 @@ export function ProductsListPage() {
           </Button>
         }
       />
-      {productsQuery.isLoading && (
-        <Spinner label="Загрузка…" />
-      )}
+      {productsQuery.isLoading && <Spinner label="Загрузка…" />}
       {productsQuery.data && (
         <DataTable
           rows={productsQuery.data}

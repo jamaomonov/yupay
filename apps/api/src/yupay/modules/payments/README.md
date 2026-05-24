@@ -27,26 +27,26 @@ class PaymentGateway(Protocol):
 
 ### Провайдеры
 
-| Slug | Статус | Что делает |
-|---|---|---|
-| `mock` | **функционален в dev/staging** | Возвращает stub-URL, принимает любой webhook с правильной shape. В проде `available=False`. |
-| `click` | заглушка | `available=False`, любой метод → `PaymentNotIntegratedError`. |
-| `payme` | заглушка | то же |
-| `uzum` | заглушка | то же |
-| `yookassa` | заглушка | то же |
-| `tinkoff` | заглушка | то же |
-| `crypto` | заглушка (USDT) | то же |
+| Slug       | Статус                         | Что делает                                                                                  |
+| ---------- | ------------------------------ | ------------------------------------------------------------------------------------------- |
+| `mock`     | **функционален в dev/staging** | Возвращает stub-URL, принимает любой webhook с правильной shape. В проде `available=False`. |
+| `click`    | заглушка                       | `available=False`, любой метод → `PaymentNotIntegratedError`.                               |
+| `payme`    | заглушка                       | то же                                                                                       |
+| `uzum`     | заглушка                       | то же                                                                                       |
+| `yookassa` | заглушка                       | то же                                                                                       |
+| `tinkoff`  | заглушка                       | то же                                                                                       |
+| `crypto`   | заглушка (USDT)                | то же                                                                                       |
 
 Реестр в `yupay/modules/payments/gateways/__init__.py:REGISTRY`. Добавление нового
 провайдера = реализовать класс + зарегистрировать slug.
 
 ## Таблицы
 
-| Таблица | Зачем |
-|---|---|
-| `payments` | один платёжный intent на заказ. Поля: `provider`, `status`, `amount`, `currency`, `intent_url`, `external_id`, `metadata jsonb`, таймстемпы (`succeeded_at` / `failed_at`). Partial UNIQUE на `(provider, external_id) WHERE external_id IS NOT NULL`. |
-| `payment_attempts` | append-only аудит каждого тика (`kind` ∈ `create_intent` / `webhook` / `refund` / `cancel` / `status_check`, `status` ∈ `ok` / `error`, `payload jsonb`). |
-| `payment_webhooks` | идемпотентная запись каждого входящего webhook'а. UNIQUE `(provider, external_event_id)` — реплеи короткозамыкаются. |
+| Таблица            | Зачем                                                                                                                                                                                                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `payments`         | один платёжный intent на заказ. Поля: `provider`, `status`, `amount`, `currency`, `intent_url`, `external_id`, `metadata jsonb`, таймстемпы (`succeeded_at` / `failed_at`). Partial UNIQUE на `(provider, external_id) WHERE external_id IS NOT NULL`. |
+| `payment_attempts` | append-only аудит каждого тика (`kind` ∈ `create_intent` / `webhook` / `refund` / `cancel` / `status_check`, `status` ∈ `ok` / `error`, `payload jsonb`).                                                                                              |
+| `payment_webhooks` | идемпотентная запись каждого входящего webhook'а. UNIQUE `(provider, external_event_id)` — реплеи короткозамыкаются.                                                                                                                                   |
 
 Миграция: `apps/api/migrations/versions/0007_payments_init.py`.
 

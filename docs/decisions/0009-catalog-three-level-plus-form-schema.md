@@ -20,7 +20,7 @@ fulfilment behaviour. With only two levels we'd either:
 2. Cram several distinct items into one product and lose the ability to model
    per-item form fields (player ID, server, region) and per-item supplier routing.
 
-Both are wrong. Additionally, top-up products need a *form schema* the storefront can
+Both are wrong. Additionally, top-up products need a _form schema_ the storefront can
 render: PUBG asks for `player_id`, Spotify asks for an account email, USDT asks for a
 wallet address. We need this schema to be **data**, not code, so adding a new
 top-up doesn't require a frontend release.
@@ -57,7 +57,7 @@ and renders a typed form; the API validates against the same schema on order cre
     "required": true,
     "placeholder": { "ru": "12345678" },
     "pattern": "^[0-9]{6,12}$",
-    "help_text": { "ru": "Найди ID в настройках профиля игры" }
+    "help_text": { "ru": "Найди ID в настройках профиля игры" },
   },
   {
     "key": "server",
@@ -65,11 +65,11 @@ and renders a typed form; the API validates against the same schema on order cre
     "type": "select",
     "required": true,
     "options": [
-      { "value": "AS",  "label": { "ru": "Азия",    "en": "Asia"    } },
-      { "value": "EU",  "label": { "ru": "Европа",  "en": "Europe"  } },
-      { "value": "NA",  "label": { "ru": "Сев. Америка", "en": "North America" } }
-    ]
-  }
+      { "value": "AS", "label": { "ru": "Азия", "en": "Asia" } },
+      { "value": "EU", "label": { "ru": "Европа", "en": "Europe" } },
+      { "value": "NA", "label": { "ru": "Сев. Америка", "en": "North America" } },
+    ],
+  },
 ]
 ```
 
@@ -79,7 +79,7 @@ added by extending the validator + the storefront's form renderer together.
 ### Brand → Category cardinality
 
 A brand belongs to exactly **one** category. This keeps navigation simple ("Spotify
-in Subscriptions", never "Spotify in Subscriptions *and* Gift Cards"). If a real
+in Subscriptions", never "Spotify in Subscriptions _and_ Gift Cards"). If a real
 counter-example appears, we add a join table later — but it is not in scope today.
 
 ### SKU stays single-region

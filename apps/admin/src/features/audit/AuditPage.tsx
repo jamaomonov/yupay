@@ -50,24 +50,27 @@ const SOURCES: { key: Source; label: string; icon: typeof Receipt; tone: string 
   { key: "order_event", label: "Заказы", icon: Receipt, tone: "text-[var(--accent-soft-fg)]" },
   { key: "payment_attempt", label: "Платежи", icon: CreditCard, tone: "text-[var(--info-fg)]" },
   { key: "payment_webhook", label: "Webhooks", icon: Radio, tone: "text-[var(--warning)]" },
-  { key: "fulfillment_attempt", label: "Fulfilment", icon: Truck, tone: "text-[var(--success-fg)]" },
+  {
+    key: "fulfillment_attempt",
+    label: "Fulfilment",
+    icon: Truck,
+    tone: "text-[var(--success-fg)]",
+  },
   { key: "wallet_transaction", label: "Кошелёк", icon: Wallet, tone: "text-[var(--danger-fg)]" },
 ];
 
-const SOURCE_META: Record<
-  Source,
-  { label: string; icon: typeof Receipt; tone: string }
-> = SOURCES.reduce(
-  (acc, s) => {
-    acc[s.key] = { label: s.label, icon: s.icon, tone: s.tone };
-    return acc;
-  },
-  {} as Record<Source, { label: string; icon: typeof Receipt; tone: string }>,
-);
+const SOURCE_META: Record<Source, { label: string; icon: typeof Receipt; tone: string }> =
+  SOURCES.reduce(
+    (acc, s) => {
+      acc[s.key] = { label: s.label, icon: s.icon, tone: s.tone };
+      return acc;
+    },
+    {} as Record<Source, { label: string; icon: typeof Receipt; tone: string }>,
+  );
 
 export function AuditPage() {
-  const [enabled, setEnabled] = useState<Record<Source, boolean>>(() =>
-    Object.fromEntries(SOURCES.map((s) => [s.key, true])) as Record<Source, boolean>,
+  const [enabled, setEnabled] = useState<Record<Source, boolean>>(
+    () => Object.fromEntries(SOURCES.map((s) => [s.key, true])) as Record<Source, boolean>,
   );
   const [actor, setActor] = useState("");
   const [target, setTarget] = useState("");
@@ -75,10 +78,7 @@ export function AuditPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   // URL-bound so the sidebar's "Действия админов" link can pre-filter the feed
   // and the operator can share an admin-only view.
-  const [adminOnlyParam, setAdminOnlyParam] = useSearchParamsState(
-    "admin_only",
-    "",
-  );
+  const [adminOnlyParam, setAdminOnlyParam] = useSearchParamsState("admin_only", "");
   const adminOnly = adminOnlyParam === "true";
 
   const sources = SOURCES.filter((s) => enabled[s.key]).map((s) => s.key);
@@ -95,7 +95,9 @@ export function AuditPage() {
     ],
     queryFn: () => {
       const params = new URLSearchParams();
-      sources.forEach((s) => { params.append("sources", s); });
+      sources.forEach((s) => {
+        params.append("sources", s);
+      });
       if (actor.trim()) params.set("actor", actor.trim());
       if (target.trim()) params.set("target_id", target.trim());
       if (adminOnly) params.set("admin_only", "true");
@@ -132,7 +134,9 @@ export function AuditPage() {
           <>
             <button
               type="button"
-              onClick={() => { setAdminOnlyParam(adminOnly ? "" : "true"); }}
+              onClick={() => {
+                setAdminOnlyParam(adminOnly ? "" : "true");
+              }}
               className={[
                 "inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-base)]",
@@ -151,9 +155,7 @@ export function AuditPage() {
               onClick={() => q.refetch()}
               disabled={q.isFetching}
             >
-              <RotateCcw
-                className={`size-4 ${q.isFetching ? "animate-spin" : ""}`}
-              />
+              <RotateCcw className={`size-4 ${q.isFetching ? "animate-spin" : ""}`} />
               Обновить
             </Button>
           </>
@@ -165,11 +167,7 @@ export function AuditPage() {
         <StatCard label="Актёров" value={stats.actorsCount} />
         <StatCard
           label="Активность"
-          render={
-            hourlyHistogram.length === 0 ? null : (
-              <Sparkline values={hourlyHistogram} />
-            )
-          }
+          render={hourlyHistogram.length === 0 ? null : <Sparkline values={hourlyHistogram} />}
         />
       </section>
 
@@ -183,9 +181,9 @@ export function AuditPage() {
               <button
                 key={s.key}
                 type="button"
-                onClick={() =>
-                  { setEnabled((prev) => ({ ...prev, [s.key]: !prev[s.key] })); }
-                }
+                onClick={() => {
+                  setEnabled((prev) => ({ ...prev, [s.key]: !prev[s.key] }));
+                }}
                 aria-pressed={on}
                 className={[
                   "inline-flex items-center gap-1.5 rounded-full border border-[var(--border-default)] px-3 py-1.5 text-xs font-medium transition-all",
@@ -197,11 +195,7 @@ export function AuditPage() {
               >
                 <Icon className={`size-3.5 ${on ? s.tone : ""}`} aria-hidden />
                 {s.label}
-                <span
-                  className={`ml-1 text-[10px] font-bold ${
-                    on ? "" : "opacity-60"
-                  }`}
-                >
+                <span className={`ml-1 text-[10px] font-bold ${on ? "" : "opacity-60"}`}>
                   {stats.bySource[s.key] ?? 0}
                 </span>
               </button>
@@ -210,27 +204,33 @@ export function AuditPage() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <div className="relative flex-1 min-w-48">
+          <div className="relative min-w-48 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--text-secondary)]" />
             <Input
               value={actor}
-              onChange={(e) => { setActor(e.target.value); }}
+              onChange={(e) => {
+                setActor(e.target.value);
+              }}
               placeholder="Фильтр по actor (admin:<id>, payments, fulfillment)…"
               className="pl-9 text-xs"
             />
           </div>
-          <div className="relative flex-1 min-w-48">
+          <div className="relative min-w-48 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--text-secondary)]" />
             <Input
               value={target}
-              onChange={(e) => { setTarget(e.target.value); }}
+              onChange={(e) => {
+                setTarget(e.target.value);
+              }}
               placeholder="Фильтр по target_id (order/payment/task UUID)…"
               className="pl-9 text-xs"
             />
           </div>
           <select
             value={limit}
-            onChange={(e) => { setLimit(Number(e.target.value)); }}
+            onChange={(e) => {
+              setLimit(Number(e.target.value));
+            }}
             className="h-10 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
           >
             <option value={50}>50 событий</option>
@@ -241,9 +241,7 @@ export function AuditPage() {
         </div>
       </section>
 
-      {q.isError && (
-        <p className="text-sm text-[var(--danger)]">Ошибка загрузки.</p>
-      )}
+      {q.isError && <p className="text-sm text-[var(--danger)]">Ошибка загрузки.</p>}
 
       <div className="space-y-1">
         {rows.length === 0 && !q.isLoading && (
@@ -256,15 +254,17 @@ export function AuditPage() {
             key={e.id + i}
             event={e}
             expanded={expanded === e.id}
-            onToggle={() => { setExpanded(expanded === e.id ? null : e.id); }}
+            onToggle={() => {
+              setExpanded(expanded === e.id ? null : e.id);
+            }}
           />
         ))}
       </div>
 
       <p className="mt-3 text-xs text-[var(--text-secondary)]">
-        Источники: ``order_events``, ``payment_attempts``,
-        ``payment_webhooks``, ``fulfillment_attempts``, ``wallet_transactions``.
-        Сортировка по timestamp. Авто-обновление каждые 15 сек.
+        Источники: ``order_events``, ``payment_attempts``, ``payment_webhooks``,
+        ``fulfillment_attempts``, ``wallet_transactions``. Сортировка по timestamp. Авто-обновление
+        каждые 15 сек.
       </p>
     </div>
   );
@@ -324,8 +324,7 @@ function TimelineRow({
             )}
             {event.target_id && event.target_kind && (
               <span>
-                {event.target_kind}{" "}
-                <TargetLink kind={event.target_kind} id={event.target_id} />
+                {event.target_kind} <TargetLink kind={event.target_kind} id={event.target_id} />
               </span>
             )}
           </div>
@@ -382,7 +381,7 @@ function StatCard({
   render?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
+    <div className="rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
       {render ?? (
         <div
           className={`text-2xl font-semibold ${
@@ -433,10 +432,7 @@ function buildHistogram(rows: AuditEvent[]): number[] {
   for (const r of rows) {
     const t = new Date(r.ts).getTime();
     if (t < oldest) continue;
-    const idx = Math.min(
-      23,
-      Math.max(0, Math.floor((t - oldest) / bucketSize)),
-    );
+    const idx = Math.min(23, Math.max(0, Math.floor((t - oldest) / bucketSize)));
     buckets[idx] += 1;
   }
   return buckets;

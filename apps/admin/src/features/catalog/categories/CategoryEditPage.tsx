@@ -91,10 +91,7 @@ export function CategoryEditPage() {
       if (isNew) {
         return apiPost<Category>("/api/v1/admin/catalog/categories", payload);
       }
-      return apiPatch<Category>(
-        `/api/v1/admin/catalog/categories/${params.id ?? ""}`,
-        payload,
-      );
+      return apiPatch<Category>(`/api/v1/admin/catalog/categories/${params.id ?? ""}`, payload);
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: qk.categories() });
@@ -103,8 +100,7 @@ export function CategoryEditPage() {
   });
 
   const remove = useMutation({
-    mutationFn: () =>
-      apiDelete(`/api/v1/admin/catalog/categories/${params.id ?? ""}`),
+    mutationFn: () => apiDelete(`/api/v1/admin/catalog/categories/${params.id ?? ""}`),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: qk.categories() });
       navigate("/categories");
@@ -112,7 +108,11 @@ export function CategoryEditPage() {
   });
 
   return (
-    <form onSubmit={form.handleSubmit((v) => { save.mutate(v); })}>
+    <form
+      onSubmit={form.handleSubmit((v) => {
+        save.mutate(v);
+      })}
+    >
       <PageHeader
         title={isNew ? "Новая категория" : "Редактирование категории"}
         description="Верхний уровень навигации — «Игры», «Подписки», «Подарочные карты»."
@@ -148,7 +148,7 @@ export function CategoryEditPage() {
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <section className="space-y-4 rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
+        <section className="space-y-4 rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
           <Field label="Slug" error={form.formState.errors.slug?.message}>
             <Input {...form.register("slug")} placeholder="games" className="font-mono" />
           </Field>
@@ -160,11 +160,7 @@ export function CategoryEditPage() {
           </Field>
           <div className="flex gap-4">
             <Field label="Порядок">
-              <Input
-                type="number"
-                {...form.register("sort_order")}
-                className="w-24"
-              />
+              <Input type="number" {...form.register("sort_order")} className="w-24" />
             </Field>
             <Field label="Статус">
               <label className="mt-1 flex h-10 items-center gap-2 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm">
@@ -175,7 +171,7 @@ export function CategoryEditPage() {
           </div>
         </section>
 
-        <section className="space-y-4 rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
+        <section className="space-y-4 rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
           <h2 className="font-medium">Переводы</h2>
           {fields.map((field, idx) => (
             <fieldset key={field.id} className="space-y-2 rounded-md border p-3">
@@ -233,9 +229,7 @@ function Field({
       {help && !error && (
         <span className="mt-1 block text-xs text-[var(--text-secondary)]">{help}</span>
       )}
-      {error && (
-        <span className="mt-1 block text-xs text-[var(--danger)]">{error}</span>
-      )}
+      {error && <span className="mt-1 block text-xs text-[var(--danger)]">{error}</span>}
     </label>
   );
 }

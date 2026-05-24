@@ -141,6 +141,12 @@ disallow_untyped_defs = false
 disallow_incomplete_defs = false
 check_untyped_defs = false
 warn_unused_ignores = false
+# Test helpers routinely return ``r.json()[...]`` which mypy widens to
+# ``Any`` because httpx ``json()`` returns ``Any``. Casting every helper
+# would be five lines of busywork per file with no real correctness
+# gain — the assertions immediately after pin the type.
+warn_return_any = false
+disable_error_code = ["no-any-return"]
 
 [[tool.mypy.overrides]]
 # Seed scripts are linear-imperative and use a lot of helper closures over an
@@ -170,14 +176,15 @@ warn_required_dynamic_aliases = true
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-ra --strict-markers --strict-config --cov-report=term-missing"
+# ``--import-mode=importlib`` resolves the ``tests`` namespace clash
+# between the four ``apps/*/tests`` packages — pytest's legacy importer
+# treats them as one shared ``tests`` package and trips over duplicate
+# module names (``ModuleNotFoundError: No module named
+# 'tests.test_i18n'``). It is a CLI flag so it has to live in
+# ``addopts``; declaring it as ``import_mode = "importlib"`` is rejected
+# by ``--strict-config`` on pytest 9.
+addopts = "-ra --strict-markers --strict-config --cov-report=term-missing --import-mode=importlib"
 asyncio_mode = "auto"
-# All four apps have a ``tests/`` package. With the legacy ``prepend``
-# importer pytest sees them as conflicting submodules of one ``tests``
-# namespace (``ModuleNotFoundError: No module named 'tests.test_i18n'``).
-# ``importlib`` mode loads each test file by file-path, so the apps can
-# happily co-exist.
-import_mode = "importlib"
 testpaths = ["apps/api/tests", "apps/worker/tests", "apps/scheduler/tests", "apps/bot/tests"]
 markers = [
     "integration: tests that require testcontainers (postgres, redis)",

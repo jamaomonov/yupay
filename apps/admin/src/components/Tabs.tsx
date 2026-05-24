@@ -34,13 +34,7 @@ interface Props<T extends string> {
   className?: string;
 }
 
-export function Tabs<T extends string>({
-  value,
-  onChange,
-  tabs,
-  ariaLabel,
-  className,
-}: Props<T>) {
+export function Tabs<T extends string>({ value, onChange, tabs, ariaLabel, className }: Props<T>) {
   const baseId = useId();
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -89,10 +83,12 @@ export function Tabs<T extends string>({
             aria-selected={active}
             aria-controls={panelId}
             tabIndex={active ? 0 : -1}
-            onClick={() => { onChange(tab.id); }}
+            onClick={() => {
+              onChange(tab.id);
+            }}
             className={[
               "inline-flex items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-base)] focus-visible:rounded",
+              "focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-base)]",
               active
                 ? "border-[var(--accent)] text-[var(--text-primary)]"
                 : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]",

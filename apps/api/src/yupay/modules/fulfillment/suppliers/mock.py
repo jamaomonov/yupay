@@ -64,7 +64,7 @@ class MockFulfiller(Fulfiller):
         return FulfillResult(
             outcome="succeeded",
             external_order_id=external_id,
-            artifact_kind=artifact_kind,
+            artifact_kind=artifact_kind,  # type: ignore[arg-type]
             artifact=artifact,
             error=None,
             extra_metadata={

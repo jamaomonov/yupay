@@ -71,8 +71,7 @@ export function BootstrapGate({ children }: { children: ReactNode }) {
 
       if (auth.status === "failed") {
         clearTimeout(hardTimer);
-        const detail =
-          auth.error instanceof ApiError ? auth.error.detail : auth.error?.message;
+        const detail = auth.error instanceof ApiError ? auth.error.detail : auth.error?.message;
         setError(detail ?? "Не удалось подтвердить Telegram-сессию.");
         setPhase("error");
         return;
@@ -115,8 +114,7 @@ export function BootstrapGate({ children }: { children: ReactNode }) {
     } catch (exc) {
       clearTimeout(hardTimer);
       if (attemptRef.current !== attempt) return;
-      const msg =
-        exc instanceof ApiError ? exc.detail : exc instanceof Error ? exc.message : "";
+      const msg = exc instanceof ApiError ? exc.detail : exc instanceof Error ? exc.message : "";
       setError(msg || "Сетевая ошибка. Проверьте подключение.");
       setPhase("error");
     }
@@ -130,12 +128,7 @@ export function BootstrapGate({ children }: { children: ReactNode }) {
     <>
       <AnimatePresence>
         {phase !== "ready" && (
-          <Splash
-            phase={phase}
-            stage={stage}
-            error={error}
-            onRetry={() => void run()}
-          />
+          <Splash phase={phase} stage={stage} error={error} onRetry={() => void run()} />
         )}
       </AnimatePresence>
       {phase === "ready" && children}
@@ -172,11 +165,9 @@ function Splash({
         <Logo spinning={phase === "booting"} />
 
         <div className="space-y-1.5">
-          <h1 className="text-2xl font-bold tracking-tight text-white">
-            YuPay
-          </h1>
+          <h1 className="text-2xl font-bold tracking-tight text-white">YuPay</h1>
           <p
-            className="text-xs uppercase tracking-[0.08em] font-medium"
+            className="text-xs font-medium uppercase tracking-[0.08em]"
             style={{ color: "hsl(var(--primary))" }}
           >
             пополнение игр и сервисов
@@ -192,12 +183,12 @@ function Splash({
               exit={{ opacity: 0 }}
               className="flex flex-col items-center gap-3"
             >
-              <p className="text-sm text-white/70 max-w-[280px] leading-snug">
+              <p className="max-w-[280px] text-sm leading-snug text-white/70">
                 {error ?? "Не удалось загрузить приложение."}
               </p>
               <button
                 onClick={onRetry}
-                className="px-5 py-2 rounded-full text-sm font-semibold transition-transform active:scale-95"
+                className="rounded-full px-5 py-2 text-sm font-semibold transition-transform active:scale-95"
                 style={{
                   background: "hsl(var(--primary))",
                   color: "hsl(var(--primary-foreground))",
@@ -232,13 +223,12 @@ function Splash({
 
 function Logo({ spinning }: { spinning: boolean }) {
   return (
-    <div className="relative flex items-center justify-center w-28 h-28">
+    <div className="relative flex h-28 w-28 items-center justify-center">
       {/* Soft halo */}
       <div
-        className="absolute inset-0 rounded-full blur-2xl opacity-60"
+        className="absolute inset-0 rounded-full opacity-60 blur-2xl"
         style={{
-          background:
-            "radial-gradient(circle, hsl(var(--primary) / 0.55) 0%, transparent 70%)",
+          background: "radial-gradient(circle, hsl(var(--primary) / 0.55) 0%, transparent 70%)",
         }}
       />
       {/* Rotating ring */}
@@ -246,15 +236,12 @@ function Logo({ spinning }: { spinning: boolean }) {
         className="absolute inset-0 rounded-full"
         animate={spinning ? { rotate: 360 } : { rotate: 0 }}
         transition={
-          spinning
-            ? { repeat: Infinity, duration: 1.6, ease: "linear" }
-            : { duration: 0.3 }
+          spinning ? { repeat: Infinity, duration: 1.6, ease: "linear" } : { duration: 0.3 }
         }
         style={{
           background: `conic-gradient(from 0deg, transparent 0deg, hsl(var(--primary)) 80deg, transparent 240deg)`,
           mask: "radial-gradient(circle, transparent 56%, #000 58%, #000 100%)",
-          WebkitMask:
-            "radial-gradient(circle, transparent 56%, #000 58%, #000 100%)",
+          WebkitMask: "radial-gradient(circle, transparent 56%, #000 58%, #000 100%)",
           opacity: 0.9,
         }}
       />
@@ -265,7 +252,7 @@ function Logo({ spinning }: { spinning: boolean }) {
       <img
         src="/logo-icon.svg"
         alt="YuPay"
-        className="w-16 h-16 relative z-10 drop-shadow-[0_8px_32px_hsl(var(--primary)/0.5)]"
+        className="relative z-10 h-16 w-16 drop-shadow-[0_8px_32px_hsl(var(--primary)/0.5)]"
         draggable={false}
       />
     </div>

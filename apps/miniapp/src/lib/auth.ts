@@ -11,14 +11,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import {
-  ApiError,
-  apiGet,
-  apiPost,
-  clearTokens,
-  getAccessToken,
-  setTokens,
-} from "./api";
+import { ApiError, apiGet, apiPost, clearTokens, getAccessToken, setTokens } from "./api";
 import { isInsideTelegram, readyTelegram, waitForInitData } from "./telegram";
 
 interface TokensOut {
@@ -69,9 +62,9 @@ export interface BootstrapResult {
  * Returns a typed result so callers (e.g. ``BootstrapGate``) can show a retry
  * button or fall back to anonymous mode.
  */
-export async function bootstrapAuth(
-  { timeoutMs }: { timeoutMs?: number } = {},
-): Promise<BootstrapResult> {
+export async function bootstrapAuth({
+  timeoutMs,
+}: { timeoutMs?: number } = {}): Promise<BootstrapResult> {
   readyTelegram();
   // Plain browser dev: keep whatever token is stored; UI surfaces "Open in Telegram".
   if (typeof window === "undefined" || !window.Telegram) {

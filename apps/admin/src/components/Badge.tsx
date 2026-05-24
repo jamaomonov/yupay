@@ -24,12 +24,7 @@ export function Badge({ tone, dot, children, className }: Props) {
         className ?? "",
       ].join(" ")}
     >
-      {dot && (
-        <span
-          aria-hidden
-          className="size-1.5 shrink-0 rounded-full bg-current opacity-90"
-        />
-      )}
+      {dot && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-current opacity-90" />}
       <span className="truncate">{children}</span>
     </span>
   );

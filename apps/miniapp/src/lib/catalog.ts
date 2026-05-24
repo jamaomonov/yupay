@@ -136,10 +136,7 @@ export interface CategoryListItem {
 export const categoriesQueryOptions = {
   queryKey: ["catalog", "categories"] as const,
   queryFn: async (): Promise<CategoryListItem[]> => {
-    const data = await apiGet<{ items: CategoryApi[] }>(
-      "/api/v1/catalog/categories",
-      true,
-    );
+    const data = await apiGet<{ items: CategoryApi[] }>("/api/v1/catalog/categories", true);
     return data.items.map((c) => ({
       id: c.id,
       slug: c.slug,
@@ -193,10 +190,7 @@ function skuToPackage(sku: SkuApi): Package {
 export const brandsQueryOptions = {
   queryKey: ["catalog", "brands"] as const,
   queryFn: async (): Promise<Game[]> => {
-    const data = await apiGet<{ items: BrandApi[] }>(
-      "/api/v1/catalog/brands",
-      true,
-    );
+    const data = await apiGet<{ items: BrandApi[] }>("/api/v1/catalog/brands", true);
     return data.items.map((b) => brandToGame(b));
   },
   staleTime: 5 * 60_000,
@@ -226,10 +220,7 @@ export function useBrandSummary(gameId: string | undefined) {
     queryKey: ["catalog", "brand-summary", gameId],
     enabled: Boolean(gameId),
     queryFn: async () => {
-      const data = await apiGet<BrandDetailApi>(
-        `/api/v1/catalog/brands/${gameId ?? ""}`,
-        true,
-      );
+      const data = await apiGet<BrandDetailApi>(`/api/v1/catalog/brands/${gameId ?? ""}`, true);
       return data;
     },
     staleTime: 5 * 60_000,
@@ -242,10 +233,7 @@ export interface ProductWithSkus {
 }
 
 /** Full product payload (form schema + SKUs). Used by the package picker. */
-export function useProductWithSkus(
-  productSlug: string | undefined,
-  currency = "USD",
-) {
+export function useProductWithSkus(productSlug: string | undefined, currency = "USD") {
   return useQuery<ProductWithSkus>({
     queryKey: ["catalog", "product", productSlug, currency],
     enabled: Boolean(productSlug),

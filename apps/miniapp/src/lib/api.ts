@@ -9,8 +9,7 @@ const TOKEN_KEY = "yupay.miniapp.access_token";
 const REFRESH_KEY = "yupay.miniapp.refresh_token";
 
 export const apiBase =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ??
-  "";
+  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 
 export class ApiError extends Error {
   constructor(
@@ -109,10 +108,7 @@ async function tryRefreshOnce(): Promise<string | null> {
   return refreshInFlight;
 }
 
-export async function api<T = unknown>(
-  path: string,
-  options: RequestOptions = {},
-): Promise<T> {
+export async function api<T = unknown>(path: string, options: RequestOptions = {}): Promise<T> {
   const { anonymous, idempotencyKey, headers, ...init } = options;
   const url = path.startsWith("http") ? path : `${apiBase}${path}`;
 
@@ -156,8 +152,7 @@ export async function api<T = unknown>(
   return (await response.json()) as T;
 }
 
-export const apiGet = <T>(path: string, anonymous = false) =>
-  api<T>(path, { anonymous });
+export const apiGet = <T>(path: string, anonymous = false) => api<T>(path, { anonymous });
 export const apiPost = <T>(
   path: string,
   body: unknown,
@@ -165,8 +160,7 @@ export const apiPost = <T>(
 ) => api<T>(path, { ...opts, method: "POST", body: JSON.stringify(body) });
 export const apiPatch = <T>(path: string, body: unknown) =>
   api<T>(path, { method: "PATCH", body: JSON.stringify(body) });
-export const apiDelete = (path: string) =>
-  api<void>(path, { method: "DELETE" });
+export const apiDelete = (path: string) => api<void>(path, { method: "DELETE" });
 
 /** Generate a random idempotency key suitable for the backend's >=16 char rule. */
 export function newIdempotencyKey(prefix = "miniapp"): string {

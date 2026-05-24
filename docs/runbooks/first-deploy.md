@@ -17,7 +17,7 @@ On your laptop:
 - [ ] You have a Cloudflare R2 bucket (for backups) — bucket name + access key + secret.
 - [ ] You have a Telegram bot token from `@BotFather`.
 - [ ] You have an `age` keypair for backup encryption (`age-keygen -o ~/yupay-backup.key`).
-  Public line goes to the server; **private line stays on your laptop**.
+      Public line goes to the server; **private line stays on your laptop**.
 - [ ] (Optional) Sentry project + DSN.
 
 On the VPS provider's panel:
@@ -32,14 +32,14 @@ On the VPS provider's panel:
 
 At your domain registrar (`yupay.uz`), point at the VPS public IP:
 
-| Type | Name | Value | TTL |
-|------|------|-------|-----|
-| A | `@` (apex) | `<VPS_IP>` | 300 |
-| A | `www` | `<VPS_IP>` | 300 |
-| A | `app` | `<VPS_IP>` | 300 |
-| A | `admin` | `<VPS_IP>` | 300 |
-| A | `api` | `<VPS_IP>` | 300 |
-| A | `grafana` | `<VPS_IP>` | 300 |
+| Type | Name       | Value      | TTL |
+| ---- | ---------- | ---------- | --- |
+| A    | `@` (apex) | `<VPS_IP>` | 300 |
+| A    | `www`      | `<VPS_IP>` | 300 |
+| A    | `app`      | `<VPS_IP>` | 300 |
+| A    | `admin`    | `<VPS_IP>` | 300 |
+| A    | `api`      | `<VPS_IP>` | 300 |
+| A    | `grafana`  | `<VPS_IP>` | 300 |
 
 Wait until propagation finishes (usually 1–10 minutes):
 
@@ -298,6 +298,7 @@ You should now have:
 - Prometheus alerts wired (API 5xx, queue backlog, disk low, host mem low).
 
 Next operational tasks live in `docs/runbooks/`:
+
 - routine deploys → [deploy.md](deploy.md)
 - secret rotation → [rotate-secrets.md](rotate-secrets.md)
 - backup restore drill → [restore-from-backup.md](restore-from-backup.md)

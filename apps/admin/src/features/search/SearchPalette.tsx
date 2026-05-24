@@ -24,7 +24,6 @@ import { type ApiError, apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { useDialog } from "@/lib/useDialog";
 
-
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -74,8 +73,12 @@ export function SearchPalette({ open, onClose }: Props) {
 
   // Debounce the typed query before issuing the network request.
   useEffect(() => {
-    const t = window.setTimeout(() => { setDebounced(q.trim()); }, DEBOUNCE_MS);
-    return () => { window.clearTimeout(t); };
+    const t = window.setTimeout(() => {
+      setDebounced(q.trim());
+    }, DEBOUNCE_MS);
+    return () => {
+      window.clearTimeout(t);
+    };
   }, [q]);
 
   const enabled = open && debounced.length >= MIN_QUERY;
@@ -143,7 +146,7 @@ export function SearchPalette({ open, onClose }: Props) {
   // Assign a flat index per hit so the cursor can walk across groups.
   let cursor = 0;
   const groups = GROUP_ORDER.map((type) => {
-    const bucket = (query.data?.[bucketKey(type)] ?? []);
+    const bucket = query.data?.[bucketKey(type)] ?? [];
     const indexed = bucket.map((hit) => {
       const idx = cursor;
       cursor += 1;
@@ -170,7 +173,9 @@ export function SearchPalette({ open, onClose }: Props) {
             ref={inputRef}
             type="text"
             value={q}
-            onChange={(e) => { setQ(e.target.value); }}
+            onChange={(e) => {
+              setQ(e.target.value);
+            }}
             onKeyDown={onKeyDown}
             placeholder="Заказ, email, @username, payment id, SKU…"
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--text-secondary)]"
@@ -187,13 +192,9 @@ export function SearchPalette({ open, onClose }: Props) {
         </div>
 
         <div ref={listRef} className="max-h-[60vh] overflow-y-auto py-1">
-          {state === "idle" && (
-            <Hint>Начните вводить — минимум {MIN_QUERY} символа.</Hint>
-          )}
+          {state === "idle" && <Hint>Начните вводить — минимум {MIN_QUERY} символа.</Hint>}
           {state === "loading" && <Hint>Поиск…</Hint>}
-          {state === "error" && (
-            <Hint danger>Ошибка поиска. Проверьте подключение.</Hint>
-          )}
+          {state === "error" && <Hint danger>Ошибка поиска. Проверьте подключение.</Hint>}
           {state === "empty" && <Hint>Ничего не найдено.</Hint>}
           {state === "ready" &&
             groups.map((group) =>
@@ -208,7 +209,9 @@ export function SearchPalette({ open, onClose }: Props) {
                       hit={hit}
                       index={idx}
                       active={highlight === idx}
-                      onHover={() => { setHighlight(idx); }}
+                      onHover={() => {
+                        setHighlight(idx);
+                      }}
                       onClick={() => {
                         void navigate(hit.path);
                         onClose();
@@ -269,7 +272,7 @@ function HitRow({
         "flex w-full items-center gap-3 px-4 py-2 text-left text-sm transition-colors",
         active
           ? "bg-[var(--bg-muted)] text-[var(--text-primary)]"
-          : "text-[var(--text-primary)] hover:bg-[var(--bg-muted)]/60",
+          : "hover:bg-[var(--bg-muted)]/60 text-[var(--text-primary)]",
       ].join(" ")}
     >
       <span className="min-w-0 flex-1">
@@ -287,13 +290,7 @@ function HitRow({
   );
 }
 
-function Hint({
-  children,
-  danger,
-}: {
-  children: React.ReactNode;
-  danger?: boolean;
-}) {
+function Hint({ children, danger }: { children: React.ReactNode; danger?: boolean }) {
   return (
     <p
       className={[

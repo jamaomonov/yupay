@@ -5,15 +5,15 @@ The product team's authoritative definitions. The engineering glossary in
 
 ## Customer-facing terms
 
-| Term | Definition | Notes |
-|---|---|---|
-| Top-up | Adding currency/credits to an external account (Steam wallet, PUBG UC, etc.) via supplier API | No code returned to the customer |
-| Voucher | A code the customer redeems on a third-party platform | Single-use; we deliver the code text |
-| Gift card | A subtype of voucher with branding (e.g. "Steam Gift Card 25 USD") | Higher margin, more curated |
-| Wallet | The customer's internal YuPay balance | One per currency per user |
-| Cashback | Percentage of an order amount credited back to the wallet | Configurable per SKU/category |
-| Promo code | A discount code applied at checkout | One per order |
-| Referral | A user who signed up via someone else's link | The referrer receives a bonus on the referee's first purchase |
+| Term       | Definition                                                                                    | Notes                                                         |
+| ---------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Top-up     | Adding currency/credits to an external account (Steam wallet, PUBG UC, etc.) via supplier API | No code returned to the customer                              |
+| Voucher    | A code the customer redeems on a third-party platform                                         | Single-use; we deliver the code text                          |
+| Gift card  | A subtype of voucher with branding (e.g. "Steam Gift Card 25 USD")                            | Higher margin, more curated                                   |
+| Wallet     | The customer's internal YuPay balance                                                         | One per currency per user                                     |
+| Cashback   | Percentage of an order amount credited back to the wallet                                     | Configurable per SKU/category                                 |
+| Promo code | A discount code applied at checkout                                                           | One per order                                                 |
+| Referral   | A user who signed up via someone else's link                                                  | The referrer receives a bonus on the referee's first purchase |
 
 ## Order states
 

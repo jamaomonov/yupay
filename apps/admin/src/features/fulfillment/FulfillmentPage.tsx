@@ -16,7 +16,6 @@ import { useSearchParamsState } from "@/lib/useSearchParamsState";
 
 const PAGE_SIZE = 50;
 
-
 const STATUSES: { value: TaskStatus | ""; label: string }[] = [
   { value: "", label: "Все" },
   { value: "pending", label: "pending" },
@@ -54,15 +53,12 @@ export function FulfillmentPage() {
       if (status) params.set("status_filter", status);
       params.set("limit", String(PAGE_SIZE));
       params.set("offset", String(offset));
-      return apiGet<TaskListOut>(
-        `/api/v1/admin/fulfillment/tasks?${params.toString()}`,
-      );
+      return apiGet<TaskListOut>(`/api/v1/admin/fulfillment/tasks?${params.toString()}`);
     },
   });
 
   const retryMutation = useMutation<TaskAdminOut, ApiError, string>({
-    mutationFn: (id) =>
-      apiPost<TaskAdminOut>(`/api/v1/admin/fulfillment/${id}/retry`, {}),
+    mutationFn: (id) => apiPost<TaskAdminOut>(`/api/v1/admin/fulfillment/${id}/retry`, {}),
     onSuccess: () => {
       toast.success("Retry запущен.");
       void qc.invalidateQueries({
@@ -75,8 +71,7 @@ export function FulfillmentPage() {
   });
 
   const cancelMutation = useMutation<TaskAdminOut, ApiError, string>({
-    mutationFn: (id) =>
-      apiPost<TaskAdminOut>(`/api/v1/admin/fulfillment/${id}/cancel`, {}),
+    mutationFn: (id) => apiPost<TaskAdminOut>(`/api/v1/admin/fulfillment/${id}/cancel`, {}),
     onSuccess: () => {
       toast.success("Задача отменена.");
       void qc.invalidateQueries({
@@ -95,18 +90,14 @@ export function FulfillmentPage() {
       render: (t) => (
         <div className="flex flex-col font-mono text-xs">
           <span>{t.order_id.slice(0, 8)}…</span>
-          <span className="text-[var(--text-secondary)]">
-            item {t.order_item_id.slice(0, 8)}…
-          </span>
+          <span className="text-[var(--text-secondary)]">item {t.order_item_id.slice(0, 8)}…</span>
         </div>
       ),
     },
     {
       key: "supplier",
       header: "Маршрут",
-      render: (t) => (
-        <code className="text-xs">{t.supplier}</code>
-      ),
+      render: (t) => <code className="text-xs">{t.supplier}</code>,
       className: "w-32",
       sortAccessor: (t) => t.supplier,
     },
@@ -128,11 +119,7 @@ export function FulfillmentPage() {
       key: "error",
       header: "Ошибка",
       render: (t) =>
-        t.last_error ? (
-          <span className="text-xs text-[var(--danger)]">{t.last_error}</span>
-        ) : (
-          "—"
-        ),
+        t.last_error ? <span className="text-xs text-[var(--danger)]">{t.last_error}</span> : "—",
     },
     {
       key: "actions",
@@ -140,13 +127,17 @@ export function FulfillmentPage() {
       render: (t) => (
         <div
           className="flex justify-end gap-1"
-          onClick={(e) => { e.stopPropagation(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
         >
           {(t.status === "failed" || t.status === "pending") && (
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => { retryMutation.mutate(t.id); }}
+              onClick={() => {
+                retryMutation.mutate(t.id);
+              }}
             >
               Retry
             </Button>
@@ -172,16 +163,11 @@ export function FulfillmentPage() {
 
   return (
     <div>
-      <PageHeader
-        title="Fulfilment"
-        description="Задачи саги: статусы, попытки, retry / cancel."
-      />
+      <PageHeader title="Fulfilment" description="Задачи саги: статусы, попытки, retry / cancel." />
 
       <section className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
         <div>
-          <label className="text-xs uppercase text-[var(--text-secondary)]">
-            Order ID
-          </label>
+          <label className="text-xs uppercase text-[var(--text-secondary)]">Order ID</label>
           <Input
             value={orderId}
             onChange={(e) => {
@@ -193,9 +179,7 @@ export function FulfillmentPage() {
           />
         </div>
         <div>
-          <label className="text-xs uppercase text-[var(--text-secondary)]">
-            Маршрут
-          </label>
+          <label className="text-xs uppercase text-[var(--text-secondary)]">Маршрут</label>
           <Input
             value={supplier}
             onChange={(e) => {
@@ -207,9 +191,7 @@ export function FulfillmentPage() {
           />
         </div>
         <div>
-          <label className="text-xs uppercase text-[var(--text-secondary)]">
-            Статус
-          </label>
+          <label className="text-xs uppercase text-[var(--text-secondary)]">Статус</label>
           <select
             value={status}
             onChange={(e) => {
@@ -232,7 +214,9 @@ export function FulfillmentPage() {
         columns={columns}
         rowKey={(t) => t.id}
         empty="Задач не нашлось."
-        onRowClick={(t) => { setExpanded(expanded === t.id ? null : t.id); }}
+        onRowClick={(t) => {
+          setExpanded(expanded === t.id ? null : t.id);
+        }}
       />
 
       <Pagination
@@ -271,46 +255,30 @@ function StatusBadge({ status }: { status: TaskStatus }) {
 }
 
 function TaskDetails({ task }: { task: TaskAdminOut }) {
-  const proofUrl = typeof task.extra_metadata.proof_url === "string"
-    ? task.extra_metadata.proof_url
-    : null;
-  const queuedAt = typeof task.extra_metadata.queued_at === "string"
-    ? task.extra_metadata.queued_at
-    : null;
+  const proofUrl =
+    typeof task.extra_metadata.proof_url === "string" ? task.extra_metadata.proof_url : null;
+  const queuedAt =
+    typeof task.extra_metadata.queued_at === "string" ? task.extra_metadata.queued_at : null;
   const otherMeta = Object.fromEntries(
-    Object.entries(task.extra_metadata).filter(
-      ([k]) => k !== "proof_url" && k !== "queued_at",
-    ),
+    Object.entries(task.extra_metadata).filter(([k]) => k !== "proof_url" && k !== "queued_at"),
   );
 
   return (
-    <article className="space-y-4 rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4 text-sm">
+    <article className="space-y-4 rounded-lg border bg-[var(--bg-surface)] p-4 text-sm shadow-[var(--shadow-sm)]">
       {/* Task header — basic fields + lifecycle timestamps. */}
       <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <DetailField label="ID" value={task.id} mono />
         <DetailField label="Маршрут" value={task.supplier} mono />
         <DetailField label="Статус" value={task.status} />
-        <DetailField
-          label="Создана"
-          value={new Date(task.created_at).toLocaleString("ru")}
-        />
+        <DetailField label="Создана" value={new Date(task.created_at).toLocaleString("ru")} />
         {task.succeeded_at && (
-          <DetailField
-            label="Завершена"
-            value={new Date(task.succeeded_at).toLocaleString("ru")}
-          />
+          <DetailField label="Завершена" value={new Date(task.succeeded_at).toLocaleString("ru")} />
         )}
         {task.failed_at && (
-          <DetailField
-            label="Провалена"
-            value={new Date(task.failed_at).toLocaleString("ru")}
-          />
+          <DetailField label="Провалена" value={new Date(task.failed_at).toLocaleString("ru")} />
         )}
         {task.cancelled_at && (
-          <DetailField
-            label="Отменена"
-            value={new Date(task.cancelled_at).toLocaleString("ru")}
-          />
+          <DetailField label="Отменена" value={new Date(task.cancelled_at).toLocaleString("ru")} />
         )}
         {task.external_order_id && (
           <DetailField label="External order" value={task.external_order_id} mono />
@@ -327,7 +295,7 @@ function TaskDetails({ task }: { task: TaskAdminOut }) {
           of the manual fields is set — for supplier-driven tasks the
           whole block stays hidden. */}
       {(task.completed_by || task.admin_note || proofUrl) && (
-        <section className="space-y-2 rounded-md border border-[var(--border-default)]/60 bg-[var(--bg-muted)]/40 p-3">
+        <section className="border-[var(--border-default)]/60 bg-[var(--bg-muted)]/40 space-y-2 rounded-md border p-3">
           <h4 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-secondary)]">
             Ручная обработка
           </h4>
@@ -335,9 +303,7 @@ function TaskDetails({ task }: { task: TaskAdminOut }) {
             {task.completed_by && (
               <DetailField label="Обработал admin" value={task.completed_by} mono />
             )}
-            {task.admin_note && (
-              <DetailField label="Заметка" value={task.admin_note} />
-            )}
+            {task.admin_note && <DetailField label="Заметка" value={task.admin_note} />}
           </div>
           {proofUrl && (
             <a
@@ -360,7 +326,7 @@ function TaskDetails({ task }: { task: TaskAdminOut }) {
           <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--text-secondary)]">
             Метаданные
           </h4>
-          <pre className="whitespace-pre-wrap rounded border border-[var(--border-default)]/50 bg-[var(--bg-muted)]/40 p-2 text-xs">
+          <pre className="border-[var(--border-default)]/50 bg-[var(--bg-muted)]/40 whitespace-pre-wrap rounded border p-2 text-xs">
             {JSON.stringify(otherMeta, null, 2)}
           </pre>
         </section>
@@ -378,16 +344,14 @@ function TaskDetails({ task }: { task: TaskAdminOut }) {
             {task.attempts.map((a, i) => (
               <li
                 key={`${a.kind}-${a.created_at}-${i}`}
-                className="rounded border border-[var(--border-default)]/50 p-2 text-xs"
+                className="border-[var(--border-default)]/50 rounded border p-2 text-xs"
               >
                 <div className="flex justify-between">
                   <span>
                     <code>{a.kind}</code> ·{" "}
                     <span
                       className={
-                        a.status === "ok"
-                          ? "text-[var(--success)]"
-                          : "text-[var(--danger)]"
+                        a.status === "ok" ? "text-[var(--success)]" : "text-[var(--danger)]"
                       }
                     >
                       {a.status}
@@ -398,9 +362,7 @@ function TaskDetails({ task }: { task: TaskAdminOut }) {
                   </span>
                 </div>
                 {a.error && (
-                  <pre className="mt-1 whitespace-pre-wrap text-[var(--danger)]">
-                    {a.error}
-                  </pre>
+                  <pre className="mt-1 whitespace-pre-wrap text-[var(--danger)]">{a.error}</pre>
                 )}
                 {Object.keys(a.payload).length > 0 && (
                   <pre className="mt-1 whitespace-pre-wrap text-[var(--text-secondary)]">
@@ -416,24 +378,11 @@ function TaskDetails({ task }: { task: TaskAdminOut }) {
   );
 }
 
-function DetailField({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
+function DetailField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div>
       <p className="text-xs font-medium uppercase text-[var(--text-secondary)]">{label}</p>
-      <p
-        className={[
-          "mt-0.5 break-words text-sm",
-          mono ? "font-mono text-xs" : "",
-        ].join(" ")}
-      >
+      <p className={["mt-0.5 break-words text-sm", mono ? "font-mono text-xs" : ""].join(" ")}>
         {value}
       </p>
     </div>

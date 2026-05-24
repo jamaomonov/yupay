@@ -72,8 +72,8 @@ function adaptPackage(api: ApiPackage): Package {
 const PAYMENT_METHODS = [
   { id: "mock", name: "Mock", sub: "тест выдачи", icon: ShieldCheck },
   { id: "card", name: "Карта", sub: "Visa · МИР", icon: CreditCard },
-  { id: "sbp",  name: "СБП",   sub: "без коми",   icon: Zap },
-  { id: "crypto", name: "Крипта", sub: "USDT",    icon: Bitcoin },
+  { id: "sbp", name: "СБП", sub: "без коми", icon: Zap },
+  { id: "crypto", name: "Крипта", sub: "USDT", icon: Bitcoin },
 ];
 
 const DEFAULT_PAYMENT_METHOD = PAYMENT_METHODS[0]?.id ?? "card";
@@ -122,9 +122,9 @@ function formatMoney(value: number, code: string): string {
 // ─── Step heading ──────────────────────────────────────────────────────────────
 function Step({ n, title, sub }: { n: number; title: string; sub?: string }) {
   return (
-    <div className="flex items-start gap-3 mb-3.5">
+    <div className="mb-3.5 flex items-start gap-3">
       <div
-        className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 mt-0.5"
+        className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
         style={{
           background: "hsl(var(--primary) / 0.15)",
           color: "hsl(var(--primary))",
@@ -134,8 +134,8 @@ function Step({ n, title, sub }: { n: number; title: string; sub?: string }) {
         {n}
       </div>
       <div>
-        <p className="text-white font-bold text-base leading-tight">{title}</p>
-        {sub && <p className="text-white/40 text-xs mt-0.5">{sub}</p>}
+        <p className="text-base font-bold leading-tight text-white">{title}</p>
+        {sub && <p className="mt-0.5 text-xs text-white/40">{sub}</p>}
       </div>
     </div>
   );
@@ -166,22 +166,18 @@ function WalletPayOption({
       onClick={disabled ? undefined : onSelect}
       disabled={disabled}
       aria-disabled={disabled}
-      className="w-full mb-2 rounded-2xl p-3.5 flex items-center gap-3 transition-all duration-150 disabled:cursor-not-allowed"
+      className="mb-2 flex w-full items-center gap-3 rounded-2xl p-3.5 transition-all duration-150 disabled:cursor-not-allowed"
       style={{
         background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
-        border: active
-          ? "1.5px solid hsl(var(--primary) / 0.8)"
-          : "1px solid hsl(var(--border))",
+        border: active ? "1.5px solid hsl(var(--primary) / 0.8)" : "1px solid hsl(var(--border))",
         opacity: disabled ? 0.6 : 1,
       }}
       data-testid="btn-pay-wallet"
     >
       <span
-        className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl"
         style={{
-          background: active
-            ? "hsl(var(--primary) / 0.18)"
-            : "hsl(var(--surface-3))",
+          background: active ? "hsl(var(--primary) / 0.18)" : "hsl(var(--surface-3))",
           color: active ? "hsl(var(--primary))" : "rgba(255,255,255,0.6)",
         }}
         aria-hidden="true"
@@ -189,15 +185,11 @@ function WalletPayOption({
         <WalletIcon size={18} />
       </span>
       <span className="min-w-0 flex-1 text-left">
-        <span className="block text-white font-bold text-sm">
-          Оплата с баланса
-        </span>
+        <span className="block text-sm font-bold text-white">Оплата с баланса</span>
         <span
-          className="block text-[12px] mt-0.5"
+          className="mt-0.5 block text-[12px]"
           style={{
-            color: disabled
-              ? "rgb(252, 165, 165)"
-              : "rgba(255,255,255,0.55)",
+            color: disabled ? "rgb(252, 165, 165)" : "rgba(255,255,255,0.55)",
           }}
         >
           {loading
@@ -209,7 +201,7 @@ function WalletPayOption({
       </span>
       {active && !disabled && (
         <span
-          className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+          className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full"
           style={{ background: "hsl(var(--primary))" }}
           aria-hidden="true"
         >
@@ -338,15 +330,23 @@ export default function TopUp() {
   };
 
   if (gamesQuery.isLoading || brandQuery.isLoading) {
-    return <PageSkeleton onBack={() => { setLocation("/"); }} />;
+    return (
+      <PageSkeleton
+        onBack={() => {
+          setLocation("/");
+        }}
+      />
+    );
   }
   if (!game || brandQuery.isError) {
     return (
-      <div className="p-4 pt-20 text-center space-y-4">
+      <div className="space-y-4 p-4 pt-20 text-center">
         <h2 className="text-xl font-bold">Сервис не найден</h2>
         <button
-          onClick={() => { setLocation("/"); }}
-          className="px-6 py-3 bg-primary text-black font-bold rounded-2xl"
+          onClick={() => {
+            setLocation("/");
+          }}
+          className="bg-primary rounded-2xl px-6 py-3 font-bold text-black"
         >
           На главную
         </button>
@@ -367,10 +367,7 @@ export default function TopUp() {
     walletBalance === null
       ? true // optimistic during load — submit will re-check
       : walletBalance >= finalPrice;
-  const walletShortfall =
-    walletBalance === null || walletEnough
-      ? 0
-      : finalPrice - walletBalance;
+  const walletShortfall = walletBalance === null || walletEnough ? 0 : finalPrice - walletBalance;
 
   const accountRequired = requiredFields.length > 0;
   const missingFieldKey = requiredFields.find((f) => {
@@ -487,55 +484,49 @@ export default function TopUp() {
           {game.bgUrl ? (
             <img
               src={game.bgUrl}
-              className="absolute inset-0 w-full h-full object-cover"
+              className="absolute inset-0 h-full w-full object-cover"
               alt={game.name}
             />
           ) : (
             <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950" />
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-black/20" />
+          <div className="from-background via-background/40 absolute inset-0 bg-gradient-to-t to-black/20" />
 
-          <div className="absolute bottom-0 left-0 right-0 px-4 pb-4 flex items-end gap-3 z-10">
-            <div className="w-14 h-14 rounded-2xl overflow-hidden shadow-xl border border-white/15 flex-shrink-0">
+          <div className="absolute bottom-0 left-0 right-0 z-10 flex items-end gap-3 px-4 pb-4">
+            <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-2xl border border-white/15 shadow-xl">
               {game.appIcon ? (
-                <img
-                  src={game.appIcon}
-                  className="w-full h-full object-cover"
-                  alt={game.name}
-                />
+                <img src={game.appIcon} className="h-full w-full object-cover" alt={game.name} />
               ) : (
                 <div
-                  className="w-full h-full flex items-center justify-center text-white/80 font-bold text-xl"
+                  className="flex h-full w-full items-center justify-center text-xl font-bold text-white/80"
                   style={{ background: game.color }}
                 >
                   {game.name.charAt(0)}
                 </div>
               )}
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-white/50 text-[11px] uppercase tracking-wide line-clamp-1">
+            <div className="min-w-0 flex-1">
+              <p className="line-clamp-1 text-[11px] uppercase tracking-wide text-white/50">
                 {game.publisher || "YuPay"}
               </p>
-              <h1 className="text-white font-bold text-lg leading-tight line-clamp-1">
+              <h1 className="line-clamp-1 text-lg font-bold leading-tight text-white">
                 {game.name}
               </h1>
-              <div className="flex items-center gap-3 mt-0.5">
+              <div className="mt-0.5 flex items-center gap-3">
                 {/* Single honest signal: typical delivery time. The 4.9 star
                     rating that used to live here was hardcoded with no count
                     behind it — pulled per the audit ("trust gaps · present
                     but unearned"). When real review data lands, add a count
                     + tap-to-open reviews sheet. */}
                 <div
-                  className="flex items-center gap-1 px-2 py-0.5 rounded-full"
+                  className="flex items-center gap-1 rounded-full px-2 py-0.5"
                   style={{
                     background: "hsl(var(--primary) / 0.15)",
                     border: "1px solid hsl(var(--primary) / 0.3)",
                   }}
                 >
                   <Clock size={10} className="text-primary" />
-                  <span className="text-primary text-[10px] font-semibold">
-                    1–2 мин
-                  </span>
+                  <span className="text-primary text-[10px] font-semibold">1–2 мин</span>
                 </div>
               </div>
             </div>
@@ -548,7 +539,7 @@ export default function TopUp() {
         {!insideTelegram && (
           <div className="px-4 pt-4">
             <div
-              className="rounded-2xl p-4 flex items-start gap-3"
+              className="flex items-start gap-3 rounded-2xl p-4"
               style={{
                 background: "hsl(var(--surface-1))",
                 border: "1.5px solid hsl(var(--primary) / 0.4)",
@@ -556,7 +547,7 @@ export default function TopUp() {
               role="status"
             >
               <div
-                className="size-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                className="flex size-9 flex-shrink-0 items-center justify-center rounded-xl"
                 style={{
                   background: "hsl(var(--primary) / 0.15)",
                   color: "hsl(var(--primary))",
@@ -566,12 +557,12 @@ export default function TopUp() {
                 <Send size={16} />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-white font-semibold text-sm leading-tight">
+                <p className="text-sm font-semibold leading-tight text-white">
                   Откройте в Telegram
                 </p>
-                <p className="text-white/55 text-[12px] mt-1 leading-relaxed">
-                  Оплата привязана к вашему Telegram-аккаунту. Каталог
-                  доступен для просмотра — оформить заказ можно только из бота.
+                <p className="mt-1 text-[12px] leading-relaxed text-white/55">
+                  Оплата привязана к вашему Telegram-аккаунту. Каталог доступен для просмотра —
+                  оформить заказ можно только из бота.
                 </p>
                 {TELEGRAM_DEEP_LINK && (
                   <a
@@ -589,52 +580,46 @@ export default function TopUp() {
         )}
 
         {/* ── Form ── */}
-        <div className="px-4 pt-5 space-y-7">
+        <div className="space-y-7 px-4 pt-5">
           {/* Step 0 — Product picker (only when there's more than one product) */}
           {products.length > 1 && (
             <div>
-              <div className="flex items-center justify-between mb-2.5">
+              <div className="mb-2.5 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <PackageIcon size={13} className="text-white/40" />
-                  <span className="text-xs font-semibold text-white/50 uppercase tracking-wide">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-white/50">
                     Выберите продукт
                   </span>
                 </div>
-                <span className="text-[10px] text-white/30">
-                  {products.length} опций
-                </span>
+                <span className="text-[10px] text-white/30">{products.length} опций</span>
               </div>
-              <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4">
+              <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
                 {products.map((p) => {
                   const active = p.slug === selectedProductSlug;
                   return (
                     <button
                       key={p.id}
-                      onClick={() => { setSelectedProductSlug(p.slug); }}
-                      className="flex items-center gap-2 flex-shrink-0 pl-2 pr-3 py-1.5 rounded-2xl transition-all duration-150"
+                      onClick={() => {
+                        setSelectedProductSlug(p.slug);
+                      }}
+                      className="flex flex-shrink-0 items-center gap-2 rounded-2xl py-1.5 pl-2 pr-3 transition-all duration-150"
                       style={{
-                        background: active
-                          ? "hsl(var(--surface-3))"
-                          : "hsl(var(--surface-2))",
+                        background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
                         border: active
                           ? "1.5px solid hsl(var(--primary) / 0.7)"
                           : "1px solid hsl(var(--border))",
                       }}
                     >
-                      <div className="w-6 h-6 rounded-md overflow-hidden bg-black/30 flex-shrink-0 flex items-center justify-center">
+                      <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-black/30">
                         {p.image_url ? (
-                          <img
-                            src={p.image_url}
-                            className="w-full h-full object-cover"
-                            alt=""
-                          />
+                          <img src={p.image_url} className="h-full w-full object-cover" alt="" />
                         ) : (
                           <PackageIcon size={11} className="text-white/40" />
                         )}
                       </div>
                       <span
                         className={cn(
-                          "text-xs font-semibold whitespace-nowrap",
+                          "whitespace-nowrap text-xs font-semibold",
                           active ? "text-white" : "text-white/60",
                         )}
                       >
@@ -656,19 +641,20 @@ export default function TopUp() {
                 sub={fillingHint}
               />
               {prefilled && (
-                <div className="mb-2.5 flex items-center justify-between gap-2 rounded-2xl px-3 py-2"
+                <div
+                  className="mb-2.5 flex items-center justify-between gap-2 rounded-2xl px-3 py-2"
                   style={{
                     background: "hsl(var(--primary) / 0.08)",
                     border: "1px solid hsl(var(--primary) / 0.25)",
                   }}
                 >
-                  <p className="text-[12px] text-white/75 leading-snug">
+                  <p className="text-[12px] leading-snug text-white/75">
                     Используем данные с прошлого заказа
                   </p>
                   <button
                     type="button"
                     onClick={clearPrefilled}
-                    className="text-[11px] font-semibold transition-opacity active:opacity-70 whitespace-nowrap"
+                    className="whitespace-nowrap text-[11px] font-semibold transition-opacity active:opacity-70"
                     style={{ color: "hsl(var(--primary))" }}
                   >
                     Изменить
@@ -710,7 +696,9 @@ export default function TopUp() {
                     pkg={pkg}
                     active={selectedPkg === pkg.id}
                     fallbackImage={productImage}
-                    onSelect={() => { setSelectedPkg(pkg.id); }}
+                    onSelect={() => {
+                      setSelectedPkg(pkg.id);
+                    }}
                   />
                 ))}
               </div>
@@ -735,10 +723,12 @@ export default function TopUp() {
               balance={walletBalance}
               shortfall={walletShortfall}
               currency={priceCode}
-              onSelect={() => { setPaymentMethod(WALLET_METHOD_ID); }}
+              onSelect={() => {
+                setPaymentMethod(WALLET_METHOD_ID);
+              }}
             />
 
-            <div className="grid grid-cols-4 gap-2 mb-3">
+            <div className="mb-3 grid grid-cols-4 gap-2">
               {PAYMENT_METHODS.map((m) => {
                 const active = paymentMethod === m.id;
                 const available = isMethodAvailable(m.id);
@@ -754,7 +744,7 @@ export default function TopUp() {
                     disabled={!available}
                     aria-disabled={!available}
                     title={available ? undefined : "Скоро"}
-                    className="relative flex flex-col items-center gap-1 py-3 rounded-2xl transition-all duration-150 disabled:cursor-not-allowed"
+                    className="relative flex flex-col items-center gap-1 rounded-2xl py-3 transition-all duration-150 disabled:cursor-not-allowed"
                     style={{
                       background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
                       border: active
@@ -766,7 +756,7 @@ export default function TopUp() {
                   >
                     {active && available && (
                       <div
-                        className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full flex items-center justify-center"
+                        className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full"
                         style={{ background: "hsl(var(--primary))" }}
                       >
                         <Check size={9} strokeWidth={3} className="text-black" />
@@ -774,7 +764,7 @@ export default function TopUp() {
                     )}
                     {!available && (
                       <div
-                        className="absolute top-1 right-1 px-1 py-0.5 rounded text-[8px] font-bold uppercase tracking-wide"
+                        className="absolute right-1 top-1 rounded px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide"
                         style={{
                           background: "hsl(var(--surface-3))",
                           color: "hsl(var(--muted-foreground))",
@@ -799,7 +789,6 @@ export default function TopUp() {
                 );
               })}
             </div>
-
           </div>
 
           {/* Trust items */}
@@ -817,8 +806,8 @@ export default function TopUp() {
               },
             ].map(({ icon: Icon, text }, i) => (
               <div key={i} className="flex items-center gap-2.5">
-                <Icon size={14} className="text-white/25 flex-shrink-0" />
-                <span className="text-white/35 text-xs">{text}</span>
+                <Icon size={14} className="flex-shrink-0 text-white/25" />
+                <span className="text-xs text-white/35">{text}</span>
               </div>
             ))}
           </div>
@@ -828,18 +817,18 @@ export default function TopUp() {
             <motion.div
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex items-center gap-3 p-3 rounded-2xl"
+              className="flex items-center gap-3 rounded-2xl p-3"
               style={{
                 background: "hsl(var(--surface-2))",
                 border: "1px solid hsl(var(--border))",
               }}
             >
               <PackageThumb pkg={activePkg} fallback={productImage ?? game.appIcon ?? null} />
-              <div className="flex-1 min-w-0">
-                <p className="text-white font-bold text-sm line-clamp-1">
+              <div className="min-w-0 flex-1">
+                <p className="line-clamp-1 text-sm font-bold text-white">
                   {activePkg.label} · {game.name}
                 </p>
-                <p className="text-white/40 text-xs mt-0.5 line-clamp-1">
+                <p className="mt-0.5 line-clamp-1 text-xs text-white/40">
                   {accountRequired
                     ? missingFieldKey
                       ? "Заполните реквизиты выше"
@@ -847,7 +836,7 @@ export default function TopUp() {
                     : "Получите код после оплаты"}
                 </p>
               </div>
-              <p className="text-white font-bold text-sm flex-shrink-0">
+              <p className="flex-shrink-0 text-sm font-bold text-white">
                 {formatMoney(activePkg.price, activePkg.priceCode)}
               </p>
             </motion.div>
@@ -856,7 +845,7 @@ export default function TopUp() {
       </motion.div>
 
       {/* ── Fixed CTA ── */}
-      <div className="fixed bottom-[76px] left-1/2 -translate-x-1/2 w-full max-w-[430px] px-4 z-40">
+      <div className="fixed bottom-[76px] left-1/2 z-40 w-full max-w-[430px] -translate-x-1/2 px-4">
         {/* Settlement disclaimer — only shown when the gateway will charge
             in a currency different from the displayed one. Keeps the CTA
             honest without forcing a live FX preview. */}
@@ -864,10 +853,7 @@ export default function TopUp() {
           activePkg &&
           ACQUIRER_BY_METHOD[paymentMethod] &&
           ACQUIRER_BY_METHOD[paymentMethod].currency !== priceCode && (
-            <p
-              className="mb-2 text-center text-[11px] text-white/45"
-              role="note"
-            >
+            <p className="mb-2 text-center text-[11px] text-white/45" role="note">
               Списание в {ACQUIRER_BY_METHOD[paymentMethod].currency} через{" "}
               {ACQUIRER_BY_METHOD[paymentMethod].label} по курсу банка
             </p>
@@ -876,7 +862,7 @@ export default function TopUp() {
           <motion.a
             whileTap={{ scale: 0.97 }}
             href={TELEGRAM_DEEP_LINK}
-            className="w-full py-4 rounded-2xl text-base font-bold tracking-wide flex items-center justify-center gap-2 transition-all"
+            className="flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-base font-bold tracking-wide transition-all"
             style={{
               background: "hsl(var(--primary))",
               color: "#000",
@@ -891,7 +877,7 @@ export default function TopUp() {
             whileTap={{ scale: 0.97 }}
             onClick={handlePayment}
             disabled={isProcessing || !activePkg || !insideTelegram}
-            className="w-full py-4 rounded-2xl text-base font-bold tracking-wide flex items-center justify-center gap-2 transition-all"
+            className="flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-base font-bold tracking-wide transition-all"
             style={{
               background:
                 isProcessing || !activePkg || !insideTelegram
@@ -937,19 +923,17 @@ function PackageCard({
   return (
     <button
       onClick={onSelect}
-      className="relative text-left p-3.5 rounded-2xl transition-all duration-150"
+      className="relative rounded-2xl p-3.5 text-left transition-all duration-150"
       style={{
         background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
-        border: active
-          ? "1.5px solid hsl(var(--primary) / 0.8)"
-          : "1px solid hsl(var(--border))",
+        border: active ? "1.5px solid hsl(var(--primary) / 0.8)" : "1px solid hsl(var(--border))",
         boxShadow: active ? "0 0 0 3px hsl(var(--primary) / 0.1)" : "none",
       }}
       data-testid={`btn-pkg-${pkg.id}`}
     >
       {pkg.badge && (
         <div
-          className="absolute -top-2 left-3 px-2 py-0.5 rounded-md text-[9px] font-bold tracking-wider"
+          className="absolute -top-2 left-3 rounded-md px-2 py-0.5 text-[9px] font-bold tracking-wider"
           style={{ background: pkg.badge.color, color: "#fff" }}
         >
           {pkg.badge.label}
@@ -958,43 +942,33 @@ function PackageCard({
 
       {active && (
         <div
-          className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full flex items-center justify-center"
+          className="absolute right-2.5 top-2.5 flex h-5 w-5 items-center justify-center rounded-full"
           style={{ background: "hsl(var(--primary))" }}
         >
           <Check size={11} strokeWidth={3} className="text-black" />
         </div>
       )}
 
-      <div className="flex items-center gap-2 mb-1.5">
+      <div className="mb-1.5 flex items-center gap-2">
         <PackageThumb pkg={pkg} fallback={fallbackImage} />
-        <span className="text-white font-bold text-lg leading-none">
-          {pkg.label}
-        </span>
+        <span className="text-lg font-bold leading-none text-white">{pkg.label}</span>
       </div>
 
       {pkg.region && pkg.region !== "GLOBAL" && (
-        <p className="text-white/40 text-[11px] mb-2">регион {pkg.region}</p>
+        <p className="mb-2 text-[11px] text-white/40">регион {pkg.region}</p>
       )}
 
-      <p className="text-white font-bold text-sm">
-        {formatMoney(pkg.price, pkg.priceCode)}
-      </p>
+      <p className="text-sm font-bold text-white">{formatMoney(pkg.price, pkg.priceCode)}</p>
     </button>
   );
 }
 
-function PackageThumb({
-  pkg,
-  fallback,
-}: {
-  pkg: Package;
-  fallback: string | null;
-}) {
+function PackageThumb({ pkg, fallback }: { pkg: Package; fallback: string | null }) {
   const src = pkg.imageUrl ?? fallback;
   if (src) {
     return (
-      <div className="w-9 h-9 rounded-xl overflow-hidden bg-black/30 flex-shrink-0">
-        <img src={src} className="w-full h-full object-cover" alt={pkg.label} />
+      <div className="h-9 w-9 flex-shrink-0 overflow-hidden rounded-xl bg-black/30">
+        <img src={src} className="h-full w-full object-cover" alt={pkg.label} />
       </div>
     );
   }
@@ -1003,7 +977,7 @@ function PackageThumb({
   const tag = pkg.label.replace(/^[\s\d.,]+/, "").trim() || "—";
   return (
     <div
-      className="w-9 h-9 rounded-xl flex items-center justify-center text-[10px] font-bold text-black"
+      className="flex h-9 w-9 items-center justify-center rounded-xl text-[10px] font-bold text-black"
       style={{ background: "hsl(var(--primary))" }}
     >
       {tag.slice(0, 4).toUpperCase()}
@@ -1016,17 +990,17 @@ function PageSkeleton({ onBack }: { onBack: () => void }) {
   return (
     <div className="pb-32">
       <div className="relative h-56 overflow-hidden bg-gradient-to-br from-slate-800 to-slate-950">
-        <div className="absolute top-12 left-4 z-10">
+        <div className="absolute left-4 top-12 z-10">
           <button
             onClick={onBack}
-            className="w-9 h-9 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/50 backdrop-blur-md"
             aria-label="Назад"
           >
             <ArrowLeft size={16} className="text-white" />
           </button>
         </div>
       </div>
-      <div className="px-4 pt-5 space-y-4">
+      <div className="space-y-4 px-4 pt-5">
         <Skeleton className="h-12 w-full" />
         <PackagesSkeleton />
       </div>

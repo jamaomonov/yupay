@@ -8,19 +8,13 @@
 import { Button, Input } from "@yupay/ui";
 import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
-import {
-  type Control,
-  type UseFormRegister,
-  useFieldArray,
-  useWatch,
-} from "react-hook-form";
-
+import { type Control, type UseFormRegister, useFieldArray, useWatch } from "react-hook-form";
 
 import type { FieldType, FormField } from "../types";
 
 interface Props {
-  control: Control<any>;  // eslint-disable-line @typescript-eslint/no-explicit-any
-  register: UseFormRegister<any>;  // eslint-disable-line @typescript-eslint/no-explicit-any
+  control: Control<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  register: UseFormRegister<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   name: string;
 }
 
@@ -39,23 +33,25 @@ export function RequiredFieldsEditor({ control, register, name }: Props) {
           name={name}
           control={control}
           register={register}
-          onRemove={() => { remove(idx); }}
+          onRemove={() => {
+            remove(idx);
+          }}
         />
       ))}
       <Button
         type="button"
         variant="secondary"
         size="sm"
-        onClick={() =>
-          { append({
+        onClick={() => {
+          append({
             key: "",
             label: { ru: "", en: "", uz: "" },
             type: "text",
             required: true,
             placeholder: { ru: "", en: "", uz: "" },
             help_text: { ru: "", en: "", uz: "" },
-          } satisfies FormField); }
-        }
+          } satisfies FormField);
+        }}
       >
         <Plus className="size-4" />
         Добавить поле
@@ -73,8 +69,8 @@ function FieldRow({
 }: {
   index: number;
   name: string;
-  control: Control<any>;  // eslint-disable-line @typescript-eslint/no-explicit-any
-  register: UseFormRegister<any>;  // eslint-disable-line @typescript-eslint/no-explicit-any
+  control: Control<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  register: UseFormRegister<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   onRemove: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -87,14 +83,12 @@ function FieldRow({
       <header className="flex items-center justify-between gap-2 px-3 py-2">
         <button
           type="button"
-          onClick={() => { setOpen((o) => !o); }}
+          onClick={() => {
+            setOpen((o) => !o);
+          }}
           className="flex flex-1 items-center gap-2 text-left text-sm"
         >
-          {open ? (
-            <ChevronDown className="size-4" />
-          ) : (
-            <ChevronRight className="size-4" />
-          )}
+          {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
           <code className="text-xs">{key || "(новое поле)"}</code>
           <span className="text-xs text-[var(--text-secondary)]">{type ?? ""}</span>
         </button>
@@ -130,11 +124,7 @@ function FieldRow({
             <div className="text-xs font-medium uppercase text-[var(--text-secondary)]">Label</div>
             <div className="mt-1 grid grid-cols-1 gap-2 sm:grid-cols-3">
               {LOCALES.map((l) => (
-                <Input
-                  key={l}
-                  {...register(`${path}.label.${l}`)}
-                  placeholder={l.toUpperCase()}
-                />
+                <Input key={l} {...register(`${path}.label.${l}`)} placeholder={l.toUpperCase()} />
               ))}
             </div>
           </div>
@@ -162,8 +152,8 @@ function FieldRow({
               Help text — «Где найти?»
             </div>
             <p className="mt-1 text-[11px] text-[var(--text-secondary)]">
-              Подсказка раскрывается тапом по pill «Где найти?» рядом с полем.
-              Если пусто — pill не показывается. Несколько строк допустимо.
+              Подсказка раскрывается тапом по pill «Где найти?» рядом с полем. Если пусто — pill не
+              показывается. Несколько строк допустимо.
             </p>
             <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
               {LOCALES.map((l) => (
@@ -182,7 +172,9 @@ function FieldRow({
             <Input {...register(`${path}.pattern`)} placeholder="^[0-9]{6,15}$" />
           </Labeled>
 
-          {type === "select" && <OptionsEditor name={`${path}.options`} control={control} register={register} />}
+          {type === "select" && (
+            <OptionsEditor name={`${path}.options`} control={control} register={register} />
+          )}
         </div>
       )}
     </div>
@@ -195,15 +187,13 @@ function OptionsEditor({
   register,
 }: {
   name: string;
-  control: Control<any>;  // eslint-disable-line @typescript-eslint/no-explicit-any
-  register: UseFormRegister<any>;  // eslint-disable-line @typescript-eslint/no-explicit-any
+  control: Control<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  register: UseFormRegister<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 }) {
   const { fields, append, remove } = useFieldArray({ control, name });
   return (
-    <div className="rounded-md border bg-[var(--bg-muted)]/40 p-3">
-      <div className="mb-2 text-xs font-medium uppercase text-[var(--text-secondary)]">
-        Options
-      </div>
+    <div className="bg-[var(--bg-muted)]/40 rounded-md border p-3">
+      <div className="mb-2 text-xs font-medium uppercase text-[var(--text-secondary)]">Options</div>
       {fields.map((f, idx) => (
         <div key={f.id} className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-5">
           <Input
@@ -218,7 +208,14 @@ function OptionsEditor({
               placeholder={l.toUpperCase()}
             />
           ))}
-          <Button type="button" variant="ghost" size="sm" onClick={() => { remove(idx); }}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              remove(idx);
+            }}
+          >
             <Trash2 className="size-4" />
           </Button>
         </div>
@@ -227,9 +224,9 @@ function OptionsEditor({
         type="button"
         variant="secondary"
         size="sm"
-        onClick={() =>
-          { append({ value: "", label: { ru: "", en: "", uz: "" } }); }
-        }
+        onClick={() => {
+          append({ value: "", label: { ru: "", en: "", uz: "" } });
+        }}
       >
         <Plus className="size-4" />
         Опция

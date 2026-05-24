@@ -1,4 +1,3 @@
-
 import en from "@yupay/i18n/locales/en/common.json";
 import ru from "@yupay/i18n/locales/ru/common.json";
 import uz from "@yupay/i18n/locales/uz/common.json";

@@ -24,16 +24,9 @@ import { ManualQueuePage } from "@/features/manual-fulfillment/ManualQueuePage";
 import { SaveSegmentButton } from "@/features/segments/SaveSegmentButton";
 import { useSearchParamsState } from "@/lib/useSearchParamsState";
 
-
-
 type InboxTab = "manual" | "failed" | "stuck" | "all";
 
-const VALID_TABS: ReadonlySet<InboxTab> = new Set<InboxTab>([
-  "manual",
-  "failed",
-  "stuck",
-  "all",
-]);
+const VALID_TABS: ReadonlySet<InboxTab> = new Set<InboxTab>(["manual", "failed", "stuck", "all"]);
 
 const TABS: TabDescriptor<InboxTab>[] = [
   { id: "manual", label: "Ручная выдача", icon: Hand },
@@ -44,9 +37,7 @@ const TABS: TabDescriptor<InboxTab>[] = [
 
 export function InboxPage() {
   const [rawTab, setTab] = useSearchParamsState("tab", "manual");
-  const tab: InboxTab = VALID_TABS.has(rawTab as InboxTab)
-    ? (rawTab as InboxTab)
-    : "manual";
+  const tab: InboxTab = VALID_TABS.has(rawTab as InboxTab) ? (rawTab as InboxTab) : "manual";
 
   return (
     <div className="space-y-4">
@@ -56,12 +47,7 @@ export function InboxPage() {
         actions={<SaveSegmentButton />}
       />
 
-      <Tabs<InboxTab>
-        value={tab}
-        onChange={setTab}
-        tabs={TABS}
-        ariaLabel="Вкладки Inbox"
-      />
+      <Tabs<InboxTab> value={tab} onChange={setTab} tabs={TABS} ariaLabel="Вкладки Inbox" />
 
       <div role="tabpanel">
         {tab === "manual" && <ManualQueuePage />}

@@ -71,13 +71,7 @@ export function DataTable<T>({
     if (loading) {
       return <TableSkeleton rows={6} columns={columns.length} />;
     }
-    return (
-      <EmptyState
-        icon={Inbox}
-        title={empty ?? "Пока пусто."}
-        tone="muted"
-      />
-    );
+    return <EmptyState icon={Inbox} title={empty ?? "Пока пусто."} tone="muted" />;
   }
 
   return (
@@ -85,10 +79,7 @@ export function DataTable<T>({
       className="overflow-x-auto rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]"
       aria-busy={busy || undefined}
     >
-      <table
-        className="w-full text-sm"
-        aria-label={ariaLabel}
-      >
+      <table className="w-full text-sm" aria-label={ariaLabel}>
         <thead className="bg-[var(--bg-muted)] text-[var(--text-secondary)]">
           <tr>
             {columns.map((col) => {
@@ -111,10 +102,12 @@ export function DataTable<T>({
                   {canSort ? (
                     <button
                       type="button"
-                      onClick={() => { toggleSort(setSort, sort, col.key); }}
+                      onClick={() => {
+                        toggleSort(setSort, sort, col.key);
+                      }}
                       className={[
                         "inline-flex items-center gap-1 transition-colors",
-                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-muted)] focus-visible:rounded",
+                        "focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-muted)]",
                         active ? "text-[var(--text-primary)]" : "hover:text-[var(--text-primary)]",
                       ].join(" ")}
                     >
@@ -143,10 +136,16 @@ export function DataTable<T>({
                   "odd:bg-[var(--bg-surface)] even:bg-[var(--bg-surface-2)]",
                   "hover:bg-[var(--bg-accent-soft)]",
                   interactive
-                    ? "cursor-pointer focus-visible:outline-none focus-visible:bg-[var(--bg-accent-soft)]"
+                    ? "cursor-pointer focus-visible:bg-[var(--bg-accent-soft)] focus-visible:outline-none"
                     : "",
                 ].join(" ")}
-                onClick={onRowClick ? () => { onRowClick(row); } : undefined}
+                onClick={
+                  onRowClick
+                    ? () => {
+                        onRowClick(row);
+                      }
+                    : undefined
+                }
                 onKeyDown={
                   onRowClick
                     ? (e) => {
@@ -193,7 +192,7 @@ function SortIcon({ active, dir }: { active: boolean; dir: SortDir | null }) {
   if (!active) {
     return (
       <span className="inline-flex flex-col text-[var(--text-tertiary)]" aria-hidden>
-        <ChevronUp className="size-2.5 -mb-0.5" />
+        <ChevronUp className="-mb-0.5 size-2.5" />
         <ChevronDown className="size-2.5" />
       </span>
     );
@@ -205,9 +204,7 @@ function SortIcon({ active, dir }: { active: boolean; dir: SortDir | null }) {
   );
 }
 
-function normalise(
-  v: string | number | Date | null | undefined,
-): string | number | null {
+function normalise(v: string | number | Date | null | undefined): string | number | null {
   if (v === null || v === undefined) return null;
   if (v instanceof Date) return v.getTime();
   if (typeof v === "string" || typeof v === "number") return v;

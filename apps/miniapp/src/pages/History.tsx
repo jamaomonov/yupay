@@ -83,21 +83,19 @@ export default function History() {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.22 }}
-      className="p-4 space-y-5"
+      className="space-y-5 p-4"
     >
       <header className="space-y-0.5">
         <h1 className="text-2xl font-bold tracking-tight text-white">История</h1>
-        <p className="text-muted-foreground text-sm">
-          Все ваши покупки и движения по балансу
-        </p>
+        <p className="text-muted-foreground text-sm">Все ваши покупки и движения по балансу</p>
       </header>
 
       {!me.data && !me.isLoading && (
-        <div className="rounded-2xl border border-yellow-400/30 bg-yellow-400/5 p-4 flex items-start gap-3">
-          <AlertTriangle size={18} className="text-yellow-400 flex-shrink-0 mt-0.5" />
+        <div className="flex items-start gap-3 rounded-2xl border border-yellow-400/30 bg-yellow-400/5 p-4">
+          <AlertTriangle size={18} className="mt-0.5 flex-shrink-0 text-yellow-400" />
           <div className="text-sm">
             <p className="font-semibold text-yellow-200">Откройте в Telegram</p>
-            <p className="text-yellow-100/70 text-xs mt-1">
+            <p className="mt-1 text-xs text-yellow-100/70">
               История доступна только под авторизацией через Telegram Mini App.
             </p>
           </div>
@@ -136,7 +134,7 @@ function SegmentedTabs<T extends string>({
     <div
       role="tablist"
       aria-label="Тип истории"
-      className="grid grid-cols-2 gap-1 p-1 rounded-2xl"
+      className="grid grid-cols-2 gap-1 rounded-2xl p-1"
       style={{
         background: "hsl(var(--surface-1))",
         border: "1px solid hsl(var(--border))",
@@ -150,7 +148,9 @@ function SegmentedTabs<T extends string>({
             type="button"
             role="tab"
             aria-selected={active}
-            onClick={() => { onChange(opt.id); }}
+            onClick={() => {
+              onChange(opt.id);
+            }}
             className="rounded-xl py-2 text-sm font-semibold transition-colors"
             style={
               active
@@ -187,7 +187,7 @@ function OrdersTab() {
   return (
     <div className="space-y-5" role="tabpanel">
       {ordersQuery.isLoading && (
-        <div className="py-10 text-center text-white/40 text-sm">Загрузка…</div>
+        <div className="py-10 text-center text-sm text-white/40">Загрузка…</div>
       )}
 
       {ordersQuery.isError && (
@@ -197,9 +197,9 @@ function OrdersTab() {
       )}
 
       {!ordersQuery.isLoading && rows.length === 0 && (
-        <div className="rounded-2xl border border-border bg-card p-10 text-center space-y-3">
+        <div className="border-border bg-card space-y-3 rounded-2xl border p-10 text-center">
           <Receipt size={28} className="mx-auto text-white/30" />
-          <p className="text-white/60 text-sm">У вас ещё нет заказов.</p>
+          <p className="text-sm text-white/60">У вас ещё нет заказов.</p>
           <Link
             href="/"
             className="inline-block rounded-2xl px-5 py-2.5 text-sm font-semibold"
@@ -214,10 +214,10 @@ function OrdersTab() {
         {Object.entries(grouped).map(([monthYear, txs]) => (
           <div key={monthYear} className="space-y-2">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-muted-foreground uppercase tracking-[0.08em]">
+              <span className="text-muted-foreground text-xs font-bold uppercase tracking-[0.08em]">
                 {monthYear}
               </span>
-              <div className="flex-1 h-px bg-border" />
+              <div className="bg-border h-px flex-1" />
             </div>
 
             {txs.map((tx, index) => (
@@ -227,34 +227,28 @@ function OrdersTab() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.04 }}
                   whileTap={{ scale: 0.985 }}
-                  className="flex items-center gap-3 p-3.5 rounded-2xl bg-card border border-border cursor-pointer"
+                  className="bg-card border-border flex cursor-pointer items-center gap-3 rounded-2xl border p-3.5"
                   data-testid={`history-item-${tx.id}`}
                 >
-                  <div className="w-11 h-11 rounded-xl overflow-hidden bg-background border border-border flex items-center justify-center shrink-0">
+                  <div className="bg-background border-border flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border">
                     {tx.imageUrl ? (
-                      <img
-                        src={tx.imageUrl}
-                        alt=""
-                        className="w-full h-full object-cover"
-                      />
+                      <img src={tx.imageUrl} alt="" className="h-full w-full object-cover" />
                     ) : (
                       <Receipt size={18} className="text-muted-foreground" />
                     )}
                   </div>
 
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-bold text-white text-sm truncate">
-                      {tx.title}
-                    </h3>
-                    <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="truncate text-sm font-bold text-white">{tx.title}</h3>
+                    <p className="text-muted-foreground mt-0.5 truncate text-[11px]">
                       {shortTime(tx.raw.created_at)}
                       {tx.subtitle ? ` · ${tx.subtitle}` : ""}
                       {tx.itemsCount > 1 ? ` · ${tx.itemsCount} поз.` : ""}
                     </p>
                   </div>
 
-                  <div className="text-right shrink-0 space-y-1">
-                    <p className="font-bold text-primary text-sm">
+                  <div className="shrink-0 space-y-1 text-right">
+                    <p className="text-primary text-sm font-bold">
                       {tx.amount.toLocaleString("ru", {
                         maximumFractionDigits: 2,
                       })}{" "}
@@ -276,9 +270,7 @@ function OrdersTab() {
                       ) : (
                         <Clock3 size={11} />
                       )}
-                      <span className="text-[10px] font-semibold">
-                        {STATUS_LABEL[tx.status]}
-                      </span>
+                      <span className="text-[10px] font-semibold">{STATUS_LABEL[tx.status]}</span>
                     </div>
                   </div>
                 </motion.div>
@@ -305,7 +297,7 @@ const FINANCE_VISIBLE_KINDS: UserAccountKind[] = ["user_wallet"];
 const TX_KIND_FINANCE_LABEL: Record<string, string> = {
   "admin.adjust": "Корректировка от админа",
   "payment.refund": "Возврат за заказ",
-  "topup": "Пополнение",
+  topup: "Пополнение",
   "order.payment": "Оплата заказа",
 };
 
@@ -353,7 +345,7 @@ function FinanceTab() {
   return (
     <div className="space-y-5" role="tabpanel">
       {txQuery.isLoading && (
-        <div className="py-10 text-center text-white/40 text-sm">Загрузка…</div>
+        <div className="py-10 text-center text-sm text-white/40">Загрузка…</div>
       )}
 
       {txQuery.isError && (
@@ -363,11 +355,9 @@ function FinanceTab() {
       )}
 
       {!txQuery.isLoading && rows.length === 0 && (
-        <div className="rounded-2xl border border-border bg-card p-10 text-center space-y-3">
+        <div className="border-border bg-card space-y-3 rounded-2xl border p-10 text-center">
           <WalletIcon size={28} className="mx-auto text-white/30" />
-          <p className="text-white/60 text-sm">
-            Пополнений и корректировок ещё не было.
-          </p>
+          <p className="text-sm text-white/60">Пополнений и корректировок ещё не было.</p>
         </div>
       )}
 
@@ -376,10 +366,10 @@ function FinanceTab() {
           return (
             <div key={monthYear} className="space-y-2">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-muted-foreground uppercase tracking-[0.08em]">
+                <span className="text-muted-foreground text-xs font-bold uppercase tracking-[0.08em]">
                   {monthYear}
                 </span>
-                <div className="flex-1 h-px bg-border" />
+                <div className="bg-border h-px flex-1" />
               </div>
 
               {txs.map((row, index) => (
@@ -400,35 +390,29 @@ function FinanceRow({ row, index }: { row: UserTransactionView; index: number })
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.04 }}
-      className="flex items-center gap-3 p-3.5 rounded-2xl bg-card border border-border"
+      className="bg-card border-border flex items-center gap-3 rounded-2xl border p-3.5"
     >
       <div
-        className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
         style={{
-          background: positive
-            ? "rgba(74, 222, 128, 0.12)"
-            : "rgba(248, 113, 113, 0.12)",
+          background: positive ? "rgba(74, 222, 128, 0.12)" : "rgba(248, 113, 113, 0.12)",
           color: positive ? "rgb(134, 239, 172)" : "rgb(252, 165, 165)",
         }}
         aria-hidden="true"
       >
-        {positive ? (
-          <ArrowDownLeft size={18} />
-        ) : (
-          <ArrowUpRight size={18} />
-        )}
+        {positive ? <ArrowDownLeft size={18} /> : <ArrowUpRight size={18} />}
       </div>
 
-      <div className="flex-1 min-w-0">
-        <h3 className="font-bold text-white text-sm truncate">{row.label}</h3>
-        <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+      <div className="min-w-0 flex-1">
+        <h3 className="truncate text-sm font-bold text-white">{row.label}</h3>
+        <p className="text-muted-foreground mt-0.5 truncate text-[11px]">
           {shortTime(row.createdAt)}
           {row.reason ? ` · ${row.reason}` : ""}
         </p>
       </div>
 
       <p
-        className="font-bold text-sm tabular-nums whitespace-nowrap"
+        className="whitespace-nowrap text-sm font-bold tabular-nums"
         style={{
           color: positive ? "rgb(134, 239, 172)" : "rgb(252, 165, 165)",
         }}

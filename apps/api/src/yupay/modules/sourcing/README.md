@@ -7,9 +7,9 @@
 
 Одна таблица — `sku_sourcing_rules`:
 
-| sku_id | mode | supplier_slug | … |
-|---|---|---|---|
-| UUID | `auto` / `force_inventory` / `force_supplier` / `manual` | `mock` / `click` / `steam` / … (только для `force_supplier`) | |
+| sku_id | mode                                                     | supplier_slug                                                | …   |
+| ------ | -------------------------------------------------------- | ------------------------------------------------------------ | --- |
+| UUID   | `auto` / `force_inventory` / `force_supplier` / `manual` | `mock` / `click` / `steam` / … (только для `force_supplier`) |     |
 
 Отсутствие строки = режим `auto`.
 
@@ -24,12 +24,12 @@ class Decision:
     rule_present: bool
 ```
 
-| mode | primary | fallback | strict |
-|---|---|---|---|
-| `auto` (или нет правила) | `inventory` | `supplier:mock` | `False` |
-| `force_inventory` | `inventory` | `None` | `True` |
-| `force_supplier` | `supplier:<slug>` | `None` | `True` |
-| `manual` | `supplier:manual` | `None` | `True` |
+| mode                     | primary           | fallback        | strict  |
+| ------------------------ | ----------------- | --------------- | ------- |
+| `auto` (или нет правила) | `inventory`       | `supplier:mock` | `False` |
+| `force_inventory`        | `inventory`       | `None`          | `True`  |
+| `force_supplier`         | `supplier:<slug>` | `None`          | `True`  |
+| `manual`                 | `supplier:manual` | `None`          | `True`  |
 
 `mode="manual"` — для SKU без supplier-API. Slug у этого режима подразумеваемый
 (всегда `manual`), `set_rule` форсит `supplier_slug=NULL`. Заказы по таким SKU

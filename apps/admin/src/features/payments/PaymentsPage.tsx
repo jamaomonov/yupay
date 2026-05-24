@@ -2,12 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input } from "@yupay/ui";
 import { useState } from "react";
 
-
-import type {
-  PaymentAdminListOut,
-  PaymentAdminOut,
-  PaymentStatus,
-} from "./types";
+import type { PaymentAdminListOut, PaymentAdminOut, PaymentStatus } from "./types";
 
 import { Badge } from "@/components/Badge";
 import { DataTable, type Column } from "@/components/DataTable";
@@ -20,7 +15,6 @@ import { qk } from "@/lib/queryKeys";
 import { useSearchParamsState } from "@/lib/useSearchParamsState";
 
 const PAGE_SIZE = 50;
-
 
 const STATUSES: { value: PaymentStatus | ""; label: string }[] = [
   { value: "", label: "Все" },
@@ -64,9 +58,7 @@ export function PaymentsPage() {
       if (status) params.set("status_filter", status);
       params.set("limit", String(PAGE_SIZE));
       params.set("offset", String(offset));
-      return apiGet<PaymentAdminListOut>(
-        `/api/v1/admin/payments?${params.toString()}`,
-      );
+      return apiGet<PaymentAdminListOut>(`/api/v1/admin/payments?${params.toString()}`);
     },
   });
 
@@ -76,10 +68,7 @@ export function PaymentsPage() {
     { id: string; body: SimulateBody }
   >({
     mutationFn: ({ id, body }) =>
-      apiPost<PaymentAdminOut>(
-        `/api/v1/admin/payments/${id}/simulate-webhook`,
-        body,
-      ),
+      apiPost<PaymentAdminOut>(`/api/v1/admin/payments/${id}/simulate-webhook`, body),
     onSuccess: (data) => {
       toast.success(`Webhook доставлен → статус: ${data.status}.`);
       void qc.invalidateQueries({ queryKey: ["admin", "payments"] });
@@ -89,11 +78,7 @@ export function PaymentsPage() {
     },
   });
 
-  const refundMutation = useMutation<
-    PaymentAdminOut,
-    ApiError,
-    { id: string; reason: string }
-  >({
+  const refundMutation = useMutation<PaymentAdminOut, ApiError, { id: string; reason: string }>({
     mutationFn: ({ id, reason }) =>
       apiPost<PaymentAdminOut>(`/api/v1/admin/payments/${id}/refund`, {
         reason,
@@ -164,37 +149,38 @@ export function PaymentsPage() {
       render: (p) => (
         <div
           className="flex justify-end gap-1"
-          onClick={(e) => { e.stopPropagation(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
         >
-          {p.provider === "mock" &&
-            (p.status === "pending" || p.status === "requires_action") && (
-              <>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() =>
-                    { simulateMutation.mutate({
-                      id: p.id,
-                      body: { outcome: "succeeded" },
-                    }); }
-                  }
-                >
-                  Webhook OK
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() =>
-                    { simulateMutation.mutate({
-                      id: p.id,
-                      body: { outcome: "failed" },
-                    }); }
-                  }
-                >
-                  Failed
-                </Button>
-              </>
-            )}
+          {p.provider === "mock" && (p.status === "pending" || p.status === "requires_action") && (
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  simulateMutation.mutate({
+                    id: p.id,
+                    body: { outcome: "succeeded" },
+                  });
+                }}
+              >
+                Webhook OK
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  simulateMutation.mutate({
+                    id: p.id,
+                    body: { outcome: "failed" },
+                  });
+                }}
+              >
+                Failed
+              </Button>
+            </>
+          )}
           {(p.status === "succeeded" || p.status === "partially_refunded") && (
             <Button
               variant="danger"
@@ -240,9 +226,7 @@ export function PaymentsPage() {
           />
         </div>
         <div>
-          <label className="text-xs uppercase text-[var(--text-secondary)]">
-            Провайдер
-          </label>
+          <label className="text-xs uppercase text-[var(--text-secondary)]">Провайдер</label>
           <select
             value={provider}
             onChange={(e) => {

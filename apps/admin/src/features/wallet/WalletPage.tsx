@@ -18,7 +18,6 @@ import { useToast } from "@/components/Toast";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
-
 const ADJUST_KINDS = [
   { value: "user_wallet", label: "user_wallet" },
   { value: "user_cashback", label: "user_cashback" },
@@ -106,8 +105,7 @@ function LookupTab() {
   // Default UZS — primary market — so the most common ops case is
   // one click instead of two. Operators creating goodwill credits for
   // EU / RU users still pick from the same dropdown.
-  const [adjustCurrency, setAdjustCurrency] =
-    useState<AdjustCurrency>("UZS");
+  const [adjustCurrency, setAdjustCurrency] = useState<AdjustCurrency>("UZS");
   const [adjustAmount, setAdjustAmount] = useState("");
   const [reasonPreset, setReasonPreset] =
     useState<(typeof REASON_PRESETS)[number]["code"]>("CASHBACK_GRANT");
@@ -115,16 +113,12 @@ function LookupTab() {
 
   const ledgerQuery = useQuery<AdminUserLedgerOut>({
     queryKey: qk.walletUser(activeUserId),
-    queryFn: () =>
-      apiGet<AdminUserLedgerOut>(
-        `/api/v1/admin/wallet/${activeUserId}?limit=50`,
-      ),
+    queryFn: () => apiGet<AdminUserLedgerOut>(`/api/v1/admin/wallet/${activeUserId}?limit=50`),
     enabled: Boolean(activeUserId),
   });
 
   const adjustMutation = useMutation<Transaction, ApiError, AdjustBody>({
-    mutationFn: (body) =>
-      apiPost<Transaction>("/api/v1/admin/wallet/adjust", body),
+    mutationFn: (body) => apiPost<Transaction>("/api/v1/admin/wallet/adjust", body),
     onSuccess: () => {
       toast.success("Транзакция записана в ledger.");
       setAdjustAmount("");
@@ -137,7 +131,9 @@ function LookupTab() {
     },
   });
 
-  const lookup = () => { setActiveUserId(userIdInput.trim()); };
+  const lookup = () => {
+    setActiveUserId(userIdInput.trim());
+  };
 
   const submitAdjust = () => {
     if (!activeUserId) {
@@ -182,9 +178,7 @@ function LookupTab() {
     {
       key: "balance",
       header: "Баланс",
-      render: (a) => (
-        <span className="font-medium">{formatMoney(a.balance)}</span>
-      ),
+      render: (a) => <span className="font-medium">{formatMoney(a.balance)}</span>,
       className: "w-32 text-right",
     },
     {
@@ -193,9 +187,7 @@ function LookupTab() {
       render: (a) => (
         <span
           className={
-            a.status === "active"
-              ? "text-[var(--success-fg)]"
-              : "text-[var(--text-secondary)]"
+            a.status === "active" ? "text-[var(--success-fg)]" : "text-[var(--text-secondary)]"
           }
         >
           {a.status}
@@ -214,7 +206,9 @@ function LookupTab() {
           </label>
           <Input
             value={userIdInput}
-            onChange={(e) => { setUserIdInput(e.target.value); }}
+            onChange={(e) => {
+              setUserIdInput(e.target.value);
+            }}
             placeholder="UUID v7"
             className="mt-1 font-mono text-xs"
           />
@@ -238,25 +232,20 @@ function LookupTab() {
             />
           </section>
 
-          <section className="mb-6 rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
+          <section className="mb-6 rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
             <h2 className="mb-3 text-sm font-semibold">Ручная корректировка</h2>
             <p className="mb-3 text-xs text-[var(--text-secondary)]">
-              Положительная сумма — кредит пользователю; отрицательная — клавбэк.
-              В ledger пишется пара проводок:{" "}
-              <code>D user_&lt;kind&gt; / C house_promo_expense</code>.
+              Положительная сумма — кредит пользователю; отрицательная — клавбэк. В ledger пишется
+              пара проводок: <code>D user_&lt;kind&gt; / C house_promo_expense</code>.
             </p>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
               <div>
-                <label className="text-xs uppercase text-[var(--text-secondary)]">
-                  Счёт
-                </label>
+                <label className="text-xs uppercase text-[var(--text-secondary)]">Счёт</label>
                 <select
                   value={adjustKind}
-                  onChange={(e) =>
-                    { setAdjustKind(
-                      e.target.value as (typeof ADJUST_KINDS)[number]["value"],
-                    ); }
-                  }
+                  onChange={(e) => {
+                    setAdjustKind(e.target.value as (typeof ADJUST_KINDS)[number]["value"]);
+                  }}
                   className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
                 >
                   {ADJUST_KINDS.map((k) => (
@@ -267,14 +256,12 @@ function LookupTab() {
                 </select>
               </div>
               <div>
-                <label className="text-xs uppercase text-[var(--text-secondary)]">
-                  Валюта
-                </label>
+                <label className="text-xs uppercase text-[var(--text-secondary)]">Валюта</label>
                 <select
                   value={adjustCurrency}
-                  onChange={(e) =>
-                    { setAdjustCurrency(e.target.value as AdjustCurrency); }
-                  }
+                  onChange={(e) => {
+                    setAdjustCurrency(e.target.value as AdjustCurrency);
+                  }}
                   className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
                 >
                   {ADJUST_CURRENCIES.map((c) => (
@@ -285,12 +272,12 @@ function LookupTab() {
                 </select>
               </div>
               <div>
-                <label className="text-xs uppercase text-[var(--text-secondary)]">
-                  Сумма
-                </label>
+                <label className="text-xs uppercase text-[var(--text-secondary)]">Сумма</label>
                 <Input
                   value={adjustAmount}
-                  onChange={(e) => { setAdjustAmount(e.target.value); }}
+                  onChange={(e) => {
+                    setAdjustAmount(e.target.value);
+                  }}
                   inputMode="decimal"
                   placeholder="5.00 или -3.50"
                   className="mt-1 font-mono"
@@ -302,11 +289,9 @@ function LookupTab() {
                 </label>
                 <select
                   value={reasonPreset}
-                  onChange={(e) =>
-                    { setReasonPreset(
-                      e.target.value as (typeof REASON_PRESETS)[number]["code"],
-                    ); }
-                  }
+                  onChange={(e) => {
+                    setReasonPreset(e.target.value as (typeof REASON_PRESETS)[number]["code"]);
+                  }}
                   className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
                 >
                   {REASON_PRESETS.map((r) => (
@@ -320,26 +305,23 @@ function LookupTab() {
                 <label className="text-xs uppercase text-[var(--text-secondary)]">
                   Детали{" "}
                   {reasonPreset === "OTHER" ? (
-                    <span className="text-[var(--danger-fg)]">
-                      (обязательно для «Другое»)
-                    </span>
+                    <span className="text-[var(--danger-fg)]">(обязательно для «Другое»)</span>
                   ) : (
                     <span>(опционально, попадёт в audit-feed)</span>
                   )}
                 </label>
                 <Input
                   value={reasonDetail}
-                  onChange={(e) => { setReasonDetail(e.target.value); }}
+                  onChange={(e) => {
+                    setReasonDetail(e.target.value);
+                  }}
                   placeholder="например: компенсация за задержку выдачи кода"
                   className="mt-1"
                 />
               </div>
             </div>
             <div className="mt-4 flex items-center gap-3">
-              <Button
-                onClick={submitAdjust}
-                disabled={adjustMutation.isPending}
-              >
+              <Button onClick={submitAdjust} disabled={adjustMutation.isPending}>
                 {adjustMutation.isPending ? "Записываем…" : "Записать"}
               </Button>
               <p className="text-xs text-[var(--text-secondary)]">
@@ -359,13 +341,13 @@ function LookupTab() {
       )}
 
       {activeUserId && ledgerQuery.isError && (
-        <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-6 text-sm text-[var(--danger)]">
+        <div className="rounded-lg border bg-[var(--bg-surface)] p-6 text-sm text-[var(--danger)] shadow-[var(--shadow-sm)]">
           Не удалось загрузить ledger пользователя.
         </div>
       )}
 
       {!activeUserId && (
-        <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-10 text-center text-sm text-[var(--text-secondary)]">
+        <div className="rounded-lg border bg-[var(--bg-surface)] p-10 text-center text-sm text-[var(--text-secondary)] shadow-[var(--shadow-sm)]">
           Введи user_id, чтобы посмотреть счета и историю.
         </div>
       )}
@@ -381,9 +363,7 @@ function MineTab() {
   const q = useQuery<AdjustmentsListOut>({
     queryKey: [...qk.walletAdjustments, scope],
     queryFn: () =>
-      apiGet<AdjustmentsListOut>(
-        `/api/v1/admin/wallet/adjustments?actor=${scope}&limit=50`,
-      ),
+      apiGet<AdjustmentsListOut>(`/api/v1/admin/wallet/adjustments?actor=${scope}&limit=50`),
     refetchInterval: 30_000,
   });
 
@@ -393,14 +373,16 @@ function MineTab() {
     <div className="space-y-4">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-sm text-[var(--text-secondary)]">
-          Лог последних <code>admin.adjust</code> транзакций. Используй для
-          сверки «что я сегодня правил» или быстрого аудита коллеги.
+          Лог последних <code>admin.adjust</code> транзакций. Используй для сверки «что я сегодня
+          правил» или быстрого аудита коллеги.
         </p>
         <div className="flex items-center gap-2 text-sm">
           <label className="text-[var(--text-secondary)]">Видимость:</label>
           <select
             value={scope}
-            onChange={(e) => { setScope(e.target.value as "me" | "all"); }}
+            onChange={(e) => {
+              setScope(e.target.value as "me" | "all");
+            }}
             className="h-10 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3"
           >
             <option value="me">Только мои</option>
@@ -409,12 +391,10 @@ function MineTab() {
         </div>
       </header>
 
-      {q.isError && (
-        <p className="text-sm text-[var(--danger)]">Ошибка загрузки.</p>
-      )}
+      {q.isError && <p className="text-sm text-[var(--danger)]">Ошибка загрузки.</p>}
 
       {items.length === 0 && !q.isPending ? (
-        <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-10 text-center text-sm text-[var(--text-secondary)]">
+        <div className="rounded-lg border bg-[var(--bg-surface)] p-10 text-center text-sm text-[var(--text-secondary)] shadow-[var(--shadow-sm)]">
           Ещё ни одной ручной корректировки.
         </div>
       ) : (
@@ -431,16 +411,13 @@ function AdjustmentsFeed({ items }: { items: Transaction[] }) {
     <ul className="space-y-3">
       {items.map((tx) => {
         const userId = tx.reference_id ?? null;
-        const reason =
-          typeof tx.extra_metadata.reason === "string"
-            ? tx.extra_metadata.reason
-            : "";
+        const reason = typeof tx.extra_metadata.reason === "string" ? tx.extra_metadata.reason : "";
         const presetCode = reason.includes(":") ? reason.split(":")[0]?.trim() : reason;
         const detail = reason.includes(":") ? reason.split(":").slice(1).join(":").trim() : "";
         return (
           <li
             key={tx.id}
-            className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4 text-sm"
+            className="rounded-lg border bg-[var(--bg-surface)] p-4 text-sm shadow-[var(--shadow-sm)]"
           >
             <header className="flex flex-wrap items-baseline justify-between gap-2">
               <div className="flex flex-wrap items-baseline gap-2">
@@ -455,14 +432,10 @@ function AdjustmentsFeed({ items }: { items: Transaction[] }) {
                     user {userId.slice(0, 8)}…
                   </Link>
                 ) : (
-                  <span className="font-mono text-xs text-[var(--text-secondary)]">
-                    user —
-                  </span>
+                  <span className="font-mono text-xs text-[var(--text-secondary)]">user —</span>
                 )}
                 {tx.actor && (
-                  <span className="text-xs text-[var(--text-secondary)]">
-                    by {tx.actor}
-                  </span>
+                  <span className="text-xs text-[var(--text-secondary)]">by {tx.actor}</span>
                 )}
               </div>
               <span className="text-xs text-[var(--text-secondary)]">
@@ -473,8 +446,7 @@ function AdjustmentsFeed({ items }: { items: Transaction[] }) {
               {tx.postings.map((p) => (
                 <li key={p.id} className="flex justify-between">
                   <span>
-                    {p.direction === "D" ? "↓ D" : "↑ C"} ·{" "}
-                    {p.account_id.slice(0, 8)}…
+                    {p.direction === "D" ? "↓ D" : "↑ C"} · {p.account_id.slice(0, 8)}…
                   </span>
                   <span>
                     {formatMoney(p.amount)} {p.currency}
@@ -482,11 +454,7 @@ function AdjustmentsFeed({ items }: { items: Transaction[] }) {
                 </li>
               ))}
             </ul>
-            {detail && (
-              <p className="mt-2 text-xs text-[var(--text-secondary)]">
-                «{detail}»
-              </p>
-            )}
+            {detail && <p className="mt-2 text-xs text-[var(--text-secondary)]">«{detail}»</p>}
           </li>
         );
       })}
@@ -506,7 +474,7 @@ interface AdjustBody {
 function TransactionsList({ items }: { items: Transaction[] }) {
   if (items.length === 0) {
     return (
-      <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-6 text-center text-sm text-[var(--text-secondary)]">
+      <div className="rounded-lg border bg-[var(--bg-surface)] p-6 text-center text-sm text-[var(--text-secondary)] shadow-[var(--shadow-sm)]">
         История пустая.
       </div>
     );
@@ -516,15 +484,13 @@ function TransactionsList({ items }: { items: Transaction[] }) {
       {items.map((tx) => (
         <article
           key={tx.id}
-          className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4 text-sm"
+          className="rounded-lg border bg-[var(--bg-surface)] p-4 text-sm shadow-[var(--shadow-sm)]"
         >
           <header className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
             <div>
               <span className="font-medium">{tx.kind}</span>
               {tx.actor && (
-                <span className="ml-2 text-xs text-[var(--text-secondary)]">
-                  by {tx.actor}
-                </span>
+                <span className="ml-2 text-xs text-[var(--text-secondary)]">by {tx.actor}</span>
               )}
             </div>
             <span className="text-xs text-[var(--text-secondary)]">
@@ -543,12 +509,11 @@ function TransactionsList({ items }: { items: Transaction[] }) {
               </li>
             ))}
           </ul>
-          {typeof tx.extra_metadata.reason === "string" &&
-            tx.extra_metadata.reason.length > 0 && (
-              <p className="mt-2 text-xs text-[var(--text-secondary)]">
-                «{tx.extra_metadata.reason}»
-              </p>
-            )}
+          {typeof tx.extra_metadata.reason === "string" && tx.extra_metadata.reason.length > 0 && (
+            <p className="mt-2 text-xs text-[var(--text-secondary)]">
+              «{tx.extra_metadata.reason}»
+            </p>
+          )}
         </article>
       ))}
     </div>

@@ -221,25 +221,18 @@ interface DeliveryListOut {
  * Polls while the parent order is still in motion so the success page can
  * surface fresh artifacts the moment fulfilment lands them.
  */
-export function useDeliveries(
-  orderId: string | undefined,
-  parentStatus: OrderStatus | undefined,
-) {
+export function useDeliveries(orderId: string | undefined, parentStatus: OrderStatus | undefined) {
   return useQuery<DeliveryOut[]>({
     queryKey: ["deliveries", orderId],
     enabled: Boolean(orderId),
     queryFn: async () => {
-      const data = await apiGet<DeliveryListOut>(
-        `/api/v1/orders/${orderId ?? ""}/deliveries`,
-      );
+      const data = await apiGet<DeliveryListOut>(`/api/v1/orders/${orderId ?? ""}/deliveries`);
       return data.items;
     },
     refetchInterval: () => {
       if (!parentStatus) return false;
       if (parentStatus === "delivered") return false;
-      return ["paid", "fulfilling", "fulfilled"].includes(parentStatus)
-        ? 2_000
-        : false;
+      return ["paid", "fulfilling", "fulfilled"].includes(parentStatus) ? 2_000 : false;
     },
   });
 }
@@ -278,9 +271,7 @@ function summariseOrder(o: OrderOut): {
   const denom = first.denomination ?? first.sku_code;
   const product = first.product_name || first.product_slug;
   // The "brand · denomination" pair is the most-useful one-glance summary.
-  const head = first.brand_name
-    ? `${first.brand_name} · ${denom}`
-    : `${product} · ${denom}`;
+  const head = first.brand_name ? `${first.brand_name} · ${denom}` : `${product} · ${denom}`;
   const title = extra > 0 ? `${head} +${extra}` : head;
   const subtitle =
     first.brand_name && product && product !== first.brand_name

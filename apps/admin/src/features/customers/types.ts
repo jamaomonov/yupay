@@ -4,11 +4,7 @@
  * project switches to ``@hey-api/openapi-ts``.
  */
 
-export type RiskFlag =
-  | "no_email"
-  | "no_telegram"
-  | "fresh_account"
-  | "many_failed_payments";
+export type RiskFlag = "no_email" | "no_telegram" | "fresh_account" | "many_failed_payments";
 
 export interface TelegramLinkOut {
   tg_user_id: number;

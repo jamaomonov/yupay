@@ -121,10 +121,7 @@ export function BrandEditPage() {
     mutationFn: async (values: FormValues) => {
       const payload = nullEmptyStrings(values);
       if (isNew) return apiPost<Brand>("/api/v1/admin/catalog/brands", payload);
-      return apiPatch<Brand>(
-        `/api/v1/admin/catalog/brands/${params.id ?? ""}`,
-        payload,
-      );
+      return apiPatch<Brand>(`/api/v1/admin/catalog/brands/${params.id ?? ""}`, payload);
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: qk.brands() });
@@ -141,7 +138,11 @@ export function BrandEditPage() {
   });
 
   return (
-    <form onSubmit={form.handleSubmit((v) => { save.mutate(v); })}>
+    <form
+      onSubmit={form.handleSubmit((v) => {
+        save.mutate(v);
+      })}
+    >
       <PageHeader
         title={isNew ? "Новый бренд" : `Редактирование бренда`}
         description="Бренд = игра/сервис/вендор, который видит покупатель."
@@ -167,7 +168,7 @@ export function BrandEditPage() {
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <section className="space-y-4 rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
+        <section className="space-y-4 rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
           <Field label="Slug" error={form.formState.errors.slug?.message}>
             <Input {...form.register("slug")} placeholder="pubg-mobile" />
           </Field>
@@ -184,8 +185,12 @@ export function BrandEditPage() {
               ))}
             </select>
           </Field>
-          <Field label="Logo URL"><Input {...form.register("logo_url")} /></Field>
-          <Field label="Hero image URL"><Input {...form.register("hero_image_url")} /></Field>
+          <Field label="Logo URL">
+            <Input {...form.register("logo_url")} />
+          </Field>
+          <Field label="Hero image URL">
+            <Input {...form.register("hero_image_url")} />
+          </Field>
           <Field label="Accent color (#hex)">
             <Input {...form.register("accent_color")} placeholder="#F2A900" />
           </Field>
@@ -200,7 +205,7 @@ export function BrandEditPage() {
           </div>
         </section>
 
-        <section className="space-y-4 rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
+        <section className="space-y-4 rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
           <h2 className="font-medium">Переводы</h2>
           {fields.map((field, idx) => (
             <fieldset key={field.id} className="space-y-2 rounded-md border p-3">

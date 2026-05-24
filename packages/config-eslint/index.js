@@ -42,22 +42,13 @@ export default tseslint.config(
         "error",
         { prefer: "type-imports", fixStyle: "inline-type-imports" },
       ],
-      "@typescript-eslint/no-misused-promises": [
-        "error",
-        { checksVoidReturn: false },
-      ],
+      "@typescript-eslint/no-misused-promises": ["error", { checksVoidReturn: false }],
       "@typescript-eslint/switch-exhaustiveness-check": "error",
       "@typescript-eslint/no-explicit-any": "error",
       "import/order": [
         "warn",
         {
-          groups: [
-            "builtin",
-            "external",
-            "internal",
-            ["parent", "sibling", "index"],
-            "type",
-          ],
+          groups: ["builtin", "external", "internal", ["parent", "sibling", "index"], "type"],
           "newlines-between": "always",
           alphabetize: { order: "asc", caseInsensitive: true },
         },

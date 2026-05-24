@@ -20,18 +20,17 @@ apps/api  ──▶  FastAPI.openapi()  ──▶  docs/api/openapi.json
 - JSON only; `snake_case` keys; ISO-8601 timestamps; cursor pagination
   (`?cursor=...&limit=...`).
 - Errors are RFC 7807 `problem+json` with stable `type` URIs.
-- All write endpoints accept an `Idempotency-Key` header. **Missing key on a write request →
-  400.**
+- All write endpoints accept an `Idempotency-Key` header. **Missing key on a write request → 400.**
 - Money is `{ "amount": "12345.678", "currency": "USD" }` — strings to preserve precision.
 
 ## Auth
 
-| Surface | Header |
-|---|---|
-| Web (logged-in user) | `Authorization: Bearer <access-jwt>` |
-| Web (guest checkout) | `Authorization: Guest <guest-token>` |
-| Telegram Mini App | `Authorization: tma <raw initData>` (HMAC-verified server-side) |
-| Service-to-service (future) | `Authorization: Service <signed-jwt>` |
+| Surface                     | Header                                                          |
+| --------------------------- | --------------------------------------------------------------- |
+| Web (logged-in user)        | `Authorization: Bearer <access-jwt>`                            |
+| Web (guest checkout)        | `Authorization: Guest <guest-token>`                            |
+| Telegram Mini App           | `Authorization: tma <raw initData>` (HMAC-verified server-side) |
+| Service-to-service (future) | `Authorization: Service <signed-jwt>`                           |
 
 ## WebSocket
 
@@ -42,15 +41,15 @@ discriminated-union JSON envelope; see `packages/api-client/src/realtime/message
 
 ## Webhooks per provider
 
-| Provider | Path | Signature header |
-|---|---|---|
-| Stripe | `/webhooks/payments/stripe` | `Stripe-Signature` |
-| PayPal | `/webhooks/payments/paypal` | `PAYPAL-AUTH-ALGO` + `PAYPAL-CERT-URL` + `PAYPAL-TRANSMISSION-SIG` |
-| YooKassa | `/webhooks/payments/yookassa` | IP allowlist + HMAC over body |
-| Click | `/webhooks/payments/click` | HMAC over body |
-| Payme | `/webhooks/payments/payme` | Basic auth + signed payload |
-| Uzum | `/webhooks/payments/uzum` | HMAC over body |
-| Crypto | `/webhooks/payments/crypto` | HMAC over body |
+| Provider | Path                          | Signature header                                                   |
+| -------- | ----------------------------- | ------------------------------------------------------------------ |
+| Stripe   | `/webhooks/payments/stripe`   | `Stripe-Signature`                                                 |
+| PayPal   | `/webhooks/payments/paypal`   | `PAYPAL-AUTH-ALGO` + `PAYPAL-CERT-URL` + `PAYPAL-TRANSMISSION-SIG` |
+| YooKassa | `/webhooks/payments/yookassa` | IP allowlist + HMAC over body                                      |
+| Click    | `/webhooks/payments/click`    | HMAC over body                                                     |
+| Payme    | `/webhooks/payments/payme`    | Basic auth + signed payload                                        |
+| Uzum     | `/webhooks/payments/uzum`     | HMAC over body                                                     |
+| Crypto   | `/webhooks/payments/crypto`   | HMAC over body                                                     |
 
 Each webhook is documented in detail in `apps/api/src/yupay/modules/payments/gateways/<provider>.py`
 (docstring on the gateway class).

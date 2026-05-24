@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-
 import {
   type OrderAdminOut,
   type OrderEventOut,
@@ -23,18 +22,13 @@ import {
 } from "./types";
 
 import type { TaskAdminOut, TaskListOut } from "@/features/fulfillment/types";
-import type {
-  PaymentAdminListOut,
-  PaymentAdminOut,
-} from "@/features/payments/types";
+import type { PaymentAdminListOut, PaymentAdminOut } from "@/features/payments/types";
 
 import { Badge } from "@/components/Badge";
 import { PageHeader } from "@/components/PageHeader";
 import { Spinner } from "@/components/States";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
-
-
 
 export function OrderDetailPage() {
   const params = useParams<{ id: string }>();
@@ -59,34 +53,24 @@ export function OrderDetailPage() {
   const paymentsQuery = useQuery<PaymentAdminListOut>({
     queryKey: ["admin", "payments", { orderId }],
     enabled: Boolean(orderId),
-    queryFn: () =>
-      apiGet<PaymentAdminListOut>(
-        `/api/v1/admin/payments?order_id=${orderId}`,
-      ),
+    queryFn: () => apiGet<PaymentAdminListOut>(`/api/v1/admin/payments?order_id=${orderId}`),
   });
 
   const tasksQuery = useQuery<TaskListOut>({
     queryKey: ["admin", "fulfillment", { orderId }],
     enabled: Boolean(orderId),
     queryFn: () =>
-      apiGet<TaskListOut>(
-        `/api/v1/admin/fulfillment/tasks?order_id=${orderId}&limit=50`,
-      ),
+      apiGet<TaskListOut>(`/api/v1/admin/fulfillment/tasks?order_id=${orderId}&limit=50`),
   });
 
   const cancel = useMutation<OrderAdminOut, ApiError>({
-    mutationFn: () =>
-      apiPost<OrderAdminOut>(`/api/v1/admin/orders/${orderId}/cancel`, {}),
+    mutationFn: () => apiPost<OrderAdminOut>(`/api/v1/admin/orders/${orderId}/cancel`, {}),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "orders"] });
     },
   });
 
-  const refund = useMutation<
-    PaymentAdminOut,
-    ApiError,
-    { id: string; reason: string }
-  >({
+  const refund = useMutation<PaymentAdminOut, ApiError, { id: string; reason: string }>({
     mutationFn: ({ id, reason }) =>
       apiPost<PaymentAdminOut>(`/api/v1/admin/payments/${id}/refund`, {
         reason,
@@ -104,12 +88,9 @@ export function OrderDetailPage() {
   if (orderQuery.isError || !orderQuery.data) {
     return (
       <div className="space-y-3">
-        <p className="text-sm text-[var(--danger)]">
-          Не удалось загрузить заказ.
-        </p>
+        <p className="text-sm text-[var(--danger)]">Не удалось загрузить заказ.</p>
         <Button variant="ghost" onClick={() => navigate("/orders")}>
-          <ArrowLeft className="size-4" />
-          К списку
+          <ArrowLeft className="size-4" />К списку
         </Button>
       </div>
     );
@@ -122,10 +103,7 @@ export function OrderDetailPage() {
   return (
     <div>
       <PageHeader
-        breadcrumbs={[
-          { label: "Заказы", to: "/orders" },
-          { label: `${order.id.slice(0, 8)}…` },
-        ]}
+        breadcrumbs={[{ label: "Заказы", to: "/orders" }, { label: `${order.id.slice(0, 8)}…` }]}
         title={`Заказ ${order.id.slice(0, 8)}…`}
         description={
           order.user_id ? (
@@ -139,7 +117,7 @@ export function OrderDetailPage() {
               </Link>
             </>
           ) : (
-            order.guest_email ?? "Гость"
+            (order.guest_email ?? "Гость")
           )
         }
         actions={
@@ -165,7 +143,7 @@ export function OrderDetailPage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* ----- left column: summary + timeline ----- */}
-        <section className="lg:col-span-2 space-y-6">
+        <section className="space-y-6 lg:col-span-2">
           <SummaryCard order={order} />
           <ItemsCard order={order} />
           <Timeline events={order.events} status={order.status} />
@@ -204,7 +182,7 @@ function SummaryCard({ order }: { order: OrderAdminOut }) {
         <span className="font-medium">
           {Number.parseFloat(order.total_charged).toFixed(2)} {order.currency}
           {order.currency !== "USD" && (
-            <span className="ml-2 text-[var(--text-secondary)] text-xs">
+            <span className="ml-2 text-xs text-[var(--text-secondary)]">
               ≈ ${Number.parseFloat(order.total_usd).toFixed(2)}
             </span>
           )}
@@ -229,7 +207,7 @@ function SummaryCard({ order }: { order: OrderAdminOut }) {
     },
   ];
   return (
-    <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] p-4">
+    <div className="rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--text-secondary)]">
         Сводка
       </h2>
@@ -248,7 +226,7 @@ function SummaryCard({ order }: { order: OrderAdminOut }) {
 function ItemsCard({ order }: { order: OrderAdminOut }) {
   return (
     <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]">
-      <header className="border-b px-4 py-3 flex items-center gap-2">
+      <header className="flex items-center gap-2 border-b px-4 py-3">
         <Package className="size-4 text-[var(--text-secondary)]" />
         <h2 className="text-sm font-semibold">Позиции ({order.items.length})</h2>
       </header>
@@ -283,33 +261,29 @@ function ItemsCard({ order }: { order: OrderAdminOut }) {
                       <img
                         src={d.image_url}
                         alt=""
-                        className="size-10 rounded-md object-cover border border-[var(--border-default)] flex-shrink-0"
+                        className="size-10 flex-shrink-0 rounded-md border border-[var(--border-default)] object-cover"
                       />
                     ) : (
                       <div
-                        className="size-10 rounded-md flex items-center justify-center text-xs font-bold text-[var(--text-secondary)] border border-[var(--border-default)] flex-shrink-0"
+                        className="flex size-10 flex-shrink-0 items-center justify-center rounded-md border border-[var(--border-default)] text-xs font-bold text-[var(--text-secondary)]"
                         style={{ background: "var(--bg-muted)" }}
                       >
                         {(d?.brand_name?.[0] ?? "?").toUpperCase()}
                       </div>
                     )}
                     <div className="min-w-0">
-                      <div className="font-medium truncate">{headline}</div>
-                      <div className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] truncate">
+                      <div className="truncate font-medium">{headline}</div>
+                      <div className="flex items-center gap-1.5 truncate text-xs text-[var(--text-secondary)]">
                         {sub && <span>{sub}</span>}
                         {d?.region && d.region !== "GLOBAL" && (
                           <span className="rounded bg-[var(--bg-muted)] px-1 font-mono">
                             {d.region}
                           </span>
                         )}
-                        {d && (
-                          <code className="text-[10px] opacity-70">
-                            {d.sku_code}
-                          </code>
-                        )}
+                        {d && <code className="text-[10px] opacity-70">{d.sku_code}</code>}
                       </div>
                       {Object.keys(it.fulfillment_data).length > 0 && (
-                        <pre className="mt-1 text-[10px] text-[var(--text-secondary)] whitespace-pre-wrap break-all">
+                        <pre className="mt-1 whitespace-pre-wrap break-all text-[10px] text-[var(--text-secondary)]">
                           {JSON.stringify(it.fulfillment_data, null, 0)}
                         </pre>
                       )}
@@ -325,9 +299,7 @@ function ItemsCard({ order }: { order: OrderAdminOut }) {
                 </td>
                 <td className="px-3 py-2.5">
                   {it.supplier_order_id ? (
-                    <code className="text-xs">
-                      {it.supplier_order_id.slice(0, 12)}…
-                    </code>
+                    <code className="text-xs">{it.supplier_order_id.slice(0, 12)}…</code>
                   ) : (
                     <span className="text-xs text-[var(--text-secondary)]">—</span>
                   )}
@@ -341,19 +313,11 @@ function ItemsCard({ order }: { order: OrderAdminOut }) {
   );
 }
 
-function Timeline({
-  events,
-  status,
-}: {
-  events: OrderEventOut[];
-  status: OrderStatus;
-}) {
-  const ordered = [...events].sort((a, b) =>
-    a.created_at.localeCompare(b.created_at),
-  );
+function Timeline({ events, status }: { events: OrderEventOut[]; status: OrderStatus }) {
+  const ordered = [...events].sort((a, b) => a.created_at.localeCompare(b.created_at));
   return (
     <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]">
-      <header className="border-b px-4 py-3 flex items-center gap-2">
+      <header className="flex items-center gap-2 border-b px-4 py-3">
         <Clock className="size-4 text-[var(--text-secondary)]" />
         <h2 className="text-sm font-semibold">Хронология ({ordered.length})</h2>
       </header>
@@ -362,7 +326,7 @@ function Timeline({
       ) : (
         <ol className="relative space-y-4 p-4 pl-10">
           <span
-            className="absolute left-5 top-6 bottom-6 w-px bg-[var(--color-border)]"
+            className="absolute bottom-6 left-5 top-6 w-px bg-[var(--color-border)]"
             aria-hidden
           />
           {ordered.map((ev, idx) => (
@@ -387,9 +351,7 @@ function Timeline({
                 </span>
               </div>
               {ev.actor && (
-                <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                  by {ev.actor}
-                </p>
+                <p className="mt-0.5 text-xs text-[var(--text-secondary)]">by {ev.actor}</p>
               )}
               {Object.keys(ev.payload).length > 0 && (
                 <pre className="mt-1 whitespace-pre-wrap rounded border bg-[var(--bg-muted)] p-2 text-[10px] text-[var(--text-secondary)]">
@@ -400,7 +362,7 @@ function Timeline({
           ))}
         </ol>
       )}
-      <footer className="border-t px-4 py-2 text-xs text-[var(--text-secondary)] flex items-center gap-2">
+      <footer className="flex items-center gap-2 border-t px-4 py-2 text-xs text-[var(--text-secondary)]">
         <CircleDot className="size-3" />
         Текущий статус: <StatusBadge status={status} />
       </footer>
@@ -419,21 +381,16 @@ function PaymentsCard({
 }) {
   return (
     <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]">
-      <header className="border-b px-4 py-3 flex items-center gap-2">
+      <header className="flex items-center gap-2 border-b px-4 py-3">
         <CreditCard className="size-4 text-[var(--text-secondary)]" />
-        <h2 className="text-sm font-semibold">
-          Платежи ({payments.length})
-        </h2>
+        <h2 className="text-sm font-semibold">Платежи ({payments.length})</h2>
       </header>
       {payments.length === 0 ? (
-        <p className="p-4 text-sm text-[var(--text-secondary)]">
-          Платежей по заказу пока нет.
-        </p>
+        <p className="p-4 text-sm text-[var(--text-secondary)]">Платежей по заказу пока нет.</p>
       ) : (
         <ul className="divide-y">
           {payments.map((p) => {
-            const canRefund =
-              p.status === "succeeded" || p.status === "partially_refunded";
+            const canRefund = p.status === "succeeded" || p.status === "partially_refunded";
             return (
               <li key={p.id} className="p-3 text-sm">
                 <div className="flex items-baseline justify-between gap-3">
@@ -444,8 +401,7 @@ function PaymentsCard({
                         ? "bg-[var(--success-soft)] text-[var(--success-fg)]"
                         : p.status === "failed"
                           ? "bg-[var(--danger-soft)] text-[var(--danger-fg)]"
-                          : p.status === "refunded" ||
-                              p.status === "partially_refunded"
+                          : p.status === "refunded" || p.status === "partially_refunded"
                             ? "bg-[var(--info-soft)] text-[var(--info-fg)]"
                             : "bg-[var(--warning-soft)] text-[var(--warning-fg)]"
                     }
@@ -455,11 +411,10 @@ function PaymentsCard({
                   </Badge>
                 </div>
                 <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                  {p.provider} · {Number.parseFloat(p.amount).toFixed(2)}{" "}
-                  {p.currency}
+                  {p.provider} · {Number.parseFloat(p.amount).toFixed(2)} {p.currency}
                 </p>
                 {p.intent_url && p.provider === "mock" && (
-                  <p className="mt-1 text-[10px] text-[var(--text-secondary)] break-all">
+                  <p className="mt-1 break-all text-[10px] text-[var(--text-secondary)]">
                     {p.intent_url}
                   </p>
                 )}
@@ -468,7 +423,9 @@ function PaymentsCard({
                     type="button"
                     variant="danger"
                     size="sm"
-                    onClick={() => { onRefund(p); }}
+                    onClick={() => {
+                      onRefund(p);
+                    }}
                     disabled={refunding}
                     className="mt-2"
                   >
@@ -487,14 +444,12 @@ function PaymentsCard({
 function FulfillmentCard({ tasks }: { tasks: TaskAdminOut[] }) {
   return (
     <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]">
-      <header className="border-b px-4 py-3 flex items-center gap-2">
+      <header className="flex items-center gap-2 border-b px-4 py-3">
         <Truck className="size-4 text-[var(--text-secondary)]" />
         <h2 className="text-sm font-semibold">Фулфилмент ({tasks.length})</h2>
       </header>
       {tasks.length === 0 ? (
-        <p className="p-4 text-sm text-[var(--text-secondary)]">
-          Задач саги ещё не запущено.
-        </p>
+        <p className="p-4 text-sm text-[var(--text-secondary)]">Задач саги ещё не запущено.</p>
       ) : (
         <ul className="divide-y">
           {tasks.map((t) => (
@@ -519,11 +474,7 @@ function FulfillmentCard({ tasks }: { tasks: TaskAdminOut[] }) {
               <p className="mt-1 text-xs text-[var(--text-secondary)]">
                 item {t.order_item_id.slice(0, 8)}… · попыток {t.attempts_count}
               </p>
-              {t.last_error && (
-                <p className="mt-1 text-xs text-[var(--danger)]">
-                  {t.last_error}
-                </p>
-              )}
+              {t.last_error && <p className="mt-1 text-xs text-[var(--danger)]">{t.last_error}</p>}
             </li>
           ))}
         </ul>

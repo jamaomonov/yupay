@@ -12,7 +12,7 @@ YuPay's fulfilment strategy is **hybrid**: some SKUs we ship from a private
 warehouse of pre-purchased voucher codes (bought in bulk at a discount, sitting
 encrypted in our DB), others we always fetch from a supplier API. Some SKUs we
 want to try the warehouse first and fall back to the supplier if stock is dry;
-others we want to *force* through one route regardless of stock (e.g. to test
+others we want to _force_ through one route regardless of stock (e.g. to test
 a supplier integration even when our warehouse is full).
 
 The skeleton fulfilment module currently hardcodes `supplier = "mock"` for every
@@ -131,7 +131,7 @@ and records `issued_at`. On admin revoke or order cancel: `state='voided'`.
      the cleartext code; mark task `succeeded`.
 4. Else (supplier route): existing `Fulfiller.fulfill(...)` path.
 
-The "supplier" recorded on the task is the *route taken* (e.g. `inventory` or
+The "supplier" recorded on the task is the _route taken_ (e.g. `inventory` or
 `mock`). When real adapters land, this lets ops see at a glance whether an
 order ran through stock or a third party.
 
@@ -159,7 +159,7 @@ No customer-facing routes. Users only see the issued voucher via the existing
 
 ## Consequences
 
-- Adding `inventory` as a (pseudo)provider keeps `fulfillment/service.py` 
+- Adding `inventory` as a (pseudo)provider keeps `fulfillment/service.py`
   uniform — every task records a `supplier` slug, just with two extras
   (`inventory`, plus whatever fallback ran).
 - `pgcrypto`/libsodium key material is now a piece of operational state. The
@@ -171,7 +171,7 @@ No customer-facing routes. Users only see the issued voucher via the existing
 ## What's deferred
 
 1. **Pre-allocated reservations** — currently we reserve at fulfilment time. A
-   future optimisation: reserve at *checkout* to guarantee stock at the price
+   future optimisation: reserve at _checkout_ to guarantee stock at the price
    shown to the user. Needs an order-creation hook.
 2. **Code-expiry sweeper** — a scheduled job that voids codes past `expires_at`.
 3. **Key rotation** with `key_version` (ADR-0020).

@@ -115,7 +115,7 @@ async def list_users_admin(
         count_stmt = count_stmt.outerjoin(TelegramLink, TelegramLink.user_id == User.id)
         join_clauses.append(TelegramLink.tg_username.ilike(q))
         if as_int is not None:
-            join_clauses.append(TelegramLink.tg_user_id == as_int)
+            join_clauses.append(TelegramLink.tg_user_id == as_int)  # type: ignore[arg-type]
         base = base.where(or_(*join_clauses))
         count_stmt = count_stmt.where(or_(*join_clauses))
 

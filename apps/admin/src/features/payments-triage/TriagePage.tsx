@@ -29,7 +29,6 @@ import { type ApiError, apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { numberCodec, useSearchParamsState } from "@/lib/useSearchParamsState";
 
-
 type TriageTab = "stuck" | "webhooks";
 
 const VALID_TABS: ReadonlySet<TriageTab> = new Set<TriageTab>(["stuck", "webhooks"]);
@@ -39,14 +38,8 @@ const THRESHOLDS = [15, 30, 60, 120] as const;
 export function TriagePage() {
   const navigate = useNavigate();
   const [rawTab, setTab] = useSearchParamsState("tab", "stuck");
-  const tab: TriageTab = VALID_TABS.has(rawTab as TriageTab)
-    ? (rawTab as TriageTab)
-    : "stuck";
-  const [threshold, setThreshold] = useSearchParamsState<number>(
-    "after",
-    30,
-    numberCodec,
-  );
+  const tab: TriageTab = VALID_TABS.has(rawTab as TriageTab) ? (rawTab as TriageTab) : "stuck";
+  const [threshold, setThreshold] = useSearchParamsState<number>("after", 30, numberCodec);
 
   const query = useQuery<PaymentTriageOut, ApiError>({
     queryKey: qk.paymentsTriage(threshold),
@@ -94,7 +87,9 @@ export function TriagePage() {
           rows={data?.stuck_pending ?? []}
           loading={query.isPending}
           error={query.isError}
-          onOpenOrder={(orderId) => { void navigate(`/orders/${orderId}`); }}
+          onOpenOrder={(orderId) => {
+            void navigate(`/orders/${orderId}`);
+          }}
         />
       )}
 
@@ -153,15 +148,15 @@ function StuckSection({
         p.user_id ? (
           <Link
             to={`/customers/${p.user_id}`}
-            onClick={(e) => { e.stopPropagation(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
             className="font-mono text-xs underline-offset-2 hover:underline"
           >
             user {p.user_id.slice(0, 8)}…
           </Link>
         ) : (
-          <span className="text-xs text-[var(--text-secondary)]">
-            {p.guest_email ?? "—"}
-          </span>
+          <span className="text-xs text-[var(--text-secondary)]">{p.guest_email ?? "—"}</span>
         ),
     },
     {
@@ -208,7 +203,9 @@ function StuckSection({
           <span className="text-[var(--text-secondary)]">Порог:</span>
           <select
             value={threshold.toString()}
-            onChange={(e) => { onThresholdChange(Number(e.target.value)); }}
+            onChange={(e) => {
+              onThresholdChange(Number(e.target.value));
+            }}
             className="h-9 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 text-sm"
           >
             {THRESHOLDS.map((m) => (
@@ -229,16 +226,16 @@ function StuckSection({
         </p>
       )}
 
-      {error && (
-        <p className="text-sm text-[var(--danger)]">Не удалось загрузить список.</p>
-      )}
+      {error && <p className="text-sm text-[var(--danger)]">Не удалось загрузить список.</p>}
 
       <DataTable
         rows={rows}
         columns={columns}
         rowKey={(p) => p.id}
         empty={loading ? "Загрузка…" : "Висящих платежей нет."}
-        onRowClick={(p) => { onOpenOrder(p.order_id); }}
+        onRowClick={(p) => {
+          onOpenOrder(p.order_id);
+        }}
       />
     </div>
   );
@@ -320,19 +317,17 @@ function WebhookSection({
   return (
     <div className="space-y-3">
       <p className="text-sm text-[var(--text-secondary)]">
-        Входящие события с невалидной подписью или те, до которых обработка не
-        дошла. Подробнее — на странице{" "}
+        Входящие события с невалидной подписью или те, до которых обработка не дошла. Подробнее — на
+        странице{" "}
         <Link
           to="/webhooks"
-          className="underline-offset-2 hover:underline text-[var(--text-primary)]"
+          className="text-[var(--text-primary)] underline-offset-2 hover:underline"
         >
           /webhooks
         </Link>
         .
       </p>
-      {error && (
-        <p className="text-sm text-[var(--danger)]">Не удалось загрузить список.</p>
-      )}
+      {error && <p className="text-sm text-[var(--danger)]">Не удалось загрузить список.</p>}
       <DataTable
         rows={rows}
         columns={columns}
@@ -344,8 +339,7 @@ function WebhookSection({
 }
 
 function SlaBadge({ minutes }: { minutes: number }) {
-  const tone =
-    minutes >= 120 ? "danger" : minutes >= 60 ? "warn" : "info";
+  const tone = minutes >= 120 ? "danger" : minutes >= 60 ? "warn" : "info";
   const cls =
     tone === "danger"
       ? "bg-[var(--danger-soft)] text-[var(--danger-fg)]"

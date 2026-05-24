@@ -20,21 +20,13 @@ export const qk = {
   sku: (id: string) => ["admin", "skus", id] as const,
 
   // inventory
-  inventoryCounts: (skuId: string) =>
-    ["admin", "inventory", "counts", skuId] as const,
+  inventoryCounts: (skuId: string) => ["admin", "inventory", "counts", skuId] as const,
   inventoryCodes: (filters: { skuId?: string | null; state?: string | null }) =>
-    [
-      "admin",
-      "inventory",
-      "codes",
-      filters.skuId ?? null,
-      filters.state ?? null,
-    ] as const,
+    ["admin", "inventory", "codes", filters.skuId ?? null, filters.state ?? null] as const,
 
   // sourcing
   sourcingRules: () => ["admin", "sourcing", "rules"] as const,
-  sourcingDecision: (skuId: string) =>
-    ["admin", "sourcing", "decision", skuId] as const,
+  sourcingDecision: (skuId: string) => ["admin", "sourcing", "decision", skuId] as const,
 
   // orders
   orders: (filters: { status?: string | null }) =>
@@ -43,29 +35,15 @@ export const qk = {
 
   // users
   users: (filters: { search?: string | null; limit?: number; offset?: number }) =>
-    [
-      "admin",
-      "users",
-      filters.search ?? null,
-      filters.limit ?? 50,
-      filters.offset ?? 0,
-    ] as const,
+    ["admin", "users", filters.search ?? null, filters.limit ?? 50, filters.offset ?? 0] as const,
   user: (id: string) => ["admin", "users", id] as const,
 
   // fx
   fxRates: () => ["admin", "fx", "rates"] as const,
 
   // webhook log
-  webhooks: (filters: {
-    provider?: string | null;
-    signature_ok?: boolean | null;
-  }) =>
-    [
-      "admin",
-      "webhooks",
-      filters.provider ?? null,
-      filters.signature_ok ?? null,
-    ] as const,
+  webhooks: (filters: { provider?: string | null; signature_ok?: boolean | null }) =>
+    ["admin", "webhooks", filters.provider ?? null, filters.signature_ok ?? null] as const,
 
   // audit feed
   audit: (filters: {
@@ -86,15 +64,13 @@ export const qk = {
     ] as const,
 
   // stats
-  dashboard: (windowHours: number) =>
-    ["admin", "stats", "dashboard", windowHours] as const,
+  dashboard: (windowHours: number) => ["admin", "stats", "dashboard", windowHours] as const,
 
   // global search (cmd+k)
   search: (q: string) => ["admin", "search", q] as const,
 
   // customer 360 overview
-  customerOverview: (userId: string) =>
-    ["admin", "customers", userId, "overview"] as const,
+  customerOverview: (userId: string) => ["admin", "customers", userId, "overview"] as const,
 
   // payments triage
   paymentsTriage: (thresholdMinutes: number) =>
@@ -121,8 +97,7 @@ export const qk = {
       filters.supplier ?? null,
       filters.status ?? null,
     ] as const,
-  fulfillmentTask: (taskId: string) =>
-    ["admin", "fulfillment", "task", taskId] as const,
+  fulfillmentTask: (taskId: string) => ["admin", "fulfillment", "task", taskId] as const,
   // Manual-fulfilment queue — same backend listing as fulfillmentTasks
   // but with the supplier/status filters frozen on the page level, so
   // it deserves its own key for clean invalidation.

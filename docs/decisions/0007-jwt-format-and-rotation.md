@@ -37,12 +37,12 @@ We need a token format that:
 
 ### Token kinds
 
-| Kind | TTL | Refreshable | Backed by `auth_sessions` row | Used for |
-|---|---|---|---|---|
-| `access` | **15 min** | no (rotate via refresh) | no (stateless) | Bearer auth header for normal user / guest requests |
-| `refresh` | **30 days** | yes (rotate-on-use) | yes (hash stored, revocable) | Mint a new access + new refresh |
-| `guest` | **30 min** | no | yes (audit only, no token hash) | Single-purpose checkout; not refreshable |
-| `ws-handshake` | **60 s** | no | no | Authorise a WebSocket `upgrade` and bind the connection to a Redis channel |
+| Kind           | TTL         | Refreshable             | Backed by `auth_sessions` row   | Used for                                                                   |
+| -------------- | ----------- | ----------------------- | ------------------------------- | -------------------------------------------------------------------------- |
+| `access`       | **15 min**  | no (rotate via refresh) | no (stateless)                  | Bearer auth header for normal user / guest requests                        |
+| `refresh`      | **30 days** | yes (rotate-on-use)     | yes (hash stored, revocable)    | Mint a new access + new refresh                                            |
+| `guest`        | **30 min**  | no                      | yes (audit only, no token hash) | Single-purpose checkout; not refreshable                                   |
+| `ws-handshake` | **60 s**    | no                      | no                              | Authorise a WebSocket `upgrade` and bind the connection to a Redis channel |
 
 ### Claims
 
@@ -53,7 +53,7 @@ Common: `iss=yupay`, `iat`, `exp`, `jti`, `kid`.
   (hashed for guests).
 - **`refresh`**: only `sub`, `sid`, `jti`. No PII.
 - **`guest`**: `sub=guest:<emailhash>`, `email_hash`, `scope=["orders:create",
-  "orders:read:own"]`.
+"orders:read:own"]`.
 - **`ws-handshake`**: `sub`, `sid`, `channel` (e.g. `orders:{user_id}`).
 
 `emailhash = sha256(lowercased_email + pepper)` truncated to 16 bytes / base64url. The
@@ -86,12 +86,12 @@ plaintext email never travels in a JWT.
 
 ### Transport
 
-| Surface | Header |
-|---|---|
-| Web (user) | `Authorization: Bearer <access>` |
-| Web (guest) | `Authorization: Guest <access>` (same JWT, different prefix for clarity) |
-| Mini App | `Authorization: tma <raw initData>` — backend validates HMAC per request, mints a fresh access from the validated initData on demand. The Mini App **does not** receive a refresh token. |
-| WebSocket | `?token=<ws-handshake>` query param on the upgrade |
+| Surface     | Header                                                                                                                                                                                   |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Web (user)  | `Authorization: Bearer <access>`                                                                                                                                                         |
+| Web (guest) | `Authorization: Guest <access>` (same JWT, different prefix for clarity)                                                                                                                 |
+| Mini App    | `Authorization: tma <raw initData>` — backend validates HMAC per request, mints a fresh access from the validated initData on demand. The Mini App **does not** receive a refresh token. |
+| WebSocket   | `?token=<ws-handshake>` query param on the upgrade                                                                                                                                       |
 
 Telegram Mini App is special: because Telegram itself signs `initData` on every open, we
 treat the SDK's `initData` string as the "refresh credential" and re-mint short access

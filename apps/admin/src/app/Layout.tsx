@@ -33,7 +33,6 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
-
 import { ToastRegion } from "@/components/Toast";
 import { useAuthStore } from "@/features/auth/authStore";
 import { SearchPalette } from "@/features/search/SearchPalette";
@@ -115,8 +114,12 @@ export function Layout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
 
-  const openSearch = useCallback(() => { setSearchOpen(true); }, []);
-  const closeSearch = useCallback(() => { setSearchOpen(false); }, []);
+  const openSearch = useCallback(() => {
+    setSearchOpen(true);
+  }, []);
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+  }, []);
   useGlobalSearchHotkey(openSearch);
   // Keep `system` mode reactive to OS-level theme flips for the lifetime of the shell.
   useSystemThemeSubscription();
@@ -173,8 +176,10 @@ export function Layout() {
           </div>
           <button
             type="button"
-            onClick={() => { setDrawerOpen(false); }}
-            className="md:hidden rounded-md p-1 text-[var(--text-secondary)] hover:bg-[var(--bg-muted)]"
+            onClick={() => {
+              setDrawerOpen(false);
+            }}
+            className="rounded-md p-1 text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] md:hidden"
             aria-label="Закрыть меню"
           >
             <X className="size-4" />
@@ -223,7 +228,9 @@ export function Layout() {
       {drawerOpen && (
         <button
           type="button"
-          onClick={() => { setDrawerOpen(false); }}
+          onClick={() => {
+            setDrawerOpen(false);
+          }}
           aria-label="Закрыть меню"
           className="fixed inset-0 z-30 bg-black/40 md:hidden"
         />
@@ -231,10 +238,12 @@ export function Layout() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-20 flex h-[var(--topbar-height)] items-center justify-between border-b bg-[var(--bg-surface)] px-4 md:px-6">
-          <div className="flex items-center gap-3 min-w-0">
+          <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
-              onClick={() => { setDrawerOpen(true); }}
+              onClick={() => {
+                setDrawerOpen(true);
+              }}
               className="rounded-md p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] md:hidden"
               aria-label="Открыть меню"
             >
@@ -276,7 +285,7 @@ export function Layout() {
         <main
           id="main-content"
           tabIndex={-1}
-          className="flex-1 overflow-y-auto p-4 md:p-6 focus-visible:outline-none"
+          className="flex-1 overflow-y-auto p-4 focus-visible:outline-none md:p-6"
         >
           <Outlet />
         </main>

@@ -17,10 +17,10 @@ Cleartext код существует в памяти **только** на вр
 
 ## Таблицы
 
-| Таблица | Что |
-|---|---|
-| `inventory_codes` | один код. `state` ∈ `available / reserved / issued / voided`. UNIQUE по `(sku_id, code_hash)` ловит дубли. Partial INDEX `(sku_id, created_at) WHERE state='available'` — горячий путь резерва. |
-| `inventory_uploads` | аудит-строка на каждый bulk-upload. `total / succeeded / duplicates`. |
+| Таблица             | Что                                                                                                                                                                                             |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `inventory_codes`   | один код. `state` ∈ `available / reserved / issued / voided`. UNIQUE по `(sku_id, code_hash)` ловит дубли. Partial INDEX `(sku_id, created_at) WHERE state='available'` — горячий путь резерва. |
+| `inventory_uploads` | аудит-строка на каждый bulk-upload. `total / succeeded / duplicates`.                                                                                                                           |
 
 ## Сервис
 
@@ -53,6 +53,7 @@ GET    /api/v1/admin/inventory/codes?sku_id=&state=&limit=
 ## Связь с `fulfillment`
 
 `fulfillment.service.process_task` спрашивает `sourcing.resolve_for_sku` и:
+
 - если decision.primary = `inventory` → вызывает `inventory.reserve_and_issue`,
   складывает результат в `deliveries(artifact_kind='voucher_code', source='inventory')`;
 - на `NoStockError`:

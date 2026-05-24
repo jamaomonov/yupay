@@ -42,7 +42,9 @@ export function DynamicFields({ fields, values, onChange }: DynamicFieldsProps) 
           key={field.key}
           field={field}
           value={values[field.key] ?? ""}
-          onChange={(v) => { onChange(field.key, v); }}
+          onChange={(v) => {
+            onChange(field.key, v);
+          }}
         />
       ))}
     </div>
@@ -73,10 +75,10 @@ function DynamicField({
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-1.5 px-1 gap-2">
+      <div className="mb-1.5 flex items-center justify-between gap-2 px-1">
         <label
           htmlFor={fieldId}
-          className="text-xs font-semibold text-white/75 uppercase tracking-wide"
+          className="text-xs font-semibold uppercase tracking-wide text-white/75"
         >
           {label}
           {required && (
@@ -88,11 +90,13 @@ function DynamicField({
         {hasHelp && (
           <button
             type="button"
-            onClick={() => { setHelpOpen(true); }}
+            onClick={() => {
+              setHelpOpen(true);
+            }}
             aria-label={`Где найти ${label}`}
             aria-controls={helpId}
             aria-expanded={helpOpen}
-            className="flex items-center gap-1 text-[11px] font-semibold rounded-full px-2.5 py-1 transition-opacity active:opacity-70"
+            className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-opacity active:opacity-70"
             style={{
               background: "hsl(var(--primary) / 0.12)",
               border: "1px solid hsl(var(--primary) / 0.35)",
@@ -132,7 +136,7 @@ function DynamicField({
               <HelpCircle size={16} className="text-primary" aria-hidden="true" />
               Где найти «{label}»
             </SheetTitle>
-            <SheetDescription className="whitespace-pre-wrap text-left text-white/70 leading-relaxed">
+            <SheetDescription className="whitespace-pre-wrap text-left leading-relaxed text-white/70">
               {help}
             </SheetDescription>
           </SheetHeader>
@@ -157,10 +161,8 @@ function TextLikeField({
   fieldId: string;
   required: boolean;
 }) {
-  const inputType =
-    field.type === "email" ? "email" : field.type === "number" ? "tel" : "text";
-  const inputMode =
-    field.type === "number" ? "numeric" : field.type === "email" ? "email" : "text";
+  const inputType = field.type === "email" ? "email" : field.type === "number" ? "tel" : "text";
+  const inputMode = field.type === "number" ? "numeric" : field.type === "email" ? "email" : "text";
   const filled = value.trim().length > 0;
 
   const handleChange = (v: string) => {
@@ -178,16 +180,16 @@ function TextLikeField({
         type={inputType}
         inputMode={inputMode}
         value={value}
-        onChange={(e) => { handleChange(e.target.value); }}
+        onChange={(e) => {
+          handleChange(e.target.value);
+        }}
         placeholder={placeholder || field.key}
         required={required}
         aria-required={required}
-        className="w-full rounded-2xl px-4 py-3.5 text-base text-white placeholder:text-white/25 outline-none transition-all"
+        className="w-full rounded-2xl px-4 py-3.5 text-base text-white outline-none transition-all placeholder:text-white/25"
         style={{
           background: "hsl(var(--surface-2))",
-          border: filled
-            ? "1.5px solid hsl(var(--primary) / 0.7)"
-            : "1px solid hsl(var(--border))",
+          border: filled ? "1.5px solid hsl(var(--primary) / 0.7)" : "1px solid hsl(var(--border))",
           color: filled ? "hsl(var(--primary))" : "white",
           letterSpacing: field.type === "number" && filled ? "0.08em" : "normal",
         }}
@@ -195,8 +197,10 @@ function TextLikeField({
       {value && (
         <button
           type="button"
-          onClick={() => { onChange(""); }}
-          className="absolute right-3.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center"
+          onClick={() => {
+            onChange("");
+          }}
+          className="absolute right-3.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full bg-white/10"
           aria-label="Очистить"
         >
           <X size={12} className="text-white/60" />
@@ -232,7 +236,7 @@ function SelectField({
       aria-label={t(field.label, field.key)}
     >
       {options.length === 0 ? (
-        <div className="col-span-2 rounded-2xl p-3 text-center text-sm text-white/40 border border-dashed border-white/15">
+        <div className="col-span-2 rounded-2xl border border-dashed border-white/15 p-3 text-center text-sm text-white/40">
           {placeholder || "Опций пока нет"}
         </div>
       ) : (
@@ -244,7 +248,9 @@ function SelectField({
               type="button"
               role="radio"
               aria-checked={active}
-              onClick={() => { onChange(opt.value); }}
+              onClick={() => {
+                onChange(opt.value);
+              }}
               className="relative rounded-2xl px-3 py-3 text-sm font-semibold transition-all duration-150"
               style={{
                 background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
@@ -260,9 +266,7 @@ function SelectField({
         })
       )}
       {!filled && options.length > 0 && (
-        <div className="col-span-2 text-[11px] text-white/40 px-1">
-          Выберите вариант
-        </div>
+        <div className="col-span-2 px-1 text-[11px] text-white/40">Выберите вариант</div>
       )}
     </div>
   );

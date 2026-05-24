@@ -12,10 +12,7 @@ import { apiGet } from "./api";
 import { useMe } from "./auth";
 import { CURRENCY_SYMBOL, type DisplayCurrency } from "./currency";
 
-export type UserAccountKind =
-  | "user_wallet"
-  | "user_cashback"
-  | "user_promo_credit";
+export type UserAccountKind = "user_wallet" | "user_cashback" | "user_promo_credit";
 
 export interface BalanceOut {
   account_id: string;
@@ -82,9 +79,7 @@ export function useWallet() {
     queryFn: async () => {
       const data = await apiGet<WalletOverviewOut>("/api/v1/wallet");
       return data.balances
-        .filter((b) =>
-          ACCOUNT_ORDER.includes(b.kind),
-        )
+        .filter((b) => ACCOUNT_ORDER.includes(b.kind))
         .map((b) => ({
           kind: b.kind,
           currency: b.currency,
@@ -154,7 +149,7 @@ export const TX_KIND_LABEL: Record<string, string> = {
   "order.payment": "Оплата заказа",
   "cashback.grant": "Кэшбэк за покупку",
   "promo.grant": "Промо-кредит",
-  "topup": "Пополнение",
+  topup: "Пополнение",
 };
 
 export function txKindLabel(kind: string): string {
@@ -229,9 +224,7 @@ export interface CurrencyBalance {
   currency: string;
 }
 
-export function groupBalancesByCurrency(
-  balances: ParsedBalance[],
-): CurrencyBalance[] {
+export function groupBalancesByCurrency(balances: ParsedBalance[]): CurrencyBalance[] {
   const acc = new Map<string, number>();
   for (const b of balances) {
     if (!VISIBLE_ACCOUNT_KINDS.includes(b.kind)) continue;
@@ -262,9 +255,7 @@ export function pickPrimaryBalance(
   const preferredHit = nonZero.find((g) => g.currency === preferred);
   if (preferredHit) return preferredHit;
   if (nonZero.length > 0) {
-    return nonZero.reduce((max, g) =>
-      Math.abs(g.amount) > Math.abs(max.amount) ? g : max,
-    );
+    return nonZero.reduce((max, g) => (Math.abs(g.amount) > Math.abs(max.amount) ? g : max));
   }
   return { amount: 0, currency: preferred };
 }

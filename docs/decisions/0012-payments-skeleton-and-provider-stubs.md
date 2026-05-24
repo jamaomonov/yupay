@@ -90,15 +90,15 @@ registry resolves a provider slug to its gateway.
 
 ### Provider matrix
 
-| Slug         | State        | Module                          |
-|---|---|---|
-| `mock`       | **functional** (dev/test only) | `gateways/mock.py` |
-| `click`      | stub — raises `NotImplementedError` with TODO | `gateways/click.py` |
-| `payme`      | stub                            | `gateways/payme.py` |
-| `uzum`       | stub                            | `gateways/uzum.py` |
-| `yookassa`   | stub                            | `gateways/yookassa.py` |
-| `tinkoff`    | stub                            | `gateways/tinkoff.py` |
-| `crypto`     | stub                            | `gateways/crypto.py` |
+| Slug       | State                                         | Module                 |
+| ---------- | --------------------------------------------- | ---------------------- |
+| `mock`     | **functional** (dev/test only)                | `gateways/mock.py`     |
+| `click`    | stub — raises `NotImplementedError` with TODO | `gateways/click.py`    |
+| `payme`    | stub                                          | `gateways/payme.py`    |
+| `uzum`     | stub                                          | `gateways/uzum.py`     |
+| `yookassa` | stub                                          | `gateways/yookassa.py` |
+| `tinkoff`  | stub                                          | `gateways/tinkoff.py`  |
+| `crypto`   | stub                                          | `gateways/crypto.py`   |
 
 Each stub:
 
@@ -124,11 +124,11 @@ The **mock** provider:
 
 Triggered exclusively by `handle_webhook`:
 
-| Webhook outcome | Payment status   | Order status (was → now) | Event |
-|---|---|---|---|
-| signature OK + `succeeded` | `succeeded` | `pending_payment → paid`   | `order.paid`    |
-| signature OK + `failed`    | `failed`    | unchanged                  | `payment.failed`|
-| signature OK + `cancelled` | `cancelled` | unchanged                  | `payment.cancelled` |
+| Webhook outcome            | Payment status | Order status (was → now) | Event               |
+| -------------------------- | -------------- | ------------------------ | ------------------- |
+| signature OK + `succeeded` | `succeeded`    | `pending_payment → paid` | `order.paid`        |
+| signature OK + `failed`    | `failed`       | unchanged                | `payment.failed`    |
+| signature OK + `cancelled` | `cancelled`    | unchanged                | `payment.cancelled` |
 
 Re-deliveries of the same `external_event_id` short-circuit on the partial UNIQUE
 in `payment_webhooks` and do not produce duplicate `order.paid` events.

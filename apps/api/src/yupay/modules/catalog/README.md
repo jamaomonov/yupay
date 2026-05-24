@@ -14,12 +14,12 @@ per-product form schema and per-currency price overrides. See
 
 ## Levels
 
-| Level | Meaning | Example |
-|---|---|---|
-| **Category** | Top-level grouping shown on the homepage | "Games", "Subscriptions", "Gift cards", "Crypto" |
-| **Brand** | What customers recognise — a game / service / vendor | "PUBG Mobile", "Steam", "Spotify", "Apple", "USDT" |
-| **Product** | A buyable item of that brand, with its own form schema | "UC", "Royal Pass", "Wallet code", "Premium subscription" |
-| **SKU** | A concrete priced position (denomination + region) | "60 UC TR", "60 UC AS", "500 RUB RU" |
+| Level        | Meaning                                                | Example                                                   |
+| ------------ | ------------------------------------------------------ | --------------------------------------------------------- |
+| **Category** | Top-level grouping shown on the homepage               | "Games", "Subscriptions", "Gift cards", "Crypto"          |
+| **Brand**    | What customers recognise — a game / service / vendor   | "PUBG Mobile", "Steam", "Spotify", "Apple", "USDT"        |
+| **Product**  | A buyable item of that brand, with its own form schema | "UC", "Royal Pass", "Wallet code", "Premium subscription" |
+| **SKU**      | A concrete priced position (denomination + region)     | "60 UC TR", "60 UC AS", "500 RUB RU"                      |
 
 ## Public interface
 
@@ -38,24 +38,24 @@ from yupay.modules.catalog.api import (
 
 ## Tables owned
 
-| Table | Notes |
-|---|---|
-| `categories`, `category_translations` | Flat list |
-| `brands`, `brand_translations` | FK → categories (1:N). Logo, hero image, accent colour |
-| `products`, `product_translations` | FK → brands (1:N). `kind ∈ {top_up, voucher}`. `required_fields jsonb` form schema |
-| `skus` | FK → products (1:N). `price_usd` canonical; ≥ 0 enforced |
-| `sku_prices` | Per-currency override; composite PK `(sku_id, currency)` |
+| Table                                 | Notes                                                                              |
+| ------------------------------------- | ---------------------------------------------------------------------------------- |
+| `categories`, `category_translations` | Flat list                                                                          |
+| `brands`, `brand_translations`        | FK → categories (1:N). Logo, hero image, accent colour                             |
+| `products`, `product_translations`    | FK → brands (1:N). `kind ∈ {top_up, voucher}`. `required_fields jsonb` form schema |
+| `skus`                                | FK → products (1:N). `price_usd` canonical; ≥ 0 enforced                           |
+| `sku_prices`                          | Per-currency override; composite PK `(sku_id, currency)`                           |
 
 ## HTTP surface
 
-| Method | Path | Returns |
-|---|---|---|
-| `GET` | `/api/v1/catalog/categories` | `CategoryListOut` (localised) |
-| `GET` | `/api/v1/catalog/brands?category=<slug>` | `BrandListOut` |
-| `GET` | `/api/v1/catalog/brands/{slug}?currency=<RUB>` | `BrandDetailOut` (brand + summaries of its products) |
-| `GET` | `/api/v1/catalog/products?category=<slug>&brand=<slug>&currency=<RUB>` | `ProductListOut` |
-| `GET` | `/api/v1/catalog/products/{slug}?currency=<RUB>` | `ProductDetailOut` (brand + form schema + SKU list) |
-| `GET` | `/api/v1/catalog/skus/{sku_id}?currency=<RUB>` | `SkuOut` (used by checkout) |
+| Method | Path                                                                   | Returns                                              |
+| ------ | ---------------------------------------------------------------------- | ---------------------------------------------------- |
+| `GET`  | `/api/v1/catalog/categories`                                           | `CategoryListOut` (localised)                        |
+| `GET`  | `/api/v1/catalog/brands?category=<slug>`                               | `BrandListOut`                                       |
+| `GET`  | `/api/v1/catalog/brands/{slug}?currency=<RUB>`                         | `BrandDetailOut` (brand + summaries of its products) |
+| `GET`  | `/api/v1/catalog/products?category=<slug>&brand=<slug>&currency=<RUB>` | `ProductListOut`                                     |
+| `GET`  | `/api/v1/catalog/products/{slug}?currency=<RUB>`                       | `ProductDetailOut` (brand + form schema + SKU list)  |
+| `GET`  | `/api/v1/catalog/skus/{sku_id}?currency=<RUB>`                         | `SkuOut` (used by checkout)                          |
 
 `Accept-Language` resolves the locale (`ru` default, `en`, `uz`). `?currency=` activates
 display-price resolution; unsupported codes silently fall back to USD-only.
@@ -73,7 +73,7 @@ typed form, and that the API validates on order creation.
     "type": "text",
     "required": true,
     "pattern": "^[0-9]{6,15}$",
-    "placeholder": { "ru": "12345678", "en": "12345678" }
+    "placeholder": { "ru": "12345678", "en": "12345678" },
   },
   {
     "key": "server",
@@ -82,9 +82,9 @@ typed form, and that the API validates on order creation.
     "required": true,
     "options": [
       { "value": "as", "label": { "ru": "Азия", "en": "Asia" } },
-      { "value": "eu", "label": { "ru": "Европа", "en": "Europe" } }
-    ]
-  }
+      { "value": "eu", "label": { "ru": "Европа", "en": "Europe" } },
+    ],
+  },
 ]
 ```
 

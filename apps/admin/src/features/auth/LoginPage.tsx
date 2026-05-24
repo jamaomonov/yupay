@@ -18,7 +18,6 @@ import { useAuthStore } from "./authStore";
 
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 
-
 interface TelegramAuthPayload {
   id: number;
   first_name: string;
@@ -77,10 +76,7 @@ export function LoginPage() {
       setBusy(true);
       setError(null);
       try {
-        const tokens = await apiPost<TokensOut>(
-          "/api/v1/auth/telegram/widget",
-          payload,
-        );
+        const tokens = await apiPost<TokensOut>("/api/v1/auth/telegram/widget", payload);
         goNext(tokens);
       } catch (e) {
         setError(
@@ -143,9 +139,7 @@ export function LoginPage() {
     <main className="flex min-h-screen items-center justify-center p-6">
       <div className="w-full max-w-md rounded-xl border bg-[var(--bg-surface)] p-8 shadow-md">
         <h1 className="text-2xl font-semibold">YuPay Admin</h1>
-        <p className="mt-2 text-sm text-[var(--text-secondary)]">
-          Доступ только для админов.
-        </p>
+        <p className="mt-2 text-sm text-[var(--text-secondary)]">Доступ только для админов.</p>
 
         {showDev && (
           <form onSubmit={onDevSubmit} className="mt-6 space-y-3">
@@ -204,7 +198,7 @@ export function LoginPage() {
         )}
 
         {error && (
-          <p className="mt-4 rounded-md bg-[var(--color-danger)]/10 p-3 text-sm text-[var(--danger)]">
+          <p className="bg-[var(--color-danger)]/10 mt-4 rounded-md p-3 text-sm text-[var(--danger)]">
             {error}
           </p>
         )}

@@ -43,12 +43,7 @@ interface Options {
  *       initialFocus: () => inputRef.current?.focus(),
  *     });
  */
-export function useDialog({
-  open,
-  onClose,
-  containerRef,
-  initialFocus,
-}: Options): void {
+export function useDialog({ open, onClose, containerRef, initialFocus }: Options): void {
   const previousFocus = useRef<HTMLElement | null>(null);
 
   // Focus restoration + initial focus on (re)open.
@@ -63,8 +58,12 @@ export function useDialog({
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     if (initialFocus) {
       // setTimeout(0) so the focus call runs after the dialog has actually mounted.
-      const t = window.setTimeout(() => { initialFocus(); }, 0);
-      return () => { window.clearTimeout(t); };
+      const t = window.setTimeout(() => {
+        initialFocus();
+      }, 0);
+      return () => {
+        window.clearTimeout(t);
+      };
     }
     return undefined;
   }, [open, initialFocus]);
@@ -78,7 +77,9 @@ export function useDialog({
       onClose();
     };
     window.addEventListener("keydown", onKey);
-    return () => { window.removeEventListener("keydown", onKey); };
+    return () => {
+      window.removeEventListener("keydown", onKey);
+    };
   }, [open, onClose]);
 
   // Tab focus trap.
@@ -111,6 +112,8 @@ export function useDialog({
       }
     };
     root.addEventListener("keydown", onKey);
-    return () => { root.removeEventListener("keydown", onKey); };
+    return () => {
+      root.removeEventListener("keydown", onKey);
+    };
   }, [open, containerRef]);
 }

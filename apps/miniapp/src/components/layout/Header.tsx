@@ -22,26 +22,19 @@ export function Header() {
   // currencies as ``+N``.
   const grouped = groupBalancesByCurrency(wallet.data ?? []);
   const balance = pickPrimaryBalance(grouped, homeCurrency);
-  const others = grouped.filter(
-    (g) => g.amount !== 0 && g.currency !== balance?.currency,
-  );
+  const others = grouped.filter((g) => g.amount !== 0 && g.currency !== balance?.currency);
   const extraCount = others.length;
   const user = me.data;
 
   return (
-    <header className="fixed top-0 left-0 right-0 h-16 bg-background/80 backdrop-blur-xl border-b border-border z-50 flex items-center justify-between px-4 max-w-[430px] mx-auto">
+    <header className="bg-background/80 border-border fixed left-0 right-0 top-0 z-50 mx-auto flex h-16 max-w-[430px] items-center justify-between border-b px-4 backdrop-blur-xl">
       {/* Brand — full wordmark SVG. Lives in apps/miniapp/public/, the
           path is unhashed because Vite passes /logo-wordmark.svg through
           as-is for public assets. ``alt`` is the brand name so screen
           readers / Telegram link previews still read "YuPay" even if the
           asset 404s. */}
       <Link href="/" className="flex items-center" aria-label="YuPay">
-        <img
-          src="/logo-wordmark.svg"
-          alt="YuPay"
-          className="h-8 w-auto"
-          draggable={false}
-        />
+        <img src="/logo-wordmark.svg" alt="YuPay" className="h-8 w-auto" draggable={false} />
       </Link>
 
       {/* Balance pill + top-up + avatar.
@@ -51,7 +44,7 @@ export function Header() {
           adjacent links so the + is a one-tap shortcut to /wallet/topup. */}
       <div className="flex items-center gap-2">
         <div
-          className="flex items-stretch rounded-full border border-border bg-card overflow-hidden h-9"
+          className="border-border bg-card flex h-9 items-stretch overflow-hidden rounded-full border"
           data-testid="header-wallet"
         >
           <Link
@@ -60,22 +53,18 @@ export function Header() {
             aria-label="Открыть кошелёк"
           >
             <WalletIcon size={12} className="text-white/40" />
-            <span className="text-white font-bold text-sm tabular-nums leading-none">
-              {user && balance
-                ? formatBalance(balance.amount, balance.currency)
-                : "—"}
+            <span className="text-sm font-bold tabular-nums leading-none text-white">
+              {user && balance ? formatBalance(balance.amount, balance.currency) : "—"}
             </span>
             {extraCount > 0 && (
               <span
-                className="text-[10px] font-bold leading-none px-1.5 py-0.5 rounded-full"
+                className="rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none"
                 style={{
                   background: "hsl(var(--surface-2))",
                   color: "rgba(255,255,255,0.55)",
                 }}
                 aria-label={`Ещё ${extraCount.toString()} валют`}
-                title={others
-                  .map((g) => formatBalance(g.amount, g.currency))
-                  .join(" · ")}
+                title={others.map((g) => formatBalance(g.amount, g.currency)).join(" · ")}
               >
                 +{extraCount.toString()}
               </span>
@@ -83,7 +72,7 @@ export function Header() {
           </Link>
           <Link
             href="/wallet/topup"
-            className="flex items-center justify-center w-9 transition-colors"
+            className="flex w-9 items-center justify-center transition-colors"
             style={{ background: "hsl(var(--primary))", color: "#000" }}
             aria-label="Пополнить"
             data-testid="header-topup"
@@ -93,7 +82,7 @@ export function Header() {
         </div>
 
         <Link href="/settings" aria-label="Профиль">
-          <Avatar className="w-9 h-9 border border-border">
+          <Avatar className="border-border h-9 w-9 border">
             {user?.photo_url ? (
               <AvatarImage src={user.photo_url} alt={user.display_name ?? "user"} />
             ) : (

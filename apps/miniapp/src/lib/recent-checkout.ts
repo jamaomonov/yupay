@@ -74,10 +74,7 @@ export function getRecentFulfillment(
   return store[brandSlug] ?? null;
 }
 
-export function rememberFulfillment(
-  brandSlug: string,
-  data: Record<string, unknown>,
-): void {
+export function rememberFulfillment(brandSlug: string, data: Record<string, unknown>): void {
   if (!brandSlug || Object.keys(data).length === 0) return;
   // Sanitise: only persist string scalars. Other shapes are surely not
   // meaningful "remember this" values (and shouldn't bloat localStorage).

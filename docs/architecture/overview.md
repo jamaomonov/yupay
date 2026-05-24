@@ -45,7 +45,7 @@ See [`module-map.md`](./module-map.md) for the authoritative list. Short summary
   `Idempotency-Key` header).
 - **Transactional outbox** for reliable domain event publishing.
 - **Orchestrated saga** for the purchase flow: `PriceLock → Reserve → Pay → Fulfill →
-  Deliver → Reward`. State lives in `fulfillment_tasks`.
+Deliver → Reward`. State lives in `fulfillment_tasks`.
 - **Double-entry ledger** for the wallet (append-only postings, debit = credit invariant per
   currency per transaction).
 - **Payment gateway abstraction** — common protocol for Stripe / PayPal / YooKassa / Click /

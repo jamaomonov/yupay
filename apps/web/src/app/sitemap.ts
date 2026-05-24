@@ -2,7 +2,6 @@ import { LOCALES } from "@yupay/i18n";
 
 import type { MetadataRoute } from "next";
 
-
 const SITE = "https://yupay.io";
 
 export default function sitemap(): MetadataRoute.Sitemap {

@@ -103,7 +103,13 @@ export function ToastRegion() {
       className="pointer-events-none fixed right-4 top-[calc(var(--topbar-height)+0.75rem)] z-[60] flex w-full max-w-sm flex-col gap-2"
     >
       {items.map((t) => (
-        <ToastCard key={t.id} toast={t} onDismiss={() => { dismiss(t.id); }} />
+        <ToastCard
+          key={t.id}
+          toast={t}
+          onDismiss={() => {
+            dismiss(t.id);
+          }}
+        />
       ))}
     </div>
   );
@@ -114,21 +120,17 @@ function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
   useEffect(() => {
     if (toast.duration === null) return;
     const t = window.setTimeout(onDismiss, toast.duration);
-    return () => { window.clearTimeout(t); };
+    return () => {
+      window.clearTimeout(t);
+    };
   }, [toast.duration, onDismiss]);
   return (
     <div
       role={toast.tone === "error" ? "alert" : "status"}
       className="pointer-events-auto relative flex items-start gap-3 overflow-hidden rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] py-3 pl-4 pr-3 text-sm text-[var(--text-primary)] shadow-[var(--shadow-md)]"
     >
-      <span
-        aria-hidden
-        className={`absolute inset-y-0 left-0 w-1 ${BAR_TONE[toast.tone]}`}
-      />
-      <Icon
-        className={`mt-0.5 size-4 flex-shrink-0 ${ICON_TONE[toast.tone]}`}
-        aria-hidden
-      />
+      <span aria-hidden className={`absolute inset-y-0 left-0 w-1 ${BAR_TONE[toast.tone]}`} />
+      <Icon className={`mt-0.5 size-4 flex-shrink-0 ${ICON_TONE[toast.tone]}`} aria-hidden />
       <p className="min-w-0 flex-1 break-words">{toast.message}</p>
       <button
         type="button"

@@ -26,8 +26,6 @@ import { PageHeader } from "@/components/PageHeader";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
-
-
 interface QueueRow {
   task: TaskAdminOut;
   order: OrderAdminOut | null;
@@ -52,15 +50,14 @@ export function ManualQueuePage() {
   const orderQueries = useQueries({
     queries: tasks.map((task) => ({
       queryKey: qk.order(task.order_id),
-      queryFn: () =>
-        apiGet<OrderAdminOut>(`/api/v1/admin/orders/${task.order_id}`),
+      queryFn: () => apiGet<OrderAdminOut>(`/api/v1/admin/orders/${task.order_id}`),
       staleTime: 30_000,
     })),
   });
 
   const rows: QueueRow[] = tasks.map((task, idx) => ({
     task,
-    order: (orderQueries[idx]?.data) ?? null,
+    order: orderQueries[idx]?.data ?? null,
     orderLoading: orderQueries[idx]?.isPending ?? false,
   }));
 
@@ -101,9 +98,7 @@ export function ManualQueuePage() {
         const denom = display.denomination ?? display.sku_code;
         return (
           <div className="flex flex-col">
-            <span className="font-medium">
-              {display.brand_name || display.product_name}
-            </span>
+            <span className="font-medium">{display.brand_name || display.product_name}</span>
             <span className="text-xs text-[var(--text-secondary)]">{denom}</span>
           </div>
         );
@@ -115,8 +110,8 @@ export function ManualQueuePage() {
       render: (r) => (
         <span className="text-sm">
           {r.order
-            ? r.order.guest_email ??
-              (r.order.user_id ? `user:${r.order.user_id.slice(0, 8)}…` : "—")
+            ? (r.order.guest_email ??
+              (r.order.user_id ? `user:${r.order.user_id.slice(0, 8)}…` : "—"))
             : "…"}
         </span>
       ),
@@ -137,14 +132,11 @@ export function ManualQueuePage() {
           <ul className="space-y-0.5 text-xs">
             {entries.slice(0, 2).map(([k, v]) => (
               <li key={k} className="font-mono">
-                <span className="text-[var(--text-secondary)]">{k}:</span>{" "}
-                {String(v).slice(0, 24)}
+                <span className="text-[var(--text-secondary)]">{k}:</span> {String(v).slice(0, 24)}
               </li>
             ))}
             {entries.length > 2 && (
-              <li className="text-[var(--text-secondary)]">
-                +{entries.length - 2}
-              </li>
+              <li className="text-[var(--text-secondary)]">+{entries.length - 2}</li>
             )}
           </ul>
         );
@@ -163,16 +155,13 @@ export function ManualQueuePage() {
             : "—"}
         </span>
       ),
-      sortAccessor: (r) =>
-        r.order ? Number.parseFloat(r.order.total_charged) : 0,
+      sortAccessor: (r) => (r.order ? Number.parseFloat(r.order.total_charged) : 0),
     },
     {
       key: "age",
       header: "Возраст",
       render: (r) => (
-        <span className="text-xs text-[var(--text-secondary)]">
-          {formatAge(r.task.created_at)}
-        </span>
+        <span className="text-xs text-[var(--text-secondary)]">{formatAge(r.task.created_at)}</span>
       ),
       sortAccessor: (r) => r.task.created_at,
     },
@@ -197,20 +186,25 @@ export function ManualQueuePage() {
         columns={columns}
         rowKey={(r) => r.task.id}
         empty="Очередь пуста — все ручные задачи обработаны."
-        onRowClick={(r) => { setOpenTask(r.task); }}
+        onRowClick={(r) => {
+          setOpenTask(r.task);
+        }}
       />
 
       {openTask && (
-        <ManualTaskModal task={openTask} onClose={() => { setOpenTask(null); }} />
+        <ManualTaskModal
+          task={openTask}
+          onClose={() => {
+            setOpenTask(null);
+          }}
+        />
       )}
     </div>
   );
 }
 
 function orderItem(row: QueueRow) {
-  return (
-    row.order?.items.find((i) => i.id === row.task.order_item_id) ?? null
-  );
+  return row.order?.items.find((i) => i.id === row.task.order_item_id) ?? null;
 }
 
 function formatAge(createdIso: string): string {

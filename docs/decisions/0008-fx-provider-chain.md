@@ -25,11 +25,11 @@ Constraints:
 
 ### Provider order
 
-| Slot | Provider | Coverage | Notes |
-|---|---|---|---|
-| primary | **exchangerate.host** | All fiat pairs (USD → RUB, USD → UZS, USD → EUR, ...) | Free, no API key |
-| fallback | **openexchangerates.org** | Same fiat coverage | Free key needed; activate when primary degrades |
-| stablecoin | **coingecko** (`simple/price`) | USDT/USDC/TON in USD | Free; rate-limited but generous |
+| Slot       | Provider                       | Coverage                                              | Notes                                           |
+| ---------- | ------------------------------ | ----------------------------------------------------- | ----------------------------------------------- |
+| primary    | **exchangerate.host**          | All fiat pairs (USD → RUB, USD → UZS, USD → EUR, ...) | Free, no API key                                |
+| fallback   | **openexchangerates.org**      | Same fiat coverage                                    | Free key needed; activate when primary degrades |
+| stablecoin | **coingecko** (`simple/price`) | USDT/USDC/TON in USD                                  | Free; rate-limited but generous                 |
 
 `USD → USDT` is always routed to **coingecko**. Everything else is fiat-first; we fall
 through to the next provider on failure.
@@ -56,10 +56,10 @@ If **all** providers fail:
 
 ### Caching (Redis)
 
-| Key | TTL | Purpose |
-|---|---|---|
-| `fx:rate:{base}:{quote}` | 15 min | Hot read path; refreshed by the scheduler every 5 min |
-| `fx:rate:{base}:{quote}:stale` | 24 h | Graceful degradation when all providers fail |
+| Key                            | TTL    | Purpose                                               |
+| ------------------------------ | ------ | ----------------------------------------------------- |
+| `fx:rate:{base}:{quote}`       | 15 min | Hot read path; refreshed by the scheduler every 5 min |
+| `fx:rate:{base}:{quote}:stale` | 24 h   | Graceful degradation when all providers fail          |
 
 A scheduled job (`fx_refresh`) runs every 5 minutes and pushes the matrix of supported
 pairs through the chain. Demand reads only ever touch Redis under steady state.
@@ -88,7 +88,7 @@ holding the cart open for hours and exploiting an outdated quote.
 
 ### Configuration
 
-Settings keys (added to ``yupay.core.config.Settings``):
+Settings keys (added to `yupay.core.config.Settings`):
 
 - `fx_primary_url` — exchangerate.host endpoint
 - `fx_fallback_url` + `fx_fallback_api_key` — openexchangerates

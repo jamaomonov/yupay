@@ -15,7 +15,6 @@ import { buildSegmentHref, type SavedSegment, type SavedSegmentList } from "./ty
 import { type ApiError, apiDelete, apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
-
 export function SavedSegmentsNav() {
   const qc = useQueryClient();
   const q = useQuery<SavedSegmentList>({
@@ -60,10 +59,10 @@ export function SavedSegmentsNav() {
               }}
               aria-label={`Удалить сегмент ${s.name}`}
               className={[
-                "absolute right-2 top-1/2 -translate-y-1/2 grid size-7 place-items-center rounded",
+                "absolute right-2 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded",
                 "text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] hover:text-[var(--danger)]",
                 "opacity-0 transition-opacity",
-                "group-hover:opacity-100 group-focus-within:opacity-100",
+                "group-focus-within:opacity-100 group-hover:opacity-100",
                 "focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-sidebar)]",
               ].join(" ")}
             >
@@ -86,7 +85,7 @@ function SegmentLink({ segment }: { segment: SavedSegment }) {
           "flex items-center gap-2 rounded-md px-3 py-1.5 pr-8 text-xs transition-colors",
           isActive
             ? "bg-[var(--bg-muted)] text-[var(--text-primary)]"
-            : "text-[var(--text-secondary)] hover:bg-[var(--bg-muted)]/60 hover:text-[var(--text-primary)]",
+            : "hover:bg-[var(--bg-muted)]/60 text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
         ].join(" ")
       }
       title={`${segment.path} (${Object.keys(segment.params).length.toString()} параметров)`}

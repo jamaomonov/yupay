@@ -16,6 +16,8 @@ export function useGlobalSearchHotkey(onOpen: () => void): void {
       onOpen();
     };
     window.addEventListener("keydown", handler);
-    return () => { window.removeEventListener("keydown", handler); };
+    return () => {
+      window.removeEventListener("keydown", handler);
+    };
   }, [onOpen]);
 }
