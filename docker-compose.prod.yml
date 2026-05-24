@@ -6,6 +6,15 @@ x-app-env: &app-env
   LOG_LEVEL: INFO
   LOG_JSON: "true"
 
+# Disable IPv6 inside outbound-heavy containers. On Yandex Cloud the
+# bridge has no IPv6 route, but ``api.telegram.org`` returns an
+# AAAA record. aiohappyeyeballs tries IPv6 first → silent hang →
+# ``TelegramNetworkError: Request timeout``. namespace-level sysctls
+# work without ``privileged: true``.
+x-no-ipv6: &no-ipv6
+  - net.ipv6.conf.all.disable_ipv6=1
+  - net.ipv6.conf.default.disable_ipv6=1
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -54,6 +63,7 @@ services:
     environment:
       <<: *app-env
     env_file: /opt/yupay/secrets/api.env
+    sysctls: *no-ipv6
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_started }
@@ -67,6 +77,7 @@ services:
     environment:
       <<: *app-env
     env_file: /opt/yupay/secrets/api.env
+    sysctls: *no-ipv6
     depends_on: [postgres, redis]
 
   scheduler:
@@ -75,6 +86,7 @@ services:
     environment:
       <<: *app-env
     env_file: /opt/yupay/secrets/api.env
+    sysctls: *no-ipv6
     depends_on: [postgres, redis]
 
   bot:
@@ -83,6 +95,7 @@ services:
     environment:
       <<: *app-env
     env_file: /opt/yupay/secrets/api.env
+    sysctls: *no-ipv6
     depends_on: [api]
 
   web:
