@@ -20,7 +20,7 @@ export function Shell({ children }: { children: ReactNode }) {
         <main
           style={{
             paddingTop:
-              "calc(max(var(--tg-content-safe-area-inset-top, 0px), env(safe-area-inset-top, 0px)) + 4rem)",
+              "calc(max(var(--app-tg-fullscreen-top, 0px), var(--tg-content-safe-area-inset-top, 0px), env(safe-area-inset-top, 0px)) + 4rem)",
           }}
           className="flex-1 overflow-y-auto scroll-smooth pb-[108px]"
         >

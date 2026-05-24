@@ -35,7 +35,15 @@ export function Header() {
       // we run as a PWA outside Telegram. Pure 0 in the desktop
       // browser dev case.
       style={{
-        top: "max(var(--tg-content-safe-area-inset-top, 0px), env(safe-area-inset-top, 0px))",
+        // Order of preference:
+        //   1. ``--app-tg-fullscreen-top`` — set by our own
+        //      ``maximiseTelegramViewport`` the moment fullscreen is
+        //      granted (Telegram's own vars hydrate too late);
+        //   2. Telegram-native ``--tg-content-safe-area-inset-top``
+        //      — eventually populated, used as a sanity fallback;
+        //   3. iOS-style ``env(safe-area-inset-top)`` — covers the
+        //      PWA install case outside Telegram.
+        top: "max(var(--app-tg-fullscreen-top, 0px), var(--tg-content-safe-area-inset-top, 0px), env(safe-area-inset-top, 0px))",
       }}
       className="bg-background/80 border-border fixed left-0 right-0 z-50 mx-auto flex h-16 max-w-[430px] items-center justify-between border-b px-4 backdrop-blur-xl"
     >

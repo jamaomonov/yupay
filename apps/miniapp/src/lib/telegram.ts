@@ -119,9 +119,11 @@ export function maximiseTelegramViewport(): void {
   } catch {
     /* very old clients */
   }
+  let wentFullscreen = false;
   if (typeof wa.requestFullscreen === "function") {
     try {
       wa.requestFullscreen();
+      wentFullscreen = true;
     } catch {
       /* not supported on this client */
     }
@@ -132,6 +134,16 @@ export function maximiseTelegramViewport(): void {
     } catch {
       /* not supported */
     }
+  }
+  // Telegram's own ``--tg-content-safe-area-inset-top`` is hydrated
+  // asynchronously and is empty on the first paint, so a ``max(var(),
+  // 0)`` resolves to 0 and the header sits *under* the floating
+  // close/back chip. Set our own var ourselves the moment we know
+  // we're in fullscreen — the value comes from observation (56 px is
+  // the close/back chip footprint on every Telegram client where
+  // requestFullscreen is supported, give or take a few pixels).
+  if (wentFullscreen && typeof document !== "undefined") {
+    document.documentElement.style.setProperty("--app-tg-fullscreen-top", "56px");
   }
 }
 
