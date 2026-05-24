@@ -14,6 +14,12 @@ x-app-env: &app-env
 x-no-ipv6: &no-ipv6
   - net.ipv6.conf.all.disable_ipv6=1
   - net.ipv6.conf.default.disable_ipv6=1
+  # ICMP "fragmentation needed" is often filtered on cloud egress,
+  # so the kernel can't discover the real path MTU from ICMP. =2
+  # forces TCP MTU probing for every connection (RFC 4821) — costs
+  # nothing on healthy paths, recovers from black-hole MTU drops on
+  # the bad ones.
+  - net.ipv4.tcp_mtu_probing=2
 
 services:
   postgres:
