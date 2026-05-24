@@ -13,17 +13,10 @@ export function Shell({ children }: { children: ReactNode }) {
     <div className="bg-background text-foreground flex min-h-screen w-full justify-center">
       <div className="bg-background border-border/50 relative flex min-h-screen w-full max-w-[430px] flex-col overflow-hidden border-x shadow-2xl">
         <Header />
-        {/* ``paddingTop`` mirrors the offset we applied to the header
-            itself (Telegram safe-area + 64 px bar height) so page
-            content starts cleanly below the bar in both fullscreen
-            and the legacy mini-app sheet. */}
-        <main
-          style={{
-            paddingTop:
-              "calc(max(var(--app-tg-fullscreen-top, 0px), var(--tg-content-safe-area-inset-top, 0px), env(safe-area-inset-top, 0px)) + 4rem)",
-          }}
-          className="flex-1 overflow-y-auto scroll-smooth pb-[108px]"
-        >
+        {/* Content padding mirrors the header offset: 56 px for the
+            Telegram close/back safe-area + 64 px header height = 120
+            px / 7.5rem. */}
+        <main className="flex-1 overflow-y-auto scroll-smooth pb-[108px] pt-[7.5rem]">
           {children}
         </main>
         <BottomNav />
