@@ -52,9 +52,7 @@ def _pick_translation(
     )
 
 
-def _pick_category_translation(
-    translations: list[Any], locale: str
-) -> tuple[str, str | None]:
+def _pick_category_translation(translations: list[Any], locale: str) -> tuple[str, str | None]:
     by_locale = {t.locale: t for t in translations}
     chosen = (
         by_locale.get(locale)
@@ -100,7 +98,7 @@ async def _resolve_price(
 
     if fx is None:
         return None
-    from yupay.modules.fx.service import FxUnavailableError  # noqa: PLC0415
+    from yupay.modules.fx.service import FxUnavailableError
 
     try:
         result = await fx.convert(sku.price_usd, base="USD", quote=cu)
@@ -201,9 +199,7 @@ async def get_brand_by_slug(
 
     name, short_desc, description = _pick_translation(brand.translations, locale)
     products_out: list[ProductSummaryOut] = []
-    for product in sorted(
-        (p for p in brand.products if p.active), key=lambda p: p.sort_order
-    ):
+    for product in sorted((p for p in brand.products if p.active), key=lambda p: p.sort_order):
         active_skus = sorted(
             (s for s in product.skus if s.active),
             key=lambda s: (s.sort_order, s.price_usd),
@@ -213,9 +209,7 @@ async def get_brand_by_slug(
         starting = active_skus[0]
         display = await _resolve_price(starting, currency=currency, fx=fx)
         products_out.append(
-            _build_product_summary(
-                product, locale=locale, starting=starting, display=display
-            )
+            _build_product_summary(product, locale=locale, starting=starting, display=display)
         )
 
     return BrandDetailOut(
@@ -254,9 +248,7 @@ async def list_products(
     if brand_slug is not None:
         stmt = stmt.join(Product.brand).where(Brand.slug == brand_slug)
     elif category_slug is not None:
-        stmt = stmt.join(Product.brand).join(Brand.category).where(
-            Category.slug == category_slug
-        )
+        stmt = stmt.join(Product.brand).join(Brand.category).where(Category.slug == category_slug)
 
     rows = (await db.execute(stmt)).scalars().all()
 
@@ -271,9 +263,7 @@ async def list_products(
         starting = active_skus[0]
         display = await _resolve_price(starting, currency=currency, fx=fx)
         summaries.append(
-            _build_product_summary(
-                product, locale=locale, starting=starting, display=display
-            )
+            _build_product_summary(product, locale=locale, starting=starting, display=display)
         )
     return summaries
 

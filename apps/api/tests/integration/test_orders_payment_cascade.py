@@ -101,10 +101,14 @@ async def test_expire_cancels_pending_payment(db_session: AsyncSession) -> None:
     assert payment.status == "cancelled", "pending payment must follow its expired order"
 
     attempts = (
-        await db_session.execute(
-            select(PaymentAttempt).where(PaymentAttempt.payment_id == payment_id)
+        (
+            await db_session.execute(
+                select(PaymentAttempt).where(PaymentAttempt.payment_id == payment_id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     cancel_attempts = [a for a in attempts if a.kind == "cancel"]
     assert cancel_attempts, "cascade-cancel must leave an audit row on payment_attempts"
     assert cancel_attempts[0].payload.get("trigger") == "order_terminated"
@@ -133,9 +137,7 @@ async def test_expire_with_no_payments_is_noop(db_session: AsyncSession) -> None
     count = await orders_svc.expire_stale_orders(db_session)
     await db_session.commit()
     assert count == 1
-    order = (
-        await db_session.execute(select(Order).where(Order.id == order_id))
-    ).scalar_one()
+    order = (await db_session.execute(select(Order).where(Order.id == order_id))).scalar_one()
     assert order.status == "expired"
 
 

@@ -242,9 +242,7 @@ async def test_finds_user_by_telegram_username(
     db_session: AsyncSession,
     _admin_headers: dict[str, str],
 ) -> None:
-    user_id = await _make_user(
-        db_session, email=None, tg_user_id=555111, tg_username="bobby"
-    )
+    user_id = await _make_user(db_session, email=None, tg_user_id=555111, tg_username="bobby")
     r = await integration_client.get(
         "/api/v1/admin/search", params={"q": "bobby"}, headers=_admin_headers
     )
@@ -257,9 +255,7 @@ async def test_finds_user_by_numeric_tg_id(
     db_session: AsyncSession,
     _admin_headers: dict[str, str],
 ) -> None:
-    user_id = await _make_user(
-        db_session, email=None, tg_user_id=987654321, tg_username=None
-    )
+    user_id = await _make_user(db_session, email=None, tg_user_id=987654321, tg_username=None)
     r = await integration_client.get(
         "/api/v1/admin/search", params={"q": "987654321"}, headers=_admin_headers
     )
@@ -289,9 +285,7 @@ async def test_finds_payment_by_external_id(
 ) -> None:
     user_id = await _make_user(db_session, email="payer@example.com")
     order_id = await _make_order(db_session, user_id=user_id)
-    payment_id = await _make_payment(
-        db_session, order_id=order_id, external_id="EXT-PAY-12345"
-    )
+    payment_id = await _make_payment(db_session, order_id=order_id, external_id="EXT-PAY-12345")
     r = await integration_client.get(
         "/api/v1/admin/search", params={"q": "ext-pay-123"}, headers=_admin_headers
     )

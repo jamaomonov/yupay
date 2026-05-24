@@ -12,8 +12,8 @@
  * switch tabs. The active tab is the only Tab-stop for the whole list.
  */
 
-import { useId } from "react";
 import { type LucideIcon } from "lucide-react";
+import { useId } from "react";
 
 export interface TabDescriptor<T extends string> {
   id: T;

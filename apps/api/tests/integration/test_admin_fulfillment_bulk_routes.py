@@ -68,9 +68,7 @@ async def _admin_headers(
     return {"Authorization": f"Bearer {token}"}
 
 
-async def _make_task(
-    db: AsyncSession, *, status: str = "failed", supplier: str = "manual"
-) -> str:
+async def _make_task(db: AsyncSession, *, status: str = "failed", supplier: str = "manual") -> str:
     """Build the catalog + order + item chain needed for an isolated test task."""
     slug = uuid.uuid4().hex[:8]
     user_id = str(uuid.uuid4())

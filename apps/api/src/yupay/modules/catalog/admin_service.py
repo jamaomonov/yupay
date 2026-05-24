@@ -86,9 +86,7 @@ async def create_category(db: AsyncSession, body: CategoryCreate) -> Category:
     return row
 
 
-async def update_category(
-    db: AsyncSession, category_id: str, body: CategoryUpdate
-) -> Category:
+async def update_category(db: AsyncSession, category_id: str, body: CategoryUpdate) -> Category:
     row = await get_category(db, category_id)
     if body.slug is not None:
         row.slug = body.slug
@@ -130,11 +128,7 @@ async def list_all_brands(db: AsyncSession) -> list[Brand]:
 
 
 async def get_brand(db: AsyncSession, brand_id: str) -> Brand:
-    stmt = (
-        select(Brand)
-        .options(selectinload(Brand.translations))
-        .where(Brand.id == brand_id)
-    )
+    stmt = select(Brand).options(selectinload(Brand.translations)).where(Brand.id == brand_id)
     row = (await db.execute(stmt)).scalar_one_or_none()
     if row is None:
         raise NotFoundError("brand not found")
@@ -207,9 +201,7 @@ async def delete_brand(db: AsyncSession, brand_id: str) -> None:
 # ---------- products ----------
 
 
-async def list_all_products(
-    db: AsyncSession, *, brand_id: str | None = None
-) -> list[Product]:
+async def list_all_products(db: AsyncSession, *, brand_id: str | None = None) -> list[Product]:
     stmt = (
         select(Product)
         .options(selectinload(Product.translations))
@@ -222,9 +214,7 @@ async def list_all_products(
 
 async def get_product(db: AsyncSession, product_id: str) -> Product:
     stmt = (
-        select(Product)
-        .options(selectinload(Product.translations))
-        .where(Product.id == product_id)
+        select(Product).options(selectinload(Product.translations)).where(Product.id == product_id)
     )
     row = (await db.execute(stmt)).scalar_one_or_none()
     if row is None:
@@ -262,9 +252,7 @@ async def create_product(db: AsyncSession, body: ProductCreate) -> Product:
     return row
 
 
-async def update_product(
-    db: AsyncSession, product_id: str, body: ProductUpdate
-) -> Product:
+async def update_product(db: AsyncSession, product_id: str, body: ProductUpdate) -> Product:
     row = await get_product(db, product_id)
     if body.brand_id is not None:
         await get_brand(db, body.brand_id)
@@ -302,9 +290,7 @@ async def delete_product(db: AsyncSession, product_id: str) -> None:
 # ---------- SKUs ----------
 
 
-async def list_all_skus(
-    db: AsyncSession, *, product_id: str | None = None
-) -> list[Sku]:
+async def list_all_skus(db: AsyncSession, *, product_id: str | None = None) -> list[Sku]:
     stmt = select(Sku).options(selectinload(Sku.price_overrides))
     if product_id is not None:
         stmt = stmt.where(Sku.product_id == product_id)
@@ -313,9 +299,7 @@ async def list_all_skus(
 
 
 async def get_sku(db: AsyncSession, sku_id: str) -> Sku:
-    stmt = (
-        select(Sku).options(selectinload(Sku.price_overrides)).where(Sku.id == sku_id)
-    )
+    stmt = select(Sku).options(selectinload(Sku.price_overrides)).where(Sku.id == sku_id)
     row = (await db.execute(stmt)).scalar_one_or_none()
     if row is None:
         raise NotFoundError("sku not found")
@@ -403,17 +387,14 @@ async def bulk_set_uzs_prices(
     so a clearly-wrong rate doesn't silently fan out across the catalog.
     """
     from sqlalchemy.dialects.postgresql import insert as pg_insert
+
     from yupay.modules.fx.models import FxSnapshot
 
     snap = await fx_service.snapshot(db, base="USDT", quote="UZS")
     rate = snap.rate
 
     skus = list(
-        (
-            await db.execute(
-                select(Sku).where(Sku.active.is_(True)).where(Sku.cost_usdt.isnot(None))
-            )
-        )
+        (await db.execute(select(Sku).where(Sku.active.is_(True)).where(Sku.cost_usdt.isnot(None))))
         .scalars()
         .all()
     )

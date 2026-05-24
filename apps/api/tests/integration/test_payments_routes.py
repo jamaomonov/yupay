@@ -111,9 +111,7 @@ async def _seed_sku(db_session: AsyncSession) -> str:
     return sku.id
 
 
-async def _create_order(
-    client: AsyncClient, *, token: str, sku_id: str, key: str
-) -> str:
+async def _create_order(client: AsyncClient, *, token: str, sku_id: str, key: str) -> str:
     r = await client.post(
         "/api/v1/orders",
         headers={"Authorization": f"Bearer {token}", "Idempotency-Key": key},
@@ -180,9 +178,7 @@ async def test_create_intent_reuses_pending_payment(
     assert first.json()["id"] == second.json()["id"]
 
 
-async def test_intent_for_other_user_404(
-    integration_client: AsyncClient, _seed_sku: str
-) -> None:
+async def test_intent_for_other_user_404(integration_client: AsyncClient, _seed_sku: str) -> None:
     owner = await _login_user(integration_client, tg_id=103)
     stranger = await _login_user(integration_client, tg_id=104)
     order_id = await _create_order(
@@ -196,9 +192,7 @@ async def test_intent_for_other_user_404(
     assert r.status_code == 404
 
 
-async def test_stub_provider_refuses(
-    integration_client: AsyncClient, _seed_sku: str
-) -> None:
+async def test_stub_provider_refuses(integration_client: AsyncClient, _seed_sku: str) -> None:
     token = await _login_user(integration_client, tg_id=105)
     order_id = await _create_order(
         integration_client, token=token, sku_id=_seed_sku, key="pay-intent-dddd-pad"
@@ -307,9 +301,7 @@ async def test_webhook_unknown_provider_404(
 # ---------- get / list / admin ----------
 
 
-async def test_get_payment_owner_only(
-    integration_client: AsyncClient, _seed_sku: str
-) -> None:
+async def test_get_payment_owner_only(integration_client: AsyncClient, _seed_sku: str) -> None:
     owner = await _login_user(integration_client, tg_id=121)
     stranger = await _login_user(integration_client, tg_id=122)
     order_id = await _create_order(

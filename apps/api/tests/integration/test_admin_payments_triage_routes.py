@@ -169,9 +169,7 @@ async def test_triage_returns_both_buckets(
     integration_client: AsyncClient,
     _admin_headers: dict[str, str],
 ) -> None:
-    r = await integration_client.get(
-        "/api/v1/admin/payments/triage", headers=_admin_headers
-    )
+    r = await integration_client.get("/api/v1/admin/payments/triage", headers=_admin_headers)
     assert r.status_code == 200, r.text
     body = r.json()
     assert set(body.keys()) >= {"stuck_pending", "failed_webhooks", "threshold_minutes"}
@@ -189,9 +187,7 @@ async def test_stuck_payment_appears_only_over_threshold(
 ) -> None:
     # Two pending payments: one fresh, one old.
     _, fresh_pid, _ = await _make_order_with_payment(db_session, payment_age_minutes=5)
-    _, old_pid, user_id = await _make_order_with_payment(
-        db_session, payment_age_minutes=120
-    )
+    _, old_pid, user_id = await _make_order_with_payment(db_session, payment_age_minutes=120)
     r = await integration_client.get(
         "/api/v1/admin/payments/triage?stuck_after_minutes=30",
         headers=_admin_headers,
@@ -230,9 +226,7 @@ async def test_failed_webhook_with_bad_signature_appears(
     _admin_headers: dict[str, str],
 ) -> None:
     wid = await _make_webhook(db_session, signature_ok=False, processed=False)
-    r = await integration_client.get(
-        "/api/v1/admin/payments/triage", headers=_admin_headers
-    )
+    r = await integration_client.get("/api/v1/admin/payments/triage", headers=_admin_headers)
     assert r.status_code == 200, r.text
     failed = r.json()["failed_webhooks"]
     assert any(w["id"] == wid for w in failed)
@@ -246,9 +240,7 @@ async def test_processed_ok_webhook_not_listed(
     _admin_headers: dict[str, str],
 ) -> None:
     wid = await _make_webhook(db_session, signature_ok=True, processed=True)
-    r = await integration_client.get(
-        "/api/v1/admin/payments/triage", headers=_admin_headers
-    )
+    r = await integration_client.get("/api/v1/admin/payments/triage", headers=_admin_headers)
     assert r.status_code == 200
     failed = r.json()["failed_webhooks"]
     assert all(w["id"] != wid for w in failed)

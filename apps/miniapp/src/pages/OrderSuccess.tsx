@@ -10,8 +10,6 @@
  * artifacts (voucher codes, receipts, license keys) the moment they appear.
  */
 
-import { useEffect, useMemo, useState } from "react";
-import { useLocation, useParams, Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
@@ -25,6 +23,8 @@ import {
   Sparkles,
   XCircle,
 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useParams, Link } from "wouter";
 
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -78,8 +78,8 @@ function useElapsedSeconds(start: string | null | undefined, active: boolean): n
     if (!active) return;
     // 5s tick is enough — thresholds are minute-grained, sub-second precision
     // is wasted CPU and battery.
-    const id = window.setInterval(() => setNow(Date.now()), 5_000);
-    return () => window.clearInterval(id);
+    const id = window.setInterval(() => { setNow(Date.now()); }, 5_000);
+    return () => { window.clearInterval(id); };
   }, [active]);
   if (!start) return 0;
   const startedAt = new Date(start).getTime();
@@ -175,13 +175,13 @@ export default function OrderSuccess() {
       <ErrorView
         title="Заказ не найден"
         subtitle="Попробуйте открыть страницу из истории."
-        onHome={() => setLocation("/")}
+        onHome={() => { setLocation("/"); }}
       />
     );
   }
 
   if (orderQuery.isLoading || !order) {
-    return <SkeletonView onBack={() => setLocation("/")} />;
+    return <SkeletonView onBack={() => { setLocation("/"); }} />;
   }
 
   const stage = STAGE[order.status];
@@ -199,7 +199,7 @@ export default function OrderSuccess() {
     >
       <header className="px-4 pt-3 flex items-center gap-3">
         <button
-          onClick={() => setLocation("/history")}
+          onClick={() => { setLocation("/history"); }}
           className="size-9 rounded-xl flex items-center justify-center"
           style={{
             background: "hsl(var(--card))",
@@ -586,7 +586,7 @@ function TopUpReceipt({
   const fields = artifactSnapshot ?? fulfillmentData;
 
   const entries = Object.entries(fields).filter(
-    ([, v]) => typeof v === "string" && (v as string).trim().length > 0,
+    ([, v]) => typeof v === "string" && (v).trim().length > 0,
   ) as [string, string][];
 
   return (
@@ -755,7 +755,7 @@ function CopyableValue({
 }) {
   return (
     <button
-      onClick={() => onCopy(value)}
+      onClick={() => { onCopy(value); }}
       className="group w-full text-left rounded-xl px-3 py-3 flex items-center gap-3 transition-colors active:scale-[0.99]"
       style={{
         background: "hsl(var(--surface-2))",

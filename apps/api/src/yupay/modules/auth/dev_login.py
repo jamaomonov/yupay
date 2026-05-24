@@ -42,9 +42,7 @@ def _dev_login_active(settings: Settings) -> bool:
 
 async def _ensure_dev_admin(db: AsyncSession) -> User:
     """Find-or-create the singleton dev admin row."""
-    user = (
-        await db.execute(select(User).where(User.id == DEV_ADMIN_ID))
-    ).scalar_one_or_none()
+    user = (await db.execute(select(User).where(User.id == DEV_ADMIN_ID))).scalar_one_or_none()
     if user is None:
         user = User(
             id=DEV_ADMIN_ID,

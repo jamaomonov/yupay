@@ -88,11 +88,7 @@ async def _fetch_payment_attempts(
     actor: str | None,
     limit: int,
 ) -> list[AuditEvent]:
-    stmt = (
-        select(PaymentAttempt)
-        .order_by(PaymentAttempt.created_at.desc())
-        .limit(limit)
-    )
+    stmt = select(PaymentAttempt).order_by(PaymentAttempt.created_at.desc()).limit(limit)
     if since is not None:
         stmt = stmt.where(PaymentAttempt.created_at >= since)
     if until is not None:
@@ -104,9 +100,7 @@ async def _fetch_payment_attempts(
     for r in rows:
         payload = dict(r.payload or {})
         # payment_attempts carry the admin id in payload for refunds; surface it.
-        actor_v = (
-            f"admin:{payload['admin_id']}" if payload.get("admin_id") else None
-        )
+        actor_v = f"admin:{payload['admin_id']}" if payload.get("admin_id") else None
         if actor is not None and actor_v != actor:
             continue
         out.append(
@@ -136,11 +130,7 @@ async def _fetch_payment_webhooks(
     # actor isn't meaningful for inbound webhooks (no human pressed a button).
     if actor is not None:
         return []
-    stmt = (
-        select(PaymentWebhook)
-        .order_by(PaymentWebhook.received_at.desc())
-        .limit(limit)
-    )
+    stmt = select(PaymentWebhook).order_by(PaymentWebhook.received_at.desc()).limit(limit)
     if since is not None:
         stmt = stmt.where(PaymentWebhook.received_at >= since)
     if until is not None:
@@ -155,10 +145,7 @@ async def _fetch_payment_webhooks(
             id=r.id,
             ts=r.received_at,
             source="payment_webhook",
-            kind=(
-                f"webhook.{r.provider}."
-                f"{'ok' if r.signature_ok else 'rejected'}"
-            ),
+            kind=(f"webhook.{r.provider}.{'ok' if r.signature_ok else 'rejected'}"),
             actor=None,
             target_id=r.external_event_id,
             target_kind="webhook",
@@ -181,11 +168,7 @@ async def _fetch_fulfillment_attempts(
     # actor filter just rejects everything.
     if actor is not None:
         return []
-    stmt = (
-        select(FulfillmentAttempt)
-        .order_by(FulfillmentAttempt.created_at.desc())
-        .limit(limit)
-    )
+    stmt = select(FulfillmentAttempt).order_by(FulfillmentAttempt.created_at.desc()).limit(limit)
     if since is not None:
         stmt = stmt.where(FulfillmentAttempt.created_at >= since)
     if until is not None:
@@ -217,11 +200,7 @@ async def _fetch_wallet_transactions(
     actor: str | None,
     limit: int,
 ) -> list[AuditEvent]:
-    stmt = (
-        select(WalletTransaction)
-        .order_by(WalletTransaction.created_at.desc())
-        .limit(limit)
-    )
+    stmt = select(WalletTransaction).order_by(WalletTransaction.created_at.desc()).limit(limit)
     if since is not None:
         stmt = stmt.where(WalletTransaction.created_at >= since)
     if until is not None:
@@ -324,9 +303,7 @@ async def list_audit_events(
         )
         collected.extend(rows)
     if admin_only:
-        collected = [
-            e for e in collected if e.actor is not None and e.actor.startswith("admin:")
-        ]
+        collected = [e for e in collected if e.actor is not None and e.actor.startswith("admin:")]
     collected.sort(key=lambda e: e.ts, reverse=True)
     return collected[:limit]
 

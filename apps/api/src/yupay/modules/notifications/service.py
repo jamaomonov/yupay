@@ -15,7 +15,7 @@ from typing import Any, Final
 
 from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.orm import Session, selectinload
 
 from yupay.core.config import get_settings
 from yupay.core.db import get_session_factory
@@ -246,9 +246,7 @@ async def _load_order(db: AsyncSession, order_id: str) -> Order | None:
             items_to_sku.selectinload(Sku.product)
             .joinedload(Product.brand)
             .selectinload(Brand.translations),
-            items_to_sku.selectinload(Sku.product).selectinload(
-                Product.translations
-            ),
+            items_to_sku.selectinload(Sku.product).selectinload(Product.translations),
         )
     )
     return (await db.execute(stmt)).scalar_one_or_none()

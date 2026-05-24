@@ -10,7 +10,7 @@ export type GameIconComponent = ComponentType<{ style?: CSSProperties }>;
 
 export type Category = "games" | "services" | "cards";
 
-export type Game = {
+export interface Game {
   id: string;
   name: string;
   publisher: string;
@@ -29,4 +29,4 @@ export type Game = {
   inputPlaceholder: string;
   featured?: boolean;
   featuredDesc?: string;
-};
+}

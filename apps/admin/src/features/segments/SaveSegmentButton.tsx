@@ -9,19 +9,19 @@
  * just a fixed overlay with a small form.
  */
 
-import { useId, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useLocation } from "react-router-dom";
-import { Bookmark, X } from "lucide-react";
-
 import { Button, Input } from "@yupay/ui";
+import { Bookmark, X } from "lucide-react";
+import { useId, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
+
+import type { SavedSegment, SavedSegmentIn } from "./types";
 
 import { Field } from "@/components/Field";
 import { type ApiError, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { useDialog } from "@/lib/useDialog";
 
-import type { SavedSegment, SavedSegmentIn } from "./types";
 
 export function SaveSegmentButton() {
   const [open, setOpen] = useState(false);

@@ -83,7 +83,7 @@ export function useWallet() {
       const data = await apiGet<WalletOverviewOut>("/api/v1/wallet");
       return data.balances
         .filter((b) =>
-          ACCOUNT_ORDER.includes(b.kind as UserAccountKind),
+          ACCOUNT_ORDER.includes(b.kind),
         )
         .map((b) => ({
           kind: b.kind,

@@ -60,9 +60,7 @@ def _validate_legs(legs: list[Leg]) -> None:
     )
     for leg in legs:
         if leg.amount <= 0:
-            raise ValidationError(
-                "leg amount must be positive", extra={"amount": str(leg.amount)}
-            )
+            raise ValidationError("leg amount must be positive", extra={"amount": str(leg.amount)})
         if leg.direction not in ("D", "C"):
             raise ValidationError(
                 "leg direction must be D or C", extra={"direction": leg.direction}
@@ -144,10 +142,10 @@ async def post(
     # Currency-account match check.
     account_ids = {leg.account_id for leg in legs}
     accounts = (
-        await db.execute(
-            select(WalletAccount).where(WalletAccount.id.in_(account_ids))
-        )
-    ).scalars().all()
+        (await db.execute(select(WalletAccount).where(WalletAccount.id.in_(account_ids))))
+        .scalars()
+        .all()
+    )
     by_id = {a.id: a for a in accounts}
     if len(by_id) != len(account_ids):
         raise NotFoundError("one or more wallet accounts not found")
@@ -163,9 +161,7 @@ async def post(
                 },
             )
         if acc.status != "active":
-            raise ConflictError(
-                "account is frozen", extra={"account_id": leg.account_id}
-            )
+            raise ConflictError("account is frozen", extra={"account_id": leg.account_id})
 
     txn = WalletTransaction(
         id=new_id(),
@@ -228,9 +224,7 @@ async def balance(db: AsyncSession, account_id: str) -> Decimal:
         ),
         Decimal("0"),
     )
-    result = await db.execute(
-        select(expr).where(WalletPosting.account_id == account_id)
-    )
+    result = await db.execute(select(expr).where(WalletPosting.account_id == account_id))
     return Decimal(result.scalar_one())
 
 
@@ -370,8 +364,8 @@ async def admin_adjust(
 
 
 __all__ = [
-    "Leg",
     "NORMAL_SIDE",
+    "Leg",
     "Reference",
     "admin_adjust",
     "balance",

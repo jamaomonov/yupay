@@ -13,21 +13,22 @@
  * of thing that needs a separate review, not a checkbox).
  */
 
-import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, ShieldAlert } from "lucide-react";
+import { useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
+
+import type { PaymentTriageOut, PaymentTriageRow, WebhookTriageRow } from "./types";
 
 import { Badge } from "@/components/Badge";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { Tabs, type TabDescriptor } from "@/components/Tabs";
+import { SaveSegmentButton } from "@/features/segments/SaveSegmentButton";
 import { type ApiError, apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { numberCodec, useSearchParamsState } from "@/lib/useSearchParamsState";
-import { SaveSegmentButton } from "@/features/segments/SaveSegmentButton";
 
-import type { PaymentTriageOut, PaymentTriageRow, WebhookTriageRow } from "./types";
 
 type TriageTab = "stuck" | "webhooks";
 
@@ -37,7 +38,7 @@ const THRESHOLDS = [15, 30, 60, 120] as const;
 
 export function TriagePage() {
   const navigate = useNavigate();
-  const [rawTab, setTab] = useSearchParamsState<string>("tab", "stuck");
+  const [rawTab, setTab] = useSearchParamsState("tab", "stuck");
   const tab: TriageTab = VALID_TABS.has(rawTab as TriageTab)
     ? (rawTab as TriageTab)
     : "stuck";

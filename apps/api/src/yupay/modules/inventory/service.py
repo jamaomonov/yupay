@@ -198,9 +198,7 @@ async def reserve_and_issue(
     )
 
 
-async def void_for_order_item(
-    db: AsyncSession, *, order_item_id: str, reason: str
-) -> int:
+async def void_for_order_item(db: AsyncSession, *, order_item_id: str, reason: str) -> int:
     """Free up codes attached to an order item (e.g. on cancel). Returns the count."""
     result = await db.execute(
         update(InventoryCode)
@@ -212,9 +210,7 @@ async def void_for_order_item(
     )
     count = result.rowcount or 0
     if count:
-        log.info(
-            "inventory.void", order_item_id=order_item_id, count=count, reason=reason
-        )
+        log.info("inventory.void", order_item_id=order_item_id, count=count, reason=reason)
     return count
 
 
@@ -242,11 +238,7 @@ async def list_codes_admin(
     limit: int = 50,
 ) -> list[tuple[InventoryCode, str]]:
     """Admin-only listing. Decrypts each row's code."""
-    stmt = (
-        select(InventoryCode)
-        .order_by(InventoryCode.created_at.desc())
-        .limit(min(limit, 200))
-    )
+    stmt = select(InventoryCode).order_by(InventoryCode.created_at.desc()).limit(min(limit, 200))
     if sku_id is not None:
         stmt = stmt.where(InventoryCode.sku_id == sku_id)
     if state is not None:
@@ -255,9 +247,7 @@ async def list_codes_admin(
     return [(r, decrypt(r.code_ciphertext, r.code_nonce)) for r in rows]
 
 
-async def get_code_for_order_item(
-    db: AsyncSession, order_item_id: str
-) -> str | None:
+async def get_code_for_order_item(db: AsyncSession, order_item_id: str) -> str | None:
     """Cleartext code for an order item, if it was fulfilled from stock."""
     row = (
         await db.execute(
@@ -274,20 +264,18 @@ async def get_code_for_order_item(
 
 async def get_sku_or_404(db: AsyncSession, sku_id: str) -> None:
     """Tiny guard used by routes; raises NotFound if SKU is missing."""
-    from yupay.modules.catalog.models import Sku  # noqa: PLC0415
+    from yupay.modules.catalog.models import Sku
 
-    exists = (
-        await db.execute(select(Sku.id).where(Sku.id == sku_id))
-    ).scalar_one_or_none()
+    exists = (await db.execute(select(Sku.id).where(Sku.id == sku_id))).scalar_one_or_none()
     if exists is None:
         raise NotFoundError("sku not found")
 
 
 __all__ = [
+    "MAX_BULK",
     "BulkUploadResult",
     "ConflictError",
     "IssuedCode",
-    "MAX_BULK",
     "NoStockError",
     "SkuCounts",
     "bulk_upload",

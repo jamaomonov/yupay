@@ -9,7 +9,6 @@ welcome with the user's first name.
 from __future__ import annotations
 
 import pytest
-
 from yupay_bot.i18n import (
     DEFAULT_LOCALE,
     miniapp_button_label,

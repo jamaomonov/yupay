@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Button } from "@yupay/ui";
 import {
   ArrowLeft,
   Ban,
@@ -11,20 +11,8 @@ import {
   Package,
   Truck,
 } from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { Button } from "@yupay/ui";
-import { Spinner } from "@/components/States";
-
-import { Badge } from "@/components/Badge";
-import { PageHeader } from "@/components/PageHeader";
-import { ApiError, apiGet, apiPost } from "@/lib/api";
-import { qk } from "@/lib/queryKeys";
-
-import type {
-  PaymentAdminListOut,
-  PaymentAdminOut,
-} from "@/features/payments/types";
-import type { TaskAdminOut, TaskListOut } from "@/features/fulfillment/types";
 
 import {
   type OrderAdminOut,
@@ -33,6 +21,20 @@ import {
   STATUS_LABEL,
   STATUS_TONE,
 } from "./types";
+
+import type { TaskAdminOut, TaskListOut } from "@/features/fulfillment/types";
+import type {
+  PaymentAdminListOut,
+  PaymentAdminOut,
+} from "@/features/payments/types";
+
+import { Badge } from "@/components/Badge";
+import { PageHeader } from "@/components/PageHeader";
+import { Spinner } from "@/components/States";
+import { type ApiError, apiGet, apiPost } from "@/lib/api";
+import { qk } from "@/lib/queryKeys";
+
+
 
 export function OrderDetailPage() {
   const params = useParams<{ id: string }>();
@@ -72,7 +74,7 @@ export function OrderDetailPage() {
       ),
   });
 
-  const cancel = useMutation<OrderAdminOut, ApiError, void>({
+  const cancel = useMutation<OrderAdminOut, ApiError>({
     mutationFn: () =>
       apiPost<OrderAdminOut>(`/api/v1/admin/orders/${orderId}/cancel`, {}),
     onSuccess: () => {
@@ -466,7 +468,7 @@ function PaymentsCard({
                     type="button"
                     variant="danger"
                     size="sm"
-                    onClick={() => onRefund(p)}
+                    onClick={() => { onRefund(p); }}
                     disabled={refunding}
                     className="mt-2"
                   >

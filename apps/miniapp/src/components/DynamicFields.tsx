@@ -7,8 +7,10 @@
  * available.
  */
 
-import { useId, useState } from "react";
 import { HelpCircle, X } from "lucide-react";
+import { useId, useState } from "react";
+
+import type { FormField } from "@/lib/catalog";
 
 import {
   Sheet,
@@ -17,7 +19,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import type { FormField } from "@/lib/catalog";
 
 const LOCALE = "ru";
 
@@ -41,7 +42,7 @@ export function DynamicFields({ fields, values, onChange }: DynamicFieldsProps) 
           key={field.key}
           field={field}
           value={values[field.key] ?? ""}
-          onChange={(v) => onChange(field.key, v)}
+          onChange={(v) => { onChange(field.key, v); }}
         />
       ))}
     </div>
@@ -87,7 +88,7 @@ function DynamicField({
         {hasHelp && (
           <button
             type="button"
-            onClick={() => setHelpOpen(true)}
+            onClick={() => { setHelpOpen(true); }}
             aria-label={`Где найти ${label}`}
             aria-controls={helpId}
             aria-expanded={helpOpen}
@@ -175,9 +176,9 @@ function TextLikeField({
       <input
         id={fieldId}
         type={inputType}
-        inputMode={inputMode as "text" | "email" | "numeric"}
+        inputMode={inputMode}
         value={value}
-        onChange={(e) => handleChange(e.target.value)}
+        onChange={(e) => { handleChange(e.target.value); }}
         placeholder={placeholder || field.key}
         required={required}
         aria-required={required}
@@ -194,7 +195,7 @@ function TextLikeField({
       {value && (
         <button
           type="button"
-          onClick={() => onChange("")}
+          onClick={() => { onChange(""); }}
           className="absolute right-3.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center"
           aria-label="Очистить"
         >
@@ -243,7 +244,7 @@ function SelectField({
               type="button"
               role="radio"
               aria-checked={active}
-              onClick={() => onChange(opt.value)}
+              onClick={() => { onChange(opt.value); }}
               className="relative rounded-2xl px-3 py-3 text-sm font-semibold transition-all duration-150"
               style={{
                 background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",

@@ -56,12 +56,8 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("CURRENT_TIMESTAMP"),
         ),
-        sa.CheckConstraint(
-            "state IN " + repr(_CODE_STATES), name="ck_inventory_codes_state"
-        ),
-        sa.UniqueConstraint(
-            "sku_id", "code_hash", name="uq_inventory_codes_sku_hash"
-        ),
+        sa.CheckConstraint("state IN " + repr(_CODE_STATES), name="ck_inventory_codes_state"),
+        sa.UniqueConstraint("sku_id", "code_hash", name="uq_inventory_codes_sku_hash"),
     )
     op.create_index(
         "ix_inventory_codes_available",
@@ -96,9 +92,7 @@ def upgrade() -> None:
             server_default=sa.text("CURRENT_TIMESTAMP"),
         ),
     )
-    op.create_index(
-        "ix_inventory_uploads_sku", "inventory_uploads", ["sku_id"]
-    )
+    op.create_index("ix_inventory_uploads_sku", "inventory_uploads", ["sku_id"])
 
     op.create_table(
         "sku_sourcing_rules",
@@ -117,9 +111,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("CURRENT_TIMESTAMP"),
         ),
-        sa.CheckConstraint(
-            "mode IN " + repr(_SOURCING_MODES), name="ck_sku_sourcing_rules_mode"
-        ),
+        sa.CheckConstraint("mode IN " + repr(_SOURCING_MODES), name="ck_sku_sourcing_rules_mode"),
         sa.CheckConstraint(
             "(mode = 'force_supplier' AND supplier_slug IS NOT NULL) OR mode <> 'force_supplier'",
             name="ck_sku_sourcing_rules_supplier_required",

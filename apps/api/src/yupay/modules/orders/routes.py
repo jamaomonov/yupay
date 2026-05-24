@@ -48,6 +48,7 @@ def _to_admin_order_out(order: Order, locale: str = "ru") -> OrderAdminOut:
     _attach_displays(out, order, locale=locale)
     return out
 
+
 router = APIRouter(prefix="/orders", tags=["orders"])
 admin_router = APIRouter(
     prefix="/admin/orders",
@@ -74,7 +75,7 @@ async def _resolve_actor(
     scheme, _, token = auth.partition(" ")
 
     if scheme == "Bearer":
-        from yupay.modules.auth.service import current_user as resolve_user  # noqa: PLC0415
+        from yupay.modules.auth.service import current_user as resolve_user
 
         user = await resolve_user(db, token)
         return Actor(user_id=user.id, email=None)
@@ -85,8 +86,8 @@ async def _resolve_actor(
             raise ValidationError("guest_email is required for guest checkout")
         # The token's ``sub`` is ``guest:<email_hash>``; we cross-check email below by
         # re-hashing in the auth/security helper. Doing it inline keeps the route thin.
-        from yupay.core.config import get_settings  # noqa: PLC0415
-        from yupay.modules.auth.security import email_hash  # noqa: PLC0415
+        from yupay.core.config import get_settings
+        from yupay.modules.auth.security import email_hash
 
         normalised = body.guest_email.strip().lower()
         expected = email_hash(normalised, get_settings().auth_email_pepper)
@@ -138,7 +139,7 @@ async def get_order_route(
     auth = request.headers.get("Authorization") or ""
     scheme, _, token = auth.partition(" ")
     if scheme == "Bearer":
-        from yupay.modules.auth.service import current_user as resolve_user  # noqa: PLC0415
+        from yupay.modules.auth.service import current_user as resolve_user
 
         user = await resolve_user(db, token)
         actor = Actor(user_id=user.id, email=None)
@@ -148,8 +149,8 @@ async def get_order_route(
         email = request.query_params.get("email")
         if not email:
             raise ValidationError("email query param required for guest lookup")
-        from yupay.core.config import get_settings  # noqa: PLC0415
-        from yupay.modules.auth.security import email_hash  # noqa: PLC0415
+        from yupay.core.config import get_settings
+        from yupay.modules.auth.security import email_hash
 
         claims = verify_jwt(token, expected_kind="guest")
         expected = email_hash(email.strip().lower(), get_settings().auth_email_pepper)
@@ -169,9 +170,7 @@ async def list_orders_route(
     db: Annotated[AsyncSession, Depends(db_session)],
 ) -> OrderListOut:
     """List orders for the logged-in user. Guests get this view via the email link."""
-    orders = await svc.list_orders_for_actor(
-        db, actor=Actor(user_id=user.id, email=None)
-    )
+    orders = await svc.list_orders_for_actor(db, actor=Actor(user_id=user.id, email=None))
     return OrderListOut(items=[_to_order_out(o) for o in orders])
 
 

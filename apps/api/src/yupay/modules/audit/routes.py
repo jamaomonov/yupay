@@ -32,16 +32,14 @@ async def admin_audit_feed(
     sources: Annotated[
         list[AuditSource] | None,
         Query(
-            description=(
-                "Optional list of source tables to include. Omitted = all five."
-            ),
+            description=("Optional list of source tables to include. Omitted = all five."),
         ),
     ] = None,
     since: datetime | None = None,
     until: datetime | None = None,
     actor: str | None = None,
     target_id: str | None = None,
-    admin_only: Annotated[  # noqa: FBT002 — FastAPI binds it as a keyword query param
+    admin_only: Annotated[
         bool,
         Query(description="Keep only events whose actor starts with `admin:`"),
     ] = False,

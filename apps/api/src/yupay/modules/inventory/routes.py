@@ -38,9 +38,7 @@ async def bulk_upload(
     admin: Annotated[User, Depends(require_admin)],
 ) -> BulkUploadOut:
     await svc.get_sku_or_404(db, body.sku_id)
-    result = await svc.bulk_upload(
-        db, sku_id=body.sku_id, codes=body.codes, uploaded_by=admin.id
-    )
+    result = await svc.bulk_upload(db, sku_id=body.sku_id, codes=body.codes, uploaded_by=admin.id)
     return BulkUploadOut(
         upload_id=result.upload_id,
         total=result.total,
@@ -82,9 +80,7 @@ async def list_codes(
     state: CodeState | None = None,
     limit: int = 50,
 ) -> CodeAdminListOut:
-    rows = await svc.list_codes_admin(
-        db, sku_id=sku_id, state=state, limit=limit
-    )
+    rows = await svc.list_codes_admin(db, sku_id=sku_id, state=state, limit=limit)
     return CodeAdminListOut(
         items=[
             CodeAdminOut(

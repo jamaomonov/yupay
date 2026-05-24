@@ -43,9 +43,7 @@ class AdminSavedSegment(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint(
-            "owner_user_id", "name", name="uq_admin_saved_segments_owner_name"
-        ),
+        UniqueConstraint("owner_user_id", "name", name="uq_admin_saved_segments_owner_name"),
     )
 
 

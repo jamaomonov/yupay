@@ -1,17 +1,17 @@
-import { useEffect } from "react";
-import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button, Input } from "@yupay/ui";
+import { Trash2 } from "lucide-react";
+import { useEffect } from "react";
+import { useForm, useFieldArray } from "react-hook-form";
 import { useNavigate, useParams } from "react-router-dom";
 import { z } from "zod";
-import { Trash2 } from "lucide-react";
 
-import { Button, Input } from "@yupay/ui";
+import type { Brand, Category } from "../types";
 
 import { PageHeader } from "@/components/PageHeader";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
-import type { Brand, Category } from "../types";
 
 const LOCALES = ["ru", "en", "uz"] as const;
 
@@ -141,7 +141,7 @@ export function BrandEditPage() {
   });
 
   return (
-    <form onSubmit={form.handleSubmit((v) => save.mutate(v))}>
+    <form onSubmit={form.handleSubmit((v) => { save.mutate(v); })}>
       <PageHeader
         title={isNew ? "Новый бренд" : `Редактирование бренда`}
         description="Бренд = игра/сервис/вендор, который видит покупатель."

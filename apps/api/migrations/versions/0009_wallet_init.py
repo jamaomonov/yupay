@@ -76,9 +76,7 @@ def upgrade() -> None:
             "status IN " + repr(_ACCOUNT_STATUSES),
             name="ck_wallet_accounts_status",
         ),
-        sa.CheckConstraint(
-            "kind IN " + repr(_ACCOUNT_KINDS), name="ck_wallet_accounts_kind"
-        ),
+        sa.CheckConstraint("kind IN " + repr(_ACCOUNT_KINDS), name="ck_wallet_accounts_kind"),
         sa.UniqueConstraint(
             "owner_type",
             "owner_id",
@@ -113,9 +111,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("CURRENT_TIMESTAMP"),
         ),
-        sa.UniqueConstraint(
-            "idempotency_key", name="uq_wallet_transactions_idempotency_key"
-        ),
+        sa.UniqueConstraint("idempotency_key", name="uq_wallet_transactions_idempotency_key"),
     )
     op.create_index(
         "ix_wallet_transactions_reference",
@@ -167,13 +163,9 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_index("ix_wallet_postings_transaction", table_name="wallet_postings")
-    op.drop_index(
-        "ix_wallet_postings_account_created", table_name="wallet_postings"
-    )
+    op.drop_index("ix_wallet_postings_account_created", table_name="wallet_postings")
     op.drop_table("wallet_postings")
-    op.drop_index(
-        "ix_wallet_transactions_reference", table_name="wallet_transactions"
-    )
+    op.drop_index("ix_wallet_transactions_reference", table_name="wallet_transactions")
     op.drop_table("wallet_transactions")
     op.drop_index("ix_wallet_accounts_owner", table_name="wallet_accounts")
     op.drop_table("wallet_accounts")

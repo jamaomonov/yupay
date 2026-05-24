@@ -182,9 +182,7 @@ def downgrade() -> None:
     op.drop_table("deliveries")
     op.drop_index("ix_fulfillment_attempts_task_id", table_name="fulfillment_attempts")
     op.drop_table("fulfillment_attempts")
-    op.drop_index(
-        "uq_fulfillment_tasks_supplier_external", table_name="fulfillment_tasks"
-    )
+    op.drop_index("uq_fulfillment_tasks_supplier_external", table_name="fulfillment_tasks")
     op.drop_index("ix_fulfillment_tasks_status", table_name="fulfillment_tasks")
     op.drop_index("ix_fulfillment_tasks_order_id", table_name="fulfillment_tasks")
     op.drop_table("fulfillment_tasks")

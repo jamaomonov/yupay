@@ -10,20 +10,23 @@
  * queue actually grows.
  */
 
-import { useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 
-import { PageHeader } from "@/components/PageHeader";
-import { DataTable, type Column } from "@/components/DataTable";
-import { apiGet } from "@/lib/api";
-import { qk } from "@/lib/queryKeys";
+import { ManualTaskModal } from "./ManualTaskModal";
+
 import type {
   TaskAdminOut,
   TaskListOut as FulfillmentTaskListOut,
 } from "@/features/fulfillment/types";
 import type { OrderAdminOut } from "@/features/orders/types";
 
-import { ManualTaskModal } from "./ManualTaskModal";
+import { DataTable, type Column } from "@/components/DataTable";
+import { PageHeader } from "@/components/PageHeader";
+import { apiGet } from "@/lib/api";
+import { qk } from "@/lib/queryKeys";
+
+
 
 interface QueueRow {
   task: TaskAdminOut;
@@ -57,7 +60,7 @@ export function ManualQueuePage() {
 
   const rows: QueueRow[] = tasks.map((task, idx) => ({
     task,
-    order: (orderQueries[idx]?.data as OrderAdminOut | undefined) ?? null,
+    order: (orderQueries[idx]?.data) ?? null,
     orderLoading: orderQueries[idx]?.isPending ?? false,
   }));
 
@@ -194,11 +197,11 @@ export function ManualQueuePage() {
         columns={columns}
         rowKey={(r) => r.task.id}
         empty="Очередь пуста — все ручные задачи обработаны."
-        onRowClick={(r) => setOpenTask(r.task)}
+        onRowClick={(r) => { setOpenTask(r.task); }}
       />
 
       {openTask && (
-        <ManualTaskModal task={openTask} onClose={() => setOpenTask(null)} />
+        <ManualTaskModal task={openTask} onClose={() => { setOpenTask(null); }} />
       )}
     </div>
   );

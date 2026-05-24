@@ -1,11 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@yupay/ui";
 import { RefreshCw } from "lucide-react";
 
-import { Button } from "@yupay/ui";
-import { Spinner } from "@/components/States";
-
-import { PageHeader } from "@/components/PageHeader";
 import { DataTable, type Column } from "@/components/DataTable";
+import { PageHeader } from "@/components/PageHeader";
+import { Spinner } from "@/components/States";
 import { ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
@@ -31,7 +30,7 @@ export function FxPage() {
     refetchInterval: 60_000,
   });
 
-  const refresh = useMutation<RatesOut, ApiError, void>({
+  const refresh = useMutation<RatesOut, ApiError>({
     mutationFn: () => apiPost<RatesOut>("/api/v1/admin/fx/refresh", {}),
     onSuccess: (data) => qc.setQueryData(qk.fxRates(), data),
   });
@@ -101,7 +100,7 @@ export function FxPage() {
         description={`Через провайдер-цепочку из ADR-0008 (exchangerate-api → exchangerate.host → openexchangerates → coingecko). База — ${base}.`}
         actions={
           <Button
-            onClick={() => refresh.mutate()}
+            onClick={() => { refresh.mutate(); }}
             disabled={refresh.isPending}
           >
             <RefreshCw

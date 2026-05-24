@@ -1,5 +1,5 @@
-import { useMemo, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronUp, Inbox } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { EmptyState, TableSkeleton } from "./States";
 
@@ -50,7 +50,7 @@ export function DataTable<T>({
   const sorted = useMemo(() => {
     if (!sort || !sortable) return rows;
     const col = columns.find((c) => c.key === sort.key && c.sortAccessor);
-    if (!col || !col.sortAccessor) return rows;
+    if (!col?.sortAccessor) return rows;
     const acc = col.sortAccessor;
     const dir = sort.dir === "asc" ? 1 : -1;
     return [...rows].sort((a, b) => {
@@ -111,7 +111,7 @@ export function DataTable<T>({
                   {canSort ? (
                     <button
                       type="button"
-                      onClick={() => toggleSort(setSort, sort, col.key)}
+                      onClick={() => { toggleSort(setSort, sort, col.key); }}
                       className={[
                         "inline-flex items-center gap-1 transition-colors",
                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-muted)] focus-visible:rounded",
@@ -146,7 +146,7 @@ export function DataTable<T>({
                     ? "cursor-pointer focus-visible:outline-none focus-visible:bg-[var(--bg-accent-soft)]"
                     : "",
                 ].join(" ")}
-                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                onClick={onRowClick ? () => { onRowClick(row); } : undefined}
                 onKeyDown={
                   onRowClick
                     ? (e) => {

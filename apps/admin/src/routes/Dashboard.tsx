@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import {
   AlertTriangle,
   Boxes,
@@ -11,11 +10,12 @@ import {
   Receipt,
   Truck,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 
+import { Badge } from "@/components/Badge";
+import { useAuthStore } from "@/features/auth/authStore";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
-import { useAuthStore } from "@/features/auth/authStore";
-import { Badge } from "@/components/Badge";
 
 interface DashboardOut {
   generated_at: string;

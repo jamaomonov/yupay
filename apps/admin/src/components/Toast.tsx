@@ -15,9 +15,9 @@
  *     to read them.
  */
 
+import { AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
 import { useEffect } from "react";
 import { create } from "zustand";
-import { AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
 
 export type ToastTone = "success" | "error" | "info";
 

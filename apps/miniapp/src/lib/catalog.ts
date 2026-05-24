@@ -12,6 +12,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { apiGet } from "./api";
+
 import type { Category, Game } from "./constants-types";
 
 // --- API DTOs (subset of what catalog.schemas returns) --------------------
@@ -229,7 +230,7 @@ export function useBrandSummary(gameId: string | undefined) {
         `/api/v1/catalog/brands/${gameId ?? ""}`,
         true,
       );
-      return data as BrandSummary;
+      return data;
     },
     staleTime: 5 * 60_000,
   });

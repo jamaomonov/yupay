@@ -113,9 +113,7 @@ async def get_products(
             fx=fx,
         )
     except FxUnavailableError:
-        items = await list_products(
-            db, locale=locale, category_slug=category, brand_slug=brand
-        )
+        items = await list_products(db, locale=locale, category_slug=category, brand_slug=brand)
     return ProductListOut(items=items)
 
 
@@ -133,9 +131,7 @@ async def get_product(
     """Full product page payload."""
     fx = _fx_or_none(currency)
     try:
-        product = await get_product_by_slug(
-            db, slug, locale=locale, currency=currency, fx=fx
-        )
+        product = await get_product_by_slug(db, slug, locale=locale, currency=currency, fx=fx)
     except FxUnavailableError:
         product = await get_product_by_slug(db, slug, locale=locale)
     if product is None:

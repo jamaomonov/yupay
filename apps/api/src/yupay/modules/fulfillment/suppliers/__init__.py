@@ -74,11 +74,11 @@ def available_suppliers() -> list[str]:
 
 __all__ = [
     "REGISTRY",
+    "FulfillResult",
+    "FulfillStatus",
     "Fulfiller",
     "FulfillerError",
     "FulfillerNotIntegratedError",
-    "FulfillResult",
-    "FulfillStatus",
     "ManualFulfiller",
     "MockFulfiller",
     "StubFulfiller",

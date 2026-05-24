@@ -36,7 +36,7 @@ class MockGateway(PaymentGateway):
     async def create_intent(
         self,
         *,
-        order: Any,  # noqa: ANN401
+        order: Any,
         return_url: str,  # noqa: ARG002 -- mock ignores return_url
     ) -> PaymentIntent:
         external_id = f"mock_{new_id()}"
@@ -74,7 +74,7 @@ class MockGateway(PaymentGateway):
     async def refund(
         self,
         *,
-        payment: Any,  # noqa: ANN401
+        payment: Any,
         amount: Decimal,
     ) -> RefundResult:
         return RefundResult(

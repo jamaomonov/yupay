@@ -100,16 +100,12 @@ async def _seed_one(db_session: AsyncSession):
     db_session.add(brand)
     db_session.add(product)
     await db_session.flush()
-    db_session.add(
-        SkuPrice(sku_id=sku_with_override.id, currency="RUB", price=Decimal("99.00"))
-    )
+    db_session.add(SkuPrice(sku_id=sku_with_override.id, currency="RUB", price=Decimal("99.00")))
     await db_session.commit()
     return product
 
 
-async def test_categories_default_locale(
-    integration_client: AsyncClient, _seed_one
-) -> None:
+async def test_categories_default_locale(integration_client: AsyncClient, _seed_one) -> None:
     r = await integration_client.get("/api/v1/catalog/categories")
     assert r.status_code == 200, r.text
     body = r.json()
@@ -127,9 +123,7 @@ async def test_categories_with_accept_language_en(
     assert r.json()["items"][0]["name"] == "Games"
 
 
-async def test_brands_filtered_by_category(
-    integration_client: AsyncClient, _seed_one
-) -> None:
+async def test_brands_filtered_by_category(integration_client: AsyncClient, _seed_one) -> None:
     r = await integration_client.get("/api/v1/catalog/brands?category=games")
     assert r.status_code == 200, r.text
     items = r.json()["items"]
@@ -138,9 +132,7 @@ async def test_brands_filtered_by_category(
     assert items[0]["category_slug"] == "games"
 
 
-async def test_brand_detail_returns_products(
-    integration_client: AsyncClient, _seed_one
-) -> None:
+async def test_brand_detail_returns_products(integration_client: AsyncClient, _seed_one) -> None:
     r = await integration_client.get("/api/v1/catalog/brands/pubg-mobile")
     assert r.status_code == 200, r.text
     body = r.json()
@@ -150,16 +142,12 @@ async def test_brand_detail_returns_products(
     assert body["products"][0]["slug"] == "pubg-uc"
 
 
-async def test_brand_detail_unknown_returns_404(
-    integration_client: AsyncClient, _seed_one
-) -> None:
+async def test_brand_detail_unknown_returns_404(integration_client: AsyncClient, _seed_one) -> None:
     r = await integration_client.get("/api/v1/catalog/brands/no-such-brand")
     assert r.status_code == 404
 
 
-async def test_products_filtered_by_brand(
-    integration_client: AsyncClient, _seed_one
-) -> None:
+async def test_products_filtered_by_brand(integration_client: AsyncClient, _seed_one) -> None:
     r = await integration_client.get("/api/v1/catalog/products?brand=pubg-mobile")
     assert r.status_code == 200, r.text
     body = r.json()
@@ -168,9 +156,7 @@ async def test_products_filtered_by_brand(
     assert body["items"][0]["starting_price_usd"] == "0.850000"
 
 
-async def test_products_filtered_by_category(
-    integration_client: AsyncClient, _seed_one
-) -> None:
+async def test_products_filtered_by_category(integration_client: AsyncClient, _seed_one) -> None:
     r = await integration_client.get("/api/v1/catalog/products?category=games")
     assert r.status_code == 200, r.text
     items = r.json()["items"]

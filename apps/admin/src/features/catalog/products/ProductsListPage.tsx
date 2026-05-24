@@ -1,15 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
+import { Button } from "@yupay/ui";
 import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-import { Button } from "@yupay/ui";
-import { Spinner } from "@/components/States";
+import type { Brand, Product } from "../types";
 
-import { PageHeader } from "@/components/PageHeader";
 import { DataTable, type Column } from "@/components/DataTable";
+import { PageHeader } from "@/components/PageHeader";
+import { Spinner } from "@/components/States";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
-import type { Brand, Product } from "../types";
+
 
 export function ProductsListPage() {
   const navigate = useNavigate();

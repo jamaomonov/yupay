@@ -107,9 +107,7 @@ async def admin_list_segments(
     admin: Annotated[User, Depends(require_admin)],
 ) -> SavedSegmentListOut:
     rows = await svc.list_saved_segments(db, owner_user_id=admin.id)
-    return SavedSegmentListOut(
-        items=[SavedSegmentOut.model_validate(r) for r in rows]
-    )
+    return SavedSegmentListOut(items=[SavedSegmentOut.model_validate(r) for r in rows])
 
 
 @admin_router.delete(
@@ -122,9 +120,7 @@ async def admin_delete_segment(
     db: Annotated[AsyncSession, Depends(db_session)],
     admin: Annotated[User, Depends(require_admin)],
 ) -> None:
-    await svc.delete_saved_segment(
-        db, owner_user_id=admin.id, segment_id=segment_id
-    )
+    await svc.delete_saved_segment(db, owner_user_id=admin.id, segment_id=segment_id)
 
 
 __all__ = ["admin_router"]

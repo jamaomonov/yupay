@@ -14,18 +14,10 @@
  * invalidate so the queue page reflects reality on the next paint.
  */
 
-import { useId, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { X } from "lucide-react";
-
 import { Button, Input } from "@yupay/ui";
-
-import { Field } from "@/components/Field";
-import { ApiError, apiGet, apiPost } from "@/lib/api";
-import { qk } from "@/lib/queryKeys";
-import { useDialog } from "@/lib/useDialog";
-import type { TaskAdminOut } from "@/features/fulfillment/types";
-import type { OrderAdminOut } from "@/features/orders/types";
+import { X } from "lucide-react";
+import { useId, useMemo, useRef, useState } from "react";
 
 import {
   ARTIFACT_KIND_LABEL,
@@ -34,6 +26,15 @@ import {
   type ManualCompleteIn,
   type ManualFailIn,
 } from "./types";
+
+import type { TaskAdminOut } from "@/features/fulfillment/types";
+import type { OrderAdminOut } from "@/features/orders/types";
+
+import { Field } from "@/components/Field";
+import { type ApiError, apiGet, apiPost } from "@/lib/api";
+import { qk } from "@/lib/queryKeys";
+import { useDialog } from "@/lib/useDialog";
+
 
 interface Props {
   task: TaskAdminOut;
@@ -147,7 +148,7 @@ export function ManualTaskModal({ task, onClose }: Props) {
               active={tab === "complete"}
               id={completeTabId}
               controls={tabListIdComplete}
-              onClick={() => setTab("complete")}
+              onClick={() => { setTab("complete"); }}
               onKeyDown={onTabKeyDown}
             >
               Завершить
@@ -156,7 +157,7 @@ export function ManualTaskModal({ task, onClose }: Props) {
               active={tab === "fail"}
               id={failTabId}
               controls={tabListIdFail}
-              onClick={() => setTab("fail")}
+              onClick={() => { setTab("fail"); }}
               onKeyDown={onTabKeyDown}
             >
               Отклонить
@@ -172,13 +173,13 @@ export function ManualTaskModal({ task, onClose }: Props) {
         >
           {tab === "complete" ? (
             <CompleteForm
-              onSubmit={(body) => complete.mutate(body)}
+              onSubmit={(body) => { complete.mutate(body); }}
               pending={complete.isPending}
               error={complete.error}
             />
           ) : (
             <FailForm
-              onSubmit={(body) => fail.mutate(body)}
+              onSubmit={(body) => { fail.mutate(body); }}
               pending={fail.isPending}
               error={fail.error}
             />
@@ -405,7 +406,7 @@ function CompleteForm({
         <FormField label="Тип артефакта">
           <select
             value={kind}
-            onChange={(e) => setKind(e.target.value as ArtifactKind)}
+            onChange={(e) => { setKind(e.target.value as ArtifactKind); }}
             className="flex h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
           >
             {Object.entries(ARTIFACT_KIND_LABEL).map(([v, label]) => (
@@ -418,7 +419,7 @@ function CompleteForm({
         <FormField label="Канал доставки">
           <select
             value={channel}
-            onChange={(e) => setChannel(e.target.value as DeliveryChannel)}
+            onChange={(e) => { setChannel(e.target.value as DeliveryChannel); }}
             className="flex h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
           >
             {CHANNELS.map((c) => (
@@ -436,7 +437,7 @@ function CompleteForm({
             <FormField label="Код">
               <Input
                 value={code}
-                onChange={(e) => setCode(e.target.value)}
+                onChange={(e) => { setCode(e.target.value); }}
                 placeholder="MANUAL-XXXX-YYYY"
                 autoFocus
               />
@@ -446,7 +447,7 @@ function CompleteForm({
             <FormField label="Ключ">
               <Input
                 value={key}
-                onChange={(e) => setKey(e.target.value)}
+                onChange={(e) => { setKey(e.target.value); }}
                 placeholder="AAAA-BBBB-CCCC-DDDD"
                 autoFocus
               />
@@ -458,7 +459,7 @@ function CompleteForm({
                 <FormField label="ID операции">
                   <Input
                     value={externalId}
-                    onChange={(e) => setExternalId(e.target.value)}
+                    onChange={(e) => { setExternalId(e.target.value); }}
                     placeholder="op_123456"
                     autoFocus
                   />
@@ -466,7 +467,7 @@ function CompleteForm({
                 <FormField label="Заметка (необязательно)">
                   <Input
                     value={receiptNote}
-                    onChange={(e) => setReceiptNote(e.target.value)}
+                    onChange={(e) => { setReceiptNote(e.target.value); }}
                     placeholder="Зачислено 1 000 UC"
                   />
                 </FormField>
@@ -475,7 +476,7 @@ function CompleteForm({
                 <Input
                   type="url"
                   value={proofUrl}
-                  onChange={(e) => setProofUrl(e.target.value)}
+                  onChange={(e) => { setProofUrl(e.target.value); }}
                   placeholder="https://drive.example.com/screenshot.png"
                 />
               </FormField>
@@ -486,7 +487,7 @@ function CompleteForm({
         <FormField label="JSON артефакта">
           <textarea
             value={rawJson}
-            onChange={(e) => setRawJson(e.target.value)}
+            onChange={(e) => { setRawJson(e.target.value); }}
             className="min-h-32 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2 font-mono text-xs"
             placeholder='{"code": "ABC-123"}'
           />
@@ -508,7 +509,7 @@ function CompleteForm({
       <FormField label="Внутренняя заметка (не видна клиенту)">
         <textarea
           value={adminNote}
-          onChange={(e) => setAdminNote(e.target.value)}
+          onChange={(e) => { setAdminNote(e.target.value); }}
           className="min-h-20 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2 text-sm"
         />
       </FormField>
@@ -566,7 +567,7 @@ function FailForm({
           <Input
             {...inputProps}
             value={reason}
-            onChange={(e) => setReason(e.target.value)}
+            onChange={(e) => { setReason(e.target.value); }}
             placeholder="нет в наличии / аккаунт заблокирован / …"
             autoFocus
           />
@@ -578,7 +579,7 @@ function FailForm({
           <textarea
             {...inputProps}
             value={adminNote}
-            onChange={(e) => setAdminNote(e.target.value)}
+            onChange={(e) => { setAdminNote(e.target.value); }}
             className="min-h-20 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus-visible:outline-none focus-visible:border-[var(--accent)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)]"
           />
         )}

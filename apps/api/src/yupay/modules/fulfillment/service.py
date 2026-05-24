@@ -68,14 +68,12 @@ async def _load_order_with_items(db: AsyncSession, order_id: str) -> Order:
     # them) read ``item.sku.product.kind`` to decide whether to mint a
     # voucher code or a top-up receipt — async SA refuses lazy loads, so
     # eager-load the chain right here.
-    from yupay.modules.catalog.models import Sku  # noqa: PLC0415
+    from yupay.modules.catalog.models import Sku
 
     stmt = (
         select(Order)
         .options(
-            selectinload(Order.items).selectinload(OrderItem.sku).selectinload(
-                Sku.product
-            ),
+            selectinload(Order.items).selectinload(OrderItem.sku).selectinload(Sku.product),
             selectinload(Order.events),
         )
         .where(Order.id == order_id)
@@ -98,9 +96,7 @@ async def _load_task(db: AsyncSession, task_id: str) -> FulfillmentTask:
     return task
 
 
-async def _existing_tasks_for_order(
-    db: AsyncSession, order_id: str
-) -> list[FulfillmentTask]:
+async def _existing_tasks_for_order(db: AsyncSession, order_id: str) -> list[FulfillmentTask]:
     stmt = (
         select(FulfillmentTask)
         .options(selectinload(FulfillmentTask.attempts))
@@ -193,18 +189,14 @@ async def start_for_order(db: AsyncSession, *, order_id: str) -> list[Fulfillmen
     return new_tasks
 
 
-async def _inventory_fulfill(
-    db: AsyncSession, *, task: FulfillmentTask, item: OrderItem
-) -> bool:
+async def _inventory_fulfill(db: AsyncSession, *, task: FulfillmentTask, item: OrderItem) -> bool:
     """Try to satisfy the task from the warehouse.
 
     Returns True on success. On ``NoStockError`` returns False — caller decides
     whether to fall back or mark the task failed.
     """
     try:
-        issued = await inv_svc.reserve_and_issue(
-            db, sku_id=item.sku_id, order_item_id=item.id
-        )
+        issued = await inv_svc.reserve_and_issue(db, sku_id=item.sku_id, order_item_id=item.id)
     except inv_svc.NoStockError as exc:
         _record_attempt(
             db,
@@ -263,9 +255,7 @@ async def process_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
     item = (
         await db.execute(select(OrderItem).where(OrderItem.id == task.order_item_id))
     ).scalar_one()
-    order = (
-        await db.execute(select(Order).where(Order.id == task.order_id))
-    ).scalar_one()
+    order = (await db.execute(select(Order).where(Order.id == task.order_id))).scalar_one()
 
     task.status = "in_progress"
     task.updated_at = now()
@@ -411,9 +401,7 @@ async def bulk_retry_tasks(
             skipped.append((tid, exc.detail))
         except ConflictError as exc:
             status_hint = exc.extra.get("status") if exc.extra else None
-            reason = (
-                f"not retryable (status={status_hint})" if status_hint else exc.detail
-            )
+            reason = f"not retryable (status={status_hint})" if status_hint else exc.detail
             skipped.append((tid, reason))
         else:
             retried.append(task)
@@ -498,7 +486,7 @@ async def complete_manual_task(
             extra={"status": task.status},
         )
     if artifact_kind not in _VALID_ARTIFACT_KINDS:
-        from yupay.core.errors import ValidationError  # noqa: PLC0415
+        from yupay.core.errors import ValidationError
 
         raise ValidationError(
             f"unsupported artifact_kind: {artifact_kind!r}",
@@ -506,14 +494,14 @@ async def complete_manual_task(
         )
     resolved_channel = channel or "in_app"
     if resolved_channel not in _VALID_DELIVERY_CHANNELS:
-        from yupay.core.errors import ValidationError  # noqa: PLC0415
+        from yupay.core.errors import ValidationError
 
         raise ValidationError(
             f"unsupported delivery channel: {resolved_channel!r}",
             extra={"allowed": sorted(_VALID_DELIVERY_CHANNELS)},
         )
     if not artifact:
-        from yupay.core.errors import ValidationError  # noqa: PLC0415
+        from yupay.core.errors import ValidationError
 
         raise ValidationError("artifact must contain at least one key")
 
@@ -596,7 +584,7 @@ async def fail_manual_task(
         )
     reason_clean = reason.strip()
     if not reason_clean:
-        from yupay.core.errors import ValidationError  # noqa: PLC0415
+        from yupay.core.errors import ValidationError
 
         raise ValidationError("reason is required to reject a manual task")
 
@@ -635,9 +623,7 @@ async def _try_settle_order(db: AsyncSession, *, order_id: str) -> None:
     if any(t.status != "succeeded" for t in tasks):
         return
 
-    order = (
-        await db.execute(select(Order).where(Order.id == order_id))
-    ).scalar_one()
+    order = (await db.execute(select(Order).where(Order.id == order_id))).scalar_one()
     if order.status not in ("fulfilling", "paid"):
         return
 
@@ -660,7 +646,7 @@ async def _try_settle_order(db: AsyncSession, *, order_id: str) -> None:
     # Telegram never blocks the saga AND the notification's own session can
     # see the persisted delivery rows. Notifications swallow their own
     # errors.
-    from yupay.modules.notifications import api as notifications  # noqa: PLC0415
+    from yupay.modules.notifications import api as notifications
 
     order_id = order.id
     notifications.schedule_after_commit(
@@ -672,9 +658,7 @@ async def _try_settle_order(db: AsyncSession, *, order_id: str) -> None:
 # ---------- read helpers ----------
 
 
-async def list_deliveries_for_order(
-    db: AsyncSession, *, order_id: str
-) -> list[Delivery]:
+async def list_deliveries_for_order(db: AsyncSession, *, order_id: str) -> list[Delivery]:
     stmt = (
         select(Delivery)
         .join(OrderItem, OrderItem.id == Delivery.order_item_id)
@@ -694,9 +678,7 @@ async def list_tasks_admin(
     offset: int = 0,
 ) -> tuple[list[FulfillmentTask], int]:
     """Paged admin listing. Returns ``(rows, total_matching_filter)``."""
-    base = select(FulfillmentTask).options(
-        selectinload(FulfillmentTask.attempts)
-    )
+    base = select(FulfillmentTask).options(selectinload(FulfillmentTask.attempts))
     count_stmt = select(func.count()).select_from(FulfillmentTask)
     if order_id is not None:
         base = base.where(FulfillmentTask.order_id == order_id)
@@ -710,9 +692,7 @@ async def list_tasks_admin(
     rows = list(
         (
             await db.execute(
-                base.order_by(FulfillmentTask.created_at.desc())
-                .limit(limit)
-                .offset(offset)
+                base.order_by(FulfillmentTask.created_at.desc()).limit(limit).offset(offset)
             )
         )
         .scalars()

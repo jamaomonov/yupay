@@ -1,18 +1,19 @@
-import { useEffect } from "react";
-import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button, Input } from "@yupay/ui";
+import { Trash2 } from "lucide-react";
+import { useEffect } from "react";
+import { useForm, useFieldArray } from "react-hook-form";
 import { useNavigate, useParams } from "react-router-dom";
 import { z } from "zod";
-import { Trash2 } from "lucide-react";
 
-import { Button, Input } from "@yupay/ui";
+import { RequiredFieldsEditor } from "../form-schema/RequiredFieldsEditor";
+
+import type { Brand, Product } from "../types";
 
 import { PageHeader } from "@/components/PageHeader";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
-import type { Brand, Product } from "../types";
-import { RequiredFieldsEditor } from "../form-schema/RequiredFieldsEditor";
 
 const LOCALES = ["ru", "en", "uz"] as const;
 
@@ -138,7 +139,7 @@ export function ProductEditPage() {
   });
 
   return (
-    <form onSubmit={form.handleSubmit((v) => save.mutate(v))}>
+    <form onSubmit={form.handleSubmit((v) => { save.mutate(v); })}>
       <PageHeader
         title={isNew ? "Новый продукт" : "Редактирование продукта"}
         description="UC, Royal Pass, Wallet, Premium — что-то одно конкретное у бренда."

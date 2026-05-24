@@ -1,15 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
+import { Button } from "@yupay/ui";
 import { Plus } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { Button } from "@yupay/ui";
-import { Spinner } from "@/components/States";
+import type { Brand } from "../types";
 
-import { PageHeader } from "@/components/PageHeader";
 import { DataTable, type Column } from "@/components/DataTable";
+import { PageHeader } from "@/components/PageHeader";
+import { Spinner } from "@/components/States";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
-import type { Brand } from "../types";
+
 
 export function BrandsListPage() {
   const navigate = useNavigate();
@@ -66,7 +67,7 @@ export function BrandsListPage() {
           onRowClick={(b) => navigate(`/brands/${b.id}`)}
         />
       )}
-      {q.data && q.data.length === 0 && (
+      {q.data?.length === 0 && (
         <p className="mt-4 text-sm text-[var(--text-secondary)]">
           Ничего нет. <Link to="/brands/new" className="underline">Создать первый</Link>?
         </p>

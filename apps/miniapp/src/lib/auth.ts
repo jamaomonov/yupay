@@ -112,7 +112,7 @@ export function useMe() {
 
 export function useLogout() {
   const qc = useQueryClient();
-  return useMutation<void, ApiError, void>({
+  return useMutation<void, ApiError>({
     mutationFn: async () => {
       // Best-effort: backend revokes the refresh token, but we don't block the UI on it.
       clearTokens();

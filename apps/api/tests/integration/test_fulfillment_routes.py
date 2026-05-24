@@ -112,9 +112,7 @@ async def _seed_sku(db_session: AsyncSession) -> str:
     return sku.id
 
 
-async def _pay_and_fulfill(
-    client: AsyncClient, *, token: str, sku_id: str, key_suffix: str
-) -> str:
+async def _pay_and_fulfill(client: AsyncClient, *, token: str, sku_id: str, key_suffix: str) -> str:
     """Helper: create order, create intent, post webhook → returns order_id (paid+delivered)."""
     create = await client.post(
         "/api/v1/orders",
@@ -187,9 +185,7 @@ async def test_paid_order_walks_to_delivered(
     assert items[0]["artifact"]["sku_id"] == _seed_sku
 
 
-async def test_deliveries_owner_only(
-    integration_client: AsyncClient, _seed_sku: str
-) -> None:
+async def test_deliveries_owner_only(integration_client: AsyncClient, _seed_sku: str) -> None:
     owner = await _login_user(integration_client, tg_id=211)
     stranger = await _login_user(integration_client, tg_id=212)
     order_id = await _pay_and_fulfill(
@@ -300,9 +296,7 @@ async def test_admin_required_for_fulfillment_admin(
 
 
 @pytest.fixture
-async def _seed_sku_manual(
-    db_session: AsyncSession, _seed_sku: str
-) -> str:
+async def _seed_sku_manual(db_session: AsyncSession, _seed_sku: str) -> str:
     """Bolt a ``mode='manual'`` sourcing rule onto the existing seed SKU so
     paid orders for it route to ``ManualFulfiller`` and park in
     ``in_progress`` instead of auto-delivering."""
@@ -559,7 +553,7 @@ async def test_complete_requires_admin(
     # /complete URL with their own token — should 403.
     # Use a placeholder task id; the role guard runs before the lookup.
     r = await integration_client.post(
-        f"/api/v1/admin/fulfillment/tasks/00000000-0000-0000-0000-000000000000/complete",
+        "/api/v1/admin/fulfillment/tasks/00000000-0000-0000-0000-000000000000/complete",
         headers={"Authorization": f"Bearer {user}"},
         json={"artifact_kind": "voucher_code", "artifact": {"code": "x"}},
     )

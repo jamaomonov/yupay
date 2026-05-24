@@ -8,7 +8,7 @@
 const TOKEN_KEY = "yupay.admin.access_token";
 const REFRESH_KEY = "yupay.admin.refresh_token";
 
-const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "";
+const apiBase = (import.meta.env.VITE_API_BASE_URL) ?? "";
 
 export class ApiError extends Error {
   constructor(

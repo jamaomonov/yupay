@@ -27,8 +27,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 _BACKFILL_PAYLOAD = (
-    "{\"trigger\": \"order_terminated\", \"reason\": \"backfill_0013\","
-    " \"actor\": \"system:backfill\"}"
+    '{"trigger": "order_terminated", "reason": "backfill_0013", "actor": "system:backfill"}'
 )
 
 

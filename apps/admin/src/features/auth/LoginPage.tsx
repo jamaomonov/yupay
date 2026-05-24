@@ -6,18 +6,18 @@
  *    is active (`GET /api/v1/auth/admin-dev/enabled`).
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
-import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery } from "@tanstack/react-query";
+import { Button, Input } from "@yupay/ui";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useForm } from "react-hook-form";
+import { useNavigate, useLocation } from "react-router-dom";
 import { z } from "zod";
 
-import { Button, Input } from "@yupay/ui";
+import { useAuthStore } from "./authStore";
 
 import { apiGet, apiPost, ApiError } from "@/lib/api";
 
-import { useAuthStore } from "./authStore";
 
 interface TelegramAuthPayload {
   id: number;

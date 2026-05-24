@@ -1,12 +1,13 @@
 /** Hook that loads `/auth/me` and syncs it into the auth store. */
 
-import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
+
+import { useAuthStore, type AuthMe } from "./authStore";
 
 import { apiGet, ApiError } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
-import { useAuthStore, type AuthMe } from "./authStore";
 
 export function useMe(enabled = true) {
   const token = useAuthStore((s) => s.token);

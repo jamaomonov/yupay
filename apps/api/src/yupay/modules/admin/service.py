@@ -105,12 +105,7 @@ async def search(db: AsyncSession, *, q: str, limit: int) -> SearchOut:
         .limit(limit)
     )
 
-    skus_stmt = (
-        select(Sku)
-        .where(Sku.sku_code.ilike(like))
-        .order_by(Sku.sort_order)
-        .limit(limit)
-    )
+    skus_stmt = select(Sku).where(Sku.sku_code.ilike(like)).order_by(Sku.sort_order).limit(limit)
 
     # Sequential awaits: asyncpg connections aren't safe for concurrent use within the same
     # session, and per-source LIMIT keeps total cost bounded.
@@ -210,9 +205,7 @@ async def get_customer_overview(
 
     recent_orders = await _fetch_recent_orders(db, user_id=user_id, limit=limit)
     recent_payments = await _fetch_recent_payments(db, order_id_subq=order_id_subq, limit=limit)
-    open_tasks = await _fetch_open_fulfillment_tasks(
-        db, order_id_subq=order_id_subq, limit=limit
-    )
+    open_tasks = await _fetch_open_fulfillment_tasks(db, order_id_subq=order_id_subq, limit=limit)
     wallet_balances = await _fetch_wallet_balances(db, user_id=user_id)
     stats = await _fetch_customer_stats(db, user_id=user_id, order_id_subq=order_id_subq)
 
@@ -285,9 +278,7 @@ async def _fetch_open_fulfillment_tasks(
     return [CustomerTaskSummary.model_validate(t) for t in rows]
 
 
-async def _fetch_wallet_balances(
-    db: AsyncSession, *, user_id: str
-) -> list[CustomerBalanceOut]:
+async def _fetch_wallet_balances(db: AsyncSession, *, user_id: str) -> list[CustomerBalanceOut]:
     """One query per balance set, no matter how many accounts.
 
     Each posting is signed according to its account's NORMAL_SIDE (debit-normal vs
@@ -405,10 +396,7 @@ async def triage_payments(
 
     webhook_stmt = (
         select(PaymentWebhook)
-        .where(
-            (PaymentWebhook.signature_ok.is_(False))
-            | (PaymentWebhook.processed_at.is_(None))
-        )
+        .where((PaymentWebhook.signature_ok.is_(False)) | (PaymentWebhook.processed_at.is_(None)))
         .order_by(PaymentWebhook.received_at.desc())
         .limit(_TRIAGE_PER_BUCKET)
     )
@@ -462,9 +450,7 @@ async def create_saved_segment(
     return row
 
 
-async def list_saved_segments(
-    db: AsyncSession, *, owner_user_id: str
-) -> list[AdminSavedSegment]:
+async def list_saved_segments(db: AsyncSession, *, owner_user_id: str) -> list[AdminSavedSegment]:
     stmt = (
         select(AdminSavedSegment)
         .where(AdminSavedSegment.owner_user_id == owner_user_id)
@@ -473,9 +459,7 @@ async def list_saved_segments(
     return list((await db.execute(stmt)).scalars().all())
 
 
-async def delete_saved_segment(
-    db: AsyncSession, *, owner_user_id: str, segment_id: str
-) -> None:
+async def delete_saved_segment(db: AsyncSession, *, owner_user_id: str, segment_id: str) -> None:
     """Remove the bookmark. 404 if not found OR not owned — never leak existence
     of another admin's segment id."""
     row = (

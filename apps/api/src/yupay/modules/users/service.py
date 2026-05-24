@@ -112,9 +112,7 @@ async def list_users_admin(
         # Telegram-side filters need a join. We do an outer join so a user
         # without a TG link can still match by display_name/email above.
         base = base.outerjoin(TelegramLink, TelegramLink.user_id == User.id)
-        count_stmt = count_stmt.outerjoin(
-            TelegramLink, TelegramLink.user_id == User.id
-        )
+        count_stmt = count_stmt.outerjoin(TelegramLink, TelegramLink.user_id == User.id)
         join_clauses.append(TelegramLink.tg_username.ilike(q))
         if as_int is not None:
             join_clauses.append(TelegramLink.tg_user_id == as_int)
@@ -122,11 +120,7 @@ async def list_users_admin(
         count_stmt = count_stmt.where(or_(*join_clauses))
 
     items = list(
-        (
-            await session.execute(
-                base.order_by(User.created_at.desc()).limit(limit).offset(offset)
-            )
-        )
+        (await session.execute(base.order_by(User.created_at.desc()).limit(limit).offset(offset)))
         .unique()
         .scalars()
         .all()
@@ -137,11 +131,7 @@ async def list_users_admin(
 
 async def get_user_admin(session: AsyncSession, user_id: str) -> User:
     """Load a user with the Telegram link eager-loaded; 404 if missing."""
-    stmt = (
-        select(User)
-        .options(selectinload(User.telegram_link))
-        .where(User.id == user_id)
-    )
+    stmt = select(User).options(selectinload(User.telegram_link)).where(User.id == user_id)
     row = (await session.execute(stmt)).unique().scalar_one_or_none()
     if row is None:
         raise NotFoundError("user not found")
@@ -152,9 +142,7 @@ async def get_user_admin(session: AsyncSession, user_id: str) -> User:
 _ALLOWED_ROLES = frozenset({"admin"})
 
 
-async def set_user_roles(
-    session: AsyncSession, user_id: str, *, roles: list[str]
-) -> User:
+async def set_user_roles(session: AsyncSession, user_id: str, *, roles: list[str]) -> User:
     """Replace the user's roles list. Unknown roles raise NotFoundError-friendly
     error via core.errors. Empty list means "demote to plain user"."""
     user = await get_user_admin(session, user_id)
@@ -165,11 +153,9 @@ async def set_user_roles(
         if not r2 or r2 in seen:
             continue
         if r2 not in _ALLOWED_ROLES:
-            from yupay.core.errors import ValidationError  # noqa: PLC0415
+            from yupay.core.errors import ValidationError
 
-            raise ValidationError(
-                f"unknown role: {r2}", allowed=sorted(_ALLOWED_ROLES)
-            )
+            raise ValidationError(f"unknown role: {r2}", allowed=sorted(_ALLOWED_ROLES))
         seen.add(r2)
         cleaned.append(r2)
     user.roles = cleaned
@@ -203,7 +189,7 @@ async def update_me(
     if display_currency is not None:
         currency = display_currency.strip().upper()
         if currency not in _ALLOWED_DISPLAY_CURRENCIES:
-            from yupay.core.errors import ValidationError  # noqa: PLC0415
+            from yupay.core.errors import ValidationError
 
             raise ValidationError(
                 f"unsupported display currency: {currency!r}",

@@ -1,25 +1,26 @@
-import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-
 import { Button, Input } from "@yupay/ui";
+import { useState } from "react";
 
-import { Badge } from "@/components/Badge";
-import { PageHeader } from "@/components/PageHeader";
-import { DataTable, type Column } from "@/components/DataTable";
-import { Pagination } from "@/components/Pagination";
-import { ApiError, apiGet, apiPost } from "@/lib/api";
-import { qk } from "@/lib/queryKeys";
-import { useToast } from "@/components/Toast";
-import { useSearchParamsState } from "@/lib/useSearchParamsState";
-import { SaveSegmentButton } from "@/features/segments/SaveSegmentButton";
-
-const PAGE_SIZE = 50;
 
 import type {
   PaymentAdminListOut,
   PaymentAdminOut,
   PaymentStatus,
 } from "./types";
+
+import { Badge } from "@/components/Badge";
+import { DataTable, type Column } from "@/components/DataTable";
+import { PageHeader } from "@/components/PageHeader";
+import { Pagination } from "@/components/Pagination";
+import { useToast } from "@/components/Toast";
+import { SaveSegmentButton } from "@/features/segments/SaveSegmentButton";
+import { type ApiError, apiGet, apiPost } from "@/lib/api";
+import { qk } from "@/lib/queryKeys";
+import { useSearchParamsState } from "@/lib/useSearchParamsState";
+
+const PAGE_SIZE = 50;
+
 
 const STATUSES: { value: PaymentStatus | ""; label: string }[] = [
   { value: "", label: "Все" },
@@ -163,7 +164,7 @@ export function PaymentsPage() {
       render: (p) => (
         <div
           className="flex justify-end gap-1"
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); }}
         >
           {p.provider === "mock" &&
             (p.status === "pending" || p.status === "requires_action") && (
@@ -172,10 +173,10 @@ export function PaymentsPage() {
                   variant="secondary"
                   size="sm"
                   onClick={() =>
-                    simulateMutation.mutate({
+                    { simulateMutation.mutate({
                       id: p.id,
                       body: { outcome: "succeeded" },
-                    })
+                    }); }
                   }
                 >
                   Webhook OK
@@ -184,10 +185,10 @@ export function PaymentsPage() {
                   variant="ghost"
                   size="sm"
                   onClick={() =>
-                    simulateMutation.mutate({
+                    { simulateMutation.mutate({
                       id: p.id,
                       body: { outcome: "failed" },
-                    })
+                    }); }
                   }
                 >
                   Failed

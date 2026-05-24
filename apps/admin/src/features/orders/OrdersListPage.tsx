@@ -1,20 +1,8 @@
-import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
-import { Ban, Search } from "lucide-react";
-
 import { Button, Input } from "@yupay/ui";
-
-import { Badge } from "@/components/Badge";
-import { PageHeader } from "@/components/PageHeader";
-import { DataTable, type Column } from "@/components/DataTable";
-import { Pagination } from "@/components/Pagination";
-import { ApiError, apiGet, apiPost } from "@/lib/api";
-import { qk } from "@/lib/queryKeys";
-import { numberCodec, useSearchParamsState } from "@/lib/useSearchParamsState";
-import { SaveSegmentButton } from "@/features/segments/SaveSegmentButton";
-
-const PAGE_SIZE = 50;
+import { Ban, Search } from "lucide-react";
+import { useMemo } from "react";
+import { Link, useNavigate } from "react-router-dom";
 
 import {
   type OrderAdminListOut,
@@ -23,6 +11,18 @@ import {
   STATUS_LABEL,
   STATUS_TONE,
 } from "./types";
+
+import { Badge } from "@/components/Badge";
+import { DataTable, type Column } from "@/components/DataTable";
+import { PageHeader } from "@/components/PageHeader";
+import { Pagination } from "@/components/Pagination";
+import { SaveSegmentButton } from "@/features/segments/SaveSegmentButton";
+import { type ApiError, apiGet, apiPost } from "@/lib/api";
+import { qk } from "@/lib/queryKeys";
+import { numberCodec, useSearchParamsState } from "@/lib/useSearchParamsState";
+
+const PAGE_SIZE = 50;
+
 
 const STATUS_FILTERS: { value: OrderStatus | ""; label: string }[] = [
   { value: "", label: "Все" },
@@ -90,14 +90,14 @@ export function OrdersListPage() {
 
   const totalCharged = useMemo(
     () =>
-      rows.reduce(
+      rows.reduce<Record<string, number>>(
         (acc, o) => {
           const key = o.currency;
           const v = Number.parseFloat(o.total_charged) || 0;
           acc[key] = (acc[key] ?? 0) + v;
           return acc;
         },
-        {} as Record<string, number>,
+        {},
       ),
     [rows],
   );
@@ -206,7 +206,7 @@ export function OrdersListPage() {
       render: (o) => (
         <div
           className="flex justify-end gap-1"
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); }}
         >
           {o.status === "pending_payment" && (
             <Button

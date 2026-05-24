@@ -1,16 +1,16 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button, Input } from "@yupay/ui";
+import { Pencil, Plus, RefreshCcw, Search, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, RefreshCcw, Search, Trash2 } from "lucide-react";
 
-import { Button, Input } from "@yupay/ui";
+import type { Brand, Product, Sku } from "../types";
 
 import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/components/Toast";
-import { ApiError, apiDelete, apiPatch, apiGet, apiPost } from "@/lib/api";
+import { type ApiError, apiDelete, apiPatch, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
-import type { Brand, Product, Sku } from "../types";
 
 interface GroupedProduct {
   product: Product;
@@ -56,7 +56,7 @@ export function SkusListPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.skus() }),
   });
 
-  const bulkSetUzs = useMutation<BulkUzsPriceOut, ApiError, void>({
+  const bulkSetUzs = useMutation<BulkUzsPriceOut, ApiError>({
     mutationFn: () =>
       apiPost<BulkUzsPriceOut>("/api/v1/admin/catalog/skus/bulk-set-uzs-prices", {}),
     onSuccess: (data) => {
@@ -117,7 +117,7 @@ export function SkusListPage() {
           rname(g.brand).toLowerCase().includes(q) ||
           rname(g.product).toLowerCase().includes(q) ||
           g.product.slug.toLowerCase().includes(q);
-        let skus = g.skus.filter((sku) => {
+        const skus = g.skus.filter((sku) => {
           if (onlyInactive && sku.active) return false;
           if (q.length === 0) return true;
           if (matchesGroup) return true;
@@ -213,7 +213,7 @@ export function SkusListPage() {
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--text-secondary)]" />
           <Input
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); }}
             placeholder="Поиск по бренду, продукту, sku-code, региону…"
             className="pl-9"
           />
@@ -222,7 +222,7 @@ export function SkusListPage() {
           <input
             type="checkbox"
             checked={onlyInactive}
-            onChange={(e) => setOnlyInactive(e.target.checked)}
+            onChange={(e) => { setOnlyInactive(e.target.checked); }}
             className="size-4"
           />
           только неактивные
@@ -250,7 +250,7 @@ export function SkusListPage() {
           <ProductGroup
             key={g.product.id}
             group={g}
-            onToggle={(sku, next) => toggleActive.mutate({ sku, next })}
+            onToggle={(sku, next) => { toggleActive.mutate({ sku, next }); }}
             onDelete={(sku) => {
               if (confirm(`Удалить SKU «${sku.sku_code}»?`)) remove.mutate(sku);
             }}
@@ -355,9 +355,9 @@ function ProductGroup({
               <SkuRow
                 key={sku.id}
                 sku={sku}
-                onToggle={(next) => onToggle(sku, next)}
+                onToggle={(next) => { onToggle(sku, next); }}
                 onEdit={() => navigate(`/skus/${sku.id}`)}
-                onDelete={() => onDelete(sku)}
+                onDelete={() => { onDelete(sku); }}
                 disabled={isToggling || isDeleting}
               />
             ))}
@@ -437,7 +437,7 @@ function SkuRow({
       <td className="px-3 py-2.5 text-right">
         <div
           className="flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100"
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); }}
         >
           <Button
             type="button"
@@ -478,7 +478,7 @@ function Toggle({
       type="button"
       role="switch"
       aria-checked={checked}
-      onClick={() => onChange(!checked)}
+      onClick={() => { onChange(!checked); }}
       disabled={disabled}
       className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
         checked

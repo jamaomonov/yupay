@@ -65,7 +65,7 @@ class PaymentGateway(Protocol):
     async def create_intent(
         self,
         *,
-        order: Any,  # noqa: ANN401 — Order ORM, kept loose to avoid orders import here
+        order: Any,
         return_url: str,
     ) -> PaymentIntent: ...
 
@@ -79,6 +79,6 @@ class PaymentGateway(Protocol):
     async def refund(
         self,
         *,
-        payment: Any,  # noqa: ANN401 — Payment ORM
+        payment: Any,
         amount: Decimal,
     ) -> RefundResult: ...

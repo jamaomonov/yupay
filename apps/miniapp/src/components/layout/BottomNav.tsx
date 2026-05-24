@@ -1,5 +1,6 @@
-import { Link, useLocation } from "wouter";
 import { Home, Clock, Settings } from "lucide-react";
+import { Link, useLocation } from "wouter";
+
 import { cn } from "@/lib/utils";
 
 export function BottomNav() {

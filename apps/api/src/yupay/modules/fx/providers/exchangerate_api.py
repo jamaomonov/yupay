@@ -53,10 +53,7 @@ class ExchangerateApiProvider(FxProvider):
     def supports(self, base: str, quote: str) -> bool:
         if not self._api_key:
             return False
-        return (
-            base.upper() in self._FIAT_BASES
-            and quote.upper() in self._SUPPORTED_QUOTES
-        )
+        return base.upper() in self._FIAT_BASES and quote.upper() in self._SUPPORTED_QUOTES
 
     async def get_rate(self, base: str, quote: str) -> Quote:
         if not self._api_key:
@@ -84,15 +81,12 @@ class ExchangerateApiProvider(FxProvider):
 
         if (payload.get("base_code") or "").upper() != base_u:
             raise FxProviderError(
-                f"{self.name}: API returned base "
-                f"{payload.get('base_code')!r}, expected {base_u}"
+                f"{self.name}: API returned base {payload.get('base_code')!r}, expected {base_u}"
             )
 
         rate_raw = (payload.get("conversion_rates") or {}).get(quote_u)
         if rate_raw is None:
-            raise FxProviderError(
-                f"{self.name}: missing rate for {base_u}->{quote_u}"
-            )
+            raise FxProviderError(f"{self.name}: missing rate for {base_u}->{quote_u}")
         try:
             rate = Decimal(str(rate_raw))
         except (InvalidOperation, ValueError) as exc:

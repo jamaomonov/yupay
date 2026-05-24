@@ -55,9 +55,7 @@ async def _grant_admin(db_session: AsyncSession, tg_id: int) -> None:
             .where(TelegramLink.tg_user_id == tg_id)
         )
     ).scalar_one()
-    await db_session.execute(
-        update(User).where(User.id == user_id).values(roles=["admin"])
-    )
+    await db_session.execute(update(User).where(User.id == user_id).values(roles=["admin"]))
     await db_session.commit()
 
 
@@ -183,9 +181,7 @@ async def test_full_crud_flow(
     assert r.json()["sort_order"] == 999
 
     # 6) Listing returns the inactive product (admin sees everything)
-    r = await integration_client.get(
-        "/api/v1/admin/catalog/products", headers=_admin_headers
-    )
+    r = await integration_client.get("/api/v1/admin/catalog/products", headers=_admin_headers)
     assert r.status_code == 200
     assert any(p["id"] == product_id for p in r.json())
 
@@ -194,14 +190,10 @@ async def test_full_crud_flow(
         f"/api/v1/admin/catalog/products/{product_id}", headers=_admin_headers
     )
     assert r.status_code == 204
-    r = await integration_client.get(
-        f"/api/v1/admin/catalog/skus/{sku_id}", headers=_admin_headers
-    )
+    r = await integration_client.get(f"/api/v1/admin/catalog/skus/{sku_id}", headers=_admin_headers)
     # The SKU endpoint isn't defined for GET-by-id — but the product DELETE cascade
     # should have removed it. Verify via the list endpoint.
-    r = await integration_client.get(
-        "/api/v1/admin/catalog/skus", headers=_admin_headers
-    )
+    r = await integration_client.get("/api/v1/admin/catalog/skus", headers=_admin_headers)
     assert all(s["id"] != sku_id for s in r.json())
 
 
@@ -214,6 +206,7 @@ async def test_bulk_set_uzs_prices_recomputes_overrides(
     SKU with a known cost_usdt, using the same FX service that the
     storefront uses at checkout."""
     from decimal import Decimal as _Dec
+
     import fakeredis.aioredis
     from yupay.core.clock import now as _now
     from yupay.modules.fx.providers.base import FxProvider, Quote
@@ -240,9 +233,7 @@ async def test_bulk_set_uzs_prices_recomputes_overrides(
             redis=fakeredis.aioredis.FakeRedis(decode_responses=True),
         )
 
-    monkeypatch.setattr(
-        "yupay.modules.catalog.admin_routes.build_default_service", _build
-    )
+    monkeypatch.setattr("yupay.modules.catalog.admin_routes.build_default_service", _build)
 
     # Seed category/brand/product/two SKUs (one with cost_usdt, one without).
     r = await integration_client.post(
@@ -312,9 +303,7 @@ async def test_bulk_set_uzs_prices_recomputes_overrides(
 
     # Confirm the override on SKU A is exactly cost × rate, and that
     # listing it back includes the new override row.
-    r = await integration_client.get(
-        "/api/v1/admin/catalog/skus", headers=_admin_headers
-    )
+    r = await integration_client.get("/api/v1/admin/catalog/skus", headers=_admin_headers)
     skus = {s["sku_code"]: s for s in r.json()}
     overrides_a = {o["currency"]: o for o in skus["fx-a"]["price_overrides"]}
     assert "UZS" in overrides_a

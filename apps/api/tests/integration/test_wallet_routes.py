@@ -78,9 +78,7 @@ async def test_empty_wallet_returns_no_balances(
     integration_client: AsyncClient,
 ) -> None:
     token = await _login_user(integration_client, tg_id=501)
-    r = await integration_client.get(
-        "/api/v1/wallet", headers={"Authorization": f"Bearer {token}"}
-    )
+    r = await integration_client.get("/api/v1/wallet", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
     assert r.json() == {"balances": []}
 
@@ -134,8 +132,11 @@ async def test_admin_clawback_decreases_balance(
         "/api/v1/admin/wallet/adjust",
         headers=headers,
         json={
-            "user_id": user_id, "kind": "user_promo_credit", "currency": "USD",
-            "amount": "10", "reason": "promo seed",
+            "user_id": user_id,
+            "kind": "user_promo_credit",
+            "currency": "USD",
+            "amount": "10",
+            "reason": "promo seed",
             "idempotency_key": "adj-claw-aaaaaaaa-001",
         },
     )
@@ -144,8 +145,11 @@ async def test_admin_clawback_decreases_balance(
         "/api/v1/admin/wallet/adjust",
         headers=headers,
         json={
-            "user_id": user_id, "kind": "user_promo_credit", "currency": "USD",
-            "amount": "-3", "reason": "promo retraction",
+            "user_id": user_id,
+            "kind": "user_promo_credit",
+            "currency": "USD",
+            "amount": "-3",
+            "reason": "promo retraction",
             "idempotency_key": "adj-claw-aaaaaaaa-002",
         },
     )
@@ -155,9 +159,7 @@ async def test_admin_clawback_decreases_balance(
         "/api/v1/wallet", headers={"Authorization": f"Bearer {user_token}"}
     )
     assert overview.status_code == 200
-    bal = next(
-        b for b in overview.json()["balances"] if b["kind"] == "user_promo_credit"
-    )
+    bal = next(b for b in overview.json()["balances"] if b["kind"] == "user_promo_credit")
     assert Decimal(bal["balance"]) == Decimal("7")
 
 
@@ -179,15 +181,15 @@ async def test_idempotent_replay_returns_same_transaction(
     }
     headers = {"Authorization": f"Bearer {admin_token}"}
     first = await integration_client.post("/api/v1/admin/wallet/adjust", headers=headers, json=body)
-    second = await integration_client.post("/api/v1/admin/wallet/adjust", headers=headers, json=body)
+    second = await integration_client.post(
+        "/api/v1/admin/wallet/adjust", headers=headers, json=body
+    )
     assert first.status_code == 200
     assert second.status_code == 200
     assert first.json()["id"] == second.json()["id"]
 
 
-async def _grant_user_and_login(
-    client: AsyncClient, db: AsyncSession, tg_id: int
-) -> int:
+async def _grant_user_and_login(client: AsyncClient, db: AsyncSession, tg_id: int) -> int:
     await _login_user(client, tg_id=tg_id)
     return tg_id
 
@@ -206,8 +208,11 @@ async def test_my_transactions_lists_recent(
             "/api/v1/admin/wallet/adjust",
             headers=headers,
             json={
-                "user_id": user_id, "kind": "user_wallet", "currency": "USD",
-                "amount": "1", "reason": f"seed-{i}",
+                "user_id": user_id,
+                "kind": "user_wallet",
+                "currency": "USD",
+                "amount": "1",
+                "reason": f"seed-{i}",
                 "idempotency_key": f"adj-list-cccccccc-{i:03d}",
             },
         )
@@ -229,9 +234,7 @@ async def test_my_transactions_lists_recent(
 # ---------- admin view ----------
 
 
-async def test_admin_user_ledger(
-    integration_client: AsyncClient, db_session: AsyncSession
-) -> None:
+async def test_admin_user_ledger(integration_client: AsyncClient, db_session: AsyncSession) -> None:
     await _login_user(integration_client, tg_id=510)
     user_id = await _user_id_for_tg(db_session, 510)
     admin_token = await _login_user(integration_client, tg_id=511)
@@ -242,14 +245,15 @@ async def test_admin_user_ledger(
         "/api/v1/admin/wallet/adjust",
         headers=headers,
         json={
-            "user_id": user_id, "kind": "user_wallet", "currency": "USD",
-            "amount": "12.50", "reason": "starter",
+            "user_id": user_id,
+            "kind": "user_wallet",
+            "currency": "USD",
+            "amount": "12.50",
+            "reason": "starter",
             "idempotency_key": "adj-view-dddddddddd-001",
         },
     )
-    r = await integration_client.get(
-        f"/api/v1/admin/wallet/{user_id}", headers=headers
-    )
+    r = await integration_client.get(f"/api/v1/admin/wallet/{user_id}", headers=headers)
     assert r.status_code == 200
     body = r.json()
     assert body["user_id"] == user_id
@@ -286,8 +290,11 @@ async def test_recent_adjustments_filters_to_me(
         "/api/v1/admin/wallet/adjust",
         headers={"Authorization": f"Bearer {admin_a_token}"},
         json={
-            "user_id": customer_id, "kind": "user_cashback", "currency": "USD",
-            "amount": "1", "reason": "by A",
+            "user_id": customer_id,
+            "kind": "user_cashback",
+            "currency": "USD",
+            "amount": "1",
+            "reason": "by A",
             "idempotency_key": "rec-feed-aaaaaa-001",
         },
     )
@@ -295,8 +302,11 @@ async def test_recent_adjustments_filters_to_me(
         "/api/v1/admin/wallet/adjust",
         headers={"Authorization": f"Bearer {admin_b_token}"},
         json={
-            "user_id": customer_id, "kind": "user_cashback", "currency": "USD",
-            "amount": "2", "reason": "by B",
+            "user_id": customer_id,
+            "kind": "user_cashback",
+            "currency": "USD",
+            "amount": "2",
+            "reason": "by B",
             "idempotency_key": "rec-feed-bbbbbb-001",
         },
     )
@@ -333,8 +343,11 @@ async def test_recent_adjustments_all_actor(
             "/api/v1/admin/wallet/adjust",
             headers={"Authorization": f"Bearer {token}"},
             json={
-                "user_id": customer_id, "kind": "user_wallet", "currency": "USD",
-                "amount": "1", "reason": reason,
+                "user_id": customer_id,
+                "kind": "user_wallet",
+                "currency": "USD",
+                "amount": "1",
+                "reason": reason,
                 "idempotency_key": key,
             },
         )
@@ -366,13 +379,17 @@ async def test_recent_adjustments_bad_actor_400(
 async def test_service_rejects_unbalanced_legs(db_session: AsyncSession) -> None:
     acc_user = await wallet_svc.ensure_account(
         db_session,
-        owner_type="user", owner_id="00000000-0000-7000-8000-000000000fff",
-        kind="user_wallet", currency="USD",
+        owner_type="user",
+        owner_id="00000000-0000-7000-8000-000000000fff",
+        kind="user_wallet",
+        currency="USD",
     )
     acc_house = await wallet_svc.ensure_account(
         db_session,
-        owner_type="house", owner_id="house",
-        kind="house_promo_expense", currency="USD",
+        owner_type="house",
+        owner_id="house",
+        kind="house_promo_expense",
+        currency="USD",
     )
     with pytest.raises(ValidationError, match="SUM"):
         await wallet_svc.post(
@@ -391,13 +408,17 @@ async def test_service_balance_respects_normal_side(
 ) -> None:
     acc_user = await wallet_svc.ensure_account(
         db_session,
-        owner_type="user", owner_id="00000000-0000-7000-8000-00000000aaaa",
-        kind="user_wallet", currency="USD",
+        owner_type="user",
+        owner_id="00000000-0000-7000-8000-00000000aaaa",
+        kind="user_wallet",
+        currency="USD",
     )
     acc_revenue = await wallet_svc.ensure_account(
         db_session,
-        owner_type="house", owner_id="house",
-        kind="house_revenue", currency="USD",
+        owner_type="house",
+        owner_id="house",
+        kind="house_revenue",
+        currency="USD",
     )
     await wallet_svc.post(
         db_session,

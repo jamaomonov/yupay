@@ -30,6 +30,4 @@ async def admin_dashboard(
     _admin: Annotated[User, Depends(require_admin)],
     window_hours: int = 24,
 ) -> DashboardOut:
-    return await svc.build_dashboard(
-        db, window_hours=max(1, min(window_hours, 24 * 30))
-    )
+    return await svc.build_dashboard(db, window_hours=max(1, min(window_hours, 24 * 30)))

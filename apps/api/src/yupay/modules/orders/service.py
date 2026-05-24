@@ -77,6 +77,7 @@ def build_item_display(item: OrderItem, *, locale: str = "ru") -> OrderItemDispl
         image_url=sku.image_url or (product.image_url if product is not None else None),
     )
 
+
 if TYPE_CHECKING:
     from yupay.modules.fx.service import FxService
 
@@ -107,9 +108,7 @@ def _record_event(
     actor: Actor,
     payload: dict[str, object] | None = None,
 ) -> None:
-    actor_label = (
-        f"user:{actor.user_id}" if actor.user_id else f"guest:{actor.email}"
-    )
+    actor_label = f"user:{actor.user_id}" if actor.user_id else f"guest:{actor.email}"
     db.add(
         OrderEvent(
             id=new_id(),
@@ -121,9 +120,7 @@ def _record_event(
     )
 
 
-async def _fetch_skus_with_product(
-    db: AsyncSession, sku_ids: list[str]
-) -> dict[str, Sku]:
+async def _fetch_skus_with_product(db: AsyncSession, sku_ids: list[str]) -> dict[str, Sku]:
     """Load all referenced SKUs along with their product (for required_fields)
     and per-currency price overrides (so checkout honours the same native
     price the catalogue showed the customer)."""
@@ -171,9 +168,7 @@ async def create_order(
 
     Returns the persisted order (with items + events loaded).
     """
-    existing = await _existing_idempotent_order(
-        db, actor=actor, idempotency_key=idempotency_key
-    )
+    existing = await _existing_idempotent_order(db, actor=actor, idempotency_key=idempotency_key)
     if existing is not None:
         return existing
 
@@ -182,9 +177,7 @@ async def create_order(
     skus = await _fetch_skus_with_product(db, sku_ids)
     missing = [sid for sid in sku_ids if sid not in skus or not skus[sid].active]
     if missing:
-        raise ValidationError(
-            "unknown or inactive SKU", extra={"sku_ids": missing}
-        )
+        raise ValidationError("unknown or inactive SKU", extra={"sku_ids": missing})
 
     # 2) Build order items with frozen price + validated fulfillment_data.
     order_id = new_id()
@@ -222,11 +215,7 @@ async def create_order(
         for line in body.items:
             sku = skus[line.sku_id]
             override = next(
-                (
-                    o
-                    for o in sku.price_overrides
-                    if o.currency.upper() == currency
-                ),
+                (o for o in sku.price_overrides if o.currency.upper() == currency),
                 None,
             )
             if override is not None:
@@ -245,9 +234,7 @@ async def create_order(
                         quote=currency,
                     ) from exc
                 fx_snapshot_id = fx_snap.id
-            total_charged += (
-                sku.price_usd * line.qty * fx_snap.rate
-            ).quantize(Decimal("1.000000"))
+            total_charged += (sku.price_usd * line.qty * fx_snap.rate).quantize(Decimal("1.000000"))
 
     # 4) Persist the order.
     created = now()
@@ -285,9 +272,7 @@ async def create_order(
     except IntegrityError as exc:
         # Concurrent request with the same idempotency key won the race — re-read.
         await db.rollback()
-        replay = await _existing_idempotent_order(
-            db, actor=actor, idempotency_key=idempotency_key
-        )
+        replay = await _existing_idempotent_order(db, actor=actor, idempotency_key=idempotency_key)
         if replay is not None:
             return replay
         raise ConflictError("order conflict") from exc
@@ -308,17 +293,13 @@ async def _load_order(db: AsyncSession, order_id: str) -> Order:
     return row
 
 
-async def get_order_for_actor(
-    db: AsyncSession, order_id: str, *, actor: Actor
-) -> Order:
+async def get_order_for_actor(db: AsyncSession, order_id: str, *, actor: Actor) -> Order:
     """Look up an order. 404 if the actor doesn't own it (to avoid leaking ids)."""
     order = await _load_order(db, order_id)
     if actor.user_id is not None:
         if order.user_id != actor.user_id:
             raise NotFoundError("order not found")
-    elif order.guest_email is None or order.guest_email.lower() != (
-        actor.email or ""
-    ).lower():
+    elif order.guest_email is None or order.guest_email.lower() != (actor.email or "").lower():
         raise NotFoundError("order not found")
     # Lazy guard: if the customer is opening a stale pending order, flip it
     # to ``expired`` now instead of letting them stare at "ждём оплату" for
@@ -328,14 +309,9 @@ async def get_order_for_actor(
     return order
 
 
-async def list_orders_for_actor(
-    db: AsyncSession, *, actor: Actor, limit: int = 50
-) -> list[Order]:
+async def list_orders_for_actor(db: AsyncSession, *, actor: Actor, limit: int = 50) -> list[Order]:
     stmt = (
-        select(Order)
-        .options(*_order_load_options())
-        .order_by(Order.created_at.desc())
-        .limit(limit)
+        select(Order).options(*_order_load_options()).order_by(Order.created_at.desc()).limit(limit)
     )
     if actor.user_id is not None:
         stmt = stmt.where(Order.user_id == actor.user_id)
@@ -361,19 +337,13 @@ async def list_orders_admin(
     offset: int = 0,
 ) -> tuple[list[Order], int]:
     """Paged admin listing. Returns ``(rows, total_matching_filter)``."""
-    base = select(Order).options(
-        *_order_load_options(), selectinload(Order.events)
-    )
+    base = select(Order).options(*_order_load_options(), selectinload(Order.events))
     count_stmt = select(func.count()).select_from(Order)
     if status_filter is not None:
         base = base.where(Order.status == status_filter)
         count_stmt = count_stmt.where(Order.status == status_filter)
     rows = list(
-        (
-            await db.execute(
-                base.order_by(Order.created_at.desc()).limit(limit).offset(offset)
-            )
-        )
+        (await db.execute(base.order_by(Order.created_at.desc()).limit(limit).offset(offset)))
         .scalars()
         .all()
     )
@@ -385,9 +355,7 @@ async def get_order_admin(db: AsyncSession, order_id: str) -> Order:
     return await _load_order(db, order_id)
 
 
-async def cancel_order_admin(
-    db: AsyncSession, order_id: str, *, admin_id: str
-) -> Order:
+async def cancel_order_admin(db: AsyncSession, order_id: str, *, admin_id: str) -> Order:
     """Admin-initiated cancellation. Only legal from ``pending_payment``."""
     order = await _load_order(db, order_id)
     if order.status != "pending_payment":

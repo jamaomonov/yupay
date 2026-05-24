@@ -1,21 +1,21 @@
-import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink } from "lucide-react";
-
 import { Button, Input } from "@yupay/ui";
+import { ExternalLink } from "lucide-react";
+import { useState } from "react";
+
+import type { TaskAdminOut, TaskListOut, TaskStatus } from "./types";
 
 import { Badge } from "@/components/Badge";
-import { PageHeader } from "@/components/PageHeader";
 import { DataTable, type Column } from "@/components/DataTable";
+import { PageHeader } from "@/components/PageHeader";
 import { Pagination } from "@/components/Pagination";
-import { ApiError, apiGet, apiPost } from "@/lib/api";
+import { useToast } from "@/components/Toast";
+import { type ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { useSearchParamsState } from "@/lib/useSearchParamsState";
-import { useToast } from "@/components/Toast";
 
 const PAGE_SIZE = 50;
 
-import type { TaskAdminOut, TaskListOut, TaskStatus } from "./types";
 
 const STATUSES: { value: TaskStatus | ""; label: string }[] = [
   { value: "", label: "Все" },
@@ -140,13 +140,13 @@ export function FulfillmentPage() {
       render: (t) => (
         <div
           className="flex justify-end gap-1"
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); }}
         >
           {(t.status === "failed" || t.status === "pending") && (
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => retryMutation.mutate(t.id)}
+              onClick={() => { retryMutation.mutate(t.id); }}
             >
               Retry
             </Button>
@@ -232,7 +232,7 @@ export function FulfillmentPage() {
         columns={columns}
         rowKey={(t) => t.id}
         empty="Задач не нашлось."
-        onRowClick={(t) => setExpanded(expanded === t.id ? null : t.id)}
+        onRowClick={(t) => { setExpanded(expanded === t.id ? null : t.id); }}
       />
 
       <Pagination

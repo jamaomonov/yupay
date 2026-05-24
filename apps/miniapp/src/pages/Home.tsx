@@ -1,12 +1,15 @@
-import { useState, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, X, TrendingUp, ArrowLeft, RotateCcw } from "lucide-react";
-import { CATEGORY_LABELS } from "@/lib/constants";
+import { useState, useMemo, useRef } from "react";
+import { Link } from "wouter";
+
 import type { Game } from "@/lib/constants-types";
+
 import { useCategoriesList, useGames } from "@/lib/catalog";
+import { CATEGORY_LABELS } from "@/lib/constants";
 import { useMyOrders } from "@/lib/orders";
 import { useDocumentTitle } from "@/lib/use-document-title";
-import { Link } from "wouter";
+
 
 const ALL_KEY = "__all__";
 
@@ -372,7 +375,7 @@ export default function Home() {
                   aria-label="Поиск по играм"
                   placeholder="Найти игру..."
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => { setSearch(e.target.value); }}
                   className="w-full rounded-xl pl-9 pr-9 py-2.5 text-sm text-white placeholder:text-body-faint outline-none transition-all"
                   style={{
                     background: "hsl(var(--surface-2))",
@@ -382,7 +385,7 @@ export default function Home() {
                 />
                 {search && (
                   <button
-                    onClick={() => setSearch("")}
+                    onClick={() => { setSearch(""); }}
                     aria-label="Очистить поиск"
                     className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-full bg-white/10"
                   >
@@ -412,7 +415,7 @@ export default function Home() {
               {categoryChips.map((cat) => (
                 <button
                   key={cat.key}
-                  onClick={() => setActiveCategory(cat.key)}
+                  onClick={() => { setActiveCategory(cat.key); }}
                   className="whitespace-nowrap rounded-xl px-3.5 py-2 text-xs font-semibold transition-all duration-200 flex-shrink-0"
                   style={{
                     background: activeCategory === cat.key ? "hsl(var(--primary))" : "hsl(var(--card))",

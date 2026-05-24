@@ -2,32 +2,33 @@
 
 import { createBrowserRouter, Navigate } from "react-router-dom";
 
+import { Layout } from "./Layout";
+
+import { AuditPage } from "@/features/audit/AuditPage";
 import { AuthGuard } from "@/features/auth/AuthGuard";
 import { LoginPage } from "@/features/auth/LoginPage";
-import { AuditPage } from "@/features/audit/AuditPage";
-import { BrandsListPage } from "@/features/catalog/brands/BrandsListPage";
 import { BrandEditPage } from "@/features/catalog/brands/BrandEditPage";
+import { BrandsListPage } from "@/features/catalog/brands/BrandsListPage";
 import { CategoriesListPage } from "@/features/catalog/categories/CategoriesListPage";
 import { CategoryEditPage } from "@/features/catalog/categories/CategoryEditPage";
-import { ProductsListPage } from "@/features/catalog/products/ProductsListPage";
 import { ProductEditPage } from "@/features/catalog/products/ProductEditPage";
+import { ProductsListPage } from "@/features/catalog/products/ProductsListPage";
 import { SkuEditPage } from "@/features/catalog/skus/SkuEditPage";
 import { SkusListPage } from "@/features/catalog/skus/SkusListPage";
 import { CustomerPage } from "@/features/customers/CustomerPage";
 import { InboxPage } from "@/features/fulfillment/InboxPage";
-import { TriagePage } from "@/features/payments-triage/TriagePage";
 import { FxPage } from "@/features/fx/FxPage";
 import { InventoryPage } from "@/features/inventory/InventoryPage";
 import { OrderDetailPage } from "@/features/orders/OrderDetailPage";
 import { OrdersListPage } from "@/features/orders/OrdersListPage";
 import { PaymentsPage } from "@/features/payments/PaymentsPage";
+import { TriagePage } from "@/features/payments-triage/TriagePage";
 import { SourcingPage } from "@/features/sourcing/SourcingPage";
 import { UsersListPage } from "@/features/users/UsersListPage";
 import { WalletPage } from "@/features/wallet/WalletPage";
 import { WebhooksPage } from "@/features/webhooks/WebhooksPage";
 import { DashboardPage } from "@/routes/Dashboard";
 
-import { Layout } from "./Layout";
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },

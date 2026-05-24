@@ -113,6 +113,7 @@ class AdminUserLedgerOut(BaseModel):
 
 
 __all__ = [
+    "USER_VISIBLE_KINDS",
     "AccountKind",
     "AccountOut",
     "AdminAccountListOut",
@@ -125,6 +126,5 @@ __all__ = [
     "PostingOut",
     "TransactionListOut",
     "TransactionOut",
-    "USER_VISIBLE_KINDS",
     "WalletOverviewOut",
 ]

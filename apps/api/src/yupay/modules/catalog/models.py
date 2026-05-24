@@ -126,9 +126,7 @@ class BrandTranslation(Base):
     short_description: Mapped[str | None] = mapped_column(String(512), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    __table_args__ = (
-        PrimaryKeyConstraint("brand_id", "locale", name="pk_brand_translations"),
-    )
+    __table_args__ = (PrimaryKeyConstraint("brand_id", "locale", name="pk_brand_translations"),)
 
     brand: Mapped[Brand] = relationship(back_populates="translations")
 
@@ -199,9 +197,7 @@ class ProductTranslation(Base):
     short_description: Mapped[str | None] = mapped_column(String(512), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    __table_args__ = (
-        PrimaryKeyConstraint("product_id", "locale", name="pk_product_translations"),
-    )
+    __table_args__ = (PrimaryKeyConstraint("product_id", "locale", name="pk_product_translations"),)
 
     product: Mapped[Product] = relationship(back_populates="translations")
 

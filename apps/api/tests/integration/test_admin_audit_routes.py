@@ -66,9 +66,7 @@ async def _admin_headers(
     return {"Authorization": f"Bearer {token}"}
 
 
-async def _make_order_with_event(
-    db: AsyncSession, *, kind: str, actor: str | None
-) -> str:
+async def _make_order_with_event(db: AsyncSession, *, kind: str, actor: str | None) -> str:
     user_id = str(uuid.uuid4())
     order_id = str(uuid.uuid4())
     db.add(
@@ -133,19 +131,11 @@ async def test_admin_only_filters_to_admin_actors(
 ) -> None:
     admin_id = str(uuid.uuid4())
     user_id = str(uuid.uuid4())
-    await _make_order_with_event(
-        db_session, kind="order.cancelled", actor=f"admin:{admin_id}"
-    )
-    await _make_order_with_event(
-        db_session, kind="order.created", actor=f"user:{user_id}"
-    )
-    await _make_order_with_event(
-        db_session, kind="order.expired", actor="system:expiry"
-    )
+    await _make_order_with_event(db_session, kind="order.cancelled", actor=f"admin:{admin_id}")
+    await _make_order_with_event(db_session, kind="order.created", actor=f"user:{user_id}")
+    await _make_order_with_event(db_session, kind="order.expired", actor="system:expiry")
 
-    r = await integration_client.get(
-        "/api/v1/admin/audit?admin_only=true", headers=_admin_headers
-    )
+    r = await integration_client.get("/api/v1/admin/audit?admin_only=true", headers=_admin_headers)
     assert r.status_code == 200, r.text
     items = r.json()["items"]
     actors = {item["actor"] for item in items if item["actor"] is not None}
@@ -160,9 +150,7 @@ async def test_admin_only_default_false_returns_all(
 ) -> None:
     """When admin_only isn't set, the feed still returns everything (existing behaviour)."""
     user_id = str(uuid.uuid4())
-    await _make_order_with_event(
-        db_session, kind="order.created", actor=f"user:{user_id}"
-    )
+    await _make_order_with_event(db_session, kind="order.created", actor=f"user:{user_id}")
 
     r = await integration_client.get("/api/v1/admin/audit", headers=_admin_headers)
     assert r.status_code == 200
@@ -175,15 +163,8 @@ async def test_admin_only_excludes_system_events(
     db_session: AsyncSession,
     _admin_headers: dict[str, str],
 ) -> None:
-    await _make_order_with_event(
-        db_session, kind="order.expired", actor="system:expiry"
-    )
-    r = await integration_client.get(
-        "/api/v1/admin/audit?admin_only=true", headers=_admin_headers
-    )
+    await _make_order_with_event(db_session, kind="order.expired", actor="system:expiry")
+    r = await integration_client.get("/api/v1/admin/audit?admin_only=true", headers=_admin_headers)
     assert r.status_code == 200
     items = r.json()["items"]
-    assert all(
-        item["actor"] is None or not item["actor"].startswith("system:")
-        for item in items
-    )
+    assert all(item["actor"] is None or not item["actor"].startswith("system:") for item in items)

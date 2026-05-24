@@ -35,7 +35,7 @@ class StubGateway(PaymentGateway):
     async def create_intent(
         self,
         *,
-        order: Any,  # noqa: ARG002, ANN401
+        order: Any,  # noqa: ARG002
         return_url: str,  # noqa: ARG002
     ) -> PaymentIntent:
         raise PaymentNotIntegratedError(self.todo_message)
@@ -51,7 +51,7 @@ class StubGateway(PaymentGateway):
     async def refund(
         self,
         *,
-        payment: Any,  # noqa: ARG002, ANN401
+        payment: Any,  # noqa: ARG002
         amount: Decimal,  # noqa: ARG002
     ) -> RefundResult:
         raise PaymentNotIntegratedError(self.todo_message)

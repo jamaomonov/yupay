@@ -68,6 +68,7 @@ async def _make_order_item(db: AsyncSession, *, sku_id: str, email: str) -> str:
     await db.commit()
     return item.id
 
+
 pytestmark = pytest.mark.asyncio
 
 BOT_TOKEN = "123456:TEST"
@@ -144,9 +145,7 @@ async def _seed_sku(db_session: AsyncSession) -> str:
     return sku.id
 
 
-async def _pay_order(
-    client: AsyncClient, *, token: str, sku_id: str, key_suffix: str
-) -> str:
+async def _pay_order(client: AsyncClient, *, token: str, sku_id: str, key_suffix: str) -> str:
     """Create + pay an order; returns order_id (status=delivered or failed after fulfilment)."""
     create = await client.post(
         "/api/v1/orders",
@@ -249,9 +248,7 @@ async def test_admin_codes_listing_shows_cleartext(
     assert codes == ["LIST-001", "LIST-002"]
 
 
-async def test_reserve_and_issue_at_service_layer(
-    db_session: AsyncSession, _seed_sku: str
-) -> None:
+async def test_reserve_and_issue_at_service_layer(db_session: AsyncSession, _seed_sku: str) -> None:
     await inv_svc.bulk_upload(
         db_session,
         sku_id=_seed_sku,
@@ -259,31 +256,21 @@ async def test_reserve_and_issue_at_service_layer(
         uploaded_by="test",
     )
     item_id = await _make_order_item(db_session, sku_id=_seed_sku, email="a@y.io")
-    issued = await inv_svc.reserve_and_issue(
-        db_session, sku_id=_seed_sku, order_item_id=item_id
-    )
+    issued = await inv_svc.reserve_and_issue(db_session, sku_id=_seed_sku, order_item_id=item_id)
     assert issued.code in ("SVC-001", "SVC-002")
 
     # Replay returns the same row, not a second one.
-    again = await inv_svc.reserve_and_issue(
-        db_session, sku_id=_seed_sku, order_item_id=item_id
-    )
+    again = await inv_svc.reserve_and_issue(db_session, sku_id=_seed_sku, order_item_id=item_id)
     assert again.inventory_code_id == issued.inventory_code_id
 
 
-async def test_no_stock_raises(
-    db_session: AsyncSession, _seed_sku: str
-) -> None:
+async def test_no_stock_raises(db_session: AsyncSession, _seed_sku: str) -> None:
     item_id = await _make_order_item(db_session, sku_id=_seed_sku, email="b@y.io")
     with pytest.raises(inv_svc.NoStockError):
-        await inv_svc.reserve_and_issue(
-            db_session, sku_id=_seed_sku, order_item_id=item_id
-        )
+        await inv_svc.reserve_and_issue(db_session, sku_id=_seed_sku, order_item_id=item_id)
 
 
-async def test_non_admin_forbidden(
-    integration_client: AsyncClient, _seed_sku: str
-) -> None:
+async def test_non_admin_forbidden(integration_client: AsyncClient, _seed_sku: str) -> None:
     user = await _login_user(integration_client, tg_id=303)
     r = await integration_client.post(
         "/api/v1/admin/inventory/bulk-upload",
@@ -497,9 +484,7 @@ async def test_force_inventory_with_no_stock_fails_task(
     assert failing, tasks.json()
 
 
-async def test_encryption_at_rest(
-    db_session: AsyncSession, _seed_sku: str
-) -> None:
+async def test_encryption_at_rest(db_session: AsyncSession, _seed_sku: str) -> None:
     """Stored ciphertext is not the plaintext; decryption round-trips."""
     await inv_svc.bulk_upload(
         db_session,
@@ -508,9 +493,7 @@ async def test_encryption_at_rest(
         uploaded_by="test",
     )
     row = (
-        await db_session.execute(
-            select(InventoryCode).where(InventoryCode.sku_id == _seed_sku)
-        )
+        await db_session.execute(select(InventoryCode).where(InventoryCode.sku_id == _seed_sku))
     ).scalar_one()
     assert row.code_ciphertext != b"SECRET-XYZ-9000"
     assert row.code_hash == code_hash("SECRET-XYZ-9000")

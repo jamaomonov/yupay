@@ -26,18 +26,14 @@ admin_router = APIRouter(
 )
 
 
-@admin_router.get(
-    "/rules", response_model=SourcingRuleListOut, summary="List all explicit rules"
-)
+@admin_router.get("/rules", response_model=SourcingRuleListOut, summary="List all explicit rules")
 async def list_rules(
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
     limit: int = 200,
 ) -> SourcingRuleListOut:
     rules = await svc.list_rules(db, limit=limit)
-    return SourcingRuleListOut(
-        items=[SourcingRuleOut.model_validate(r) for r in rules]
-    )
+    return SourcingRuleListOut(items=[SourcingRuleOut.model_validate(r) for r in rules])
 
 
 @admin_router.get(

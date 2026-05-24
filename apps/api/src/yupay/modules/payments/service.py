@@ -22,7 +22,6 @@ from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.modules.orders.models import Order, OrderEvent
 from yupay.modules.payments.gateways import (
-    PaymentGateway,
     PaymentGatewayError,
     PaymentNotIntegratedError,
     WebhookEvent,
@@ -92,9 +91,7 @@ async def create_intent(
     """Create or reuse a payment intent for ``order_id`` via ``provider``."""
     order = await _load_order(db, order_id)
     if order.status != "pending_payment":
-        raise ConflictError(
-            "order is not awaiting payment", extra={"status": order.status}
-        )
+        raise ConflictError("order is not awaiting payment", extra={"status": order.status})
 
     gw = get_gateway(provider)
     if not gw.available:
@@ -158,9 +155,7 @@ async def _mark_payment_succeeded(
     payment.succeeded_at = moment
     payment.updated_at = moment
 
-    order = (
-        await db.execute(select(Order).where(Order.id == payment.order_id))
-    ).scalar_one()
+    order = (await db.execute(select(Order).where(Order.id == payment.order_id))).scalar_one()
 
     if order.status == "pending_payment":
         order.status = "paid"
@@ -181,7 +176,7 @@ async def _mark_payment_succeeded(
         )
         # Synchronous saga (ADR-0013). Will move to an outbox/Dramatiq actor once
         # the worker is wired up — the public service signature stays the same.
-        from yupay.modules.fulfillment import service as fulfillment_svc  # noqa: PLC0415
+        from yupay.modules.fulfillment import service as fulfillment_svc
 
         await db.flush()
         await fulfillment_svc.start_for_order(db, order_id=order.id)
@@ -191,7 +186,7 @@ async def _mark_payment_succeeded(
         # confirmation. Long-running real fulfilment instead leaves the order
         # in ``paid`` / ``fulfilling`` here, so the user gets an immediate
         # "received" ping while we wait.
-        from yupay.modules.notifications import api as notifications  # noqa: PLC0415
+        from yupay.modules.notifications import api as notifications
 
         await db.refresh(order)
         if order.status != "delivered":
@@ -313,9 +308,7 @@ async def handle_webhook(
     elif event.outcome == "failed":
         await _mark_payment_terminal(db, payment=payment, event=event, new_status="failed")
     elif event.outcome == "cancelled":
-        await _mark_payment_terminal(
-            db, payment=payment, event=event, new_status="cancelled"
-        )
+        await _mark_payment_terminal(db, payment=payment, event=event, new_status="cancelled")
 
     await db.flush()
     return payment
@@ -330,9 +323,7 @@ async def simulate_webhook(
     """Admin-only dev helper. Synthesises a webhook for the given payment."""
     payment = (
         await db.execute(
-            select(Payment)
-            .options(selectinload(Payment.attempts))
-            .where(Payment.id == payment_id)
+            select(Payment).options(selectinload(Payment.attempts)).where(Payment.id == payment_id)
         )
     ).scalar_one_or_none()
     if payment is None:
@@ -348,7 +339,7 @@ async def simulate_webhook(
             extra={"provider": payment.provider},
         )
 
-    import json  # noqa: PLC0415 -- keep the dev helper self-contained
+    import json
 
     body = json.dumps(
         {
@@ -357,17 +348,11 @@ async def simulate_webhook(
             "outcome": outcome,
         }
     ).encode("utf-8")
-    return await handle_webhook(
-        db, provider=payment.provider, headers={}, body=body
-    ) or payment
+    return await handle_webhook(db, provider=payment.provider, headers={}, body=body) or payment
 
 
 async def get_payment(db: AsyncSession, payment_id: str) -> Payment:
-    stmt = (
-        select(Payment)
-        .options(selectinload(Payment.attempts))
-        .where(Payment.id == payment_id)
-    )
+    stmt = select(Payment).options(selectinload(Payment.attempts)).where(Payment.id == payment_id)
     payment = (await db.execute(stmt)).scalar_one_or_none()
     if payment is None:
         raise NotFoundError("payment not found")
@@ -457,9 +442,7 @@ async def refund_admin(
 
     # Order: mark refunded only for a full refund. Partial refunds keep the
     # original status — they're an accounting concern, not an FSM concern.
-    order = (
-        await db.execute(select(Order).where(Order.id == payment.order_id))
-    ).scalar_one()
+    order = (await db.execute(select(Order).where(Order.id == payment.order_id))).scalar_one()
     if is_full and order.status != "refunded":
         order.status = "refunded"
         order.updated_at = moment
@@ -536,11 +519,7 @@ async def list_webhooks_admin(
     limit: int = 50,
 ) -> list[PaymentWebhook]:
     """Admin listing of received webhooks for the audit / debugging page."""
-    stmt = (
-        select(PaymentWebhook)
-        .order_by(PaymentWebhook.received_at.desc())
-        .limit(limit)
-    )
+    stmt = select(PaymentWebhook).order_by(PaymentWebhook.received_at.desc()).limit(limit)
     if provider is not None:
         stmt = stmt.where(PaymentWebhook.provider == provider)
     if signature_ok is not None:
@@ -570,9 +549,7 @@ async def mark_webhook_resolved(
         raise ValidationError("reason is required")
 
     webhook = (
-        await db.execute(
-            select(PaymentWebhook).where(PaymentWebhook.id == webhook_id)
-        )
+        await db.execute(select(PaymentWebhook).where(PaymentWebhook.id == webhook_id))
     ).scalar_one_or_none()
     if webhook is None:
         raise NotFoundError("webhook not found")
@@ -618,11 +595,7 @@ async def list_payments_admin(
         base = base.where(Payment.status == status_filter)
         count_stmt = count_stmt.where(Payment.status == status_filter)
     rows = list(
-        (
-            await db.execute(
-                base.order_by(Payment.created_at.desc()).limit(limit).offset(offset)
-            )
-        )
+        (await db.execute(base.order_by(Payment.created_at.desc()).limit(limit).offset(offset)))
         .scalars()
         .all()
     )
@@ -635,8 +608,8 @@ __all__ = [
     "get_payment",
     "handle_webhook",
     "list_payments_admin",
-    "mark_webhook_resolved",
     "list_webhooks_admin",
+    "mark_webhook_resolved",
     "refund_admin",
     "simulate_webhook",
 ]

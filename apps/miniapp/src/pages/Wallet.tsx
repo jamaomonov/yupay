@@ -1,4 +1,3 @@
-import { useLocation } from "wouter";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -8,6 +7,7 @@ import {
   Plus,
   Wallet as WalletIcon,
 } from "lucide-react";
+import { useLocation } from "wouter";
 
 import { useMe } from "@/lib/auth";
 import { useDisplayCurrency } from "@/lib/currency";
@@ -51,7 +51,7 @@ export default function Wallet() {
       {/* Top bar */}
       <div className="flex items-center justify-between px-4 pt-4 pb-3">
         <button
-          onClick={() => setLocation("/")}
+          onClick={() => { setLocation("/"); }}
           className="w-9 h-9 rounded-full bg-card border border-border flex items-center justify-center"
           aria-label="Назад"
         >

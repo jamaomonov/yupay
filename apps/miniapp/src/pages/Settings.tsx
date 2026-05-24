@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -11,6 +10,7 @@ import {
   RefreshCcw,
   Shield,
 } from "lucide-react";
+import { useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -159,7 +159,7 @@ export default function Settings() {
             iconClass="text-muted-foreground"
             label="О приложении"
             value={`v${APP_VERSION}`}
-            onClick={() => setAboutOpen(true)}
+            onClick={() => { setAboutOpen(true); }}
             last
           />
         </div>
@@ -216,7 +216,7 @@ export default function Settings() {
       {/* Logout */}
       {user && (
         <button
-          onClick={() => logout.mutate()}
+          onClick={() => { logout.mutate(); }}
           className="w-full flex items-center justify-center gap-2 py-3.5 text-muted-foreground text-sm font-medium hover:text-destructive transition-colors"
           data-testid="btn-logout"
         >

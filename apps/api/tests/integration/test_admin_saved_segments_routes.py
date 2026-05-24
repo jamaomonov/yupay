@@ -109,9 +109,7 @@ async def test_create_and_list_segment(
     assert body["path"] == "/payments/triage"
     assert body["params"] == {"tab": "stuck", "after": "60"}
 
-    r = await integration_client.get(
-        "/api/v1/admin/segments", headers=_admin_headers
-    )
+    r = await integration_client.get("/api/v1/admin/segments", headers=_admin_headers)
     assert r.status_code == 200
     items = r.json()["items"]
     assert any(s["name"] == "Stuck Click >60" for s in items)
@@ -130,9 +128,7 @@ async def test_isolation_between_admins(
     )
     assert r.status_code == 201
 
-    r = await integration_client.get(
-        "/api/v1/admin/segments", headers=_other_admin_headers
-    )
+    r = await integration_client.get("/api/v1/admin/segments", headers=_other_admin_headers)
     assert r.status_code == 200
     assert all(s["name"] != "Mine" for s in r.json()["items"])
 
@@ -161,14 +157,10 @@ async def test_delete_own_segment(
     )
     seg_id = r.json()["id"]
 
-    r = await integration_client.delete(
-        f"/api/v1/admin/segments/{seg_id}", headers=_admin_headers
-    )
+    r = await integration_client.delete(f"/api/v1/admin/segments/{seg_id}", headers=_admin_headers)
     assert r.status_code == 204
 
-    r = await integration_client.get(
-        "/api/v1/admin/segments", headers=_admin_headers
-    )
+    r = await integration_client.get("/api/v1/admin/segments", headers=_admin_headers)
     assert all(s["id"] != seg_id for s in r.json()["items"])
 
 

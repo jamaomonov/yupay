@@ -1,20 +1,22 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MotionConfig } from "framer-motion";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { useEffect } from "react";
+import { Switch, Route, Router as WouterRouter } from "wouter";
+
 import { BootstrapGate } from "@/components/BootstrapGate";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { Shell } from "@/components/layout/Shell";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Shell } from "@/components/layout/Shell";
 import { useTelegramBackButton } from "@/lib/use-telegram-back-button";
-import Home from "@/pages/Home";
-import TopUp from "@/pages/TopUp";
 import History from "@/pages/History";
+import Home from "@/pages/Home";
+import OrderSuccess from "@/pages/OrderSuccess";
 import Settings from "@/pages/Settings";
+import TopUp from "@/pages/TopUp";
 import Wallet from "@/pages/Wallet";
 import WalletTopUp from "@/pages/WalletTopUp";
-import OrderSuccess from "@/pages/OrderSuccess";
-import { useEffect } from "react";
+
 
 function NotFound() { return <div className="p-4 text-center mt-20">404 - Не найдено</div>; }
 

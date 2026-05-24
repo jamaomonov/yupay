@@ -1,19 +1,18 @@
-import { SiSteam, SiRiotgames, SiRoblox, SiEpicgames, SiTelegram, SiGoogleplay } from "react-icons/si";
 
-import pubgLogo from "@assets/pubgmobile_1778456340545.svg";
-import pubgBg from "@assets/pubgmobile_bg_1778456340557.png";
 import arenaLogo from "@assets/arenabreakout_1778456340557.svg";
 import arenaBg from "@assets/arenabreakout_bg_1778456340546.png";
+import deltaforceAppIcon from "@assets/deltaforce_1778598588753.webp";
+import pubgAppIcon from "@assets/pubgm_1778598588751.webp";
+import pubgLogo from "@assets/pubgmobile_1778456340545.svg";
+import pubgBg from "@assets/pubgmobile_bg_1778456340557.png";
 import steamBg from "@assets/steam_bg_1778459971795.jpg";
 import telegramBg from "@assets/telegram-bg_1778459971796.jpg";
-
-import pubgAppIcon from "@assets/pubgm_1778598588751.webp";
 import telegramAppIcon from "@assets/telegram_1778598588753.webp";
-import deltaforceAppIcon from "@assets/deltaforce_1778598588753.webp";
+import { SiSteam, SiRiotgames, SiRoblox, SiEpicgames, SiTelegram, SiGoogleplay } from "react-icons/si";
 
 export type Category = "games" | "services" | "cards";
 
-export type Game = {
+export interface Game {
   id: string;
   name: string;
   publisher: string;
@@ -29,7 +28,7 @@ export type Game = {
   inputPlaceholder: string;
   featured?: boolean;
   featuredDesc?: string;
-};
+}
 
 export const CATEGORY_LABELS: Record<Category, string> = {
   games: "Игры",

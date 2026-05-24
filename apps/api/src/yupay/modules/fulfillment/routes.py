@@ -42,7 +42,7 @@ async def _resolve_actor(request: Request, db: AsyncSession) -> Actor:
     auth = request.headers.get("Authorization") or ""
     scheme, _, token = auth.partition(" ")
     if scheme == "Bearer":
-        from yupay.modules.auth.service import current_user as resolve_user  # noqa: PLC0415
+        from yupay.modules.auth.service import current_user as resolve_user
 
         user = await resolve_user(db, token)
         return Actor(user_id=user.id, email=None)
@@ -59,16 +59,12 @@ async def _resolve_actor(request: Request, db: AsyncSession) -> Actor:
 
 
 async def _ensure_order_owner(db: AsyncSession, *, actor: Actor, order_id: str) -> Order:
-    order = (
-        await db.execute(select(Order).where(Order.id == order_id))
-    ).scalar_one_or_none()
+    order = (await db.execute(select(Order).where(Order.id == order_id))).scalar_one_or_none()
     if order is None:
         raise HTTPException(status_code=404, detail="order not found")
     if actor.user_id is not None and order.user_id != actor.user_id:
         raise HTTPException(status_code=404, detail="order not found")
-    if actor.user_id is None and (order.guest_email or "").lower() != (
-        actor.email or ""
-    ).lower():
+    if actor.user_id is None and (order.guest_email or "").lower() != (actor.email or "").lower():
         raise HTTPException(status_code=404, detail="order not found")
     return order
 

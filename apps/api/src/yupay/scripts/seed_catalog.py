@@ -98,8 +98,7 @@ def _server_field(options: list[tuple[str, str, str, str]]) -> dict[str, Any]:
         "type": "select",
         "required": True,
         "options": [
-            {"value": v, "label": {"ru": ru, "en": en, "uz": uz}}
-            for (v, ru, en, uz) in options
+            {"value": v, "label": {"ru": ru, "en": en, "uz": uz}} for (v, ru, en, uz) in options
         ],
     }
 
@@ -182,15 +181,18 @@ BRANDS: list[BrandSpec] = [
         sort_order=10,
         translations=[
             TranslationSpec(
-                "ru", "PUBG Mobile",
+                "ru",
+                "PUBG Mobile",
                 short_description="Пополнение UC, Royal Pass и косметика",
             ),
             TranslationSpec(
-                "en", "PUBG Mobile",
+                "en",
+                "PUBG Mobile",
                 short_description="UC top-up, Royal Pass and cosmetics",
             ),
             TranslationSpec(
-                "uz", "PUBG Mobile",
+                "uz",
+                "PUBG Mobile",
                 short_description="UC toʻldirish, Royal Pass va kosmetika",
             ),
         ],
@@ -276,15 +278,18 @@ BRANDS: list[BrandSpec] = [
                 required_fields=[],
                 translations=[
                     TranslationSpec(
-                        "ru", "Steam Wallet",
+                        "ru",
+                        "Steam Wallet",
                         short_description="Код пополнения кошелька Steam",
                     ),
                     TranslationSpec(
-                        "en", "Steam Wallet",
+                        "en",
+                        "Steam Wallet",
                         short_description="Steam Wallet top-up code",
                     ),
                     TranslationSpec(
-                        "uz", "Steam Wallet",
+                        "uz",
+                        "Steam Wallet",
                         short_description="Steam Wallet toʻldirish kodi",
                     ),
                 ],
@@ -352,15 +357,18 @@ BRANDS: list[BrandSpec] = [
                 required_fields=[],
                 translations=[
                     TranslationSpec(
-                        "ru", "Gift Card",
+                        "ru",
+                        "Gift Card",
                         short_description="Подарочная карта Apple (US)",
                     ),
                     TranslationSpec(
-                        "en", "Gift Card",
+                        "en",
+                        "Gift Card",
                         short_description="Apple gift card (US region)",
                     ),
                     TranslationSpec(
-                        "uz", "Gift Card",
+                        "uz",
+                        "Gift Card",
                         short_description="Apple sovgʻa kartasi (US)",
                     ),
                 ],

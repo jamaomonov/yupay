@@ -1,16 +1,16 @@
-import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Search } from "lucide-react";
-
 import { Button, Input } from "@yupay/ui";
+import { ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+
+import type { UserAdminListOut, UserAdminOut } from "./types";
 
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
-import type { UserAdminListOut, UserAdminOut } from "./types";
 
 const PAGE_SIZE = 50;
 
@@ -157,7 +157,7 @@ export function UsersListPage() {
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--text-secondary)]" />
           <Input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); }}
             placeholder="Поиск…"
             className="pl-9"
           />
@@ -188,7 +188,7 @@ export function UsersListPage() {
               variant="secondary"
               size="sm"
               disabled={offset === 0}
-              onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+              onClick={() => { setOffset(Math.max(0, offset - PAGE_SIZE)); }}
               aria-label="Предыдущая страница"
             >
               <ChevronLeft className="size-4" aria-hidden />
@@ -198,7 +198,7 @@ export function UsersListPage() {
               variant="secondary"
               size="sm"
               disabled={showingTo >= total}
-              onClick={() => setOffset(offset + PAGE_SIZE)}
+              onClick={() => { setOffset(offset + PAGE_SIZE); }}
               aria-label="Следующая страница"
             >
               Вперёд
@@ -225,7 +225,7 @@ function initials(name: string | null): string {
 
 function useDebounce<T>(value: T, delayMs: number, callback: (v: T) => void): void {
   useEffect(() => {
-    const id = setTimeout(() => callback(value), delayMs);
-    return () => clearTimeout(id);
+    const id = setTimeout(() => { callback(value); }, delayMs);
+    return () => { clearTimeout(id); };
   }, [value, delayMs, callback]);
 }

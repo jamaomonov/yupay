@@ -154,9 +154,7 @@ async def login_admin_dev(
 ) -> TokensOut:
     """Stop-gap before BotFather domain is set up. See ``auth.dev_login``."""
     settings = get_settings()
-    tokens = await dev_admin_login(
-        db, login=body.login, password=body.password, settings=settings
-    )
+    tokens = await dev_admin_login(db, login=body.login, password=body.password, settings=settings)
     return _tokens_response(tokens)
 
 

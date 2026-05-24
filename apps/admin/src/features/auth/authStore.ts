@@ -27,7 +27,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
     setTokens(token, refreshToken);
     set({ token });
   },
-  setMe: (me) => set({ me }),
+  setMe: (me) => { set({ me }); },
   logout: () => {
     clearTokens();
     set({ token: null, me: null });

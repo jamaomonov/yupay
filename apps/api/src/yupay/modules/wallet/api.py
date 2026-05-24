@@ -31,6 +31,8 @@ from yupay.modules.wallet.service import (
 )
 
 __all__ = [
+    "NORMAL_SIDE",
+    "USER_VISIBLE_KINDS",
     "AccountKind",
     "AccountOut",
     "AdminAccountListOut",
@@ -40,13 +42,11 @@ __all__ = [
     "BalanceOut",
     "Direction",
     "Leg",
-    "NORMAL_SIDE",
     "OwnerType",
     "PostingOut",
     "Reference",
     "TransactionListOut",
     "TransactionOut",
-    "USER_VISIBLE_KINDS",
     "WalletAccount",
     "WalletOverviewOut",
     "WalletPosting",

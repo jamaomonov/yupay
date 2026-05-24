@@ -32,9 +32,7 @@ class WalletAccount(Base):
     owner_id: Mapped[str] = mapped_column(String(64), nullable=False)
     kind: Mapped[str] = mapped_column(String(48), nullable=False)
     currency: Mapped[str] = mapped_column(CHAR(3), nullable=False)
-    status: Mapped[str] = mapped_column(
-        String(16), nullable=False, server_default=text("'active'")
-    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'active'"))
     extra_metadata: Mapped[dict[str, Any]] = mapped_column(
         "metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
@@ -48,7 +46,10 @@ class WalletAccount(Base):
 
     __table_args__ = (
         UniqueConstraint(
-            "owner_type", "owner_id", "kind", "currency",
+            "owner_type",
+            "owner_id",
+            "kind",
+            "currency",
             name="uq_wallet_accounts_owner_kind_currency",
         ),
     )
@@ -105,9 +106,7 @@ class WalletPosting(Base):
 
     transaction: Mapped[WalletTransaction] = relationship(back_populates="postings")
 
-    __table_args__ = (
-        CheckConstraint("amount > 0", name="ck_wallet_postings_amount_positive"),
-    )
+    __table_args__ = (CheckConstraint("amount > 0", name="ck_wallet_postings_amount_positive"),)
 
 
 __all__ = ["WalletAccount", "WalletPosting", "WalletTransaction"]

@@ -14,15 +14,17 @@
 
 import { Hand, ListChecks, Truck, XCircle } from "lucide-react";
 
-import { PageHeader } from "@/components/PageHeader";
-import { Tabs, type TabDescriptor } from "@/components/Tabs";
-import { SaveSegmentButton } from "@/features/segments/SaveSegmentButton";
-import { useSearchParamsState } from "@/lib/useSearchParamsState";
-
 import { FailedAutomaticTab } from "./FailedAutomaticTab";
 import { FulfillmentPage } from "./FulfillmentPage";
 import { StuckTab } from "./StuckTab";
+
+import { PageHeader } from "@/components/PageHeader";
+import { Tabs, type TabDescriptor } from "@/components/Tabs";
 import { ManualQueuePage } from "@/features/manual-fulfillment/ManualQueuePage";
+import { SaveSegmentButton } from "@/features/segments/SaveSegmentButton";
+import { useSearchParamsState } from "@/lib/useSearchParamsState";
+
+
 
 type InboxTab = "manual" | "failed" | "stuck" | "all";
 
@@ -41,7 +43,7 @@ const TABS: TabDescriptor<InboxTab>[] = [
 ];
 
 export function InboxPage() {
-  const [rawTab, setTab] = useSearchParamsState<string>("tab", "manual");
+  const [rawTab, setTab] = useSearchParamsState("tab", "manual");
   const tab: InboxTab = VALID_TABS.has(rawTab as InboxTab)
     ? (rawTab as InboxTab)
     : "manual";

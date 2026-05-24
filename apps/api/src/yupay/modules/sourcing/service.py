@@ -37,9 +37,7 @@ class Decision:
 
 async def resolve_for_sku(db: AsyncSession, sku_id: str) -> Decision:
     rule = (
-        await db.execute(
-            select(SkuSourcingRule).where(SkuSourcingRule.sku_id == sku_id)
-        )
+        await db.execute(select(SkuSourcingRule).where(SkuSourcingRule.sku_id == sku_id))
     ).scalar_one_or_none()
     if rule is None or rule.mode == "auto":
         return Decision(
@@ -49,9 +47,7 @@ async def resolve_for_sku(db: AsyncSession, sku_id: str) -> Decision:
             rule_present=rule is not None,
         )
     if rule.mode == "force_inventory":
-        return Decision(
-            primary="inventory", fallback=None, strict=True, rule_present=True
-        )
+        return Decision(primary="inventory", fallback=None, strict=True, rule_present=True)
     if rule.mode == "manual":
         # Manual fulfilment — the order ends up in the admin queue. The slug
         # is implicit (always ``"manual"``); ``set_rule`` keeps the
@@ -91,9 +87,7 @@ async def set_rule(
         supplier_slug = None
 
     existing = (
-        await db.execute(
-            select(SkuSourcingRule).where(SkuSourcingRule.sku_id == sku_id)
-        )
+        await db.execute(select(SkuSourcingRule).where(SkuSourcingRule.sku_id == sku_id))
     ).scalar_one_or_none()
     if existing is None:
         existing = SkuSourcingRule(
@@ -114,9 +108,7 @@ async def set_rule(
 
 async def get_rule(db: AsyncSession, sku_id: str) -> SkuSourcingRule | None:
     return (
-        await db.execute(
-            select(SkuSourcingRule).where(SkuSourcingRule.sku_id == sku_id)
-        )
+        await db.execute(select(SkuSourcingRule).where(SkuSourcingRule.sku_id == sku_id))
     ).scalar_one_or_none()
 
 
@@ -128,7 +120,9 @@ async def list_rules(db: AsyncSession, limit: int = 200) -> list[SkuSourcingRule
                 .order_by(SkuSourcingRule.updated_at.desc())
                 .limit(min(limit, 500))
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
 
 

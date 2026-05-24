@@ -1,12 +1,11 @@
-import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCheck, CheckCircle2, RotateCcw, ShieldAlert } from "lucide-react";
-
 import { Button } from "@yupay/ui";
+import { CheckCheck, CheckCircle2, RotateCcw, ShieldAlert } from "lucide-react";
+import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/Badge";
-import { PageHeader } from "@/components/PageHeader";
 import { DataTable, type Column } from "@/components/DataTable";
+import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/components/Toast";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
@@ -272,7 +271,7 @@ export function WebhooksPage() {
       <section className="mb-5 flex flex-wrap items-center gap-3">
         <select
           value={provider}
-          onChange={(e) => setProvider(e.target.value)}
+          onChange={(e) => { setProvider(e.target.value); }}
           className="h-10 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
         >
           {PROVIDERS.map((p) => (
@@ -283,7 +282,7 @@ export function WebhooksPage() {
         </select>
         <select
           value={sig}
-          onChange={(e) => setSig(e.target.value as "all" | "ok" | "bad")}
+          onChange={(e) => { setSig(e.target.value as "all" | "ok" | "bad"); }}
           className="h-10 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
         >
           {SIG_OPTIONS.map((s) => (
@@ -311,7 +310,7 @@ export function WebhooksPage() {
         rows={rows}
         columns={columns}
         rowKey={(w) => w.id}
-        onRowClick={(w) => setExpanded(expanded === w.id ? null : w.id)}
+        onRowClick={(w) => { setExpanded(expanded === w.id ? null : w.id); }}
         empty="Webhook-ов ещё не приходило."
       />
 

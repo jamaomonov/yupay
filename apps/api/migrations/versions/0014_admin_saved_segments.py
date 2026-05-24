@@ -47,9 +47,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("CURRENT_TIMESTAMP"),
         ),
-        sa.UniqueConstraint(
-            "owner_user_id", "name", name="uq_admin_saved_segments_owner_name"
-        ),
+        sa.UniqueConstraint("owner_user_id", "name", name="uq_admin_saved_segments_owner_name"),
     )
     op.create_index(
         "ix_admin_saved_segments_owner",

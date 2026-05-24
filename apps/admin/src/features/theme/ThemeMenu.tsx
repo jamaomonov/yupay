@@ -13,8 +13,8 @@
  *  - Closes on Escape, outside-click, route change, and after picking.
  */
 
-import { useEffect, useRef, useState } from "react";
 import { Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import { useThemeStore, type ThemeMode } from "./themeStore";
 

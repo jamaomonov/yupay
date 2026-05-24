@@ -8,17 +8,17 @@
  * they're closed via the modal in the "Ручная выдача" tab, not by retry.
  */
 
-import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@yupay/ui";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { Button } from "@yupay/ui";
+import type { TaskAdminOut, TaskListOut } from "./types";
 
 import { DataTable, type Column } from "@/components/DataTable";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
-import type { TaskAdminOut, TaskListOut } from "./types";
 
 interface BulkRetryResponse {
   retried: TaskAdminOut[];

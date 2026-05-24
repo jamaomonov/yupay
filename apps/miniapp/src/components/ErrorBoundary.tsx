@@ -26,7 +26,7 @@ export class ErrorBoundary extends Component<Props, State> {
   override componentDidCatch(error: Error, info: ErrorInfo): void {
     // Print to console only; production telemetry is wired through Sentry when
     // we add it at the app level.
-    // eslint-disable-next-line no-console
+     
     console.error("ErrorBoundary caught", error, info);
   }
 
@@ -85,7 +85,7 @@ function Fallback({ message, onReset }: { message: string; onReset: () => void }
         </button>
         <button
           type="button"
-          onClick={() => window.location.reload()}
+          onClick={() => { window.location.reload(); }}
           className="px-5 py-2.5 rounded-2xl text-sm font-semibold text-white/70"
           style={{
             background: "hsl(var(--surface-2))",

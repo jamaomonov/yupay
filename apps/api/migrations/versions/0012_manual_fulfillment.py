@@ -28,9 +28,7 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     # 1. Relax the sourcing mode CHECK.
-    op.drop_constraint(
-        "ck_sku_sourcing_rules_mode", "sku_sourcing_rules", type_="check"
-    )
+    op.drop_constraint("ck_sku_sourcing_rules_mode", "sku_sourcing_rules", type_="check")
     op.create_check_constraint(
         "ck_sku_sourcing_rules_mode",
         "sku_sourcing_rules",
@@ -52,9 +50,7 @@ def downgrade() -> None:
     op.drop_column("fulfillment_tasks", "completed_by")
     op.drop_column("fulfillment_tasks", "admin_note")
 
-    op.drop_constraint(
-        "ck_sku_sourcing_rules_mode", "sku_sourcing_rules", type_="check"
-    )
+    op.drop_constraint("ck_sku_sourcing_rules_mode", "sku_sourcing_rules", type_="check")
     op.create_check_constraint(
         "ck_sku_sourcing_rules_mode",
         "sku_sourcing_rules",

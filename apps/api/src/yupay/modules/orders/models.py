@@ -115,7 +115,7 @@ class OrderItem(Base):
     )
 
     order: Mapped[Order] = relationship(back_populates="items")
-    sku: Mapped["Sku"] = relationship("Sku", lazy="raise")
+    sku: Mapped[Sku] = relationship("Sku", lazy="raise")
 
     __table_args__ = (
         CheckConstraint("qty > 0", name="ck_order_items_qty_positive"),

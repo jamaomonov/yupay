@@ -5,9 +5,8 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
 from yupay.core.config import get_settings
@@ -50,7 +49,7 @@ async def _resolve_actor(request: Request, db: AsyncSession) -> Actor:
     auth = request.headers.get("Authorization") or ""
     scheme, _, token = auth.partition(" ")
     if scheme == "Bearer":
-        from yupay.modules.auth.service import current_user as resolve_user  # noqa: PLC0415
+        from yupay.modules.auth.service import current_user as resolve_user
 
         user = await resolve_user(db, token)
         return Actor(user_id=user.id, email=None)
@@ -67,9 +66,7 @@ async def _resolve_actor(request: Request, db: AsyncSession) -> Actor:
     raise UnauthorizedError("authorization required")
 
 
-async def _ensure_actor_owns_order(
-    db: AsyncSession, *, actor: Actor, order_id: str
-) -> Order:
+async def _ensure_actor_owns_order(db: AsyncSession, *, actor: Actor, order_id: str) -> Order:
     stmt = select(Order).where(Order.id == order_id)
     order = (await db.execute(stmt)).scalar_one_or_none()
     if order is None:
@@ -200,9 +197,7 @@ async def admin_simulate_webhook(
 ) -> PaymentAdminOut:
     if get_settings().is_prod:
         raise HTTPException(status_code=403, detail="simulate-webhook is dev-only")
-    payment = await svc.simulate_webhook(
-        db, payment_id=payment_id, outcome=body.outcome
-    )
+    payment = await svc.simulate_webhook(db, payment_id=payment_id, outcome=body.outcome)
     return PaymentAdminOut.model_validate(payment)
 
 
@@ -248,9 +243,7 @@ async def admin_list_webhooks(
         signature_ok=signature_ok,
         limit=max(1, min(limit, 500)),
     )
-    return PaymentWebhookListOut(
-        items=[PaymentWebhookOut.model_validate(r) for r in rows]
-    )
+    return PaymentWebhookListOut(items=[PaymentWebhookOut.model_validate(r) for r in rows])
 
 
 @admin_webhook_router.post(

@@ -44,9 +44,7 @@ def build_default_service(
             )
         )
     providers.append(
-        ExchangerateHostProvider(
-            s.fx_primary_url, timeout_seconds=s.fx_provider_timeout_seconds
-        )
+        ExchangerateHostProvider(s.fx_primary_url, timeout_seconds=s.fx_provider_timeout_seconds)
     )
     providers.append(
         OpenExchangeRatesProvider(

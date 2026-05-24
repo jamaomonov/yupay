@@ -79,11 +79,7 @@ async def build_dashboard(
 
 
 async def _count_orders_in_window(db: AsyncSession, since: datetime) -> int:
-    stmt = (
-        select(func.count())
-        .select_from(Order)
-        .where(Order.created_at >= since)
-    )
+    stmt = select(func.count()).select_from(Order).where(Order.created_at >= since)
     return int((await db.execute(stmt)).scalar_one() or 0)
 
 
@@ -98,9 +94,7 @@ async def _count_orders_with_status_in_window(
     return int((await db.execute(stmt)).scalar_one() or 0)
 
 
-async def _revenue_in_window(
-    db: AsyncSession, since: datetime
-) -> list[CurrencyAmount]:
+async def _revenue_in_window(db: AsyncSession, since: datetime) -> list[CurrencyAmount]:
     """Sum of ``total_charged`` per currency for orders that actually generated
     money in the window. We count anything past ``paid`` — refunds are not
     netted out here because the dashboard shows gross revenue."""
@@ -111,15 +105,10 @@ async def _revenue_in_window(
         .group_by(Order.currency)
     )
     rows = (await db.execute(stmt)).all()
-    return [
-        CurrencyAmount(currency=cur, amount=Decimal(str(amt or 0)))
-        for cur, amt in rows
-    ]
+    return [CurrencyAmount(currency=cur, amount=Decimal(str(amt or 0))) for cur, amt in rows]
 
 
-async def _status_breakdown(
-    db: AsyncSession, since: datetime
-) -> list[StatusCount]:
+async def _status_breakdown(db: AsyncSession, since: datetime) -> list[StatusCount]:
     stmt = (
         select(Order.status, func.count())
         .where(Order.created_at >= since)
@@ -139,9 +128,7 @@ async def _count_in_flight_tasks(db: AsyncSession) -> int:
     return int((await db.execute(stmt)).scalar_one() or 0)
 
 
-async def _count_stuck_payments(
-    db: AsyncSession, older_than: datetime
-) -> int:
+async def _count_stuck_payments(db: AsyncSession, older_than: datetime) -> int:
     stmt = (
         select(func.count())
         .select_from(Payment)
@@ -150,9 +137,7 @@ async def _count_stuck_payments(
     return int((await db.execute(stmt)).scalar_one() or 0)
 
 
-async def _count_pending_orders(
-    db: AsyncSession, older_than: datetime
-) -> int:
+async def _count_pending_orders(db: AsyncSession, older_than: datetime) -> int:
     stmt = (
         select(func.count())
         .select_from(Order)
@@ -165,29 +150,21 @@ async def _count_pending_orders(
 
 
 async def _inventory_summary(db: AsyncSession) -> InventorySummary:
-    counts_stmt = (
-        select(InventoryCode.state, func.count())
-        .group_by(InventoryCode.state)
-    )
+    counts_stmt = select(InventoryCode.state, func.count()).group_by(InventoryCode.state)
     counts = {state: int(c) for state, c in (await db.execute(counts_stmt)).all()}
 
     # Per-SKU availability — count SKUs whose available-bucket is below threshold.
-    sku_stmt = (
-        select(
-            InventoryCode.sku_id,
-            func.sum(
-                case(
-                    (InventoryCode.state == "available", 1),
-                    else_=0,
-                )
-            ).label("available_count"),
-        )
-        .group_by(InventoryCode.sku_id)
-    )
+    sku_stmt = select(
+        InventoryCode.sku_id,
+        func.sum(
+            case(
+                (InventoryCode.state == "available", 1),
+                else_=0,
+            )
+        ).label("available_count"),
+    ).group_by(InventoryCode.sku_id)
     sku_rows = (await db.execute(sku_stmt)).all()
-    low_stock = sum(
-        1 for _sku, available in sku_rows if int(available or 0) < _LOW_STOCK_THRESHOLD
-    )
+    low_stock = sum(1 for _sku, available in sku_rows if int(available or 0) < _LOW_STOCK_THRESHOLD)
     return InventorySummary(
         available=counts.get("available", 0),
         reserved=counts.get("reserved", 0),
@@ -197,9 +174,7 @@ async def _inventory_summary(db: AsyncSession) -> InventorySummary:
     )
 
 
-async def _orders_last_7_days(
-    db: AsyncSession, anchor: datetime
-) -> list[DayBucket]:
+async def _orders_last_7_days(db: AsyncSession, anchor: datetime) -> list[DayBucket]:
     """Day-bucketed orders + revenue for the last 7 days (UTC)."""
     seven_days_ago = anchor - timedelta(days=7)
     day = func.date_trunc("day", Order.created_at)
@@ -207,9 +182,9 @@ async def _orders_last_7_days(
         select(
             day.label("d"),
             func.count().label("c"),
-            func.sum(Order.total_usd).filter(
-                Order.status.in_(("paid", "fulfilling", "fulfilled", "delivered"))
-            ).label("rev"),
+            func.sum(Order.total_usd)
+            .filter(Order.status.in_(("paid", "fulfilling", "fulfilled", "delivered")))
+            .label("rev"),
         )
         .where(Order.created_at >= seven_days_ago)
         .group_by(day)

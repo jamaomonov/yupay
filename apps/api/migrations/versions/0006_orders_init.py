@@ -75,9 +75,7 @@ def upgrade() -> None:
         sa.Column("delivered_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("cancelled_at", sa.DateTime(timezone=True), nullable=True),
         sa.CheckConstraint(
-            "status IN ("
-            + ", ".join(f"'{s}'" for s in _ORDER_STATUSES)
-            + ")",
+            "status IN (" + ", ".join(f"'{s}'" for s in _ORDER_STATUSES) + ")",
             name="ck_orders_status",
         ),
         sa.CheckConstraint(
@@ -111,18 +109,14 @@ def upgrade() -> None:
         "orders",
         ["user_id", "idempotency_key"],
         unique=True,
-        postgresql_where=sa.text(
-            "user_id IS NOT NULL AND idempotency_key IS NOT NULL"
-        ),
+        postgresql_where=sa.text("user_id IS NOT NULL AND idempotency_key IS NOT NULL"),
     )
     op.create_index(
         "uq_orders_idem_guest",
         "orders",
         ["guest_email", "idempotency_key"],
         unique=True,
-        postgresql_where=sa.text(
-            "guest_email IS NOT NULL AND idempotency_key IS NOT NULL"
-        ),
+        postgresql_where=sa.text("guest_email IS NOT NULL AND idempotency_key IS NOT NULL"),
     )
 
     op.create_table(
@@ -175,9 +169,7 @@ def upgrade() -> None:
         "ix_order_items_state_active",
         "order_items",
         ["fulfillment_state"],
-        postgresql_where=sa.text(
-            "fulfillment_state IN ('pending', 'reserved', 'in_progress')"
-        ),
+        postgresql_where=sa.text("fulfillment_state IN ('pending', 'reserved', 'in_progress')"),
     )
 
     op.create_table(

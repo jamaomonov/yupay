@@ -1,5 +1,3 @@
-import { useEffect, useMemo, useState } from "react";
-import { useLocation, useParams } from "wouter";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -16,14 +14,14 @@ import {
   Wallet as WalletIcon,
   Zap,
 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useParams } from "wouter";
 
 import { DynamicFields } from "@/components/DynamicFields";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { ApiError } from "@/lib/api";
 import { useMe } from "@/lib/auth";
-import { isInsideTelegram } from "@/lib/telegram";
-import { useDocumentTitle } from "@/lib/use-document-title";
 import {
   useBrandSummary,
   useGames,
@@ -32,17 +30,19 @@ import {
 } from "@/lib/catalog";
 import { useDisplayCurrency } from "@/lib/currency";
 import { useAvailableProviders, useCheckout } from "@/lib/orders";
-import { formatBalance, groupBalancesByCurrency, useWallet } from "@/lib/wallet";
 import {
   forgetFulfillment,
   getRecentFulfillment,
   rememberFulfillment,
 } from "@/lib/recent-checkout";
+import { isInsideTelegram } from "@/lib/telegram";
+import { useDocumentTitle } from "@/lib/use-document-title";
 import { cn } from "@/lib/utils";
+import { formatBalance, groupBalancesByCurrency, useWallet } from "@/lib/wallet";
 
 // ─── Adapter: API Package → local Package ─────────────────────────────────────
 // Keeps badge/bonus optional for future enrichment.
-type Package = {
+interface Package {
   id: string;
   label: string;
   region: string | null;
@@ -50,7 +50,7 @@ type Package = {
   priceCode: string;
   imageUrl: string | null;
   badge?: { label: string; color: string };
-};
+}
 
 function adaptPackage(api: ApiPackage): Package {
   return {
@@ -338,14 +338,14 @@ export default function TopUp() {
   };
 
   if (gamesQuery.isLoading || brandQuery.isLoading) {
-    return <PageSkeleton onBack={() => setLocation("/")} />;
+    return <PageSkeleton onBack={() => { setLocation("/"); }} />;
   }
   if (!game || brandQuery.isError) {
     return (
       <div className="p-4 pt-20 text-center space-y-4">
         <h2 className="text-xl font-bold">Сервис не найден</h2>
         <button
-          onClick={() => setLocation("/")}
+          onClick={() => { setLocation("/"); }}
           className="px-6 py-3 bg-primary text-black font-bold rounded-2xl"
         >
           На главную
@@ -379,7 +379,7 @@ export default function TopUp() {
     return !v || v.trim().length === 0;
   })?.key;
   const fillingHint = accountRequired
-    ? `Введите ${requiredFields[0]?.label?.["ru"] ?? "данные"} аккаунта`
+    ? `Введите ${requiredFields[0]?.label?.ru ?? "данные"} аккаунта`
     : "Без передачи аккаунта";
 
   const handlePayment = async () => {
@@ -395,7 +395,7 @@ export default function TopUp() {
       const f = requiredFields.find((x) => x.key === missingFieldKey);
       toast({
         title: "Заполните поле",
-        description: f?.label?.["ru"] ?? missingFieldKey,
+        description: f?.label?.ru ?? missingFieldKey,
         variant: "destructive",
       });
       return;
@@ -610,7 +610,7 @@ export default function TopUp() {
                   return (
                     <button
                       key={p.id}
-                      onClick={() => setSelectedProductSlug(p.slug)}
+                      onClick={() => { setSelectedProductSlug(p.slug); }}
                       className="flex items-center gap-2 flex-shrink-0 pl-2 pr-3 py-1.5 rounded-2xl transition-all duration-150"
                       style={{
                         background: active
@@ -710,7 +710,7 @@ export default function TopUp() {
                     pkg={pkg}
                     active={selectedPkg === pkg.id}
                     fallbackImage={productImage}
-                    onSelect={() => setSelectedPkg(pkg.id)}
+                    onSelect={() => { setSelectedPkg(pkg.id); }}
                   />
                 ))}
               </div>
@@ -863,13 +863,13 @@ export default function TopUp() {
         {insideTelegram &&
           activePkg &&
           ACQUIRER_BY_METHOD[paymentMethod] &&
-          ACQUIRER_BY_METHOD[paymentMethod]!.currency !== priceCode && (
+          ACQUIRER_BY_METHOD[paymentMethod].currency !== priceCode && (
             <p
               className="mb-2 text-center text-[11px] text-white/45"
               role="note"
             >
-              Списание в {ACQUIRER_BY_METHOD[paymentMethod]!.currency} через{" "}
-              {ACQUIRER_BY_METHOD[paymentMethod]!.label} по курсу банка
+              Списание в {ACQUIRER_BY_METHOD[paymentMethod].currency} через{" "}
+              {ACQUIRER_BY_METHOD[paymentMethod].label} по курсу банка
             </p>
           )}
         {!insideTelegram && TELEGRAM_DEEP_LINK ? (

@@ -177,8 +177,7 @@ async def list_skus(
     product_id: str | None = None,
 ) -> list[AdminSkuOut]:
     return [
-        AdminSkuOut.model_validate(s)
-        for s in await svc.list_all_skus(db, product_id=product_id)
+        AdminSkuOut.model_validate(s) for s in await svc.list_all_skus(db, product_id=product_id)
     ]
 
 

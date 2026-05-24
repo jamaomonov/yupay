@@ -1,5 +1,5 @@
-import { Link } from "wouter";
 import { Plus, Wallet as WalletIcon } from "lucide-react";
+import { Link } from "wouter";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useMe } from "@/lib/auth";

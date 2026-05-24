@@ -33,8 +33,8 @@ class ManualFulfiller:
     async def fulfill(
         self,
         *,
-        order: Any,  # noqa: ARG002, ANN401 -- not consulted; admin reads the order itself
-        item: Any,  # noqa: ARG002, ANN401
+        order: Any,  # noqa: ARG002 -- not consulted; admin reads the order itself
+        item: Any,  # noqa: ARG002
         idempotency_key: str,  # noqa: ARG002 -- task.id already uniquely keys the work
     ) -> FulfillResult:
         return FulfillResult(
@@ -49,7 +49,7 @@ class ManualFulfiller:
     async def check_status(
         self,
         *,
-        task: Any,  # noqa: ARG002, ANN401 -- nothing to poll; admin advances state
+        task: Any,  # noqa: ARG002 -- nothing to poll; admin advances state
     ) -> FulfillStatus:
         return FulfillStatus(
             outcome="in_progress",
@@ -61,7 +61,7 @@ class ManualFulfiller:
     async def cancel(
         self,
         *,
-        task: Any,  # noqa: ARG002, ANN401
+        task: Any,  # noqa: ARG002
     ) -> None:
         # No upstream to roll back. The /cancel admin route already flipped
         # the task's status; nothing else to do.

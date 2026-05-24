@@ -1,18 +1,18 @@
-import { useEffect, useMemo } from "react";
-import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button, Input } from "@yupay/ui";
+import { Plus, Trash2, Wand2 } from "lucide-react";
+import { useEffect, useMemo } from "react";
+import { useForm, useFieldArray } from "react-hook-form";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { z } from "zod";
-import { Plus, Trash2, Wand2 } from "lucide-react";
 
-import { Button, Input } from "@yupay/ui";
+import type { Brand, Product, Sku } from "../types";
 
 import { PageHeader } from "@/components/PageHeader";
 import { ApiError, apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
-import type { Brand, Product, Sku } from "../types";
 
 const CURRENCIES = ["USD", "USDT", "RUB", "UZS", "KZT", "EUR"] as const;
 const REGION_PRESETS = [
@@ -256,7 +256,7 @@ export function SkuEditPage() {
     },
   });
 
-  const remove = useMutation<void, ApiError, void>({
+  const remove = useMutation<void, ApiError>({
     mutationFn: () =>
       apiDelete(`/api/v1/admin/catalog/skus/${params.id ?? ""}`),
     onSuccess: async () => {
@@ -271,7 +271,7 @@ export function SkuEditPage() {
       : "Например: «60 UC», «120 UC», «660 UC», «Royale Pass»";
 
   return (
-    <form onSubmit={form.handleSubmit((v) => save.mutate(v))}>
+    <form onSubmit={form.handleSubmit((v) => { save.mutate(v); })}>
       <PageHeader
         title={
           isNew
@@ -491,7 +491,7 @@ export function SkuEditPage() {
                 variant="ghost"
                 size="sm"
                 onClick={() =>
-                  overrides.append({ currency: "UZS", price: "" })
+                  { overrides.append({ currency: "UZS", price: "" }); }
                 }
               >
                 <Plus className="size-4" />
@@ -530,7 +530,7 @@ export function SkuEditPage() {
                       type="button"
                       variant="ghost"
                       size="sm"
-                      onClick={() => overrides.remove(idx)}
+                      onClick={() => { overrides.remove(idx); }}
                       aria-label="Убрать"
                     >
                       <Trash2 className="size-4" />

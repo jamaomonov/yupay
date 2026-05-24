@@ -26,9 +26,7 @@ class User(Base):
     # Preferred display currency for prices & balances across the storefront +
     # miniapp. The customer can change it from Settings; persisted server-side
     # so it survives device switches (Telegram desktop ↔ phone).
-    display_currency: Mapped[str] = mapped_column(
-        String(8), nullable=False, server_default="USD"
-    )
+    display_currency: Mapped[str] = mapped_column(String(8), nullable=False, server_default="USD")
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     photo_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     # List of role strings — e.g. ``["admin"]``. See ADR-0010.

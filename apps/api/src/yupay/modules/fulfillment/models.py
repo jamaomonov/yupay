@@ -39,12 +39,8 @@ class FulfillmentTask(Base):
     )
     supplier: Mapped[str] = mapped_column(String(32), nullable=False)
     status: Mapped[str] = mapped_column(String(24), nullable=False)
-    attempts_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("0")
-    )
-    next_attempt_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    attempts_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     external_order_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     extra_metadata: Mapped[dict[str, Any]] = mapped_column(
@@ -65,13 +61,9 @@ class FulfillmentTask(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )
-    succeeded_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    succeeded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    cancelled_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     attempts: Mapped[list[FulfillmentAttempt]] = relationship(
         back_populates="task",
@@ -85,9 +77,7 @@ class FulfillmentTask(Base):
             "status IN ('pending','in_progress','succeeded','failed','cancelled')",
             name="ck_fulfillment_tasks_status",
         ),
-        CheckConstraint(
-            "attempts_count >= 0", name="ck_fulfillment_tasks_attempts_nonneg"
-        ),
+        CheckConstraint("attempts_count >= 0", name="ck_fulfillment_tasks_attempts_nonneg"),
         UniqueConstraint("order_item_id", name="uq_fulfillment_tasks_order_item"),
     )
 
@@ -134,9 +124,7 @@ class Delivery(Base):
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )
 
-    __table_args__ = (
-        UniqueConstraint("order_item_id", name="uq_deliveries_order_item"),
-    )
+    __table_args__ = (UniqueConstraint("order_item_id", name="uq_deliveries_order_item"),)
 
 
 __all__ = ["Delivery", "FulfillmentAttempt", "FulfillmentTask"]

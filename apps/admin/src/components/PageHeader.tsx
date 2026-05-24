@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
+
+import type { ReactNode } from "react";
 
 export interface Crumb {
   label: string;

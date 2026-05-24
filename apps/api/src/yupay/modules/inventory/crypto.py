@@ -28,9 +28,7 @@ def _key_bytes(settings: Settings) -> bytes:
     raw = settings.inventory_enc_key or ""
     if not raw:
         if settings.is_prod:
-            raise RuntimeError(
-                "INVENTORY_ENC_KEY is required in production — refusing to start."
-            )
+            raise RuntimeError("INVENTORY_ENC_KEY is required in production — refusing to start.")
         seed = settings.auth_email_pepper or "dev"
         return _derive_dev_key(seed)
     # Accept either urlsafe or standard base64; tolerate a missing padding.
@@ -68,7 +66,7 @@ def decrypt(ciphertext: bytes, nonce: bytes) -> str:
 
 
 def _random_nonce() -> bytes:
-    import secrets  # noqa: PLC0415 — keep import scoped to the call site
+    import secrets
 
     return secrets.token_bytes(SecretBox.NONCE_SIZE)
 

@@ -7,13 +7,14 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { NavLink } from "react-router-dom";
 import { Bookmark, Trash2 } from "lucide-react";
+import { NavLink } from "react-router-dom";
+
+import { buildSegmentHref, type SavedSegment, type SavedSegmentList } from "./types";
 
 import { type ApiError, apiDelete, apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
-import { buildSegmentHref, type SavedSegment, type SavedSegmentList } from "./types";
 
 export function SavedSegmentsNav() {
   const qc = useQueryClient();

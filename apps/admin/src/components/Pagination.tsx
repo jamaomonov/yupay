@@ -1,6 +1,6 @@
+import { Button } from "@yupay/ui";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
-import { Button } from "@yupay/ui";
 
 interface Props {
   total: number;
@@ -35,7 +35,7 @@ export function Pagination({
           variant="secondary"
           size="sm"
           disabled={!canPrev}
-          onClick={() => onPageChange(Math.max(0, offset - limit))}
+          onClick={() => { onPageChange(Math.max(0, offset - limit)); }}
           aria-label="Предыдущая страница"
         >
           <ChevronLeft className="size-4" aria-hidden />
@@ -45,7 +45,7 @@ export function Pagination({
           variant="secondary"
           size="sm"
           disabled={!canNext}
-          onClick={() => onPageChange(offset + limit)}
+          onClick={() => { onPageChange(offset + limit); }}
           aria-label="Следующая страница"
         >
           Вперёд

@@ -1,14 +1,7 @@
-import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-
 import { Button } from "@yupay/ui";
+import { useMemo, useState } from "react";
 
-import { Badge } from "@/components/Badge";
-import { PageHeader } from "@/components/PageHeader";
-import { DataTable, type Column } from "@/components/DataTable";
-import { ApiError, apiGet, apiPost } from "@/lib/api";
-import { qk } from "@/lib/queryKeys";
-import type { Product, Sku } from "@/features/catalog/types";
 
 import type {
   BulkUploadOut,
@@ -17,6 +10,14 @@ import type {
   CodeState,
   SkuCountsOut,
 } from "./types";
+import type { Product, Sku } from "@/features/catalog/types";
+
+import { Badge } from "@/components/Badge";
+import { DataTable, type Column } from "@/components/DataTable";
+import { PageHeader } from "@/components/PageHeader";
+import { type ApiError, apiGet, apiPost } from "@/lib/api";
+import { qk } from "@/lib/queryKeys";
+
 
 const STATES: { value: CodeState | ""; label: string }[] = [
   { value: "", label: "Все" },
@@ -164,7 +165,7 @@ export function InventoryPage() {
           </label>
           <select
             value={skuId}
-            onChange={(e) => setSkuId(e.target.value)}
+            onChange={(e) => { setSkuId(e.target.value); }}
             className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
           >
             <option value="">— Выбрать —</option>
@@ -197,7 +198,7 @@ export function InventoryPage() {
           </p>
           <textarea
             value={codesText}
-            onChange={(e) => setCodesText(e.target.value)}
+            onChange={(e) => { setCodesText(e.target.value); }}
             rows={6}
             className="w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] p-3 font-mono text-xs"
             placeholder={"AAA-BBB-CCC\nXYZ-123-456"}
@@ -225,7 +226,7 @@ export function InventoryPage() {
             </label>
             <select
               value={state}
-              onChange={(e) => setState(e.target.value as CodeState | "")}
+              onChange={(e) => { setState(e.target.value as CodeState | ""); }}
               className="h-9 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
             >
               {STATES.map((s) => (

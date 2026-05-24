@@ -57,10 +57,7 @@ async def _grant(*, tg_id: int | None, user_id: str | None, role: str, revoke: b
         user.roles = sorted(roles)
         await session.commit()
 
-        print(
-            f"[grant_admin] {action} '{role}' for user={user.id} "
-            f"(roles={user.roles})"
-        )
+        print(f"[grant_admin] {action} '{role}' for user={user.id} (roles={user.roles})")
         return 0
 
 
@@ -76,9 +73,7 @@ def main() -> int:
         default="admin",
         help="Role to grant/revoke (default: admin)",
     )
-    parser.add_argument(
-        "--revoke", action="store_true", help="Revoke the role instead of granting"
-    )
+    parser.add_argument("--revoke", action="store_true", help="Revoke the role instead of granting")
     args = parser.parse_args()
 
     return asyncio.run(

@@ -1,6 +1,5 @@
-import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Button, Input } from "@yupay/ui";
 import {
   Activity,
   AlertTriangle,
@@ -17,8 +16,8 @@ import {
   Truck,
   Wallet,
 } from "lucide-react";
-
-import { Button, Input } from "@yupay/ui";
+import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { PageHeader } from "@/components/PageHeader";
 import { apiGet } from "@/lib/api";
@@ -76,7 +75,7 @@ export function AuditPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   // URL-bound so the sidebar's "Действия админов" link can pre-filter the feed
   // and the operator can share an admin-only view.
-  const [adminOnlyParam, setAdminOnlyParam] = useSearchParamsState<string>(
+  const [adminOnlyParam, setAdminOnlyParam] = useSearchParamsState(
     "admin_only",
     "",
   );
@@ -96,7 +95,7 @@ export function AuditPage() {
     ],
     queryFn: () => {
       const params = new URLSearchParams();
-      sources.forEach((s) => params.append("sources", s));
+      sources.forEach((s) => { params.append("sources", s); });
       if (actor.trim()) params.set("actor", actor.trim());
       if (target.trim()) params.set("target_id", target.trim());
       if (adminOnly) params.set("admin_only", "true");
@@ -110,7 +109,7 @@ export function AuditPage() {
 
   const stats = useMemo(() => {
     const bySource: Partial<Record<Source, number>> = {};
-    let actors = new Set<string>();
+    const actors = new Set<string>();
     for (const e of rows) {
       bySource[e.source] = (bySource[e.source] ?? 0) + 1;
       if (e.actor) actors.add(e.actor);
@@ -185,7 +184,7 @@ export function AuditPage() {
                 key={s.key}
                 type="button"
                 onClick={() =>
-                  setEnabled((prev) => ({ ...prev, [s.key]: !prev[s.key] }))
+                  { setEnabled((prev) => ({ ...prev, [s.key]: !prev[s.key] })); }
                 }
                 aria-pressed={on}
                 className={[
@@ -215,7 +214,7 @@ export function AuditPage() {
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--text-secondary)]" />
             <Input
               value={actor}
-              onChange={(e) => setActor(e.target.value)}
+              onChange={(e) => { setActor(e.target.value); }}
               placeholder="Фильтр по actor (admin:<id>, payments, fulfillment)…"
               className="pl-9 text-xs"
             />
@@ -224,14 +223,14 @@ export function AuditPage() {
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--text-secondary)]" />
             <Input
               value={target}
-              onChange={(e) => setTarget(e.target.value)}
+              onChange={(e) => { setTarget(e.target.value); }}
               placeholder="Фильтр по target_id (order/payment/task UUID)…"
               className="pl-9 text-xs"
             />
           </div>
           <select
             value={limit}
-            onChange={(e) => setLimit(Number(e.target.value))}
+            onChange={(e) => { setLimit(Number(e.target.value)); }}
             className="h-10 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
           >
             <option value={50}>50 событий</option>
@@ -257,7 +256,7 @@ export function AuditPage() {
             key={e.id + i}
             event={e}
             expanded={expanded === e.id}
-            onToggle={() => setExpanded(expanded === e.id ? null : e.id)}
+            onToggle={() => { setExpanded(expanded === e.id ? null : e.id); }}
           />
         ))}
       </div>

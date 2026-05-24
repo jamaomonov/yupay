@@ -1,6 +1,7 @@
-import { ReactNode } from "react";
-import { Header } from "./Header";
+import { type ReactNode } from "react";
+
 import { BottomNav } from "./BottomNav";
+import { Header } from "./Header";
 
 export function Shell({ children }: { children: ReactNode }) {
   // Header used to hide on /topup/* to give the game hero an

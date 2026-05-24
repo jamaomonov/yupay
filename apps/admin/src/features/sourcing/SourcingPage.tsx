@@ -1,14 +1,7 @@
-import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-
 import { Button } from "@yupay/ui";
+import { useMemo, useState } from "react";
 
-import { Badge } from "@/components/Badge";
-import { PageHeader } from "@/components/PageHeader";
-import { DataTable, type Column } from "@/components/DataTable";
-import { ApiError, api, apiGet } from "@/lib/api";
-import { qk } from "@/lib/queryKeys";
-import type { Product, Sku } from "@/features/catalog/types";
 
 import type {
   SourcingDecisionOut,
@@ -16,6 +9,14 @@ import type {
   SourcingRuleListOut,
   SourcingRuleOut,
 } from "./types";
+import type { Product, Sku } from "@/features/catalog/types";
+
+import { Badge } from "@/components/Badge";
+import { DataTable, type Column } from "@/components/DataTable";
+import { PageHeader } from "@/components/PageHeader";
+import { type ApiError, api, apiGet } from "@/lib/api";
+import { qk } from "@/lib/queryKeys";
+
 
 const MODES: { value: SourcingMode; label: string; hint: string }[] = [
   {
@@ -222,7 +223,7 @@ export function SourcingPage() {
             </label>
             <select
               value={selectedSkuId}
-              onChange={(e) => setSelectedSkuId(e.target.value)}
+              onChange={(e) => { setSelectedSkuId(e.target.value); }}
               className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
             >
               <option value="">— Выбрать —</option>
@@ -246,7 +247,7 @@ export function SourcingPage() {
             </label>
             <select
               value={mode}
-              onChange={(e) => setMode(e.target.value as SourcingMode)}
+              onChange={(e) => { setMode(e.target.value as SourcingMode); }}
               className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
             >
               {MODES.map((m) => (
@@ -266,7 +267,7 @@ export function SourcingPage() {
             <input
               type="text"
               value={supplierSlug}
-              onChange={(e) => setSupplierSlug(e.target.value)}
+              onChange={(e) => { setSupplierSlug(e.target.value); }}
               disabled={mode !== "force_supplier"}
               placeholder="mock / steam / riot / …"
               className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm disabled:opacity-50"

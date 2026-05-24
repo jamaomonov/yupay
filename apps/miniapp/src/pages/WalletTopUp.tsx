@@ -1,5 +1,3 @@
-import { useState } from "react";
-import { useLocation } from "wouter";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -10,6 +8,8 @@ import {
   Smartphone,
   Wallet as WalletIcon,
 } from "lucide-react";
+import { useState } from "react";
+import { useLocation } from "wouter";
 
 import { useToast } from "@/hooks/use-toast";
 import { useMe } from "@/lib/auth";

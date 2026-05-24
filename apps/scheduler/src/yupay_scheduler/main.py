@@ -9,6 +9,7 @@ import asyncio
 import signal
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from yupay.core.logging import configure_logging, get_logger
 
 # Touch every module's models so SQLAlchemy's metadata has the full graph
 # resolved before any query runs. Without this, cross-table FKs (e.g.
@@ -24,7 +25,6 @@ from yupay.modules.payments import models as _payments_models  # noqa: F401
 from yupay.modules.sourcing import models as _sourcing_models  # noqa: F401
 from yupay.modules.users import models as _users_models  # noqa: F401
 from yupay.modules.wallet import models as _wallet_models  # noqa: F401
-from yupay.core.logging import configure_logging, get_logger
 
 from yupay_scheduler.jobs import expire_orders
 

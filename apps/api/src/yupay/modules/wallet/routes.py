@@ -39,9 +39,7 @@ async def my_wallet(
     db: Annotated[AsyncSession, Depends(db_session)],
     user: Annotated[User, Depends(current_user)],
 ) -> WalletOverviewOut:
-    accounts = [
-        a for a in await svc.user_accounts(db, user.id) if a.kind in USER_VISIBLE_KINDS
-    ]
+    accounts = [a for a in await svc.user_accounts(db, user.id) if a.kind in USER_VISIBLE_KINDS]
     balances = [
         BalanceOut(
             account_id=a.id,

@@ -1,15 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
-import { Pencil, Plus, Trash2 } from "lucide-react";
-
 import { Button } from "@yupay/ui";
-import { Spinner } from "@/components/States";
+import { Pencil, Plus, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
-import { PageHeader } from "@/components/PageHeader";
-import { DataTable, type Column } from "@/components/DataTable";
-import { ApiError, apiDelete, apiGet, apiPatch } from "@/lib/api";
-import { qk } from "@/lib/queryKeys";
+
 import type { Category } from "../types";
+
+import { DataTable, type Column } from "@/components/DataTable";
+import { PageHeader } from "@/components/PageHeader";
+import { Spinner } from "@/components/States";
+import { type ApiError, apiDelete, apiGet, apiPatch } from "@/lib/api";
+import { qk } from "@/lib/queryKeys";
+
 
 export function CategoriesListPage() {
   const qc = useQueryClient();
@@ -79,7 +81,7 @@ export function CategoriesListPage() {
       render: (c) => (
         <Toggle
           checked={c.active}
-          onChange={(next) => toggleActive.mutate({ cat: c, next })}
+          onChange={(next) => { toggleActive.mutate({ cat: c, next }); }}
           disabled={toggleActive.isPending}
         />
       ),
@@ -91,7 +93,7 @@ export function CategoriesListPage() {
       render: (c) => (
         <div
           className="flex justify-end gap-1"
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); }}
         >
           <Button
             type="button"

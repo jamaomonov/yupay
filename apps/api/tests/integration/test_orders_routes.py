@@ -14,6 +14,7 @@ import hashlib
 import hmac
 import json
 import time
+from datetime import UTC
 from decimal import Decimal
 from urllib.parse import urlencode
 
@@ -406,9 +407,7 @@ async def test_list_orders_for_user(
         )
         assert r.status_code == 201
 
-    r = await integration_client.get(
-        "/api/v1/orders", headers={"Authorization": f"Bearer {token}"}
-    )
+    r = await integration_client.get("/api/v1/orders", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
     assert len(r.json()["items"]) == 3
 
@@ -477,7 +476,7 @@ async def test_stale_order_lazy_expires_on_read(
     """Reading a ``pending_payment`` order past its ``expires_at`` should
     flip it to ``expired`` inline so the customer never stares at
     "ждём оплату · 4 days"."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from yupay.modules.orders.models import Order
 
@@ -502,10 +501,8 @@ async def test_stale_order_lazy_expires_on_read(
     order_id = create.json()["id"]
 
     # Wind the clock — back-date ``expires_at`` to 1 second ago.
-    past = datetime.now(timezone.utc) - timedelta(seconds=1)
-    await db_session.execute(
-        update(Order).where(Order.id == order_id).values(expires_at=past)
-    )
+    past = datetime.now(UTC) - timedelta(seconds=1)
+    await db_session.execute(update(Order).where(Order.id == order_id).values(expires_at=past))
     await db_session.commit()
 
     read = await integration_client.get(
@@ -525,7 +522,7 @@ async def test_expire_stale_orders_service_batch_flips_pending(
 ) -> None:
     """The scheduler job ``expire_stale_orders`` flips every TTL-exceeded
     ``pending_payment`` row and leaves healthy orders alone."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from yupay.modules.orders import api as orders_api
     from yupay.modules.orders.models import Order
@@ -555,10 +552,8 @@ async def test_expire_stale_orders_service_batch_flips_pending(
         ids.append(r.json()["id"])
 
     stale_ids, fresh_id = ids[:2], ids[2]
-    past = datetime.now(timezone.utc) - timedelta(seconds=5)
-    await db_session.execute(
-        update(Order).where(Order.id.in_(stale_ids)).values(expires_at=past)
-    )
+    past = datetime.now(UTC) - timedelta(seconds=5)
+    await db_session.execute(update(Order).where(Order.id.in_(stale_ids)).values(expires_at=past))
     await db_session.commit()
 
     count = await orders_api.expire_stale_orders(db_session)

@@ -31,7 +31,7 @@ def _init_sentry(settings: Settings) -> None:
     """
     if not settings.sentry_dsn:
         return
-    import sentry_sdk  # noqa: PLC0415 -- lazy import is the point
+    import sentry_sdk
     from sentry_sdk.integrations.fastapi import FastApiIntegration
     from sentry_sdk.integrations.starlette import StarletteIntegration
 
@@ -46,6 +46,7 @@ def _init_sentry(settings: Settings) -> None:
             StarletteIntegration(transaction_style="endpoint"),
         ],
     )
+
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator

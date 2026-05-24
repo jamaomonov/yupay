@@ -5,6 +5,7 @@
  * resulting array is form-state under the parent's `required_fields` name.
  */
 
+import { Button, Input } from "@yupay/ui";
 import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import {
@@ -14,7 +15,6 @@ import {
   useWatch,
 } from "react-hook-form";
 
-import { Button, Input } from "@yupay/ui";
 
 import type { FieldType, FormField } from "../types";
 
@@ -39,7 +39,7 @@ export function RequiredFieldsEditor({ control, register, name }: Props) {
           name={name}
           control={control}
           register={register}
-          onRemove={() => remove(idx)}
+          onRemove={() => { remove(idx); }}
         />
       ))}
       <Button
@@ -47,14 +47,14 @@ export function RequiredFieldsEditor({ control, register, name }: Props) {
         variant="secondary"
         size="sm"
         onClick={() =>
-          append({
+          { append({
             key: "",
             label: { ru: "", en: "", uz: "" },
             type: "text",
             required: true,
             placeholder: { ru: "", en: "", uz: "" },
             help_text: { ru: "", en: "", uz: "" },
-          } satisfies FormField)
+          } satisfies FormField); }
         }
       >
         <Plus className="size-4" />
@@ -87,7 +87,7 @@ function FieldRow({
       <header className="flex items-center justify-between gap-2 px-3 py-2">
         <button
           type="button"
-          onClick={() => setOpen((o) => !o)}
+          onClick={() => { setOpen((o) => !o); }}
           className="flex flex-1 items-center gap-2 text-left text-sm"
         >
           {open ? (
@@ -218,7 +218,7 @@ function OptionsEditor({
               placeholder={l.toUpperCase()}
             />
           ))}
-          <Button type="button" variant="ghost" size="sm" onClick={() => remove(idx)}>
+          <Button type="button" variant="ghost" size="sm" onClick={() => { remove(idx); }}>
             <Trash2 className="size-4" />
           </Button>
         </div>
@@ -228,7 +228,7 @@ function OptionsEditor({
         variant="secondary"
         size="sm"
         onClick={() =>
-          append({ value: "", label: { ru: "", en: "", uz: "" } })
+          { append({ value: "", label: { ru: "", en: "", uz: "" } }); }
         }
       >
         <Plus className="size-4" />

@@ -13,9 +13,9 @@ nobody opens (silent abandonment) and to keep the admin's
 from __future__ import annotations
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-
 from yupay.core.db import get_session_factory
 from yupay.core.logging import get_logger
+
 # Importing from ``orders.api`` would pull in route registrations, which in
 # turn try to register the whole ``api/v1`` router stack — fine in the FastAPI
 # process but a circular import here. Reach into ``service`` directly; the
@@ -49,7 +49,7 @@ def register(scheduler: AsyncIOScheduler) -> None:
         id=_JOB_ID,
         replace_existing=True,
         max_instances=1,  # never let two ticks race on the same backlog.
-        coalesce=True,    # if a tick is missed, run once — don't burst-replay.
+        coalesce=True,  # if a tick is missed, run once — don't burst-replay.
     )
     log.info("orders.expire_stale.registered", interval_seconds=_INTERVAL_SECONDS)
 

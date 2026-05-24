@@ -10,12 +10,12 @@
  * longer needs to close-and-reopen the miniapp to recover.
  */
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
-import { bootstrapAuth } from "@/lib/auth";
 import { ApiError, apiGet, getAccessToken } from "@/lib/api";
+import { bootstrapAuth } from "@/lib/auth";
 import { brandsQueryOptions, categoriesQueryOptions } from "@/lib/catalog";
 
 type Phase = "booting" | "ready" | "error";
