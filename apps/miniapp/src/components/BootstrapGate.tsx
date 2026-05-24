@@ -258,19 +258,16 @@ function Logo({ spinning }: { spinning: boolean }) {
           opacity: 0.9,
         }}
       />
-      {/* Core mark */}
-      <div
-        className="w-16 h-16 rounded-2xl flex items-center justify-center font-bold text-[26px] tracking-tighter"
-        style={{
-          background:
-            "linear-gradient(140deg, hsl(var(--primary)) 0%, hsl(84 100% 70%) 100%)",
-          color: "hsl(228 60% 6%)",
-          boxShadow:
-            "0 8px 32px hsl(var(--primary) / 0.45), inset 0 1px 0 hsl(0 0% 100% / 0.5)",
-        }}
-      >
-        Y
-      </div>
+      {/* Core mark — the real brand logo. The dark square came from the
+          PNG variant we generated for apple-touch-icon, but here the
+          flat SVG sits on its own dark splash background so we render
+          the icon-mark SVG directly without the boxed wrapper. */}
+      <img
+        src="/logo-icon.svg"
+        alt="YuPay"
+        className="w-16 h-16 relative z-10 drop-shadow-[0_8px_32px_hsl(var(--primary)/0.5)]"
+        draggable={false}
+      />
     </div>
   );
 }
