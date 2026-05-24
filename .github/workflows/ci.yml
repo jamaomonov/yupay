@@ -40,7 +40,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
-      - run: uv sync --frozen --all-groups
+      - run: uv sync --frozen --all-packages --all-groups
       - run: uv run ruff check apps
       - run: uv run ruff format --check apps
       - run: uv run mypy apps
@@ -91,7 +91,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
-      - run: uv sync --frozen --all-groups
+      - run: uv sync --frozen --all-packages --all-groups
       - run: uv run pytest --cov=apps --cov-report=xml --cov-fail-under=80
 
   test-ts:
@@ -125,7 +125,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-      - run: uv sync --frozen --all-groups
+      - run: uv sync --frozen --all-packages --all-groups
       - run: pnpm install --frozen-lockfile=false
       - run: |
           cd apps/api && uv run python -m yupay.scripts.export_openapi ../../docs/api/openapi.json

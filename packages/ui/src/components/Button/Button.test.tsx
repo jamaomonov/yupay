@@ -12,6 +12,9 @@ describe("Button", () => {
   it("applies the primary variant by default", () => {
     render(<Button>Primary</Button>);
     const btn = screen.getByRole("button");
-    expect(btn.className).toContain("bg-[var(--color-brand)]");
+    // Primary button is painted with the semantic ``--accent`` token
+    // (Dim Slate palette). Used to reference the legacy
+    // ``--color-brand`` alias which has since been retired.
+    expect(btn.className).toContain("bg-[var(--accent)]");
   });
 });

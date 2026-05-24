@@ -366,6 +366,18 @@
             "title": "Active",
             "type": "boolean"
           },
+          "cost_usdt": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Usdt"
+          },
           "denomination": {
             "anyOf": [
               {
@@ -435,6 +447,7 @@
           "denomination",
           "region",
           "price_usd",
+          "cost_usdt",
           "image_url",
           "sort_order",
           "active",
@@ -974,6 +987,70 @@
         "title": "BrandUpdate",
         "type": "object"
       },
+      "BulkRetryIn": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /admin/fulfillment/tasks/bulk-retry``.\n\nCap is 100 \u2014 large bulks would hold the request-scoped transaction open while each\ntask's saga step runs; a tighter limit forces the operator into reasonable batches.",
+        "properties": {
+          "task_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Task Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "task_ids"
+        ],
+        "title": "BulkRetryIn",
+        "type": "object"
+      },
+      "BulkRetryOut": {
+        "description": "Response of bulk-retry: the tasks we actually replayed plus skip diagnostics.",
+        "properties": {
+          "retried": {
+            "items": {
+              "$ref": "#/components/schemas/FulfillmentTaskOut"
+            },
+            "title": "Retried",
+            "type": "array"
+          },
+          "skipped": {
+            "items": {
+              "$ref": "#/components/schemas/BulkRetrySkipped"
+            },
+            "title": "Skipped",
+            "type": "array"
+          }
+        },
+        "required": [
+          "retried",
+          "skipped"
+        ],
+        "title": "BulkRetryOut",
+        "type": "object"
+      },
+      "BulkRetrySkipped": {
+        "description": "One task that bulk-retry decided not to replay.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "reason"
+        ],
+        "title": "BulkRetrySkipped",
+        "type": "object"
+      },
       "BulkUploadIn": {
         "additionalProperties": false,
         "properties": {
@@ -1026,6 +1103,43 @@
           "duplicates"
         ],
         "title": "BulkUploadOut",
+        "type": "object"
+      },
+      "BulkUzsPriceOut": {
+        "description": "Result of ``POST /admin/catalog/skus/bulk-set-uzs-prices``.",
+        "properties": {
+          "fx_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fx Snapshot Id"
+          },
+          "rate": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Rate",
+            "type": "string"
+          },
+          "skipped_without_cost": {
+            "title": "Skipped Without Cost",
+            "type": "integer"
+          },
+          "updated_total": {
+            "title": "Updated Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rate",
+          "fx_snapshot_id",
+          "updated_total",
+          "skipped_without_cost"
+        ],
+        "title": "BulkUzsPriceOut",
         "type": "object"
       },
       "CategoryCreate": {
@@ -1383,6 +1497,281 @@
           "amount"
         ],
         "title": "CurrencyAmount",
+        "type": "object"
+      },
+      "CustomerBalanceOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "balance": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balance",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id",
+          "kind",
+          "currency",
+          "balance"
+        ],
+        "title": "CustomerBalanceOut",
+        "type": "object"
+      },
+      "CustomerOrderSummary": {
+        "description": "Compact order row for the customer-360 list. Full detail lives at /orders/{id}.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "delivered_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivered At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "items_count": {
+            "title": "Items Count",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "total_charged": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total Charged",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "currency",
+          "total_charged",
+          "items_count",
+          "created_at",
+          "delivered_at"
+        ],
+        "title": "CustomerOrderSummary",
+        "type": "object"
+      },
+      "CustomerOverviewOut": {
+        "description": "Aggregated read-only view of a customer for the admin SPA's /customers/{id} page.",
+        "properties": {
+          "open_fulfillment_tasks": {
+            "items": {
+              "$ref": "#/components/schemas/CustomerTaskSummary"
+            },
+            "title": "Open Fulfillment Tasks",
+            "type": "array"
+          },
+          "recent_orders": {
+            "items": {
+              "$ref": "#/components/schemas/CustomerOrderSummary"
+            },
+            "title": "Recent Orders",
+            "type": "array"
+          },
+          "recent_payments": {
+            "items": {
+              "$ref": "#/components/schemas/CustomerPaymentSummary"
+            },
+            "title": "Recent Payments",
+            "type": "array"
+          },
+          "risk_flags": {
+            "items": {
+              "enum": [
+                "no_email",
+                "no_telegram",
+                "fresh_account",
+                "many_failed_payments"
+              ],
+              "type": "string"
+            },
+            "title": "Risk Flags",
+            "type": "array"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/CustomerStatsOut"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserAdminOut"
+          },
+          "wallet_balances": {
+            "items": {
+              "$ref": "#/components/schemas/CustomerBalanceOut"
+            },
+            "title": "Wallet Balances",
+            "type": "array"
+          }
+        },
+        "required": [
+          "user",
+          "stats"
+        ],
+        "title": "CustomerOverviewOut",
+        "type": "object"
+      },
+      "CustomerPaymentSummary": {
+        "properties": {
+          "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "order_id": {
+            "title": "Order Id",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "order_id",
+          "provider",
+          "status",
+          "amount",
+          "currency",
+          "external_id",
+          "created_at"
+        ],
+        "title": "CustomerPaymentSummary",
+        "type": "object"
+      },
+      "CustomerStatsOut": {
+        "description": "Aggregate counters for the customer header card.",
+        "properties": {
+          "delivered_orders": {
+            "title": "Delivered Orders",
+            "type": "integer"
+          },
+          "failed_payments": {
+            "title": "Failed Payments",
+            "type": "integer"
+          },
+          "total_orders": {
+            "title": "Total Orders",
+            "type": "integer"
+          },
+          "total_spent_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total Spent Usd",
+            "type": "string"
+          }
+        },
+        "required": [
+          "total_orders",
+          "delivered_orders",
+          "total_spent_usd",
+          "failed_payments"
+        ],
+        "title": "CustomerStatsOut",
+        "type": "object"
+      },
+      "CustomerTaskSummary": {
+        "description": "Open fulfilment task (pending / in_progress / failed) for this customer.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "order_id": {
+            "title": "Order Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "supplier": {
+            "title": "Supplier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "order_id",
+          "supplier",
+          "status",
+          "last_error",
+          "created_at"
+        ],
+        "title": "CustomerTaskSummary",
         "type": "object"
       },
       "DashboardOut": {
@@ -3041,6 +3430,109 @@
         "title": "PaymentOut",
         "type": "object"
       },
+      "PaymentTriageOut": {
+        "description": "Aggregate response for /admin/payments/triage.",
+        "properties": {
+          "failed_webhooks": {
+            "items": {
+              "$ref": "#/components/schemas/WebhookTriageRow"
+            },
+            "title": "Failed Webhooks",
+            "type": "array"
+          },
+          "stuck_pending": {
+            "items": {
+              "$ref": "#/components/schemas/PaymentTriageRow"
+            },
+            "title": "Stuck Pending",
+            "type": "array"
+          },
+          "threshold_minutes": {
+            "title": "Threshold Minutes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "threshold_minutes"
+        ],
+        "title": "PaymentTriageOut",
+        "type": "object"
+      },
+      "PaymentTriageRow": {
+        "description": "One stuck-pending payment row for the triage screen.",
+        "properties": {
+          "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "guest_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Email"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "order_id": {
+            "title": "Order Id",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "waiting_minutes": {
+            "title": "Waiting Minutes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "order_id",
+          "user_id",
+          "guest_email",
+          "provider",
+          "status",
+          "amount",
+          "currency",
+          "created_at",
+          "waiting_minutes"
+        ],
+        "title": "PaymentTriageRow",
+        "type": "object"
+      },
       "PaymentWebhookListOut": {
         "properties": {
           "items": {
@@ -3687,6 +4179,168 @@
         "title": "RefundIn",
         "type": "object"
       },
+      "SavedSegmentIn": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /admin/segments`` \u2014 create a bookmark.",
+        "properties": {
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "title": "Params",
+            "type": "object"
+          },
+          "path": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "path"
+        ],
+        "title": "SavedSegmentIn",
+        "type": "object"
+      },
+      "SavedSegmentListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SavedSegmentOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SavedSegmentListOut",
+        "type": "object"
+      },
+      "SavedSegmentOut": {
+        "description": "One saved segment as returned to its owning admin.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "title": "Params",
+            "type": "object"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "path",
+          "params",
+          "created_at"
+        ],
+        "title": "SavedSegmentOut",
+        "type": "object"
+      },
+      "SearchHit": {
+        "description": "One row in the search palette.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "sublabel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sublabel"
+          },
+          "type": {
+            "enum": [
+              "user",
+              "order",
+              "payment",
+              "sku"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "label",
+          "path"
+        ],
+        "title": "SearchHit",
+        "type": "object"
+      },
+      "SearchOut": {
+        "description": "Grouped search results \u2014 one bucket per source.",
+        "properties": {
+          "orders": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            },
+            "title": "Orders",
+            "type": "array"
+          },
+          "payments": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            },
+            "title": "Payments",
+            "type": "array"
+          },
+          "skus": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            },
+            "title": "Skus",
+            "type": "array"
+          },
+          "users": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            },
+            "title": "Users",
+            "type": "array"
+          }
+        },
+        "title": "SearchOut",
+        "type": "object"
+      },
       "SimulateWebhookIn": {
         "additionalProperties": false,
         "description": "Body of admin's ``POST /admin/payments/{id}/simulate-webhook``.",
@@ -3746,6 +4400,22 @@
             "default": true,
             "title": "Active",
             "type": "boolean"
+          },
+          "cost_usdt": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Usdt"
           },
           "denomination": {
             "anyOf": [
@@ -3967,6 +4637,22 @@
               }
             ],
             "title": "Active"
+          },
+          "cost_usdt": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Usdt"
           },
           "denomination": {
             "anyOf": [
@@ -4871,6 +5557,71 @@
         ],
         "title": "WalletOverviewOut",
         "type": "object"
+      },
+      "WebhookResolveIn": {
+        "additionalProperties": false,
+        "description": "Body of admin's ``POST /admin/webhooks/{id}/mark-resolved``.",
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "WebhookResolveIn",
+        "type": "object"
+      },
+      "WebhookTriageRow": {
+        "description": "One failed-webhook row for the triage screen.",
+        "properties": {
+          "external_event_id": {
+            "title": "External Event Id",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "processed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processed At"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "received_at": {
+            "format": "date-time",
+            "title": "Received At",
+            "type": "string"
+          },
+          "signature_ok": {
+            "title": "Signature Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "external_event_id",
+          "received_at",
+          "processed_at",
+          "signature_ok"
+        ],
+        "title": "WebhookTriageRow",
+        "type": "object"
       }
     }
   },
@@ -4976,6 +5727,18 @@
                 }
               ],
               "title": "Target Id"
+            }
+          },
+          {
+            "description": "Keep only events whose actor starts with `admin:`",
+            "in": "query",
+            "name": "admin_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Keep only events whose actor starts with `admin:`",
+              "title": "Admin Only",
+              "type": "boolean"
             }
           },
           {
@@ -5857,6 +6620,56 @@
         ]
       }
     },
+    "/api/v1/admin/catalog/skus/bulk-set-uzs-prices": {
+      "post": {
+        "description": "Recompute UZS SkuPrice overrides for every active SKU.\n\nUses the same FX service that orders use at checkout (so the rate\nhere matches the rate customers will see today). SKUs whose\n``cost_usdt`` is null are skipped \u2014 they remain at whatever UZS\noverride they had, or fall back to live FX in catalog reads.",
+        "operationId": "bulk_set_uzs_prices_api_v1_admin_catalog_skus_bulk_set_uzs_prices_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkUzsPriceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bulk Set Uzs Prices",
+        "tags": [
+          "admin:catalog"
+        ]
+      }
+    },
     "/api/v1/admin/catalog/skus/{sku_id}": {
       "delete": {
         "operationId": "delete_sku_api_v1_admin_catalog_skus__sku_id__delete",
@@ -5974,6 +6787,79 @@
         ]
       }
     },
+    "/api/v1/admin/customers/{user_id}/overview": {
+      "get": {
+        "description": "Single aggregate read for the /customers/{user_id} page in the admin SPA.",
+        "operationId": "admin_customer_overview_api_v1_admin_customers__user_id__overview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Rows per section",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "description": "Rows per section",
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerOverviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Aggregated customer-360 view (orders, payments, wallet, risk flags)",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/admin/fulfillment/tasks": {
       "get": {
         "operationId": "admin_list_tasks_api_v1_admin_fulfillment_tasks_get",
@@ -6086,6 +6972,65 @@
           }
         },
         "summary": "Admin List Tasks",
+        "tags": [
+          "admin:fulfillment"
+        ]
+      }
+    },
+    "/api/v1/admin/fulfillment/tasks/bulk-retry": {
+      "post": {
+        "operationId": "admin_bulk_retry_tasks_api_v1_admin_fulfillment_tasks_bulk_retry_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkRetryIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkRetryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry multiple failed / pending tasks; non-retryable ones are reported",
         "tags": [
           "admin:fulfillment"
         ]
@@ -7033,6 +7978,70 @@
         ]
       }
     },
+    "/api/v1/admin/payments/triage": {
+      "get": {
+        "description": "Two focused buckets for finance / ops to triage payment incidents.",
+        "operationId": "admin_payments_triage_api_v1_admin_payments_triage_get",
+        "parameters": [
+          {
+            "description": "Stuck-pending threshold in minutes",
+            "in": "query",
+            "name": "stuck_after_minutes",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "description": "Stuck-pending threshold in minutes",
+              "maximum": 1440,
+              "minimum": 1,
+              "title": "Stuck After Minutes",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentTriageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stuck-pending payments + failed-webhook backlog for the triage screen",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/admin/payments/{payment_id}": {
       "get": {
         "operationId": "admin_get_payment_api_v1_admin_payments__payment_id__get",
@@ -7224,6 +8233,238 @@
         "summary": "Dev-only: synthesise a webhook to flip the mock payment",
         "tags": [
           "admin:payments"
+        ]
+      }
+    },
+    "/api/v1/admin/search": {
+      "get": {
+        "description": "Return up to ``limit`` matches per source for the given query.",
+        "operationId": "admin_search_api_v1_admin_search_get",
+        "parameters": [
+          {
+            "description": "Search query",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "Search query",
+              "maxLength": 64,
+              "minLength": 2,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cross-entity search (users / orders / payments / skus)",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/segments": {
+      "get": {
+        "operationId": "admin_list_segments_api_v1_admin_segments_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSegmentListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List the calling admin's saved segments (own only)",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "admin_create_segment_api_v1_admin_segments_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedSegmentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSegmentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create a personal saved-filter bookmark",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/segments/{segment_id}": {
+      "delete": {
+        "operationId": "admin_delete_segment_api_v1_admin_segments__segment_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "segment_id",
+            "required": true,
+            "schema": {
+              "title": "Segment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete one of the calling admin's saved segments",
+        "tags": [
+          "admin"
         ]
       }
     },
@@ -7789,6 +9030,75 @@
         ]
       }
     },
+    "/api/v1/admin/wallet/adjustments": {
+      "get": {
+        "operationId": "admin_recent_adjustments_api_v1_admin_wallet_adjustments_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "actor",
+            "required": false,
+            "schema": {
+              "default": "me",
+              "title": "Actor",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recent admin ledger adjustments (mine / everyone)",
+        "tags": [
+          "admin:wallet"
+        ]
+      }
+    },
     "/api/v1/admin/wallet/{user_id}": {
       "get": {
         "operationId": "admin_user_ledger_api_v1_admin_wallet__user_id__get",
@@ -7943,6 +9253,74 @@
           }
         },
         "summary": "Recent incoming payment webhooks, with verify status and raw payload",
+        "tags": [
+          "admin:webhooks"
+        ]
+      }
+    },
+    "/api/v1/admin/webhooks/{webhook_id}/mark-resolved": {
+      "post": {
+        "operationId": "admin_resolve_webhook_api_v1_admin_webhooks__webhook_id__mark_resolved_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "webhook_id",
+            "required": true,
+            "schema": {
+              "title": "Webhook Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookResolveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentWebhookOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin: ack a rejected / stuck webhook record",
         "tags": [
           "admin:webhooks"
         ]
