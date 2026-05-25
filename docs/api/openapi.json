@@ -3647,6 +3647,83 @@
         "title": "PostingOut",
         "type": "object"
       },
+      "PresignUploadIn": {
+        "description": "Request body for ``POST /admin/media/presign-upload``.",
+        "properties": {
+          "content_type": {
+            "examples": [
+              "image/png",
+              "image/webp"
+            ],
+            "title": "Content Type",
+            "type": "string"
+          },
+          "kind": {
+            "description": "One of brand_logo, brand_hero, product_image, sku_image.",
+            "enum": [
+              "brand_logo",
+              "brand_hero",
+              "product_image",
+              "sku_image"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "size_bytes": {
+            "exclusiveMinimum": 0.0,
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "content_type",
+          "size_bytes"
+        ],
+        "title": "PresignUploadIn",
+        "type": "object"
+      },
+      "PresignUploadOut": {
+        "description": "Response body for ``POST /admin/media/presign-upload``.\n\nWorkflow on the admin side::\n\n    const { upload_url, public_url } = await api.presignUpload(...);\n    await fetch(upload_url, {\n      method: \"PUT\",\n      headers: { \"Content-Type\": file.type },\n      body: file,\n    });\n    // Persist ``public_url`` into the relevant form field.",
+        "properties": {
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "max_bytes": {
+            "title": "Max Bytes",
+            "type": "integer"
+          },
+          "public_url": {
+            "description": "Public read URL (cdn.yupay.uz). Store this in the DB column.",
+            "title": "Public Url",
+            "type": "string"
+          },
+          "upload_url": {
+            "description": "Single-use presigned PUT URL. Expires in ``expires_in`` seconds.",
+            "title": "Upload Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "upload_url",
+          "public_url",
+          "key",
+          "content_type",
+          "expires_in",
+          "max_bytes"
+        ],
+        "title": "PresignUploadOut",
+        "type": "object"
+      },
       "PriceOut": {
         "description": "A price in one currency.",
         "properties": {
@@ -7655,6 +7732,65 @@
         "summary": "Stock counts per state for one SKU",
         "tags": [
           "admin:inventory"
+        ]
+      }
+    },
+    "/api/v1/admin/media/presign-upload": {
+      "post": {
+        "operationId": "presign_upload_api_v1_admin_media_presign_upload_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresignUploadIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresignUploadOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mint a presigned PUT URL for a single direct-to-R2 image upload",
+        "tags": [
+          "admin:media"
         ]
       }
     },
