@@ -1,26 +1,25 @@
-name: Publish docs
+name: Build docs
+
+# GitHub Pages is not enabled on this repo, so we only build the docs
+# site — the build catches Markdown / Mermaid / MkDocs config errors
+# in CI without trying to publish anywhere. Re-enable the deploy step
+# (``actions/configure-pages`` + ``actions/deploy-pages``) once Pages
+# is turned on in repo Settings → Pages → Source: GitHub Actions.
 
 on:
   push:
     branches: [main]
     paths: ["docs/**", ".github/workflows/docs.yml"]
+  pull_request:
+    paths: ["docs/**", ".github/workflows/docs.yml"]
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -49,8 +48,8 @@ jobs:
           # documentation files") were breaking the entire build. Once
           # we sweep the ADR set we'll bring it back.
           mkdocs build --site-dir _site
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with: { path: "_site" }
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docs-site
+          path: _site
+          retention-days: 7
