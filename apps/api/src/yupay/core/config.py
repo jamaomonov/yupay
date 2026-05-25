@@ -129,6 +129,31 @@ class Settings(BaseSettings):
     # --- cors ---
     cors_allow_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
 
+    # --- media storage (Cloudflare R2, S3-compatible) ---
+    # The bucket holds publicly served media — brand logos, hero
+    # images, product/SKU thumbnails. Reads go through ``cdn.yupay.uz``
+    # (custom domain in front of R2); writes are direct from the admin
+    # SPA via presigned PUT URLs that this service issues on demand,
+    # so large image uploads never touch FastAPI.
+    r2_account_id: str = Field(default="")
+    r2_access_key_id: str = Field(default="")
+    r2_secret_access_key: str = Field(default="")
+    r2_bucket_media: str = Field(default="yupay-media")
+    r2_public_base_url: str = Field(
+        default="https://cdn.yupay.uz",
+        description="Public read URL prefix; no trailing slash.",
+    )
+    r2_presign_ttl_seconds: int = Field(default=300)  # 5 min — plenty for one PUT
+    media_max_upload_bytes: int = Field(default=5 * 1024 * 1024)  # 5 MB
+    media_allowed_mime: list[str] = Field(
+        default_factory=lambda: [
+            "image/png",
+            "image/jpeg",
+            "image/webp",
+            "image/svg+xml",
+        ]
+    )
+
     # --- inventory ---
     inventory_enc_key: str = Field(
         default="",

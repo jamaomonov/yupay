@@ -3,12 +3,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input } from "@yupay/ui";
 import { Plus, Trash2, Wand2 } from "lucide-react";
 import { useEffect, useMemo } from "react";
-import { useForm, useFieldArray } from "react-hook-form";
+import { Controller, useForm, useFieldArray } from "react-hook-form";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { z } from "zod";
 
 import type { Brand, Product, Sku } from "../types";
 
+import { ImageUploader } from "@/components/ImageUploader";
 import { PageHeader } from "@/components/PageHeader";
 import { ApiError, apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
@@ -420,11 +421,17 @@ export function SkuEditPage() {
           </div>
 
           <Field
-            label="Image URL"
+            label="Изображение"
             error={form.formState.errors.image_url?.message}
             help="Опционально. Переопределяет картинку продукта."
           >
-            <Input {...form.register("image_url")} placeholder="https://…" />
+            <Controller
+              control={form.control}
+              name="image_url"
+              render={({ field }) => (
+                <ImageUploader value={field.value} onChange={field.onChange} kind="sku_image" />
+              )}
+            />
           </Field>
         </section>
 

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input } from "@yupay/ui";
 import { Trash2 } from "lucide-react";
 import { useEffect } from "react";
-import { useForm, useFieldArray } from "react-hook-form";
+import { Controller, useForm, useFieldArray } from "react-hook-form";
 import { useNavigate, useParams } from "react-router-dom";
 import { z } from "zod";
 
@@ -11,6 +11,7 @@ import { RequiredFieldsEditor } from "../form-schema/RequiredFieldsEditor";
 
 import type { Brand, Product } from "../types";
 
+import { ImageUploader } from "@/components/ImageUploader";
 import { PageHeader } from "@/components/PageHeader";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
@@ -195,8 +196,14 @@ export function ProductEditPage() {
           <Field label="Supplier hint">
             <Input {...form.register("supplier_hint")} placeholder="codashop / kupikod" />
           </Field>
-          <Field label="Image URL">
-            <Input {...form.register("image_url")} />
+          <Field label="Изображение">
+            <Controller
+              control={form.control}
+              name="image_url"
+              render={({ field }) => (
+                <ImageUploader value={field.value} onChange={field.onChange} kind="product_image" />
+              )}
+            />
           </Field>
           <div className="flex gap-4">
             <Field label="Порядок">

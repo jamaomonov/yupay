@@ -1,0 +1,59 @@
+# `storage` module
+
+Public surface: [`storage.api`](api.py).
+
+## Responsibility
+
+Issue short-lived presigned PUT URLs so the admin SPA can upload images
+directly to a Cloudflare R2 bucket. Returns the public URL the admin
+should persist into the relevant DB column (`brands.logo_url`,
+`brands.hero_image_url`, `products.image_url`, `skus.image_url`).
+
+This module **does not** stream bytes — uploads bypass FastAPI entirely.
+See [ADR-0018](../../../../../../docs/decisions/0018-r2-media-storage.md).
+
+## Layout
+
+| File         | Role                                                                                    |
+| ------------ | --------------------------------------------------------------------------------------- |
+| `client.py`  | Lazy, cached boto3 S3 client pointed at R2 (sigv4 + path-style).                        |
+| `service.py` | Key derivation (`<kind>/<yyyy>/<mm>/<ulid>.<ext>`), MIME/size validation, presign call. |
+| `schemas.py` | Pydantic request/response shapes for the admin endpoint.                                |
+| `routes.py`  | `POST /api/v1/admin/media/presign-upload` (admin-only).                                 |
+| `api.py`     | Public surface — what other modules / `api/v1/__init__.py` are allowed to import.       |
+
+## Config
+
+Reads from :class:`yupay.core.config.Settings`:
+
+- `R2_ACCOUNT_ID` — Cloudflare account ID (for the R2 endpoint host).
+- `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` — bucket-scoped R2 token.
+- `R2_BUCKET_MEDIA` — bucket name (default `yupay-media`).
+- `R2_PUBLIC_BASE_URL` — public read prefix (default `https://cdn.yupay.uz`).
+- `R2_PRESIGN_TTL_SECONDS` — how long the PUT URL stays valid (default 300).
+- `MEDIA_MAX_UPLOAD_BYTES` — per-upload size cap (default 5 MiB).
+- `MEDIA_ALLOWED_MIME` — allowlist (default png/jpeg/webp/svg+xml).
+
+## Upload workflow
+
+```
+SPA               API                              R2
+ │   POST /admin/media/presign-upload              │
+ │ ──────────────────────────────▶                 │
+ │   { upload_url, public_url, key, expires_in }   │
+ │ ◀──────────────────────────────                 │
+ │                                                 │
+ │   PUT upload_url  Content-Type: image/png       │
+ │ ──────────────────────────────────────────────▶ │
+ │   200 OK                                        │
+ │ ◀──────────────────────────────────────────────│
+ │                                                 │
+ │   PATCH /admin/brands/{id}   { logo_url: public_url }
+ │ ──────────────────────────────▶                 │
+```
+
+## Why no migration job?
+
+Existing third-party URLs in the catalog remain valid. New uploads land
+in R2; old ones keep working. If a bulk migration becomes desirable it
+ships as a separate one-off script + ADR addendum.

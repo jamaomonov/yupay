@@ -22,6 +22,7 @@ Each module owns its tables and exposes a narrow Python interface via `apps/api/
 | `i18n`           | Locale resolution, dictionaries, formatters                                                 | `translations` (or files)                                              |
 | `realtime`       | WebSocket gateway + Redis pub/sub bridge                                                    | —                                                                      |
 | `admin` _(stub)_ | Reserved namespace for later (SQLAdmin or custom Next.js admin)                             | —                                                                      |
+| `storage`        | Presigned PUT URLs for direct-from-admin uploads to Cloudflare R2 (`cdn.yupay.uz` reads)    | — (file-backed, no DB tables)                                          |
 
 ## Dependency direction
 

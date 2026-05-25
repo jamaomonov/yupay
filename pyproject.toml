@@ -161,6 +161,8 @@ warn_return_any = false
 # Third-party libs that don't ship type stubs.
 module = [
     "apscheduler.*",
+    "boto3.*",
+    "botocore.*",
     "dramatiq.*",
     "fakeredis.*",
     "respx.*",
