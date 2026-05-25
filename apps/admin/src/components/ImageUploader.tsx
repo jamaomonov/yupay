@@ -14,7 +14,7 @@
  * react-hook-form's ``Controller`` needs.
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useId, useState } from "react";
 
 import { apiPost } from "@/lib/api";
 
@@ -46,7 +46,11 @@ export function ImageUploader({ value, onChange, kind, hint, disabled }: Props) 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const fileRef = useRef<HTMLInputElement | null>(null);
+  // Native ``<label htmlFor={id}>`` opens the file picker for us, so we
+  // don't need a ref + manual ``input.click()`` — that pattern was
+  // double-firing the dialog on some browsers because the manual
+  // ``click()`` and the bubbled label click overlapped.
+  const inputId = useId();
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -84,11 +88,7 @@ export function ImageUploader({ value, onChange, kind, hint, disabled }: Props) 
     [kind, onChange],
   );
 
-  const onPick = () => {
-    fileRef.current?.click();
-  };
-
-  const onDrop = (event: React.DragEvent<HTMLDivElement>) => {
+  const onDrop = (event: React.DragEvent<HTMLLabelElement>) => {
     event.preventDefault();
     setDragOver(false);
     if (disabled || busy) return;
@@ -127,7 +127,8 @@ export function ImageUploader({ value, onChange, kind, hint, disabled }: Props) 
           </div>
         </div>
       )}
-      <div
+      <label
+        htmlFor={inputId}
         onDragOver={(e) => {
           e.preventDefault();
           if (!disabled && !busy) setDragOver(true);
@@ -136,7 +137,6 @@ export function ImageUploader({ value, onChange, kind, hint, disabled }: Props) 
           setDragOver(false);
         }}
         onDrop={onDrop}
-        onClick={onPick}
         className={[
           "flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed p-4 text-sm transition-colors",
           dragOver
@@ -146,13 +146,14 @@ export function ImageUploader({ value, onChange, kind, hint, disabled }: Props) 
         ].join(" ")}
       >
         <input
-          ref={fileRef}
+          id={inputId}
           type="file"
           accept={ACCEPT_LIST.join(",")}
           className="hidden"
           onChange={(e) => {
             const file = e.target.files?.[0];
             if (file) void handleFile(file);
+            // Reset so picking the *same* file twice still fires change.
             e.target.value = "";
           }}
         />
@@ -162,7 +163,7 @@ export function ImageUploader({ value, onChange, kind, hint, disabled }: Props) 
         <p className="mt-1 text-xs text-[var(--text-secondary)]">
           {hint ?? `PNG / JPEG / WebP / SVG, до ${(MAX_BYTES / 1024 / 1024).toString()} MB`}
         </p>
-      </div>
+      </label>
       {error && <p className="text-xs text-[var(--danger-fg)]">{error}</p>}
     </div>
   );
