@@ -1,7 +1,9 @@
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
+  Check,
   ChevronRight,
+  Copy,
   ExternalLink,
   FileText,
   Info,
@@ -20,6 +22,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useToast } from "@/hooks/use-toast";
 import { useLogout, useMe } from "@/lib/auth";
 import { getWebApp } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -56,8 +59,30 @@ export default function Settings() {
   const me = useMe();
   const logout = useLogout();
   const user = me.data;
+  const { toast } = useToast();
 
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [tgIdCopied, setTgIdCopied] = useState(false);
+
+  // The Telegram user id is what every operator / support agent will
+  // ask for — internal UUID is meaningless to them. Read it from the
+  // SDK's ``initDataUnsafe`` (server already verified the signed
+  // ``initData`` at login, so for *display* this is fine).
+  const tgId = getWebApp()?.initDataUnsafe.user?.id ?? null;
+
+  const copyTgId = async () => {
+    if (tgId == null) return;
+    try {
+      await navigator.clipboard.writeText(tgId.toString());
+      getWebApp()?.HapticFeedback?.notificationOccurred("success");
+      setTgIdCopied(true);
+      window.setTimeout(() => {
+        setTgIdCopied(false);
+      }, 1500);
+    } catch {
+      toast({ title: "Не удалось скопировать", variant: "destructive" });
+    }
+  };
 
   const openSupport = () => {
     const wa = getWebApp();
@@ -116,10 +141,28 @@ export default function Settings() {
             <h2 className="truncate text-lg font-bold leading-tight text-white">
               {user?.display_name ?? "Гость"}
             </h2>
-            <div className="mt-0.5 flex items-center gap-1.5">
-              <span className="text-muted-foreground text-xs">
-                {user ? `ID: ${user.id.slice(0, 8)}…` : "Авторизация через Telegram"}
-              </span>
+            <div className="mt-1 flex items-center gap-1.5">
+              {user && tgId != null ? (
+                <button
+                  type="button"
+                  onClick={copyTgId}
+                  className="border-border/60 bg-background/40 hover:bg-background/70 flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs transition-colors"
+                  aria-label="Скопировать Telegram ID"
+                  data-testid="copy-tg-id"
+                >
+                  <span className="text-muted-foreground">ID:</span>
+                  <span className="font-mono text-white">{tgId.toString()}</span>
+                  {tgIdCopied ? (
+                    <Check size={12} className="text-primary" />
+                  ) : (
+                    <Copy size={12} className="text-muted-foreground/70" />
+                  )}
+                </button>
+              ) : (
+                <span className="text-muted-foreground text-xs">
+                  {user ? `ID: ${user.id.slice(0, 8)}…` : "Авторизация через Telegram"}
+                </span>
+              )}
             </div>
             {user?.email && (
               <p className="text-muted-foreground/70 mt-0.5 truncate text-[11px]">{user.email}</p>

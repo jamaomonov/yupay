@@ -212,7 +212,7 @@ function OrdersTab() {
 
       <div className="space-y-5">
         {Object.entries(grouped).map(([monthYear, txs]) => (
-          <div key={monthYear} className="space-y-2">
+          <div key={monthYear} className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground text-xs font-bold uppercase tracking-[0.08em]">
                 {monthYear}
@@ -221,7 +221,7 @@ function OrdersTab() {
             </div>
 
             {txs.map((tx, index) => (
-              <Link key={tx.id} href={`/order/${tx.id}`}>
+              <Link key={tx.id} href={`/order/${tx.id}`} className="block">
                 <motion.div
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -230,7 +230,7 @@ function OrdersTab() {
                   className="bg-card border-border flex cursor-pointer items-center gap-3 rounded-2xl border p-3.5"
                   data-testid={`history-item-${tx.id}`}
                 >
-                  <div className="bg-background border-border flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl">
                     {tx.imageUrl ? (
                       <img src={tx.imageUrl} alt="" className="h-full w-full object-cover" />
                     ) : (

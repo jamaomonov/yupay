@@ -845,7 +845,7 @@ export default function TopUp() {
       </motion.div>
 
       {/* ── Fixed CTA ── */}
-      <div className="fixed bottom-[76px] left-1/2 z-40 w-full max-w-[430px] -translate-x-1/2 px-4">
+      <div className="fixed bottom-[96px] left-1/2 z-40 w-full max-w-[430px] -translate-x-1/2 px-4">
         {/* Settlement disclaimer — only shown when the gateway will charge
             in a currency different from the displayed one. Keeps the CTA
             honest without forcing a live FX preview. */}
@@ -951,7 +951,7 @@ function PackageCard({
 
       <div className="mb-1.5 flex items-center gap-2">
         <PackageThumb pkg={pkg} fallback={fallbackImage} />
-        <span className="text-lg font-bold leading-none text-white">{pkg.label}</span>
+        <span className="text-base font-bold leading-none text-white">{pkg.label}</span>
       </div>
 
       {pkg.region && pkg.region !== "GLOBAL" && (
