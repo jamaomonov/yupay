@@ -51,6 +51,12 @@ export interface TelegramWebApp {
   requestFullscreen?: () => void;
   exitFullscreen?: () => void;
   disableVerticalSwipes?: () => void;
+  // Bot API 6.1+. ``bg_color`` is the area outside the WebView (e.g.
+  // the strip behind the close/back chip when in fullscreen); the
+  // ``themeParams`` keys ``"bg_color"`` and ``"secondary_bg_color"``
+  // are accepted as well.
+  setBackgroundColor?: (color: string) => void;
+  setHeaderColor?: (color: string) => void;
   close: () => void;
   // Available since Bot API 6.1 (mid-2022) — every supported Telegram client
   // has it. When visible the client swaps the title-bar "×" for a "←", so we
@@ -133,6 +139,27 @@ export function maximiseTelegramViewport(): void {
     wa.expand();
   } catch {
     /* very old clients */
+  }
+  // Paint the Telegram-owned chrome (strip behind close/back chip,
+  // status-bar area, overscroll bounce) the same dark colour as the
+  // app background so the user never sees a white flash when pulling
+  // to refresh or when the WebView resizes. ``--background`` is HSL
+  // ``228 35% 11%`` → ``#121927`` (also pinned in ``index.html``'s
+  // ``theme-color``).
+  const APP_BG = "#121927";
+  if (typeof wa.setBackgroundColor === "function") {
+    try {
+      wa.setBackgroundColor(APP_BG);
+    } catch {
+      /* not supported */
+    }
+  }
+  if (typeof wa.setHeaderColor === "function") {
+    try {
+      wa.setHeaderColor(APP_BG);
+    } catch {
+      /* not supported */
+    }
   }
   let wentFullscreen = false;
   if (typeof wa.requestFullscreen === "function") {

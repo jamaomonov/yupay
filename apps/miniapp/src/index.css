@@ -194,8 +194,19 @@
   * {
     @apply border-border;
   }
+  /* Apply the dark background to ``html`` as well as ``body`` so the
+     overscroll bounce area (iOS pull-to-refresh, Android overscroll
+     glow) matches the app — otherwise the WebView default white
+     flashes through the moment the user drags down. */
+  html,
   body {
     @apply bg-background text-foreground font-sans antialiased;
+  }
+  html,
+  body {
+    /* Stop the browser/Telegram from rubber-banding the whole page —
+       internal scroll containers keep their own behaviour. */
+    overscroll-behavior-y: none;
   }
 
   /* Keyboard / switch-access focus indicator. Tap interaction never shows

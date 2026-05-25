@@ -27,12 +27,14 @@ export function Header() {
   const user = me.data;
 
   return (
-    // ``top-14`` (56 px) clears Telegram's floating close/back chip
-    // in fullscreen mode. We unconditionally fullscreen the mini app
-    // in ``maximiseTelegramViewport``, so a fixed offset is the
-    // simplest thing that works on every client without depending
-    // on Telegram's async CSS variable hydration.
-    <header className="bg-background/80 border-border fixed left-0 right-0 top-14 z-50 mx-auto flex h-16 max-w-[430px] items-center justify-between border-b px-4 backdrop-blur-xl">
+    // ``top-20`` (80 px) clears Telegram's floating close/back chip
+    // in fullscreen mode on iOS / Android — the chip footprint is
+    // taller there than on desktop (where 56 px was already enough).
+    // We unconditionally fullscreen the mini app in
+    // ``maximiseTelegramViewport``, so a fixed offset is the simplest
+    // thing that works on every client without depending on
+    // Telegram's async CSS variable hydration.
+    <header className="bg-background/80 border-border fixed left-0 right-0 top-[83px] z-50 mx-auto flex h-16 max-w-[430px] items-center justify-between border-b px-4 backdrop-blur-xl">
       {/* Brand — full wordmark SVG. Lives in apps/miniapp/public/, the
           path is unhashed because Vite passes /logo-wordmark.svg through
           as-is for public assets. ``alt`` is the brand name so screen
