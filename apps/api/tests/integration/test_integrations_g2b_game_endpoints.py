@@ -88,27 +88,34 @@ async def test_game_catalogue_returns_denominations(
     integration_client: AsyncClient,
     db_session: AsyncSession,
 ) -> None:
-    respx.get(f"{G2B_BASE}/games/pubg_mobile/catalogue").mock(
+    # Real G2B shape — ``catalogues`` (plural) with ``amount`` as the
+    # upstream USD price (NOT a quantity).
+    respx.get(f"{G2B_BASE}/games/pubgm/catalogue").mock(
         return_value=httpx.Response(
             200,
             json={
-                "catalogue": [
-                    {"id": 1, "name": "60 UC", "amount": "60", "price": "0.88"},
-                    {"id": 2, "name": "180 UC", "amount": "180", "price": "2.64"},
-                ]
+                "catalogues": [
+                    {"id": 264, "name": "60", "amount": 0.89},
+                    {"id": 258, "name": "660", "amount": 8.85},
+                ],
+                "game": {"code": "pubgm", "name": "PUBG Mobile"},
+                "success": True,
             },
         )
     )
     admin = await _login_admin(integration_client, db_session, tg_id=701)
     r = await integration_client.get(
-        "/api/v1/admin/integrations/g2b/games/pubg_mobile/catalogue",
+        "/api/v1/admin/integrations/g2b/games/pubgm/catalogue",
         headers={"Authorization": f"Bearer {admin}"},
     )
     assert r.status_code == 200, r.text
     items = r.json()["items"]
     assert len(items) == 2
-    assert items[0]["catalogue_name"] == "60 UC"
-    assert items[0]["price"] == "0.88"
+    assert items[0]["catalogue_name"] == "60"
+    # ``price`` falls back to ``amount`` since G2B doesn't ship a separate
+    # ``price`` field on the catalogue entries.
+    assert items[0]["price"] == "0.89"
+    assert items[0]["amount"] == "0.89"
 
 
 @respx.mock

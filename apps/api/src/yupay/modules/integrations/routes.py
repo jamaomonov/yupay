@@ -248,14 +248,17 @@ async def g2b_game_catalogue(
         catalogue_name = str(item.get("name") or item.get("catalogue_name") or "").strip()
         if not catalogue_name:
             continue
-        amount = item.get("amount")
-        price = item.get("price") or item.get("unit_price")
+        # G2B uses ``amount`` for the upstream USD price. Some games may
+        # also surface a separate ``price`` (none we've seen so far). Keep
+        # both fields in the DTO so the UI can pick whichever exists.
+        raw_amount = item.get("amount")
+        raw_price = item.get("price") or item.get("unit_price") or raw_amount
         out.append(
             GameDenomOut(
                 catalogue_name=catalogue_name,
                 name=catalogue_name,
-                amount=str(amount) if amount is not None else None,
-                price=str(price) if price is not None else None,
+                amount=str(raw_amount) if raw_amount is not None else None,
+                price=str(raw_price) if raw_price is not None else None,
                 raw=item,
             )
         )

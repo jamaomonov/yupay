@@ -294,13 +294,22 @@ class G2bClient:
     async def games_catalogue(self, game_code: str) -> list[dict[str, Any]]:
         """Fetch the denomination catalogue for a game.
 
-        Returns a flat list of ``{id, name, amount, ...}`` entries (the
-        exact key names vary by game and are surfaced as-is so the admin
-        UI can render whatever G2B actually shipped).
+        Returns a flat list of ``{id, name, amount}`` entries — where
+        ``amount`` is the upstream USD price, NOT a quantity (per the real
+        G2B response: ``"60 UC" → {"amount": 0.89}``).
+
+        The real key on the response is ``catalogues`` (plural); we accept
+        the singular form and the bare list too as forward-compat.
         """
         resp = await self._request("GET", f"/games/{game_code}/catalogue")
         body = resp.json()
-        items = body.get("catalogue") or body.get("items") or body.get("data") or body
+        items = (
+            body.get("catalogues")
+            or body.get("catalogue")
+            or body.get("items")
+            or body.get("data")
+            or body
+        )
         if isinstance(items, list):
             return [it for it in items if isinstance(it, dict)]
         return []
