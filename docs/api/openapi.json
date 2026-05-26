@@ -4978,6 +4978,244 @@
         "title": "StatusCount",
         "type": "object"
       },
+      "SupplierHealthOut": {
+        "description": "Connectivity probe result for a supplier.\n\n``available`` is the only required signal \u2014 everything else is best-effort\nand may be ``None`` when the supplier didn't answer or is not configured.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "balance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Balance"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "last_checked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Checked At"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "supplier": {
+            "title": "Supplier",
+            "type": "string"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          }
+        },
+        "required": [
+          "supplier",
+          "available"
+        ],
+        "title": "SupplierHealthOut",
+        "type": "object"
+      },
+      "SupplierMappingIn": {
+        "additionalProperties": false,
+        "description": "Payload for upserting a SKU\u2194supplier mapping.",
+        "properties": {
+          "external_product_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "External Product Id",
+            "type": "string"
+          },
+          "external_variant_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Variant Id"
+          },
+          "extra": {
+            "additionalProperties": true,
+            "title": "Extra",
+            "type": "object"
+          },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "voucher",
+              "game"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "quantity": {
+            "default": 1,
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "supplier_slug": {
+            "maxLength": 32,
+            "minLength": 2,
+            "title": "Supplier Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "supplier_slug",
+          "kind",
+          "external_product_id"
+        ],
+        "title": "SupplierMappingIn",
+        "type": "object"
+      },
+      "SupplierMappingListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SupplierMappingOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SupplierMappingListOut",
+        "type": "object"
+      },
+      "SupplierMappingOut": {
+        "description": "Mapping row as exposed by admin endpoints.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "external_product_id": {
+            "title": "External Product Id",
+            "type": "string"
+          },
+          "external_variant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Variant Id"
+          },
+          "extra": {
+            "additionalProperties": true,
+            "title": "Extra",
+            "type": "object"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "voucher",
+              "game"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "sku_id": {
+            "title": "Sku Id",
+            "type": "string"
+          },
+          "supplier_slug": {
+            "title": "Supplier Slug",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          }
+        },
+        "required": [
+          "sku_id",
+          "supplier_slug",
+          "kind",
+          "external_product_id",
+          "external_variant_id",
+          "quantity",
+          "extra",
+          "is_active",
+          "updated_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SupplierMappingOut",
+        "type": "object"
+      },
       "TelegramInitDataIn": {
         "additionalProperties": false,
         "description": "Body of ``POST /auth/telegram/webapp``.",
@@ -7518,6 +7756,288 @@
         "summary": "Force-refetch all supported pairs (bypasses fresh cache)",
         "tags": [
           "admin:fx"
+        ]
+      }
+    },
+    "/api/v1/admin/integrations/mappings": {
+      "get": {
+        "operationId": "list_mappings_api_v1_admin_integrations_mappings_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "supplier_slug",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "minLength": 2,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Supplier Slug"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sku_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sku Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierMappingListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List supplier mappings",
+        "tags": [
+          "admin:integrations"
+        ]
+      }
+    },
+    "/api/v1/admin/integrations/mappings/{sku_id}": {
+      "put": {
+        "operationId": "upsert_mapping_api_v1_admin_integrations_mappings__sku_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sku_id",
+            "required": true,
+            "schema": {
+              "title": "Sku Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierMappingIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierMappingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upsert the mapping for ``(sku_id, supplier_slug)``",
+        "tags": [
+          "admin:integrations"
+        ]
+      }
+    },
+    "/api/v1/admin/integrations/mappings/{sku_id}/{supplier_slug}": {
+      "delete": {
+        "operationId": "delete_mapping_api_v1_admin_integrations_mappings__sku_id___supplier_slug__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sku_id",
+            "required": true,
+            "schema": {
+              "title": "Sku Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "supplier_slug",
+            "required": true,
+            "schema": {
+              "title": "Supplier Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Drop the mapping for ``(sku_id, supplier_slug)``",
+        "tags": [
+          "admin:integrations"
+        ]
+      }
+    },
+    "/api/v1/admin/integrations/{supplier_slug}/health": {
+      "get": {
+        "description": "Stub probe while the real adapter is being built.\n\nReports ``available=false`` with a human-readable reason. The Sprint B\nadapter swaps this for a real ``GET /v1/getMe`` call and balance check.",
+        "operationId": "supplier_health_api_v1_admin_integrations__supplier_slug__health_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "supplier_slug",
+            "required": true,
+            "schema": {
+              "title": "Supplier Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierHealthOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Connectivity probe for a supplier",
+        "tags": [
+          "admin:integrations"
         ]
       }
     },

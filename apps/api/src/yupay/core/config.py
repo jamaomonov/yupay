@@ -164,6 +164,32 @@ class Settings(BaseSettings):
         ),
     )
 
+    # --- integrations: G2Bulk (G2B) ---
+    # Single-account credentials live in env; multi-tenant migration to a
+    # supplier_credentials table is a future sprint. Empty ``g2b_api_key``
+    # means the adapter reports ``available=False`` and the admin UI shows a
+    # "not configured" banner instead of failing health checks.
+    g2b_api_key: str = Field(default="")
+    g2b_base_url: str = Field(default="https://api.g2bulk.com/v1")
+    g2b_webhook_secret: str = Field(
+        default="",
+        description=(
+            "Random token embedded into the webhook URL path. G2B does not "
+            "sign callbacks, so the secret in the URL is our only auth layer; "
+            "we additionally re-verify the order via /games/order/status "
+            "before mutating state."
+        ),
+    )
+    g2b_callback_url: str = Field(
+        default="",
+        description=(
+            "Public URL we pass as ``callback_url`` when creating game orders. "
+            "Leave empty in environments where G2B can't reach us — the "
+            "polling actor will handle status updates instead."
+        ),
+    )
+    g2b_request_timeout_seconds: float = Field(default=20.0)
+
     @property
     def is_prod(self) -> bool:
         """Whether we are running in production."""
