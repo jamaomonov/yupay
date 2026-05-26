@@ -87,11 +87,55 @@ class CatalogSyncOut(BaseModel):
     error: str | None = None
 
 
+class GameDenomOut(BaseModel):
+    """One catalogue (denomination) entry for a G2B game."""
+
+    catalogue_name: str
+    name: str
+    amount: str | None = None
+    price: str | None = None
+    raw: dict[str, Any]
+
+
+class GameDenomListOut(BaseModel):
+    items: list[GameDenomOut]
+
+
+class GameFieldsOut(BaseModel):
+    """``POST /games/fields`` proxy result — which fields the customer must
+    enter at checkout for this game."""
+
+    fields: list[str]
+    notes: str | None = None
+
+
+class CheckPlayerIn(BaseModel):
+    """Payload for the admin-triggered player verification probe."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    player_id: str = Field(min_length=1, max_length=64)
+    server_id: str | None = Field(default=None, max_length=64)
+    charname: str | None = Field(default=None, max_length=64)
+
+
+class CheckPlayerOut(BaseModel):
+    valid: bool
+    name: str | None = None
+    openid: str | None = None
+    reason: str | None = None
+
+
 __all__ = [
     "CatalogEntryOut",
     "CatalogKind",
     "CatalogListOut",
     "CatalogSyncOut",
+    "CheckPlayerIn",
+    "CheckPlayerOut",
+    "GameDenomListOut",
+    "GameDenomOut",
+    "GameFieldsOut",
     "MappingKind",
     "SupplierHealthOut",
     "SupplierMappingIn",

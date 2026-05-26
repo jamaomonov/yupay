@@ -1529,6 +1529,93 @@
         "title": "CategoryUpdate",
         "type": "object"
       },
+      "CheckPlayerIn": {
+        "additionalProperties": false,
+        "description": "Payload for the admin-triggered player verification probe.",
+        "properties": {
+          "charname": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charname"
+          },
+          "player_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Player Id",
+            "type": "string"
+          },
+          "server_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server Id"
+          }
+        },
+        "required": [
+          "player_id"
+        ],
+        "title": "CheckPlayerIn",
+        "type": "object"
+      },
+      "CheckPlayerOut": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "openid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openid"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "valid"
+        ],
+        "title": "CheckPlayerOut",
+        "type": "object"
+      },
       "CodeAdminListOut": {
         "properties": {
           "items": {
@@ -2431,6 +2518,97 @@
           "attempts"
         ],
         "title": "FulfillmentTaskOut",
+        "type": "object"
+      },
+      "GameDenomListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GameDenomOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "GameDenomListOut",
+        "type": "object"
+      },
+      "GameDenomOut": {
+        "description": "One catalogue (denomination) entry for a G2B game.",
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "catalogue_name": {
+            "title": "Catalogue Name",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "raw": {
+            "additionalProperties": true,
+            "title": "Raw",
+            "type": "object"
+          }
+        },
+        "required": [
+          "catalogue_name",
+          "name",
+          "raw"
+        ],
+        "title": "GameDenomOut",
+        "type": "object"
+      },
+      "GameFieldsOut": {
+        "description": "``POST /games/fields`` proxy result \u2014 which fields the customer must\nenter at checkout for this game.",
+        "properties": {
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "required": [
+          "fields"
+        ],
+        "title": "GameFieldsOut",
         "type": "object"
       },
       "GuestIn": {
@@ -4816,6 +4994,80 @@
         "title": "SkuOut",
         "type": "object"
       },
+      "SkuPickerOut": {
+        "description": "Compact SKU row tailored for the admin combobox.\n\nIncludes the parent product's display name so the picker can render a\nself-explanatory row (``\"PUBG Mobile \u00b7 60 UC\"``) without a second\nfetch.",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "denomination": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Denomination"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "price_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Price Usd",
+            "type": "string"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "product_kind": {
+            "title": "Product Kind",
+            "type": "string"
+          },
+          "product_name": {
+            "title": "Product Name",
+            "type": "string"
+          },
+          "product_slug": {
+            "title": "Product Slug",
+            "type": "string"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region"
+          },
+          "sku_code": {
+            "title": "Sku Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "product_id",
+          "product_name",
+          "product_slug",
+          "product_kind",
+          "sku_code",
+          "denomination",
+          "region",
+          "price_usd",
+          "active"
+        ],
+        "title": "SkuPickerOut",
+        "type": "object"
+      },
       "SkuPriceOverrideIn-Input": {
         "additionalProperties": false,
         "description": "One row of ``sku_prices``.",
@@ -7155,6 +7407,86 @@
         ]
       }
     },
+    "/api/v1/admin/catalog/skus/search": {
+      "get": {
+        "description": "Lightweight search tailored for the admin combobox UI.\n\nDistinct from the catch-all ``GET /skus`` because it eager-loads the\nparent product (with its RU translation) so the picker UI can render\n\"Product Name \u00b7 denomination \u00b7 sku_code\" rows in one row of data.",
+        "operationId": "search_skus_for_picker_api_v1_admin_catalog_skus_search_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SkuPickerOut"
+                  },
+                  "title": "Response Search Skus For Picker Api V1 Admin Catalog Skus Search Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Skus For Picker",
+        "tags": [
+          "admin:catalog"
+        ]
+      }
+    },
     "/api/v1/admin/catalog/skus/{sku_id}": {
       "delete": {
         "operationId": "delete_sku_api_v1_admin_catalog_skus__sku_id__delete",
@@ -8136,6 +8468,191 @@
           }
         },
         "summary": "Cached supplier catalog (autocomplete for mappings UI)",
+        "tags": [
+          "admin:integrations"
+        ]
+      }
+    },
+    "/api/v1/admin/integrations/g2b/games/{game_code}/catalogue": {
+      "get": {
+        "operationId": "g2b_game_catalogue_api_v1_admin_integrations_g2b_games__game_code__catalogue_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_code",
+            "required": true,
+            "schema": {
+              "title": "Game Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameDenomListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "G2B game denominations (catalogue) for the mapping picker",
+        "tags": [
+          "admin:integrations"
+        ]
+      }
+    },
+    "/api/v1/admin/integrations/g2b/games/{game_code}/check-player": {
+      "post": {
+        "description": "Admin-side diagnostic \u2014 proxies ``POST /v1/games/checkPlayerId``.\n\nUsed by the mapping editor to confirm a test player id resolves before\noperators commit a new mapping. Never persists the ``player_id`` \u2014\nit's a transient diagnostic call. Errors are folded into\n``{valid: false, reason}`` so the UI stays out of error-boundary\nterritory.",
+        "operationId": "g2b_check_player_api_v1_admin_integrations_g2b_games__game_code__check_player_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_code",
+            "required": true,
+            "schema": {
+              "title": "Game Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckPlayerIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckPlayerOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify a player_id against the G2B game's checker",
+        "tags": [
+          "admin:integrations"
+        ]
+      }
+    },
+    "/api/v1/admin/integrations/g2b/games/{game_code}/fields": {
+      "get": {
+        "operationId": "g2b_game_fields_api_v1_admin_integrations_g2b_games__game_code__fields_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_code",
+            "required": true,
+            "schema": {
+              "title": "Game Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameFieldsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Required fields the customer must enter for this game",
         "tags": [
           "admin:integrations"
         ]

@@ -291,6 +291,20 @@ class G2bClient:
         resp = await self._request("POST", "/games/fields", json={"game": game_code})
         return resp.json()  # type: ignore[no-any-return]
 
+    async def games_catalogue(self, game_code: str) -> list[dict[str, Any]]:
+        """Fetch the denomination catalogue for a game.
+
+        Returns a flat list of ``{id, name, amount, ...}`` entries (the
+        exact key names vary by game and are surfaced as-is so the admin
+        UI can render whatever G2B actually shipped).
+        """
+        resp = await self._request("GET", f"/games/{game_code}/catalogue")
+        body = resp.json()
+        items = body.get("catalogue") or body.get("items") or body.get("data") or body
+        if isinstance(items, list):
+            return [it for it in items if isinstance(it, dict)]
+        return []
+
     async def games_check_player(
         self,
         *,

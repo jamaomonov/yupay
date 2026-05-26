@@ -27,6 +27,7 @@ from yupay.modules.catalog.admin_schemas import (
     ProductCreate,
     ProductUpdate,
     SkuCreate,
+    SkuPickerOut,
     SkuUpdate,
 )
 from yupay.modules.fx.factory import build_default_service
@@ -179,6 +180,49 @@ async def list_skus(
     return [
         AdminSkuOut.model_validate(s) for s in await svc.list_all_skus(db, product_id=product_id)
     ]
+
+
+@router.get("/skus/search", response_model=list[SkuPickerOut])
+async def search_skus_for_picker(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+    q: str | None = None,
+    limit: int = 30,
+) -> list[SkuPickerOut]:
+    """Lightweight search tailored for the admin combobox UI.
+
+    Distinct from the catch-all ``GET /skus`` because it eager-loads the
+    parent product (with its RU translation) so the picker UI can render
+    "Product Name · denomination · sku_code" rows in one row of data.
+    """
+    rows = await svc.search_skus_for_picker(db, query=q, limit=limit)
+    return [_sku_to_picker(s) for s in rows]
+
+
+def _sku_to_picker(sku: object) -> SkuPickerOut:
+    """Flatten an eager-loaded ``Sku`` into the compact picker shape."""
+    # Late import: keeps the type-checker happy without a circular dep on
+    # the catalog models from the admin_routes module.
+    from yupay.modules.catalog.models import Product, Sku
+
+    assert isinstance(sku, Sku)
+    product: Product = sku.product
+    ru_name = next(
+        (t.name for t in product.translations if t.locale == "ru"),
+        product.slug,
+    )
+    return SkuPickerOut(
+        id=sku.id,
+        product_id=product.id,
+        product_name=ru_name,
+        product_slug=product.slug,
+        product_kind=product.kind,
+        sku_code=sku.sku_code,
+        denomination=sku.denomination,
+        region=sku.region,
+        price_usd=sku.price_usd,
+        active=sku.active,
+    )
 
 
 @router.post("/skus", response_model=AdminSkuOut, status_code=status.HTTP_201_CREATED)

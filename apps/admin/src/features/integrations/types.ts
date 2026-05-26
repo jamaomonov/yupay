@@ -67,6 +67,45 @@ export interface AttemptListOut {
   total: number;
 }
 
+/** Compact SKU row from ``GET /admin/catalog/skus/search``. */
+export interface SkuPickerRow {
+  id: string;
+  product_id: string;
+  product_name: string;
+  product_slug: string;
+  product_kind: string;
+  sku_code: string;
+  denomination: string | null;
+  region: string | null;
+  price_usd: string;
+  active: boolean;
+}
+
+/** One denomination row from ``GET /admin/integrations/g2b/games/{code}/catalogue``. */
+export interface GameDenomRow {
+  catalogue_name: string;
+  name: string;
+  amount: string | null;
+  price: string | null;
+  raw: Record<string, unknown>;
+}
+
+export interface GameDenomList {
+  items: GameDenomRow[];
+}
+
+export interface GameFields {
+  fields: string[];
+  notes: string | null;
+}
+
+export interface CheckPlayerResult {
+  valid: boolean;
+  name: string | null;
+  openid: string | null;
+  reason: string | null;
+}
+
 /** All G2B-flavoured slugs we expose in the admin today. Extend when adding
  *  Steam / Riot / etc. */
 export const KNOWN_SUPPLIERS = ["g2b"] as const;

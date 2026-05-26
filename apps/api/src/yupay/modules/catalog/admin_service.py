@@ -298,6 +298,55 @@ async def list_all_skus(db: AsyncSession, *, product_id: str | None = None) -> l
     return list((await db.execute(stmt)).scalars().all())
 
 
+async def search_skus_for_picker(
+    db: AsyncSession,
+    *,
+    query: str | None,
+    limit: int = 30,
+) -> list[Sku]:
+    """Compact, search-friendly listing for the admin combobox.
+
+    Eager-loads ``Sku.product`` plus the Russian product translation so the
+    UI can render ``"PUBG Mobile · 60 UC · netflix-10-us"`` rows without
+    N+1 queries.
+
+    Matching is case-insensitive ``ILIKE`` against four columns:
+
+    - ``sku.sku_code``
+    - ``sku.denomination``
+    - ``product.slug``
+    - the product's RU display name (joined translation)
+    """
+    from sqlalchemy import or_
+
+    from yupay.modules.catalog.models import Product, ProductTranslation
+
+    stmt = (
+        select(Sku)
+        .options(
+            selectinload(Sku.product).selectinload(Product.translations),
+        )
+        .join(Product, Product.id == Sku.product_id)
+        .order_by(Sku.sort_order, Sku.sku_code)
+    )
+    cleaned = (query or "").strip()
+    if cleaned:
+        like = f"%{cleaned}%"
+        stmt = stmt.outerjoin(
+            ProductTranslation,
+            (ProductTranslation.product_id == Product.id) & (ProductTranslation.locale == "ru"),
+        ).where(
+            or_(
+                Sku.sku_code.ilike(like),
+                Sku.denomination.ilike(like),
+                Product.slug.ilike(like),
+                ProductTranslation.name.ilike(like),
+            )
+        )
+    stmt = stmt.limit(min(max(limit, 1), 100))
+    return list((await db.execute(stmt)).scalars().unique().all())
+
+
 async def get_sku(db: AsyncSession, sku_id: str) -> Sku:
     stmt = select(Sku).options(selectinload(Sku.price_overrides)).where(Sku.id == sku_id)
     row = (await db.execute(stmt)).scalar_one_or_none()

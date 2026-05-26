@@ -22,6 +22,11 @@ from yupay.modules.integrations.schemas import (
     CatalogKind,
     CatalogListOut,
     CatalogSyncOut,
+    CheckPlayerIn,
+    CheckPlayerOut,
+    GameDenomListOut,
+    GameDenomOut,
+    GameFieldsOut,
     SupplierHealthOut,
     SupplierMappingIn,
     SupplierMappingListOut,
@@ -202,6 +207,123 @@ async def sync_g2b_catalog(
         vouchers_synced=vouchers,
         games_synced=games,
         error=error,
+    )
+
+
+def _g2b_fulfiller_or_none():  # type: ignore[no-untyped-def]
+    """Return the registered G2B adapter iff ``G2B_API_KEY`` is set.
+
+    Centralised so the three game-side endpoints below share the same
+    short-circuit when the operator hits them on an unconfigured stack.
+    """
+    from yupay.modules.fulfillment.suppliers import REGISTRY
+    from yupay.modules.fulfillment.suppliers.g2b import G2bFulfiller
+
+    fulfiller = REGISTRY.get("g2b")
+    if isinstance(fulfiller, G2bFulfiller) and fulfiller.available:
+        return fulfiller
+    return None
+
+
+@admin_router.get(
+    "/g2b/games/{game_code}/catalogue",
+    response_model=GameDenomListOut,
+    summary="G2B game denominations (catalogue) for the mapping picker",
+)
+async def g2b_game_catalogue(
+    game_code: str,
+    _admin: Annotated[User, Depends(require_admin)],
+) -> GameDenomListOut:
+    fulfiller = _g2b_fulfiller_or_none()
+    if fulfiller is None:
+        return GameDenomListOut(items=[])
+    client = fulfiller._client()
+    try:
+        rows = await client.games_catalogue(game_code)
+    except Exception as exc:  # noqa: BLE001 -- best-effort
+        log.warning("integrations.g2b.catalogue_failed", game_code=game_code, error=str(exc))
+        return GameDenomListOut(items=[])
+    out: list[GameDenomOut] = []
+    for item in rows:
+        catalogue_name = str(item.get("name") or item.get("catalogue_name") or "").strip()
+        if not catalogue_name:
+            continue
+        amount = item.get("amount")
+        price = item.get("price") or item.get("unit_price")
+        out.append(
+            GameDenomOut(
+                catalogue_name=catalogue_name,
+                name=catalogue_name,
+                amount=str(amount) if amount is not None else None,
+                price=str(price) if price is not None else None,
+                raw=item,
+            )
+        )
+    return GameDenomListOut(items=out)
+
+
+@admin_router.get(
+    "/g2b/games/{game_code}/fields",
+    response_model=GameFieldsOut,
+    summary="Required fields the customer must enter for this game",
+)
+async def g2b_game_fields(
+    game_code: str,
+    _admin: Annotated[User, Depends(require_admin)],
+) -> GameFieldsOut:
+    fulfiller = _g2b_fulfiller_or_none()
+    if fulfiller is None:
+        return GameFieldsOut(fields=[])
+    client = fulfiller._client()
+    try:
+        body = await client.games_fields(game_code)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("integrations.g2b.fields_failed", game_code=game_code, error=str(exc))
+        return GameFieldsOut(fields=[])
+    info = body.get("info") or body
+    fields_raw = info.get("fields") if isinstance(info, dict) else None
+    fields = [str(f) for f in fields_raw] if isinstance(fields_raw, list) else []
+    notes = info.get("notes") if isinstance(info, dict) else None
+    return GameFieldsOut(fields=fields, notes=notes if notes else None)
+
+
+@admin_router.post(
+    "/g2b/games/{game_code}/check-player",
+    response_model=CheckPlayerOut,
+    summary="Verify a player_id against the G2B game's checker",
+)
+async def g2b_check_player(
+    game_code: str,
+    body: CheckPlayerIn,
+    _admin: Annotated[User, Depends(require_admin)],
+) -> CheckPlayerOut:
+    """Admin-side diagnostic — proxies ``POST /v1/games/checkPlayerId``.
+
+    Used by the mapping editor to confirm a test player id resolves before
+    operators commit a new mapping. Never persists the ``player_id`` —
+    it's a transient diagnostic call. Errors are folded into
+    ``{valid: false, reason}`` so the UI stays out of error-boundary
+    territory.
+    """
+    fulfiller = _g2b_fulfiller_or_none()
+    if fulfiller is None:
+        return CheckPlayerOut(valid=False, reason="G2B is not configured")
+    client = fulfiller._client()
+    try:
+        resp = await client.games_check_player(
+            game_code=game_code,
+            player_id=body.player_id,
+            server_id=body.server_id,
+            charname=body.charname,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return CheckPlayerOut(valid=False, reason=str(exc)[:200])
+    raw_valid = str(resp.get("valid") or "").lower()
+    return CheckPlayerOut(
+        valid=raw_valid == "valid",
+        name=str(resp["name"]) if resp.get("name") else None,
+        openid=str(resp["openid"]) if resp.get("openid") else None,
+        reason=None if raw_valid == "valid" else str(resp.get("message") or "rejected"),
     )
 
 

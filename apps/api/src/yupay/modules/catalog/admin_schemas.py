@@ -258,6 +258,28 @@ class AdminSkuOut(BaseModel):
     price_overrides: list[SkuPriceOverrideIn]
 
 
+class SkuPickerOut(BaseModel):
+    """Compact SKU row tailored for the admin combobox.
+
+    Includes the parent product's display name so the picker can render a
+    self-explanatory row (``"PUBG Mobile · 60 UC"``) without a second
+    fetch.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    product_id: str
+    product_name: str
+    product_slug: str
+    product_kind: str
+    sku_code: str
+    denomination: str | None
+    region: str | None
+    price_usd: Decimal
+    active: bool
+
+
 class BulkUzsPriceOut(BaseModel):
     """Result of ``POST /admin/catalog/skus/bulk-set-uzs-prices``."""
 
@@ -283,6 +305,7 @@ __all__ = [
     "ProductCreate",
     "ProductUpdate",
     "SkuCreate",
+    "SkuPickerOut",
     "SkuPriceOverrideIn",
     "SkuUpdate",
     "TranslationIn",

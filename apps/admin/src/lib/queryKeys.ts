@@ -124,6 +124,11 @@ export const qk = {
     ] as const,
   integrationAttempts: (filters: { supplier?: string | null }) =>
     ["admin", "integrations", "attempts", filters.supplier ?? null] as const,
+  skuSearch: (q: string) => ["admin", "catalog", "skus", "search", q] as const,
+  g2bGameCatalogue: (gameCode: string) =>
+    ["admin", "integrations", "g2b", "games", gameCode, "catalogue"] as const,
+  g2bGameFields: (gameCode: string) =>
+    ["admin", "integrations", "g2b", "games", gameCode, "fields"] as const,
 
   // payments
   payments: (filters: {
