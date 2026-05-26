@@ -287,7 +287,7 @@ async def process_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
 
     try:
         result: FulfillResult = await fulfiller.fulfill(
-            order=order, item=item, idempotency_key=task.id
+            db=db, order=order, item=item, idempotency_key=task.id
         )
     except (FulfillerError, FulfillerNotIntegratedError) as exc:
         _record_attempt(
@@ -418,7 +418,7 @@ async def cancel_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
         )
     fulfiller = get_fulfiller(task.supplier)
     try:
-        await fulfiller.cancel(task=task)
+        await fulfiller.cancel(db=db, task=task)
         _record_attempt(
             db,
             task=task,
@@ -443,6 +443,97 @@ async def cancel_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
         await db.execute(select(OrderItem).where(OrderItem.id == task.order_item_id))
     ).scalar_one()
     item.fulfillment_state = "failed"  # see ck_order_items_state — no 'cancelled'
+    await db.flush()
+    return task
+
+
+# ---------- async-supplier reconciliation (webhook & polling) ----------
+
+
+async def process_webhook_update(
+    db: AsyncSession,
+    *,
+    task_id: str,
+) -> FulfillmentTask:
+    """Reconcile a task with the supplier after an out-of-band signal.
+
+    Called from the supplier-specific webhook route and from the polling
+    actor. We **never** trust the webhook body — instead we ask the
+    fulfiller's ``check_status`` for the authoritative view and apply the
+    same state transitions the synchronous saga would have done.
+    """
+    task = await _load_task(db, task_id)
+    if task.status in ("succeeded", "cancelled"):
+        # Nothing to do — terminal-but-good.
+        return task
+    if task.status == "failed":
+        # Idempotent: a webhook that arrives after manual /fail is a no-op.
+        return task
+
+    fulfiller = get_fulfiller(task.supplier)
+    try:
+        status = await fulfiller.check_status(db=db, task=task)
+    except (FulfillerError, FulfillerNotIntegratedError) as exc:
+        _record_attempt(
+            db,
+            task=task,
+            kind="status_check",
+            status="error",
+            payload={"supplier": task.supplier},
+            error=str(exc),
+        )
+        log.warning(
+            "fulfillment.check_status.failed",
+            task_id=task.id,
+            supplier=task.supplier,
+            error=str(exc),
+        )
+        return task
+
+    item = (
+        await db.execute(select(OrderItem).where(OrderItem.id == task.order_item_id))
+    ).scalar_one()
+
+    _record_attempt(
+        db,
+        task=task,
+        kind="status_check",
+        status="ok" if status.outcome != "failed" else "error",
+        payload={"supplier": task.supplier, "outcome": status.outcome},
+        error=status.error,
+    )
+
+    if status.outcome == "succeeded":
+        task.status = "succeeded"
+        task.succeeded_at = now()
+        task.last_error = None
+        item.fulfillment_state = "delivered"
+        if status.artifact_kind and status.artifact is not None:
+            # Deliveries are unique on order_item_id — guard against a
+            # double-fire by checking first instead of letting the
+            # IntegrityError bubble up and abort the session.
+            existing = (
+                await db.execute(select(Delivery).where(Delivery.order_item_id == item.id))
+            ).scalar_one_or_none()
+            if existing is None:
+                db.add(
+                    Delivery(
+                        id=new_id(),
+                        order_item_id=item.id,
+                        channel="in_app",
+                        artifact_kind=status.artifact_kind,
+                        artifact=status.artifact,
+                    )
+                )
+    elif status.outcome == "failed":
+        task.status = "failed"
+        task.failed_at = now()
+        task.last_error = status.error or "supplier reported failure"
+        item.fulfillment_state = "failed"
+    # ``in_progress`` — leave the task untouched; the next poll / webhook
+    # will fire again.
+
+    await _try_settle_order(db, order_id=task.order_id)
     await db.flush()
     return task
 
@@ -715,6 +806,7 @@ __all__ = [
     "list_deliveries_for_order",
     "list_tasks_admin",
     "process_task",
+    "process_webhook_update",
     "retry_task",
     "start_for_order",
 ]

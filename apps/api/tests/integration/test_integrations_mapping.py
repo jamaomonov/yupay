@@ -307,10 +307,17 @@ async def test_non_admin_forbidden(
 async def test_g2b_health_reports_unconfigured(
     integration_client: AsyncClient,
     db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """With the test environment's empty ``G2B_API_KEY``, the stub probe
-    must report ``available=false`` with a clear reason. The Sprint B
-    adapter swaps this for the real /v1/getMe call."""
+    """Without ``G2B_API_KEY``, the probe short-circuits with a clear
+    reason — no outbound call to G2B."""
+    from yupay.core import config as cfg
+
+    # Explicitly mask any value from a local .env so the test is
+    # deterministic even on a developer machine that has a real key.
+    monkeypatch.setenv("G2B_API_KEY", "")
+    cfg.get_settings.cache_clear()
+
     admin = await _login_user(integration_client, tg_id=408)
     await _grant_admin(db_session, tg_id=408)
     r = await integration_client.get(
@@ -321,7 +328,7 @@ async def test_g2b_health_reports_unconfigured(
     body = r.json()
     assert body["supplier"] == "g2b"
     assert body["available"] is False
-    assert body["reason"]
+    assert "not configured" in (body.get("reason") or "").lower()
 
 
 async def test_unknown_supplier_health(

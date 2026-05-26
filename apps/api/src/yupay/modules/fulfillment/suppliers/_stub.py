@@ -13,6 +13,8 @@ from yupay.modules.fulfillment.suppliers.base import (
 )
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from yupay.modules.fulfillment.models import FulfillmentTask
     from yupay.modules.orders.models import Order, OrderItem
 
@@ -31,6 +33,7 @@ class StubFulfiller(Fulfiller):
     async def fulfill(
         self,
         *,
+        db: AsyncSession,  # noqa: ARG002
         order: Order,  # noqa: ARG002
         item: OrderItem,  # noqa: ARG002
         idempotency_key: str,  # noqa: ARG002
@@ -40,6 +43,7 @@ class StubFulfiller(Fulfiller):
     async def check_status(
         self,
         *,
+        db: AsyncSession,  # noqa: ARG002
         task: FulfillmentTask,  # noqa: ARG002
     ) -> FulfillStatus:
         raise FulfillerNotIntegratedError(self.todo_message)
@@ -47,6 +51,7 @@ class StubFulfiller(Fulfiller):
     async def cancel(
         self,
         *,
+        db: AsyncSession,  # noqa: ARG002
         task: FulfillmentTask,  # noqa: ARG002
     ) -> None:
         raise FulfillerNotIntegratedError(self.todo_message)

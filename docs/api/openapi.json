@@ -7984,7 +7984,7 @@
     },
     "/api/v1/admin/integrations/{supplier_slug}/health": {
       "get": {
-        "description": "Stub probe while the real adapter is being built.\n\nReports ``available=false`` with a human-readable reason. The Sprint B\nadapter swaps this for a real ``GET /v1/getMe`` call and balance check.",
+        "description": "Live probe against the supplier's status endpoint.\n\nFor G2B we call ``GET /v1/getMe`` through the fulfiller and surface the\nbalance + username back to the admin UI. The fulfiller's ``health()``\nmethod already swallows network errors and shapes them into\n``{available: false, reason}`` \u2014 we just adapt to the DTO.",
         "operationId": "supplier_health_api_v1_admin_integrations__supplier_slug__health_get",
         "parameters": [
           {
@@ -11225,6 +11225,50 @@
         "summary": "My wallet \u2014 recent transactions",
         "tags": [
           "wallet"
+        ]
+      }
+    },
+    "/api/v1/webhooks/g2b/{secret}": {
+      "post": {
+        "operationId": "receive_g2b_webhook_api_v1_webhooks_g2b__secret__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "secret",
+            "required": true,
+            "schema": {
+              "title": "Secret",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Receive G2B Webhook Api V1 Webhooks G2B  Secret  Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "G2B order-status callback",
+        "tags": [
+          "webhooks:g2b"
         ]
       }
     },

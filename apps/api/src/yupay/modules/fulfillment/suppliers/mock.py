@@ -18,6 +18,8 @@ from yupay.modules.fulfillment.suppliers.base import (
 )
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from yupay.modules.fulfillment.models import FulfillmentTask
     from yupay.modules.orders.models import Order, OrderItem
 
@@ -34,6 +36,7 @@ class MockFulfiller(Fulfiller):
     async def fulfill(
         self,
         *,
+        db: AsyncSession,  # noqa: ARG002 -- mock doesn't read any side state
         order: Order,
         item: OrderItem,
         idempotency_key: str,
@@ -78,6 +81,7 @@ class MockFulfiller(Fulfiller):
     async def check_status(
         self,
         *,
+        db: AsyncSession,  # noqa: ARG002
         task: FulfillmentTask,  # noqa: ARG002 -- mock is always already done
     ) -> FulfillStatus:
         return FulfillStatus(
@@ -90,6 +94,7 @@ class MockFulfiller(Fulfiller):
     async def cancel(
         self,
         *,
+        db: AsyncSession,  # noqa: ARG002
         task: FulfillmentTask,  # noqa: ARG002
     ) -> None:
         return None

@@ -23,6 +23,7 @@ from yupay.modules.fulfillment.service import (
     list_deliveries_for_order,
     list_tasks_admin,
     process_task,
+    process_webhook_update,
     retry_task,
     start_for_order,
 )
@@ -62,6 +63,7 @@ __all__ = [
     "list_deliveries_for_order",
     "list_tasks_admin",
     "process_task",
+    "process_webhook_update",
     "retry_task",
     "router",
     "start_for_order",

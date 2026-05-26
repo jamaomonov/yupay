@@ -1,0 +1,54 @@
+sequenceDiagram
+    autonumber
+    title YuPay — G2B game top-up fulfilment (always async)
+
+    participant U as User
+    participant API as FastAPI
+    participant FUL as fulfillment.service
+    participant DB as Postgres
+    participant G2B_AD as G2bFulfiller
+    participant MAP as integrations.service
+    participant G2B as G2Bulk API
+
+    Note over U,G2B: paid order with fulfillment_data={player_id, server_id?, charname?}
+
+    FUL->>DB: INSERT fulfillment_tasks(supplier='g2b', status='pending')
+    FUL->>DB: UPDATE orders SET status='fulfilling'
+
+    loop per game task
+        FUL->>DB: UPDATE task.status='in_progress'
+        FUL->>G2B_AD: fulfill(db, order, item, idempotency_key=task.id)
+        G2B_AD->>MAP: get_mapping(sku_id, 'g2b')
+        MAP-->>G2B_AD: SkuSupplierMapping(kind='game', external_product_id=game_code, external_variant_id=catalogue_name)
+        G2B_AD->>G2B: POST /games/{game_code}/order {catalogue_name, player_id, callback_url, ...} (X-API-Key, X-Idempotency-Key)
+        G2B-->>G2B_AD: 200 {order_id, status: PENDING}
+        G2B_AD-->>FUL: FulfillResult(in_progress, external_order_id, extra_metadata={player_id_hash})
+        FUL->>DB: INSERT fulfillment_attempts(payload={kind: 'game', player_id_hash})
+        FUL->>DB: UPDATE task.status='in_progress', external_order_id=?
+        Note over FUL,G2B: never log raw player_id; only its 12-char SHA-256 prefix
+    end
+
+    Note over G2B: G2B processes the top-up against the player's in-game account...
+
+    G2B->>API: POST /api/v1/webhooks/g2b/{secret} {order_id, status: COMPLETED|FAILED}
+    API->>API: validate secret (404 if wrong)
+    API->>DB: SELECT task by external_order_id
+    API->>FUL: process_webhook_update(task_id)
+    FUL->>G2B_AD: check_status(db, task)
+    G2B_AD->>G2B: POST /games/order/status {order_id, game: game_code}
+    Note over G2B_AD,G2B: re-fetch — never trust webhook body
+
+    alt COMPLETED
+        G2B-->>G2B_AD: 200 {status: COMPLETED, message}
+        G2B_AD-->>FUL: FulfillStatus(succeeded, artifact_kind='topup_receipt')
+        FUL->>DB: INSERT deliveries(artifact_kind='topup_receipt', artifact={external_order_id, catalogue_name, message})
+        FUL->>DB: UPDATE task.status='succeeded'
+        FUL->>DB: UPDATE orders SET status='delivered'
+    else FAILED
+        G2B-->>G2B_AD: 200 {status: FAILED, message}
+        G2B_AD-->>FUL: FulfillStatus(failed)
+        FUL->>DB: UPDATE task.status='failed'
+        Note over FUL: G2B auto-refunds their balance; YuPay-side refund to customer is a separate admin action via /admin/payments/{id}/refund
+    end
+
+    API-->>G2B: 200 {status: processed}

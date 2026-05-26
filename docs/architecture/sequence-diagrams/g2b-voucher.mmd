@@ -1,0 +1,63 @@
+sequenceDiagram
+    autonumber
+    title YuPay — G2B voucher fulfilment (sync + async paths)
+
+    participant U as User
+    participant API as FastAPI
+    participant FUL as fulfillment.service
+    participant DB as Postgres
+    participant G2B_AD as G2bFulfiller
+    participant MAP as integrations.service
+    participant G2B as G2Bulk API
+
+    Note over U,G2B: paid order → start_for_order(order_id)
+
+    FUL->>DB: INSERT fulfillment_tasks(supplier='g2b', status='pending')
+    FUL->>DB: UPDATE orders SET status='fulfilling'
+
+    loop per voucher task
+        FUL->>DB: UPDATE task.status='in_progress'
+        FUL->>G2B_AD: fulfill(db, order, item, idempotency_key=task.id)
+        G2B_AD->>MAP: get_mapping(sku_id, 'g2b')
+        MAP-->>G2B_AD: SkuSupplierMapping(kind='voucher', external_product_id)
+        G2B_AD->>G2B: POST /products/{id}/purchase {quantity} (X-API-Key, X-Idempotency-Key=task.id)
+
+        alt G2B returns COMPLETED
+            G2B-->>G2B_AD: 200 {order_id, status: COMPLETED, delivery_items: [...]}
+            G2B_AD-->>FUL: FulfillResult(succeeded, external_order_id, artifact={code, codes})
+            FUL->>DB: INSERT fulfillment_attempts(kind='fulfill', status='ok')
+            FUL->>DB: INSERT deliveries(artifact_kind='voucher_code', artifact)
+            FUL->>DB: UPDATE task.status='succeeded'
+            FUL->>DB: UPDATE order_items.fulfillment_state='delivered'
+        else G2B returns PENDING
+            G2B-->>G2B_AD: 200 {order_id, status: PENDING, delivery_items: null}
+            G2B_AD-->>FUL: FulfillResult(in_progress, external_order_id)
+            FUL->>DB: UPDATE task.status='in_progress', external_order_id=?
+            Note over FUL,G2B: Webhook (or admin retry) will reconcile later
+        end
+    end
+
+    Note over FUL,DB: Async leg: webhook arrives after PENDING
+
+    G2B->>API: POST /api/v1/webhooks/g2b/{secret} {order_id, status: COMPLETED}
+    API->>API: validate secret (404 if wrong)
+    API->>DB: SELECT task by external_order_id
+    API->>FUL: process_webhook_update(task_id)
+    FUL->>G2B_AD: check_status(db, task)
+    G2B_AD->>G2B: GET /orders/{id}/delivery
+    alt 200 ready
+        G2B-->>G2B_AD: 200 {delivery_items: [...]}
+        G2B_AD-->>FUL: FulfillStatus(succeeded, artifact)
+        FUL->>DB: INSERT deliveries, UPDATE task.status='succeeded'
+        FUL->>DB: UPDATE orders SET status='delivered'
+    else 202 still pending
+        G2B-->>G2B_AD: 202
+        G2B_AD-->>FUL: FulfillStatus(in_progress)
+        Note over FUL: leave task untouched
+    else 410 terminal failure
+        G2B-->>G2B_AD: 410 (REFUNDED/CANCELLED)
+        G2B_AD-->>FUL: FulfillStatus(failed)
+        FUL->>DB: UPDATE task.status='failed'
+    end
+
+    API-->>G2B: 200 {status: processed}

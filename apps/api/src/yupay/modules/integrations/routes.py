@@ -19,7 +19,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
 from yupay.core.clock import now
-from yupay.core.config import get_settings
 from yupay.modules.admin.api import require_admin
 from yupay.modules.integrations import service as svc
 from yupay.modules.integrations.schemas import (
@@ -108,10 +107,12 @@ async def supplier_health(
     supplier_slug: str,
     _admin: Annotated[User, Depends(require_admin)],
 ) -> SupplierHealthOut:
-    """Stub probe while the real adapter is being built.
+    """Live probe against the supplier's status endpoint.
 
-    Reports ``available=false`` with a human-readable reason. The Sprint B
-    adapter swaps this for a real ``GET /v1/getMe`` call and balance check.
+    For G2B we call ``GET /v1/getMe`` through the fulfiller and surface the
+    balance + username back to the admin UI. The fulfiller's ``health()``
+    method already swallows network errors and shapes them into
+    ``{available: false, reason}`` — we just adapt to the DTO.
     """
     if supplier_slug not in _KNOWN_SUPPLIERS:
         return SupplierHealthOut(
@@ -120,21 +121,27 @@ async def supplier_health(
             reason="unknown supplier",
             last_checked_at=now(),
         )
-    settings = get_settings()
     if supplier_slug == "g2b":
-        if not settings.g2b_api_key:
+        from yupay.modules.fulfillment.suppliers import REGISTRY
+        from yupay.modules.fulfillment.suppliers.g2b import G2bFulfiller
+
+        fulfiller = REGISTRY.get("g2b")
+        if not isinstance(fulfiller, G2bFulfiller):
             return SupplierHealthOut(
                 supplier="g2b",
                 available=False,
-                reason="G2B_API_KEY is not configured",
+                reason="g2b adapter not registered",
                 last_checked_at=now(),
             )
-        # Adapter ships in Sprint B — until then the key being present is
-        # the strongest signal we can give without actually calling G2B.
+        result = await fulfiller.health()
+        balance = result.get("balance")
         return SupplierHealthOut(
             supplier="g2b",
-            available=False,
-            reason="adapter not implemented yet (Sprint B)",
+            available=bool(result.get("available")),
+            reason=result.get("reason"),
+            balance=str(balance) if balance is not None else None,
+            currency=None,
+            username=result.get("username"),
             last_checked_at=now(),
         )
     return SupplierHealthOut(

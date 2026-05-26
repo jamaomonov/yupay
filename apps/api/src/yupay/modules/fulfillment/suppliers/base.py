@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from yupay.modules.fulfillment.models import FulfillmentTask
     from yupay.modules.orders.models import Order, OrderItem
 
@@ -61,6 +63,7 @@ class Fulfiller(Protocol):
     async def fulfill(
         self,
         *,
+        db: AsyncSession,
         order: Order,
         item: OrderItem,
         idempotency_key: str,
@@ -69,11 +72,13 @@ class Fulfiller(Protocol):
     async def check_status(
         self,
         *,
+        db: AsyncSession,
         task: FulfillmentTask,
     ) -> FulfillStatus: ...
 
     async def cancel(
         self,
         *,
+        db: AsyncSession,
         task: FulfillmentTask,
     ) -> None: ...

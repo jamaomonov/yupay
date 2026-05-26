@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from yupay.api.webhooks.g2b import router as g2b_webhook_router
 from yupay.modules.admin.api import admin_router as admin_admin_router
 from yupay.modules.audit.api import admin_router as audit_admin_router
 from yupay.modules.auth.api import router as auth_router
@@ -48,6 +49,7 @@ router.include_router(payments_router)
 router.include_router(payments_admin_router)
 router.include_router(payments_admin_webhook_router)
 router.include_router(payments_webhook_router)
+router.include_router(g2b_webhook_router)
 router.include_router(integrations_admin_router)
 router.include_router(inventory_admin_router)
 router.include_router(sourcing_admin_router)
