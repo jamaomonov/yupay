@@ -70,11 +70,12 @@ async def test_sync_populates_catalog_cache(
     integration_client: AsyncClient,
     db_session: AsyncSession,
 ) -> None:
+    # Real G2B shape: ``{"products": [...]}`` and ``{"games": [...]}``.
     respx.get(f"{G2B_BASE}/products?page=1&limit=200").mock(
         return_value=httpx.Response(
             200,
             json={
-                "items": [
+                "products": [
                     {"id": 1, "title": "PUBG UC Voucher", "unit_price": 1.5},
                     {"id": 2, "title": "MLBB Diamonds Voucher", "unit_price": 2.5},
                 ]
@@ -85,7 +86,7 @@ async def test_sync_populates_catalog_cache(
         return_value=httpx.Response(
             200,
             json={
-                "items": [
+                "games": [
                     {"code": "pubg_mobile", "name": "PUBG Mobile"},
                     {"code": "mlbb", "name": "Mobile Legends"},
                 ]
@@ -130,7 +131,7 @@ async def test_sync_continues_when_one_endpoint_fails(
         return_value=httpx.Response(500, text="boom")
     )
     respx.get(f"{G2B_BASE}/games").mock(
-        return_value=httpx.Response(200, json={"items": [{"code": "ff", "name": "Free Fire"}]})
+        return_value=httpx.Response(200, json={"games": [{"code": "ff", "name": "Free Fire"}]})
     )
 
     admin = await _login_admin(integration_client, db_session, tg_id=602)

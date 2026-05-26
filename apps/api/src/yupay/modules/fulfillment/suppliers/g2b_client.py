@@ -310,7 +310,10 @@ class G2bClient:
     async def fetch_products(self, *, page: int = 1, limit: int = 100) -> list[dict[str, Any]]:
         resp = await self._request("GET", f"/products?page={page}&limit={limit}")
         body = resp.json()
-        items = body.get("items") or body.get("data") or body
+        # G2B returns ``{"products": [...]}``; we tolerate ``items`` / ``data``
+        # too for forward-compat (and for the contract tests that pre-date the
+        # real format check).
+        items = body.get("products") or body.get("items") or body.get("data") or body
         if isinstance(items, list):
             return [it for it in items if isinstance(it, dict)]
         return []
@@ -318,7 +321,7 @@ class G2bClient:
     async def fetch_games(self) -> list[dict[str, Any]]:
         resp = await self._request("GET", "/games")
         body = resp.json()
-        items = body.get("items") or body.get("data") or body
+        items = body.get("games") or body.get("items") or body.get("data") or body
         if isinstance(items, list):
             return [it for it in items if isinstance(it, dict)]
         return []
