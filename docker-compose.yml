@@ -18,6 +18,13 @@ x-app-env: &app-env
   ADMIN_DEV_PASSWORD: ${ADMIN_DEV_PASSWORD:-admin}
   CORS_ALLOW_ORIGINS: '${CORS_ALLOW_ORIGINS:-["*"]}'
   FX_EXCHANGERATE_API_KEY: ${FX_EXCHANGERATE_API_KEY:-}
+  # G2Bulk supplier — set in .env (or /opt/yupay/secrets/api.env in prod).
+  # Empty G2B_API_KEY leaves the adapter as ``available=false``.
+  G2B_API_KEY: ${G2B_API_KEY:-}
+  G2B_BASE_URL: ${G2B_BASE_URL:-https://api.g2bulk.com/v1}
+  G2B_WEBHOOK_SECRET: ${G2B_WEBHOOK_SECRET:-}
+  G2B_CALLBACK_URL: ${G2B_CALLBACK_URL:-}
+  G2B_REQUEST_TIMEOUT_SECONDS: ${G2B_REQUEST_TIMEOUT_SECONDS:-20}
 
 services:
   postgres:
