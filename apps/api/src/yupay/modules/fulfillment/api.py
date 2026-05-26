@@ -7,6 +7,8 @@ from yupay.modules.fulfillment.models import (
 )
 from yupay.modules.fulfillment.routes import admin_router, router
 from yupay.modules.fulfillment.schemas import (
+    AttemptAdminListOut,
+    AttemptAdminOut,
     DeliveryListOut,
     DeliveryOut,
     FulfillmentAttemptOut,
@@ -20,6 +22,7 @@ from yupay.modules.fulfillment.service import (
     complete_manual_task,
     fail_manual_task,
     get_task_admin,
+    list_attempts_admin,
     list_deliveries_for_order,
     list_tasks_admin,
     process_task,
@@ -38,6 +41,8 @@ from yupay.modules.fulfillment.suppliers import (
 )
 
 __all__ = [
+    "AttemptAdminListOut",
+    "AttemptAdminOut",
     "Delivery",
     "DeliveryListOut",
     "DeliveryOut",
@@ -60,6 +65,7 @@ __all__ = [
     "fail_manual_task",
     "get_fulfiller",
     "get_task_admin",
+    "list_attempts_admin",
     "list_deliveries_for_order",
     "list_tasks_admin",
     "process_task",

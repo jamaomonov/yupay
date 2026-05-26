@@ -349,6 +349,83 @@ async def test_unknown_supplier_health(
 # ---------- sourcing regression ----------
 
 
+async def test_catalog_list_returns_cached_entries(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """Catalog is populated by the sync endpoint or test fixtures; the
+    listing supports search + kind filter."""
+    from yupay.modules.integrations.service import upsert_catalog_entry
+
+    await upsert_catalog_entry(
+        db_session,
+        supplier_slug="g2b",
+        kind="voucher",
+        external_id="42",
+        title="PUBG Mobile Voucher",
+        raw={"id": 42},
+    )
+    await upsert_catalog_entry(
+        db_session,
+        supplier_slug="g2b",
+        kind="game",
+        external_id="pubg_mobile",
+        title="PUBG Mobile",
+        raw={"code": "pubg_mobile"},
+    )
+    await db_session.commit()
+
+    admin = await _login_user(integration_client, tg_id=420)
+    await _grant_admin(db_session, tg_id=420)
+    headers = {"Authorization": f"Bearer {admin}"}
+
+    r = await integration_client.get(
+        "/api/v1/admin/integrations/catalog?supplier_slug=g2b",
+        headers=headers,
+    )
+    assert r.status_code == 200, r.text
+    assert len(r.json()["items"]) == 2
+
+    voucher_only = await integration_client.get(
+        "/api/v1/admin/integrations/catalog?supplier_slug=g2b&kind=voucher",
+        headers=headers,
+    )
+    items = voucher_only.json()["items"]
+    assert len(items) == 1
+    assert items[0]["kind"] == "voucher"
+
+    search = await integration_client.get(
+        "/api/v1/admin/integrations/catalog?supplier_slug=g2b&search=Mobile",
+        headers=headers,
+    )
+    assert len(search.json()["items"]) == 2
+
+
+async def test_g2b_sync_catalog_handles_unconfigured(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without ``G2B_API_KEY`` the sync route reports the misconfig
+    instead of attempting any HTTP calls."""
+    from yupay.core import config as cfg
+
+    monkeypatch.setenv("G2B_API_KEY", "")
+    cfg.get_settings.cache_clear()
+
+    admin = await _login_user(integration_client, tg_id=421)
+    await _grant_admin(db_session, tg_id=421)
+    r = await integration_client.post(
+        "/api/v1/admin/integrations/g2b/sync-catalog",
+        headers={"Authorization": f"Bearer {admin}"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["vouchers_synced"] == 0
+    assert body["games_synced"] == 0
+    assert "not configured" in (body["error"] or "").lower()
+
+
 async def test_sourcing_decision_untouched(
     integration_client: AsyncClient,
     db_session: AsyncSession,

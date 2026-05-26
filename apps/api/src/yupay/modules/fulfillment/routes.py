@@ -16,6 +16,8 @@ from yupay.modules.auth import jwt as authjwt
 from yupay.modules.auth.security import email_hash
 from yupay.modules.fulfillment import service as svc
 from yupay.modules.fulfillment.schemas import (
+    AttemptAdminListOut,
+    AttemptAdminOut,
     BulkRetryIn,
     BulkRetryOut,
     BulkRetrySkipped,
@@ -148,6 +150,45 @@ async def admin_get_task(
 ) -> FulfillmentTaskOut:
     task = await svc.get_task_admin(db, task_id)
     return FulfillmentTaskOut.model_validate(task)
+
+
+@admin_router.get("/attempts", response_model=AttemptAdminListOut)
+async def admin_list_attempts(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+    supplier: str | None = None,
+    status_filter: Annotated[str | None, "status"] = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> AttemptAdminListOut:
+    """Supplier-interaction audit feed.
+
+    Joins ``fulfillment_attempts`` with its parent task so callers see the
+    supplier slug without a second lookup. Filter by ``supplier`` to e.g.
+    show "everything G2B did in the last hour".
+    """
+    rows, total = await svc.list_attempts_admin(
+        db,
+        supplier=supplier,
+        status_filter=status_filter,
+        limit=max(1, min(limit, 500)),
+        offset=max(0, offset),
+    )
+    return AttemptAdminListOut(
+        items=[
+            AttemptAdminOut(
+                task_id=attempt.task_id,
+                supplier=supplier_slug,
+                kind=attempt.kind,
+                status=attempt.status,
+                payload=attempt.payload,
+                error=attempt.error,
+                created_at=attempt.created_at,
+            )
+            for attempt, supplier_slug in rows
+        ],
+        total=total,
+    )
 
 
 @admin_router.post(

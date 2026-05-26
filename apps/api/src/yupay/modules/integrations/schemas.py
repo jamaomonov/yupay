@@ -78,10 +78,20 @@ class CatalogListOut(BaseModel):
     items: list[CatalogEntryOut]
 
 
+class CatalogSyncOut(BaseModel):
+    """Result of a one-shot catalog refresh for a supplier."""
+
+    supplier: str
+    vouchers_synced: int = 0
+    games_synced: int = 0
+    error: str | None = None
+
+
 __all__ = [
     "CatalogEntryOut",
     "CatalogKind",
     "CatalogListOut",
+    "CatalogSyncOut",
     "MappingKind",
     "SupplierHealthOut",
     "SupplierMappingIn",

@@ -448,6 +448,51 @@ async def test_webhook_unknown_order_does_not_500(
 
 
 @respx.mock
+async def test_attempts_endpoint_filters_by_supplier(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """Admin can pull a G2B-only feed of attempts for the integrations
+    detail page."""
+    sku_id = await _seed_voucher_sku(db_session)
+    admin = await _login_user(integration_client, tg_id=541)
+    await _grant_admin(db_session, tg_id=541)
+    await _set_g2b_force(integration_client, token=admin, sku_id=sku_id)
+    await _create_mapping(db_session, sku_id=sku_id, kind="voucher", external_product_id="42")
+
+    respx.post(f"{G2B_BASE}/products/42/purchase").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "success": True,
+                "order_id": 1234,
+                "status": "COMPLETED",
+                "delivery_items": ["X"],
+            },
+        )
+    )
+
+    customer = await _login_user(integration_client, tg_id=542)
+    await _pay_order(
+        integration_client,
+        token=customer,
+        sku_id=sku_id,
+        key_suffix="attempts-feed",
+    )
+
+    feed = await integration_client.get(
+        "/api/v1/admin/fulfillment/attempts?supplier=g2b&limit=10",
+        headers={"Authorization": f"Bearer {admin}"},
+    )
+    assert feed.status_code == 200, feed.text
+    body = feed.json()
+    assert body["total"] >= 1
+    assert all(item["supplier"] == "g2b" for item in body["items"])
+    assert body["items"][0]["kind"] == "fulfill"
+    assert body["items"][0]["status"] == "ok"
+
+
+@respx.mock
 async def test_missing_mapping_fails_task(
     integration_client: AsyncClient,
     db_session: AsyncSession,

@@ -18,6 +18,10 @@ import { SkusListPage } from "@/features/catalog/skus/SkusListPage";
 import { CustomerPage } from "@/features/customers/CustomerPage";
 import { InboxPage } from "@/features/fulfillment/InboxPage";
 import { FxPage } from "@/features/fx/FxPage";
+import { G2bDetailPage } from "@/features/integrations/G2bDetailPage";
+import { IntegrationsPage } from "@/features/integrations/IntegrationsPage";
+import { MappingEditPage } from "@/features/integrations/MappingEditPage";
+import { MappingsPage } from "@/features/integrations/MappingsPage";
 import { InventoryPage } from "@/features/inventory/InventoryPage";
 import { OrderDetailPage } from "@/features/orders/OrderDetailPage";
 import { OrdersListPage } from "@/features/orders/OrdersListPage";
@@ -67,23 +71,19 @@ export const router = createBrowserRouter([
           { path: "/fx", element: <FxPage /> },
           { path: "/users", element: <UsersListPage /> },
           { path: "/customers/:id", element: <CustomerPage /> },
-          { path: "/settings", element: <SettingsStub /> },
+          { path: "/integrations", element: <IntegrationsPage /> },
+          { path: "/integrations/mappings", element: <MappingsPage /> },
+          { path: "/integrations/mappings/new", element: <MappingEditPage /> },
+          {
+            path: "/integrations/mappings/:supplier/:sku/edit",
+            element: <MappingEditPage />,
+          },
+          { path: "/integrations/:slug", element: <G2bDetailPage /> },
+          // Legacy stub route — operators may still have bookmarks.
+          { path: "/settings", element: <Navigate to="/integrations" replace /> },
           { path: "*", element: <Navigate to="/" replace /> },
         ],
       },
     ],
   },
 ]);
-
-function SettingsStub() {
-  return <Stub title="Настройки" hint="Feature-flags, поставщики, секреты." />;
-}
-
-function Stub({ title, hint }: { title: string; hint: string }) {
-  return (
-    <div className="space-y-2">
-      <h1 className="text-2xl font-semibold">{title}</h1>
-      <p className="text-sm text-[var(--text-secondary)]">{hint}</p>
-    </div>
-  );
-}

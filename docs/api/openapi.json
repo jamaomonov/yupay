@@ -485,6 +485,80 @@
         "title": "AdminUserLedgerOut",
         "type": "object"
       },
+      "AttemptAdminListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AttemptAdminOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AttemptAdminListOut",
+        "type": "object"
+      },
+      "AttemptAdminOut": {
+        "description": "One row of the supplier-interaction audit feed for the admin UI.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "supplier": {
+            "title": "Supplier",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "supplier",
+          "kind",
+          "status",
+          "payload",
+          "error",
+          "created_at"
+        ],
+        "title": "AttemptAdminOut",
+        "type": "object"
+      },
       "AuditEventOut": {
         "additionalProperties": false,
         "description": "One row of the unified audit feed.",
@@ -1140,6 +1214,102 @@
           "skipped_without_cost"
         ],
         "title": "BulkUzsPriceOut",
+        "type": "object"
+      },
+      "CatalogEntryOut": {
+        "properties": {
+          "external_id": {
+            "title": "External Id",
+            "type": "string"
+          },
+          "fetched_at": {
+            "format": "date-time",
+            "title": "Fetched At",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "voucher",
+              "game",
+              "game_denom"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "raw": {
+            "additionalProperties": true,
+            "title": "Raw",
+            "type": "object"
+          },
+          "supplier_slug": {
+            "title": "Supplier Slug",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "supplier_slug",
+          "kind",
+          "external_id",
+          "title",
+          "raw",
+          "fetched_at"
+        ],
+        "title": "CatalogEntryOut",
+        "type": "object"
+      },
+      "CatalogListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogEntryOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CatalogListOut",
+        "type": "object"
+      },
+      "CatalogSyncOut": {
+        "description": "Result of a one-shot catalog refresh for a supplier.",
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "games_synced": {
+            "default": 0,
+            "title": "Games Synced",
+            "type": "integer"
+          },
+          "supplier": {
+            "title": "Supplier",
+            "type": "string"
+          },
+          "vouchers_synced": {
+            "default": 0,
+            "title": "Vouchers Synced",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "supplier"
+        ],
+        "title": "CatalogSyncOut",
         "type": "object"
       },
       "CategoryCreate": {
@@ -7175,6 +7345,108 @@
         ]
       }
     },
+    "/api/v1/admin/fulfillment/attempts": {
+      "get": {
+        "description": "Supplier-interaction audit feed.\n\nJoins ``fulfillment_attempts`` with its parent task so callers see the\nsupplier slug without a second lookup. Filter by ``supplier`` to e.g.\nshow \"everything G2B did in the last hour\".",
+        "operationId": "admin_list_attempts_api_v1_admin_fulfillment_attempts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "supplier",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Supplier"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status_filter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Filter"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttemptAdminListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin List Attempts",
+        "tags": [
+          "admin:fulfillment"
+        ]
+      }
+    },
     "/api/v1/admin/fulfillment/tasks": {
       "get": {
         "operationId": "admin_list_tasks_api_v1_admin_fulfillment_tasks_get",
@@ -7756,6 +8028,166 @@
         "summary": "Force-refetch all supported pairs (bypasses fresh cache)",
         "tags": [
           "admin:fx"
+        ]
+      }
+    },
+    "/api/v1/admin/integrations/catalog": {
+      "get": {
+        "operationId": "list_catalog_api_v1_admin_integrations_catalog_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "supplier_slug",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 2,
+              "title": "Supplier Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "voucher",
+                    "game",
+                    "game_denom"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cached supplier catalog (autocomplete for mappings UI)",
+        "tags": [
+          "admin:integrations"
+        ]
+      }
+    },
+    "/api/v1/admin/integrations/g2b/sync-catalog": {
+      "post": {
+        "description": "Pulls G2B's product + game catalog into our cache.\n\nBest-effort: partial failures are logged but the endpoint never raises\nso the admin UI gets a definitive answer instead of a 5xx. Live\nfulfilment does NOT depend on this cache \u2014 the source of truth is\n``sku_supplier_mapping``.",
+        "operationId": "sync_g2b_catalog_api_v1_admin_integrations_g2b_sync_catalog_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogSyncOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh ``supplier_catalog_cache`` from the G2B API",
+        "tags": [
+          "admin:integrations"
         ]
       }
     },

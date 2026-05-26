@@ -126,8 +126,29 @@ class BulkRetryOut(BaseModel):
     skipped: list[BulkRetrySkipped]
 
 
+class AttemptAdminOut(BaseModel):
+    """One row of the supplier-interaction audit feed for the admin UI."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    task_id: str
+    supplier: str
+    kind: str
+    status: str
+    payload: dict[str, Any]
+    error: str | None
+    created_at: datetime
+
+
+class AttemptAdminListOut(BaseModel):
+    items: list[AttemptAdminOut]
+    total: int = 0
+
+
 __all__ = [
     "ArtifactKind",
+    "AttemptAdminListOut",
+    "AttemptAdminOut",
     "BulkRetryIn",
     "BulkRetryOut",
     "BulkRetrySkipped",

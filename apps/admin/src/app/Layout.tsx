@@ -17,11 +17,11 @@ import {
   LogOut,
   Menu,
   Package,
+  Plug,
   Radio,
   Receipt,
   Route as RouteIcon,
   Search,
-  Settings,
   ShieldCheck,
   Tag,
   Truck,
@@ -101,8 +101,8 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: "/inventory", label: "Склад", icon: Warehouse },
       { to: "/sourcing", label: "Sourcing", icon: RouteIcon },
+      { to: "/integrations", label: "Интеграции", icon: Plug },
       { to: "/fx", label: "Курсы", icon: Coins },
-      { to: "/settings", label: "Настройки", icon: Settings },
     ],
   },
 ];

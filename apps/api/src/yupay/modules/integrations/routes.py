@@ -1,13 +1,8 @@
 """Admin-only HTTP routes for supplier integrations.
 
-This sprint ships the foundation:
-
-- CRUD for ``sku_supplier_mapping`` (used by future fulfilment adapters).
-- A health probe for G2B that returns ``{available: false, reason: ...}``
-  while the real adapter is still being built. The real probe (calling
-  ``GET /v1/getMe`` on G2B and returning the balance) lands in Sprint B.
-
-Catalog sync is also a Sprint B story.
+CRUD over ``sku_supplier_mapping``, real-time health probes against the
+supplier API, and on-demand catalog sync that populates
+``supplier_catalog_cache`` for autocomplete in the mapping editor.
 """
 
 from __future__ import annotations
@@ -19,9 +14,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
 from yupay.core.clock import now
+from yupay.core.logging import get_logger
 from yupay.modules.admin.api import require_admin
 from yupay.modules.integrations import service as svc
 from yupay.modules.integrations.schemas import (
+    CatalogEntryOut,
+    CatalogKind,
+    CatalogListOut,
+    CatalogSyncOut,
     SupplierHealthOut,
     SupplierMappingIn,
     SupplierMappingListOut,
@@ -29,6 +29,8 @@ from yupay.modules.integrations.schemas import (
 )
 from yupay.modules.inventory import service as inv_svc
 from yupay.modules.users.models import User
+
+log = get_logger("yupay.integrations.routes")
 
 admin_router = APIRouter(
     prefix="/admin/integrations",
@@ -96,6 +98,111 @@ async def delete_mapping(
     _admin: Annotated[User, Depends(require_admin)],
 ) -> None:
     await svc.delete_mapping(db, sku_id=sku_id, supplier_slug=supplier_slug)
+
+
+@admin_router.get(
+    "/catalog",
+    response_model=CatalogListOut,
+    summary="Cached supplier catalog (autocomplete for mappings UI)",
+)
+async def list_catalog(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+    supplier_slug: Annotated[str, Query(min_length=2, max_length=32)],
+    kind: Annotated[CatalogKind | None, Query()] = None,
+    search: Annotated[str | None, Query(max_length=64)] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> CatalogListOut:
+    rows = await svc.list_catalog(
+        db,
+        supplier_slug=supplier_slug,
+        kind=kind,
+        search=search,
+        limit=limit,
+    )
+    return CatalogListOut(items=[CatalogEntryOut.model_validate(r) for r in rows])
+
+
+@admin_router.post(
+    "/g2b/sync-catalog",
+    response_model=CatalogSyncOut,
+    summary="Refresh ``supplier_catalog_cache`` from the G2B API",
+)
+async def sync_g2b_catalog(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+) -> CatalogSyncOut:
+    """Pulls G2B's product + game catalog into our cache.
+
+    Best-effort: partial failures are logged but the endpoint never raises
+    so the admin UI gets a definitive answer instead of a 5xx. Live
+    fulfilment does NOT depend on this cache — the source of truth is
+    ``sku_supplier_mapping``.
+    """
+    from yupay.modules.fulfillment.suppliers import REGISTRY
+    from yupay.modules.fulfillment.suppliers.g2b import G2bFulfiller
+
+    fulfiller = REGISTRY.get("g2b")
+    if not isinstance(fulfiller, G2bFulfiller) or not fulfiller.available:
+        return CatalogSyncOut(
+            supplier="g2b",
+            error="G2B_API_KEY is not configured",
+        )
+
+    client = fulfiller._client()
+    vouchers = 0
+    games = 0
+    error: str | None = None
+    try:
+        products = await client.fetch_products(page=1, limit=200)
+        for item in products:
+            external_id = str(item.get("id") or item.get("product_id") or "").strip()
+            if not external_id:
+                continue
+            title = str(
+                item.get("title") or item.get("name") or external_id,
+            )[:255]
+            await svc.upsert_catalog_entry(
+                db,
+                supplier_slug="g2b",
+                kind="voucher",
+                external_id=external_id,
+                title=title,
+                raw=item,
+            )
+            vouchers += 1
+    except Exception as exc:  # noqa: BLE001 -- best-effort sync
+        error = f"voucher sync failed: {exc!s}"[:200]
+        log.warning("integrations.g2b.sync.voucher_failed", error=str(exc))
+
+    try:
+        games_payload = await client.fetch_games()
+        for item in games_payload:
+            external_id = str(item.get("code") or item.get("id") or "").strip()
+            if not external_id:
+                continue
+            title = str(item.get("name") or external_id)[:255]
+            await svc.upsert_catalog_entry(
+                db,
+                supplier_slug="g2b",
+                kind="game",
+                external_id=external_id,
+                title=title,
+                raw=item,
+            )
+            games += 1
+    except Exception as exc:  # noqa: BLE001
+        err = f"game sync failed: {exc!s}"[:200]
+        error = f"{error}; {err}" if error else err
+        log.warning("integrations.g2b.sync.games_failed", error=str(exc))
+
+    await db.commit()
+    return CatalogSyncOut(
+        supplier="g2b",
+        vouchers_synced=vouchers,
+        games_synced=games,
+        error=error,
+    )
 
 
 @admin_router.get(

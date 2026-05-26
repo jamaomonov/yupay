@@ -797,12 +797,47 @@ async def get_task_admin(db: AsyncSession, task_id: str) -> FulfillmentTask:
     return await _load_task(db, task_id)
 
 
+async def list_attempts_admin(
+    db: AsyncSession,
+    *,
+    supplier: str | None = None,
+    status_filter: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[tuple[FulfillmentAttempt, str]], int]:
+    """Paged admin listing of supplier interaction attempts.
+
+    Returns rows joined with the parent task's supplier slug so the admin
+    UI can render "G2B attempts" without a second query per row.
+    """
+    base = (
+        select(FulfillmentAttempt, FulfillmentTask.supplier)
+        .join(FulfillmentTask, FulfillmentTask.id == FulfillmentAttempt.task_id)
+        .order_by(FulfillmentAttempt.created_at.desc())
+    )
+    count_stmt = (
+        select(func.count())
+        .select_from(FulfillmentAttempt)
+        .join(FulfillmentTask, FulfillmentTask.id == FulfillmentAttempt.task_id)
+    )
+    if supplier is not None:
+        base = base.where(FulfillmentTask.supplier == supplier)
+        count_stmt = count_stmt.where(FulfillmentTask.supplier == supplier)
+    if status_filter is not None:
+        base = base.where(FulfillmentAttempt.status == status_filter)
+        count_stmt = count_stmt.where(FulfillmentAttempt.status == status_filter)
+    rows = list((await db.execute(base.limit(limit).offset(offset))).all())
+    total = int((await db.execute(count_stmt)).scalar_one() or 0)
+    return [(r[0], r[1]) for r in rows], total
+
+
 __all__ = [
     "bulk_retry_tasks",
     "cancel_task",
     "complete_manual_task",
     "fail_manual_task",
     "get_task_admin",
+    "list_attempts_admin",
     "list_deliveries_for_order",
     "list_tasks_admin",
     "process_task",

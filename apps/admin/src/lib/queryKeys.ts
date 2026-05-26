@@ -103,6 +103,28 @@ export const qk = {
   // it deserves its own key for clean invalidation.
   manualQueue: () => ["admin", "manual-fulfillment", "queue"] as const,
 
+  // integrations (supplier mappings + health + catalog)
+  integrationHealth: (slug: string) => ["admin", "integrations", "health", slug] as const,
+  integrationMappings: (filters: { supplierSlug?: string | null }) =>
+    ["admin", "integrations", "mappings", filters.supplierSlug ?? null] as const,
+  integrationMapping: (skuId: string, supplierSlug: string) =>
+    ["admin", "integrations", "mapping", skuId, supplierSlug] as const,
+  integrationCatalog: (filters: {
+    supplierSlug: string;
+    kind?: string | null;
+    search?: string | null;
+  }) =>
+    [
+      "admin",
+      "integrations",
+      "catalog",
+      filters.supplierSlug,
+      filters.kind ?? null,
+      filters.search ?? null,
+    ] as const,
+  integrationAttempts: (filters: { supplier?: string | null }) =>
+    ["admin", "integrations", "attempts", filters.supplier ?? null] as const,
+
   // payments
   payments: (filters: {
     orderId?: string | null;
