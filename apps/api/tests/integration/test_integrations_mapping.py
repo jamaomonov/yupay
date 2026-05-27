@@ -138,12 +138,17 @@ async def test_upsert_mapping_creates_row(
     )
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["sku_id"] == _seed_sku
-    assert body["supplier_slug"] == "g2b"
-    assert body["kind"] == "voucher"
-    assert body["external_product_id"] == "42"
-    assert body["quantity"] == 1
-    assert body["is_active"] is True
+    mapping = body["mapping"]
+    assert mapping["sku_id"] == _seed_sku
+    assert mapping["supplier_slug"] == "g2b"
+    assert mapping["kind"] == "voucher"
+    assert mapping["external_product_id"] == "42"
+    assert mapping["quantity"] == 1
+    assert mapping["is_active"] is True
+    # cost_sync reports out — no cache row for "42", so the refresh
+    # gracefully reports the cache miss instead of updating.
+    assert body["cost_sync"]["updated"] is False
+    assert body["cost_sync"]["reason"]
 
 
 async def test_upsert_is_idempotent(
@@ -167,8 +172,8 @@ async def test_upsert_is_idempotent(
     payload2 = {**payload, "external_product_id": "99", "quantity": 5}
     second = await integration_client.put(url, headers=headers, json=payload2)
     assert second.status_code == 200
-    assert second.json()["external_product_id"] == "99"
-    assert second.json()["quantity"] == 5
+    assert second.json()["mapping"]["external_product_id"] == "99"
+    assert second.json()["mapping"]["quantity"] == 5
 
     rows = list(
         (

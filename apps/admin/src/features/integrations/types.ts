@@ -106,6 +106,19 @@ export interface CheckPlayerResult {
   reason: string | null;
 }
 
+export interface CostSyncResult {
+  updated: boolean;
+  old_cost: string | null;
+  new_cost: string | null;
+  source: string | null;
+  reason: string | null;
+}
+
+export interface SupplierMappingUpsertResult {
+  mapping: SupplierMapping;
+  cost_sync: CostSyncResult;
+}
+
 /** All G2B-flavoured slugs we expose in the admin today. Extend when adding
  *  Steam / Riot / etc. */
 export const KNOWN_SUPPLIERS = ["g2b"] as const;

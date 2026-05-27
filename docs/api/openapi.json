@@ -1737,6 +1737,64 @@
         "title": "CodeAdminOut",
         "type": "object"
       },
+      "CostSyncResult": {
+        "description": "Outcome of the on-save cost refresh.\n\nReturned alongside the upsert response so the admin UI can flash\neither \"cost updated from $X.XX \u2192 $Y.YY\" or a clear reason when we\ncouldn't pull a price (cache miss, unknown denom, etc).",
+        "properties": {
+          "new_cost": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Cost"
+          },
+          "old_cost": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old Cost"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "updated": {
+            "title": "Updated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "updated"
+        ],
+        "title": "CostSyncResult",
+        "type": "object"
+      },
       "CurrencyAmount": {
         "properties": {
           "amount": {
@@ -5638,6 +5696,23 @@
         "title": "SupplierMappingOut",
         "type": "object"
       },
+      "SupplierMappingUpsertOut": {
+        "description": "Combined upsert response: the row that was saved plus the optional\ncost-refresh outcome.",
+        "properties": {
+          "cost_sync": {
+            "$ref": "#/components/schemas/CostSyncResult"
+          },
+          "mapping": {
+            "$ref": "#/components/schemas/SupplierMappingOut"
+          }
+        },
+        "required": [
+          "mapping",
+          "cost_sync"
+        ],
+        "title": "SupplierMappingUpsertOut",
+        "type": "object"
+      },
       "TelegramInitDataIn": {
         "additionalProperties": false,
         "description": "Body of ``POST /auth/telegram/webapp``.",
@@ -8805,6 +8880,7 @@
     },
     "/api/v1/admin/integrations/mappings/{sku_id}": {
       "put": {
+        "description": "Create or update the SKU\u2194supplier mapping.\n\nAfter persisting the row we ask the supplier for the current upstream\nprice and write it to ``Sku.cost_usdt``. The mutation is best-effort\nand reported back through ``cost_sync`` so the admin UI can flash\nwhether the cost actually moved.",
         "operationId": "upsert_mapping_api_v1_admin_integrations_mappings__sku_id__put",
         "parameters": [
           {
@@ -8848,7 +8924,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SupplierMappingOut"
+                  "$ref": "#/components/schemas/SupplierMappingUpsertOut"
                 }
               }
             },

@@ -15,6 +15,7 @@ from yupay.modules.integrations.schemas import (
     CatalogSyncOut,
     CheckPlayerIn,
     CheckPlayerOut,
+    CostSyncResult,
     GameDenomListOut,
     GameDenomOut,
     GameFieldsOut,
@@ -23,6 +24,7 @@ from yupay.modules.integrations.schemas import (
     SupplierMappingIn,
     SupplierMappingListOut,
     SupplierMappingOut,
+    SupplierMappingUpsertOut,
 )
 from yupay.modules.integrations.service import (
     MappingUpsert,
@@ -41,6 +43,7 @@ __all__ = [
     "CatalogSyncOut",
     "CheckPlayerIn",
     "CheckPlayerOut",
+    "CostSyncResult",
     "GameDenomListOut",
     "GameDenomOut",
     "GameFieldsOut",
@@ -52,6 +55,7 @@ __all__ = [
     "SupplierMappingIn",
     "SupplierMappingListOut",
     "SupplierMappingOut",
+    "SupplierMappingUpsertOut",
     "admin_router",
     "delete_mapping",
     "get_mapping",

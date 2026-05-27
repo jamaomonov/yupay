@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
@@ -24,6 +25,7 @@ from yupay.modules.integrations.schemas import (
     CatalogSyncOut,
     CheckPlayerIn,
     CheckPlayerOut,
+    CostSyncResult,
     GameDenomListOut,
     GameDenomOut,
     GameFieldsOut,
@@ -31,6 +33,7 @@ from yupay.modules.integrations.schemas import (
     SupplierMappingIn,
     SupplierMappingListOut,
     SupplierMappingOut,
+    SupplierMappingUpsertOut,
 )
 from yupay.modules.inventory import service as inv_svc
 from yupay.modules.users.models import User
@@ -64,7 +67,7 @@ async def list_mappings(
 
 @admin_router.put(
     "/mappings/{sku_id}",
-    response_model=SupplierMappingOut,
+    response_model=SupplierMappingUpsertOut,
     summary="Upsert the mapping for ``(sku_id, supplier_slug)``",
 )
 async def upsert_mapping(
@@ -72,7 +75,14 @@ async def upsert_mapping(
     body: SupplierMappingIn,
     db: Annotated[AsyncSession, Depends(db_session)],
     admin: Annotated[User, Depends(require_admin)],
-) -> SupplierMappingOut:
+) -> SupplierMappingUpsertOut:
+    """Create or update the SKU↔supplier mapping.
+
+    After persisting the row we ask the supplier for the current upstream
+    price and write it to ``Sku.cost_usdt``. The mutation is best-effort
+    and reported back through ``cost_sync`` so the admin UI can flash
+    whether the cost actually moved.
+    """
     await inv_svc.get_sku_or_404(db, sku_id)
     row = await svc.upsert_mapping(
         db,
@@ -88,7 +98,111 @@ async def upsert_mapping(
             updated_by=admin.id,
         ),
     )
-    return SupplierMappingOut.model_validate(row)
+    cost_sync = await _refresh_sku_cost(db, row)
+    await db.commit()
+    return SupplierMappingUpsertOut(
+        mapping=SupplierMappingOut.model_validate(row),
+        cost_sync=cost_sync,
+    )
+
+
+async def _refresh_sku_cost(  # noqa: PLR0911 -- discriminated short-circuits read clearer than nested branches
+    db: AsyncSession,
+    mapping: object,
+) -> CostSyncResult:
+    """Pull the latest upstream price for ``mapping`` and persist it into
+    ``Sku.cost_usdt``.
+
+    Returns a discriminated result the route layer hands back to the
+    admin UI. Never raises — the cost refresh is "nice to have", not
+    blocking. The next admin save (or the hourly worker we'll wire up
+    later) gets another chance.
+
+    For G2B:
+    - ``voucher`` → uses ``supplier_catalog_cache.raw.unit_price`` so we
+      stay zero-RTT on the common case.
+    - ``game`` → fetches the live catalogue, finds the row whose
+      ``name`` matches the mapping's ``external_variant_id``, takes
+      ``amount`` (G2B's USD price for that denomination).
+    """
+    from decimal import Decimal, InvalidOperation
+
+    from yupay.modules.catalog import admin_service as catalog_svc
+    from yupay.modules.integrations.models import SkuSupplierMapping, SupplierCatalogCache
+
+    assert isinstance(mapping, SkuSupplierMapping)
+
+    if mapping.supplier_slug != "g2b":
+        return CostSyncResult(updated=False, reason="cost sync supported only for g2b today")
+    fulfiller = _g2b_fulfiller_or_none()
+    if fulfiller is None:
+        return CostSyncResult(updated=False, reason="G2B is not configured")
+
+    raw_amount: object = None
+    source = ""
+    try:
+        if mapping.kind == "voucher":
+            cache_row = (
+                await db.execute(
+                    select(SupplierCatalogCache).where(
+                        SupplierCatalogCache.supplier_slug == "g2b",
+                        SupplierCatalogCache.kind == "voucher",
+                        SupplierCatalogCache.external_id == mapping.external_product_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if cache_row is None:
+                return CostSyncResult(
+                    updated=False,
+                    reason="ваучер не найден в кэше — синхронизируйте каталог",
+                )
+            raw_amount = cache_row.raw.get("unit_price")
+            source = "supplier_catalog_cache.unit_price"
+        else:  # game
+            denom_name = (mapping.external_variant_id or "").strip()
+            if not denom_name:
+                return CostSyncResult(updated=False, reason="у маппинга не указан catalogue_name")
+            client = fulfiller._client()
+            rows = await client.games_catalogue(mapping.external_product_id)
+            match = next(
+                (r for r in rows if str(r.get("name") or "").strip() == denom_name),
+                None,
+            )
+            if match is None:
+                return CostSyncResult(
+                    updated=False,
+                    reason=f"denom «{denom_name}» не найден в каталоге G2B",
+                )
+            raw_amount = match.get("amount")
+            source = "g2b.games_catalogue.amount"
+    except Exception as exc:  # noqa: BLE001 -- best effort
+        log.warning("integrations.cost_sync.fetch_failed", error=str(exc))
+        return CostSyncResult(updated=False, reason=f"ошибка обращения к G2B: {exc!s}"[:200])
+
+    if raw_amount is None:
+        return CostSyncResult(updated=False, reason="поставщик не вернул цену", source=source)
+
+    try:
+        new_cost = Decimal(str(raw_amount))
+    except (InvalidOperation, ValueError):
+        return CostSyncResult(
+            updated=False, reason=f"непарсимая цена: {raw_amount!r}", source=source
+        )
+    if new_cost <= 0:
+        return CostSyncResult(
+            updated=False, reason="цена ≤ 0", source=source, new_cost=str(new_cost)
+        )
+
+    try:
+        previous = await catalog_svc.set_sku_cost_usdt(db, sku_id=mapping.sku_id, new_cost=new_cost)
+    except Exception as exc:  # noqa: BLE001
+        return CostSyncResult(updated=False, reason=f"не удалось записать cost_usdt: {exc!s}"[:200])
+    return CostSyncResult(
+        updated=previous != new_cost,
+        old_cost=str(previous) if previous is not None else None,
+        new_cost=str(new_cost),
+        source=source,
+    )
 
 
 @admin_router.delete(

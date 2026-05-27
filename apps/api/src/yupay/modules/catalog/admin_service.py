@@ -298,6 +298,38 @@ async def list_all_skus(db: AsyncSession, *, product_id: str | None = None) -> l
     return list((await db.execute(stmt)).scalars().all())
 
 
+async def set_sku_cost_usdt(
+    db: AsyncSession,
+    *,
+    sku_id: str,
+    new_cost: Decimal,
+) -> Decimal | None:
+    """Replace ``Sku.cost_usdt`` and return the previous value (or ``None``
+    when this is the first time we're recording the cost).
+
+    Returns ``new_cost`` itself when nothing changed so callers don't have
+    to handle a "noop" sentinel — the truthy old/new comparison is
+    delegated to the caller.
+
+    Refuses to write a non-positive cost; mirrors the
+    ``ck_skus_cost_usdt_positive`` check at the DB layer with a clearer
+    error than an ``IntegrityError`` rollback.
+    """
+    if new_cost <= 0:
+        raise ConflictError(
+            "cost_usdt must be positive",
+            extra={"sku_id": sku_id, "value": str(new_cost)},
+        )
+    sku = (await db.execute(select(Sku).where(Sku.id == sku_id))).scalar_one_or_none()
+    if sku is None:
+        raise NotFoundError("sku not found")
+    previous = sku.cost_usdt
+    sku.cost_usdt = new_cost
+    sku.updated_at = now()
+    await db.flush()
+    return previous
+
+
 async def search_skus_for_picker(
     db: AsyncSession,
     *,

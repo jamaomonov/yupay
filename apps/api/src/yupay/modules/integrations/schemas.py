@@ -47,6 +47,29 @@ class SupplierMappingListOut(BaseModel):
     items: list[SupplierMappingOut]
 
 
+class CostSyncResult(BaseModel):
+    """Outcome of the on-save cost refresh.
+
+    Returned alongside the upsert response so the admin UI can flash
+    either "cost updated from $X.XX → $Y.YY" or a clear reason when we
+    couldn't pull a price (cache miss, unknown denom, etc).
+    """
+
+    updated: bool
+    old_cost: str | None = None
+    new_cost: str | None = None
+    source: str | None = None
+    reason: str | None = None
+
+
+class SupplierMappingUpsertOut(BaseModel):
+    """Combined upsert response: the row that was saved plus the optional
+    cost-refresh outcome."""
+
+    mapping: SupplierMappingOut
+    cost_sync: CostSyncResult
+
+
 class SupplierHealthOut(BaseModel):
     """Connectivity probe result for a supplier.
 
@@ -133,6 +156,7 @@ __all__ = [
     "CatalogSyncOut",
     "CheckPlayerIn",
     "CheckPlayerOut",
+    "CostSyncResult",
     "GameDenomListOut",
     "GameDenomOut",
     "GameFieldsOut",
@@ -141,4 +165,5 @@ __all__ = [
     "SupplierMappingIn",
     "SupplierMappingListOut",
     "SupplierMappingOut",
+    "SupplierMappingUpsertOut",
 ]

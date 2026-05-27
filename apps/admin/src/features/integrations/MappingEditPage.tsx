@@ -26,7 +26,13 @@ import { qk } from "@/lib/queryKeys";
 
 import { DenomPicker, PlayerChecker, RequiredFieldsHint } from "./gameWidgets";
 import { CatalogPicker, SkuPicker } from "./pickers";
-import type { CatalogEntry, MappingKind, SkuPickerRow, SupplierMapping } from "./types";
+import type {
+  CatalogEntry,
+  MappingKind,
+  SkuPickerRow,
+  SupplierMapping,
+  SupplierMappingUpsertResult,
+} from "./types";
 
 const SUPPLIER_SLUG = "g2b";
 
@@ -112,9 +118,9 @@ export function MappingEditPage() {
   }, [sku, kind, catalog, denom, quantity]);
 
   // ---- save ----
-  const save = useMutation<SupplierMapping, ApiError>({
+  const save = useMutation<SupplierMappingUpsertResult, ApiError>({
     mutationFn: () =>
-      api<SupplierMapping>(`/api/v1/admin/integrations/mappings/${sku?.id ?? ""}`, {
+      api<SupplierMappingUpsertResult>(`/api/v1/admin/integrations/mappings/${sku?.id ?? ""}`, {
         method: "PUT",
         body: JSON.stringify({
           supplier_slug: SUPPLIER_SLUG,
@@ -126,8 +132,8 @@ export function MappingEditPage() {
           is_active: isActive,
         }),
       }),
-    onSuccess: () => {
-      toast.success("Маппинг сохранён");
+    onSuccess: (result) => {
+      toast.success(formatSaveSuccess(result));
       navigate(`/integrations/mappings?supplier=${SUPPLIER_SLUG}`);
     },
     onError: (err) => {
@@ -503,6 +509,21 @@ function parseExtra(raw: string): Record<string, unknown> {
     throw new Error("должен быть JSON-объект");
   }
   return parsed as Record<string, unknown>;
+}
+
+function formatSaveSuccess(result: SupplierMappingUpsertResult): string {
+  const cs = result.cost_sync;
+  if (cs.updated && cs.new_cost) {
+    const arrow =
+      cs.old_cost && cs.old_cost !== cs.new_cost
+        ? `$${cs.old_cost} → $${cs.new_cost}`
+        : `$${cs.new_cost}`;
+    return `Маппинг сохранён · себестоимость ${arrow}`;
+  }
+  if (!cs.updated && cs.reason) {
+    return `Маппинг сохранён · cost_usdt не обновлён (${cs.reason})`;
+  }
+  return "Маппинг сохранён";
 }
 
 function formatError(err: unknown): string {

@@ -210,7 +210,7 @@ function CatalogRow({
     return (
       <span className="flex min-w-0 items-center gap-2">
         {kind === "game" && imageUrl ? (
-              <img src={imageUrl} alt="" className="size-4 shrink-0 rounded-sm" />
+          <img src={imageUrl} alt="" className="size-4 shrink-0 rounded-sm" />
         ) : null}
         <span className="min-w-0 truncate font-medium">{entry.title}</span>
         <code className="shrink-0 text-[10px] text-[var(--text-tertiary)]">
