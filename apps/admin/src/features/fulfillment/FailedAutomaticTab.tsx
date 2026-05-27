@@ -10,14 +10,18 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@yupay/ui";
+import { AlertTriangle, Wallet } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { ForceCompleteModal } from "./ForceCompleteModal";
 import type { TaskAdminOut, TaskListOut } from "./types";
 
 import { DataTable, type Column } from "@/components/DataTable";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
+
+const LOW_BALANCE_ERROR = "supplier_low_balance";
 
 interface BulkRetryResponse {
   retried: TaskAdminOut[];
@@ -29,6 +33,7 @@ export function FailedAutomaticTab() {
   const navigate = useNavigate();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [forceCompleteFor, setForceCompleteFor] = useState<TaskAdminOut | null>(null);
 
   const query = useQuery<TaskListOut>({
     queryKey: [...qk.fulfillmentTasks({ status: "failed" }), "no-manual"],
@@ -113,12 +118,24 @@ export function FailedAutomaticTab() {
     {
       key: "error",
       header: "Ошибка",
-      render: (t) =>
-        t.last_error ? (
+      render: (t) => {
+        if (t.last_error === LOW_BALANCE_ERROR) {
+          return (
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full bg-[var(--bg-muted)] px-2.5 py-0.5 text-xs font-medium text-[var(--danger)]"
+              title="Поставщик отверг заказ из-за недостатка средств. Клиент видит «в обработке»."
+            >
+              <Wallet className="size-3.5" aria-hidden />
+              Низкий баланс
+            </span>
+          );
+        }
+        return t.last_error ? (
           <span className="text-xs text-[var(--danger)]">{t.last_error}</span>
         ) : (
           <span className="text-[var(--text-secondary)]">—</span>
-        ),
+        );
+      },
     },
     {
       key: "age",
@@ -127,10 +144,46 @@ export function FailedAutomaticTab() {
       className: "w-40",
       sortAccessor: (t) => t.failed_at,
     },
+    {
+      key: "actions",
+      header: "",
+      render: (t) => {
+        if (t.last_error !== LOW_BALANCE_ERROR) return null;
+        return (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setForceCompleteFor(t);
+            }}
+            className="text-xs text-[var(--text-secondary)] underline-offset-2 hover:text-[var(--text-primary)] hover:underline"
+          >
+            Завершить вручную
+          </button>
+        );
+      },
+      className: "w-32 text-right",
+    },
   ];
+
+  const lowBalanceRows = rows.filter((r) => r.last_error === LOW_BALANCE_ERROR);
 
   return (
     <div>
+      {lowBalanceRows.length > 0 && (
+        <div
+          role="alert"
+          className="mb-4 flex items-start gap-3 rounded-md border border-[var(--danger)] bg-[var(--bg-muted)] p-3 text-sm"
+        >
+          <AlertTriangle className="mt-0.5 size-5 shrink-0 text-[var(--danger)]" aria-hidden />
+          <div className="flex-1">
+            <strong>Низкий баланс у поставщика: {lowBalanceRows.length.toString()} задач.</strong>{" "}
+            Клиенты видят «в обработке». Пополните счёт у G2B и нажмите «Перезапустить» по каждой
+            задаче, либо «Завершить вручную» если выдали код off-platform.
+          </div>
+        </div>
+      )}
+
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-[var(--text-secondary)]">
           Автоматические задачи, которые упали. Отметь и нажми «Перезапустить» — бэк сам пропустит
@@ -168,6 +221,19 @@ export function FailedAutomaticTab() {
           void navigate(`/orders/${t.order_id}`);
         }}
       />
+
+      {forceCompleteFor && (
+        <ForceCompleteModal
+          task={forceCompleteFor}
+          onClose={() => {
+            setForceCompleteFor(null);
+          }}
+          onCompleted={() => {
+            setForceCompleteFor(null);
+            void qc.invalidateQueries({ queryKey: ["admin", "fulfillment"] });
+          }}
+        />
+      )}
     </div>
   );
 }

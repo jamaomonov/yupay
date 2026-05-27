@@ -24,6 +24,7 @@ PII / secrets policy:
 from __future__ import annotations
 
 import hashlib
+from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
 from yupay.core.config import get_settings
@@ -39,6 +40,12 @@ from yupay.modules.fulfillment.suppliers.g2b_client import (
     G2bTerminalFailure,
 )
 from yupay.modules.integrations.service import get_mapping
+
+# Sentinel last_error value the saga keys on to decide that this isn't a
+# real fulfilment failure but a "topped-up-supplier-needed" condition.
+# Keeping it machine-readable (snake_case, no human prose) lets the
+# admin UI badge it without trying to parse free-form error strings.
+LOW_BALANCE_ERROR = "supplier_low_balance"
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -197,6 +204,17 @@ class G2bFulfiller(Fulfiller):
     ) -> FulfillResult:
         qty = max(1, item.qty * mapping.quantity)
         client = self._client()
+
+        low_balance = await self._check_balance_or_none(
+            client=client,
+            required_per_unit=item.sku.cost_usdt if item.sku else None,
+            qty=qty,
+            mapping=mapping,
+            kind="voucher",
+        )
+        if low_balance is not None:
+            return low_balance
+
         try:
             result = await client.purchase_voucher(
                 product_id=mapping.external_product_id,
@@ -204,6 +222,14 @@ class G2bFulfiller(Fulfiller):
                 idempotency_key=idempotency_key,
             )
         except G2bError as exc:
+            if _looks_like_low_balance(exc):
+                return _low_balance_result(
+                    mapping=mapping,
+                    kind="voucher",
+                    current_balance=None,
+                    required=None,
+                    source=f"g2b HTTP {exc.status}",
+                )
             raise FulfillerError(f"g2b purchase failed: HTTP {exc.status}") from exc
 
         if result.status == "completed":
@@ -265,6 +291,17 @@ class G2bFulfiller(Fulfiller):
         callback_url = s.g2b_callback_url or None
 
         client = self._client()
+
+        low_balance = await self._check_balance_or_none(
+            client=client,
+            required_per_unit=item.sku.cost_usdt if item.sku else None,
+            qty=max(1, item.qty * mapping.quantity),
+            mapping=mapping,
+            kind="game",
+        )
+        if low_balance is not None:
+            return low_balance
+
         try:
             created = await client.create_game_order(
                 game_code=mapping.external_product_id,
@@ -277,6 +314,14 @@ class G2bFulfiller(Fulfiller):
                 idempotency_key=idempotency_key,
             )
         except G2bError as exc:
+            if _looks_like_low_balance(exc):
+                return _low_balance_result(
+                    mapping=mapping,
+                    kind="game",
+                    current_balance=None,
+                    required=None,
+                    source=f"g2b HTTP {exc.status}",
+                )
             raise FulfillerError(f"g2b game order failed: HTTP {exc.status}") from exc
 
         if created.status == "completed":
@@ -327,6 +372,53 @@ class G2bFulfiller(Fulfiller):
         )
 
     # ---------- helpers ----------
+
+    async def _check_balance_or_none(
+        self,
+        *,
+        client: G2bClient,
+        required_per_unit: Decimal | None,
+        qty: int,
+        mapping: SkuSupplierMapping,
+        kind: str,
+    ) -> FulfillResult | None:
+        """Pre-flight call to ``GET /v1/getMe``.
+
+        Returns a low-balance ``FulfillResult`` when we already know we
+        don't have enough USDT on the supplier side. ``None`` means
+        either the balance is fine, or we couldn't price the order
+        confidently (no ``cost_usdt`` on the SKU and getMe blew up) —
+        in which case we let the actual purchase attempt run and react
+        to its 4xx if any.
+
+        Why pre-flight instead of post-mortem: G2B's docs explicitly
+        say "перед любой покупкой запрашивать getMe и проверять, что
+        balance >= unit_price * quantity". An idempotency-keyed POST
+        that 4xx's still counts against the dedupe window, so failing
+        early is the cheapest path to a clean retry later.
+        """
+        if required_per_unit is None or required_per_unit <= 0:
+            return None
+        try:
+            me = await client.get_me()
+        except Exception:  # noqa: BLE001 -- pre-flight is best-effort
+            return None
+        try:
+            current = Decimal(str(me.get("balance"))) if me.get("balance") is not None else None
+        except (InvalidOperation, ValueError):
+            return None
+        if current is None:
+            return None
+        required_total = Decimal(str(required_per_unit)) * Decimal(qty)
+        if current >= required_total:
+            return None
+        return _low_balance_result(
+            mapping=mapping,
+            kind=kind,
+            current_balance=current,
+            required=required_total,
+            source="g2b.getMe",
+        )
 
     async def _load_mapping(self, db: AsyncSession, sku_id: str) -> SkuSupplierMapping:
         row = await get_mapping(db, sku_id=sku_id, supplier_slug="g2b")
@@ -414,6 +506,59 @@ def _stringify_or_none(value: Any) -> str | None:
         return None
     s = str(value).strip()
     return s or None
+
+
+_LOW_BALANCE_HINTS = ("insufficient", "balance", "funds", "not enough")
+
+
+def _looks_like_low_balance(exc: G2bError) -> bool:
+    """Heuristic: does this 4xx look like a "topped-up wallet needed" error?
+
+    G2B doesn't document a dedicated error code for this case, so we
+    inspect the response body. The hints are deliberately loose — a
+    false positive demotes a hard failure to a low-balance retryable
+    state, which is the safer mistake (admin sees both kinds in the
+    same queue either way).
+    """
+    body = (exc.body or "").lower()
+    if exc.status not in {400, 402, 403, 422}:
+        return False
+    return any(hint in body for hint in _LOW_BALANCE_HINTS)
+
+
+def _low_balance_result(
+    *,
+    mapping: SkuSupplierMapping,
+    kind: str,
+    current_balance: Decimal | None,
+    required: Decimal | None,
+    source: str,
+) -> FulfillResult:
+    """Build the ``failed/low_balance`` FulfillResult.
+
+    The saga keys on ``error=LOW_BALANCE_ERROR`` to split this from a
+    real failure: ``task.status`` flips to ``failed`` (so admin sees it
+    in the inbox), but ``item.fulfillment_state`` stays
+    ``in_progress`` (so the customer keeps seeing "в обработке"
+    instead of an error).
+    """
+    return FulfillResult(
+        outcome="failed",
+        external_order_id=None,
+        artifact_kind=None,
+        artifact=None,
+        error=LOW_BALANCE_ERROR,
+        extra_metadata={
+            "supplier": "g2b",
+            "kind": kind,
+            "low_balance": True,
+            "current_balance": str(current_balance) if current_balance is not None else None,
+            "required": str(required) if required is not None else None,
+            "external_product_id": mapping.external_product_id,
+            "external_variant_id": mapping.external_variant_id,
+            "source": source,
+        },
+    )
 
 
 __all__ = ["G2bFulfiller"]

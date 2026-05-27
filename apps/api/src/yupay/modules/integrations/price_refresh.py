@@ -85,6 +85,11 @@ async def refresh_all_mappings(*, supplier_slug: str | None = None) -> PriceRefr
             if await notifications.send_admin_alert(text):
                 alerts += 1
 
+    # Proactive low-balance warning. Independent of whether any
+    # mapping moved this tick — supplier could be sub-threshold even
+    # when prices are stable.
+    await _maybe_warn_low_balance()
+
     log.info(
         "integrations.price_refresh.done",
         checked=checked,
@@ -93,6 +98,53 @@ async def refresh_all_mappings(*, supplier_slug: str | None = None) -> PriceRefr
         errors=errors,
     )
     return PriceRefreshReport(checked=checked, moved=moved, alerts_sent=alerts, errors=errors)
+
+
+async def _maybe_warn_low_balance() -> None:  # noqa: PLR0911 -- discriminated short-circuits
+    """Ping ops when G2B's wallet is dangerously low — before an order
+    actually rejects.
+
+    Distinct from the per-order ``supplier_low_balance`` alert: that one
+    fires only when a real customer order gets rejected; this one is a
+    pre-emptive heads-up. Both reuse ``send_admin_alert`` but each owns
+    a separate Redis dedupe key.
+    """
+    settings = get_settings()
+    threshold = float(settings.supplier_low_balance_threshold)
+    if threshold <= 0:
+        return
+    from yupay.modules.fulfillment.service import _set_redis_dedupe
+    from yupay.modules.fulfillment.suppliers import REGISTRY
+    from yupay.modules.fulfillment.suppliers.g2b import G2bFulfiller
+
+    fulfiller = REGISTRY.get("g2b")
+    if not isinstance(fulfiller, G2bFulfiller) or not fulfiller.available:
+        return
+    try:
+        me = await fulfiller._client().get_me()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("integrations.lowbal.getme_failed", error=str(exc))
+        return
+    raw_balance = me.get("balance")
+    if raw_balance is None:
+        return
+    try:
+        balance = float(raw_balance)
+    except (TypeError, ValueError):
+        return
+    if balance >= threshold:
+        return
+    # 6h dedupe so we don't ping ops on every hourly tick while the
+    # wallet stays below threshold overnight.
+    if await _set_redis_dedupe("alert:low_balance_warn:g2b", ttl_seconds=6 * 3600):
+        return
+    text = (
+        "<b>ℹ️ Баланс G2B заканчивается</b>\n"
+        f"Текущий баланс: <b>${balance:.2f}</b>\n"
+        f"Порог: <b>${threshold:.2f}</b>\n"
+        "Пополни счёт у G2B заранее, чтобы клиенты не зависли в «обработке»."
+    )
+    await notifications.send_admin_alert(text)
 
 
 async def _should_alert(

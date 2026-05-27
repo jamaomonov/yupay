@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from yupay.core.clock import now
+from yupay.core.config import get_settings
 from yupay.core.errors import ConflictError, NotFoundError
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
@@ -44,6 +45,18 @@ log = get_logger("yupay.fulfillment.service")
 
 INVENTORY_ROUTE = "inventory"
 _SUPPLIER_PREFIX = "supplier:"
+
+# Mirrors ``g2b.LOW_BALANCE_ERROR``. Duplicated here (instead of imported)
+# to keep the saga independent of any one supplier module — once a
+# second adapter ships with the same kind of soft-failure, both will
+# write the same sentinel string and the saga will route them
+# identically.
+_LOW_BALANCE_ERROR = "supplier_low_balance"
+# Redis-side dedupe window. Without it a 50-order backlog after a
+# balance drop would fan out 50 Telegram messages in the same minute.
+# 15 min covers a typical "see the alert, top up the wallet, retry"
+# loop without burying ops in repeats.
+_LOW_BALANCE_ALERT_DEDUPE_SECONDS = 15 * 60
 
 
 # ---------- supplier routing ----------
@@ -240,7 +253,9 @@ async def _inventory_fulfill(db: AsyncSession, *, task: FulfillmentTask, item: O
     return True
 
 
-async def process_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
+async def process_task(  # noqa: PLR0915 -- linear saga; splitting hurts readability
+    db: AsyncSession, *, task_id: str
+) -> FulfillmentTask:
     """Run a single task and persist the outcome.
 
     Routing: if ``task.supplier == 'inventory'`` (set by ``start_for_order`` from
@@ -252,8 +267,18 @@ async def process_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
     if task.status in ("succeeded", "cancelled"):
         return task
 
+    # Eager-load ``item.sku.product`` — real-supplier fulfillers read
+    # ``sku.cost_usdt`` (pre-flight balance check) and ``sku.product.kind``
+    # (artifact decision). Async SA raises on lazy attribute access
+    # otherwise.
+    from yupay.modules.catalog.models import Sku
+
     item = (
-        await db.execute(select(OrderItem).where(OrderItem.id == task.order_item_id))
+        await db.execute(
+            select(OrderItem)
+            .options(selectinload(OrderItem.sku).selectinload(Sku.product))
+            .where(OrderItem.id == task.order_item_id)
+        )
     ).scalar_one()
     order = (await db.execute(select(Order).where(Order.id == task.order_id))).scalar_one()
 
@@ -350,7 +375,16 @@ async def process_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
         task.status = "failed"
         task.failed_at = now()
         task.last_error = result.error
-        item.fulfillment_state = "failed"
+        # Low-balance is the one "failed" mode we deliberately hide
+        # from the customer: the task lands in the admin inbox, but
+        # the order item stays ``in_progress`` so the storefront keeps
+        # saying "обработка" instead of flipping to an error state.
+        # The admin will either top up + retry, or fulfil manually.
+        if result.error == _LOW_BALANCE_ERROR:
+            item.fulfillment_state = "in_progress"
+            await _maybe_alert_low_balance(task=task, result=result)
+        else:
+            item.fulfillment_state = "failed"
 
     return task
 
@@ -445,6 +479,71 @@ async def cancel_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
     item.fulfillment_state = "failed"  # see ck_order_items_state — no 'cancelled'
     await db.flush()
     return task
+
+
+# ---------- low-balance alerting ----------
+
+
+async def _maybe_alert_low_balance(
+    *,
+    task: FulfillmentTask,
+    result: FulfillResult,
+) -> None:
+    """Send an ops Telegram alert when a supplier rejects an order for
+    lack of funds — but only once per supplier per dedupe window.
+
+    Dedupe lives in Redis so the lock survives across uvicorn workers
+    and a process restart. A Redis outage degrades to "alert every time"
+    rather than "alert never"; we'd rather over-notify than miss the
+    incident.
+    """
+    from yupay.modules.notifications import api as notifications
+
+    extra = result.extra_metadata or {}
+    supplier = str(extra.get("supplier") or task.supplier or "unknown")
+    key = f"alert:low_balance:{supplier}"
+
+    if await _set_redis_dedupe(key, ttl_seconds=_LOW_BALANCE_ALERT_DEDUPE_SECONDS):
+        # Another worker already alerted for this supplier within the
+        # window — silently drop this one.
+        return
+
+    current = extra.get("current_balance") or "?"
+    required = extra.get("required") or "?"
+    ext_id = extra.get("external_product_id") or "?"
+    variant = extra.get("external_variant_id") or ""
+    variant_line = f"\nНоминал: <code>{variant}</code>" if variant else ""
+    text = (
+        "<b>⚠️ Низкий баланс поставщика</b>\n"
+        f"Поставщик: <code>{supplier}</code>\n"
+        f"Продукт: <code>{ext_id}</code>{variant_line}\n"
+        f"Баланс: <b>${current}</b> · Нужно: <b>${required}</b>\n"
+        f"<i>Задача: {task.id[:8]}… · клиент видит «в обработке».</i>\n"
+        f"Пополни счёт и нажми «Повторить» в Fulfilment Inbox."
+    )
+    await notifications.send_admin_alert(text)
+
+
+async def _set_redis_dedupe(key: str, *, ttl_seconds: int) -> bool:
+    """Return ``True`` if the key was already set (i.e. a previous alert
+    is still within the dedupe window).
+
+    Uses SET NX so the check + set is atomic. Swallows Redis errors —
+    a dead Redis must not block the saga, and degrading to "alert every
+    time" is the right failure mode for an alert dedupe.
+    """
+    try:
+        import redis.asyncio as redis  # type: ignore[import-untyped]
+
+        client = redis.from_url(get_settings().redis_url, decode_responses=True)
+        try:
+            existed = not await client.set(key, "1", ex=ttl_seconds, nx=True)
+        finally:
+            await client.aclose()
+    except Exception as exc:  # noqa: BLE001 -- Redis outage degrades to "alert each time"
+        log.warning("alerts.dedupe.redis_unavailable", error=str(exc), key=key)
+        return False
+    return existed
 
 
 # ---------- async-supplier reconciliation (webhook & polling) ----------
@@ -555,25 +654,37 @@ async def complete_manual_task(
     admin_note: str | None,
     admin_id: str,
     proof_url: str | None = None,
+    force: bool = False,
 ) -> FulfillmentTask:
-    """Admin marks a manual task as completed.
+    """Admin marks a task as completed by hand.
 
-    Drops the supplied artifact into ``deliveries``, flips the task to
-    ``succeeded``, the item to ``delivered``, and lets
-    :func:`_try_settle_order` walk the order to ``delivered``. Guarded so
-    only ``supplier="manual"`` tasks in ``in_progress`` can be completed
-    here — pushing a real supplier task through this path would create
-    reconciliation drift we have no way to detect.
+    Default behaviour is unchanged: only ``supplier="manual"`` tasks in
+    ``in_progress`` can be finalised here, so real supplier tasks can't
+    drift away from their upstream's idea of state.
+
+    ``force=True`` is the supplier-side escape hatch: an admin uses it
+    when a real supplier rejected the order (typically
+    ``supplier_low_balance`` after the operator topped up off-platform
+    and delivered the code manually). In that mode we accept any
+    supplier and any ``failed | in_progress`` status, and tag the
+    audit row + ``extra_metadata.force_complete=True`` so the action is
+    distinguishable in the audit feed.
     """
     task = await _load_task(db, task_id)
-    if task.supplier != "manual":
+    if not force:
+        if task.supplier != "manual":
+            raise ConflictError(
+                "task is not a manual task",
+                extra={"supplier": task.supplier},
+            )
+        if task.status != "in_progress":
+            raise ConflictError(
+                "manual task cannot be completed in its current state",
+                extra={"status": task.status},
+            )
+    elif task.status not in ("in_progress", "failed"):
         raise ConflictError(
-            "task is not a manual task",
-            extra={"supplier": task.supplier},
-        )
-    if task.status != "in_progress":
-        raise ConflictError(
-            "manual task cannot be completed in its current state",
+            "task cannot be force-completed in its current state",
             extra={"status": task.status},
         )
     if artifact_kind not in _VALID_ARTIFACT_KINDS:
@@ -616,20 +727,28 @@ async def complete_manual_task(
     task.completed_by = admin_id
     task.admin_note = admin_note
     task.updated_at = moment
+    new_meta: dict[str, Any] = {}
     if proof_url is not None and proof_url.strip():
-        # Internal-only — kept on the task, never copied to ``Delivery`` so
-        # the customer can't see it on /orders/{id}/deliveries.
-        task.extra_metadata = {
-            **(task.extra_metadata or {}),
-            "proof_url": proof_url.strip(),
-        }
+        new_meta["proof_url"] = proof_url.strip()
+    if force:
+        # Audit marker — the admin overrode a real-supplier task instead
+        # of completing a regular manual one. Surfaced in the activity
+        # feed so it's clear this delivery never passed through the
+        # supplier's fulfilment pipeline.
+        new_meta["force_complete"] = True
+    if new_meta:
+        task.extra_metadata = {**(task.extra_metadata or {}), **new_meta}
     item.fulfillment_state = "delivered"
     _record_attempt(
         db,
         task=task,
         kind="fulfill",
         status="ok",
-        payload={"manual": True, "admin_id": admin_id},
+        payload={
+            "manual": True,
+            "admin_id": admin_id,
+            **({"force_complete": True} if force else {}),
+        },
     )
     try:
         await db.flush()

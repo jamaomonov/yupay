@@ -8408,6 +8408,74 @@
         ]
       }
     },
+    "/api/v1/admin/fulfillment/tasks/{task_id}/force-complete": {
+      "post": {
+        "operationId": "admin_force_complete_task_api_v1_admin_fulfillment_tasks__task_id__force_complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualCompleteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FulfillmentTaskOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Force-complete a non-manual task that the supplier rejected \u2014 typically used after a low-balance event when the admin topped up off-platform and delivered the code by hand.",
+        "tags": [
+          "admin:fulfillment"
+        ]
+      }
+    },
     "/api/v1/admin/fulfillment/tasks/{task_id}/retry": {
       "post": {
         "operationId": "admin_retry_task_api_v1_admin_fulfillment_tasks__task_id__retry_post",

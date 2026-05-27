@@ -31,6 +31,9 @@ x-app-env: &app-env
   TG_ALERT_CHAT_ID: ${TG_ALERT_CHAT_ID:-}
   PRICE_ALERT_THRESHOLD_PCT: ${PRICE_ALERT_THRESHOLD_PCT:-5}
   PRICE_REFRESH_INTERVAL_MINUTES: ${PRICE_REFRESH_INTERVAL_MINUTES:-60}
+  # USD-equivalent threshold for the proactive "supplier wallet running
+  # out" warning the scheduler dispatches every tick. 0 disables it.
+  SUPPLIER_LOW_BALANCE_THRESHOLD: ${SUPPLIER_LOW_BALANCE_THRESHOLD:-50}
 
 services:
   postgres:

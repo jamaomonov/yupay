@@ -202,6 +202,9 @@ class Settings(BaseSettings):
     price_alert_threshold_pct: float = Field(default=5.0)
     # How often the scheduler re-prices every active mapping.
     price_refresh_interval_minutes: int = Field(default=60)
+    # Send an ops alert when the supplier's USDT wallet falls below this
+    # value (USD-equivalent). Set to 0 to disable.
+    supplier_low_balance_threshold: float = Field(default=50.0)
 
     @property
     def is_prod(self) -> bool:

@@ -263,6 +263,36 @@ async def admin_complete_manual_task(
 
 
 @admin_router.post(
+    "/tasks/{task_id}/force-complete",
+    response_model=FulfillmentTaskOut,
+    status_code=status.HTTP_200_OK,
+    summary=(
+        "Force-complete a non-manual task that the supplier rejected — "
+        "typically used after a low-balance event when the admin "
+        "topped up off-platform and delivered the code by hand."
+    ),
+)
+async def admin_force_complete_task(
+    task_id: str,
+    body: ManualCompleteIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+) -> FulfillmentTaskOut:
+    task = await svc.complete_manual_task(
+        db,
+        task_id=task_id,
+        artifact_kind=body.artifact_kind,
+        artifact=body.artifact,
+        channel=body.channel,
+        admin_note=body.admin_note,
+        admin_id=admin.id,
+        proof_url=body.proof_url,
+        force=True,
+    )
+    return FulfillmentTaskOut.model_validate(task)
+
+
+@admin_router.post(
     "/tasks/{task_id}/fail",
     response_model=FulfillmentTaskOut,
     status_code=status.HTTP_200_OK,
