@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 
-import { clearTokens, getAccessToken, setTokens } from "@/lib/api";
+import { clearTokens, getAccessToken, registerAuthBridge, setTokens } from "@/lib/api";
 
 interface AuthMe {
   id: string;
@@ -35,5 +35,16 @@ export const useAuthStore = create<AuthStore>((set) => ({
     set({ token: null, me: null });
   },
 }));
+
+// Tell the API layer how to push token rotations / auth losses back
+// into Zustand without ``api.ts`` importing the store (avoids a cycle).
+registerAuthBridge({
+  onTokensRotated: (access) => {
+    useAuthStore.setState({ token: access });
+  },
+  onAuthLost: () => {
+    useAuthStore.setState({ token: null, me: null });
+  },
+});
 
 export type { AuthMe };
