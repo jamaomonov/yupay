@@ -11,6 +11,7 @@ import type { Brand, Product, Sku } from "../types";
 
 import { ImageUploader } from "@/components/ImageUploader";
 import { PageHeader } from "@/components/PageHeader";
+import { SkuPriceHistoryCard } from "@/features/integrations/SkuPriceHistoryCard";
 import { ApiError, apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
@@ -445,6 +446,8 @@ export function SkuEditPage() {
             overrides={form.watch("price_overrides")}
             skuCode={watchedSkuCode}
           />
+
+          {!isNew && params.id && <SkuPriceHistoryCard skuId={params.id} />}
 
           <section className="rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
             <div className="mb-3 flex items-baseline justify-between">

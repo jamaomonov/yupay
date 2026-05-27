@@ -190,6 +190,19 @@ class Settings(BaseSettings):
     )
     g2b_request_timeout_seconds: float = Field(default=20.0)
 
+    # --- admin alerts (separate Telegram bot — NOT the customer bot) ---
+    # Dedicated bot so an outage of one channel doesn't drag the other
+    # down, and so the customer bot's token doesn't carry admin-chat
+    # write rights. Configure both as empty in dev — alerts then no-op.
+    tg_alert_bot_token: str = Field(default="")
+    tg_alert_chat_id: str = Field(default="")
+    # Threshold in percent (absolute) above which a supplier-price move
+    # triggers a Telegram alert. Default 5% — anything smaller is noise
+    # for ops.
+    price_alert_threshold_pct: float = Field(default=5.0)
+    # How often the scheduler re-prices every active mapping.
+    price_refresh_interval_minutes: int = Field(default=60)
+
     @property
     def is_prod(self) -> bool:
         """Whether we are running in production."""

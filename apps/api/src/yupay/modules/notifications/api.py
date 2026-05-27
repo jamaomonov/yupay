@@ -6,6 +6,7 @@ Other modules import only the names re-exported here — never reach into
 
 from __future__ import annotations
 
+from yupay.modules.notifications.alerts import send_admin_alert
 from yupay.modules.notifications.service import (
     notify_order_delivered,
     notify_order_failed,
@@ -20,4 +21,5 @@ __all__ = [
     "notify_order_paid",
     "schedule",
     "schedule_after_commit",
+    "send_admin_alert",
 ]

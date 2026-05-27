@@ -4130,6 +4130,22 @@
         "title": "PresignUploadOut",
         "type": "object"
       },
+      "PriceHistoryOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PricePointOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "PriceHistoryOut",
+        "type": "object"
+      },
       "PriceOut": {
         "description": "A price in one currency.",
         "properties": {
@@ -4158,6 +4174,116 @@
           "currency"
         ],
         "title": "PriceOut",
+        "type": "object"
+      },
+      "PricePointOut": {
+        "description": "One row in ``supplier_price_history`` as exposed to the admin UI.",
+        "properties": {
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "cost_usdt": {
+            "title": "Cost Usdt",
+            "type": "string"
+          },
+          "external_product_id": {
+            "title": "External Product Id",
+            "type": "string"
+          },
+          "external_variant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Variant Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "previous_cost_usdt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Cost Usdt"
+          },
+          "sku_id": {
+            "title": "Sku Id",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "supplier_slug": {
+            "title": "Supplier Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "sku_id",
+          "supplier_slug",
+          "kind",
+          "external_product_id",
+          "external_variant_id",
+          "cost_usdt",
+          "previous_cost_usdt",
+          "source",
+          "captured_at"
+        ],
+        "title": "PricePointOut",
+        "type": "object"
+      },
+      "PriceRefreshOut": {
+        "description": "Result of a manual refresh-all-prices invocation.",
+        "properties": {
+          "alerts_sent": {
+            "title": "Alerts Sent",
+            "type": "integer"
+          },
+          "checked": {
+            "title": "Checked",
+            "type": "integer"
+          },
+          "errors": {
+            "title": "Errors",
+            "type": "integer"
+          },
+          "moved": {
+            "title": "Moved",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "checked",
+          "moved",
+          "alerts_sent",
+          "errors"
+        ],
+        "title": "PriceRefreshOut",
         "type": "object"
       },
       "ProductCreate": {
@@ -9002,6 +9128,126 @@
           }
         },
         "summary": "Drop the mapping for ``(sku_id, supplier_slug)``",
+        "tags": [
+          "admin:integrations"
+        ]
+      }
+    },
+    "/api/v1/admin/integrations/refresh-all-prices": {
+      "post": {
+        "description": "On-demand admin trigger. Mirrors the scheduler job \u2014 the same\n``integrations.price_refresh.refresh_all_mappings`` is invoked, so\nTelegram alerts on threshold crossings fire from here too.",
+        "operationId": "refresh_all_prices_api_v1_admin_integrations_refresh_all_prices_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceRefreshOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Manually re-price every active mapping (the hourly job does this too)",
+        "tags": [
+          "admin:integrations"
+        ]
+      }
+    },
+    "/api/v1/admin/integrations/sku-prices/{sku_id}/history": {
+      "get": {
+        "operationId": "sku_price_history_api_v1_admin_integrations_sku_prices__sku_id__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sku_id",
+            "required": true,
+            "schema": {
+              "title": "Sku Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceHistoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Supplier cost history for a SKU (newest first)",
         "tags": [
           "admin:integrations"
         ]

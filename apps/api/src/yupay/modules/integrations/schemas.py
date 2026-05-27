@@ -47,6 +47,36 @@ class SupplierMappingListOut(BaseModel):
     items: list[SupplierMappingOut]
 
 
+class PricePointOut(BaseModel):
+    """One row in ``supplier_price_history`` as exposed to the admin UI."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    sku_id: str
+    supplier_slug: str
+    kind: str
+    external_product_id: str
+    external_variant_id: str | None
+    cost_usdt: str
+    previous_cost_usdt: str | None
+    source: str | None
+    captured_at: datetime
+
+
+class PriceHistoryOut(BaseModel):
+    items: list[PricePointOut]
+
+
+class PriceRefreshOut(BaseModel):
+    """Result of a manual refresh-all-prices invocation."""
+
+    checked: int
+    moved: int
+    alerts_sent: int
+    errors: int
+
+
 class CostSyncResult(BaseModel):
     """Outcome of the on-save cost refresh.
 
@@ -161,6 +191,9 @@ __all__ = [
     "GameDenomOut",
     "GameFieldsOut",
     "MappingKind",
+    "PriceHistoryOut",
+    "PricePointOut",
+    "PriceRefreshOut",
     "SupplierHealthOut",
     "SupplierMappingIn",
     "SupplierMappingListOut",

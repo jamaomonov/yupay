@@ -10,7 +10,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@yupay/ui";
-import { Database, ListTree, RefreshCw } from "lucide-react";
+import { Database, ListTree, RefreshCw, TrendingUp } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import { PageHeader } from "@/components/PageHeader";
@@ -20,7 +20,12 @@ import { ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
 import { G2bAttemptsTab } from "./G2bAttemptsTab";
-import { SUPPLIER_LABELS, type CatalogSyncResult, type SupplierHealth } from "./types";
+import {
+  SUPPLIER_LABELS,
+  type CatalogSyncResult,
+  type PriceRefreshOut,
+  type SupplierHealth,
+} from "./types";
 
 export function G2bDetailPage() {
   const { slug = "g2b" } = useParams<{ slug?: string }>();
@@ -32,6 +37,19 @@ export function G2bDetailPage() {
     queryKey: qk.integrationHealth(slug),
     queryFn: () => apiGet<SupplierHealth>(`/api/v1/admin/integrations/${slug}/health`),
     refetchInterval: 60_000,
+  });
+
+  const refreshPrices = useMutation<PriceRefreshOut, ApiError>({
+    mutationFn: () => apiPost<PriceRefreshOut>("/api/v1/admin/integrations/refresh-all-prices", {}),
+    onSuccess: (data) => {
+      toast.success(
+        `Цены обновлены · проверено ${data.checked.toString()} · изменилось ${data.moved.toString()} · алертов ${data.alerts_sent.toString()}` +
+          (data.errors > 0 ? ` · ошибок ${data.errors.toString()}` : ""),
+      );
+    },
+    onError: (err) => {
+      toast.error(`Не удалось обновить цены: ${formatError(err)}`);
+    },
   });
 
   const sync = useMutation<CatalogSyncResult, ApiError>({
@@ -87,7 +105,7 @@ export function G2bDetailPage() {
         <HealthSummary data={health.data} />
       )}
 
-      <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+      <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
         <ActionCard
           icon={ListTree}
           title="Маппинг SKU"
@@ -109,6 +127,17 @@ export function G2bDetailPage() {
               ? null
               : "Доступно только когда ключ настроен и подключение зелёное."
           }
+        />
+        <ActionCard
+          icon={TrendingUp}
+          title="Цены маппингов"
+          description="Прогнать все активные маппинги и обновить cost_usdt. То же делает воркер каждый час; кнопка для ручного запуска."
+          actionLabel={refreshPrices.isPending ? "Обновляем…" : "Обновить цены"}
+          onClick={() => {
+            refreshPrices.mutate();
+          }}
+          actionDisabled={refreshPrices.isPending || !health.data?.available}
+          hint={health.data?.available ? null : "Нужно настроенное и онлайн-подключение к G2B."}
         />
       </section>
 

@@ -191,14 +191,184 @@ async def list_catalog(
     return list((await db.execute(stmt)).scalars().all())
 
 
+async def list_price_history(
+    db: AsyncSession,
+    *,
+    sku_id: str,
+    limit: int = 100,
+) -> list[Any]:
+    """Last ``limit`` price points for a SKU, newest first."""
+    from yupay.modules.integrations.models import SupplierPriceHistory
+
+    stmt = (
+        select(SupplierPriceHistory)
+        .where(SupplierPriceHistory.sku_id == sku_id)
+        .order_by(SupplierPriceHistory.captured_at.desc())
+        .limit(min(max(limit, 1), 500))
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+@dataclass(frozen=True)
+class CostRefreshOutcome:
+    """Return type for :func:`refresh_sku_cost_for_mapping`.
+
+    ``updated`` reflects whether ``Sku.cost_usdt`` actually changed.
+    ``reason`` is populated whenever ``updated`` is false to give the
+    admin UI / scheduler logs something to surface.
+    """
+
+    updated: bool
+    old_cost: Any | None = None
+    new_cost: Any | None = None
+    source: str | None = None
+    reason: str | None = None
+
+
+async def refresh_sku_cost_for_mapping(  # noqa: PLR0911, PLR0912 -- discriminated outcome reads clearer than nested branches
+    db: AsyncSession,
+    *,
+    mapping: SkuSupplierMapping,
+    record_history: bool = True,
+) -> CostRefreshOutcome:
+    """Pull the upstream price for ``mapping`` and persist it to
+    ``Sku.cost_usdt`` (plus optionally a row in
+    ``supplier_price_history``).
+
+    Centralised here (instead of inside the upsert route) so the
+    hourly scheduler can reuse the exact same logic without dragging
+    HTTP-layer types into a background actor.
+
+    Never raises — every failure mode is reported through
+    :class:`CostRefreshOutcome`. The caller is responsible for
+    committing the session.
+    """
+    from decimal import Decimal, InvalidOperation
+
+    from yupay.core.ids import new_id
+    from yupay.modules.catalog import admin_service as catalog_svc
+    from yupay.modules.fulfillment.suppliers import REGISTRY
+    from yupay.modules.fulfillment.suppliers.g2b import G2bFulfiller
+    from yupay.modules.integrations.models import SupplierPriceHistory
+
+    if mapping.supplier_slug != "g2b":
+        return CostRefreshOutcome(updated=False, reason="cost sync supported only for g2b today")
+    fulfiller = REGISTRY.get("g2b")
+    if not isinstance(fulfiller, G2bFulfiller) or not fulfiller.available:
+        return CostRefreshOutcome(updated=False, reason="G2B is not configured")
+
+    raw_amount: object = None
+    source = ""
+    try:
+        if mapping.kind == "voucher":
+            cache_row = (
+                await db.execute(
+                    select(SupplierCatalogCache).where(
+                        SupplierCatalogCache.supplier_slug == "g2b",
+                        SupplierCatalogCache.kind == "voucher",
+                        SupplierCatalogCache.external_id == mapping.external_product_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if cache_row is None:
+                return CostRefreshOutcome(
+                    updated=False,
+                    reason="ваучер не найден в кэше — синхронизируйте каталог",
+                )
+            raw_amount = cache_row.raw.get("unit_price")
+            source = "supplier_catalog_cache.unit_price"
+        else:  # game
+            denom_name = (mapping.external_variant_id or "").strip()
+            if not denom_name:
+                return CostRefreshOutcome(
+                    updated=False, reason="у маппинга не указан catalogue_name"
+                )
+            client = fulfiller._client()
+            rows = await client.games_catalogue(mapping.external_product_id)
+            match = next(
+                (r for r in rows if str(r.get("name") or "").strip() == denom_name),
+                None,
+            )
+            if match is None:
+                return CostRefreshOutcome(
+                    updated=False,
+                    reason=f"denom «{denom_name}» не найден в каталоге G2B",
+                )
+            raw_amount = match.get("amount")
+            source = "g2b.games_catalogue.amount"
+    except Exception as exc:  # noqa: BLE001 -- best effort
+        return CostRefreshOutcome(updated=False, reason=f"ошибка обращения к G2B: {exc!s}"[:200])
+
+    if raw_amount is None:
+        return CostRefreshOutcome(updated=False, reason="поставщик не вернул цену", source=source)
+    try:
+        new_cost = Decimal(str(raw_amount))
+    except (InvalidOperation, ValueError):
+        return CostRefreshOutcome(
+            updated=False,
+            reason=f"непарсимая цена: {raw_amount!r}",
+            source=source,
+        )
+    if new_cost <= 0:
+        return CostRefreshOutcome(
+            updated=False, reason="цена ≤ 0", source=source, new_cost=str(new_cost)
+        )
+
+    try:
+        previous = await catalog_svc.set_sku_cost_usdt(db, sku_id=mapping.sku_id, new_cost=new_cost)
+    except Exception as exc:  # noqa: BLE001
+        return CostRefreshOutcome(
+            updated=False, reason=f"не удалось записать cost_usdt: {exc!s}"[:200]
+        )
+
+    moved = previous != new_cost
+    if record_history and moved:
+        db.add(
+            SupplierPriceHistory(
+                id=new_id(),
+                sku_id=mapping.sku_id,
+                supplier_slug=mapping.supplier_slug,
+                kind=mapping.kind,
+                external_product_id=mapping.external_product_id,
+                external_variant_id=mapping.external_variant_id,
+                cost_usdt=new_cost,
+                previous_cost_usdt=previous,
+                source=source,
+            )
+        )
+
+    return CostRefreshOutcome(
+        updated=moved,
+        old_cost=previous,
+        new_cost=new_cost,
+        source=source,
+    )
+
+
+async def list_active_mappings(
+    db: AsyncSession,
+    *,
+    supplier_slug: str | None = None,
+) -> list[SkuSupplierMapping]:
+    """Every active mapping the scheduler should iterate over."""
+    stmt = select(SkuSupplierMapping).where(SkuSupplierMapping.is_active.is_(True))
+    if supplier_slug is not None:
+        stmt = stmt.where(SkuSupplierMapping.supplier_slug == supplier_slug)
+    return list((await db.execute(stmt)).scalars().all())
+
+
 __all__ = [
     "CatalogKind",
+    "CostRefreshOutcome",
     "MappingKind",
     "MappingUpsert",
     "delete_mapping",
     "get_mapping",
+    "list_active_mappings",
     "list_catalog",
     "list_mappings",
+    "list_price_history",
+    "refresh_sku_cost_for_mapping",
     "upsert_catalog_entry",
     "upsert_mapping",
 ]

@@ -25,6 +25,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     text,
 )
@@ -104,4 +105,44 @@ class SupplierCatalogCache(Base):
     )
 
 
-__all__ = ["SkuSupplierMapping", "SupplierCatalogCache"]
+class SupplierPriceHistory(Base):
+    """Append-only audit of upstream cost movements per SKU↔supplier link.
+
+    Written from two places:
+
+    1. The on-save mapping refresher (``upsert_mapping`` route).
+    2. The hourly scheduler job (``scheduler/jobs/refresh_supplier_prices.py``).
+
+    Only the *transitions* are recorded — when a refresh sees the same
+    price as the latest history row, we skip the insert to keep the
+    table from ballooning. ``previous_cost_usdt`` is denormalised for
+    cheap "current vs previous" diffing in the admin sparkline tooltip.
+    """
+
+    __tablename__ = "supplier_price_history"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
+    sku_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("skus.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    supplier_slug: Mapped[str] = mapped_column(String(32), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    external_product_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    external_variant_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    cost_usdt: Mapped[Any] = mapped_column(Numeric(20, 6), nullable=False)
+    previous_cost_usdt: Mapped[Any | None] = mapped_column(Numeric(20, 6), nullable=True)
+    source: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    captured_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+
+    __table_args__ = (
+        CheckConstraint("kind IN ('voucher','game')", name="ck_supplier_price_history_kind"),
+        CheckConstraint("cost_usdt > 0", name="ck_supplier_price_history_cost_positive"),
+        Index("ix_supplier_price_history_sku_time", "sku_id", "captured_at"),
+    )
+
+
+__all__ = ["SkuSupplierMapping", "SupplierCatalogCache", "SupplierPriceHistory"]

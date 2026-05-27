@@ -119,6 +119,30 @@ export interface SupplierMappingUpsertResult {
   cost_sync: CostSyncResult;
 }
 
+export interface PricePoint {
+  id: string;
+  sku_id: string;
+  supplier_slug: string;
+  kind: string;
+  external_product_id: string;
+  external_variant_id: string | null;
+  cost_usdt: string;
+  previous_cost_usdt: string | null;
+  source: string | null;
+  captured_at: string;
+}
+
+export interface PriceHistoryListOut {
+  items: PricePoint[];
+}
+
+export interface PriceRefreshOut {
+  checked: number;
+  moved: number;
+  alerts_sent: number;
+  errors: number;
+}
+
 /** All G2B-flavoured slugs we expose in the admin today. Extend when adding
  *  Steam / Riot / etc. */
 export const KNOWN_SUPPLIERS = ["g2b"] as const;

@@ -19,6 +19,7 @@ from yupay.modules.auth import models as _auth_models  # noqa: F401
 from yupay.modules.catalog import models as _catalog_models  # noqa: F401
 from yupay.modules.fulfillment import models as _fulfillment_models  # noqa: F401
 from yupay.modules.fx import models as _fx_models  # noqa: F401
+from yupay.modules.integrations import models as _integrations_models  # noqa: F401
 from yupay.modules.inventory import models as _inventory_models  # noqa: F401
 from yupay.modules.orders import models as _orders_models  # noqa: F401
 from yupay.modules.payments import models as _payments_models  # noqa: F401
@@ -26,7 +27,7 @@ from yupay.modules.sourcing import models as _sourcing_models  # noqa: F401
 from yupay.modules.users import models as _users_models  # noqa: F401
 from yupay.modules.wallet import models as _wallet_models  # noqa: F401
 
-from yupay_scheduler.jobs import expire_orders
+from yupay_scheduler.jobs import expire_orders, refresh_supplier_prices
 
 configure_logging()
 log = get_logger("yupay.scheduler")
@@ -40,6 +41,7 @@ def build_scheduler() -> AsyncIOScheduler:
     """
     scheduler = AsyncIOScheduler(timezone="UTC")
     expire_orders.register(scheduler)
+    refresh_supplier_prices.register(scheduler)
     return scheduler
 
 

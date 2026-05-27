@@ -25,6 +25,12 @@ x-app-env: &app-env
   G2B_WEBHOOK_SECRET: ${G2B_WEBHOOK_SECRET:-}
   G2B_CALLBACK_URL: ${G2B_CALLBACK_URL:-}
   G2B_REQUEST_TIMEOUT_SECONDS: ${G2B_REQUEST_TIMEOUT_SECONDS:-20}
+  # Admin alert bot (separate from the customer-facing bot). Empty values
+  # no-op the alerts module — useful in dev before the bot is provisioned.
+  TG_ALERT_BOT_TOKEN: ${TG_ALERT_BOT_TOKEN:-}
+  TG_ALERT_CHAT_ID: ${TG_ALERT_CHAT_ID:-}
+  PRICE_ALERT_THRESHOLD_PCT: ${PRICE_ALERT_THRESHOLD_PCT:-5}
+  PRICE_REFRESH_INTERVAL_MINUTES: ${PRICE_REFRESH_INTERVAL_MINUTES:-60}
 
 services:
   postgres:

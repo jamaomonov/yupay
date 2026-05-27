@@ -10,7 +10,6 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
@@ -29,6 +28,9 @@ from yupay.modules.integrations.schemas import (
     GameDenomListOut,
     GameDenomOut,
     GameFieldsOut,
+    PriceHistoryOut,
+    PricePointOut,
+    PriceRefreshOut,
     SupplierHealthOut,
     SupplierMappingIn,
     SupplierMappingListOut,
@@ -106,102 +108,24 @@ async def upsert_mapping(
     )
 
 
-async def _refresh_sku_cost(  # noqa: PLR0911 -- discriminated short-circuits read clearer than nested branches
-    db: AsyncSession,
-    mapping: object,
-) -> CostSyncResult:
-    """Pull the latest upstream price for ``mapping`` and persist it into
-    ``Sku.cost_usdt``.
+async def _refresh_sku_cost(db: AsyncSession, mapping: object) -> CostSyncResult:
+    """HTTP-layer adapter around :func:`svc.refresh_sku_cost_for_mapping`.
 
-    Returns a discriminated result the route layer hands back to the
-    admin UI. Never raises — the cost refresh is "nice to have", not
-    blocking. The next admin save (or the hourly worker we'll wire up
-    later) gets another chance.
-
-    For G2B:
-    - ``voucher`` → uses ``supplier_catalog_cache.raw.unit_price`` so we
-      stay zero-RTT on the common case.
-    - ``game`` → fetches the live catalogue, finds the row whose
-      ``name`` matches the mapping's ``external_variant_id``, takes
-      ``amount`` (G2B's USD price for that denomination).
+    The shared logic lives in the service module so the scheduler can
+    reuse it from a background actor; this wrapper exists only to map
+    the strongly-typed ``CostRefreshOutcome`` back into the DTO the
+    admin SPA expects.
     """
-    from decimal import Decimal, InvalidOperation
-
-    from yupay.modules.catalog import admin_service as catalog_svc
-    from yupay.modules.integrations.models import SkuSupplierMapping, SupplierCatalogCache
+    from yupay.modules.integrations.models import SkuSupplierMapping
 
     assert isinstance(mapping, SkuSupplierMapping)
-
-    if mapping.supplier_slug != "g2b":
-        return CostSyncResult(updated=False, reason="cost sync supported only for g2b today")
-    fulfiller = _g2b_fulfiller_or_none()
-    if fulfiller is None:
-        return CostSyncResult(updated=False, reason="G2B is not configured")
-
-    raw_amount: object = None
-    source = ""
-    try:
-        if mapping.kind == "voucher":
-            cache_row = (
-                await db.execute(
-                    select(SupplierCatalogCache).where(
-                        SupplierCatalogCache.supplier_slug == "g2b",
-                        SupplierCatalogCache.kind == "voucher",
-                        SupplierCatalogCache.external_id == mapping.external_product_id,
-                    )
-                )
-            ).scalar_one_or_none()
-            if cache_row is None:
-                return CostSyncResult(
-                    updated=False,
-                    reason="ваучер не найден в кэше — синхронизируйте каталог",
-                )
-            raw_amount = cache_row.raw.get("unit_price")
-            source = "supplier_catalog_cache.unit_price"
-        else:  # game
-            denom_name = (mapping.external_variant_id or "").strip()
-            if not denom_name:
-                return CostSyncResult(updated=False, reason="у маппинга не указан catalogue_name")
-            client = fulfiller._client()
-            rows = await client.games_catalogue(mapping.external_product_id)
-            match = next(
-                (r for r in rows if str(r.get("name") or "").strip() == denom_name),
-                None,
-            )
-            if match is None:
-                return CostSyncResult(
-                    updated=False,
-                    reason=f"denom «{denom_name}» не найден в каталоге G2B",
-                )
-            raw_amount = match.get("amount")
-            source = "g2b.games_catalogue.amount"
-    except Exception as exc:  # noqa: BLE001 -- best effort
-        log.warning("integrations.cost_sync.fetch_failed", error=str(exc))
-        return CostSyncResult(updated=False, reason=f"ошибка обращения к G2B: {exc!s}"[:200])
-
-    if raw_amount is None:
-        return CostSyncResult(updated=False, reason="поставщик не вернул цену", source=source)
-
-    try:
-        new_cost = Decimal(str(raw_amount))
-    except (InvalidOperation, ValueError):
-        return CostSyncResult(
-            updated=False, reason=f"непарсимая цена: {raw_amount!r}", source=source
-        )
-    if new_cost <= 0:
-        return CostSyncResult(
-            updated=False, reason="цена ≤ 0", source=source, new_cost=str(new_cost)
-        )
-
-    try:
-        previous = await catalog_svc.set_sku_cost_usdt(db, sku_id=mapping.sku_id, new_cost=new_cost)
-    except Exception as exc:  # noqa: BLE001
-        return CostSyncResult(updated=False, reason=f"не удалось записать cost_usdt: {exc!s}"[:200])
+    outcome = await svc.refresh_sku_cost_for_mapping(db, mapping=mapping)
     return CostSyncResult(
-        updated=previous != new_cost,
-        old_cost=str(previous) if previous is not None else None,
-        new_cost=str(new_cost),
-        source=source,
+        updated=outcome.updated,
+        old_cost=str(outcome.old_cost) if outcome.old_cost is not None else None,
+        new_cost=str(outcome.new_cost) if outcome.new_cost is not None else None,
+        source=outcome.source,
+        reason=outcome.reason,
     )
 
 
@@ -441,6 +365,61 @@ async def g2b_check_player(
         name=str(resp["name"]) if resp.get("name") else None,
         openid=str(resp["openid"]) if resp.get("openid") else None,
         reason=None if raw_valid == "valid" else str(resp.get("message") or "rejected"),
+    )
+
+
+@admin_router.get(
+    "/sku-prices/{sku_id}/history",
+    response_model=PriceHistoryOut,
+    summary="Supplier cost history for a SKU (newest first)",
+)
+async def sku_price_history(
+    sku_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> PriceHistoryOut:
+    rows = await svc.list_price_history(db, sku_id=sku_id, limit=limit)
+    return PriceHistoryOut(
+        items=[
+            PricePointOut(
+                id=r.id,
+                sku_id=r.sku_id,
+                supplier_slug=r.supplier_slug,
+                kind=r.kind,
+                external_product_id=r.external_product_id,
+                external_variant_id=r.external_variant_id,
+                cost_usdt=str(r.cost_usdt),
+                previous_cost_usdt=(
+                    str(r.previous_cost_usdt) if r.previous_cost_usdt is not None else None
+                ),
+                source=r.source,
+                captured_at=r.captured_at,
+            )
+            for r in rows
+        ]
+    )
+
+
+@admin_router.post(
+    "/refresh-all-prices",
+    response_model=PriceRefreshOut,
+    summary="Manually re-price every active mapping (the hourly job does this too)",
+)
+async def refresh_all_prices(
+    _admin: Annotated[User, Depends(require_admin)],
+) -> PriceRefreshOut:
+    """On-demand admin trigger. Mirrors the scheduler job — the same
+    ``integrations.price_refresh.refresh_all_mappings`` is invoked, so
+    Telegram alerts on threshold crossings fire from here too."""
+    from yupay.modules.integrations.price_refresh import refresh_all_mappings
+
+    report = await refresh_all_mappings()
+    return PriceRefreshOut(
+        checked=report.checked,
+        moved=report.moved,
+        alerts_sent=report.alerts_sent,
+        errors=report.errors,
     )
 
 
