@@ -31,7 +31,31 @@ We implement a **double-entry, append-only ledger**:
 ### Account kinds (initial)
 
 `user_wallet`, `user_cashback`, `user_promo_credit`, `house_revenue`, `house_cogs`,
-`house_promo_expense`, `provider_clearing:<provider>`, `house_refunds`, `house_fx_pnl`.
+`house_promo_expense`, `house_payments_received`, `provider_clearing:<provider>`,
+`house_refunds`, `house_fx_pnl`.
+
+**Pairing convention.** Postings always come in `D`/`C` pairs (`SUM(D) = SUM(C)`),
+so every move needs partner accounts of opposite `NORMAL_SIDE`. The most common pairs:
+
+| Action                                           | Debit (D)                           | Credit (C)            |
+| ------------------------------------------------ | ----------------------------------- | --------------------- |
+| Promo grant (admin tops up the user)             | `user_wallet`                       | `house_promo_expense` |
+| Customer pays out of their YuPay balance         | `house_payments_received`           | `user_wallet`         |
+| FX conversion inside a user's wallet (USD → UZS) | `user_wallet[UZS]` + `house_fx_pnl` | `user_wallet[USD]`    |
+| Refund (return funds to the user)                | `user_wallet`                       | `house_refunds`       |
+
+`house_payments_received` (D-normal) was added in migration 0018 as the dedicated
+partner for the wallet payment gateway. It also receives the bookkeeping side of
+future card / Click / Payme / crypto adapters once they're online — keeping the
+"money customers paid us" total separate from `house_promo_expense` (which is the
+flip side of promo grants, **not** payments).
+
+`house_revenue` (C-normal) is the longer-term P&L bucket for actual recognised
+revenue. The transition `house_payments_received → house_revenue` will be a
+separate settlement step once accounting cycles are formalised; for now we keep
+the money in `house_payments_received` and don't recognise it as revenue until
+the order is delivered, which keeps refund accounting simple (refund moves money
+back out of `house_payments_received`, not out of recognised revenue).
 
 ## Consequences
 

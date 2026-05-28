@@ -15,6 +15,7 @@ AccountKind = Literal[
     "house_revenue",
     "house_cogs",
     "house_promo_expense",
+    "house_payments_received",
     "house_refunds",
     "house_fx_pnl",
     "provider_clearing",

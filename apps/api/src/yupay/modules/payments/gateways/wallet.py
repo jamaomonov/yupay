@@ -124,17 +124,18 @@ class WalletGateway:
                 f"need {amount} {account.currency}"
             )
 
-        # Counter-account for the user-side credit. Picked
-        # ``house_promo_expense`` because it's already the universal
-        # house-side D-normal account ``admin_adjust`` uses for
-        # symmetric "balance the books" entries. A semantically
-        # tighter ``house_payments_received`` kind is a follow-up to
-        # ADR-0004 — until that lands we keep one model, one transition.
+        # Counter-account for the user-side credit.
+        # ``house_payments_received`` (NORMAL=D) is the dedicated
+        # bucket for money customers paid us directly — wallet today,
+        # card / Click / Payme / crypto later. Kept separate from
+        # ``house_promo_expense`` so finance can answer "сколько мы
+        # приняли от клиентов" without subtracting out promo grants.
+        # See ADR-0004 for the ledger model.
         counter = await wallet_api.ensure_account(
             db,
             owner_type="house",
             owner_id="house",
-            kind="house_promo_expense",
+            kind="house_payments_received",
             currency=account.currency,
         )
 

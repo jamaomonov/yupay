@@ -28,6 +28,13 @@ NORMAL_SIDE: dict[str, str] = {
     "house_cogs": "D",
     "house_promo_expense": "D",
     "house_refunds": "D",
+    # Direct customer payments. Debit-side partner for the
+    # ``user_wallet`` credit when a buyer pays out of their YuPay
+    # balance; future card / Click / Payme / crypto adapters land here
+    # too. Distinct from ``house_promo_expense`` (which is genuine
+    # marketing spend) so reports separate "money customers paid us"
+    # from "money we gave away as promos".
+    "house_payments_received": "D",
     "house_revenue": "C",
     "house_fx_pnl": "C",
     "provider_clearing": "C",
