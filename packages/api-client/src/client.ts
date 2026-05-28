@@ -6,7 +6,7 @@
  */
 
 export interface ApiClientOptions {
-  /** Absolute base URL of the API, e.g. `https://api.yupay.io`. */
+  /** Absolute base URL of the API, e.g. `https://api.yupay.uz`. */
   baseUrl: string;
   /** Optional getter returning the current `Authorization` header value. */
   getAuthHeader?: () => string | undefined;

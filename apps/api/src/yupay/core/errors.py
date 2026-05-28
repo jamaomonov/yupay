@@ -12,7 +12,7 @@ class AppError(Exception):
     """Base class for all expected, user-facing application errors."""
 
     status_code: int = 500
-    type_uri: str = "https://yupay.io/errors/internal"
+    type_uri: str = "https://app.yupay.uz/errors/internal"
     title: str = "Internal error"
 
     def __init__(self, detail: str | None = None, **extra: Any) -> None:
@@ -25,7 +25,7 @@ class NotFoundError(AppError):
     """Resource not found."""
 
     status_code = 404
-    type_uri = "https://yupay.io/errors/not-found"
+    type_uri = "https://app.yupay.uz/errors/not-found"
     title = "Not found"
 
 
@@ -33,7 +33,7 @@ class ConflictError(AppError):
     """State conflict — e.g. attempt to double-spend an idempotency key."""
 
     status_code = 409
-    type_uri = "https://yupay.io/errors/conflict"
+    type_uri = "https://app.yupay.uz/errors/conflict"
     title = "Conflict"
 
 
@@ -41,7 +41,7 @@ class ValidationError(AppError):
     """Request validation failed beyond Pydantic's structural checks."""
 
     status_code = 422
-    type_uri = "https://yupay.io/errors/validation"
+    type_uri = "https://app.yupay.uz/errors/validation"
     title = "Validation failed"
 
 
@@ -49,7 +49,7 @@ class UnauthorizedError(AppError):
     """Auth missing or invalid."""
 
     status_code = 401
-    type_uri = "https://yupay.io/errors/unauthorized"
+    type_uri = "https://app.yupay.uz/errors/unauthorized"
     title = "Unauthorized"
 
 
@@ -57,7 +57,7 @@ class ForbiddenError(AppError):
     """Auth present but insufficient."""
 
     status_code = 403
-    type_uri = "https://yupay.io/errors/forbidden"
+    type_uri = "https://app.yupay.uz/errors/forbidden"
     title = "Forbidden"
 
 
@@ -66,7 +66,7 @@ class UpstreamUnavailableError(AppError):
     couldn't be reached. Maps to RFC 7807 with HTTP 502."""
 
     status_code = 502
-    type_uri = "https://yupay.io/errors/upstream-unavailable"
+    type_uri = "https://app.yupay.uz/errors/upstream-unavailable"
     title = "Upstream unavailable"
 
 
