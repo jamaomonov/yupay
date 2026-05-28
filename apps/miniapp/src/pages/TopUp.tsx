@@ -30,11 +30,7 @@ import {
 } from "@/lib/catalog";
 import { useDisplayCurrency } from "@/lib/currency";
 import { useAvailableProviders, useCheckout } from "@/lib/orders";
-import {
-  forgetFulfillment,
-  getRecentFulfillment,
-  rememberFulfillment,
-} from "@/lib/recent-checkout";
+import { getRecentFulfillment, rememberFulfillment } from "@/lib/recent-checkout";
 import { isInsideTelegram } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { cn } from "@/lib/utils";
@@ -281,10 +277,10 @@ export default function TopUp() {
   const insideTelegram = isInsideTelegram();
 
   const [fulfillment, setFulfillment] = useState<Record<string, string>>({});
-  // Pre-filled from localStorage on the first hydration of the form. We
-  // surface a chip ("Используем те же данные · изменить") so the user is
-  // never surprised, and the chip dismiss clears state + storage.
-  const [prefilled, setPrefilled] = useState(false);
+  // Values from the customer's last checkout for this brand. Offered as a
+  // per-field tap-to-fill suggestion (see DynamicFields) — never auto-applied,
+  // so we don't carry a stale player_id into a fresh order by surprise.
+  const [suggestions, setSuggestions] = useState<Record<string, string>>({});
   const [selectedPkg, setSelectedPkg] = useState<string>("");
   const [paymentMethod, setPaymentMethod] = useState(DEFAULT_PAYMENT_METHOD);
 
@@ -309,26 +305,17 @@ export default function TopUp() {
     }
   }, [packages, selectedPkg]);
 
-  // Prefill fulfillment_data from the user's last successful checkout for
-  // this brand. Runs once per brand-slug change: switching brand wipes the
-  // prefilled flag so we don't carry PUBG's player_id into Steam's email.
+  // On every brand switch: start the form empty and load the last checkout's
+  // fields as *suggestions* only. Clearing inputs here prevents PUBG's
+  // player_id from bleeding into Steam's email when the user changes brand.
   useEffect(() => {
-    if (!gameId) return;
-    const recent = getRecentFulfillment(gameId);
-    if (!recent) {
-      setPrefilled(false);
+    setFulfillment({});
+    if (!gameId) {
+      setSuggestions({});
       return;
     }
-    setFulfillment(recent.fulfillment_data);
-    setPrefilled(true);
+    setSuggestions(getRecentFulfillment(gameId)?.fulfillment_data ?? {});
   }, [gameId]);
-
-  const clearPrefilled = () => {
-    if (!gameId) return;
-    forgetFulfillment(gameId);
-    setFulfillment({});
-    setPrefilled(false);
-  };
 
   if (gamesQuery.isLoading || brandQuery.isLoading) {
     return (
@@ -646,35 +633,12 @@ export default function TopUp() {
                 title={requiredFields.length === 1 ? "Куда зачислить?" : "Реквизиты"}
                 sub={fillingHint}
               />
-              {prefilled && (
-                <div
-                  className="mb-2.5 flex items-center justify-between gap-2 rounded-2xl px-3 py-2"
-                  style={{
-                    background: "hsl(var(--primary) / 0.08)",
-                    border: "1px solid hsl(var(--primary) / 0.25)",
-                  }}
-                >
-                  <p className="text-[12px] leading-snug text-white/75">
-                    Используем данные с прошлого заказа
-                  </p>
-                  <button
-                    type="button"
-                    onClick={clearPrefilled}
-                    className="whitespace-nowrap text-[11px] font-semibold transition-opacity active:opacity-70"
-                    style={{ color: "hsl(var(--primary))" }}
-                  >
-                    Изменить
-                  </button>
-                </div>
-              )}
               <DynamicFields
                 fields={requiredFields}
                 values={fulfillment}
+                suggestions={suggestions}
                 onChange={(key, value) => {
                   setFulfillment((prev) => ({ ...prev, [key]: value }));
-                  // Manual edit dismisses the chip — user is explicitly
-                  // overriding the cached value.
-                  if (prefilled) setPrefilled(false);
                 }}
               />
             </div>
