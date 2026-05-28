@@ -34,6 +34,7 @@ import {
   type DeliveryOut,
   type OrderOut,
   type OrderStatus,
+  type ProductKind,
 } from "@/lib/orders";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
@@ -97,40 +98,57 @@ interface StageCopy {
   subtitle: string;
 }
 
-const STAGE: Record<OrderStatus, StageCopy> = {
-  pending_payment: {
-    title: "Ждём оплату",
-    subtitle: "Платёж ещё не подтверждён.",
-  },
-  paid: {
-    title: "Оплата получена",
-    subtitle: "Передаём заказ в выдачу…",
-  },
-  fulfilling: {
-    title: "Выдаём заказ",
-    subtitle: "Резервируем код / отправляем на сервер.",
-  },
-  fulfilled: {
-    title: "Почти готово",
-    subtitle: "Завершаем оформление выдачи.",
-  },
-  delivered: {
-    title: "Готово",
-    subtitle: "Заказ выдан. Подробности ниже.",
-  },
-  cancelled: {
-    title: "Заказ отменён",
-    subtitle: "Деньги не списаны или были возвращены.",
-  },
-  expired: {
-    title: "Истёк срок оплаты",
-    subtitle: "Создайте новый заказ.",
-  },
-  refunded: {
-    title: "Сделан возврат",
-    subtitle: "Средства возвращены на исходный метод оплаты.",
-  },
-};
+/** What's this order made of? Drives status copy so a top-up never
+ *  promises a "code" and a voucher never says "credited to account".
+ *  ``mixed`` (both kinds in one order) falls back to neutral wording. */
+function orderKind(order: OrderOut): "top_up" | "voucher" | "mixed" {
+  const kinds = new Set(
+    order.items.map((i) => i.display?.product_kind).filter((k): k is ProductKind => Boolean(k)),
+  );
+  if (kinds.size === 1) {
+    return kinds.has("top_up") ? "top_up" : "voucher";
+  }
+  return "mixed";
+}
+
+function stageFor(order: OrderOut): StageCopy {
+  const kind = orderKind(order);
+  switch (order.status) {
+    case "pending_payment":
+      return { title: "Ждём оплату", subtitle: "Платёж ещё не подтверждён." };
+    case "paid":
+      return { title: "Оплата получена", subtitle: "Передаём заказ в выдачу…" };
+    case "fulfilling":
+      return {
+        title: "Выдаём заказ",
+        subtitle:
+          kind === "top_up"
+            ? "Зачисляем на игровой аккаунт."
+            : kind === "voucher"
+              ? "Резервируем код."
+              : "Обрабатываем выдачу.",
+      };
+    case "fulfilled":
+      return { title: "Почти готово", subtitle: "Завершаем оформление выдачи." };
+    case "delivered":
+      return {
+        title: "Готово",
+        subtitle:
+          kind === "top_up"
+            ? "Зачислено. Подробности ниже."
+            : "Заказ выдан. Подробности ниже.",
+      };
+    case "cancelled":
+      return { title: "Заказ отменён", subtitle: "Деньги не списаны или были возвращены." };
+    case "expired":
+      return { title: "Истёк срок оплаты", subtitle: "Создайте новый заказ." };
+    case "refunded":
+      return {
+        title: "Сделан возврат",
+        subtitle: "Средства возвращены на исходный метод оплаты.",
+      };
+  }
+}
 
 export default function OrderSuccess() {
   const params = useParams<{ id: string }>();
@@ -186,7 +204,7 @@ export default function OrderSuccess() {
     );
   }
 
-  const stage = STAGE[order.status];
+  const stage = stageFor(order);
   const isProcessing = isProcessingOrUnknown;
   const isDelivered = order.status === "delivered";
   const isFailed = TERMINAL_FAIL.includes(order.status);
