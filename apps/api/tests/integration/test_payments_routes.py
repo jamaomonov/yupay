@@ -108,6 +108,13 @@ async def _seed_sku(db_session: AsyncSession) -> str:
     )
     db_session.add_all([category, brand, product, sku])
     await db_session.commit()
+    # Pin the route to mock — top_up SKUs now default to the manual queue
+    # without a supplier mapping (sourcing.resolve_for_sku), and these
+    # tests assert the synchronous paid→delivered mock path.
+    from yupay.modules.sourcing.models import SkuSourcingRule
+
+    db_session.add(SkuSourcingRule(sku_id=sku.id, mode="force_supplier", supplier_slug="mock"))
+    await db_session.commit()
     return sku.id
 
 

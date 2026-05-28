@@ -431,30 +431,45 @@ async def test_g2b_sync_catalog_handles_unconfigured(
     assert "not configured" in (body["error"] or "").lower()
 
 
-async def test_sourcing_decision_untouched(
+async def test_topup_routes_to_supplier_once_mapped(
     integration_client: AsyncClient,
     db_session: AsyncSession,
     _seed_sku: str,
 ) -> None:
-    """Creating a supplier mapping must not silently change the sourcing
-    decision — routing still comes from ``sku_sourcing_rules`` alone."""
+    """A ``top_up`` SKU with an active g2b mapping auto-routes to the
+    supplier (with a manual fallback) — no inventory step, no mock.
+
+    ``_seed_sku`` is ``kind='top_up'``. Before a mapping exists the
+    default is the manual queue; once mapped, sourcing picks the
+    supplier. This is the behaviour that replaced the old
+    "everything tries inventory then mock" default.
+    """
     admin = await _login_user(integration_client, tg_id=410)
     await _grant_admin(db_session, tg_id=410)
     headers = {"Authorization": f"Bearer {admin}"}
+
+    # Before mapping: top_up with no supplier → manual queue.
+    before = await integration_client.get(
+        f"/api/v1/admin/sourcing/rules/{_seed_sku}", headers=headers
+    )
+    assert before.status_code == 200
+    assert before.json()["primary"] == "supplier:manual"
+
     await integration_client.put(
         f"/api/v1/admin/integrations/mappings/{_seed_sku}",
         headers=headers,
         json={
             "supplier_slug": "g2b",
-            "kind": "voucher",
-            "external_product_id": "42",
+            "kind": "game",
+            "external_product_id": "pubg_mobile",
+            "external_variant_id": "60 UC",
         },
     )
-    decision = await integration_client.get(
+
+    after = await integration_client.get(
         f"/api/v1/admin/sourcing/rules/{_seed_sku}", headers=headers
     )
-    assert decision.status_code == 200
-    # Default decision is unchanged — inventory-first with mock fallback.
-    assert decision.json()["primary"] == "inventory"
-    assert decision.json()["fallback"] == "supplier:mock"
-    assert decision.json()["rule_present"] is False
+    assert after.status_code == 200
+    assert after.json()["primary"] == "supplier:g2b"
+    assert after.json()["fallback"] == "supplier:manual"
+    assert after.json()["rule_present"] is False

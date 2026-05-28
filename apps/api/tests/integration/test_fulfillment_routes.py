@@ -109,6 +109,14 @@ async def _seed_sku(db_session: AsyncSession) -> str:
     )
     db_session.add_all([category, brand, product, sku])
     await db_session.commit()
+    # Explicit route → mock. Since top_up SKUs now default to the manual
+    # queue when they lack a supplier mapping (see sourcing.resolve_for_sku),
+    # these tests pin the route so they exercise the mock-fulfilment path
+    # they were written for.
+    from yupay.modules.sourcing.models import SkuSourcingRule
+
+    db_session.add(SkuSourcingRule(sku_id=sku.id, mode="force_supplier", supplier_slug="mock"))
+    await db_session.commit()
     return sku.id
 
 
@@ -297,18 +305,21 @@ async def test_admin_required_for_fulfillment_admin(
 
 @pytest.fixture
 async def _seed_sku_manual(db_session: AsyncSession, _seed_sku: str) -> str:
-    """Bolt a ``mode='manual'`` sourcing rule onto the existing seed SKU so
-    paid orders for it route to ``ManualFulfiller`` and park in
-    ``in_progress`` instead of auto-delivering."""
-    from yupay.modules.sourcing.models import SkuSourcingRule
+    """Override the seed SKU's sourcing rule to ``mode='manual'`` so paid
+    orders for it route to ``ManualFulfiller`` and park in ``in_progress``
+    instead of auto-delivering.
 
-    db_session.add(
-        SkuSourcingRule(
-            sku_id=_seed_sku,
-            mode="manual",
-            supplier_slug=None,
-            updated_by="test",
-        )
+    ``_seed_sku`` already pins ``force_supplier=mock``; we upsert via
+    ``set_rule`` (not a raw INSERT) so the row is replaced, not
+    duplicated."""
+    from yupay.modules.sourcing import service as sourcing_svc
+
+    await sourcing_svc.set_rule(
+        db_session,
+        sku_id=_seed_sku,
+        mode="manual",
+        supplier_slug=None,
+        admin_id="test",
     )
     await db_session.commit()
     return _seed_sku

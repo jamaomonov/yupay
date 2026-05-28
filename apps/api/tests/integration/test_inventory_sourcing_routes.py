@@ -498,3 +498,112 @@ async def test_encryption_at_rest(db_session: AsyncSession, _seed_sku: str) -> N
     assert row.code_ciphertext != b"SECRET-XYZ-9000"
     assert row.code_hash == code_hash("SECRET-XYZ-9000")
     assert decrypt(row.code_ciphertext, row.code_nonce) == "SECRET-XYZ-9000"
+
+
+# ---------- kind-aware auto defaults (sourcing.resolve_for_sku) ----------
+
+
+async def _make_topup_sku(db: AsyncSession) -> str:
+    category = Category(
+        id=new_id(),
+        slug="games-topup",
+        sort_order=10,
+        active=True,
+        translations=[CategoryTranslation(locale="ru", name="Игры")],
+    )
+    brand = Brand(
+        id=new_id(),
+        slug="mlbb",
+        category_id=category.id,
+        sort_order=10,
+        active=True,
+        translations=[BrandTranslation(locale="ru", name="MLBB")],
+    )
+    product = Product(
+        id=new_id(),
+        slug="mlbb-diamonds",
+        brand_id=brand.id,
+        kind="top_up",
+        sort_order=10,
+        active=True,
+        required_fields=[],
+        translations=[ProductTranslation(locale="ru", name="Diamonds")],
+    )
+    sku = Sku(
+        id=new_id(),
+        product_id=product.id,
+        sku_code="mlbb-100",
+        denomination="100",
+        region="WW",
+        price_usd=Decimal("2.00"),
+        sort_order=10,
+        active=True,
+    )
+    db.add_all([category, brand, product, sku])
+    await db.commit()
+    return sku.id
+
+
+async def test_topup_without_mapping_routes_to_manual(db_session: AsyncSession) -> None:
+    """A ``top_up`` SKU with no supplier mapping must NOT try inventory or
+    mock — it goes straight to the manual admin queue."""
+    from yupay.modules.sourcing import service as sourcing_svc
+
+    sku_id = await _make_topup_sku(db_session)
+    decision = await sourcing_svc.resolve_for_sku(db_session, sku_id)
+    assert decision.primary == "supplier:manual"
+    assert decision.fallback is None
+
+
+async def test_topup_with_mapping_routes_to_supplier(db_session: AsyncSession) -> None:
+    """Once a ``top_up`` SKU has an active g2b mapping, the default route is
+    the supplier with a manual fallback."""
+    from yupay.modules.integrations.models import SkuSupplierMapping
+    from yupay.modules.sourcing import service as sourcing_svc
+
+    sku_id = await _make_topup_sku(db_session)
+    db_session.add(
+        SkuSupplierMapping(
+            sku_id=sku_id,
+            supplier_slug="g2b",
+            kind="game",
+            external_product_id="mlbb",
+            external_variant_id="100",
+            quantity=1,
+            extra={},
+            is_active=True,
+        )
+    )
+    await db_session.commit()
+
+    decision = await sourcing_svc.resolve_for_sku(db_session, sku_id)
+    assert decision.primary == "supplier:g2b"
+    assert decision.fallback == "supplier:manual"
+    assert decision.strict is False
+
+
+async def test_voucher_with_mapping_prefers_supplier_over_mock(
+    db_session: AsyncSession, _seed_sku: str
+) -> None:
+    """A ``voucher`` SKU stays inventory-first, but once it has an active
+    supplier mapping the fallback is that supplier — not ``mock``."""
+    from yupay.modules.integrations.models import SkuSupplierMapping
+    from yupay.modules.sourcing import service as sourcing_svc
+
+    db_session.add(
+        SkuSupplierMapping(
+            sku_id=_seed_sku,
+            supplier_slug="g2b",
+            kind="voucher",
+            external_product_id="42",
+            external_variant_id=None,
+            quantity=1,
+            extra={},
+            is_active=True,
+        )
+    )
+    await db_session.commit()
+
+    decision = await sourcing_svc.resolve_for_sku(db_session, _seed_sku)
+    assert decision.primary == "inventory"
+    assert decision.fallback == "supplier:g2b"

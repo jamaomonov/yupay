@@ -1,8 +1,23 @@
 """Sourcing service: per-SKU decision rules.
 
-Default behaviour (no row in ``sku_sourcing_rules``) is **inventory-first with
-fallback to the mock supplier**. The default fallback supplier slug is hard-coded
-to ``mock`` here while real adapters land; later it'll move to a config setting.
+Default behaviour (no row in ``sku_sourcing_rules``) depends on the
+product kind, because inventory only makes sense for assets we can
+physically stock:
+
+- ``product.kind == 'voucher'`` (gift cards, license keys, anything
+  that arrives as a string we can hand to the customer): try the
+  in-house warehouse first; fall back to a supplier when stock is
+  empty. The fallback target is the cheapest active mapping if any
+  exists, else ``DEFAULT_FALLBACK_SUPPLIER`` (which is ``mock`` in
+  dev and ``StubFulfiller`` in prod → task ends ``failed``).
+- ``product.kind == 'top_up'`` (game balance, MLBB diamonds, PUBG
+  UC): there's nothing to stock — the supplier credits the player's
+  account directly. If the SKU has an active supplier mapping the
+  route is the supplier; otherwise it lands in the admin manual
+  queue (no inventory attempts, no mock fallback).
+
+Explicit ``sku_sourcing_rules`` rows still override everything — the
+kind-aware defaults are a sane starting point, not a constraint.
 """
 
 from __future__ import annotations
@@ -12,6 +27,7 @@ from typing import Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from yupay.core.clock import now
 from yupay.core.errors import NotFoundError, ValidationError
@@ -39,13 +55,13 @@ async def resolve_for_sku(db: AsyncSession, sku_id: str) -> Decision:
     rule = (
         await db.execute(select(SkuSourcingRule).where(SkuSourcingRule.sku_id == sku_id))
     ).scalar_one_or_none()
-    if rule is None or rule.mode == "auto":
-        return Decision(
-            primary="inventory",
-            fallback=f"supplier:{DEFAULT_FALLBACK_SUPPLIER}",
-            strict=False,
-            rule_present=rule is not None,
-        )
+    if rule is not None and rule.mode != "auto":
+        return _resolve_explicit_rule(rule, sku_id=sku_id)
+    return await _resolve_auto(db, sku_id=sku_id, rule_present=rule is not None)
+
+
+def _resolve_explicit_rule(rule: SkuSourcingRule, *, sku_id: str) -> Decision:
+    """Decision for SKUs with an admin-set ``sku_sourcing_rules`` row."""
     if rule.mode == "force_inventory":
         return Decision(primary="inventory", fallback=None, strict=True, rule_present=True)
     if rule.mode == "manual":
@@ -69,6 +85,75 @@ async def resolve_for_sku(db: AsyncSession, sku_id: str) -> Decision:
         fallback=None,
         strict=True,
         rule_present=True,
+    )
+
+
+async def _resolve_auto(db: AsyncSession, *, sku_id: str, rule_present: bool) -> Decision:
+    """Kind-aware default for SKUs without an explicit rule.
+
+    ``top_up`` routes to the supplier (or ``manual`` if no mapping is
+    set up yet); ``voucher`` keeps the historical inventory-first
+    behaviour but prefers a real configured supplier over ``mock`` for
+    the fallback when one is available.
+    """
+    # Late imports — these modules sit "above" sourcing in the
+    # dependency graph (catalog is leaf, integrations imports
+    # sourcing through service). Pulling them at module load creates
+    # a cycle; resolving them lazily here doesn't.
+    from yupay.modules.catalog.models import Product, Sku
+    from yupay.modules.integrations.models import SkuSupplierMapping
+
+    sku = (
+        await db.execute(select(Sku).options(selectinload(Sku.product)).where(Sku.id == sku_id))
+    ).scalar_one_or_none()
+    # SKU might not exist at the call-site (e.g. test harness); fall
+    # back to the pre-refactor behaviour rather than raising — the
+    # downstream saga will surface the real "sku not found" error.
+    product: Product | None = sku.product if sku is not None else None
+    kind = product.kind if product is not None else "voucher"
+
+    # Active mappings — order doesn't matter; we only need to know if
+    # there's at least one usable supplier slug. For voucher this picks
+    # the fallback supplier; for top_up it picks the primary.
+    mapping_slug: str | None = (
+        await db.execute(
+            select(SkuSupplierMapping.supplier_slug)
+            .where(
+                SkuSupplierMapping.sku_id == sku_id,
+                SkuSupplierMapping.is_active.is_(True),
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    if kind == "top_up":
+        if mapping_slug is None:
+            # No mapping → no automated path. Route to the manual
+            # admin queue so the operator either creates the mapping
+            # or fulfils by hand. Don't even bother with mock — the
+            # whole point is "supplier required".
+            return Decision(
+                primary="supplier:manual",
+                fallback=None,
+                strict=True,
+                rule_present=rule_present,
+            )
+        return Decision(
+            primary=f"supplier:{mapping_slug}",
+            # Supplier rejection (low balance, denom gone) → admin
+            # queue instead of failing the order outright.
+            fallback="supplier:manual",
+            strict=False,
+            rule_present=rule_present,
+        )
+
+    # voucher (default for anything that isn't top_up)
+    fallback_slug = mapping_slug if mapping_slug is not None else DEFAULT_FALLBACK_SUPPLIER
+    return Decision(
+        primary="inventory",
+        fallback=f"supplier:{fallback_slug}",
+        strict=False,
+        rule_present=rule_present,
     )
 
 
