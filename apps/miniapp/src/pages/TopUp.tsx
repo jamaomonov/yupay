@@ -295,13 +295,12 @@ export default function TopUp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveProviderSet, paymentMethod]);
 
-  // Re-default the SKU on every product switch: pick the 3rd (often a popular
-  // mid-tier) or fall back to the first.
+  // Don't pre-select a package — the customer chooses. On a product switch we
+  // only clear a now-stale selection so the previous SKU doesn't stick around.
   useEffect(() => {
-    if (packages.length === 0) return;
-    const stillPresent = packages.find((p) => p.id === selectedPkg);
-    if (!stillPresent) {
-      setSelectedPkg(packages[2]?.id ?? packages[0]?.id ?? "");
+    if (!selectedPkg) return;
+    if (!packages.some((p) => p.id === selectedPkg)) {
+      setSelectedPkg("");
     }
   }, [packages, selectedPkg]);
 
