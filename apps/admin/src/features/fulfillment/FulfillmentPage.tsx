@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input } from "@yupay/ui";
-import { ExternalLink } from "lucide-react";
-import { useState } from "react";
+import { ExternalLink, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import type { TaskAdminOut, TaskListOut, TaskStatus } from "./types";
 
@@ -25,6 +25,23 @@ const STATUSES: { value: TaskStatus | ""; label: string }[] = [
   { value: "cancelled", label: "cancelled" },
 ];
 
+// Route is the persisted ``fulfillment_tasks.supplier`` value:
+// ``inventory`` for the warehouse, the bare supplier slug otherwise.
+// Listing the known routes as a picker beats a free-text field where a
+// typo silently returns zero rows.
+const ROUTES: { value: string; label: string }[] = [
+  { value: "", label: "Все маршруты" },
+  { value: "inventory", label: "Склад кодов" },
+  { value: "g2b", label: "G2Bulk" },
+  { value: "manual", label: "Ручная выдача" },
+  { value: "mock", label: "Mock (dev)" },
+  { value: "steam", label: "Steam" },
+  { value: "riot", label: "Riot" },
+  { value: "pubg", label: "PUBG" },
+  { value: "spotify", label: "Spotify" },
+  { value: "apple", label: "Apple" },
+];
+
 export function FulfillmentPage() {
   const qc = useQueryClient();
   const toast = useToast();
@@ -35,6 +52,15 @@ export function FulfillmentPage() {
   const [status, setStatus] = useSearchParamsState<TaskStatus | "">("status", "");
   const [offset, setOffset] = useState(0);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const detailsRef = useRef<HTMLDivElement | null>(null);
+
+  // Scroll the detail panel into view when a row is opened — the table
+  // can be long, and the panel renders below the pagination.
+  useEffect(() => {
+    if (expanded && detailsRef.current) {
+      detailsRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [expanded]);
 
   const tasksQuery = useQuery<TaskListOut>({
     queryKey: [
@@ -180,15 +206,20 @@ export function FulfillmentPage() {
         </div>
         <div>
           <label className="text-xs uppercase text-[var(--text-secondary)]">Маршрут</label>
-          <Input
+          <select
             value={supplier}
             onChange={(e) => {
               setSupplier(e.target.value);
               setOffset(0);
             }}
-            placeholder="inventory / mock / steam / ..."
-            className="mt-1 text-sm"
-          />
+            className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
+          >
+            {ROUTES.map((r) => (
+              <option key={r.value} value={r.value}>
+                {r.label}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label className="text-xs uppercase text-[var(--text-secondary)]">Статус</label>
@@ -214,6 +245,7 @@ export function FulfillmentPage() {
         columns={columns}
         rowKey={(t) => t.id}
         empty="Задач не нашлось."
+        selectedKey={expanded}
         onRowClick={(t) => {
           setExpanded(expanded === t.id ? null : t.id);
         }}
@@ -226,15 +258,32 @@ export function FulfillmentPage() {
         onPageChange={setOffset}
       />
 
-      {expanded && (
-        <div className="mt-4">
-          {(tasksQuery.data?.items ?? [])
-            .filter((t) => t.id === expanded)
-            .map((t) => (
-              <TaskDetails key={t.id} task={t} />
-            ))}
-        </div>
-      )}
+      {expanded &&
+        (tasksQuery.data?.items ?? [])
+          .filter((t) => t.id === expanded)
+          .map((t) => (
+            <div key={t.id} ref={detailsRef} className="mt-4">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-sm font-semibold">
+                  Детали задачи{" "}
+                  <code className="font-mono text-xs text-[var(--text-secondary)]">
+                    {t.id.slice(0, 8)}…
+                  </code>
+                </h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setExpanded(null);
+                  }}
+                >
+                  <X className="size-4" />
+                  Закрыть
+                </Button>
+              </div>
+              <TaskDetails task={t} />
+            </div>
+          ))}
     </div>
   );
 }

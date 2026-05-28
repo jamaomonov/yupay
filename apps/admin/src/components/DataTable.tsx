@@ -27,6 +27,10 @@ interface Props<T> {
    *  load — keeps the layout from jumping when the data arrives. */
   loading?: boolean;
   onRowClick?: (row: T) => void;
+  /** Highlight the row whose ``rowKey`` matches — used when a click
+   *  expands a detail panel elsewhere and we want the source row to stay
+   *  visually anchored. */
+  selectedKey?: string | null;
   /** Skip the client-side sort entirely (e.g. table already comes pre-sorted
    *  and the dataset is server-paginated). Headers stay non-clickable. */
   sortable?: boolean;
@@ -43,6 +47,7 @@ export function DataTable<T>({
   busy = false,
   loading = false,
   onRowClick,
+  selectedKey = null,
   sortable = true,
 }: Props<T>) {
   const [sort, setSort] = useState<{ key: string; dir: SortDir } | null>(null);
@@ -125,16 +130,21 @@ export function DataTable<T>({
         <tbody>
           {sorted.map((row) => {
             const interactive = Boolean(onRowClick);
+            const isSelected = selectedKey !== null && rowKey(row) === selectedKey;
             return (
               // Zebra striping (odd / even) on the base layer; the hover and
               // focus-visible states override both with the indigo accent-soft
-              // tint so the active row reads regardless of its parity.
+              // tint so the active row reads regardless of its parity. A
+              // selected row keeps the accent tint + a left marker so it
+              // stays anchored while its detail panel is open below.
               <tr
                 key={rowKey(row)}
+                aria-selected={isSelected || undefined}
                 className={[
                   "border-t border-[var(--border-subtle)] transition-colors",
-                  "odd:bg-[var(--bg-surface)] even:bg-[var(--bg-surface-2)]",
-                  "hover:bg-[var(--bg-accent-soft)]",
+                  isSelected
+                    ? "bg-[var(--bg-accent-soft)] shadow-[inset_2px_0_0_0_var(--accent)]"
+                    : "odd:bg-[var(--bg-surface)] even:bg-[var(--bg-surface-2)] hover:bg-[var(--bg-accent-soft)]",
                   interactive
                     ? "cursor-pointer focus-visible:bg-[var(--bg-accent-soft)] focus-visible:outline-none"
                     : "",
