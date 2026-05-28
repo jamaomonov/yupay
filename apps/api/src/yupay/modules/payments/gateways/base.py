@@ -9,7 +9,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 WebhookOutcome = Literal["succeeded", "failed", "cancelled"]
 
@@ -65,6 +68,7 @@ class PaymentGateway(Protocol):
     async def create_intent(
         self,
         *,
+        db: AsyncSession,
         order: Any,
         return_url: str,
     ) -> PaymentIntent: ...

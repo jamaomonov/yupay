@@ -23,9 +23,13 @@ from yupay.modules.payments.gateways.base import (
     WebhookEvent,
 )
 from yupay.modules.payments.gateways.mock import MockGateway
+from yupay.modules.payments.gateways.wallet import WalletGateway
 
 REGISTRY: dict[str, PaymentGateway] = {
     "mock": MockGateway(),
+    # First real synchronous "provider" — pays out of the customer's
+    # internal YuPay wallet via the ledger. See ADR-0012.
+    "wallet": WalletGateway(),
     # --- Uzbek acquirers ---
     "click": StubGateway(
         provider="click",
@@ -78,6 +82,7 @@ __all__ = [
     "PaymentNotIntegratedError",
     "RefundResult",
     "StubGateway",
+    "WalletGateway",
     "WebhookEvent",
     "available_providers",
     "get_gateway",

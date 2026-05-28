@@ -36,6 +36,7 @@ class MockGateway(PaymentGateway):
     async def create_intent(
         self,
         *,
+        db: Any,  # noqa: ARG002 -- mock has no DB-side state
         order: Any,
         return_url: str,  # noqa: ARG002 -- mock ignores return_url
     ) -> PaymentIntent:

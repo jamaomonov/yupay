@@ -54,12 +54,21 @@ def _record_attempt(
     )
 
 
-async def _load_order(db: AsyncSession, order_id: str) -> Order:
+async def _load_order(db: AsyncSession, order_id: str, *, for_update: bool = False) -> Order:
     stmt = (
         select(Order)
         .options(selectinload(Order.items), selectinload(Order.events))
         .where(Order.id == order_id)
     )
+    if for_update:
+        # ``FOR UPDATE`` on the order serialises concurrent
+        # ``create_intent`` calls for the same order. The first one
+        # walks the order to ``paid`` (or fails on its own); the
+        # second one wakes up to a non-``pending_payment`` status and
+        # is rejected by the ``ConflictError`` below. This is the
+        # outer guarantee that we don't end up with two ``Payment``
+        # rows / two wallet debits / two fulfilment kicks.
+        stmt = stmt.with_for_update()
     order = (await db.execute(stmt)).scalar_one_or_none()
     if order is None:
         raise NotFoundError("order not found")
@@ -89,7 +98,7 @@ async def create_intent(
     return_url: str | None,
 ) -> Payment:
     """Create or reuse a payment intent for ``order_id`` via ``provider``."""
-    order = await _load_order(db, order_id)
+    order = await _load_order(db, order_id, for_update=True)
     if order.status != "pending_payment":
         raise ConflictError("order is not awaiting payment", extra={"status": order.status})
 
@@ -113,11 +122,20 @@ async def create_intent(
     payment_id = new_id()
     try:
         intent = await gw.create_intent(
-            order=order, return_url=return_url or "https://yupay.io/checkout/return"
+            db=db,
+            order=order,
+            return_url=return_url or "https://app.yupay.uz/checkout/return",
         )
     except (PaymentGatewayError, PaymentNotIntegratedError) as exc:
         log.warning("payments.create_intent.failed", provider=provider, error=str(exc))
-        raise ConflictError("payment provider rejected the request") from exc
+        # Pass the gateway's reason through so the storefront / admin
+        # can surface "insufficient wallet balance" instead of a
+        # generic "rejected". Each adapter curates the message that
+        # reaches the user — we never echo raw upstream JSON.
+        raise ConflictError(
+            f"payment provider rejected the request: {exc}",
+            extra={"provider": provider},
+        ) from exc
 
     payment = Payment(
         id=payment_id,
@@ -143,6 +161,24 @@ async def create_intent(
         },
     )
     await db.flush()
+
+    # Synchronous gateways (the wallet today; possibly direct-debit
+    # crypto later) settle inside ``create_intent`` itself — there's no
+    # webhook coming. Walk the order to ``paid`` + kick off fulfilment
+    # in the same DB transaction so the wallet debit, the order
+    # transition, and the fulfilment task creation all commit (or roll
+    # back) together. This is the safety contract that keeps a wallet
+    # debit from happening without a paid order, or an order from
+    # flipping to ``paid`` without the debit landing.
+    if payment.status == "succeeded":
+        synthetic_event = WebhookEvent(
+            external_event_id=f"sync:{payment.id}",
+            external_payment_id=payment.external_id,
+            outcome="succeeded",
+            raw={"synthetic": True, "provider": gw.provider},
+        )
+        await _mark_payment_succeeded(db, payment=payment, event=synthetic_event)
+        await db.flush()
     return payment
 
 

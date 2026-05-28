@@ -94,6 +94,7 @@ const WALLET_METHOD_ID = "wallet";
 
 const PROVIDER_BY_METHOD: Record<string, string> = {
   mock: "mock",
+  wallet: "wallet",
   card: "click",
   sbp: "yookassa",
   crypto: "crypto",
@@ -416,21 +417,15 @@ export default function TopUp() {
       });
       return;
     }
-    if (paymentMethod === WALLET_METHOD_ID) {
-      if (!walletEnough) {
-        toast({
-          title: "На балансе недостаточно",
-          description: `Не хватает ${formatBalance(walletShortfall, priceCode)}. Пополни кошелёк или выбери другой способ.`,
-          variant: "destructive",
-        });
-        return;
-      }
-      // Backend WalletGateway is not deployed yet — see the wallet-pay
-      // task. We intentionally do not POST /orders for this branch so
-      // we don't leave a half-paid order in the system.
+    if (paymentMethod === WALLET_METHOD_ID && !walletEnough) {
+      // Client-side guard against a doomed POST. The backend
+      // WalletGateway re-checks under a row-lock, so this is just UX —
+      // the source of truth is server-side. Even if a stale balance
+      // slipped past us, the gateway would fail safely and roll back.
       toast({
-        title: "Оплата с баланса скоро",
-        description: "Подключаем wallet-checkout. Пока выбери другой способ.",
+        title: "На балансе недостаточно",
+        description: `Не хватает ${formatBalance(walletShortfall, priceCode)}. Пополни кошелёк или выбери другой способ.`,
+        variant: "destructive",
       });
       return;
     }
@@ -458,7 +453,18 @@ export default function TopUp() {
         window.location.href = result.payment.intent_url;
         return;
       }
-      toast({ title: "Заказ создан", description: `${game.name} в обработке` });
+      // Wallet ⇒ the gateway already debited and the saga already
+      // walked the order toward delivered inside the create_intent
+      // transaction. Pivot the toast wording so the user understands
+      // the money has actually moved.
+      if (result.payment.provider === "wallet") {
+        toast({
+          title: "Оплачено с баланса",
+          description: `${game.name} в обработке`,
+        });
+      } else {
+        toast({ title: "Заказ создан", description: `${game.name} в обработке` });
+      }
       setLocation(`/order/${result.order.id}`);
     } catch (exc) {
       const detail = exc instanceof ApiError ? exc.detail : "Попробуйте ещё раз";

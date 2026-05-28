@@ -132,7 +132,10 @@ async def test_list_providers_returns_only_available(
 ) -> None:
     r = await integration_client.get("/api/v1/payments/providers")
     assert r.status_code == 200
-    assert r.json() == {"providers": ["mock"]}
+    # ``wallet`` joined ``mock`` as a synchronous in-house provider.
+    providers = r.json()["providers"]
+    assert "mock" in providers
+    assert "wallet" in providers
 
 
 async def test_create_intent_for_owned_order(

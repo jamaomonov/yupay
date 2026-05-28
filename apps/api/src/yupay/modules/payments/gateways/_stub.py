@@ -35,6 +35,7 @@ class StubGateway(PaymentGateway):
     async def create_intent(
         self,
         *,
+        db: Any,  # noqa: ARG002
         order: Any,  # noqa: ARG002
         return_url: str,  # noqa: ARG002
     ) -> PaymentIntent:
