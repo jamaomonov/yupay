@@ -841,22 +841,20 @@ export default function TopUp() {
             <Send size={16} />
             Открыть в Telegram
           </motion.a>
-        ) : (
+        ) : activePkg ? (
           <motion.button
             whileTap={{ scale: 0.97 }}
             onClick={handlePayment}
-            disabled={isProcessing || !activePkg || !insideTelegram}
+            disabled={isProcessing || !insideTelegram}
             className="flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-base font-bold tracking-wide transition-all"
             style={{
               background:
-                isProcessing || !activePkg || !insideTelegram
+                isProcessing || !insideTelegram
                   ? "hsl(var(--primary) / 0.45)"
                   : "hsl(var(--primary))",
               color: "#000",
               boxShadow:
-                isProcessing || !activePkg || !insideTelegram
-                  ? "none"
-                  : "0 0 16px hsl(var(--primary) / 0.25)",
+                isProcessing || !insideTelegram ? "none" : "0 0 16px hsl(var(--primary) / 0.25)",
             }}
             data-testid="btn-pay"
           >
@@ -866,12 +864,12 @@ export default function TopUp() {
               "Доступно в Telegram"
             ) : (
               <>
-                Пополнить за {finalPrice > 0 ? formatMoney(finalPrice, priceCode) : "—"}
+                Оплатить
                 <ChevronRight size={18} strokeWidth={2.5} />
               </>
             )}
           </motion.button>
-        )}
+        ) : null}
       </div>
     </>
   );
