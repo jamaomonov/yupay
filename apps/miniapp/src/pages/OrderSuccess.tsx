@@ -134,9 +134,7 @@ function stageFor(order: OrderOut): StageCopy {
       return {
         title: "Готово",
         subtitle:
-          kind === "top_up"
-            ? "Зачислено. Подробности ниже."
-            : "Заказ выдан. Подробности ниже.",
+          kind === "top_up" ? "Зачислено. Подробности ниже." : "Заказ выдан. Подробности ниже.",
       };
     case "cancelled":
       return { title: "Заказ отменён", subtitle: "Деньги не списаны или были возвращены." };

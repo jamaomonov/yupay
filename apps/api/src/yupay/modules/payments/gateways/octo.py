@@ -177,7 +177,9 @@ class OctoClient:
         pay_url = d.get("octo_pay_url")
         uuid = d.get("octo_payment_UUID")
         if not pay_url or not uuid:
-            raise PaymentGatewayError("octo prepare_payment: missing octo_pay_url / octo_payment_UUID")
+            raise PaymentGatewayError(
+                "octo prepare_payment: missing octo_pay_url / octo_payment_UUID"
+            )
         return OctoPrepareResult(
             octo_payment_uuid=str(uuid),
             pay_url=str(pay_url),
@@ -203,7 +205,9 @@ class OctoClient:
         refund_id = d.get("refund_id")
         if not refund_id:
             raise PaymentGatewayError("octo refund: missing refund_id")
-        return OctoRefundResult(refund_id=str(refund_id), status=str(d.get("status") or "succeeded"))
+        return OctoRefundResult(
+            refund_id=str(refund_id), status=str(d.get("status") or "succeeded")
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -277,8 +281,7 @@ class OctoGateway(PaymentGateway):
         currency = (order.currency or "").upper()
         if currency not in SUPPORTED_CURRENCIES:
             raise PaymentGatewayError(
-                f"octo does not support currency {currency!r}; "
-                "supported: UZS, USD, RUB"
+                f"octo does not support currency {currency!r}; supported: UZS, USD, RUB"
             )
         amount: Decimal = order.total_charged
         if amount is None or amount <= 0:

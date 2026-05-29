@@ -243,9 +243,7 @@ async def test_octo_webhook_bad_signature_rejected(
         headers={"Authorization": f"Bearer {token}"},
         json={"order_id": order_id, "provider": "octo"},
     )
-    bad = json.dumps(
-        {"octo_payment_UUID": uuid, "status": "succeeded", "signature": "deadbeef"}
-    )
+    bad = json.dumps({"octo_payment_UUID": uuid, "status": "succeeded", "signature": "deadbeef"})
     wh = await integration_client.post(
         "/api/v1/webhooks/payments/octo",
         content=bad,

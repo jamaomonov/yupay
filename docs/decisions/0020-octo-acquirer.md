@@ -56,14 +56,7 @@ order currency's **major units** (`orders.service`), so it is sent as-is
 
 ### Webhook authenticity
 
-Octo signs the callback body: `signature = SHA1(unique_key + octo_payment_UUID
-+ status)`, where `unique_key` is a secret issued out-of-band by Octo support
-(distinct from the merchant `octo_secret`). `verify_webhook` recomputes and
-compares case-insensitively with `hmac.compare_digest`. An empty signature key
-is a hard refusal — we never accept an unverifiable callback. Because the
-signature covers `(uuid, status)` and the amount is taken from our own
-`Payment` row (not the callback), signature verification alone is sufficient
-authority for the status transition; we do not additionally re-poll status.
+Octo signs the callback body: `signature = SHA1(unique_key + octo_payment_UUID + status)`, where `unique_key` is a secret issued out-of-band by Octo support (distinct from the merchant `octo_secret`). `verify_webhook` recomputes and compares case-insensitively with `hmac.compare_digest`. An empty signature key is a hard refusal — we never accept an unverifiable callback. Because the signature covers `(uuid, status)` and the amount is taken from our own `Payment` row (not the callback), signature verification alone is sufficient authority for the status transition; we do not additionally re-poll status.
 
 Dedup key: `external_event_id = "{octo_payment_UUID}:{status}"` — replays of
 the same status collapse via the existing `(provider, external_event_id)`

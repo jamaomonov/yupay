@@ -92,9 +92,7 @@ async def test_create_failure_raises() -> None:
         return_value=httpx.Response(200, json={"success": False, "message": "amount too small"})
     )
     with pytest.raises(PaymentGatewayError, match="amount too small"):
-        await _client().create(
-            bearer="B", amount=Decimal("100"), description="x", callback_url="c"
-        )
+        await _client().create(bearer="B", amount=Decimal("100"), description="x", callback_url="c")
 
 
 @respx.mock

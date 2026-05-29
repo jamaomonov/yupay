@@ -258,9 +258,7 @@ class InpayGateway(PaymentGateway):
         s = get_settings()
         currency = (order.currency or "").upper()
         if currency != "UZS":
-            raise PaymentGatewayError(
-                f"inpay only charges in UZS; order currency is {currency!r}"
-            )
+            raise PaymentGatewayError(f"inpay only charges in UZS; order currency is {currency!r}")
         amount: Decimal = order.total_charged
         if amount is None:
             raise PaymentGatewayError("order total_charged is missing")

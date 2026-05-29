@@ -83,9 +83,7 @@ async def test_create_intent_rejects_unsupported_currency(_octo_env: None) -> No
 async def test_verify_webhook_accepts_valid_signature(_octo_env: None) -> None:
     gw = OctoGateway()
     sig = compute_signature(UNIQUE_KEY, UUID, "succeeded").upper()  # Octo sends UPPERCASE
-    body = json.dumps(
-        {"octo_payment_UUID": UUID, "status": "succeeded", "signature": sig}
-    ).encode()
+    body = json.dumps({"octo_payment_UUID": UUID, "status": "succeeded", "signature": sig}).encode()
     event = await gw.verify_webhook(headers={}, body=body)
     assert event.outcome == "succeeded"
     assert event.external_payment_id == UUID

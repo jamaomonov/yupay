@@ -734,11 +734,7 @@ export default function TopUp() {
                       </div>
                     )}
                     <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-white">
-                      <img
-                        src={m.icon}
-                        alt={m.name}
-                        className="h-full w-full object-contain p-1"
-                      />
+                      <img src={m.icon} alt={m.name} className="h-full w-full object-contain p-1" />
                     </span>
                     <span
                       className={cn(
