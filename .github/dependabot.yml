@@ -40,6 +40,13 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "tailwindcss"
         update-types: ["version-update:semver-major"]
+      # hey-api emits the typed API client (packages/api-client). Each 0.x
+      # minor reshapes the generated runtime and the generator config; recent
+      # output also breaks under our `exactOptionalPropertyTypes: true`. So a
+      # bump is a real migration (regen + ADR), not an automerge — let patch
+      # fixes flow within 0.61.x, gate minor/major behind a dedicated PR.
+      - dependency-name: "@hey-api/openapi-ts"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
     groups:
       ts-prod:
         dependency-type: "production"
