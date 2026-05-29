@@ -68,7 +68,7 @@ function adaptPackage(api: ApiPackage): Package {
 // when running `vite preview` against a dev backend.
 const PAYMENT_METHODS = [
   { id: "mock", name: "Mock", sub: "тест выдачи", icon: ShieldCheck },
-  { id: "card", name: "Карта", sub: "Visa · МИР", icon: CreditCard },
+  { id: "card", name: "Карта", sub: "Uzcard · Humo · Visa", icon: CreditCard },
   { id: "sbp", name: "СБП", sub: "без коми", icon: Zap },
   { id: "crypto", name: "Крипта", sub: "USDT", icon: Bitcoin },
 ];
@@ -92,7 +92,7 @@ const WALLET_METHOD_ID = "wallet";
 const PROVIDER_BY_METHOD: Record<string, string> = {
   mock: "mock",
   wallet: "wallet",
-  card: "click",
+  card: "octo",
   sbp: "yookassa",
   crypto: "crypto",
 };
@@ -107,7 +107,7 @@ interface AcquirerInfo {
 
 const ACQUIRER_BY_METHOD: Record<string, AcquirerInfo> = {
   mock: { label: "Mock-провайдер", currency: "USD" },
-  card: { label: "Click", currency: "UZS" },
+  card: { label: "OCTO", currency: "UZS" },
   sbp: { label: "СБП через YooKassa", currency: "RUB" },
   crypto: { label: "USDT TRC-20", currency: "USDT" },
 };

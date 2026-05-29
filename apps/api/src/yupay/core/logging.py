@@ -33,6 +33,8 @@ REDACTED_KEYS = frozenset(
         "api_key",
         "authorization",
         "stripe-signature",
+        "octo_secret",
+        "octo_signature_key",
     },
 )
 

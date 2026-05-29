@@ -14,7 +14,10 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-WebhookOutcome = Literal["succeeded", "failed", "cancelled"]
+# ``pending`` is a no-op signal: a signed-but-non-terminal callback (e.g. Octo's
+# ``created`` / ``waiting_for_capture``). The service records it for audit but does
+# not move the FSM. ``mock`` and ``wallet`` never emit it. See ADR-0020.
+WebhookOutcome = Literal["succeeded", "failed", "cancelled", "pending"]
 
 
 class PaymentGatewayError(Exception):

@@ -11,6 +11,7 @@
 | User agent                     | All HTTP requests            | Logs only                                                          | Same retention as IP                                              |
 | Voucher codes (issued)         | Inventory / supplier         | `inventory_codes.code_ciphertext`, `deliveries.payload_ciphertext` | **Yes, column-level (libsodium)**                                 |
 | Payment provider metadata      | Webhooks                     | `payment_webhooks.payload jsonb`                                   | Provider's own redaction policy; we never store PAN               |
+| Masked card data (Octo)        | Octo webhook callback        | `payment_webhooks.payload jsonb` (admin-only)                      | Already masked by Octo (`maskedPan`, `rrn`); full PAN never sent  |
 
 ## What we never log
 
@@ -18,7 +19,8 @@
 - Telegram IDs
 - Voucher codes
 - Auth tokens (access / refresh / guest)
-- Provider API keys
+- Provider API keys and acquirer secrets (`octo_secret`, `octo_signature_key`)
+- Card data — masked card fields stay in the admin-only webhook audit row, never in app logs
 
 The structured logger's redactor blocklists these field names. New PII fields **must** be
 added to the redactor and to this document in the same PR.

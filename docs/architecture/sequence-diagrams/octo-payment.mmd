@@ -1,0 +1,37 @@
+sequenceDiagram
+    autonumber
+    title YuPay — Octo card payment (hosted page, one-stage)
+
+    participant U as User (miniapp)
+    participant API as FastAPI
+    participant PAY as payments.service
+    participant DB as Postgres
+    participant OCTO_AD as OctoGateway
+    participant OCTO as Octo (secure.octo.uz)
+    participant FUL as fulfillment.service
+
+    Note over U,OCTO: pending_payment order, currency ∈ {UZS, USD, RUB}
+
+    U->>API: POST /payments/intents {order_id, provider: octo}
+    API->>PAY: create_intent(order_id, "octo")
+    PAY->>DB: SELECT order FOR UPDATE (status == pending_payment)
+    PAY->>OCTO_AD: create_intent(db, order, return_url)
+    OCTO_AD->>OCTO: POST /prepare_payment {shop_id, secret, shop_transaction_id, total_sum, currency, auto_capture:true, notify_url, return_url, test}
+    OCTO-->>OCTO_AD: 200 {error:0, data:{octo_payment_UUID, octo_pay_url, status:"created"}}
+    OCTO_AD-->>PAY: PaymentIntent(external_id=UUID, intent_url=pay_url, status=pending)
+    PAY->>DB: INSERT payments(provider=octo, status=pending, external_id=UUID)
+    PAY-->>U: 201 {intent_url}
+    U->>OCTO: open octo_pay_url, pay with card
+
+    Note over OCTO,API: Octo signs the callback body: SHA1(unique_key + UUID + status)
+
+    OCTO->>API: POST /webhooks/payments/octo {octo_payment_UUID, status:"succeeded", signature, maskedPan, rrn}
+    API->>PAY: handle_webhook("octo", headers, body)
+    PAY->>OCTO_AD: verify_webhook(body)
+    OCTO_AD-->>PAY: WebhookEvent(external_event_id="UUID:succeeded", outcome=succeeded)
+    PAY->>DB: INSERT payment_webhooks (dedup on provider+external_event_id)
+    PAY->>DB: payment.status=succeeded; order.status=paid (_mark_payment_succeeded)
+    PAY->>FUL: start_for_order(order_id)
+    PAY-->>OCTO: 200 {status: processed}
+
+    Note over OCTO,PAY: a replay of the same (UUID:status) → 200 {duplicate}; a bad signature → 422

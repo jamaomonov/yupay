@@ -62,11 +62,14 @@ from yupay.modules.payments.gateways.base import (
     RefundResult,
     WebhookEvent,
 )
-from yupay.modules.wallet import api as wallet_api
-from yupay.modules.wallet.models import WalletAccount
 
+# ``wallet.api`` pulls in ``wallet.routes`` → ``api.v1`` → ``payments.api`` →
+# ``payments.gateways``. Importing it at module top would make this gateway file
+# uneimportable on its own (the ``payments.gateways`` package init imports us
+# before it finishes defining ``available_providers``). Import lazily inside the
+# methods instead — same trick this file already uses for the Order/Payment models.
 if TYPE_CHECKING:
-    pass
+    from yupay.modules.wallet.models import WalletAccount
 
 log = get_logger("yupay.payments.wallet")
 
@@ -103,6 +106,7 @@ class WalletGateway:
         # The protocol declares ``order: Any`` because adapters live behind a
         # generic dispatch. Reach for the real model here.
         from yupay.modules.orders.models import Order as _Order
+        from yupay.modules.wallet import api as wallet_api
 
         if not isinstance(order, _Order):  # pragma: no cover -- defensive
             raise PaymentGatewayError("wallet gateway needs an Order instance")
@@ -255,6 +259,9 @@ class WalletGateway:
         blocks here until we're done, which is precisely what we want
         — the balance check below sees a fresh (post-blocker) value.
         """
+        from yupay.modules.wallet import api as wallet_api
+        from yupay.modules.wallet.models import WalletAccount
+
         # Try the existing row first; if absent, create it (race-safe via
         # the ``ensure_account`` upsert) and re-lock.
         stmt = (

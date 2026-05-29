@@ -42,8 +42,13 @@ from yupay.modules.payments.models import Payment, PaymentWebhook
 from yupay.modules.users import service as users_svc
 from yupay.modules.users.models import TelegramLink, User
 from yupay.modules.users.schemas import UserAdminOut
-from yupay.modules.wallet.api import NORMAL_SIDE
+
+# Import NORMAL_SIDE from its defining module, not the ``wallet.api`` facade:
+# ``wallet.api`` pulls in ``wallet.routes`` → ``api.v1`` → ``admin``, so going
+# through the facade here creates an import cycle that only bites when
+# ``payments.gateways`` is imported before the app boots (e.g. in unit tests).
 from yupay.modules.wallet.models import WalletAccount, WalletPosting
+from yupay.modules.wallet.service import NORMAL_SIDE
 
 
 async def search(db: AsyncSession, *, q: str, limit: int) -> SearchOut:

@@ -190,6 +190,30 @@ class Settings(BaseSettings):
     )
     g2b_request_timeout_seconds: float = Field(default=20.0)
 
+    # --- acquirer: Octo (octo.uz) ---
+    # Hosted-page card acquirer for the UZ market (Uzcard/Humo/Visa). Empty
+    # credentials → the gateway reports ``available=False`` and disappears from
+    # ``GET /payments/providers`` (the miniapp "Карта" method auto-disables).
+    octo_shop_id: str = Field(
+        default="",
+        description="Octo merchant id (octo_shop_id). Octo types it as Long; we send it as-is.",
+    )
+    octo_secret: str = Field(default="", description="Octo merchant secret (octo_secret).")
+    octo_signature_key: str = Field(
+        default="",
+        description=(
+            "Webhook signature key (Octo's ``unique_key``), issued separately by "
+            "Octo tech support. Used to verify SHA1(unique_key + uuid + status). "
+            "In prod an empty value means inbound webhooks are rejected — we never "
+            "trust an unsigned callback."
+        ),
+    )
+    octo_base_url: str = Field(default="https://secure.octo.uz")
+    # Sends ``test: true`` on prepare_payment so Octo treats the charge as a test
+    # transaction. Default off; flip to true in dev/.env.
+    octo_test_mode: bool = Field(default=False)
+    octo_request_timeout_seconds: float = Field(default=20.0)
+
     # --- admin alerts (separate Telegram bot — NOT the customer bot) ---
     # Dedicated bot so an outage of one channel doesn't drag the other
     # down, and so the customer bot's token doesn't carry admin-chat

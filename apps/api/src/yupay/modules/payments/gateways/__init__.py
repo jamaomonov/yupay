@@ -23,6 +23,7 @@ from yupay.modules.payments.gateways.base import (
     WebhookEvent,
 )
 from yupay.modules.payments.gateways.mock import MockGateway
+from yupay.modules.payments.gateways.octo import OctoGateway
 from yupay.modules.payments.gateways.wallet import WalletGateway
 
 REGISTRY: dict[str, PaymentGateway] = {
@@ -31,6 +32,8 @@ REGISTRY: dict[str, PaymentGateway] = {
     # internal YuPay wallet via the ledger. See ADR-0012.
     "wallet": WalletGateway(),
     # --- Uzbek acquirers ---
+    # Octo (octo.uz) — first real card acquirer (Uzcard/Humo/Visa). See ADR-0020.
+    "octo": OctoGateway(),
     "click": StubGateway(
         provider="click",
         todo_message="Click acquirer not integrated yet; see ADR-0012.",
@@ -76,6 +79,7 @@ def available_providers() -> list[str]:
 __all__ = [
     "REGISTRY",
     "MockGateway",
+    "OctoGateway",
     "PaymentGateway",
     "PaymentGatewayError",
     "PaymentIntent",

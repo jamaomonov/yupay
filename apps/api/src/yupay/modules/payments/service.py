@@ -337,6 +337,9 @@ async def handle_webhook(
         await _mark_payment_terminal(db, payment=payment, event=event, new_status="failed")
     elif event.outcome == "cancelled":
         await _mark_payment_terminal(db, payment=payment, event=event, new_status="cancelled")
+    # ``pending``: a signed-but-non-terminal callback (e.g. Octo's "created" /
+    # "waiting_for_capture"). The webhook row above is the audit trail; we do not
+    # touch the payment/order FSM and wait for the terminal callback. See ADR-0020.
 
     await db.flush()
     return payment
