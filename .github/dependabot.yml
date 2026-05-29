@@ -4,7 +4,6 @@ updates:
     directory: "/"
     schedule: { interval: "weekly" }
     open-pull-requests-limit: 5
-    labels: ["dependencies", "python"]
     ignore:
       # Python runtime is pinned by .python-version / pyproject (3.12). Major bumps
       # go through a dedicated ADR, not Dependabot.
@@ -21,7 +20,6 @@ updates:
     directory: "/"
     schedule: { interval: "weekly" }
     open-pull-requests-limit: 5
-    labels: ["dependencies", "javascript"]
     ignore:
       # Frameworks pinned in the stack (see AGENTS.md). Major bumps need an ADR.
       - dependency-name: "next"
@@ -58,7 +56,6 @@ updates:
   - package-ecosystem: "docker"
     directory: "/infra/docker"
     schedule: { interval: "weekly" }
-    labels: ["dependencies", "docker"]
     ignore:
       # Base images are pinned (python 3.12, node 22). Major bumps need an ADR.
       - dependency-name: "python"
@@ -67,7 +64,6 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule: { interval: "weekly" }
-    labels: ["dependencies", "ci"]
     groups:
       actions:
         patterns: ["*"]
