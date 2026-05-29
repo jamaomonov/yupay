@@ -11,6 +11,7 @@ import hashlib
 import json
 from decimal import Decimal
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 from yupay.core import config as cfg
@@ -76,7 +77,7 @@ async def test_create_intent_rejects_unsupported_currency(_octo_env: None) -> No
     gw = OctoGateway(client=OctoClient(shop_id="123", secret="s", base_url="https://octo.test"))
     order = SimpleNamespace(id="ord-1", currency="EUR", total_charged=Decimal("100.00"))
     with pytest.raises(PaymentGatewayError, match="currency"):
-        await gw.create_intent(db=None, order=order, return_url="")
+        await gw.create_intent(db=cast(Any, None), order=order, return_url="")
 
 
 @pytest.mark.asyncio

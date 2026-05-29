@@ -533,7 +533,7 @@ async def _set_redis_dedupe(key: str, *, ttl_seconds: int) -> bool:
     time" is the right failure mode for an alert dedupe.
     """
     try:
-        import redis.asyncio as redis  # type: ignore[import-untyped]
+        import redis.asyncio as redis
 
         client = redis.from_url(get_settings().redis_url, decode_responses=True)
         try:

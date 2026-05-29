@@ -21,6 +21,7 @@ import hmac
 import json
 import time
 from decimal import Decimal
+from typing import Any
 from urllib.parse import urlencode
 
 import pytest
@@ -166,7 +167,7 @@ async def _pay_with_wallet(
     *,
     token: str,
     order_id: str,
-) -> tuple[int, dict]:
+) -> tuple[int, dict[str, Any]]:
     r = await client.post(
         "/api/v1/payments/intents",
         headers={"Authorization": f"Bearer {token}"},

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from yupay.core import config as cfg
@@ -60,7 +60,7 @@ async def test_create_intent_rejects_non_uzs(_inpay_env: None) -> None:
     gw = InpayGateway(client=_FakeClient())
     order = SimpleNamespace(id="o1", currency="USD", total_charged=Decimal("10000"))
     with pytest.raises(PaymentGatewayError, match="UZS"):
-        await gw.create_intent(db=None, order=order, return_url="")
+        await gw.create_intent(db=cast(Any, None), order=order, return_url="")
 
 
 @pytest.mark.asyncio
@@ -68,14 +68,14 @@ async def test_create_intent_rejects_below_minimum(_inpay_env: None) -> None:
     gw = InpayGateway(client=_FakeClient())
     order = SimpleNamespace(id="o1", currency="UZS", total_charged=Decimal("500"))
     with pytest.raises(PaymentGatewayError, match="minimum"):
-        await gw.create_intent(db=None, order=order, return_url="")
+        await gw.create_intent(db=cast(Any, None), order=order, return_url="")
 
 
 @pytest.mark.asyncio
 async def test_create_intent_happy(_inpay_env: None) -> None:
     gw = InpayGateway(client=_FakeClient())
     order = SimpleNamespace(id="o1", currency="UZS", total_charged=Decimal("15000"))
-    intent = await gw.create_intent(db=None, order=order, return_url="")
+    intent = await gw.create_intent(db=cast(Any, None), order=order, return_url="")
     assert intent.external_id == "oid-1"
     assert intent.intent_url == "https://inpay/checkout/oid-1"
     assert intent.status == "pending"
@@ -86,8 +86,8 @@ async def test_bearer_token_is_cached(_inpay_env: None) -> None:
     fake = _FakeClient()
     gw = InpayGateway(client=fake)
     order = SimpleNamespace(id="o1", currency="UZS", total_charged=Decimal("15000"))
-    await gw.create_intent(db=None, order=order, return_url="")
-    await gw.create_intent(db=None, order=order, return_url="")
+    await gw.create_intent(db=cast(Any, None), order=order, return_url="")
+    await gw.create_intent(db=cast(Any, None), order=order, return_url="")
     assert fake.authorize_calls == 1  # second call reuses the cached token
 
 

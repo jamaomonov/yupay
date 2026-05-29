@@ -7,10 +7,13 @@ supplier API, and on-demand catalog sync that populates
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from yupay.modules.fulfillment.suppliers.g2b import G2bFulfiller
 
 from yupay.api.v1.deps import db_session
 from yupay.core.clock import now
@@ -248,7 +251,7 @@ async def sync_g2b_catalog(
     )
 
 
-def _g2b_fulfiller_or_none():  # type: ignore[no-untyped-def]
+def _g2b_fulfiller_or_none() -> G2bFulfiller | None:
     """Return the registered G2B adapter iff ``G2B_API_KEY`` is set.
 
     Centralised so the three game-side endpoints below share the same
