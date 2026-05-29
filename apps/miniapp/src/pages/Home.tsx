@@ -5,9 +5,9 @@ import { Link } from "wouter";
 
 import type { Game } from "@/lib/constants-types";
 
+import { HeroCarousel } from "@/components/HeroCarousel";
 import { useCategoriesList, useGames } from "@/lib/catalog";
 import { CATEGORY_LABELS } from "@/lib/constants";
-import { useMyOrders } from "@/lib/orders";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
 const ALL_KEY = "__all__";
@@ -19,111 +19,6 @@ const PROMO_BADGES: Record<string, { label: string; color: string }> = {
   telegram: { label: "АКЦИЯ", color: "#ff6b35" },
   "delta-force": { label: "НОВИНКА", color: "#a855f7" },
 };
-
-// ─── Payment methods strip ───────────────────────────────────────────────────
-// Replaces the old generic "trust bar" (Защита платежей / 5 мин / 24/7) which
-// the audit flagged as unearned decoration. Concrete payment-method names
-// with brand-coloured dots are a far stronger signal for CIS customers —
-// they scan for "Click / Payme / Uzum / СБП" before they scan for shield
-// icons.
-const PAYMENT_METHODS_STRIP: { label: string; dot: string }[] = [
-  { label: "Click", dot: "#0085FF" },
-  { label: "Payme", dot: "#1FB7B6" },
-  { label: "Uzum", dot: "#7B68FF" },
-  { label: "СБП", dot: "#5B0AAE" },
-  { label: "USDT", dot: "#26A17B" },
-];
-
-function PaymentMethodsBar() {
-  return (
-    <div
-      className="bg-surface-2 border-border no-scrollbar mx-4 flex items-center gap-2 overflow-x-auto rounded-2xl border px-3 py-2.5"
-      role="list"
-      aria-label="Поддерживаемые способы оплаты"
-    >
-      {PAYMENT_METHODS_STRIP.map(({ label, dot }) => (
-        <div key={label} role="listitem" className="flex flex-shrink-0 items-center gap-1.5 pr-2">
-          <span
-            className="size-1.5 flex-shrink-0 rounded-full"
-            style={{ background: dot }}
-            aria-hidden="true"
-          />
-          <span className="text-body-muted whitespace-nowrap text-[11px] font-semibold tracking-wide">
-            {label}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─── Recent orders strip ──────────────────────────────────────────────────────
-// Use order.items[0].display to know which brand to link to. Falls back to
-// /history when the order has no items (legacy / corrupted data).
-function RecentStrip() {
-  const orders = useMyOrders();
-  const recent = (orders.data ?? []).slice(0, 4);
-  if (recent.length === 0) return null;
-
-  return (
-    <div className="px-4">
-      <div className="mb-2.5 flex items-center gap-2">
-        <RotateCcw size={13} className="text-body-faint" />
-        <span className="text-body-muted text-xs font-semibold uppercase tracking-wide">
-          Купить ещё раз
-        </span>
-      </div>
-      <div className="no-scrollbar flex gap-2 overflow-x-auto">
-        {recent.map((order, i) => {
-          const first = order.items[0]?.display ?? null;
-          const href = first?.brand_slug ? `/topup/${first.brand_slug}` : "/history";
-          const title = first
-            ? first.brand_name || first.product_name || first.product_slug
-            : `Заказ ${order.id.slice(0, 6)}`;
-          const subtitle = first
-            ? (first.denomination ?? first.sku_code)
-            : `${Number.parseFloat(order.total_charged).toLocaleString("ru", { maximumFractionDigits: 2 })} ${order.currency}`;
-          return (
-            <Link key={order.id} href={href}>
-              <motion.div
-                whileTap={{ scale: 0.94 }}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05 }}
-                className="flex flex-shrink-0 cursor-pointer items-center gap-2.5 rounded-2xl px-3 py-2"
-                style={{
-                  background: "hsl(var(--surface-2))",
-                  border: "1px solid hsl(var(--border))",
-                }}
-              >
-                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-black/30">
-                  {first?.image_url ? (
-                    <img src={first.image_url} className="h-full w-full object-cover" alt="" />
-                  ) : (
-                    <span
-                      className="text-[10px] font-bold uppercase"
-                      style={{ color: "hsl(var(--primary))" }}
-                    >
-                      {(first?.brand_name?.[0] ?? "?").toUpperCase()}
-                    </span>
-                  )}
-                </div>
-                <div>
-                  <p className="line-clamp-1 max-w-[110px] text-xs font-semibold leading-tight text-white">
-                    {title}
-                  </p>
-                  <p className="text-body-faint mt-0.5 line-clamp-1 max-w-[110px] text-[10px]">
-                    {subtitle}
-                  </p>
-                </div>
-              </motion.div>
-            </Link>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 // ─── Promo strip ──────────────────────────────────────────────────────────────
 function PromoStrip({ games }: { games: Game[] }) {
@@ -393,9 +288,8 @@ export default function Home() {
             transition={{ duration: 0.18 }}
             className="space-y-3.5"
           >
-            <PaymentMethodsBar />
+            <HeroCarousel />
             <PromoStrip games={games} />
-            <RecentStrip />
           </motion.div>
         )}
       </AnimatePresence>
