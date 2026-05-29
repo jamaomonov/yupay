@@ -26,6 +26,7 @@ interface BrandApi {
   logo_url: string | null;
   hero_image_url: string | null;
   accent_color: string | null;
+  maintenance: boolean;
 }
 
 interface CategoryApi {
@@ -121,6 +122,7 @@ function brandToGame(b: BrandApi, locale = "ru"): Game {
     color: b.accent_color ?? "#3b82f6",
     inputType: "text",
     inputPlaceholder: locale === "ru" ? "Введите ID аккаунта" : "Account ID",
+    maintenance: b.maintenance,
   };
 }
 
@@ -209,6 +211,7 @@ export interface BrandSummary {
   logo_url: string | null;
   hero_image_url: string | null;
   accent_color: string | null;
+  maintenance: boolean;
   category_slug: string;
   products: ProductSummaryApi[];
 }

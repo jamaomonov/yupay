@@ -29,4 +29,7 @@ export interface Game {
   inputPlaceholder: string;
   featured?: boolean;
   featuredDesc?: string;
+  /** Brand is in maintenance — storefront greys it out and blocks purchase.
+   *  Optional for backwards-compat with the mock data in ``constants.ts``. */
+  maintenance?: boolean;
 }

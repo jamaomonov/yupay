@@ -72,6 +72,7 @@ class BrandOut(BaseModel):
     logo_url: str | None
     hero_image_url: str | None
     accent_color: str | None
+    maintenance: bool = False
 
 
 class SkuOut(BaseModel):
@@ -140,6 +141,7 @@ class BrandDetailOut(BaseModel):
     logo_url: str | None
     hero_image_url: str | None
     accent_color: str | None
+    maintenance: bool = False
     products: list[ProductSummaryOut]
 
 

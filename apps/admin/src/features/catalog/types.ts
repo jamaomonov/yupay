@@ -37,6 +37,7 @@ export interface Brand {
   accent_color: string | null;
   sort_order: number;
   active: boolean;
+  maintenance: boolean;
   translations: Translation[];
 }
 

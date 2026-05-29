@@ -10,6 +10,7 @@ import {
   Package as PackageIcon,
   RotateCcw,
   Send,
+  Settings,
   ShieldCheck,
   Wallet as WalletIcon,
   Zap,
@@ -334,6 +335,30 @@ export default function TopUp() {
             setLocation("/");
           }}
           className="bg-primary rounded-2xl px-6 py-3 font-bold text-black"
+        >
+          На главную
+        </button>
+      </div>
+    );
+  }
+  // Brand is in maintenance — the tile is non-clickable on Home, but a direct
+  // link (recent-orders strip, deep link) can still land here, so block the
+  // purchase flow with a friendly notice instead of rendering the buy UI.
+  if (game.maintenance || brandQuery.data?.maintenance) {
+    return (
+      <div className="flex flex-col items-center gap-4 p-6 pt-24 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/5">
+          <Settings size={32} className="animate-spin text-white/70 [animation-duration:4s]" />
+        </div>
+        <h2 className="text-xl font-bold text-white">Технические работы</h2>
+        <p className="max-w-xs text-sm text-white/55">
+          {game.name} временно недоступен для пополнения. Мы уже всё чиним — загляни чуть позже.
+        </p>
+        <button
+          onClick={() => {
+            setLocation("/");
+          }}
+          className="bg-primary mt-2 rounded-2xl px-6 py-3 font-bold text-black"
         >
           На главную
         </button>

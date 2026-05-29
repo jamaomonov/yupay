@@ -147,6 +147,7 @@ async def create_brand(db: AsyncSession, body: BrandCreate) -> Brand:
         accent_color=body.accent_color,
         sort_order=body.sort_order,
         active=body.active,
+        maintenance=body.maintenance,
         translations=[
             BrandTranslation(
                 locale=t.locale,
@@ -170,7 +171,15 @@ async def update_brand(db: AsyncSession, brand_id: str, body: BrandUpdate) -> Br
     if body.category_id is not None:
         await get_category(db, body.category_id)
         row.category_id = body.category_id
-    for attr in ("slug", "logo_url", "hero_image_url", "accent_color", "sort_order", "active"):
+    for attr in (
+        "slug",
+        "logo_url",
+        "hero_image_url",
+        "accent_color",
+        "sort_order",
+        "active",
+        "maintenance",
+    ):
         value = getattr(body, attr)
         if value is not None:
             setattr(row, attr, value)

@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, X, TrendingUp, ArrowLeft, RotateCcw } from "lucide-react";
+import { Search, X, TrendingUp, ArrowLeft, RotateCcw, Settings } from "lucide-react";
 import { useState, useMemo, useRef } from "react";
 import { Link } from "wouter";
 
@@ -192,76 +192,129 @@ function PromoStrip({ games }: { games: Game[] }) {
 }
 
 // ─── Game card (icon grid) ────────────────────────────────────────────────────
-function GameCard({ game, index }: { game: Game; index: number }) {
+function GameCardThumb({ game }: { game: Game }) {
+  if (game.appIcon) {
+    return <img src={game.appIcon} className="h-full w-full object-cover" alt={game.name} />;
+  }
+  if (game.bgUrl) {
+    return <img src={game.bgUrl} className="h-full w-full object-cover" alt={game.name} />;
+  }
   return (
-    <Link href={`/topup/${game.id}`}>
-      <motion.div
-        whileTap={{ scale: 0.91 }}
-        initial={{ opacity: 0, scale: 0.82 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ delay: index * 0.025, type: "spring", stiffness: 300, damping: 24 }}
-        className="flex flex-col items-center gap-1.5"
-        data-testid={`card-game-${game.id}`}
-      >
-        <div className="aspect-square w-full overflow-hidden rounded-2xl shadow-md">
-          {game.appIcon ? (
-            <img src={game.appIcon} className="h-full w-full object-cover" alt={game.name} />
-          ) : game.bgUrl ? (
-            <img src={game.bgUrl} className="h-full w-full object-cover" alt={game.name} />
-          ) : (
-            <div
-              className={`h-full w-full bg-gradient-to-br ${game.gradient || "from-card to-background"} flex items-center justify-center`}
-            >
-              {game.icon && (
-                <game.icon style={{ width: 34, height: 34, color: game.iconColor || "#fff" }} />
-              )}
-            </div>
-          )}
-        </div>
-        <p className="line-clamp-1 w-full px-0.5 text-center text-[11px] font-medium leading-tight text-white/80">
-          {game.name}
-        </p>
-      </motion.div>
-    </Link>
+    <div
+      className={`h-full w-full bg-gradient-to-br ${game.gradient || "from-card to-background"} flex items-center justify-center`}
+    >
+      {game.icon && (
+        <game.icon style={{ width: 34, height: 34, color: game.iconColor || "#fff" }} />
+      )}
+    </div>
   );
 }
 
-// ─── Search result row ────────────────────────────────────────────────────────
-function SearchResultCard({ game, index }: { game: Game; index: number }) {
-  return (
-    <Link href={`/topup/${game.id}`}>
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: index * 0.04 }}
-        whileTap={{ scale: 0.97 }}
-        className="bg-card border-border flex items-center gap-3 rounded-2xl border p-3"
+function GameCard({ game, index }: { game: Game; index: number }) {
+  const inner = (
+    <motion.div
+      whileTap={game.maintenance ? undefined : { scale: 0.91 }}
+      initial={{ opacity: 0, scale: 0.82 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ delay: index * 0.025, type: "spring", stiffness: 300, damping: 24 }}
+      className="flex flex-col items-center gap-1.5"
+      data-testid={`card-game-${game.id}`}
+    >
+      <div className="relative aspect-square w-full overflow-hidden rounded-2xl shadow-md">
+        <div className={game.maintenance ? "h-full w-full opacity-35 grayscale" : "h-full w-full"}>
+          <GameCardThumb game={game} />
+        </div>
+        {game.maintenance && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/45 px-1 text-center">
+            <Settings size={20} className="animate-spin text-white/85 [animation-duration:4s]" />
+            <span className="text-[8.5px] font-semibold uppercase leading-tight tracking-wide text-white/85">
+              Технические
+              <br />
+              работы
+            </span>
+          </div>
+        )}
+      </div>
+      <p
+        className={`line-clamp-1 w-full px-0.5 text-center text-[11px] font-medium leading-tight ${game.maintenance ? "text-white/40" : "text-white/80"}`}
       >
-        <div className="h-11 w-11 flex-shrink-0 overflow-hidden rounded-2xl">
-          {game.appIcon ? (
-            <img src={game.appIcon} className="h-full w-full object-cover" alt={game.name} />
-          ) : game.bgUrl ? (
-            <img src={game.bgUrl} className="h-full w-full object-cover" alt={game.name} />
-          ) : (
-            <div
-              className={`h-full w-full bg-gradient-to-br ${game.gradient || "from-card to-background"} flex items-center justify-center`}
-            >
-              {game.icon && (
-                <game.icon style={{ width: 20, height: 20, color: game.iconColor || "#fff" }} />
-              )}
-            </div>
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="line-clamp-1 text-sm font-semibold text-white">{game.name}</p>
-          <p className="text-body-faint mt-0.5 text-xs">{game.publisher}</p>
-        </div>
-        <span className="text-body-faint flex-shrink-0 rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-medium">
-          {CATEGORY_LABELS[game.category]}
-        </span>
-      </motion.div>
-    </Link>
+        {game.name}
+      </p>
+    </motion.div>
   );
+
+  if (game.maintenance) {
+    return (
+      <div aria-disabled="true" className="cursor-not-allowed">
+        {inner}
+      </div>
+    );
+  }
+  return <Link href={`/topup/${game.id}`}>{inner}</Link>;
+}
+
+// ─── Search result row ────────────────────────────────────────────────────────
+function SearchResultThumb({ game }: { game: Game }) {
+  if (game.appIcon) {
+    return <img src={game.appIcon} className="h-full w-full object-cover" alt={game.name} />;
+  }
+  if (game.bgUrl) {
+    return <img src={game.bgUrl} className="h-full w-full object-cover" alt={game.name} />;
+  }
+  return (
+    <div
+      className={`h-full w-full bg-gradient-to-br ${game.gradient || "from-card to-background"} flex items-center justify-center`}
+    >
+      {game.icon && (
+        <game.icon style={{ width: 20, height: 20, color: game.iconColor || "#fff" }} />
+      )}
+    </div>
+  );
+}
+
+function SearchResultCard({ game, index }: { game: Game; index: number }) {
+  const inner = (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.04 }}
+      whileTap={game.maintenance ? undefined : { scale: 0.97 }}
+      className="bg-card border-border flex items-center gap-3 rounded-2xl border p-3"
+    >
+      <div className="relative h-11 w-11 flex-shrink-0 overflow-hidden rounded-2xl">
+        <div className={game.maintenance ? "h-full w-full opacity-35 grayscale" : "h-full w-full"}>
+          <SearchResultThumb game={game} />
+        </div>
+        {game.maintenance && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/45">
+            <Settings size={16} className="animate-spin text-white/85 [animation-duration:4s]" />
+          </div>
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p
+          className={`line-clamp-1 text-sm font-semibold ${game.maintenance ? "text-white/50" : "text-white"}`}
+        >
+          {game.name}
+        </p>
+        <p className="text-body-faint mt-0.5 text-xs">
+          {game.maintenance ? "Технические работы" : game.publisher}
+        </p>
+      </div>
+      <span className="text-body-faint flex-shrink-0 rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-medium">
+        {CATEGORY_LABELS[game.category]}
+      </span>
+    </motion.div>
+  );
+
+  if (game.maintenance) {
+    return (
+      <div aria-disabled="true" className="cursor-not-allowed">
+        {inner}
+      </div>
+    );
+  }
+  return <Link href={`/topup/${game.id}`}>{inner}</Link>;
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────

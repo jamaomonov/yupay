@@ -90,6 +90,10 @@ class Brand(Base):
     accent_color: Mapped[str | None] = mapped_column(String(16), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    # When true the brand stays visible but the storefront greys it out, shows a
+    # "maintenance" badge and blocks purchases. ``active=False`` hides it entirely;
+    # ``maintenance`` is the softer "temporarily unavailable" state.
+    maintenance: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )

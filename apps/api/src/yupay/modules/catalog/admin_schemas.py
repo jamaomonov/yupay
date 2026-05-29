@@ -86,6 +86,7 @@ class BrandCreate(BaseModel):
     accent_color: str | None = Field(default=None, max_length=16)
     sort_order: int = 0
     active: bool = True
+    maintenance: bool = False
     translations: list[TranslationIn] = Field(min_length=1)
 
 
@@ -101,6 +102,7 @@ class BrandUpdate(BaseModel):
     accent_color: str | None = None
     sort_order: int | None = None
     active: bool | None = None
+    maintenance: bool | None = None
     translations: list[TranslationIn] | None = None
 
 
@@ -220,6 +222,7 @@ class AdminBrandOut(BaseModel):
     accent_color: str | None
     sort_order: int
     active: bool
+    maintenance: bool
     translations: list[TranslationIn]
 
 

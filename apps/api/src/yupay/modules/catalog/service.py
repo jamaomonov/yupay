@@ -75,6 +75,7 @@ def _brand_summary(brand: Brand, locale: str) -> BrandOut:
         logo_url=brand.logo_url,
         hero_image_url=brand.hero_image_url,
         accent_color=brand.accent_color,
+        maintenance=brand.maintenance,
     )
 
 
@@ -222,6 +223,7 @@ async def get_brand_by_slug(
         logo_url=brand.logo_url,
         hero_image_url=brand.hero_image_url,
         accent_color=brand.accent_color,
+        maintenance=brand.maintenance,
         products=products_out,
     )
 

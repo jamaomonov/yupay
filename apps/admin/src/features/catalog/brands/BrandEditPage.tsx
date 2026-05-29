@@ -31,6 +31,7 @@ const brandSchema = z.object({
   accent_color: z.string().optional().or(z.literal("")).nullable(),
   sort_order: z.coerce.number().int().default(0),
   active: z.boolean().default(true),
+  maintenance: z.boolean().default(false),
   translations: z.array(translationSchema).min(1),
 });
 
@@ -44,6 +45,7 @@ const EMPTY: FormValues = {
   accent_color: "",
   sort_order: 0,
   active: true,
+  maintenance: false,
   translations: [
     { locale: "ru", name: "", short_description: "", description: "" },
     { locale: "en", name: "", short_description: "", description: "" },
@@ -106,6 +108,7 @@ export function BrandEditPage() {
       accent_color: existing.accent_color ?? "",
       sort_order: existing.sort_order,
       active: existing.active,
+      maintenance: existing.maintenance,
       translations: LOCALES.map((locale) => {
         const t = existing.translations.find((x) => x.locale === locale);
         return {
@@ -216,6 +219,16 @@ export function BrandEditPage() {
               Активен
             </label>
           </div>
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" {...form.register("maintenance")} className="mt-0.5" />
+            <span>
+              Технические работы
+              <span className="mt-0.5 block text-xs text-[var(--text-secondary)]">
+                Бренд остаётся в каталоге, но в мини-аппе затемняется, помечается шестерёнкой и
+                становится некликабельным — покупка временно недоступна.
+              </span>
+            </span>
+          </label>
         </section>
 
         <section className="space-y-4 rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
