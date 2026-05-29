@@ -1,11 +1,9 @@
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
-  Bitcoin,
   Check,
   ChevronRight,
   Clock,
-  CreditCard,
   ExternalLink,
   Package as PackageIcon,
   RotateCcw,
@@ -13,7 +11,6 @@ import {
   Settings,
   ShieldCheck,
   Wallet as WalletIcon,
-  Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useParams } from "wouter";
@@ -31,6 +28,7 @@ import {
 } from "@/lib/catalog";
 import { useDisplayCurrency } from "@/lib/currency";
 import { useAvailableProviders, useCheckout } from "@/lib/orders";
+import { ACQUIRER_BY_METHOD, PAYMENT_METHODS, PROVIDER_BY_METHOD } from "@/lib/payment-methods";
 import { getRecentFulfillment, rememberFulfillment } from "@/lib/recent-checkout";
 import { isInsideTelegram } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -60,21 +58,7 @@ function adaptPackage(api: ApiPackage): Package {
   };
 }
 
-// `mock` short-circuits to a synchronous fulfilment via the MockFulfiller —
-// indispensable for end-to-end testing of the delivery flow. We do NOT hide it
-// based on a build flag: the backend itself refuses to expose the mock gateway
-// when Settings.is_prod is true (see modules/payments/gateways/mock.py), which
-// is the only check that matters. Hiding it on the frontend created confusion
-// when running `vite preview` against a dev backend.
-const PAYMENT_METHODS = [
-  { id: "mock", name: "Mock", sub: "тест выдачи", icon: ShieldCheck },
-  { id: "card", name: "Карта", sub: "Uzcard · Humo · Visa", icon: CreditCard },
-  { id: "inpay", name: "InPay", sub: "Click · Payme · карты", icon: CreditCard },
-  { id: "sbp", name: "СБП", sub: "без коми", icon: Zap },
-  { id: "crypto", name: "Крипта", sub: "USDT", icon: Bitcoin },
-];
-
-const DEFAULT_PAYMENT_METHOD = PAYMENT_METHODS[0]?.id ?? "card";
+const DEFAULT_PAYMENT_METHOD = PAYMENT_METHODS[0]?.id ?? "inpay";
 
 // When the user opens the miniapp in a plain browser we can't take payment
 // (auth is bound to Telegram initData). Deep-link them back into the bot
@@ -84,35 +68,15 @@ const BOT_USERNAME = (
 ).replace(/^@/, "");
 const TELEGRAM_DEEP_LINK = BOT_USERNAME ? `https://t.me/${BOT_USERNAME}` : null;
 
-/** Internal sentinel for "pay from wallet balance". It is *not* a payment
- *  provider on the backend yet — submit short-circuits to a toast until the
- *  WalletGateway lands. Keeping it in the method list lets the UI surface the
- *  option (with proper enabled/disabled state) before the server flow is in. */
+/** Sentinel for "pay from wallet balance" — handled by its own card, not part
+ *  of the shared acquirer grid. The backend provider slug is ``wallet``. */
 const WALLET_METHOD_ID = "wallet";
 
-const PROVIDER_BY_METHOD: Record<string, string> = {
-  mock: "mock",
-  wallet: "wallet",
-  card: "octo",
-  inpay: "inpay",
-  sbp: "yookassa",
-  crypto: "crypto",
-};
-
-// What the user will actually see on their bank statement / wallet after the
-// gateway settles. Surfacing this upfront prevents the "I paid $5 but my bank
-// statement shows 61 800 UZS — am I being scammed?" support ticket.
-interface AcquirerInfo {
-  label: string;
-  currency: string;
-}
-
-const ACQUIRER_BY_METHOD: Record<string, AcquirerInfo> = {
-  mock: { label: "Mock-провайдер", currency: "USD" },
-  card: { label: "OCTO", currency: "UZS" },
-  inpay: { label: "InPay", currency: "UZS" },
-  sbp: { label: "СБП через YooKassa", currency: "RUB" },
-  crypto: { label: "USDT TRC-20", currency: "USDT" },
+// The shared acquirer list carries the external providers; the wallet option is
+// checkout-only, so we extend the provider map locally for resolution/availability.
+const PROVIDER_BY_METHOD_FULL: Record<string, string> = {
+  ...PROVIDER_BY_METHOD,
+  [WALLET_METHOD_ID]: "wallet",
 };
 
 function formatMoney(value: number, code: string): string {
@@ -453,7 +417,7 @@ export default function TopUp() {
         skuId: activePkg.id,
         fulfillmentData,
         currency,
-        provider: PROVIDER_BY_METHOD[paymentMethod] ?? "click",
+        provider: PROVIDER_BY_METHOD_FULL[paymentMethod] ?? "inpay",
       });
       // Remember the fulfilment payload only after the order was accepted by
       // the API — no point caching a half-typed player_id that came back
@@ -729,7 +693,6 @@ export default function TopUp() {
               {PAYMENT_METHODS.map((m) => {
                 const active = paymentMethod === m.id;
                 const available = isMethodAvailable(m.id);
-                const Icon = m.icon;
                 return (
                   <button
                     key={m.id}
@@ -770,10 +733,13 @@ export default function TopUp() {
                         скоро
                       </div>
                     )}
-                    <Icon
-                      size={18}
-                      className={active && available ? "text-primary" : "text-white/40"}
-                    />
+                    <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-white">
+                      <img
+                        src={m.icon}
+                        alt={m.name}
+                        className="h-full w-full object-contain p-1"
+                      />
+                    </span>
                     <span
                       className={cn(
                         "text-[11px] font-bold leading-none",

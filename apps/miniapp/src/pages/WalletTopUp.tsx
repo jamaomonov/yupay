@@ -1,84 +1,13 @@
 import { motion } from "framer-motion";
-import {
-  ArrowLeft,
-  Banknote,
-  Bitcoin,
-  CreditCard,
-  Shield,
-  Smartphone,
-  Wallet as WalletIcon,
-} from "lucide-react";
+import { ArrowLeft, Shield, Wallet as WalletIcon } from "lucide-react";
 import { useState } from "react";
 import { useLocation } from "wouter";
 
 import { useToast } from "@/hooks/use-toast";
 import { useMe } from "@/lib/auth";
+import { PAYMENT_METHODS } from "@/lib/payment-methods";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { formatBalance } from "@/lib/wallet";
-
-interface ProviderOption {
-  id: string;
-  label: string;
-  hint: string;
-  Icon: typeof CreditCard;
-  /** The currency the customer pays the provider in. The wallet gets
-   *  credited in this same currency — no FX is performed during top-up. */
-  currency: string;
-  /** ``"live"`` providers route through real acquirers; everything else
-   *  shows a "скоро" pill and the submit button keeps disabled. */
-  status: "live" | "soon";
-}
-
-const PROVIDERS: ProviderOption[] = [
-  {
-    id: "click",
-    label: "Click",
-    hint: "UZ · карта / Humo / Uzcard",
-    currency: "UZS",
-    Icon: CreditCard,
-    status: "soon",
-  },
-  {
-    id: "payme",
-    label: "Payme",
-    hint: "UZ · карта",
-    currency: "UZS",
-    Icon: Smartphone,
-    status: "soon",
-  },
-  {
-    id: "uzum",
-    label: "Uzum",
-    hint: "UZ · Humo / Uzcard",
-    currency: "UZS",
-    Icon: Banknote,
-    status: "soon",
-  },
-  {
-    id: "sbp",
-    label: "СБП",
-    hint: "RU · банк-переводом",
-    currency: "RUB",
-    Icon: Smartphone,
-    status: "soon",
-  },
-  {
-    id: "yookassa",
-    label: "YooKassa",
-    hint: "RU · карта",
-    currency: "RUB",
-    Icon: CreditCard,
-    status: "soon",
-  },
-  {
-    id: "usdt",
-    label: "USDT",
-    hint: "TRC-20 / ERC-20",
-    currency: "USDT",
-    Icon: Bitcoin,
-    status: "soon",
-  },
-];
 
 /**
  * Quick-amount chips per currency. The shape is "round numbers a
@@ -93,9 +22,9 @@ const QUICK_AMOUNTS: Record<string, number[]> = {
   RUB: [500, 1_000, 2_500, 5_000, 10_000],
 };
 
-/** Default provider — kicks in on first mount so the input has an
+/** Default method — kicks in on first mount so the input has an
  *  unambiguous currency before the user has touched the list. */
-const DEFAULT_PROVIDER_ID = "click";
+const DEFAULT_METHOD_ID = PAYMENT_METHODS[0]?.id ?? "inpay";
 
 export default function WalletTopUp() {
   useDocumentTitle("Пополнение");
@@ -104,37 +33,31 @@ export default function WalletTopUp() {
   const toast = useToast();
 
   const [amount, setAmount] = useState("");
-  const [provider, setProvider] = useState<string>(DEFAULT_PROVIDER_ID);
+  const [method, setMethod] = useState<string>(DEFAULT_METHOD_ID);
 
-  const selectedProvider = PROVIDERS.find((p) => p.id === provider) ?? PROVIDERS[0]!;
-  const currency = selectedProvider.currency;
+  const selectedMethod = PAYMENT_METHODS.find((m) => m.id === method) ?? PAYMENT_METHODS[0]!;
+  const currency = selectedMethod.currency;
   const quickAmounts = QUICK_AMOUNTS[currency] ?? QUICK_AMOUNTS.USD!;
 
   const numericAmount = Number.parseFloat(amount) || 0;
   const canSubmit = numericAmount > 0 && me.data !== undefined;
 
-  // Switching providers between different currencies (Click UZS →
-  // USDT) would leave a stale UZS amount in a USD context. Clearing on
-  // currency change avoids the "пополнить на 50 000 USD" confusion.
-  const onProviderChange = (next: ProviderOption) => {
+  // Switching methods between different currencies (UZS → USDT) would leave a
+  // stale amount in the wrong context. Clearing on currency change avoids the
+  // "пополнить на 50 000 USDT" confusion.
+  const onMethodChange = (next: (typeof PAYMENT_METHODS)[number]) => {
     if (next.currency !== currency) {
       setAmount("");
     }
-    setProvider(next.id);
+    setMethod(next.id);
   };
 
   const onSubmit = () => {
-    if (selectedProvider.status === "soon") {
-      toast.toast({
-        title: "Провайдер ещё не подключён",
-        description: `${selectedProvider.label} включим как только закроем интеграцию.`,
-      });
-      return;
-    }
-    // Live providers will route here once the acquirer integration lands.
+    // Wallet funding has no backend yet — order checkout already pays via these
+    // acquirers, but crediting the wallet balance is a separate flow.
     toast.toast({
-      title: "Маршрут не настроен",
-      description: "Сообщите в поддержку — мы ускорим.",
+      title: "Пополнение скоро",
+      description: "Скоро можно будет пополнять баланс кошелька напрямую.",
     });
   };
 
@@ -230,15 +153,14 @@ export default function WalletTopUp() {
           Способ оплаты
         </h2>
         <ul className="space-y-2">
-          {PROVIDERS.map((p) => {
-            const active = provider === p.id;
-            const Icon = p.Icon;
+          {PAYMENT_METHODS.map((m) => {
+            const active = method === m.id;
             return (
-              <li key={p.id}>
+              <li key={m.id}>
                 <button
                   type="button"
                   onClick={() => {
-                    onProviderChange(p);
+                    onMethodChange(m);
                   }}
                   className="flex w-full items-center gap-3 rounded-2xl p-3.5 transition-colors"
                   style={{
@@ -247,21 +169,17 @@ export default function WalletTopUp() {
                       ? "1.5px solid hsl(var(--primary))"
                       : "1px solid hsl(var(--border))",
                   }}
-                  data-testid={`provider-${p.id}`}
+                  data-testid={`provider-${m.id}`}
                 >
                   <span
-                    className="flex h-10 w-10 items-center justify-center rounded-xl"
-                    style={{
-                      background: "hsl(var(--surface-2))",
-                      color: "hsl(var(--primary))",
-                    }}
+                    className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-white"
                     aria-hidden="true"
                   >
-                    <Icon size={18} />
+                    <img src={m.icon} alt={m.name} className="h-full w-full object-contain p-1.5" />
                   </span>
                   <span className="min-w-0 flex-1 text-left">
-                    <span className="block flex items-center gap-2 text-sm font-bold text-white">
-                      {p.label}
+                    <span className="flex items-center gap-2 text-sm font-bold text-white">
+                      {m.name}
                       <span
                         className="rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em]"
                         style={{
@@ -269,23 +187,10 @@ export default function WalletTopUp() {
                           color: "rgba(255,255,255,0.55)",
                         }}
                       >
-                        {p.currency}
+                        {m.currency}
                       </span>
-                      {p.status === "soon" && (
-                        <span
-                          className="rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em]"
-                          style={{
-                            background: "rgba(255,255,255,0.08)",
-                            color: "rgba(255,255,255,0.5)",
-                          }}
-                        >
-                          скоро
-                        </span>
-                      )}
                     </span>
-                    <span className="mt-0.5 block truncate text-[12px] text-white/45">
-                      {p.hint}
-                    </span>
+                    <span className="mt-0.5 block truncate text-[12px] text-white/45">{m.sub}</span>
                   </span>
                   <span
                     className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full"
