@@ -6,19 +6,23 @@ x-app-env: &app-env
   LOG_LEVEL: INFO
   LOG_JSON: "true"
 
-# Disable IPv6 inside outbound-heavy containers. On Yandex Cloud the
-# bridge has no IPv6 route, but ``api.telegram.org`` returns an
-# AAAA record. aiohappyeyeballs tries IPv6 first → silent hang →
-# ``TelegramNetworkError: Request timeout``. namespace-level sysctls
-# work without ``privileged: true``.
-x-no-ipv6: &no-ipv6
-  - net.ipv6.conf.all.disable_ipv6=1
-  - net.ipv6.conf.default.disable_ipv6=1
-  # ICMP "fragmentation needed" is often filtered on cloud egress,
-  # so the kernel can't discover the real path MTU from ICMP. =2
-  # forces TCP MTU probing for every connection (RFC 4821) — costs
-  # nothing on healthy paths, recovers from black-hole MTU drops on
-  # the bad ones.
+# Telegram's IPv4 ranges are blocked on this host's egress (RU cloud):
+# ``curl -4 https://api.telegram.org`` times out while ``curl -6``
+# returns 302 in ~0.1s. Every container that calls the Telegram Bot API
+# must therefore reach it over IPv6:
+#   - ``bot`` is outbound-only (long-poll) with no internal-network deps,
+#     so it uses ``network_mode: host`` to borrow the host's working IPv6.
+#   - ``api`` / ``worker`` / ``scheduler`` keep the bridge (they need the
+#     postgres/redis/api service-name DNS) and get IPv6 egress from the
+#     ``enable_ipv6`` + ULA + NAT66 on the ``default`` network below.
+# See docs/runbooks/telegram-connectivity.md.
+#
+# ICMP "fragmentation needed" is often filtered on cloud egress, so the
+# kernel can't learn the path MTU from ICMP. tcp_mtu_probing=2 forces TCP
+# MTU probing (RFC 4821) for every connection — free on healthy paths,
+# recovers from black-hole MTU drops on the bad ones. Kept for the
+# remaining IPv4 egress (e.g. payment providers).
+x-mtu-probe: &mtu-probe
   - net.ipv4.tcp_mtu_probing=2
 
 services:
@@ -69,7 +73,7 @@ services:
     environment:
       <<: *app-env
     env_file: /opt/yupay/secrets/api.env
-    sysctls: *no-ipv6
+    sysctls: *mtu-probe
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_started }
@@ -83,7 +87,7 @@ services:
     environment:
       <<: *app-env
     env_file: /opt/yupay/secrets/api.env
-    sysctls: *no-ipv6
+    sysctls: *mtu-probe
     depends_on: [postgres, redis]
 
   scheduler:
@@ -92,7 +96,7 @@ services:
     environment:
       <<: *app-env
     env_file: /opt/yupay/secrets/api.env
-    sysctls: *no-ipv6
+    sysctls: *mtu-probe
     depends_on: [postgres, redis]
 
   bot:
@@ -101,7 +105,13 @@ services:
     environment:
       <<: *app-env
     env_file: /opt/yupay/secrets/api.env
-    sysctls: *no-ipv6
+    # Telegram is reachable only over IPv6 from this host (IPv4 blocked).
+    # The bot is outbound-only (long-poll) with no internal-network deps,
+    # so it borrows the host netns to use the host's working IPv6 directly.
+    # Namespaced net.* sysctls are incompatible with host networking, so the
+    # tcp_mtu_probing tweak is dropped here — the host sets its own.
+    # See docs/runbooks/telegram-connectivity.md.
+    network_mode: host
     depends_on: [api]
 
   web:
@@ -235,5 +245,17 @@ volumes:
 networks:
   default:
     driver: bridge
+    # Telegram's IPv4 is blocked on this host; the only working route is
+    # IPv6 (see the x-mtu-probe note + the runbook). Bridge containers that
+    # call the Bot API (api/worker/scheduler) need IPv6 egress. Docker ≥ 27
+    # has ip6tables on by default and NAT66-masquerades a ULA subnet to the
+    # host's global IPv6 automatically — verify with:
+    #   docker version --format '{{.Server.Version}}'
+    # On older Docker set ``"ip6tables": true`` in /etc/docker/daemon.json
+    # and restart the daemon, else the ULA addresses have no route out.
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: fd00:c0de:cafe::/64
     driver_opts:
       com.docker.network.driver.mtu: "1450"
