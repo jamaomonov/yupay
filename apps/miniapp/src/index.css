@@ -232,3 +232,59 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ── Splash wordmark (see SplashWordmark.tsx) ──────────────────────────
+   The green ``U`` pops in first, then Y / P A Y slide out from behind it
+   to their final places. Each letter carries its own start offset in the
+   ``--yp-from`` custom property so one shared keyframe drives all four
+   slides. Offsets were measured against the SVG viewBox: U's centre sits
+   at ≈2058, so each letter starts translated to that centre and rides to
+   ``translateX(0)``. The global ``prefers-reduced-motion`` rule above
+   collapses these to their end state, so no a11y branch is needed here. */
+.yp-u {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: yp-pop 0.55s cubic-bezier(0.34, 1.4, 0.64, 1) 0.1s both;
+}
+.yp-y {
+  --yp-from: 1476px;
+  animation: yp-slide 1.05s cubic-bezier(0.4, 0, 0.2, 1) 0.5s both;
+}
+.yp-p {
+  --yp-from: -1603px;
+  animation: yp-slide 1.05s cubic-bezier(0.4, 0, 0.2, 1) 0.5s both;
+}
+.yp-a {
+  --yp-from: -2795px;
+  animation: yp-slide 1.05s cubic-bezier(0.4, 0, 0.2, 1) 0.5s both;
+}
+.yp-y2 {
+  --yp-from: -3851px;
+  animation: yp-slide 1.05s cubic-bezier(0.4, 0, 0.2, 1) 0.5s both;
+}
+
+@keyframes yp-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes yp-slide {
+  from {
+    opacity: 0;
+    transform: translateX(var(--yp-from));
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}

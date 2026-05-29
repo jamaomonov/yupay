@@ -14,6 +14,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
+import { SplashWordmark } from "@/components/SplashWordmark";
 import { ApiError, apiGet, getAccessToken } from "@/lib/api";
 import { bootstrapAuth } from "@/lib/auth";
 import { brandsQueryOptions, categoriesQueryOptions } from "@/lib/catalog";
@@ -43,8 +44,28 @@ interface PrefetchSpec {
 /** Minimum splash duration in ms. Prevents flashes on instant loads. */
 const MIN_SPLASH_MS = 650;
 
+/**
+ * How long the wordmark reveal runs end-to-end (see SplashWordmark.tsx +
+ * the ``yp-*`` keyframes in index.css): U pops at 0.1s, Y/P A Y finish
+ * sliding at ≈1.55s, and the tagline fades in last, settling at ≈1.8s.
+ * On a warm-cache boot the data is ready well before that, so we hold the
+ * splash until the reveal finishes instead of cutting it off mid-slide —
+ * but only on the first launch (see ``release``).
+ */
+const SPLASH_ANIM_MS = 1_850;
+
 /** Hard cap on the whole bootstrap. We always release after this. */
 const HARD_BOOT_TIMEOUT_MS = 8_000;
+
+/**
+ * Whether the user asked the OS to minimise motion. The reveal's CSS
+ * keyframes collapse to their end state under this (global rule in
+ * index.css), so there's nothing to wait for — we must skip the animation
+ * floor or the user would stare at a static, finished wordmark for ~1.8s.
+ */
+function prefersReducedMotion(): boolean {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
 
 export function BootstrapGate({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
@@ -55,8 +76,14 @@ export function BootstrapGate({ children }: { children: ReactNode }) {
   const attemptRef = useRef<number>(0);
 
   const release = useCallback(async () => {
+    // First cold launch holds for the full wordmark reveal so a fast boot
+    // doesn't truncate it mid-slide; the splash only mounts (and the CSS
+    // animation only plays) once per launch, so a retry after an error has
+    // nothing left to show and falls back to the anti-flash minimum.
+    const floor =
+      attemptRef.current <= 1 && !prefersReducedMotion() ? SPLASH_ANIM_MS : MIN_SPLASH_MS;
     const elapsed = Date.now() - startedAt.current;
-    const wait = Math.max(0, MIN_SPLASH_MS - elapsed);
+    const wait = Math.max(0, floor - elapsed);
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     setPhase("ready");
   }, []);
@@ -176,18 +203,22 @@ function Splash({
           "radial-gradient(circle at 50% 35%, hsl(228 32% 14%) 0%, hsl(228 36% 8%) 60%, hsl(228 40% 5%) 100%)",
       }}
     >
-      <div className="flex flex-col items-center gap-6 px-8 text-center">
-        <Logo spinning={phase === "booting"} />
+      <div className="flex flex-col items-center gap-7 px-8 text-center">
+        {/* The wordmark already reads "YuPay", so no separate <h1> here —
+            it would just double the brand name on screen. */}
+        <SplashWordmark />
 
-        <div className="space-y-1.5">
-          <h1 className="text-2xl font-bold tracking-tight text-white">YuPay</h1>
-          <p
-            className="text-xs font-medium uppercase tracking-[0.08em]"
-            style={{ color: "hsl(var(--primary))" }}
-          >
-            {t("bootstrap.tagline")}
-          </p>
-        </div>
+        {/* Tagline fades in only after the wordmark's slide settles
+            (U pops at 0.1s, letters finish their slide at ≈1.55s). */}
+        <motion.p
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1.4, duration: 0.4 }}
+          className="-mt-1 text-xs font-medium uppercase tracking-[0.08em]"
+          style={{ color: "hsl(var(--primary))" }}
+        >
+          {t("bootstrap.tagline")}
+        </motion.p>
 
         <AnimatePresence mode="wait">
           {phase === "error" ? (
@@ -231,43 +262,5 @@ function Splash({
         {t("bootstrap.madeFor")}
       </div>
     </motion.div>
-  );
-}
-
-function Logo({ spinning }: { spinning: boolean }) {
-  return (
-    <div className="relative flex h-28 w-28 items-center justify-center">
-      {/* Soft halo */}
-      <div
-        className="absolute inset-0 rounded-full opacity-60 blur-2xl"
-        style={{
-          background: "radial-gradient(circle, hsl(var(--primary) / 0.55) 0%, transparent 70%)",
-        }}
-      />
-      {/* Rotating ring */}
-      <motion.div
-        className="absolute inset-0 rounded-full"
-        animate={spinning ? { rotate: 360 } : { rotate: 0 }}
-        transition={
-          spinning ? { repeat: Infinity, duration: 1.6, ease: "linear" } : { duration: 0.3 }
-        }
-        style={{
-          background: `conic-gradient(from 0deg, transparent 0deg, hsl(var(--primary)) 80deg, transparent 240deg)`,
-          mask: "radial-gradient(circle, transparent 56%, #000 58%, #000 100%)",
-          WebkitMask: "radial-gradient(circle, transparent 56%, #000 58%, #000 100%)",
-          opacity: 0.9,
-        }}
-      />
-      {/* Core mark — the real brand logo. The dark square came from the
-          PNG variant we generated for apple-touch-icon, but here the
-          flat SVG sits on its own dark splash background so we render
-          the icon-mark SVG directly without the boxed wrapper. */}
-      <img
-        src="/logo-icon.svg"
-        alt="YuPay"
-        className="relative z-10 h-16 w-16 drop-shadow-[0_8px_32px_hsl(var(--primary)/0.5)]"
-        draggable={false}
-      />
-    </div>
   );
 }
