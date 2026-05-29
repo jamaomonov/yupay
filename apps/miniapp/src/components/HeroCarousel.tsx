@@ -1,20 +1,18 @@
 /**
  * Home hero carousel — informative, tappable slides at the top of the storefront.
  *
- * v1 ships with placeholder gradients. When the 3D renders are ready, export
- * each as an optimized WebP (~50–150 KB), drop it in ``src/assets/hero/`` and
- * wire it onto the matching slide:
- *
- *   import instantImg from "@/assets/hero/instant.webp";
- *   ...
- *   { id: "instant", ..., image: instantImg }
- *
- * Until then the gradient + "3D скоро" badge render in place.
+ * Slide artwork: 3D renders exported as ~1200×500 JPEG (~80 KB each), stored in
+ * ``src/assets/hero/``. The gradient under each slide stays as a tinted fallback
+ * (visible behind any image transparency and during the crossfade).
  */
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
+
+import instantImg from "@/assets/hero/instant.jpg";
+import payImg from "@/assets/hero/pay.jpg";
+import walletImg from "@/assets/hero/wallet.jpg";
 
 interface HeroSlide {
   id: string;
@@ -33,6 +31,7 @@ const SLIDES: HeroSlide[] = [
     id: "instant",
     title: "Пополнение за минуту",
     subtitle: "Игры, подписки и гифт-карты",
+    image: instantImg,
     gradient: "linear-gradient(135deg, #0b2a6b 0%, #0ea5e9 100%)",
   },
   {
@@ -40,12 +39,14 @@ const SLIDES: HeroSlide[] = [
     title: "Кошелёк YuPay",
     subtitle: "Плати в один тап и копи кешбэк",
     href: "/wallet",
+    image: walletImg,
     gradient: "linear-gradient(135deg, #064e3b 0%, #10b981 100%)",
   },
   {
     id: "pay",
     title: "Оплата как удобно",
     subtitle: "Click · Payme · Uzum · USDT",
+    image: payImg,
     gradient: "linear-gradient(135deg, #3b0a63 0%, #7c3aed 100%)",
   },
 ];
