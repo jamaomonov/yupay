@@ -69,6 +69,7 @@ function adaptPackage(api: ApiPackage): Package {
 const PAYMENT_METHODS = [
   { id: "mock", name: "Mock", sub: "тест выдачи", icon: ShieldCheck },
   { id: "card", name: "Карта", sub: "Uzcard · Humo · Visa", icon: CreditCard },
+  { id: "inpay", name: "InPay", sub: "Click · Payme · карты", icon: CreditCard },
   { id: "sbp", name: "СБП", sub: "без коми", icon: Zap },
   { id: "crypto", name: "Крипта", sub: "USDT", icon: Bitcoin },
 ];
@@ -93,6 +94,7 @@ const PROVIDER_BY_METHOD: Record<string, string> = {
   mock: "mock",
   wallet: "wallet",
   card: "octo",
+  inpay: "inpay",
   sbp: "yookassa",
   crypto: "crypto",
 };
@@ -108,6 +110,7 @@ interface AcquirerInfo {
 const ACQUIRER_BY_METHOD: Record<string, AcquirerInfo> = {
   mock: { label: "Mock-провайдер", currency: "USD" },
   card: { label: "OCTO", currency: "UZS" },
+  inpay: { label: "InPay", currency: "UZS" },
   sbp: { label: "СБП через YooKassa", currency: "RUB" },
   crypto: { label: "USDT TRC-20", currency: "USDT" },
 };

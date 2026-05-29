@@ -214,6 +214,16 @@ class Settings(BaseSettings):
     octo_test_mode: bool = Field(default=False)
     octo_request_timeout_seconds: float = Field(default=20.0)
 
+    # --- acquirer: InPay (inpay.uz) ---
+    # UZS-only card aggregator (Click/Payme/Uzcard/Humo behind one checkout).
+    # Two-step auth: GET /authorization → 24h bearer token (cached), then
+    # POST /create. Empty merchant_id/token → ``available=False``. InPay does not
+    # sign callbacks, so the webhook handler re-verifies status via /transactions.
+    inpay_merchant_id: str = Field(default="")
+    inpay_merchant_token: str = Field(default="")
+    inpay_base_url: str = Field(default="https://inpay.uz/api/v1")
+    inpay_request_timeout_seconds: float = Field(default=20.0)
+
     # --- admin alerts (separate Telegram bot — NOT the customer bot) ---
     # Dedicated bot so an outage of one channel doesn't drag the other
     # down, and so the customer bot's token doesn't carry admin-chat

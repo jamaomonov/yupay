@@ -22,6 +22,7 @@ from yupay.modules.payments.gateways.base import (
     RefundResult,
     WebhookEvent,
 )
+from yupay.modules.payments.gateways.inpay import InpayGateway
 from yupay.modules.payments.gateways.mock import MockGateway
 from yupay.modules.payments.gateways.octo import OctoGateway
 from yupay.modules.payments.gateways.wallet import WalletGateway
@@ -34,6 +35,9 @@ REGISTRY: dict[str, PaymentGateway] = {
     # --- Uzbek acquirers ---
     # Octo (octo.uz) — first real card acquirer (Uzcard/Humo/Visa). See ADR-0020.
     "octo": OctoGateway(),
+    # InPay (inpay.uz) — UZS card aggregator; unsigned callbacks re-verified
+    # via /transactions. See ADR-0021.
+    "inpay": InpayGateway(),
     "click": StubGateway(
         provider="click",
         todo_message="Click acquirer not integrated yet; see ADR-0012.",
@@ -78,6 +82,7 @@ def available_providers() -> list[str]:
 
 __all__ = [
     "REGISTRY",
+    "InpayGateway",
     "MockGateway",
     "OctoGateway",
     "PaymentGateway",

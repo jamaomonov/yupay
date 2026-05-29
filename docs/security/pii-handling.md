@@ -19,8 +19,11 @@
 - Telegram IDs
 - Voucher codes
 - Auth tokens (access / refresh / guest)
-- Provider API keys and acquirer secrets (`octo_secret`, `octo_signature_key`)
+- Provider API keys and acquirer secrets (`octo_secret`, `octo_signature_key`, `inpay_merchant_token`, bearer tokens)
 - Card data — masked card fields stay in the admin-only webhook audit row, never in app logs
+
+InPay callbacks carry no card data (only amount/status/order_id/transaction_id); its
+unsigned webhook is authenticated by re-verifying status via `/transactions`.
 
 The structured logger's redactor blocklists these field names. New PII fields **must** be
 added to the redactor and to this document in the same PR.
