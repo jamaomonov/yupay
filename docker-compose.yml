@@ -25,6 +25,17 @@ x-app-env: &app-env
   G2B_WEBHOOK_SECRET: ${G2B_WEBHOOK_SECRET:-}
   G2B_CALLBACK_URL: ${G2B_CALLBACK_URL:-}
   G2B_REQUEST_TIMEOUT_SECONDS: ${G2B_REQUEST_TIMEOUT_SECONDS:-20}
+  # Octo card acquirer — set in .env (or /opt/yupay/secrets/api.env in prod).
+  # Empty OCTO_SHOP_ID/OCTO_SECRET leaves the gateway ``available=false`` and the
+  # miniapp "Карта" method stays disabled. BASE_URL must be publicly reachable
+  # (a tunnel in dev) for Octo's webhook to land on /api/v1/webhooks/payments/octo.
+  BASE_URL: ${BASE_URL:-http://localhost:8000}
+  OCTO_SHOP_ID: ${OCTO_SHOP_ID:-}
+  OCTO_SECRET: ${OCTO_SECRET:-}
+  OCTO_SIGNATURE_KEY: ${OCTO_SIGNATURE_KEY:-}
+  OCTO_BASE_URL: ${OCTO_BASE_URL:-https://secure.octo.uz}
+  OCTO_TEST_MODE: ${OCTO_TEST_MODE:-false}
+  OCTO_REQUEST_TIMEOUT_SECONDS: ${OCTO_REQUEST_TIMEOUT_SECONDS:-20}
   # Admin alert bot (separate from the customer-facing bot). Empty values
   # no-op the alerts module — useful in dev before the bot is provisioned.
   TG_ALERT_BOT_TOKEN: ${TG_ALERT_BOT_TOKEN:-}
