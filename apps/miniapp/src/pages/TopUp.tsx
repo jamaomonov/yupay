@@ -27,6 +27,8 @@ import {
   type Package as ApiPackage,
 } from "@/lib/catalog";
 import { useDisplayCurrency } from "@/lib/currency";
+import { useT } from "@/lib/i18n";
+import { getActiveLocale } from "@/lib/i18n/core";
 import { useAvailableProviders, useCheckout } from "@/lib/orders";
 import { ACQUIRER_BY_METHOD, PAYMENT_METHODS, PROVIDER_BY_METHOD } from "@/lib/payment-methods";
 import { getRecentFulfillment, rememberFulfillment } from "@/lib/recent-checkout";
@@ -81,7 +83,7 @@ const PROVIDER_BY_METHOD_FULL: Record<string, string> = {
 
 function formatMoney(value: number, code: string): string {
   if (code === "USD" || code === "USDT") return `$${value.toFixed(2)}`;
-  return `${value.toLocaleString("ru", { maximumFractionDigits: 2 })} ${code}`;
+  return `${value.toLocaleString(getActiveLocale(), { maximumFractionDigits: 2 })} ${code}`;
 }
 
 // ─── Step heading ──────────────────────────────────────────────────────────────
@@ -124,6 +126,7 @@ function WalletPayOption({
   currency: string;
   onSelect: () => void;
 }) {
+  const { t } = useT();
   const disabled = !loading && !enough;
   return (
     <button
@@ -150,7 +153,7 @@ function WalletPayOption({
         <WalletIcon size={18} />
       </span>
       <span className="min-w-0 flex-1 text-left">
-        <span className="block text-sm font-bold text-white">Оплата с баланса</span>
+        <span className="block text-sm font-bold text-white">{t("topup.walletPay")}</span>
         <span
           className="mt-0.5 block text-[12px]"
           style={{
@@ -158,10 +161,10 @@ function WalletPayOption({
           }}
         >
           {loading
-            ? "Загружаем баланс…"
+            ? t("topup.walletLoading")
             : disabled
-              ? `Не хватает ${formatBalance(shortfall, currency)}`
-              : `На счёте ${formatBalance(balance ?? 0, currency)}`}
+              ? t("topup.walletShort", { amount: formatBalance(shortfall, currency) })
+              : t("topup.walletBalance", { amount: formatBalance(balance ?? 0, currency) })}
         </span>
       </span>
       {active && !disabled && (
@@ -179,6 +182,7 @@ function WalletPayOption({
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function TopUp() {
+  const { t, tn, locale } = useT();
   const { gameId } = useParams();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -188,7 +192,7 @@ export default function TopUp() {
   const brandQuery = useBrandSummary(gameId);
   const products = brandQuery.data?.products ?? [];
 
-  useDocumentTitle(game ? `Пополнение · ${game.name}` : "Пополнение");
+  useDocumentTitle(game ? t("topup.docTitleNamed", { game: game.name }) : t("topup.docTitle"));
 
   // The currently picked product within the brand (PUBG UC vs Royale Pass …).
   const [selectedProductSlug, setSelectedProductSlug] = useState<string>("");
@@ -296,14 +300,14 @@ export default function TopUp() {
   if (!game || brandQuery.isError) {
     return (
       <div className="space-y-4 p-4 pt-20 text-center">
-        <h2 className="text-xl font-bold">Сервис не найден</h2>
+        <h2 className="text-xl font-bold">{t("topup.notFound")}</h2>
         <button
           onClick={() => {
             setLocation("/");
           }}
           className="bg-primary rounded-2xl px-6 py-3 font-bold text-black"
         >
-          На главную
+          {t("common.toHome")}
         </button>
       </div>
     );
@@ -317,9 +321,9 @@ export default function TopUp() {
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/5">
           <Settings size={32} className="animate-spin text-white/70 [animation-duration:4s]" />
         </div>
-        <h2 className="text-xl font-bold text-white">Технические работы</h2>
+        <h2 className="text-xl font-bold text-white">{t("topup.maintenance")}</h2>
         <p className="max-w-xs text-sm text-white/55">
-          {game.name} временно недоступен для пополнения. Мы уже всё чиним — загляни чуть позже.
+          {t("topup.maintenanceBody", { game: game.name })}
         </p>
         <button
           onClick={() => {
@@ -327,7 +331,7 @@ export default function TopUp() {
           }}
           className="bg-primary mt-2 rounded-2xl px-6 py-3 font-bold text-black"
         >
-          На главную
+          {t("common.toHome")}
         </button>
       </div>
     );
@@ -354,15 +358,17 @@ export default function TopUp() {
     const v = fulfillment[f.key];
     return !v || v.trim().length === 0;
   })?.key;
+  const firstFieldLabel =
+    requiredFields[0]?.label?.[locale] ?? requiredFields[0]?.label?.ru ?? t("topup.fieldFallback");
   const fillingHint = accountRequired
-    ? `Введите ${requiredFields[0]?.label?.ru ?? "данные"} аккаунта`
-    : "Без передачи аккаунта";
+    ? t("topup.fillingHint", { field: firstFieldLabel })
+    : t("topup.noAccount");
 
   const handlePayment = async () => {
     if (!activePkg) {
       toast({
-        title: "Выберите пакет",
-        description: "Сначала укажи номинал",
+        title: t("topup.pickPackageTitle"),
+        description: t("topup.pickPackageBody"),
         variant: "destructive",
       });
       return;
@@ -370,16 +376,16 @@ export default function TopUp() {
     if (missingFieldKey) {
       const f = requiredFields.find((x) => x.key === missingFieldKey);
       toast({
-        title: "Заполните поле",
-        description: f?.label?.ru ?? missingFieldKey,
+        title: t("topup.fillFieldTitle"),
+        description: f?.label?.[locale] ?? f?.label?.ru ?? missingFieldKey,
         variant: "destructive",
       });
       return;
     }
     if (!me.data) {
       toast({
-        title: "Откройте в Telegram",
-        description: "Оплата доступна только из Telegram Mini App",
+        title: t("topup.openInTgTitle"),
+        description: t("topup.openInTgBody"),
         variant: "destructive",
       });
       return;
@@ -389,8 +395,8 @@ export default function TopUp() {
     // ``pending_payment`` order until it expires.
     if (!isMethodAvailable(paymentMethod)) {
       toast({
-        title: "Способ оплаты недоступен",
-        description: "Этот метод временно отключён. Выберите другой.",
+        title: t("topup.methodUnavailableTitle"),
+        description: t("topup.methodUnavailableBody"),
         variant: "destructive",
       });
       return;
@@ -401,8 +407,10 @@ export default function TopUp() {
       // the source of truth is server-side. Even if a stale balance
       // slipped past us, the gateway would fail safely and roll back.
       toast({
-        title: "На балансе недостаточно",
-        description: `Не хватает ${formatBalance(walletShortfall, priceCode)}. Пополни кошелёк или выбери другой способ.`,
+        title: t("topup.insufficientTitle"),
+        description: t("topup.insufficientBody", {
+          amount: formatBalance(walletShortfall, priceCode),
+        }),
         variant: "destructive",
       });
       return;
@@ -425,7 +433,7 @@ export default function TopUp() {
       if (gameId) rememberFulfillment(gameId, fulfillmentData);
       if (result.payment.intent_url && result.payment.provider !== "mock") {
         toast({
-          title: "Перенаправляем на оплату",
+          title: t("topup.redirecting"),
           description: result.payment.provider,
         });
         window.location.href = result.payment.intent_url;
@@ -437,17 +445,20 @@ export default function TopUp() {
       // the money has actually moved.
       if (result.payment.provider === "wallet") {
         toast({
-          title: "Оплачено с баланса",
-          description: `${game.name} в обработке`,
+          title: t("topup.paidFromBalance"),
+          description: t("topup.processing", { game: game.name }),
         });
       } else {
-        toast({ title: "Заказ создан", description: `${game.name} в обработке` });
+        toast({
+          title: t("topup.orderCreated"),
+          description: t("topup.processing", { game: game.name }),
+        });
       }
       setLocation(`/order/${result.order.id}`);
     } catch (exc) {
-      const detail = exc instanceof ApiError ? exc.detail : "Попробуйте ещё раз";
+      const detail = exc instanceof ApiError ? exc.detail : t("topup.tryAgain");
       toast({
-        title: "Не удалось оформить",
+        title: t("topup.checkoutFailed"),
         description: detail,
         variant: "destructive",
       });
@@ -510,7 +521,9 @@ export default function TopUp() {
                   }}
                 >
                   <Clock size={10} className="text-primary" />
-                  <span className="text-primary text-[10px] font-semibold">1–2 мин</span>
+                  <span className="text-primary text-[10px] font-semibold">
+                    {t("topup.deliveryTime")}
+                  </span>
                 </div>
               </div>
             </div>
@@ -542,11 +555,10 @@ export default function TopUp() {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold leading-tight text-white">
-                  Откройте в Telegram
+                  {t("topup.openInTgTitle")}
                 </p>
                 <p className="mt-1 text-[12px] leading-relaxed text-white/55">
-                  Оплата привязана к вашему Telegram-аккаунту. Каталог доступен для просмотра —
-                  оформить заказ можно только из бота.
+                  {t("topup.tgBannerBody")}
                 </p>
                 {TELEGRAM_DEEP_LINK && (
                   <a
@@ -554,7 +566,7 @@ export default function TopUp() {
                     className="mt-2.5 inline-flex items-center gap-1.5 text-[12px] font-semibold transition-opacity active:opacity-70"
                     style={{ color: "hsl(var(--primary))" }}
                   >
-                    Открыть бота
+                    {t("common.openBot")}
                     <ExternalLink size={11} />
                   </a>
                 )}
@@ -572,10 +584,12 @@ export default function TopUp() {
                 <div className="flex items-center gap-2">
                   <PackageIcon size={13} className="text-white/40" />
                   <span className="text-xs font-semibold uppercase tracking-wide text-white/50">
-                    Выберите продукт
+                    {t("topup.pickProduct")}
                   </span>
                 </div>
-                <span className="text-[10px] text-white/30">{products.length} опций</span>
+                <span className="text-[10px] text-white/30">
+                  {tn("topup.optionsCount", products.length)}
+                </span>
               </div>
               <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
                 {products.map((p) => {
@@ -621,7 +635,9 @@ export default function TopUp() {
             <div>
               <Step
                 n={1}
-                title={requiredFields.length === 1 ? "Куда зачислить?" : "Реквизиты"}
+                title={
+                  requiredFields.length === 1 ? t("topup.whereToCredit") : t("topup.credentials")
+                }
                 sub={fillingHint}
               />
               <DynamicFields
@@ -639,14 +655,14 @@ export default function TopUp() {
           <div>
             <Step
               n={accountRequired ? 2 : 1}
-              title="Сколько пополнить?"
-              sub="Зачисление обычно в течение пары минут"
+              title={t("topup.howMuch")}
+              sub={t("topup.creditWithinMinutes")}
             />
 
             {productQuery.isLoading && <PackagesSkeleton />}
             {!productQuery.isLoading && packages.length === 0 && (
               <p className="rounded-2xl border border-dashed border-white/10 p-6 text-center text-sm text-white/40">
-                У этого продукта пока нет активных позиций. Загляни позже.
+                {t("topup.noPositions")}
               </p>
             )}
             {packages.length > 0 && (
@@ -670,8 +686,8 @@ export default function TopUp() {
           <div>
             <Step
               n={accountRequired ? 3 : 2}
-              title="Способ оплаты"
-              sub="Безопасно, без передачи карт"
+              title={t("topup.paymentMethod")}
+              sub={t("topup.paymentSafe")}
             />
 
             {/* Wallet — separate full-width card on top because it's the
@@ -703,7 +719,7 @@ export default function TopUp() {
                     }}
                     disabled={!available}
                     aria-disabled={!available}
-                    title={available ? undefined : "Скоро"}
+                    title={available ? undefined : t("topup.soon")}
                     className="relative flex flex-col items-center gap-1 rounded-2xl py-3 transition-all duration-150 disabled:cursor-not-allowed"
                     style={{
                       background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
@@ -730,7 +746,7 @@ export default function TopUp() {
                           color: "hsl(var(--muted-foreground))",
                         }}
                       >
-                        скоро
+                        {t("topup.soon")}
                       </div>
                     )}
                     <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-white">
@@ -755,13 +771,11 @@ export default function TopUp() {
             {[
               {
                 icon: ShieldCheck,
-                text: accountRequired
-                  ? "Без передачи пароля — только публичные данные аккаунта"
-                  : "Шифрованные платежи и безопасная выдача кодов",
+                text: accountRequired ? t("topup.trustNoPassword") : t("topup.trustEncrypted"),
               },
               {
                 icon: RotateCcw,
-                text: "Не пришло за 5 минут — оформим возврат",
+                text: t("topup.trustRefund"),
               },
             ].map(({ icon: Icon, text }, i) => (
               <div key={i} className="flex items-center gap-2.5">
@@ -790,9 +804,9 @@ export default function TopUp() {
                 <p className="mt-0.5 line-clamp-1 text-xs text-white/40">
                   {accountRequired
                     ? missingFieldKey
-                      ? "Заполните реквизиты выше"
-                      : "Реквизиты заполнены"
-                    : "Получите код после оплаты"}
+                      ? t("topup.fillAbove")
+                      : t("topup.filled")
+                    : t("topup.getCode")}
                 </p>
               </div>
               <p className="flex-shrink-0 text-sm font-bold text-white">
@@ -813,8 +827,10 @@ export default function TopUp() {
           ACQUIRER_BY_METHOD[paymentMethod] &&
           ACQUIRER_BY_METHOD[paymentMethod].currency !== priceCode && (
             <p className="mb-2 text-center text-[11px] text-white/45" role="note">
-              Списание в {ACQUIRER_BY_METHOD[paymentMethod].currency} через{" "}
-              {ACQUIRER_BY_METHOD[paymentMethod].label} по курсу банка
+              {t("topup.settlement", {
+                currency: ACQUIRER_BY_METHOD[paymentMethod].currency,
+                acquirer: ACQUIRER_BY_METHOD[paymentMethod].label,
+              })}
             </p>
           )}
         {!insideTelegram && TELEGRAM_DEEP_LINK ? (
@@ -829,7 +845,7 @@ export default function TopUp() {
             }}
           >
             <Send size={16} />
-            Открыть в Telegram
+            {t("topup.openInTgCta")}
           </motion.a>
         ) : activePkg ? (
           <motion.button
@@ -849,12 +865,12 @@ export default function TopUp() {
             data-testid="btn-pay"
           >
             {isProcessing ? (
-              "Обработка..."
+              t("topup.processingBtn")
             ) : !insideTelegram ? (
-              "Доступно в Telegram"
+              t("topup.availableInTg")
             ) : (
               <>
-                Оплатить
+                {t("topup.pay")}
                 <ChevronRight size={18} strokeWidth={2.5} />
               </>
             )}
@@ -877,6 +893,7 @@ function PackageCard({
   fallbackImage: string | null;
   onSelect: () => void;
 }) {
+  const { t } = useT();
   return (
     <button
       onClick={onSelect}
@@ -912,7 +929,9 @@ function PackageCard({
       </div>
 
       {pkg.region && pkg.region !== "GLOBAL" && (
-        <p className="mb-2 text-[11px] text-white/40">регион {pkg.region}</p>
+        <p className="mb-2 text-[11px] text-white/40">
+          {t("orders.region", { region: pkg.region })}
+        </p>
       )}
 
       <p className="text-sm font-bold text-white">{formatMoney(pkg.price, pkg.priceCode)}</p>
@@ -944,6 +963,7 @@ function PackageThumb({ pkg, fallback }: { pkg: Package; fallback: string | null
 
 // ─── Loading skeletons ────────────────────────────────────────────────────────
 function PageSkeleton({ onBack }: { onBack: () => void }) {
+  const { t } = useT();
   return (
     <div className="pb-32">
       <div className="relative h-56 overflow-hidden bg-gradient-to-br from-slate-800 to-slate-950">
@@ -951,7 +971,7 @@ function PageSkeleton({ onBack }: { onBack: () => void }) {
           <button
             onClick={onBack}
             className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/50 backdrop-blur-md"
-            aria-label="Назад"
+            aria-label={t("common.back")}
           >
             <ArrowLeft size={16} className="text-white" />
           </button>

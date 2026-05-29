@@ -8,6 +8,8 @@
 
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
+import { translate } from "@/lib/i18n";
+
 interface Props {
   children: ReactNode;
 }
@@ -66,9 +68,9 @@ function Fallback({ message, onReset }: { message: string; onReset: () => void }
         </svg>
       </div>
       <div className="space-y-1">
-        <p className="text-lg font-bold text-white">Что-то сломалось</p>
+        <p className="text-lg font-bold text-white">{translate("errorBoundary.title")}</p>
         <p className="max-w-xs text-xs leading-relaxed text-white/40">
-          {message || "Перезапустите приложение или вернитесь в чат и откройте миниапп заново."}
+          {message || translate("errorBoundary.body")}
         </p>
       </div>
       <div className="flex gap-2">
@@ -81,7 +83,7 @@ function Fallback({ message, onReset }: { message: string; onReset: () => void }
           className="rounded-2xl px-5 py-2.5 text-sm font-bold"
           style={{ background: "hsl(var(--primary))", color: "#000" }}
         >
-          На главную
+          {translate("common.toHome")}
         </button>
         <button
           type="button"
@@ -94,7 +96,7 @@ function Fallback({ message, onReset }: { message: string; onReset: () => void }
             border: "1px solid hsl(var(--border))",
           }}
         >
-          Перезагрузить
+          {translate("errorBoundary.reload")}
         </button>
       </div>
     </div>

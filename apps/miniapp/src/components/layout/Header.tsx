@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useMe } from "@/lib/auth";
 import { useDisplayCurrency } from "@/lib/currency";
+import { useT } from "@/lib/i18n";
 import {
   formatBalance,
   groupBalancesByCurrency,
@@ -13,6 +14,7 @@ import {
 
 export function Header() {
   const me = useMe();
+  const { t, tn } = useT();
   const wallet = useWallet();
   const homeCurrency = useDisplayCurrency();
   // The pill used to live-convert every balance into the user's
@@ -40,8 +42,13 @@ export function Header() {
           as-is for public assets. ``alt`` is the brand name so screen
           readers / Telegram link previews still read "YuPay" even if the
           asset 404s. */}
-      <Link href="/" className="flex items-center" aria-label="YuPay">
-        <img src="/logo-wordmark.svg" alt="YuPay" className="h-8 w-auto" draggable={false} />
+      <Link href="/" className="flex items-center" aria-label={t("header.logoAlt")}>
+        <img
+          src="/logo-wordmark.svg"
+          alt={t("header.logoAlt")}
+          className="h-8 w-auto"
+          draggable={false}
+        />
       </Link>
 
       {/* Balance pill + top-up + avatar.
@@ -57,7 +64,7 @@ export function Header() {
           <Link
             href="/wallet"
             className="flex items-center gap-1.5 pl-3 pr-2"
-            aria-label="Открыть кошелёк"
+            aria-label={t("header.openWallet")}
           >
             <WalletIcon size={12} className="text-white/40" />
             <span className="text-sm font-bold tabular-nums leading-none text-white">
@@ -70,7 +77,7 @@ export function Header() {
                   background: "hsl(var(--surface-2))",
                   color: "rgba(255,255,255,0.55)",
                 }}
-                aria-label={`Ещё ${extraCount.toString()} валют`}
+                aria-label={tn("header.moreCurrencies", extraCount)}
                 title={others.map((g) => formatBalance(g.amount, g.currency)).join(" · ")}
               >
                 +{extraCount.toString()}
@@ -81,14 +88,14 @@ export function Header() {
             href="/wallet/topup"
             className="flex w-9 items-center justify-center transition-colors"
             style={{ background: "hsl(var(--primary))", color: "#000" }}
-            aria-label="Пополнить"
+            aria-label={t("header.topUp")}
             data-testid="header-topup"
           >
             <Plus size={16} strokeWidth={3} />
           </Link>
         </div>
 
-        <Link href="/settings" aria-label="Профиль">
+        <Link href="/settings" aria-label={t("header.profile")}>
           <Avatar className="border-border h-9 w-9 border">
             {user?.photo_url ? (
               <AvatarImage src={user.photo_url} alt={user.display_name ?? "user"} />

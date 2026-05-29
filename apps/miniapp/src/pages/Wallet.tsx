@@ -11,6 +11,7 @@ import { useLocation } from "wouter";
 
 import { useMe } from "@/lib/auth";
 import { useDisplayCurrency } from "@/lib/currency";
+import { useT } from "@/lib/i18n";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import {
   type CurrencyBalance,
@@ -21,7 +22,8 @@ import {
 } from "@/lib/wallet";
 
 export default function Wallet() {
-  useDocumentTitle("Кошелёк");
+  const { t } = useT();
+  useDocumentTitle(t("wallet.docTitle"));
   const [, setLocation] = useLocation();
   const me = useMe();
   const wallet = useWallet();
@@ -53,11 +55,11 @@ export default function Wallet() {
             setLocation("/");
           }}
           className="bg-card border-border flex h-9 w-9 items-center justify-center rounded-full border"
-          aria-label="Назад"
+          aria-label={t("common.back")}
         >
           <ArrowLeft size={16} className="text-white/70" />
         </button>
-        <h1 className="text-base font-bold text-white">Кошелёк</h1>
+        <h1 className="text-base font-bold text-white">{t("wallet.title")}</h1>
         <div className="w-9" />
       </div>
 
@@ -65,10 +67,8 @@ export default function Wallet() {
         <div className="mx-4 mb-4 flex items-start gap-3 rounded-2xl border border-yellow-400/30 bg-yellow-400/5 p-4">
           <AlertTriangle size={18} className="mt-0.5 flex-shrink-0 text-yellow-400" />
           <div className="text-sm">
-            <p className="font-semibold text-yellow-200">Откройте в Telegram</p>
-            <p className="mt-1 text-xs text-yellow-100/70">
-              Баланс и пополнение доступны после авторизации.
-            </p>
+            <p className="font-semibold text-yellow-200">{t("wallet.openInTgTitle")}</p>
+            <p className="mt-1 text-xs text-yellow-100/70">{t("wallet.authHint")}</p>
           </div>
         </div>
       )}
@@ -93,7 +93,7 @@ export default function Wallet() {
           />
           <div className="relative z-10">
             <p className="text-xs font-bold uppercase tracking-[0.08em] text-white/50">
-              На балансе
+              {t("wallet.onBalance")}
             </p>
             <p className="mt-1 text-3xl font-bold tabular-nums text-white">
               {!me.data
@@ -101,9 +101,7 @@ export default function Wallet() {
                 : formatBalance(primary?.amount ?? 0, primary?.currency ?? homeCurrency)}
             </p>
             <p className="mt-1.5 text-xs text-white/40">
-              {me.data
-                ? "Баланс показывается в валюте счёта"
-                : "Войдите через Telegram, чтобы увидеть баланс"}
+              {me.data ? t("wallet.balanceInCurrency") : t("wallet.loginToSee")}
             </p>
           </div>
         </div>
@@ -146,10 +144,8 @@ export default function Wallet() {
               <Plus size={18} strokeWidth={3} />
             </span>
             <span className="min-w-0 flex-1 text-left">
-              <span className="block text-sm font-bold">Пополнить кошелёк</span>
-              <span className="mt-0.5 block text-[12px] opacity-70">
-                Click · Payme · Uzum · СБП · USDT
-              </span>
+              <span className="block text-sm font-bold">{t("wallet.topUpCta")}</span>
+              <span className="mt-0.5 block text-[12px] opacity-70">{t("wallet.methods")}</span>
             </span>
             <ArrowRight size={18} strokeWidth={2.5} aria-hidden="true" />
           </button>
@@ -172,9 +168,11 @@ export default function Wallet() {
             }}
           >
             <span className="min-w-0 flex-1 text-left">
-              <span className="block text-sm font-medium text-white">История операций</span>
+              <span className="block text-sm font-medium text-white">
+                {t("wallet.historyTitle")}
+              </span>
               <span className="mt-0.5 block text-[12px] text-white/45">
-                Заказы и движения по балансу
+                {t("wallet.historySubtitle")}
               </span>
             </span>
             <ChevronRight size={16} className="text-white/40" aria-hidden="true" />

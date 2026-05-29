@@ -25,9 +25,17 @@ const hmrClientPort = Number(process.env.VITE_HMR_CLIENT_PORT ?? 443);
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
+    // Order matters: `@yupay/i18n/locales` must precede `@yupay/i18n` so the
+    // JSON-catalog subpath resolves to the package's `locales/` dir, not its
+    // entry file. Vite has no tsconfig-paths plugin, so without these aliases
+    // it resolves the workspace package only through the pnpm node_modules
+    // symlink — which a stale Docker anon-volume (see docker-compose.yml) can
+    // lack. Aliasing straight to the bind-mounted source makes it deterministic.
     alias: {
-      "@": path.resolve(__dirname, "src"),
       "@assets": path.resolve(__dirname, "src/assets"),
+      "@": path.resolve(__dirname, "src"),
+      "@yupay/i18n/locales": path.resolve(__dirname, "../../packages/i18n/locales"),
+      "@yupay/i18n": path.resolve(__dirname, "../../packages/i18n/src/index.ts"),
     },
     dedupe: ["react", "react-dom"],
   },

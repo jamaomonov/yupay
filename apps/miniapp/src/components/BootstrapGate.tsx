@@ -17,8 +17,17 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { ApiError, apiGet, getAccessToken } from "@/lib/api";
 import { bootstrapAuth } from "@/lib/auth";
 import { brandsQueryOptions, categoriesQueryOptions } from "@/lib/catalog";
+import { useT, type MessageKey } from "@/lib/i18n";
 
 type Phase = "booting" | "ready" | "error";
+
+/**
+ * Either a raw detail from the server (already localized by the API) or a
+ * catalog key for our own fallback copy. Stored unresolved so the ``run``
+ * callback never depends on ``t`` — otherwise the locale settling once ``me``
+ * loads would re-trigger the whole bootstrap.
+ */
+type BootError = { detail: string } | { key: MessageKey };
 
 interface PrefetchSpec {
   key: readonly unknown[];
@@ -40,8 +49,8 @@ const HARD_BOOT_TIMEOUT_MS = 8_000;
 export function BootstrapGate({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const [phase, setPhase] = useState<Phase>("booting");
-  const [stage, setStage] = useState<string>("Подключаемся…");
-  const [error, setError] = useState<string | null>(null);
+  const [stage, setStage] = useState<MessageKey>("bootstrap.connecting");
+  const [error, setError] = useState<BootError | null>(null);
   const startedAt = useRef<number>(Date.now());
   const attemptRef = useRef<number>(0);
 
@@ -56,7 +65,7 @@ export function BootstrapGate({ children }: { children: ReactNode }) {
     const attempt = ++attemptRef.current;
     setPhase("booting");
     setError(null);
-    setStage("Подключаемся к Telegram…");
+    setStage("bootstrap.connectingTelegram");
     startedAt.current = Date.now();
 
     // Hard timeout — release even if something is stuck so the user always
@@ -72,12 +81,12 @@ export function BootstrapGate({ children }: { children: ReactNode }) {
       if (auth.status === "failed") {
         clearTimeout(hardTimer);
         const detail = auth.error instanceof ApiError ? auth.error.detail : auth.error?.message;
-        setError(detail ?? "Не удалось подтвердить Telegram-сессию.");
+        setError(detail ? { detail } : { key: "bootstrap.errorSession" });
         setPhase("error");
         return;
       }
 
-      setStage("Загружаем каталог…");
+      setStage("bootstrap.loadingCatalog");
       const hasAuth = Boolean(getAccessToken());
 
       const specs: PrefetchSpec[] = [
@@ -115,7 +124,7 @@ export function BootstrapGate({ children }: { children: ReactNode }) {
       clearTimeout(hardTimer);
       if (attemptRef.current !== attempt) return;
       const msg = exc instanceof ApiError ? exc.detail : exc instanceof Error ? exc.message : "";
-      setError(msg || "Сетевая ошибка. Проверьте подключение.");
+      setError(msg ? { detail: msg } : { key: "bootstrap.errorNetwork" });
       setPhase("error");
     }
   }, [qc, release]);
@@ -145,10 +154,16 @@ function Splash({
   onRetry,
 }: {
   phase: Phase;
-  stage: string;
-  error: string | null;
+  stage: MessageKey;
+  error: BootError | null;
   onRetry: () => void;
 }) {
+  const { t } = useT();
+  const errorText = error
+    ? "detail" in error
+      ? error.detail
+      : t(error.key)
+    : t("bootstrap.errorGeneric");
   return (
     <motion.div
       key="splash"
@@ -170,7 +185,7 @@ function Splash({
             className="text-xs font-medium uppercase tracking-[0.08em]"
             style={{ color: "hsl(var(--primary))" }}
           >
-            пополнение игр и сервисов
+            {t("bootstrap.tagline")}
           </p>
         </div>
 
@@ -183,9 +198,7 @@ function Splash({
               exit={{ opacity: 0 }}
               className="flex flex-col items-center gap-3"
             >
-              <p className="max-w-[280px] text-sm leading-snug text-white/70">
-                {error ?? "Не удалось загрузить приложение."}
-              </p>
+              <p className="max-w-[280px] text-sm leading-snug text-white/70">{errorText}</p>
               <button
                 onClick={onRetry}
                 className="rounded-full px-5 py-2 text-sm font-semibold transition-transform active:scale-95"
@@ -194,7 +207,7 @@ function Splash({
                   color: "hsl(var(--primary-foreground))",
                 }}
               >
-                Повторить
+                {t("common.retry")}
               </button>
             </motion.div>
           ) : (
@@ -205,7 +218,7 @@ function Splash({
               exit={{ opacity: 0 }}
               className="text-xs text-white/40"
             >
-              {stage}
+              {t(stage)}
             </motion.p>
           )}
         </AnimatePresence>
@@ -215,7 +228,7 @@ function Splash({
         className="absolute bottom-7 text-[10px] uppercase tracking-[0.08em]"
         style={{ color: "hsl(0 0% 100% / 0.18)" }}
       >
-        v0.1 · made for telegram
+        {t("bootstrap.madeFor")}
       </div>
     </motion.div>
   );

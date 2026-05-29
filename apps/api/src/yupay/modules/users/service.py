@@ -168,6 +168,9 @@ async def set_user_roles(session: AsyncSession, user_id: str, *, roles: list[str
 # too keeps the service layer self-contained for cross-module callers that
 # import ``users.api`` without pulling Pydantic in.
 _ALLOWED_DISPLAY_CURRENCIES = frozenset({"USD", "UZS", "RUB", "USDT"})
+# Locales the storefront has UI translations for. Mirror of ``LocaleLiteral``
+# in ``schemas`` and ``LOCALES`` in ``packages/i18n``.
+_ALLOWED_LOCALES = frozenset({"ru", "en", "uz"})
 
 
 async def update_me(
@@ -197,9 +200,15 @@ async def update_me(
             )
         user.display_currency = currency
     if locale is not None:
-        cleaned = locale.strip().split("-")[0][:8]
-        if cleaned:
-            user.locale = cleaned
+        cleaned = locale.strip().lower().split("-")[0][:8]
+        if cleaned not in _ALLOWED_LOCALES:
+            from yupay.core.errors import ValidationError
+
+            raise ValidationError(
+                f"unsupported locale: {cleaned!r}",
+                allowed=sorted(_ALLOWED_LOCALES),
+            )
+        user.locale = cleaned
     user.updated_at = now()
     await session.flush()
     return user

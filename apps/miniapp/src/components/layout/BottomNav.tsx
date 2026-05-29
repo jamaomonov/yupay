@@ -1,20 +1,22 @@
 import { Home, Clock, Settings } from "lucide-react";
 import { Link, useLocation } from "wouter";
 
+import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 export function BottomNav() {
   const [location] = useLocation();
+  const { t } = useT();
 
   const navItems = [
-    { href: "/", label: "Главная", icon: Home },
-    { href: "/history", label: "История", icon: Clock },
-    { href: "/settings", label: "Настройки", icon: Settings },
+    { href: "/", label: t("nav.home"), icon: Home },
+    { href: "/history", label: t("nav.history"), icon: Clock },
+    { href: "/settings", label: t("nav.settings"), icon: Settings },
   ];
 
   return (
     <nav
-      aria-label="Основная навигация"
+      aria-label={t("nav.primary")}
       className="fixed bottom-4 left-0 right-0 z-50 mx-auto flex max-w-[430px] justify-center px-6"
     >
       <div className="bg-card/80 border-border/60 flex w-full items-center justify-around rounded-[22px] border px-3 py-2 shadow-[0_8px_32px_rgba(0,0,0,0.45)] backdrop-blur-2xl">

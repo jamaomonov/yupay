@@ -16,6 +16,8 @@ import {
   SiGoogleplay,
 } from "react-icons/si";
 
+import type { MessageKey } from "@/lib/i18n";
+
 export type Category = "games" | "services" | "cards";
 
 export interface Game {
@@ -36,10 +38,10 @@ export interface Game {
   featuredDesc?: string;
 }
 
-export const CATEGORY_LABELS: Record<Category, string> = {
-  games: "Игры",
-  services: "Сервисы",
-  cards: "Подарочные карты",
+export const CATEGORY_LABELS: Record<Category, MessageKey> = {
+  games: "category.games",
+  services: "category.services",
+  cards: "category.cards",
 };
 
 export const GAMES: Game[] = [

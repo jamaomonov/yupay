@@ -8,6 +8,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Shell } from "@/components/layout/Shell";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { I18nProvider, useT } from "@/lib/i18n";
 import { useTelegramBackButton } from "@/lib/use-telegram-back-button";
 import History from "@/pages/History";
 import Home from "@/pages/Home";
@@ -18,7 +19,8 @@ import Wallet from "@/pages/Wallet";
 import WalletTopUp from "@/pages/WalletTopUp";
 
 function NotFound() {
-  return <div className="mt-20 p-4 text-center">404 - Не найдено</div>;
+  const { t } = useT();
+  return <div className="mt-20 p-4 text-center">{t("app.notFound")}</div>;
 }
 
 const queryClient = new QueryClient();
@@ -51,20 +53,25 @@ function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        {/* reducedMotion="user" makes framer-motion honour the OS preference
-            (WCAG 2.3.3). Combined with the @media query in index.css that
-            handles raw CSS transitions, every motion in the app collapses
-            when the user has motion sensitivity enabled. */}
-        <MotionConfig reducedMotion="user">
-          <TooltipProvider>
-            <BootstrapGate>
-              <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-                <Router />
-              </WouterRouter>
-            </BootstrapGate>
-            <Toaster />
-          </TooltipProvider>
-        </MotionConfig>
+        {/* I18nProvider wraps everything below QueryClientProvider so the
+            bootstrap splash and all pages can translate. It derives the
+            active locale from ``me.locale`` (TanStack Query). */}
+        <I18nProvider>
+          {/* reducedMotion="user" makes framer-motion honour the OS preference
+              (WCAG 2.3.3). Combined with the @media query in index.css that
+              handles raw CSS transitions, every motion in the app collapses
+              when the user has motion sensitivity enabled. */}
+          <MotionConfig reducedMotion="user">
+            <TooltipProvider>
+              <BootstrapGate>
+                <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+                  <Router />
+                </WouterRouter>
+              </BootstrapGate>
+              <Toaster />
+            </TooltipProvider>
+          </MotionConfig>
+        </I18nProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );

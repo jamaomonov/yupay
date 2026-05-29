@@ -6242,7 +6242,11 @@
           "locale": {
             "anyOf": [
               {
-                "maxLength": 8,
+                "enum": [
+                  "ru",
+                  "en",
+                  "uz"
+                ],
                 "type": "string"
               },
               {

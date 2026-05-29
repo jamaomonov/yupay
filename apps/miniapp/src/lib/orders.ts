@@ -10,6 +10,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ApiError, apiGet, apiPost, newIdempotencyKey } from "./api";
 import { useMe } from "./auth";
+import { getActiveLocale, translate, translatePlural } from "./i18n/core";
 
 // --- DTOs -----------------------------------------------------------------
 
@@ -152,7 +153,7 @@ export function useCheckout() {
       });
       if (!live.includes(provider)) {
         throw new ApiError(409, "Conflict", {
-          detail: "Способ оплаты временно недоступен",
+          detail: translate("checkout.providerUnavailable"),
         });
       }
       const order = await apiPost<OrderOut>(
@@ -262,8 +263,8 @@ function summariseOrder(o: OrderOut): {
   const extra = o.items.length - 1;
   if (!first) {
     return {
-      title: `Заказ ${o.id.slice(0, 8)}`,
-      subtitle: o.items.length > 0 ? `${o.items.length} поз.` : null,
+      title: translate("orders.orderTitle", { id: o.id.slice(0, 8) }),
+      subtitle: o.items.length > 0 ? translatePlural("orders.positions", o.items.length) : null,
       image: null,
       gameSlug: null,
     };
@@ -277,7 +278,7 @@ function summariseOrder(o: OrderOut): {
     first.brand_name && product && product !== first.brand_name
       ? product
       : first.region && first.region !== "GLOBAL"
-        ? `регион ${first.region}`
+        ? translate("orders.region", { region: first.region })
         : null;
   return {
     title,
@@ -306,7 +307,7 @@ export function orderToHistoryRow(o: OrderOut): HistoryRow {
     itemsCount: o.items.length,
     amount: Number.parseFloat(o.total_charged) || 0,
     currency: o.currency,
-    date: new Date(o.created_at).toLocaleString("ru", {
+    date: new Date(o.created_at).toLocaleString(getActiveLocale(), {
       day: "2-digit",
       month: "short",
       year: "numeric",

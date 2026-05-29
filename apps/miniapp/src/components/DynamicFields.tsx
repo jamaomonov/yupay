@@ -7,10 +7,12 @@
  * available.
  */
 
+import type { Locale } from "@yupay/i18n";
 import { HelpCircle, History, X } from "lucide-react";
 import { useId, useState } from "react";
 
 import type { FormField } from "@/lib/catalog";
+import { useT } from "@/lib/i18n";
 
 import {
   Sheet,
@@ -20,11 +22,15 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 
-const LOCALE = "ru";
-
-function t(map: Record<string, string> | null | undefined, fallback = ""): string {
+/** Picks the active-locale value out of a server-provided multilingual map,
+ *  falling back to the first available translation, then to ``fallback``. */
+function pickLocalized(
+  map: Record<string, string> | null | undefined,
+  locale: Locale,
+  fallback = "",
+): string {
   if (!map) return fallback;
-  return map[LOCALE] ?? Object.values(map)[0] ?? fallback;
+  return map[locale] ?? Object.values(map)[0] ?? fallback;
 }
 
 export interface DynamicFieldsProps {
@@ -66,6 +72,7 @@ function DynamicField({
   onChange: (v: string) => void;
   suggestion: string | null;
 }) {
+  const { t, locale } = useT();
   const [helpOpen, setHelpOpen] = useState(false);
   // Stable per-instance id so the visible <label> and the underlying control
   // can be tied together for screen readers (WCAG 3.3.2). useId is React 18+
@@ -73,9 +80,9 @@ function DynamicField({
   const fieldId = useId();
   const helpId = `${fieldId}-help`;
 
-  const label = t(field.label, field.key);
-  const placeholder = t(field.placeholder ?? null, "");
-  const help = t(field.help_text ?? null, "");
+  const label = pickLocalized(field.label, locale, field.key);
+  const placeholder = pickLocalized(field.placeholder ?? null, locale, "");
+  const help = pickLocalized(field.help_text ?? null, locale, "");
   const hasHelp = help.length > 0;
   const required = field.required;
 
@@ -99,7 +106,7 @@ function DynamicField({
             onClick={() => {
               setHelpOpen(true);
             }}
-            aria-label={`Где найти ${label}`}
+            aria-label={t("field.whereToFindLabel", { label })}
             aria-controls={helpId}
             aria-expanded={helpOpen}
             className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-opacity active:opacity-70"
@@ -110,7 +117,7 @@ function DynamicField({
             }}
           >
             <HelpCircle size={11} aria-hidden="true" />
-            Где найти?
+            {t("field.whereToFind")}
           </button>
         )}
       </div>
@@ -141,7 +148,7 @@ function DynamicField({
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <HelpCircle size={16} className="text-primary" aria-hidden="true" />
-              Где найти «{label}»
+              {t("field.whereToFindTitle", { label })}
             </SheetTitle>
             <SheetDescription className="whitespace-pre-wrap text-left leading-relaxed text-white/70">
               {help}
@@ -170,6 +177,7 @@ function TextLikeField({
   required: boolean;
   suggestion: string | null;
 }) {
+  const { t } = useT();
   const inputType = field.type === "email" ? "email" : field.type === "number" ? "tel" : "text";
   const inputMode = field.type === "number" ? "numeric" : field.type === "email" ? "email" : "text";
   const filled = value.trim().length > 0;
@@ -216,7 +224,7 @@ function TextLikeField({
               onChange("");
             }}
             className="absolute right-3.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full bg-white/10"
-            aria-label="Очистить"
+            aria-label={t("field.clear")}
           >
             <X size={12} className="text-white/60" />
           </button>
@@ -236,7 +244,7 @@ function TextLikeField({
         >
           <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-white/45">
             <History size={11} aria-hidden="true" />
-            Прошлый раз
+            {t("field.lastTime")}
           </span>
           <span className="truncate text-[13px] font-medium text-white/80">{suggestion}</span>
         </button>
@@ -260,6 +268,7 @@ function SelectField({
   fieldId: string;
   required: boolean;
 }) {
+  const { t, locale } = useT();
   const options = field.options ?? [];
   const filled = value.length > 0;
   return (
@@ -268,11 +277,11 @@ function SelectField({
       className="grid grid-cols-2 gap-2"
       role="radiogroup"
       aria-required={required}
-      aria-label={t(field.label, field.key)}
+      aria-label={pickLocalized(field.label, locale, field.key)}
     >
       {options.length === 0 ? (
         <div className="col-span-2 rounded-2xl border border-dashed border-white/15 p-3 text-center text-sm text-white/40">
-          {placeholder || "Опций пока нет"}
+          {placeholder || t("field.noOptions")}
         </div>
       ) : (
         options.map((opt) => {
@@ -295,13 +304,13 @@ function SelectField({
                 color: active ? "white" : "rgba(255,255,255,0.7)",
               }}
             >
-              {t(opt.label, opt.value)}
+              {pickLocalized(opt.label, locale, opt.value)}
             </button>
           );
         })
       )}
       {!filled && options.length > 0 && (
-        <div className="col-span-2 px-1 text-[11px] text-white/40">Выберите вариант</div>
+        <div className="col-span-2 px-1 text-[11px] text-white/40">{t("field.chooseOption")}</div>
       )}
     </div>
   );

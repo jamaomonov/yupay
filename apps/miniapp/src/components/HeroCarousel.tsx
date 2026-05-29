@@ -13,11 +13,12 @@ import { useLocation } from "wouter";
 import instantImg from "@/assets/hero/instant.jpg";
 import payImg from "@/assets/hero/pay.jpg";
 import walletImg from "@/assets/hero/wallet.jpg";
+import { useT, type MessageKey } from "@/lib/i18n";
 
 interface HeroSlide {
   id: string;
-  title: string;
-  subtitle: string;
+  titleKey: MessageKey;
+  subtitleKey: MessageKey;
   /** Deep link opened on tap. Omit for a purely informational slide. */
   href?: string;
   /** Pre-rendered 3D image (WebP). Falls back to ``gradient`` when absent. */
@@ -29,23 +30,23 @@ interface HeroSlide {
 const SLIDES: HeroSlide[] = [
   {
     id: "instant",
-    title: "Пополнение за минуту",
-    subtitle: "Игры, подписки и гифт-карты",
+    titleKey: "hero.instant.title",
+    subtitleKey: "hero.instant.subtitle",
     image: instantImg,
     gradient: "linear-gradient(135deg, #0b2a6b 0%, #0ea5e9 100%)",
   },
   {
     id: "wallet",
-    title: "Кошелёк YuPay",
-    subtitle: "Плати в один тап и копи кешбэк",
+    titleKey: "hero.wallet.title",
+    subtitleKey: "hero.wallet.subtitle",
     href: "/wallet",
     image: walletImg,
     gradient: "linear-gradient(135deg, #064e3b 0%, #10b981 100%)",
   },
   {
     id: "pay",
-    title: "Оплата как удобно",
-    subtitle: "Click · Payme · Uzum · USDT",
+    titleKey: "hero.pay.title",
+    subtitleKey: "hero.pay.subtitle",
     image: payImg,
     gradient: "linear-gradient(135deg, #3b0a63 0%, #7c3aed 100%)",
   },
@@ -56,6 +57,7 @@ const SWIPE_THRESHOLD = 40;
 
 export function HeroCarousel() {
   const [, setLocation] = useLocation();
+  const { t } = useT();
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const draggedRef = useRef(false);
@@ -98,13 +100,13 @@ export function HeroCarousel() {
               />
             ) : (
               <span className="absolute right-3 top-3 rounded-full bg-white/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white/70">
-                3D скоро
+                {t("hero.soon3d")}
               </span>
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
             <div className="absolute bottom-0 left-0 right-0 p-4">
-              <p className="text-lg font-bold leading-tight text-white">{active.title}</p>
-              <p className="mt-0.5 text-xs text-white/75">{active.subtitle}</p>
+              <p className="text-lg font-bold leading-tight text-white">{t(active.titleKey)}</p>
+              <p className="mt-0.5 text-xs text-white/75">{t(active.subtitleKey)}</p>
             </div>
           </motion.div>
         </AnimatePresence>
@@ -117,7 +119,7 @@ export function HeroCarousel() {
           dragConstraints={{ left: 0, right: 0 }}
           dragElastic={0.15}
           role={active.href ? "link" : undefined}
-          aria-label={active.href ? active.title : undefined}
+          aria-label={active.href ? t(active.titleKey) : undefined}
           onPointerDown={() => {
             setPaused(true);
           }}
@@ -146,7 +148,7 @@ export function HeroCarousel() {
               <button
                 key={s.id}
                 type="button"
-                aria-label={`Слайд ${String(i + 1)}`}
+                aria-label={t("hero.slide", { n: i + 1 })}
                 onClick={(e) => {
                   e.stopPropagation();
                   setPaused(true);

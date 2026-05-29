@@ -1,3 +1,4 @@
+import { LOCALES, type Locale } from "@yupay/i18n";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -7,6 +8,7 @@ import {
   ExternalLink,
   FileText,
   Info,
+  Languages,
   LifeBuoy,
   LogOut,
   RefreshCcw,
@@ -14,18 +16,33 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
+import enFlag from "@/assets/flags/en.png";
+import ruFlag from "@/assets/flags/ru.png";
+import uzFlag from "@/assets/flags/uz.png";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
 import { useLogout, useMe } from "@/lib/auth";
+import { useLocale, useT } from "@/lib/i18n";
+import { useUpdateLocale } from "@/lib/i18n/use-update-locale";
 import { getWebApp } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
+
+// Language autonyms — shown in their own language regardless of UI locale,
+// which is the conventional way to present a language picker.
+const LANGUAGE_NAMES: Record<Locale, string> = {
+  ru: "Русский",
+  en: "English",
+  uz: "O'zbekcha",
+};
+
+// Circular flag icons (en → Union Jack). Decorative: the autonym beside each
+// one carries the meaning, so the <img> is aria-hidden with empty alt.
+const LANGUAGE_FLAGS: Record<Locale, string> = {
+  ru: ruFlag,
+  en: enFlag,
+  uz: uzFlag,
+};
 
 function initials(name: string | null | undefined): string {
   if (!name) return "👤";
@@ -55,13 +72,17 @@ const COMPANY_SINCE = import.meta.env.VITE_COMPANY_SINCE as string | undefined;
 const HAS_COMPANY_INFO = Boolean(COMPANY_NAME || COMPANY_REGISTRATION || COMPANY_SINCE);
 
 export default function Settings() {
-  useDocumentTitle("Настройки");
+  const { t } = useT();
+  const locale = useLocale();
+  const updateLocale = useUpdateLocale();
+  useDocumentTitle(t("settings.title"));
   const me = useMe();
   const logout = useLogout();
   const user = me.data;
   const { toast } = useToast();
 
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
   const [tgIdCopied, setTgIdCopied] = useState(false);
 
   // The Telegram user id is what every operator / support agent will
@@ -80,8 +101,13 @@ export default function Settings() {
         setTgIdCopied(false);
       }, 1500);
     } catch {
-      toast({ title: "Не удалось скопировать", variant: "destructive" });
+      toast({ title: t("common.copyFailed"), variant: "destructive" });
     }
+  };
+
+  const pickLanguage = (next: Locale) => {
+    setLangOpen(false);
+    if (next !== locale) updateLocale.mutate(next);
   };
 
   const openSupport = () => {
@@ -103,16 +129,14 @@ export default function Settings() {
       transition={{ duration: 0.22 }}
       className="space-y-4 p-4"
     >
-      <h1 className="mb-2 text-2xl font-bold tracking-tight text-white">Настройки</h1>
+      <h1 className="mb-2 text-2xl font-bold tracking-tight text-white">{t("settings.title")}</h1>
 
       {!user && !me.isLoading && (
         <div className="flex items-start gap-3 rounded-2xl border border-yellow-400/30 bg-yellow-400/5 p-4">
           <AlertTriangle size={18} className="mt-0.5 flex-shrink-0 text-yellow-400" />
           <div className="text-sm">
-            <p className="font-semibold text-yellow-200">Не авторизованы</p>
-            <p className="mt-1 text-xs text-yellow-100/70">
-              Откройте приложение из Telegram, чтобы войти и видеть свой профиль.
-            </p>
+            <p className="font-semibold text-yellow-200">{t("settings.notAuthorized")}</p>
+            <p className="mt-1 text-xs text-yellow-100/70">{t("settings.notAuthorizedBody")}</p>
           </div>
         </div>
       )}
@@ -139,7 +163,7 @@ export default function Settings() {
 
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-lg font-bold leading-tight text-white">
-              {user?.display_name ?? "Гость"}
+              {user?.display_name ?? t("common.guest")}
             </h2>
             <div className="mt-1 flex items-center gap-1.5">
               {user && tgId != null ? (
@@ -147,7 +171,7 @@ export default function Settings() {
                   type="button"
                   onClick={copyTgId}
                   className="border-border/60 bg-background/40 hover:bg-background/70 flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs transition-colors"
-                  aria-label="Скопировать Telegram ID"
+                  aria-label={t("settings.copyTgId")}
                   data-testid="copy-tg-id"
                 >
                   <span className="text-muted-foreground">ID:</span>
@@ -160,7 +184,7 @@ export default function Settings() {
                 </button>
               ) : (
                 <span className="text-muted-foreground text-xs">
-                  {user ? `ID: ${user.id.slice(0, 8)}…` : "Авторизация через Telegram"}
+                  {user ? `ID: ${user.id.slice(0, 8)}…` : t("settings.authViaTelegram")}
                 </span>
               )}
             </div>
@@ -174,7 +198,7 @@ export default function Settings() {
       {/* Real settings */}
       <div className="space-y-1.5">
         <p className="text-muted-foreground mb-2 px-1 text-[11px] font-bold uppercase tracking-[0.08em]">
-          Приложение
+          {t("settings.sectionApp")}
         </p>
 
         <div className="bg-card border-border overflow-hidden rounded-3xl border">
@@ -184,17 +208,34 @@ export default function Settings() {
               picker, it'll be limited to currencies relevant to the
               user's market, not a free-form preference. */}
           <SettingsRow
+            icon={Languages}
+            iconClass="text-violet-400"
+            label={t("settings.language")}
+            value={LANGUAGE_NAMES[locale]}
+            valueIcon={
+              <img
+                src={LANGUAGE_FLAGS[locale]}
+                alt=""
+                aria-hidden="true"
+                className="h-5 w-5 rounded-full object-cover"
+              />
+            }
+            onClick={() => {
+              setLangOpen(true);
+            }}
+          />
+          <SettingsRow
             icon={LifeBuoy}
             iconClass="text-blue-400"
-            label="Поддержка"
-            value="Telegram"
+            label={t("settings.support")}
+            value={t("settings.supportValue")}
             onClick={openSupport}
             chevron={<ExternalLink size={14} className="text-muted-foreground/50" />}
           />
           <SettingsRow
             icon={Info}
             iconClass="text-muted-foreground"
-            label="О приложении"
+            label={t("settings.about")}
             value={`v${APP_VERSION}`}
             onClick={() => {
               setAboutOpen(true);
@@ -209,14 +250,14 @@ export default function Settings() {
       {HAS_LEGAL_DOCS && (
         <div className="space-y-1.5">
           <p className="text-muted-foreground mb-2 px-1 text-[11px] font-bold uppercase tracking-[0.08em]">
-            Документы
+            {t("settings.sectionDocs")}
           </p>
           <div className="bg-card border-border overflow-hidden rounded-3xl border">
             {TERMS_URL && (
               <SettingsRow
                 icon={FileText}
                 iconClass="text-blue-400"
-                label="Условия использования"
+                label={t("settings.terms")}
                 onClick={() => window.open(TERMS_URL, "_blank", "noopener")}
                 chevron={<ExternalLink size={14} className="text-muted-foreground/50" />}
                 last={!PRIVACY_URL && !REFUND_URL}
@@ -226,7 +267,7 @@ export default function Settings() {
               <SettingsRow
                 icon={Shield}
                 iconClass="text-emerald-400"
-                label="Политика конфиденциальности"
+                label={t("settings.privacy")}
                 onClick={() => window.open(PRIVACY_URL, "_blank", "noopener")}
                 chevron={<ExternalLink size={14} className="text-muted-foreground/50" />}
                 last={!REFUND_URL}
@@ -236,7 +277,7 @@ export default function Settings() {
               <SettingsRow
                 icon={RefreshCcw}
                 iconClass="text-amber-400"
-                label="Условия возврата"
+                label={t("settings.refund")}
                 onClick={() => window.open(REFUND_URL, "_blank", "noopener")}
                 chevron={<ExternalLink size={14} className="text-muted-foreground/50" />}
                 last
@@ -256,21 +297,63 @@ export default function Settings() {
           data-testid="btn-logout"
         >
           <LogOut size={15} />
-          Выйти из аккаунта
+          {t("settings.logout")}
         </button>
       )}
+
+      {/* Language picker sheet */}
+      <Sheet open={langOpen} onOpenChange={setLangOpen}>
+        <SheetContent side="bottom" className="rounded-t-3xl">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <Languages size={16} className="text-primary" aria-hidden="true" />
+              {t("settings.languageSheetTitle")}
+            </SheetTitle>
+          </SheetHeader>
+          <div className="mt-4 space-y-1.5">
+            {LOCALES.map((loc) => {
+              const active = loc === locale;
+              return (
+                <button
+                  key={loc}
+                  type="button"
+                  onClick={() => {
+                    pickLanguage(loc);
+                  }}
+                  className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition-colors ${
+                    active ? "border-primary/50 bg-primary/10" : "border-border hover:bg-white/5"
+                  }`}
+                  data-testid={`lang-${loc}`}
+                >
+                  <span className="flex items-center gap-3">
+                    <img
+                      src={LANGUAGE_FLAGS[loc]}
+                      alt=""
+                      aria-hidden="true"
+                      className="h-6 w-6 rounded-full object-cover"
+                    />
+                    <span className="text-sm font-medium text-white">{LANGUAGE_NAMES[loc]}</span>
+                  </span>
+                  {active && <Check size={16} className="text-primary" />}
+                </button>
+              );
+            })}
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* About sheet */}
       <Sheet open={aboutOpen} onOpenChange={setAboutOpen}>
         <SheetContent side="bottom" className="rounded-t-3xl">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
-              <Info size={16} className="text-primary" aria-hidden="true" />О приложении
+              <Info size={16} className="text-primary" aria-hidden="true" />
+              {t("settings.about")}
             </SheetTitle>
           </SheetHeader>
           <div className="mt-4 space-y-3 text-sm">
             <div className="border-border flex items-center justify-between rounded-2xl border p-3">
-              <span className="text-white/60">Версия</span>
+              <span className="text-white/60">{t("settings.aboutVersion")}</span>
               <code className="font-mono text-white">v{APP_VERSION}</code>
             </div>
 
@@ -286,19 +369,14 @@ export default function Settings() {
                 )}
                 {COMPANY_SINCE && (
                   <p className="text-[11px] leading-snug text-white/40">
-                    Работаем с {COMPANY_SINCE} года
+                    {t("settings.companySince", { year: COMPANY_SINCE })}
                   </p>
                 )}
               </div>
             )}
 
-            <p className="leading-relaxed text-white/60">
-              YuPay — пополнение игр, ваучеры и подписки. Лицензия — проприетарная; код в приватном
-              репо.
-            </p>
-            <p className="text-xs leading-relaxed text-white/40">
-              По любым вопросам пишите в поддержку — ответим в течение часа.
-            </p>
+            <p className="leading-relaxed text-white/60">{t("settings.aboutBlurb")}</p>
+            <p className="text-xs leading-relaxed text-white/40">{t("settings.aboutSupport")}</p>
           </div>
         </SheetContent>
       </Sheet>
@@ -311,6 +389,7 @@ function SettingsRow({
   iconClass,
   label,
   value,
+  valueIcon,
   onClick,
   chevron,
   last,
@@ -319,6 +398,7 @@ function SettingsRow({
   iconClass?: string;
   label: string;
   value?: string;
+  valueIcon?: React.ReactNode;
   onClick: () => void;
   chevron?: React.ReactNode;
   last?: boolean;
@@ -337,6 +417,7 @@ function SettingsRow({
         <span className="text-foreground text-sm font-medium">{label}</span>
       </div>
       <div className="flex items-center gap-2">
+        {valueIcon}
         {value && <span className="text-muted-foreground text-xs font-medium">{value}</span>}
         {chevron ?? <ChevronRight size={16} className="text-muted-foreground/50" />}
       </div>

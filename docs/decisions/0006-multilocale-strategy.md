@@ -1,6 +1,6 @@
 # 0006. Locale strategy (RU default, EN, UZ latin)
 
-- **Status**: Accepted
+- **Status**: Accepted (Mini App runtime/transport superseded by ADR-0022)
 - **Date**: 2026-05-15
 - **Deciders**: founding team
 - **Tags**: frontend, i18n
@@ -18,7 +18,9 @@ but inherits the same content.
   (`/games/steam`), English and Uzbek are prefixed (`/en/games/steam`, `/uz/games/steam`).
 - Locale routing on Mini App: not URL-based. Detected from
   `Telegram.WebApp.initDataUnsafe.user.language_code` mapped to `ru` / `en` / `uz` (default
-  `ru` on unknown).
+  `ru` on unknown). **(Superseded by ADR-0022:** the Mini App moved to Vite (ADR-0016)
+  with a custom runtime, a Settings language switcher, and a DB-persisted
+  `users.locale` that now takes precedence over `language_code`.**)**
 - **Single source of truth** for message catalogues: `packages/i18n/locales/{ru,en,uz}/<namespace>.json`,
   consumed by both apps.
 - **All three locales updated in the same PR** — CI fails if any key is missing from any

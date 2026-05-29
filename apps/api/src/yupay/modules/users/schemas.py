@@ -12,6 +12,10 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 # right now (see ``Settings.fx_supported_quotes``).
 DisplayCurrencyLiteral = Literal["USD", "UZS", "RUB", "USDT"]
 
+# Locales the storefront ships UI translations for. Keep in sync with
+# ``LOCALES`` in ``packages/i18n/src/index.ts`` and the miniapp catalogs.
+LocaleLiteral = Literal["ru", "en", "uz"]
+
 
 class UserOut(BaseModel):
     """User profile returned to authenticated clients."""
@@ -34,7 +38,7 @@ class UpdateMeIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     display_currency: DisplayCurrencyLiteral | None = None
-    locale: str | None = Field(default=None, max_length=8)
+    locale: LocaleLiteral | None = None
 
 
 class TelegramLinkOut(BaseModel):
@@ -88,6 +92,7 @@ class UserRolesIn(BaseModel):
 
 __all__ = [
     "DisplayCurrencyLiteral",
+    "LocaleLiteral",
     "TelegramLinkOut",
     "UpdateMeIn",
     "UserAdminListOut",

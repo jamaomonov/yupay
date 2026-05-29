@@ -8,20 +8,22 @@ import type { Game } from "@/lib/constants-types";
 import { HeroCarousel } from "@/components/HeroCarousel";
 import { useCategoriesList, useGames } from "@/lib/catalog";
 import { CATEGORY_LABELS } from "@/lib/constants";
+import { useT, type MessageKey } from "@/lib/i18n";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
 const ALL_KEY = "__all__";
 
 const FEATURED_IDS = ["pubg", "telegram", "delta-force", "steam", "valorant"];
 
-const PROMO_BADGES: Record<string, { label: string; color: string }> = {
-  pubg: { label: "ТОП", color: "hsl(var(--primary))" },
-  telegram: { label: "АКЦИЯ", color: "#ff6b35" },
-  "delta-force": { label: "НОВИНКА", color: "#a855f7" },
+const PROMO_BADGES: Record<string, { labelKey: MessageKey; color: string }> = {
+  pubg: { labelKey: "home.badge.top", color: "hsl(var(--primary))" },
+  telegram: { labelKey: "home.badge.promo", color: "#ff6b35" },
+  "delta-force": { labelKey: "home.badge.new", color: "#a855f7" },
 };
 
 // ─── Promo strip ──────────────────────────────────────────────────────────────
 function PromoStrip({ games }: { games: Game[] }) {
+  const { t, tn } = useT();
   const featured = games.filter((g) => FEATURED_IDS.includes(g.id));
   if (featured.length === 0) return null;
 
@@ -30,9 +32,9 @@ function PromoStrip({ games }: { games: Game[] }) {
       <div className="mb-3 flex items-center justify-between px-4">
         <div className="flex items-center gap-2">
           <TrendingUp size={14} className="text-primary" />
-          <span className="text-sm font-semibold text-white">Популярное</span>
+          <span className="text-sm font-semibold text-white">{t("home.popular")}</span>
         </div>
-        <span className="text-body-faint text-xs">{featured.length} сервисов</span>
+        <span className="text-body-faint text-xs">{tn("home.servicesCount", featured.length)}</span>
       </div>
       <div className="no-scrollbar flex gap-3 overflow-x-auto px-4 pb-1">
         {featured.map((game, i) => {
@@ -67,7 +69,7 @@ function PromoStrip({ games }: { games: Game[] }) {
                       color: badge.color === "hsl(var(--primary))" ? "#000" : "#fff",
                     }}
                   >
-                    {badge.label}
+                    {t(badge.labelKey)}
                   </div>
                 )}
 
@@ -106,6 +108,7 @@ function GameCardThumb({ game }: { game: Game }) {
 }
 
 function GameCard({ game, index }: { game: Game; index: number }) {
+  const { t } = useT();
   const inner = (
     <motion.div
       whileTap={game.maintenance ? undefined : { scale: 0.91 }}
@@ -123,9 +126,9 @@ function GameCard({ game, index }: { game: Game; index: number }) {
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/45 px-1 text-center">
             <Settings size={20} className="animate-spin text-white/85 [animation-duration:4s]" />
             <span className="text-[8.5px] font-semibold uppercase leading-tight tracking-wide text-white/85">
-              Технические
+              {t("home.maintenanceL1")}
               <br />
-              работы
+              {t("home.maintenanceL2")}
             </span>
           </div>
         )}
@@ -168,6 +171,7 @@ function SearchResultThumb({ game }: { game: Game }) {
 }
 
 function SearchResultCard({ game, index }: { game: Game; index: number }) {
+  const { t } = useT();
   const inner = (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -193,11 +197,11 @@ function SearchResultCard({ game, index }: { game: Game; index: number }) {
           {game.name}
         </p>
         <p className="text-body-faint mt-0.5 text-xs">
-          {game.maintenance ? "Технические работы" : game.publisher}
+          {game.maintenance ? t("home.maintenance") : game.publisher}
         </p>
       </div>
       <span className="text-body-faint flex-shrink-0 rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-medium">
-        {CATEGORY_LABELS[game.category]}
+        {t(CATEGORY_LABELS[game.category])}
       </span>
     </motion.div>
   );
@@ -214,7 +218,8 @@ function SearchResultCard({ game, index }: { game: Game; index: number }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function Home() {
-  useDocumentTitle("Главная");
+  const { t, tn } = useT();
+  useDocumentTitle(t("home.docTitle"));
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string>(ALL_KEY);
@@ -230,7 +235,7 @@ export default function Home() {
     games.map((g) => g.category_slug).filter(Boolean) as string[],
   );
   const categoryChips: { key: string; label: string }[] = [
-    { key: ALL_KEY, label: "Все" },
+    { key: ALL_KEY, label: t("home.all") },
     ...apiCategories
       .filter((c) => visibleCategorySlugs.has(c.slug))
       .map((c) => ({ key: c.slug, label: c.name })),
@@ -271,10 +276,10 @@ export default function Home() {
       {/* ── Header ── */}
       <div className="px-4 pt-4">
         <h1 className="text-xl font-bold leading-tight tracking-tight text-white">
-          Пополнение игр
+          {t("home.title")}
         </h1>
         <p className="text-body-muted mt-0.5 text-xs">
-          {games.length} сервисов · Оплата картой и СБП
+          {tn("home.servicesCount", games.length)} · {t("home.payNote")}
         </p>
       </div>
 
@@ -323,8 +328,8 @@ export default function Home() {
                   ref={inputRef}
                   type="search"
                   role="searchbox"
-                  aria-label="Поиск по играм"
-                  placeholder="Найти игру..."
+                  aria-label={t("home.searchAria")}
+                  placeholder={t("home.searchPlaceholder")}
                   value={search}
                   onChange={(e) => {
                     setSearch(e.target.value);
@@ -341,7 +346,7 @@ export default function Home() {
                     onClick={() => {
                       setSearch("");
                     }}
-                    aria-label="Очистить поиск"
+                    aria-label={t("home.clearSearch")}
                     className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-white/10 p-0.5"
                   >
                     <X size={12} className="text-white/60" aria-hidden="true" />
@@ -405,10 +410,12 @@ export default function Home() {
           >
             <div className="mb-3 flex items-center justify-between">
               <span className="text-sm font-semibold text-white">
-                {searchOpen && search.trim() ? "Результаты" : "Все сервисы"}
+                {searchOpen && search.trim() ? t("home.results") : t("home.allServices")}
               </span>
               <div className="flex items-center gap-2">
-                <span className="text-body-faint text-xs">{displayGames.length} позиций</span>
+                <span className="text-body-faint text-xs">
+                  {tn("home.positionsCount", displayGames.length)}
+                </span>
                 <button
                   type="button"
                   onClick={() => gamesQuery.refetch()}
@@ -418,7 +425,7 @@ export default function Home() {
                     background: "hsl(var(--surface-2))",
                     border: "1px solid hsl(var(--border))",
                   }}
-                  aria-label="Обновить"
+                  aria-label={t("home.refresh")}
                 >
                   <RotateCcw
                     size={11}
@@ -446,7 +453,7 @@ export default function Home() {
             ) : displayGames.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 py-14">
                 <Search size={28} className="text-white/15" />
-                <p className="text-body-faint text-sm">Ничего не найдено</p>
+                <p className="text-body-faint text-sm">{t("home.nothingFound")}</p>
               </div>
             ) : (
               <div className="grid grid-cols-4 gap-x-2 gap-y-4">

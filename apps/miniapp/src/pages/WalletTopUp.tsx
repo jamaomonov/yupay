@@ -5,6 +5,7 @@ import { useLocation } from "wouter";
 
 import { useToast } from "@/hooks/use-toast";
 import { useMe } from "@/lib/auth";
+import { useT } from "@/lib/i18n";
 import { PAYMENT_METHODS } from "@/lib/payment-methods";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { formatBalance } from "@/lib/wallet";
@@ -27,7 +28,8 @@ const QUICK_AMOUNTS: Record<string, number[]> = {
 const DEFAULT_METHOD_ID = PAYMENT_METHODS[0]?.id ?? "inpay";
 
 export default function WalletTopUp() {
-  useDocumentTitle("Пополнение");
+  const { t, locale } = useT();
+  useDocumentTitle(t("walletTopUp.title"));
   const [, setLocation] = useLocation();
   const me = useMe();
   const toast = useToast();
@@ -56,8 +58,8 @@ export default function WalletTopUp() {
     // Wallet funding has no backend yet — order checkout already pays via these
     // acquirers, but crediting the wallet balance is a separate flow.
     toast.toast({
-      title: "Пополнение скоро",
-      description: "Скоро можно будет пополнять баланс кошелька напрямую.",
+      title: t("walletTopUp.soonTitle"),
+      description: t("walletTopUp.soonBody"),
     });
   };
 
@@ -77,11 +79,11 @@ export default function WalletTopUp() {
             setLocation("/wallet");
           }}
           className="bg-card border-border flex h-9 w-9 items-center justify-center rounded-full border"
-          aria-label="Назад к кошельку"
+          aria-label={t("walletTopUp.backToWallet")}
         >
           <ArrowLeft size={16} className="text-white/70" />
         </button>
-        <h1 className="text-base font-bold text-white">Пополнение</h1>
+        <h1 className="text-base font-bold text-white">{t("walletTopUp.title")}</h1>
         <div className="w-9" />
       </div>
 
@@ -96,7 +98,7 @@ export default function WalletTopUp() {
         >
           <label className="block">
             <span className="text-xs font-bold uppercase tracking-[0.08em] text-white/50">
-              Сумма пополнения
+              {t("walletTopUp.amountLabel")}
             </span>
             <div className="mt-2 flex items-baseline gap-2">
               <input
@@ -140,7 +142,7 @@ export default function WalletTopUp() {
                       }
                 }
               >
-                {currency === "UZS" ? value.toLocaleString("ru-RU") : value.toString()}
+                {currency === "UZS" ? value.toLocaleString(locale) : value.toString()}
               </button>
             );
           })}
@@ -150,7 +152,7 @@ export default function WalletTopUp() {
       {/* Provider list */}
       <section className="mx-4 mb-5">
         <h2 className="mb-2 px-1 text-xs font-bold uppercase tracking-[0.08em] text-white/50">
-          Способ оплаты
+          {t("walletTopUp.method")}
         </h2>
         <ul className="space-y-2">
           {PAYMENT_METHODS.map((m) => {
@@ -190,7 +192,9 @@ export default function WalletTopUp() {
                         {m.currency}
                       </span>
                     </span>
-                    <span className="mt-0.5 block truncate text-[12px] text-white/45">{m.sub}</span>
+                    <span className="mt-0.5 block truncate text-[12px] text-white/45">
+                      {t(m.subKey)}
+                    </span>
                   </span>
                   <span
                     className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full"
@@ -225,15 +229,17 @@ export default function WalletTopUp() {
                 }
           }
         >
-          {canSubmit ? `Пополнить на ${formatBalance(numericAmount, currency)}` : "Введите сумму"}
+          {canSubmit
+            ? t("walletTopUp.submit", { amount: formatBalance(numericAmount, currency) })
+            : t("walletTopUp.enterAmount")}
         </button>
 
         <p className="mt-3 flex items-start gap-2 text-[11px] text-white/40">
           <Shield size={12} className="mt-0.5 flex-shrink-0 text-white/40" />
           <span>
-            Деньги попадают на счёт <WalletIcon size={11} className="inline" />{" "}
-            <strong className="text-white/60">Кошелёк</strong> в той же валюте, которой вы платите.
-            Возвраты возвращаются туда же.
+            {t("walletTopUp.disclaimerBefore")} <WalletIcon size={11} className="inline" />{" "}
+            <strong className="text-white/60">{t("walletTopUp.walletName")}</strong>{" "}
+            {t("walletTopUp.disclaimerAfter")}
           </span>
         </p>
       </section>

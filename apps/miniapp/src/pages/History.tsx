@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import type { Locale } from "@yupay/i18n";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -13,10 +14,12 @@ import { useMemo, useState } from "react";
 import { Link } from "wouter";
 
 import { useMe } from "@/lib/auth";
+import { useT, useLocale, type MessageKey } from "@/lib/i18n";
 import { useMyOrders, orderToHistoryRow, type HistoryRow } from "@/lib/orders";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import {
   summarizeForUser,
+  txKindLabelKey,
   type UserAccountKind,
   type UserTransactionView,
   useWallet,
@@ -25,41 +28,27 @@ import {
 
 type Tab = "orders" | "finance";
 
-const STATUS_LABEL: Record<HistoryRow["status"], string> = {
-  success: "Выполнено",
-  processing: "Обработка",
-  failed: "Отменён",
+const STATUS_KEY: Record<HistoryRow["status"], MessageKey> = {
+  success: "history.status.success",
+  processing: "history.status.processing",
+  failed: "history.status.failed",
 };
 
-const RU_MONTHS = [
-  "янв",
-  "фев",
-  "мар",
-  "апр",
-  "май",
-  "июн",
-  "июл",
-  "авг",
-  "сен",
-  "окт",
-  "ноя",
-  "дек",
-];
-
-function monthYearKey(iso: string): string {
+function monthYearKey(iso: string, locale: Locale): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return `${RU_MONTHS[d.getMonth()] ?? ""} ${d.getFullYear()}`;
+  return new Intl.DateTimeFormat(locale, { month: "short", year: "numeric" }).format(d);
 }
 
-function shortTime(iso: string): string {
+function shortTime(iso: string, locale: Locale): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
 }
 
 export default function History() {
-  useDocumentTitle("История");
+  const { t } = useT();
+  useDocumentTitle(t("history.title"));
   const me = useMe();
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("orders");
@@ -86,18 +75,16 @@ export default function History() {
       className="space-y-5 p-4"
     >
       <header className="space-y-0.5">
-        <h1 className="text-2xl font-bold tracking-tight text-white">История</h1>
-        <p className="text-muted-foreground text-sm">Все ваши покупки и движения по балансу</p>
+        <h1 className="text-2xl font-bold tracking-tight text-white">{t("history.title")}</h1>
+        <p className="text-muted-foreground text-sm">{t("history.subtitle")}</p>
       </header>
 
       {!me.data && !me.isLoading && (
         <div className="flex items-start gap-3 rounded-2xl border border-yellow-400/30 bg-yellow-400/5 p-4">
           <AlertTriangle size={18} className="mt-0.5 flex-shrink-0 text-yellow-400" />
           <div className="text-sm">
-            <p className="font-semibold text-yellow-200">Откройте в Telegram</p>
-            <p className="mt-1 text-xs text-yellow-100/70">
-              История доступна только под авторизацией через Telegram Mini App.
-            </p>
+            <p className="font-semibold text-yellow-200">{t("common.openInTelegram")}</p>
+            <p className="mt-1 text-xs text-yellow-100/70">{t("history.authHint")}</p>
           </div>
         </div>
       )}
@@ -106,9 +93,10 @@ export default function History() {
         <SegmentedTabs
           value={tab}
           onChange={onTabChange}
+          ariaLabel={t("history.tabsLabel")}
           options={[
-            { id: "orders", label: "Заказы" },
-            { id: "finance", label: "Финансы" },
+            { id: "orders", label: t("history.tabOrders") },
+            { id: "finance", label: t("history.tabFinance") },
           ]}
         />
       )}
@@ -125,15 +113,17 @@ function SegmentedTabs<T extends string>({
   value,
   onChange,
   options,
+  ariaLabel,
 }: {
   value: T;
   onChange: (next: T) => void;
   options: { id: T; label: string }[];
+  ariaLabel: string;
 }) {
   return (
     <div
       role="tablist"
-      aria-label="Тип истории"
+      aria-label={ariaLabel}
       className="grid grid-cols-2 gap-1 rounded-2xl p-1"
       style={{
         background: "hsl(var(--surface-1))",
@@ -174,12 +164,14 @@ function OrdersTab() {
   // makes that remount run a network refresh. So just by toggling
   // Заказы → Финансы → Заказы the user gets a fresh feed without a
   // dedicated refresh button.
+  const { t, tn } = useT();
+  const locale = useLocale();
   const ordersQuery = useMyOrders();
   const orders = ordersQuery.data ?? [];
   const rows: HistoryRow[] = orders.map(orderToHistoryRow);
 
   const grouped = rows.reduce<Record<string, HistoryRow[]>>((acc, tx) => {
-    const key = monthYearKey(tx.raw.created_at);
+    const key = monthYearKey(tx.raw.created_at, locale);
     (acc[key] ??= []).push(tx);
     return acc;
   }, {});
@@ -187,25 +179,25 @@ function OrdersTab() {
   return (
     <div className="space-y-5" role="tabpanel">
       {ordersQuery.isLoading && (
-        <div className="py-10 text-center text-sm text-white/40">Загрузка…</div>
+        <div className="py-10 text-center text-sm text-white/40">{t("common.loading")}</div>
       )}
 
       {ordersQuery.isError && (
         <div className="rounded-2xl border border-rose-500/30 bg-rose-500/5 p-4 text-sm text-rose-200">
-          Не удалось загрузить историю. Попробуйте позже.
+          {t("history.ordersError")}
         </div>
       )}
 
       {!ordersQuery.isLoading && rows.length === 0 && (
         <div className="border-border bg-card space-y-3 rounded-2xl border p-10 text-center">
           <Receipt size={28} className="mx-auto text-white/30" />
-          <p className="text-sm text-white/60">У вас ещё нет заказов.</p>
+          <p className="text-sm text-white/60">{t("history.ordersEmpty")}</p>
           <Link
             href="/"
             className="inline-block rounded-2xl px-5 py-2.5 text-sm font-semibold"
             style={{ background: "hsl(var(--primary))", color: "#000" }}
           >
-            Выбрать игру
+            {t("history.chooseGame")}
           </Link>
         </div>
       )}
@@ -241,15 +233,15 @@ function OrdersTab() {
                   <div className="min-w-0 flex-1">
                     <h3 className="truncate text-sm font-bold text-white">{tx.title}</h3>
                     <p className="text-muted-foreground mt-0.5 truncate text-[11px]">
-                      {shortTime(tx.raw.created_at)}
+                      {shortTime(tx.raw.created_at, locale)}
                       {tx.subtitle ? ` · ${tx.subtitle}` : ""}
-                      {tx.itemsCount > 1 ? ` · ${tx.itemsCount} поз.` : ""}
+                      {tx.itemsCount > 1 ? ` · ${tn("orders.positions", tx.itemsCount)}` : ""}
                     </p>
                   </div>
 
                   <div className="shrink-0 space-y-1 text-right">
                     <p className="text-primary text-sm font-bold">
-                      {tx.amount.toLocaleString("ru", {
+                      {tx.amount.toLocaleString(locale, {
                         maximumFractionDigits: 2,
                       })}{" "}
                       {tx.currency}
@@ -270,7 +262,7 @@ function OrdersTab() {
                       ) : (
                         <Clock3 size={11} />
                       )}
-                      <span className="text-[10px] font-semibold">{STATUS_LABEL[tx.status]}</span>
+                      <span className="text-[10px] font-semibold">{t(STATUS_KEY[tx.status])}</span>
                     </div>
                   </div>
                 </motion.div>
@@ -294,14 +286,9 @@ function OrdersTab() {
  */
 const FINANCE_VISIBLE_KINDS: UserAccountKind[] = ["user_wallet"];
 
-const TX_KIND_FINANCE_LABEL: Record<string, string> = {
-  "admin.adjust": "Корректировка от админа",
-  "payment.refund": "Возврат за заказ",
-  topup: "Пополнение",
-  "order.payment": "Оплата заказа",
-};
-
 function FinanceTab() {
+  const { t } = useT();
+  const locale = useLocale();
   const wallet = useWallet();
   const txQuery = useWalletTransactions(50);
 
@@ -323,41 +310,34 @@ function FinanceTab() {
   const rows = useMemo<UserTransactionView[]>(() => {
     if (!txQuery.data) return [];
     return txQuery.data
-      .map((tx) => {
-        const view = summarizeForUser(tx, userAccountIds, accountKindById);
-        if (view) {
-          // Re-map the label to a finance-focused phrasing.
-          return { ...view, label: TX_KIND_FINANCE_LABEL[view.kind] ?? view.label };
-        }
-        return null;
-      })
+      .map((tx) => summarizeForUser(tx, userAccountIds, accountKindById))
       .filter((v): v is UserTransactionView => v !== null);
   }, [txQuery.data, userAccountIds, accountKindById]);
 
   const grouped = useMemo(() => {
     return rows.reduce<Record<string, UserTransactionView[]>>((acc, r) => {
-      const key = monthYearKey(r.createdAt);
+      const key = monthYearKey(r.createdAt, locale);
       (acc[key] ??= []).push(r);
       return acc;
     }, {});
-  }, [rows]);
+  }, [rows, locale]);
 
   return (
     <div className="space-y-5" role="tabpanel">
       {txQuery.isLoading && (
-        <div className="py-10 text-center text-sm text-white/40">Загрузка…</div>
+        <div className="py-10 text-center text-sm text-white/40">{t("common.loading")}</div>
       )}
 
       {txQuery.isError && (
         <div className="rounded-2xl border border-rose-500/30 bg-rose-500/5 p-4 text-sm text-rose-200">
-          Не удалось загрузить финансовые операции.
+          {t("history.financeError")}
         </div>
       )}
 
       {!txQuery.isLoading && rows.length === 0 && (
         <div className="border-border bg-card space-y-3 rounded-2xl border p-10 text-center">
           <WalletIcon size={28} className="mx-auto text-white/30" />
-          <p className="text-sm text-white/60">Пополнений и корректировок ещё не было.</p>
+          <p className="text-sm text-white/60">{t("history.financeEmpty")}</p>
         </div>
       )}
 
@@ -384,7 +364,11 @@ function FinanceTab() {
 }
 
 function FinanceRow({ row, index }: { row: UserTransactionView; index: number }) {
+  const { t } = useT();
+  const locale = useLocale();
   const positive = row.delta >= 0;
+  const labelKey = txKindLabelKey(row.kind);
+  const label = labelKey ? t(labelKey) : row.kind;
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -404,9 +388,9 @@ function FinanceRow({ row, index }: { row: UserTransactionView; index: number })
       </div>
 
       <div className="min-w-0 flex-1">
-        <h3 className="truncate text-sm font-bold text-white">{row.label}</h3>
+        <h3 className="truncate text-sm font-bold text-white">{label}</h3>
         <p className="text-muted-foreground mt-0.5 truncate text-[11px]">
-          {shortTime(row.createdAt)}
+          {shortTime(row.createdAt, locale)}
           {row.reason ? ` · ${row.reason}` : ""}
         </p>
       </div>

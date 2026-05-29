@@ -27,6 +27,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useParams, Link } from "wouter";
 
 import { useToast } from "@/hooks/use-toast";
+import { useT, type MessageKey } from "@/lib/i18n";
+import { getActiveLocale, translate } from "@/lib/i18n/core";
 import {
   useDeliveries,
   useOrder,
@@ -64,7 +66,7 @@ function supportDeepLink(orderId: string): string | null {
   if (!SUPPORT_USERNAME) return null;
   // Telegram's t.me deep-link with a prefilled message body — when the user
   // taps "Поддержка" Telegram pops the chat with this text in the composer.
-  const text = encodeURIComponent(`Привет! Завис заказ ${orderId}.`);
+  const text = encodeURIComponent(translate("success.supportMessage", { orderId }));
   return `https://t.me/${SUPPORT_USERNAME}?text=${text}`;
 }
 
@@ -88,9 +90,9 @@ function useElapsedSeconds(start: string | null | undefined, active: boolean): n
 }
 
 function formatElapsed(seconds: number): string {
-  if (seconds < 60) return `${seconds} с`;
+  if (seconds < 60) return translate("success.elapsedSec", { n: seconds });
   const minutes = Math.floor(seconds / 60);
-  return `${minutes} мин`;
+  return translate("success.elapsedMin", { n: minutes });
 }
 
 interface StageCopy {
@@ -115,44 +117,64 @@ function stageFor(order: OrderOut): StageCopy {
   const kind = orderKind(order);
   switch (order.status) {
     case "pending_payment":
-      return { title: "Ждём оплату", subtitle: "Платёж ещё не подтверждён." };
+      return {
+        title: translate("success.stage.pendingTitle"),
+        subtitle: translate("success.stage.pendingSub"),
+      };
     case "paid":
-      return { title: "Оплата получена", subtitle: "Передаём заказ в выдачу…" };
+      return {
+        title: translate("success.stage.paidTitle"),
+        subtitle: translate("success.stage.paidSub"),
+      };
     case "fulfilling":
       return {
-        title: "Выдаём заказ",
+        title: translate("success.stage.fulfillingTitle"),
         subtitle:
           kind === "top_up"
-            ? "Зачисляем на игровой аккаунт."
+            ? translate("success.stage.fulfillingSubTopUp")
             : kind === "voucher"
-              ? "Резервируем код."
-              : "Обрабатываем выдачу.",
+              ? translate("success.stage.fulfillingSubVoucher")
+              : translate("success.stage.fulfillingSubMixed"),
       };
     case "fulfilled":
-      return { title: "Почти готово", subtitle: "Завершаем оформление выдачи." };
+      return {
+        title: translate("success.stage.fulfilledTitle"),
+        subtitle: translate("success.stage.fulfilledSub"),
+      };
     case "delivered":
       return {
-        title: "Готово",
+        title: translate("success.stage.deliveredTitle"),
         subtitle:
-          kind === "top_up" ? "Зачислено. Подробности ниже." : "Заказ выдан. Подробности ниже.",
+          kind === "top_up"
+            ? translate("success.stage.deliveredSubTopUp")
+            : translate("success.stage.deliveredSubOther"),
       };
     case "cancelled":
-      return { title: "Заказ отменён", subtitle: "Деньги не списаны или были возвращены." };
+      return {
+        title: translate("success.stage.cancelledTitle"),
+        subtitle: translate("success.stage.cancelledSub"),
+      };
     case "expired":
-      return { title: "Истёк срок оплаты", subtitle: "Создайте новый заказ." };
+      return {
+        title: translate("success.stage.expiredTitle"),
+        subtitle: translate("success.stage.expiredSub"),
+      };
     case "refunded":
       return {
-        title: "Сделан возврат",
-        subtitle: "Средства возвращены на исходный метод оплаты.",
+        title: translate("success.stage.refundedTitle"),
+        subtitle: translate("success.stage.refundedSub"),
       };
   }
 }
 
 export default function OrderSuccess() {
+  const { t } = useT();
   const params = useParams<{ id: string }>();
   const orderId = params.id;
   const [, setLocation] = useLocation();
-  useDocumentTitle(orderId ? `Заказ ${orderId.slice(0, 8)}…` : "Заказ");
+  useDocumentTitle(
+    orderId ? t("success.docTitleNamed", { id: orderId.slice(0, 8) }) : t("success.docTitle"),
+  );
 
   const orderQuery = useOrder(orderId);
   const order = orderQuery.data;
@@ -183,8 +205,8 @@ export default function OrderSuccess() {
   if (!orderId) {
     return (
       <ErrorView
-        title="Заказ не найден"
-        subtitle="Попробуйте открыть страницу из истории."
+        title={t("success.notFoundTitle")}
+        subtitle={t("success.notFoundSubtitle")}
         onHome={() => {
           setLocation("/");
         }}
@@ -225,12 +247,14 @@ export default function OrderSuccess() {
             background: "hsl(var(--card))",
             border: "1px solid hsl(var(--border))",
           }}
-          aria-label="Назад"
+          aria-label={t("common.back")}
         >
           <ArrowLeft size={15} className="text-white/60" />
         </button>
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] uppercase tracking-[0.08em] text-white/35">Заказ</p>
+          <p className="text-[10px] uppercase tracking-[0.08em] text-white/35">
+            {t("success.orderLabel")}
+          </p>
           <p className="truncate font-mono text-sm leading-tight text-white">
             {order.id.slice(0, 8)}…
           </p>
@@ -271,10 +295,14 @@ export default function OrderSuccess() {
               : "/"
           }
         >
-          <ActionButton icon={<Sparkles size={15} />} label="Купить ещё" variant="primary" />
+          <ActionButton
+            icon={<Sparkles size={15} />}
+            label={t("success.buyMore")}
+            variant="primary"
+          />
         </Link>
         <Link href="/history">
-          <ActionButton icon={<Receipt size={15} />} label="История" variant="secondary" />
+          <ActionButton icon={<Receipt size={15} />} label={t("nav.history")} variant="secondary" />
         </Link>
       </div>
     </motion.div>
@@ -298,6 +326,7 @@ function StatusCard({
   isFailed: boolean;
   elapsedSeconds: number;
 }) {
+  const { t } = useT();
   const tone = isDelivered
     ? "delivered"
     : isFailed
@@ -315,9 +344,7 @@ function StatusCard({
 
   const isDelayed = isProcessing && elapsedSeconds >= SLA_DELAYED_SECONDS;
   const showSupport = isProcessing && elapsedSeconds >= SLA_WARN_SECONDS;
-  const subtitle = isDelayed
-    ? "Заказ задерживается. Мы уже следим — обычно решается без вашего участия."
-    : stage.subtitle;
+  const subtitle = isDelayed ? t("success.delayedSub") : stage.subtitle;
 
   const supportHref = supportDeepLink(order.id);
 
@@ -365,7 +392,7 @@ function StatusCard({
           <div
             className="relative mt-4 h-1 overflow-hidden rounded-full bg-white/5"
             role="progressbar"
-            aria-valuetext="Обработка заказа"
+            aria-valuetext={t("success.processingAria")}
             aria-busy="true"
           >
             <motion.div
@@ -409,10 +436,10 @@ function StatusCard({
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-semibold leading-tight text-white">
-                  {isDelayed ? "Написать в поддержку" : "Долго? Напишите в поддержку"}
+                  {isDelayed ? t("success.supportWrite") : t("success.supportLong")}
                 </p>
                 <p className="mt-0.5 truncate text-[10px] leading-tight text-white/40">
-                  Скопируем номер заказа автоматически
+                  {t("success.supportHint")}
                 </p>
               </div>
             </div>
@@ -474,6 +501,7 @@ function ItemCard({
   currency: string;
   awaitingDelivery: boolean;
 }) {
+  const { t } = useT();
   const display = item.display;
   const headline = display
     ? display.brand_name
@@ -535,7 +563,7 @@ function ItemCard({
             className="mt-3 flex items-center gap-2 text-[11px] text-white/40"
           >
             <Loader2 size={12} className="animate-spin" />
-            <span>{isTopUp ? "пополняем аккаунт…" : "ожидаем выдачу…"}</span>
+            <span>{isTopUp ? t("success.awaitingTopUp") : t("success.awaitingVoucher")}</span>
           </motion.div>
         ) : null}
       </AnimatePresence>
@@ -550,20 +578,21 @@ function ItemCard({
 //     can confirm we pushed UC to the right account;
 //   * the supplier's order id, in case support needs it later.
 
-const FIELD_LABEL: Record<string, string> = {
-  player_id: "ID игрока",
-  user_id: "ID пользователя",
-  account_id: "Аккаунт",
-  email: "Email",
-  phone: "Телефон",
-  region: "Регион",
-  zone_id: "Zone ID",
-  character: "Персонаж",
-  nickname: "Никнейм",
+const FIELD_LABEL: Record<string, MessageKey> = {
+  player_id: "success.field.player_id",
+  user_id: "success.field.user_id",
+  account_id: "success.field.account_id",
+  email: "success.field.email",
+  phone: "success.field.phone",
+  region: "success.field.region",
+  zone_id: "success.field.zone_id",
+  character: "success.field.character",
+  nickname: "success.field.nickname",
 };
 
 function labelForField(key: string): string {
-  return FIELD_LABEL[key] ?? key;
+  const messageKey = FIELD_LABEL[key];
+  return messageKey ? translate(messageKey) : key;
 }
 
 function TopUpReceipt({
@@ -573,6 +602,7 @@ function TopUpReceipt({
   delivery: DeliveryOut;
   fulfillmentData: Record<string, unknown>;
 }) {
+  const { t } = useT();
   // Prefer the snapshot stored in the artifact (frozen at fulfilment time),
   // fall back to the live item.fulfillment_data if the supplier didn't echo
   // it back.
@@ -596,11 +626,11 @@ function TopUpReceipt({
           className="text-[10px] font-semibold uppercase tracking-[0.08em]"
           style={{ color: "hsl(var(--primary))" }}
         >
-          Зачислено
+          {t("success.credited")}
         </span>
         <span className="text-[10px] text-white/25">·</span>
         <span className="text-[10px] text-white/35">
-          {new Date(delivery.delivered_at).toLocaleString("ru", {
+          {new Date(delivery.delivered_at).toLocaleString(getActiveLocale(), {
             day: "2-digit",
             month: "short",
             hour: "2-digit",
@@ -641,15 +671,16 @@ function isStringRecord(v: unknown): v is Record<string, unknown> {
 
 function ArtifactBlock({ delivery }: { delivery: DeliveryOut }) {
   const { toast } = useToast();
+  const { t } = useT();
 
   const onCopy = async (value: string, label: string) => {
     try {
       await navigator.clipboard.writeText(value);
-      toast({ title: `${label} скопирован` });
+      toast({ title: t("success.copied", { label }) });
     } catch {
       toast({
-        title: "Не удалось скопировать",
-        description: "Выделите и скопируйте вручную",
+        title: t("common.copyFailed"),
+        description: t("common.copyManual"),
         variant: "destructive",
       });
     }
@@ -671,7 +702,7 @@ function ArtifactBlock({ delivery }: { delivery: DeliveryOut }) {
         </span>
         <span className="text-[10px] text-white/25">·</span>
         <span className="text-[10px] text-white/35">
-          {new Date(delivery.delivered_at).toLocaleString("ru", {
+          {new Date(delivery.delivered_at).toLocaleString(getActiveLocale(), {
             day: "2-digit",
             month: "short",
             hour: "2-digit",
@@ -680,9 +711,19 @@ function ArtifactBlock({ delivery }: { delivery: DeliveryOut }) {
         </span>
       </div>
 
-      {code && <CopyableValue value={code} label="Код" onCopy={(v) => void onCopy(v, "Код")} />}
+      {code && (
+        <CopyableValue
+          value={code}
+          label={t("success.code")}
+          onCopy={(v) => void onCopy(v, t("success.code"))}
+        />
+      )}
       {!code && key && (
-        <CopyableValue value={key} label="Ключ" onCopy={(v) => void onCopy(v, "Ключ")} />
+        <CopyableValue
+          value={key}
+          label={t("success.key")}
+          onCopy={(v) => void onCopy(v, t("success.key"))}
+        />
       )}
       {!code && !key && receipt && (
         <div
@@ -692,7 +733,7 @@ function ArtifactBlock({ delivery }: { delivery: DeliveryOut }) {
             border: "1px solid hsl(var(--border))",
           }}
         >
-          <span className="text-white/45">Зачислено · </span>
+          <span className="text-white/45">{t("success.credited")} · </span>
           <span className="font-mono">{receipt}</span>
         </div>
       )}
@@ -714,11 +755,11 @@ function ArtifactBlock({ delivery }: { delivery: DeliveryOut }) {
 function labelForKind(kind: ArtifactKind): string {
   switch (kind) {
     case "voucher_code":
-      return "Ваучер";
+      return translate("success.kind.voucher");
     case "license_key":
-      return "Лицензия";
+      return translate("success.kind.license");
     case "topup_receipt":
-      return "Чек";
+      return translate("success.kind.receipt");
   }
 }
 
@@ -759,6 +800,7 @@ function CopyableValue({
 // ─── Summary footer ─────────────────────────────────────────────────────────
 
 function Summary({ order }: { order: OrderOut }) {
+  const { t } = useT();
   return (
     <div className="px-4">
       <div
@@ -769,12 +811,14 @@ function Summary({ order }: { order: OrderOut }) {
         }}
       >
         <Row
-          label="Сумма"
-          value={`${Number.parseFloat(order.total_charged).toLocaleString("ru", { maximumFractionDigits: 2 })} ${order.currency}`}
+          label={t("success.amount")}
+          value={`${Number.parseFloat(order.total_charged).toLocaleString(getActiveLocale(), { maximumFractionDigits: 2 })} ${order.currency}`}
         />
-        <Row label="Создан" value={fmtDate(order.created_at)} />
-        {order.paid_at && <Row label="Оплачен" value={fmtDate(order.paid_at)} />}
-        {order.delivered_at && <Row label="Выдан" value={fmtDate(order.delivered_at)} />}
+        <Row label={t("success.createdAt")} value={fmtDate(order.created_at)} />
+        {order.paid_at && <Row label={t("success.paidAt")} value={fmtDate(order.paid_at)} />}
+        {order.delivered_at && (
+          <Row label={t("success.deliveredAt")} value={fmtDate(order.delivered_at)} />
+        )}
       </div>
     </div>
   );
@@ -790,7 +834,7 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleString("ru", {
+  return new Date(iso).toLocaleString(getActiveLocale(), {
     day: "2-digit",
     month: "short",
     hour: "2-digit",
@@ -875,6 +919,7 @@ function ErrorView({
   subtitle: string;
   onHome: () => void;
 }) {
+  const { t } = useT();
   return (
     <div className="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
       <ShoppingBag size={40} className="text-white/20" />
@@ -890,7 +935,7 @@ function ErrorView({
           color: "hsl(var(--primary-foreground))",
         }}
       >
-        На главную
+        {t("common.toHome")}
       </button>
     </div>
   );

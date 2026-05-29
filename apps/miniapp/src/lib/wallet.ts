@@ -8,6 +8,10 @@
 
 import { useQuery } from "@tanstack/react-query";
 
+import type { MessageKey } from "@/lib/i18n";
+
+import { getActiveLocale } from "@/lib/i18n/core";
+
 import { apiGet } from "./api";
 import { useMe } from "./auth";
 import { CURRENCY_SYMBOL, type DisplayCurrency } from "./currency";
@@ -137,23 +141,24 @@ export interface UserTransactionView {
   currency: string;
   /** Transaction kind from the backend (admin.adjust, payment.refund, …). */
   kind: string;
-  /** Short label suitable for the row's headline. */
-  label: string;
   reason: string | null;
   createdAt: string;
 }
 
-export const TX_KIND_LABEL: Record<string, string> = {
-  "admin.adjust": "Корректировка от админа",
-  "payment.refund": "Возврат за заказ",
-  "order.payment": "Оплата заказа",
-  "cashback.grant": "Кэшбэк за покупку",
-  "promo.grant": "Промо-кредит",
-  topup: "Пополнение",
+export const TX_KIND_LABEL: Record<string, MessageKey> = {
+  "admin.adjust": "wallet.tx.adminAdjust",
+  "payment.refund": "wallet.tx.refund",
+  "order.payment": "wallet.tx.orderPayment",
+  "cashback.grant": "wallet.tx.cashback",
+  "promo.grant": "wallet.tx.promo",
+  topup: "wallet.tx.topup",
 };
 
-export function txKindLabel(kind: string): string {
-  return TX_KIND_LABEL[kind] ?? kind;
+/** Catalog key for a backend transaction kind, or ``null`` for unknown kinds
+ *  (the caller then shows the raw kind). Resolution happens at render so the
+ *  label follows the active locale. */
+export function txKindLabelKey(kind: string): MessageKey | null {
+  return TX_KIND_LABEL[kind] ?? null;
 }
 
 /**
@@ -185,7 +190,6 @@ export function summarizeForUser(
     delta,
     currency: userLeg.currency,
     kind: tx.kind,
-    label: txKindLabel(tx.kind),
     reason: typeof reasonRaw === "string" ? reasonRaw : null,
     createdAt: userLeg.created_at,
   };
@@ -268,20 +272,24 @@ export function convertFromUsd(amountUsd: number, rate: number): number {
   return amountUsd * rate;
 }
 
-const _RU_FORMATTERS: Record<string, Intl.NumberFormat> = {};
+const _FORMATTERS: Record<string, Intl.NumberFormat> = {};
 
 function getFormatter(currency: string): Intl.NumberFormat {
-  let cached = _RU_FORMATTERS[currency];
+  // Grouping and decimal separators are locale-specific, so the cache is
+  // keyed by both locale and currency.
+  const locale = getActiveLocale();
+  const cacheKey = `${locale}:${currency}`;
+  let cached = _FORMATTERS[cacheKey];
   if (!cached) {
     // We render the symbol ourselves (Telegram's font sometimes mangles ₽);
     // the formatter is just here for grouping/decimals. UZS and RUB are
     // whole-number currencies in practice, the rest keep 2 decimals.
     const fractionDigits = currency === "UZS" ? 0 : 2;
-    cached = new Intl.NumberFormat("ru-RU", {
+    cached = new Intl.NumberFormat(locale, {
       minimumFractionDigits: fractionDigits,
       maximumFractionDigits: fractionDigits,
     });
-    _RU_FORMATTERS[currency] = cached;
+    _FORMATTERS[cacheKey] = cached;
   }
   return cached;
 }

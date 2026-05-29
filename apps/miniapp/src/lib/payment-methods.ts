@@ -11,6 +11,8 @@
  * only applies to order checkout and is rendered as its own card in ``TopUp``.
  */
 
+import type { MessageKey } from "@/lib/i18n";
+
 import clickIcon from "@/assets/payments/click.png";
 import inpayIcon from "@/assets/payments/inpay.png";
 import paymeIcon from "@/assets/payments/payme.png";
@@ -20,10 +22,10 @@ import uzumIcon from "@/assets/payments/uzum.png";
 export interface PaymentMethod {
   /** UI id (also the selected-method key on both pages). */
   id: string;
-  /** Brand display name. */
+  /** Brand display name (not translated). */
   name: string;
-  /** Short subtitle / hint. */
-  sub: string;
+  /** Catalog key for the short subtitle / hint, resolved at render. */
+  subKey: MessageKey;
   /** Backend provider slug in ``payments.gateways`` REGISTRY. */
   provider: string;
   /** Currency the acquirer charges in. */
@@ -36,7 +38,7 @@ export const PAYMENT_METHODS: PaymentMethod[] = [
   {
     id: "inpay",
     name: "InPay",
-    sub: "Click · Payme · карты",
+    subKey: "payment.inpay.sub",
     provider: "inpay",
     currency: "UZS",
     icon: inpayIcon,
@@ -44,7 +46,7 @@ export const PAYMENT_METHODS: PaymentMethod[] = [
   {
     id: "click",
     name: "Click",
-    sub: "Карта · Humo · Uzcard",
+    subKey: "payment.click.sub",
     provider: "click",
     currency: "UZS",
     icon: clickIcon,
@@ -52,7 +54,7 @@ export const PAYMENT_METHODS: PaymentMethod[] = [
   {
     id: "payme",
     name: "Payme",
-    sub: "Карта · Humo · Uzcard",
+    subKey: "payment.payme.sub",
     provider: "payme",
     currency: "UZS",
     icon: paymeIcon,
@@ -60,7 +62,7 @@ export const PAYMENT_METHODS: PaymentMethod[] = [
   {
     id: "uzum",
     name: "Uzum",
-    sub: "Humo · Uzcard",
+    subKey: "payment.uzum.sub",
     provider: "uzum",
     currency: "UZS",
     icon: uzumIcon,
@@ -68,7 +70,7 @@ export const PAYMENT_METHODS: PaymentMethod[] = [
   {
     id: "usdt",
     name: "USDT",
-    sub: "TRC-20 / ERC-20",
+    subKey: "payment.usdt.sub",
     provider: "crypto",
     currency: "USDT",
     icon: usdtIcon,

@@ -5,6 +5,8 @@
  * Surfaces 4xx/5xx as typed exceptions so query hooks can react explicitly.
  */
 
+import { getActiveLocale } from "./i18n/core";
+
 const TOKEN_KEY = "yupay.miniapp.access_token";
 const REFRESH_KEY = "yupay.miniapp.refresh_token";
 
@@ -115,6 +117,8 @@ export async function api<T = unknown>(path: string, options: RequestOptions = {
   const send = async (token: string | null): Promise<Response> => {
     const h = new Headers(headers);
     h.set("Accept", "application/json");
+    // Catalog endpoints localize their text from this header (default ru).
+    if (!h.has("Accept-Language")) h.set("Accept-Language", getActiveLocale());
     if (init.body && !h.has("Content-Type")) {
       h.set("Content-Type", "application/json");
     }

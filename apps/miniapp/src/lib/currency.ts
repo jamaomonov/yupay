@@ -30,7 +30,7 @@ export const CURRENCY_LABEL: Record<DisplayCurrency, string> = {
 
 export const CURRENCY_SYMBOL: Record<DisplayCurrency, string> = {
   USD: "$",
-  UZS: "сум",
+  UZS: "UZS",
   RUB: "₽",
   USDT: "USDT",
 };
