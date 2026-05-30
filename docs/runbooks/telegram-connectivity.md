@@ -70,7 +70,7 @@ above confirms it.
 
 ```sh
 # Bot replies to /start in Telegram. Then from inside a bridge container:
-docker compose -p yupay-prod exec -T api \
+docker compose -f docker-compose.prod.yml exec -T api \
   python -c "import urllib.request as u; print(u.urlopen('https://api.telegram.org', timeout=10).status)"
 # Expect 200/302 quickly. A timeout means NAT66 isn't working → check Docker
 # version / ip6tables above.
@@ -79,7 +79,7 @@ docker compose -p yupay-prod exec -T api \
 Confirm the container actually got an IPv6 address:
 
 ```sh
-docker compose -p yupay-prod exec -T api ip -6 addr show eth0   # should list an fd00:c0de:cafe::/64 address
+docker compose -f docker-compose.prod.yml exec -T api ip -6 addr show eth0   # should list an fd00:c0de:cafe::/64 address
 ```
 
 ## Why not host networking for api/worker too?
