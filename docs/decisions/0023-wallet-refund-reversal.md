@@ -53,7 +53,7 @@ money never came back to the customer's balance.
    `house_refunds / provider_clearing` posting for every other provider.
 2. **Always credit `user_wallet`** regardless of provider — refund any payment
    to the wallet as store credit.
-3. **Two postings for wallet** — book `house_refunds` *and* credit the wallet —
+3. **Two postings for wallet** — book `house_refunds` _and_ credit the wallet —
    to keep refund-expense reporting uniform across providers.
 
 ## Decision outcome
@@ -114,7 +114,7 @@ it would mishandle external settlement. Rejected.
 
 ### Option 3 — two postings for wallet
 
-Crediting the wallet *and* booking `house_refunds` double-counts: it records an
+Crediting the wallet _and_ booking `house_refunds` double-counts: it records an
 expense that never happened and unbalances the "received" bucket. Rejected in
 favour of the clean inverse.
 

@@ -168,9 +168,7 @@ async def test_create_intent_for_owned_order(
     assert body["external_id"].startswith("mock_")
 
 
-async def test_get_active_payment_by_order(
-    integration_client: AsyncClient, _seed_sku: str
-) -> None:
+async def test_get_active_payment_by_order(integration_client: AsyncClient, _seed_sku: str) -> None:
     """The miniapp's order-detail page hits this endpoint to surface a
     «Оплатить» button for a still-unpaid order. Owner sees the active
     intent; once the order moves past ``pending_payment`` the route 404s;
@@ -524,16 +522,13 @@ async def test_external_refund_books_house_expense_not_wallet(
 
     # The refund booked D house_refunds / C provider_clearing:mock — never user_wallet.
     legs = (
-        (
-            await db_session.execute(
-                select(WalletPosting.direction, WalletAccount.kind, WalletAccount.owner_id)
-                .join(WalletTransaction, WalletPosting.transaction_id == WalletTransaction.id)
-                .join(WalletAccount, WalletPosting.account_id == WalletAccount.id)
-                .where(WalletTransaction.idempotency_key == f"refund:{payment.id}")
-            )
+        await db_session.execute(
+            select(WalletPosting.direction, WalletAccount.kind, WalletAccount.owner_id)
+            .join(WalletTransaction, WalletPosting.transaction_id == WalletTransaction.id)
+            .join(WalletAccount, WalletPosting.account_id == WalletAccount.id)
+            .where(WalletTransaction.idempotency_key == f"refund:{payment.id}")
         )
-        .all()
-    )
+    ).all()
     booked = {(direction, kind, owner_id) for direction, kind, owner_id in legs}
     assert ("D", "house_refunds", "house") in booked
     assert ("C", "provider_clearing", "mock") in booked

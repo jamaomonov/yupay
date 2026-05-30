@@ -70,7 +70,7 @@ above confirms it.
 
 NAT66 alone is necessary but **not sufficient** for api/worker/scheduler. Once
 the bridge has IPv6, a bridge container's only IPv6 **source** address is the
-ULA (`fd00:c0de:cafe::…`, in `fc00::/7`). Under RFC 6724's *default* label
+ULA (`fd00:c0de:cafe::…`, in `fc00::/7`). Under RFC 6724's _default_ label
 table the ULA carries label 6 while a **global** IPv6 destination
 (`api.telegram.org`, `::/0`) carries label 1. Destination Rule 5 ("prefer
 matching label") therefore demotes the global-IPv6 destination, and
@@ -79,14 +79,14 @@ matching label") therefore demotes the global-IPv6 destination, and
 This bites differently depending on the HTTP client:
 
 - **bot** (aiogram/aiohttp) — unaffected. It's on host networking (global IPv6
-  source, so labels match) *and* aiohttp does Happy Eyeballs (races v4/v6).
+  source, so labels match) _and_ aiohttp does Happy Eyeballs (races v4/v6).
 - **api/worker/scheduler** (httpx → httpcore's anyio backend) — **broken**.
   anyio connects **sequentially**: it dials the IPv4 address first and
   `httpx.ConnectTimeout`s at the 5s notifier timeout before ever trying IPv6.
   Admin Telegram alerts/notifications silently fail even though NAT66 works.
 
 Symptom check from inside a bridge container (sync `httpx.get` mirrors the
-notifier; `urllib`/`curl -6` are *not* representative — they eventually fall
+notifier; `urllib`/`curl -6` are _not_ representative — they eventually fall
 through to IPv6 and mask the bug):
 
 ```sh
