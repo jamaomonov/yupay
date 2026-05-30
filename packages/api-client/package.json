@@ -16,8 +16,8 @@
     "gen:api": "openapi-ts -i ../../docs/api/openapi.json -o src/generated -c @hey-api/client-fetch || echo 'openapi.json not yet generated'"
   },
   "dependencies": {
-    "@hey-api/client-fetch": "^0.5.0",
-    "@tanstack/react-query": "^5.59.20",
+    "@hey-api/client-fetch": "^0.13.1",
+    "@tanstack/react-query": "^5.100.14",
     "zod": "^3.23.8"
   },
   "peerDependencies": {
