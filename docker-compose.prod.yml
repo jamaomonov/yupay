@@ -25,6 +25,15 @@ x-app-env: &app-env
 x-mtu-probe: &mtu-probe
   - net.ipv4.tcp_mtu_probing=2
 
+# Bridge containers reach Telegram only over IPv6, but their sole IPv6
+# source is the ULA (fc00::/7). RFC 6724's default label table demotes a
+# global-IPv6 destination against a ULA source (Rule 5, mismatched label),
+# so getaddrinfo hands back the blocked IPv4 first and httpx ConnectTimeouts
+# on admin alerts. Mounting this gai.conf relabels fc00::/7 to the global
+# label (1) so IPv6 sorts first. See docs/runbooks/telegram-connectivity.md.
+x-gai-volume: &gai-volume
+  - ./infra/docker/gai.conf:/etc/gai.conf:ro
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -74,6 +83,7 @@ services:
       <<: *app-env
     env_file: /opt/yupay/secrets/api.env
     sysctls: *mtu-probe
+    volumes: *gai-volume
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_started }
@@ -88,6 +98,7 @@ services:
       <<: *app-env
     env_file: /opt/yupay/secrets/api.env
     sysctls: *mtu-probe
+    volumes: *gai-volume
     depends_on: [postgres, redis]
 
   scheduler:
@@ -97,6 +108,7 @@ services:
       <<: *app-env
     env_file: /opt/yupay/secrets/api.env
     sysctls: *mtu-probe
+    volumes: *gai-volume
     depends_on: [postgres, redis]
 
   bot:

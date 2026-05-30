@@ -66,6 +66,58 @@ docker version --format '{{.Server.Version}}'
 The host itself must have a working IPv6 default route — the `curl -6` check
 above confirms it.
 
+### IPv6 source-address selection (`/etc/gai.conf`)
+
+NAT66 alone is necessary but **not sufficient** for api/worker/scheduler. Once
+the bridge has IPv6, a bridge container's only IPv6 **source** address is the
+ULA (`fd00:c0de:cafe::…`, in `fc00::/7`). Under RFC 6724's *default* label
+table the ULA carries label 6 while a **global** IPv6 destination
+(`api.telegram.org`, `::/0`) carries label 1. Destination Rule 5 ("prefer
+matching label") therefore demotes the global-IPv6 destination, and
+`getaddrinfo` returns the **blocked IPv4** address first.
+
+This bites differently depending on the HTTP client:
+
+- **bot** (aiogram/aiohttp) — unaffected. It's on host networking (global IPv6
+  source, so labels match) *and* aiohttp does Happy Eyeballs (races v4/v6).
+- **api/worker/scheduler** (httpx → httpcore's anyio backend) — **broken**.
+  anyio connects **sequentially**: it dials the IPv4 address first and
+  `httpx.ConnectTimeout`s at the 5s notifier timeout before ever trying IPv6.
+  Admin Telegram alerts/notifications silently fail even though NAT66 works.
+
+Symptom check from inside a bridge container (sync `httpx.get` mirrors the
+notifier; `urllib`/`curl -6` are *not* representative — they eventually fall
+through to IPv6 and mask the bug):
+
+```sh
+docker compose -f docker-compose.prod.yml exec -T api python - <<'PY'
+import time, httpx
+t = time.monotonic()
+try:
+    r = httpx.get("https://api.telegram.org", timeout=5)
+    print("ok", r.status_code, round(time.monotonic() - t, 2))
+except Exception as e:
+    print("FAIL", type(e).__name__, round(time.monotonic() - t, 2))
+PY
+# Broken: "FAIL ConnectTimeout ~5.0". Fixed: "ok 302 ~0.2".
+```
+
+**Fix (in `docker-compose.prod.yml`):** `infra/docker/gai.conf` is mounted
+read-only at `/etc/gai.conf` on api/worker/scheduler (`x-gai-volume` anchor).
+It reproduces the full RFC 6724 default table with **one** change — relabel
+`fc00::/7` from 6 to 1 — so the ULA source matches the global-IPv6
+destination label, IPv6 sorts first, and the working path is dialled first.
+Internal ULA→ULA traffic (postgres/redis over the bridge) is unchanged: it was
+already IPv6-first and healthy.
+
+**Payment providers are unaffected:** UZ/RU acquirers are IPv4-only (no AAAA),
+so there is no IPv6 destination to reorder — gai.conf is a no-op for them.
+
+**Rollback:** drop the `volumes: *gai-volume` line from api/worker/scheduler
+(and/or remove `infra/docker/gai.conf`) and recreate the containers; selection
+reverts to the glibc default. This only re-breaks admin Telegram alerts; the
+bot (host networking) is independent.
+
 ## Verify after deploy
 
 ```sh
