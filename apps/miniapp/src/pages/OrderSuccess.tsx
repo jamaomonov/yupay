@@ -40,6 +40,7 @@ import {
   type OrderStatus,
   type ProductKind,
 } from "@/lib/orders";
+import { getWebApp } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
 const PROCESSING: OrderStatus[] = ["pending_payment", "paid", "fulfilling", "fulfilled"];
@@ -314,13 +315,26 @@ export default function OrderSuccess() {
         }`}
       >
         {order.status === "pending_payment" && payUrl && (
-          <a href={payUrl} target="_blank" rel="noreferrer noopener">
-            <ActionButton
-              icon={<CreditCard size={15} />}
-              label={t("success.payNow")}
-              variant="primary"
-            />
-          </a>
+          <ActionButton
+            icon={<CreditCard size={15} />}
+            label={t("success.payNow")}
+            variant="primary"
+            onClick={() => {
+              // ``<a target="_blank">`` is ignored inside the Telegram WebView —
+              // the acquirer page replaces the mini app in the same WebView and
+              // ``Telegram.WebApp.BackButton`` (wired in use-telegram-back-button)
+              // loses track of the route stack, so the back arrow breaks.
+              // ``openLink`` opens the URL in the system browser (or Telegram's
+              // in-app overlay) keeping the mini app — and the back button —
+              // intact. ``window.open`` is the dev/desktop fallback.
+              const wa = getWebApp();
+              if (wa?.openLink) {
+                wa.openLink(payUrl);
+              } else {
+                window.open(payUrl, "_blank", "noopener,noreferrer");
+              }
+            }}
+          />
         )}
         <Link
           href={
@@ -879,15 +893,18 @@ function ActionButton({
   icon,
   label,
   variant,
+  onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   variant: "primary" | "secondary";
+  onClick?: () => void;
 }) {
   const primary = variant === "primary";
   return (
     <button
       type="button"
+      onClick={onClick}
       className="flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-sm font-semibold transition-transform active:scale-[0.97]"
       style={{
         background: primary ? "hsl(var(--primary))" : "hsl(var(--surface-2))",
