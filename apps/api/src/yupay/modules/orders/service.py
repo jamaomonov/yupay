@@ -377,6 +377,16 @@ async def cancel_order_admin(db: AsyncSession, order_id: str, *, admin_id: str) 
     await _cascade_cancel_open_payments(
         db, order_id=order_id, reason="order_cancelled", actor=f"admin:{admin_id}"
     )
+    # Stop any in-flight fulfilment for the cancelled order. Today cancel is
+    # only legal from ``pending_payment`` (no task exists yet), so this is a
+    # no-op; it keeps the invariant "a terminated order has no open fulfilment
+    # task" if the cancel window is ever widened. Lazy import avoids the
+    # orders.service ↔ fulfillment.service import cycle.
+    from yupay.modules.fulfillment import service as fulfillment_svc
+
+    await fulfillment_svc.cancel_open_tasks_for_order(
+        db, order_id=order_id, reason="order_cancelled"
+    )
     await db.flush()
     return order
 

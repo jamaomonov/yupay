@@ -221,7 +221,17 @@ export function Layout() {
           ))}
           <SavedSegmentsNav />
         </nav>
-        <div className="border-t p-3 text-xs text-[var(--text-secondary)]">v0.0.1</div>
+        <div className="border-t p-3 text-xs text-[var(--text-secondary)]">
+          v0.0.1 · Made by{" "}
+          <a
+            href="https://t.me/jama_omonov"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="text-[var(--text-primary)] underline-offset-2 hover:underline"
+          >
+            Jam
+          </a>
+        </div>
       </aside>
 
       {/* Drawer backdrop (mobile only). */}

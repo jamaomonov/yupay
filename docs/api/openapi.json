@@ -12325,6 +12325,49 @@
         ]
       }
     },
+    "/api/v1/payments/by-order/{order_id}": {
+      "get": {
+        "description": "Used by the miniapp's order-detail page to surface a \u00abpay now\u00bb button\non a ``pending_payment`` order without re-creating the intent. Returns\n404 when no active intent exists (paid / refunded / cancelled order).",
+        "operationId": "get_active_payment_route_api_v1_payments_by_order__order_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get the active payment intent for an order (owner-only)",
+        "tags": [
+          "payments"
+        ]
+      }
+    },
     "/api/v1/payments/intents": {
       "post": {
         "operationId": "create_intent_route_api_v1_payments_intents_post",

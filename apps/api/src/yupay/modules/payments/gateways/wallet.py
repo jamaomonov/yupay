@@ -222,12 +222,15 @@ class WalletGateway:
         payment: Any,
         amount: Decimal,
     ) -> RefundResult:
-        """Credit ``amount`` back to the customer's wallet.
+        """Confirm the refund's external id for the audit feed.
 
-        Refunds are admin-driven (``payments.service.refund_admin``);
-        the route already does its own ledger accounting against
-        ``house_refunds``. The gateway just confirms the inverse
-        external id pattern so audit-feed entries stay consistent.
+        Refunds are admin-driven (``payments.service.refund_admin``), and
+        that service owns the ledger posting. For a wallet payment it books
+        the inverse of the original charge — ``D user_wallet /
+        C house_payments_received`` — so ``amount`` lands back in the
+        customer's balance (see ADR-0023). This gateway hook does **not**
+        touch the ledger itself (it has no ``db`` handle); it just returns the
+        inverse external id so audit-feed entries stay consistent.
         """
         from yupay.modules.payments.models import Payment as _Payment
 

@@ -18,6 +18,7 @@ from yupay.modules.fulfillment.schemas import (
     ManualFailIn,
 )
 from yupay.modules.fulfillment.service import (
+    cancel_open_tasks_for_order,
     cancel_task,
     complete_manual_task,
     fail_manual_task,
@@ -60,6 +61,7 @@ __all__ = [
     "ManualFailIn",
     "admin_router",
     "available_suppliers",
+    "cancel_open_tasks_for_order",
     "cancel_task",
     "complete_manual_task",
     "fail_manual_task",

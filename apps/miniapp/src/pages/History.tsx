@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Clock3,
   Receipt,
+  Undo2,
   Wallet as WalletIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -32,6 +33,7 @@ const STATUS_KEY: Record<HistoryRow["status"], MessageKey> = {
   success: "history.status.success",
   processing: "history.status.processing",
   failed: "history.status.failed",
+  refunded: "history.status.refunded",
 };
 
 function monthYearKey(iso: string, locale: Locale): string {
@@ -252,13 +254,17 @@ function OrdersTab() {
                           ? "text-green-400"
                           : tx.status === "failed"
                             ? "text-rose-400"
-                            : "text-yellow-400"
+                            : tx.status === "refunded"
+                              ? "text-sky-400"
+                              : "text-yellow-400"
                       }`}
                     >
                       {tx.status === "success" ? (
                         <CheckCircle2 size={11} />
                       ) : tx.status === "failed" ? (
                         <AlertTriangle size={11} />
+                      ) : tx.status === "refunded" ? (
+                        <Undo2 size={11} />
                       ) : (
                         <Clock3 size={11} />
                       )}

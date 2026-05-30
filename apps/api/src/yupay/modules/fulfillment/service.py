@@ -442,14 +442,16 @@ async def bulk_retry_tasks(
     return retried, skipped
 
 
-async def cancel_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
-    """Admin-triggered cancellation. Calls the supplier's cancel hook best-effort."""
-    task = await _load_task(db, task_id)
-    if task.status in ("succeeded", "cancelled"):
-        raise ConflictError(
-            "task cannot be cancelled in its current state",
-            extra={"status": task.status},
-        )
+async def _apply_cancel(db: AsyncSession, *, task: FulfillmentTask, reason: str) -> None:
+    """Run the supplier cancel hook (best-effort), then flip the task to
+    ``cancelled`` and its order item to ``failed``.
+
+    ``ck_order_items_state`` has no ``cancelled`` value, so a cancelled task's
+    item lands in ``failed``. Shared by the single-task admin cancel and the
+    order/refund cascade — the supplier call is best-effort, a rejection is
+    recorded but doesn't block the local state flip (there's nothing to settle
+    once the order is gone).
+    """
     fulfiller = get_fulfiller(task.supplier)
     try:
         await fulfiller.cancel(db=db, task=task)
@@ -458,7 +460,7 @@ async def cancel_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
             task=task,
             kind="cancel",
             status="ok",
-            payload={"supplier": task.supplier},
+            payload={"supplier": task.supplier, "reason": reason},
         )
     except (FulfillerError, FulfillerNotIntegratedError) as exc:
         _record_attempt(
@@ -466,19 +468,57 @@ async def cancel_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
             task=task,
             kind="cancel",
             status="error",
-            payload={"supplier": task.supplier},
+            payload={"supplier": task.supplier, "reason": reason},
             error=str(exc),
         )
+    moment = now()
     task.status = "cancelled"
-    task.cancelled_at = now()
-    task.updated_at = now()
-
+    task.cancelled_at = moment
+    task.updated_at = moment
     item = (
         await db.execute(select(OrderItem).where(OrderItem.id == task.order_item_id))
     ).scalar_one()
     item.fulfillment_state = "failed"  # see ck_order_items_state — no 'cancelled'
+
+
+async def cancel_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
+    """Admin-triggered cancellation of a single task. Calls the supplier's
+    cancel hook best-effort. Rejects a task that already terminated
+    (``succeeded`` / ``cancelled``)."""
+    task = await _load_task(db, task_id)
+    if task.status in ("succeeded", "cancelled"):
+        raise ConflictError(
+            "task cannot be cancelled in its current state",
+            extra={"status": task.status},
+        )
+    await _apply_cancel(db, task=task, reason="admin_cancel")
     await db.flush()
     return task
+
+
+async def cancel_open_tasks_for_order(
+    db: AsyncSession, *, order_id: str, reason: str
+) -> list[FulfillmentTask]:
+    """Cancel every still-open fulfilment task for a terminating order.
+
+    Called when the order is cancelled or its payment refunded (see
+    ``orders.service.cancel_order_admin`` and ``payments.service.refund_admin``)
+    so the fulfilment saga doesn't keep trying to deliver — or leave a stuck
+    ``failed`` task — for an order the customer no longer owns.
+
+    Tasks that already ``succeeded`` are left untouched: the customer already
+    received the goods, and a money refund does not retract a delivered code.
+    Already-``cancelled`` tasks are skipped, so this is idempotent.
+    """
+    cancelled: list[FulfillmentTask] = []
+    for task in await _existing_tasks_for_order(db, order_id):
+        if task.status in ("succeeded", "cancelled"):
+            continue
+        await _apply_cancel(db, task=task, reason=reason)
+        cancelled.append(task)
+    if cancelled:
+        await db.flush()
+    return cancelled
 
 
 # ---------- low-balance alerting ----------
@@ -952,6 +992,7 @@ async def list_attempts_admin(
 
 __all__ = [
     "bulk_retry_tasks",
+    "cancel_open_tasks_for_order",
     "cancel_task",
     "complete_manual_task",
     "fail_manual_task",

@@ -84,7 +84,7 @@ export function FulfillmentPage() {
   });
 
   const retryMutation = useMutation<TaskAdminOut, ApiError, string>({
-    mutationFn: (id) => apiPost<TaskAdminOut>(`/api/v1/admin/fulfillment/${id}/retry`, {}),
+    mutationFn: (id) => apiPost<TaskAdminOut>(`/api/v1/admin/fulfillment/tasks/${id}/retry`, {}),
     onSuccess: () => {
       toast.success("Retry запущен.");
       void qc.invalidateQueries({
@@ -97,7 +97,7 @@ export function FulfillmentPage() {
   });
 
   const cancelMutation = useMutation<TaskAdminOut, ApiError, string>({
-    mutationFn: (id) => apiPost<TaskAdminOut>(`/api/v1/admin/fulfillment/${id}/cancel`, {}),
+    mutationFn: (id) => apiPost<TaskAdminOut>(`/api/v1/admin/fulfillment/tasks/${id}/cancel`, {}),
     onSuccess: () => {
       toast.success("Задача отменена.");
       void qc.invalidateQueries({

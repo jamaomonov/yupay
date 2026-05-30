@@ -110,6 +110,27 @@ async def create_intent_route(
 
 
 @router.get(
+    "/by-order/{order_id}",
+    response_model=PaymentOut,
+    summary="Get the active payment intent for an order (owner-only)",
+)
+async def get_active_payment_route(
+    order_id: str,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> PaymentOut:
+    """Used by the miniapp's order-detail page to surface a «pay now» button
+    on a ``pending_payment`` order without re-creating the intent. Returns
+    404 when no active intent exists (paid / refunded / cancelled order)."""
+    actor = await _resolve_actor(request, db)
+    await _ensure_actor_owns_order(db, actor=actor, order_id=order_id)
+    payment = await svc.get_active_payment(db, order_id)
+    if payment is None:
+        raise HTTPException(status_code=404, detail="no active payment for this order")
+    return PaymentOut.model_validate(payment)
+
+
+@router.get(
     "/{payment_id}",
     response_model=PaymentOut,
     summary="Look up a single payment (owner-only)",

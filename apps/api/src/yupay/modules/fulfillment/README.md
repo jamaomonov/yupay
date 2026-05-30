@@ -69,7 +69,8 @@ stateDiagram-v2
     paid --> fulfilling : start_for_order
     fulfilling --> delivered : все tasks succeeded → in-app delivery
     fulfilling --> failed   : (вне скелета — retries не реализованы)
-    paid --> refunded : refund (позже)
+    fulfilling --> refunded : полный refund → cancel_open_tasks_for_order
+    paid --> refunded : полный refund
 ```
 
 `order.delivered_at` ставится одновременно с `order.fulfilled_at`. Скелет не
@@ -122,6 +123,29 @@ POST /api/v1/admin/fulfillment/tasks/{id}/fail     — manual: отметить 
 Метаданные ручной обработки (`admin_note`, `completed_by`) сохраняются в
 отдельных колонках на `fulfillment_tasks` — не в `extra_metadata`, чтобы
 не пересекаться с merged-метаданными supplier'а.
+
+## Каскадная отмена (отмена заказа / возврат)
+
+Когда заказ завершается «отрицательно» — админ отменяет его или делает **полный**
+возврат — открытые задачи фулфилмента отменяются автоматически, чтобы сага не
+продолжала пытаться доставить (или не зависала в `failed`) товар, которым клиент
+больше не владеет:
+
+- `payments.service.refund_admin` при **полном** возврате (`is_full`) зовёт
+  `cancel_open_tasks_for_order(order_id, reason="refund:<payment_id>")`. Частичный
+  возврат оставляет заказ `delivered` и задачи не трогает.
+- `orders.service.cancel_order_admin` зовёт
+  `cancel_open_tasks_for_order(order_id, reason="order_cancelled")`. Сегодня отмена
+  легальна только из `pending_payment` (задач ещё нет) — вызов идемпотентен и пока
+  no-op, но контракт зафиксирован на будущее.
+
+`cancel_open_tasks_for_order` проходит по всем задачам заказа и для каждой
+не-терминальной (`pending`/`in_progress`/`failed`) выполняет тот же
+`_apply_cancel`, что и админская кнопка `/cancel`: best-effort вызов
+`Fulfiller.cancel`, затем `task.status=cancelled` и `order_item.fulfillment_state
+= failed` (в `ck_order_items_state` нет значения `cancelled`). Уже `succeeded`
+задачи **пропускаются** — возврат денег не отзывает выданный код; так же
+пропускаются уже `cancelled` (идемпотентность).
 
 ## Mock-flow (end-to-end в dev)
 

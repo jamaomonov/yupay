@@ -212,6 +212,101 @@ async def test_wallet_pay_happy_path_debits_and_delivers(
     assert bals["USD"] == Decimal("15")
 
 
+# ---------- refund credits the wallet back ----------
+
+
+async def test_wallet_full_refund_credits_user_wallet(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_voucher_sku: str,
+) -> None:
+    """A wallet-funded order, refunded in full by an admin, must put the money
+    back on the customer's balance — not just book a house_refunds expense.
+    Regression for the bug where wallet refunds never reached the user."""
+    # Lazy import dodges the payments.service ↔ wallet.api ↔ api.v1 import
+    # cycle that fires if this is pulled in at test-module top level.
+    from yupay.modules.payments import service as payments_svc
+
+    token, user_id = await _login_user(integration_client, tg_id=905)
+    await _credit_user_wallet(db_session, user_id=user_id, currency="USD", amount=Decimal("20"))
+
+    order_id = await _create_order(
+        integration_client, token=token, sku_id=_seed_voucher_sku, key_suffix="refund-full"
+    )
+    status, _ = await _pay_with_wallet(integration_client, token=token, order_id=order_id)
+    assert status in (200, 201)
+
+    payment = (
+        await db_session.execute(select(Payment).where(Payment.order_id == order_id))
+    ).scalar_one()
+
+    refunded = await payments_svc.refund_admin(
+        db_session, payment_id=payment.id, admin_id="test-admin", reason="customer asked"
+    )
+    await db_session.commit()
+    assert refunded.status == "refunded"
+
+    # Balance restored to the original $20 (debited $5, refunded $5).
+    wallet = await integration_client.get(
+        "/api/v1/wallet",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    bals = {b["currency"]: Decimal(b["balance"]) for b in wallet.json()["balances"]}
+    assert bals["USD"] == Decimal("20")
+
+    # Order walked to refunded.
+    detail = await integration_client.get(
+        f"/api/v1/orders/{order_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert detail.json()["status"] == "refunded"
+
+
+async def test_wallet_partial_refund_credits_partial_amount(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_voucher_sku: str,
+) -> None:
+    """A partial refund credits only the refunded slice back to the wallet and
+    leaves the order in its delivered state (partial refunds are an accounting
+    concern, not an FSM transition)."""
+    from yupay.modules.payments import service as payments_svc
+
+    token, user_id = await _login_user(integration_client, tg_id=906)
+    await _credit_user_wallet(db_session, user_id=user_id, currency="USD", amount=Decimal("20"))
+
+    order_id = await _create_order(
+        integration_client, token=token, sku_id=_seed_voucher_sku, key_suffix="refund-partial"
+    )
+    status, _ = await _pay_with_wallet(integration_client, token=token, order_id=order_id)
+    assert status in (200, 201)
+
+    payment = (
+        await db_session.execute(select(Payment).where(Payment.order_id == order_id))
+    ).scalar_one()
+
+    refunded = await payments_svc.refund_admin(
+        db_session, payment_id=payment.id, admin_id="test-admin", amount=Decimal("2")
+    )
+    await db_session.commit()
+    assert refunded.status == "partially_refunded"
+
+    # Balance is $15 (after the $5 charge) + $2 refund = $17.
+    wallet = await integration_client.get(
+        "/api/v1/wallet",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    bals = {b["currency"]: Decimal(b["balance"]) for b in wallet.json()["balances"]}
+    assert bals["USD"] == Decimal("17")
+
+    # Order keeps its terminal delivered state on a partial refund.
+    detail = await integration_client.get(
+        f"/api/v1/orders/{order_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert detail.json()["status"] == "delivered"
+
+
 # ---------- insufficient balance ----------
 
 

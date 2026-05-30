@@ -570,3 +570,88 @@ async def test_complete_requires_admin(
     )
     assert r.status_code == 403
     assert order_id  # used for fixture side-effect; lint-friendly
+
+
+# ---------- cascade: order termination cancels open tasks ----------
+
+
+async def test_refund_cancels_open_fulfilment_task(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_sku_manual: str,
+) -> None:
+    """A full refund of a still-fulfilling order cancels its open task.
+
+    The manual SKU parks the task in ``in_progress`` (order ``fulfilling``).
+    Refunding the payment must cascade through
+    ``fulfillment.service.cancel_open_tasks_for_order``: the task flips to
+    ``cancelled`` and the order walks to ``refunded`` — the saga stops trying
+    to deliver goods the customer no longer owns.
+    """
+    # Lazy import dodges the payments.service ↔ fulfillment.service cycle.
+    from yupay.modules.payments import service as payments_svc
+    from yupay.modules.payments.models import Payment
+
+    user = await _login_user(integration_client, tg_id=321)
+    order_id = await _pay_to_in_progress(
+        integration_client, token=user, sku_id=_seed_sku_manual, key_suffix="refcanc-lll"
+    )
+    admin = await _login_user(integration_client, tg_id=322)
+    admin_id = await _grant_admin(db_session, tg_id=322)
+
+    before = await _task_for_order(integration_client, admin, order_id)
+    assert before["status"] == "in_progress"
+    assert before["supplier"] == "manual"
+
+    payment_id = (
+        await db_session.execute(select(Payment.id).where(Payment.order_id == order_id))
+    ).scalar_one()
+    refunded = await payments_svc.refund_admin(
+        db_session, payment_id=payment_id, admin_id=admin_id, reason="customer asked"
+    )
+    await db_session.commit()
+    assert refunded.status == "refunded"
+
+    after = await _task_for_order(integration_client, admin, order_id)
+    assert after["status"] == "cancelled"
+
+    order = await integration_client.get(
+        f"/api/v1/orders/{order_id}",
+        headers={"Authorization": f"Bearer {user}"},
+    )
+    assert order.json()["status"] == "refunded"
+
+
+async def test_refund_leaves_delivered_task_untouched(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_sku: str,
+) -> None:
+    """A refund must NOT retract a task that already ``succeeded``.
+
+    The mock SKU auto-delivers, so the task is ``succeeded`` before the
+    refund. The cascade skips terminal tasks: the customer already received
+    the code, and clawing back money does not un-deliver it. The task stays
+    ``succeeded`` while the order still walks to ``refunded``.
+    """
+    from yupay.modules.payments import service as payments_svc
+    from yupay.modules.payments.models import Payment
+
+    user = await _login_user(integration_client, tg_id=331)
+    order_id = await _pay_and_fulfill(
+        integration_client, token=user, sku_id=_seed_sku, key_suffix="refkeep-mmm"
+    )
+    admin = await _login_user(integration_client, tg_id=332)
+    admin_id = await _grant_admin(db_session, tg_id=332)
+
+    before = await _task_for_order(integration_client, admin, order_id)
+    assert before["status"] == "succeeded"
+
+    payment_id = (
+        await db_session.execute(select(Payment.id).where(Payment.order_id == order_id))
+    ).scalar_one()
+    await payments_svc.refund_admin(db_session, payment_id=payment_id, admin_id=admin_id)
+    await db_session.commit()
+
+    after = await _task_for_order(integration_client, admin, order_id)
+    assert after["status"] == "succeeded"

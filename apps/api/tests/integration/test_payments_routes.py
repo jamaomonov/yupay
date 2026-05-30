@@ -33,7 +33,10 @@ from yupay.modules.catalog.models import (
     ProductTranslation,
     Sku,
 )
+from yupay.modules.payments.models import Payment
 from yupay.modules.users.models import TelegramLink, User
+from yupay.modules.wallet import service as wallet_svc
+from yupay.modules.wallet.models import WalletAccount, WalletPosting, WalletTransaction
 
 pytestmark = pytest.mark.asyncio
 
@@ -163,6 +166,60 @@ async def test_create_intent_for_owned_order(
     assert body["status"] == "pending"
     assert body["intent_url"] is not None
     assert body["external_id"].startswith("mock_")
+
+
+async def test_get_active_payment_by_order(
+    integration_client: AsyncClient, _seed_sku: str
+) -> None:
+    """The miniapp's order-detail page hits this endpoint to surface a
+    «Оплатить» button for a still-unpaid order. Owner sees the active
+    intent; once the order moves past ``pending_payment`` the route 404s;
+    a stranger always gets 404 (order-not-found semantics)."""
+    owner = await _login_user(integration_client, tg_id=131)
+    stranger = await _login_user(integration_client, tg_id=132)
+    order_id = await _create_order(
+        integration_client, token=owner, sku_id=_seed_sku, key="pay-byorder-aaaa-pad"
+    )
+    intent = await integration_client.post(
+        "/api/v1/payments/intents",
+        headers={"Authorization": f"Bearer {owner}"},
+        json={"order_id": order_id, "provider": "mock"},
+    )
+    assert intent.status_code == 201, intent.text
+
+    # Owner sees the active intent.
+    r = await integration_client.get(
+        f"/api/v1/payments/by-order/{order_id}",
+        headers={"Authorization": f"Bearer {owner}"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["id"] == intent.json()["id"]
+    assert body["intent_url"] is not None
+    assert body["status"] == "pending"
+
+    # Stranger gets 404 (order-not-found cloak).
+    other = await integration_client.get(
+        f"/api/v1/payments/by-order/{order_id}",
+        headers={"Authorization": f"Bearer {stranger}"},
+    )
+    assert other.status_code == 404
+
+    # After the order is paid, the route reports «no active payment».
+    external_id = intent.json()["external_id"]
+    wh = await integration_client.post(
+        "/api/v1/webhooks/payments/mock",
+        content=json.dumps(
+            {"event_id": "evt_byorder_001", "payment_id": external_id, "outcome": "succeeded"}
+        ),
+        headers={"content-type": "application/json"},
+    )
+    assert wh.status_code == 200, wh.text
+    after = await integration_client.get(
+        f"/api/v1/payments/by-order/{order_id}",
+        headers={"Authorization": f"Bearer {owner}"},
+    )
+    assert after.status_code == 404
 
 
 async def test_create_intent_reuses_pending_payment(
@@ -386,3 +443,98 @@ async def test_admin_required_for_payments_admin(
         "/api/v1/admin/payments", headers={"Authorization": f"Bearer {user}"}
     )
     assert r.status_code == 403
+
+
+# ---------- refunds: external provider books a house expense ----------
+
+
+async def test_external_refund_books_house_expense_not_wallet(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_sku: str,
+) -> None:
+    """Refunding an **external**-provider payment (mock card here) books a
+    house expense against provider clearing — it must NOT touch the
+    customer's wallet balance. This is the counterpart to the wallet-refund
+    path (ADR-0023): only wallet-funded refunds credit the balance back.
+
+    Covers the ``provider != "wallet"`` branch of ``refund_admin``.
+    """
+    # Lazy import dodges the payments.service ↔ wallet.api ↔ api.v1 cycle.
+    from yupay.modules.payments import service as payments_svc
+
+    token = await _login_user(integration_client, tg_id=151)
+    user_id = (
+        await db_session.execute(
+            select(User.id)
+            .join(TelegramLink, TelegramLink.user_id == User.id)
+            .where(TelegramLink.tg_user_id == 151)
+        )
+    ).scalar_one()
+    # Give the customer a $20 wallet — it must stay untouched by an external refund.
+    await wallet_svc.admin_adjust(
+        db_session,
+        user_id=user_id,
+        kind="user_wallet",
+        currency="USD",
+        amount=Decimal("20"),
+        reason="test top-up",
+        idempotency_key=f"seed-{user_id}-USD-20",
+        admin_id="test-admin",
+    )
+    await db_session.commit()
+
+    order_id = await _create_order(
+        integration_client, token=token, sku_id=_seed_sku, key="pay-extref-aaaa-pad"
+    )
+    intent = await integration_client.post(
+        "/api/v1/payments/intents",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"order_id": order_id, "provider": "mock"},
+    )
+    external_id = intent.json()["external_id"]
+    wh = await integration_client.post(
+        "/api/v1/webhooks/payments/mock",
+        content=json.dumps(
+            {"event_id": "evt_extref_001", "payment_id": external_id, "outcome": "succeeded"}
+        ),
+        headers={"content-type": "application/json"},
+    )
+    assert wh.status_code == 200, wh.text
+
+    payment = (
+        await db_session.execute(select(Payment).where(Payment.order_id == order_id))
+    ).scalar_one()
+    assert payment.provider == "mock"
+
+    refunded = await payments_svc.refund_admin(
+        db_session, payment_id=payment.id, admin_id="test-admin", reason="customer asked"
+    )
+    await db_session.commit()
+    assert refunded.status == "refunded"
+
+    # The customer's wallet is untouched — an external refund returns money
+    # through the acquirer, not the balance.
+    wallet = await integration_client.get(
+        "/api/v1/wallet",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    bals = {b["currency"]: Decimal(b["balance"]) for b in wallet.json()["balances"]}
+    assert bals["USD"] == Decimal("20")
+
+    # The refund booked D house_refunds / C provider_clearing:mock — never user_wallet.
+    legs = (
+        (
+            await db_session.execute(
+                select(WalletPosting.direction, WalletAccount.kind, WalletAccount.owner_id)
+                .join(WalletTransaction, WalletPosting.transaction_id == WalletTransaction.id)
+                .join(WalletAccount, WalletPosting.account_id == WalletAccount.id)
+                .where(WalletTransaction.idempotency_key == f"refund:{payment.id}")
+            )
+        )
+        .all()
+    )
+    booked = {(direction, kind, owner_id) for direction, kind, owner_id in legs}
+    assert ("D", "house_refunds", "house") in booked
+    assert ("C", "provider_clearing", "mock") in booked
+    assert not any(kind == "user_wallet" for _, kind, _ in booked)

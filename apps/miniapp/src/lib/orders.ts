@@ -178,6 +178,13 @@ export function useCheckout() {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["my-orders"] });
+      // A wallet-funded checkout debits the balance synchronously inside the
+      // same request. Refresh the wallet queries (header pill + wallet page +
+      // finance tab — all share the ``["wallet", …]`` prefix) so the new
+      // balance shows immediately instead of after the staleTime / a reload.
+      // No-op cost for card/external providers: the refetch just returns the
+      // unchanged balance.
+      void qc.invalidateQueries({ queryKey: ["wallet"] });
     },
   });
 }
@@ -196,6 +203,26 @@ export function useOrder(orderId: string | undefined) {
       }
       return false;
     },
+  });
+}
+
+/**
+ * Fetch the in-flight payment intent for an order so the order-detail page
+ * can show a «pay now» button when the order is still ``pending_payment``.
+ * Only enabled while the parent order has a pending intent — once the order
+ * walks to ``paid`` / ``refunded`` / ``cancelled`` the backend returns 404
+ * and we stop asking.
+ */
+export function useActivePayment(
+  orderId: string | undefined,
+  parentStatus: OrderStatus | undefined,
+) {
+  return useQuery<PaymentOut, ApiError>({
+    queryKey: ["payment", "by-order", orderId],
+    enabled: Boolean(orderId) && parentStatus === "pending_payment",
+    queryFn: () => apiGet<PaymentOut>(`/api/v1/payments/by-order/${orderId ?? ""}`),
+    retry: false,
+    staleTime: 30_000,
   });
 }
 
@@ -249,7 +276,7 @@ export interface HistoryRow {
   amount: number;
   currency: string;
   date: string;
-  status: "success" | "processing" | "failed";
+  status: "success" | "processing" | "failed" | "refunded";
   raw: OrderOut;
 }
 
@@ -292,11 +319,13 @@ export function orderToHistoryRow(o: OrderOut): HistoryRow {
   const status: HistoryRow["status"] =
     o.status === "delivered"
       ? "success"
-      : o.status === "fulfilled" || o.status === "paid" || o.status === "fulfilling"
-        ? "processing"
-        : o.status === "cancelled" || o.status === "expired"
-          ? "failed"
-          : "processing";
+      : o.status === "refunded"
+        ? "refunded"
+        : o.status === "fulfilled" || o.status === "paid" || o.status === "fulfilling"
+          ? "processing"
+          : o.status === "cancelled" || o.status === "expired"
+            ? "failed"
+            : "processing";
   const summary = summariseOrder(o);
   return {
     id: o.id,

@@ -154,6 +154,7 @@
   "success.notFoundTitle": "Заказ не найден",
   "success.notFoundSubtitle": "Попробуйте открыть страницу из истории.",
   "success.buyMore": "Купить ещё",
+  "success.payNow": "Оплатить",
   "success.elapsedSec": "{n} с",
   "success.elapsedMin": "{n} мин",
   "success.stage.pendingTitle": "Ждём оплату",
@@ -225,6 +226,7 @@
   "history.status.success": "Выполнено",
   "history.status.processing": "Обработка",
   "history.status.failed": "Отменён",
+  "history.status.refunded": "Возврат",
   "history.financeError": "Не удалось загрузить финансовые операции.",
   "history.financeEmpty": "Пополнений и корректировок ещё не было.",
 

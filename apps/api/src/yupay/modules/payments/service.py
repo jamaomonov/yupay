@@ -382,6 +382,14 @@ async def simulate_webhook(
     return await handle_webhook(db, provider=payment.provider, headers={}, body=body) or payment
 
 
+async def get_active_payment(db: AsyncSession, order_id: str) -> Payment | None:
+    """Public wrapper around :func:`_find_active_payment` for routes that need
+    to surface the in-flight intent (mainly the owner-facing «pay now» button
+    on the order detail page). Returns ``None`` when no pending intent exists
+    — callers map that to 404."""
+    return await _find_active_payment(db, order_id)
+
+
 async def get_payment(db: AsyncSession, payment_id: str) -> Payment:
     stmt = select(Payment).options(selectinload(Payment.attempts)).where(Payment.id == payment_id)
     payment = (await db.execute(stmt)).scalar_one_or_none()
@@ -402,10 +410,22 @@ async def refund_admin(
 
     Calls the gateway's ``refund`` hook (if implemented), flips the payment to
     ``refunded`` / ``partially_refunded``, walks the order to ``refunded``, and
-    posts a double-entry on the ledger:
+    posts a double-entry on the ledger. The posting depends on how the order
+    was paid (see ADR-0023):
 
-      D house_refunds  amount
-      C provider_clearing:<provider>  amount
+    * External provider (card / Click / Payme / crypto) — money is clawed back
+      through the acquirer, so the refund is booked as a house expense::
+
+          D house_refunds                 amount
+          C provider_clearing:<provider>  amount
+
+    * Wallet — the customer paid from their in-house balance and there is no
+      external leg to settle. The refund is the **exact inverse** of the
+      original ``wallet_payment`` so the money lands straight back in the
+      customer's wallet::
+
+          D user_wallet:<user>            amount   (balance ↑)
+          C house_payments_received       amount   (reverses the receipt)
 
     ``amount`` defaults to the full charged amount. The skeleton treats any
     ``amount < payment.amount`` as a partial refund — it does not currently
@@ -493,43 +513,104 @@ async def refund_admin(
         )
     )
 
-    # Ledger: book the refund through the wallet module.
-    house_refunds = await wallet_api.ensure_account(
-        db,
-        owner_type="house",
-        owner_id="house",
-        kind="house_refunds",
-        currency=payment.currency,
-    )
-    provider_clearing = await wallet_api.ensure_account(
-        db,
-        owner_type="provider",
-        owner_id=payment.provider,
-        kind="provider_clearing",
-        currency=payment.currency,
-    )
-    await wallet_api.post(
-        db,
-        kind="payment.refund",
-        legs=[
-            wallet_api.Leg(
-                account_id=house_refunds.id,
-                direction="D",
-                amount=refund_amount,
-                currency=payment.currency,
-            ),
-            wallet_api.Leg(
-                account_id=provider_clearing.id,
-                direction="C",
-                amount=refund_amount,
-                currency=payment.currency,
-            ),
-        ],
-        idempotency_key=f"refund:{payment.id}",
-        reference=wallet_api.Reference(type="payment", id=payment.id),
-        actor=f"admin:{admin_id}",
-        metadata={"reason": reason or "", "full": is_full},
-    )
+    # Ledger: book the refund through the wallet module. A wallet-funded
+    # payment is reversed straight back to the customer's balance (the exact
+    # inverse of the original ``wallet_payment``); every other provider books
+    # the refund as a house expense against provider clearing. See ADR-0023.
+    if payment.provider == "wallet":
+        # Wallet payments always have a logged-in user (the gateway rejects
+        # guest orders), so order.user_id is set here.
+        if order.user_id is None:  # pragma: no cover -- defensive
+            raise ConflictError("wallet payment has no user to refund")
+        user_wallet = await wallet_api.ensure_account(
+            db,
+            owner_type="user",
+            owner_id=order.user_id,
+            kind="user_wallet",
+            currency=payment.currency,
+        )
+        house_payments_received = await wallet_api.ensure_account(
+            db,
+            owner_type="house",
+            owner_id="house",
+            kind="house_payments_received",
+            currency=payment.currency,
+        )
+        await wallet_api.post(
+            db,
+            kind="payment.refund",
+            legs=[
+                # D on user_wallet (NORMAL=D) → customer balance ↑ by amount.
+                wallet_api.Leg(
+                    account_id=user_wallet.id,
+                    direction="D",
+                    amount=refund_amount,
+                    currency=payment.currency,
+                ),
+                # C on house_payments_received (NORMAL=D) → reverses the receipt.
+                wallet_api.Leg(
+                    account_id=house_payments_received.id,
+                    direction="C",
+                    amount=refund_amount,
+                    currency=payment.currency,
+                ),
+            ],
+            idempotency_key=f"refund:{payment.id}",
+            reference=wallet_api.Reference(type="payment", id=payment.id),
+            actor=f"admin:{admin_id}",
+            metadata={"reason": reason or "", "full": is_full, "credited_account": user_wallet.id},
+        )
+    else:
+        house_refunds = await wallet_api.ensure_account(
+            db,
+            owner_type="house",
+            owner_id="house",
+            kind="house_refunds",
+            currency=payment.currency,
+        )
+        provider_clearing = await wallet_api.ensure_account(
+            db,
+            owner_type="provider",
+            owner_id=payment.provider,
+            kind="provider_clearing",
+            currency=payment.currency,
+        )
+        await wallet_api.post(
+            db,
+            kind="payment.refund",
+            legs=[
+                wallet_api.Leg(
+                    account_id=house_refunds.id,
+                    direction="D",
+                    amount=refund_amount,
+                    currency=payment.currency,
+                ),
+                wallet_api.Leg(
+                    account_id=provider_clearing.id,
+                    direction="C",
+                    amount=refund_amount,
+                    currency=payment.currency,
+                ),
+            ],
+            idempotency_key=f"refund:{payment.id}",
+            reference=wallet_api.Reference(type="payment", id=payment.id),
+            actor=f"admin:{admin_id}",
+            metadata={"reason": reason or "", "full": is_full},
+        )
+
+    # A full refund walks the order to ``refunded`` — cancel any still-open
+    # fulfilment task so the saga stops trying to deliver (or stops sitting in
+    # a stuck ``failed`` state) for an order the customer no longer owns.
+    # Already-``succeeded`` tasks are left alone: a money refund does not
+    # retract a code the customer already received. Partial refunds keep the
+    # order delivered, so they don't touch fulfilment. Lazy import dodges the
+    # payments.service ↔ fulfillment.service ↔ api.v1 import cycle.
+    if is_full:
+        from yupay.modules.fulfillment import service as fulfillment_svc
+
+        await fulfillment_svc.cancel_open_tasks_for_order(
+            db, order_id=order.id, reason=f"refund:{payment.id}"
+        )
 
     await db.flush()
     log.info(
@@ -636,6 +717,7 @@ async def list_payments_admin(
 
 __all__ = [
     "create_intent",
+    "get_active_payment",
     "get_payment",
     "handle_webhook",
     "list_payments_admin",

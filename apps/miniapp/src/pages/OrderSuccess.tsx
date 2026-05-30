@@ -10,15 +10,16 @@
  * artifacts (voucher codes, receipts, license keys) the moment they appear.
  */
 
+import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
   CheckCircle2,
   Copy,
+  CreditCard,
   ExternalLink,
   HeadphonesIcon,
   Loader2,
-  Receipt,
   ShoppingBag,
   Sparkles,
   XCircle,
@@ -30,6 +31,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useT, type MessageKey } from "@/lib/i18n";
 import { getActiveLocale, translate } from "@/lib/i18n/core";
 import {
+  useActivePayment,
   useDeliveries,
   useOrder,
   type ArtifactKind,
@@ -176,11 +178,30 @@ export default function OrderSuccess() {
     orderId ? t("success.docTitleNamed", { id: orderId.slice(0, 8) }) : t("success.docTitle"),
   );
 
+  const qc = useQueryClient();
   const orderQuery = useOrder(orderId);
   const order = orderQuery.data;
 
+  // An admin refund credits the customer's wallet back (for wallet-funded
+  // orders). When the status poll observes the order land in ``refunded``,
+  // refresh the wallet queries so the header balance reflects the credit
+  // without a manual reload. Keyed on the status so it fires once on the
+  // transition (and harmlessly once if the page opens already-refunded).
+  useEffect(() => {
+    if (order?.status === "refunded") {
+      void qc.invalidateQueries({ queryKey: ["wallet"] });
+    }
+  }, [order?.status, qc]);
+
   const deliveriesQuery = useDeliveries(orderId, order?.status);
   const deliveries = deliveriesQuery.data ?? [];
+
+  // Lookup the in-flight payment intent for a still-unpaid order so we can
+  // surface a «Оплатить» button that jumps straight to the acquirer's hosted
+  // page. The hook gates itself on ``status === "pending_payment"`` and 404s
+  // gracefully once the order walks forward.
+  const paymentQuery = useActivePayment(orderId, order?.status);
+  const payUrl = paymentQuery.data?.intent_url ?? null;
 
   // Map delivered artifacts back to their items so we can render brand + denom
   // alongside each artifact block.
@@ -287,7 +308,20 @@ export default function OrderSuccess() {
 
       <Summary order={order} />
 
-      <div className="grid grid-cols-2 gap-3 px-4 pt-2">
+      <div
+        className={`px-4 pt-2 ${
+          order.status === "pending_payment" && payUrl ? "grid grid-cols-2 gap-3" : ""
+        }`}
+      >
+        {order.status === "pending_payment" && payUrl && (
+          <a href={payUrl} target="_blank" rel="noreferrer noopener">
+            <ActionButton
+              icon={<CreditCard size={15} />}
+              label={t("success.payNow")}
+              variant="primary"
+            />
+          </a>
+        )}
         <Link
           href={
             order.items[0]?.display?.brand_slug
@@ -298,11 +332,8 @@ export default function OrderSuccess() {
           <ActionButton
             icon={<Sparkles size={15} />}
             label={t("success.buyMore")}
-            variant="primary"
+            variant={order.status === "pending_payment" && payUrl ? "secondary" : "primary"}
           />
-        </Link>
-        <Link href="/history">
-          <ActionButton icon={<Receipt size={15} />} label={t("nav.history")} variant="secondary" />
         </Link>
       </div>
     </motion.div>

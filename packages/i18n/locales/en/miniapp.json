@@ -154,6 +154,7 @@
   "success.notFoundTitle": "Order not found",
   "success.notFoundSubtitle": "Try opening the page from your history.",
   "success.buyMore": "Buy more",
+  "success.payNow": "Pay now",
   "success.elapsedSec": "{n} s",
   "success.elapsedMin": "{n} min",
   "success.stage.pendingTitle": "Awaiting payment",
@@ -225,6 +226,7 @@
   "history.status.success": "Completed",
   "history.status.processing": "Processing",
   "history.status.failed": "Cancelled",
+  "history.status.refunded": "Refunded",
   "history.financeError": "Couldn't load financial operations.",
   "history.financeEmpty": "No top-ups or adjustments yet.",
 

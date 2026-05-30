@@ -154,6 +154,7 @@
   "success.notFoundTitle": "Buyurtma topilmadi",
   "success.notFoundSubtitle": "Sahifani tarixdan ochib ko'ring.",
   "success.buyMore": "Yana sotib olish",
+  "success.payNow": "To'lash",
   "success.elapsedSec": "{n} s",
   "success.elapsedMin": "{n} daqiqa",
   "success.stage.pendingTitle": "To'lovni kutyapmiz",
@@ -225,6 +226,7 @@
   "history.status.success": "Bajarildi",
   "history.status.processing": "Ishlanmoqda",
   "history.status.failed": "Bekor qilindi",
+  "history.status.refunded": "Qaytarildi",
   "history.financeError": "Moliyaviy operatsiyalarni yuklab bo'lmadi.",
   "history.financeEmpty": "Hali to'ldirish va tuzatishlar bo'lmagan.",
 
