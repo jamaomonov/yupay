@@ -2,7 +2,7 @@ import { LOCALES } from "@yupay/i18n";
 
 import type { MetadataRoute } from "next";
 
-import { brandSlugs } from "@/lib/catalog";
+import { getBrandSlugs } from "@/lib/catalog";
 import { localeUrl } from "@/lib/seo";
 
 /**
@@ -14,9 +14,10 @@ function languagesFor(path: string): Record<string, string> {
   return Object.fromEntries(LOCALES.map((l) => [l, localeUrl(l, path)]));
 }
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const lastModified = new Date();
   const entries: MetadataRoute.Sitemap = [];
+  const slugs = await getBrandSlugs();
 
   const paths: {
     path: string;
@@ -25,7 +26,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   }[] = [
     { path: "", priority: 1.0, changeFrequency: "daily" },
     { path: "/store", priority: 0.9, changeFrequency: "daily" },
-    ...brandSlugs().map((slug) => ({
+    ...slugs.map((slug) => ({
       path: `/store/${slug}`,
       priority: 0.8,
       changeFrequency: "weekly" as const,

@@ -80,6 +80,8 @@
     "title": "Game & subscription top-ups in Uzbekistan",
     "subtitle": "Pick a service, enter the UID — and get credited in minutes. Pay with Click, Payme, Uzum or USDT, prices in som. No password handover.",
     "payWith": "Pay with",
+    "maintenance": "Maintenance",
+    "empty": "Games will appear here soon.",
     "filterAll": "All",
     "filterGames": "Games",
     "filterWallets": "Wallets",

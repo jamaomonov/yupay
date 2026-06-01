@@ -9,8 +9,10 @@ import type { Metadata } from "next";
 import { JsonLd } from "@/components/JsonLd";
 import { BrandCard } from "@/components/store/BrandCard";
 import { routing } from "@/i18n/routing";
-import { BRANDS, CATEGORIES, brandsByCategory } from "@/lib/catalog";
+import { getBrands, getCategories, type BrandSummary, type CategoryOut } from "@/lib/catalog";
 import { alternates, GEO_META, localeUrl, ogLocale } from "@/lib/seo";
+
+export const revalidate = 300;
 
 const PAY = [
   { src: "/payment/click.png", name: "Click", w: 225, h: 225 },
@@ -59,14 +61,28 @@ export default async function StorePage({
   const { cat } = await searchParams;
   const t = await getTranslations("web.store");
   const prefix = `/${locale}`;
-  const active = cat && (CATEGORIES as string[]).includes(cat) ? cat : "all";
-  const brands = brandsByCategory(active);
 
-  const filters = [
-    { key: "all", label: t("filterAll") },
-    { key: "games", label: t("filterGames") },
-    { key: "wallets", label: t("filterWallets") },
-    { key: "subscriptions", label: t("filterSubscriptions") },
+  // Fetch the whole catalog once; filter in-render by the ?cat= segment so the
+  // page stays server-rendered per URL without an extra round-trip.
+  let allBrands: BrandSummary[] = [];
+  let categories: CategoryOut[] = [];
+  try {
+    [categories, allBrands] = await Promise.all([getCategories(locale), getBrands(locale)]);
+  } catch {
+    // API unreachable → render an empty catalog rather than a 500.
+  }
+
+  const catName = new Map(categories.map((c) => [c.slug, c.name]));
+  const present: string[] = [];
+  for (const b of allBrands) {
+    if (!present.includes(b.category_slug)) present.push(b.category_slug);
+  }
+  const active = cat && present.includes(cat) ? cat : "all";
+  const brands = active === "all" ? allBrands : allBrands.filter((b) => b.category_slug === active);
+
+  const chips = [
+    { slug: "all", label: t("filterAll") },
+    ...present.map((slug) => ({ slug, label: catName.get(slug) ?? slug })),
   ];
 
   const collectionLd = {
@@ -78,7 +94,7 @@ export default async function StorePage({
     inLanguage: locale,
     mainEntity: {
       "@type": "ItemList",
-      itemListElement: BRANDS.map((b, i) => ({
+      itemListElement: allBrands.map((b, i) => ({
         "@type": "ListItem",
         position: i + 1,
         url: localeUrl(locale, `/store/${b.slug}`),
@@ -105,7 +121,6 @@ export default async function StorePage({
       <JsonLd data={collectionLd} />
       <JsonLd data={breadcrumbLd} />
 
-      {/* atmosphere */}
       <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[420px]">
         <div className="grid-cell absolute inset-0" />
         <div
@@ -115,7 +130,6 @@ export default async function StorePage({
       </div>
 
       <div className="mx-auto max-w-[1200px] px-6 sm:px-10">
-        {/* breadcrumb */}
         <nav className="text-tx-dim mb-7 flex items-center gap-1.5 font-mono text-[11px]">
           <Link href={prefix} className="hover:text-tx-mute transition">
             {t("breadcrumbHome")}
@@ -134,7 +148,6 @@ export default async function StorePage({
           {t("subtitle")}
         </p>
 
-        {/* UZ payment strip */}
         <div className="mt-7 flex flex-wrap items-center gap-2.5">
           <span className="text-tx-dim font-mono text-[11px] uppercase tracking-[0.12em]">
             {t("payWith")}
@@ -151,38 +164,42 @@ export default async function StorePage({
               />
             </span>
           ))}
-          <span className="text-tx-mute flex h-7 items-center rounded-md bg-white px-2 text-[11px] font-bold text-black">
+          <span className="flex h-7 items-center rounded-md bg-white px-2 text-[11px] font-bold text-black">
             СБП
           </span>
         </div>
 
-        {/* filters */}
-        <div className="mt-10 flex flex-wrap gap-2.5">
-          {filters.map((f) => {
-            const isActive = f.key === active;
-            const href = f.key === "all" ? `${prefix}/store` : `${prefix}/store?cat=${f.key}`;
-            return (
-              <Link
-                key={f.key}
-                href={href}
-                className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                  isActive
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border bg-muted text-tx-mute hover:text-foreground"
-                }`}
-              >
-                {f.label}
-              </Link>
-            );
-          })}
-        </div>
+        {chips.length > 1 && (
+          <div className="mt-10 flex flex-wrap gap-2.5">
+            {chips.map((f) => {
+              const isActive = f.slug === active;
+              const href = f.slug === "all" ? `${prefix}/store` : `${prefix}/store?cat=${f.slug}`;
+              return (
+                <Link
+                  key={f.slug}
+                  href={href}
+                  className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                    isActive
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-muted text-tx-mute hover:text-foreground"
+                  }`}
+                >
+                  {f.label}
+                </Link>
+              );
+            })}
+          </div>
+        )}
 
-        {/* grid */}
-        <div className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {brands.map((brand) => (
-            <BrandCard key={brand.slug} brand={brand} locale={locale} />
-          ))}
-        </div>
+        {brands.length > 0 ? (
+          <div className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {brands.map((brand) => (
+              <BrandCard key={brand.slug} brand={brand} locale={locale} />
+            ))}
+          </div>
+        ) : (
+          <p className="text-tx-mute mt-10 text-base">{t("empty")}</p>
+        )}
       </div>
     </main>
   );

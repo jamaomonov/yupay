@@ -80,6 +80,8 @@
     "title": "Oʻzbekistonda oʻyin va obunalarni toʻldirish",
     "subtitle": "Xizmatni tanlang, UID kiriting — va bir necha daqiqada hisobingizga tushadi. Click, Payme, Uzum yoki USDT bilan toʻlang, narxlar soʻmda. Parolsiz.",
     "payWith": "Toʻlov",
+    "maintenance": "Texnik ishlar",
+    "empty": "Tez orada bu yerda oʻyinlar paydo boʻladi.",
     "filterAll": "Hammasi",
     "filterGames": "Oʻyinlar",
     "filterWallets": "Hamyonlar",

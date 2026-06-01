@@ -1,4 +1,4 @@
-import { ArrowUpRight, ChevronRight, Clock, Percent, ShieldCheck } from "lucide-react";
+import { ArrowUpRight, ChevronRight, Clock, ShieldCheck } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -10,11 +10,24 @@ import type { Metadata } from "next";
 import { JsonLd } from "@/components/JsonLd";
 import { routing } from "@/i18n/routing";
 import { buttonStyles } from "@/lib/button";
-import { brandSlugs, getBrand, type Pack } from "@/lib/catalog";
-import { alternates, formatUzs, GEO_META, localeUrl, ogLocale, SITE } from "@/lib/seo";
+import {
+  getBrandDetail,
+  getBrandSlugs,
+  getProductDetail,
+  type ProductDetail,
+  type SkuOut,
+} from "@/lib/catalog";
+import { alternates, formatUzs, GEO_META, localeUrl, ogLocale } from "@/lib/seo";
 
-export function generateStaticParams() {
-  return brandSlugs().map((brandSlug) => ({ brandSlug }));
+const CURRENCY = "UZS";
+
+export async function generateStaticParams() {
+  return (await getBrandSlugs()).map((brandSlug) => ({ brandSlug }));
+}
+
+function packPrice(locale: string, sku: SkuOut): string {
+  if (sku.display_price) return formatUzs(locale, Math.round(Number(sku.display_price.amount)));
+  return `$${sku.price_usd}`;
 }
 
 export async function generateMetadata({
@@ -25,11 +38,12 @@ export async function generateMetadata({
   const { locale, brandSlug } = await params;
   if (!hasLocale(routing.locales, locale)) return {};
   setRequestLocale(locale);
-  const brand = getBrand(brandSlug);
+  const brand = await getBrandDetail(brandSlug, locale);
   if (!brand) return {};
   const t = await getTranslations("web.store");
   const title = t("brandMetaTitle", { name: brand.name });
-  const description = t("brandMetaDescription", { name: brand.name });
+  const description =
+    brand.description ?? brand.short_description ?? t("brandMetaDescription", { name: brand.name });
   const path = `/store/${brand.slug}`;
   return {
     title: { absolute: title },
@@ -43,15 +57,10 @@ export async function generateMetadata({
       title,
       description,
       url: localeUrl(locale, path),
-      images: [{ url: `${SITE}${brand.art}` }],
+      images: brand.hero_image_url ? [{ url: brand.hero_image_url }] : undefined,
       ...ogLocale(locale),
     },
   };
-}
-
-function packLabel(pack: Pack, monthsUnit: string): string {
-  if (pack.months) return `${String(pack.months)} ${monthsUnit}`;
-  return pack.label ?? "";
 }
 
 export default async function BrandPage({
@@ -61,34 +70,47 @@ export default async function BrandPage({
 }) {
   const { locale, brandSlug } = await params;
   setRequestLocale(locale);
-  const brand = getBrand(brandSlug);
+  const brand = await getBrandDetail(brandSlug, locale, CURRENCY);
   if (!brand) notFound();
 
   const t = await getTranslations("web.store");
-  const tc = await getTranslations("web.catalog");
   const tShow = await getTranslations("web.showcase");
   const prefix = `/${locale}`;
-  const monthsUnit = t("monthsShort");
-  const prices = brand.packs.map((p) => p.priceUzs);
-  const about = t(`brands.${brand.slug}.about`);
+
+  const products = (
+    await Promise.all(brand.products.map((p) => getProductDetail(p.slug, locale, CURRENCY)))
+  ).filter((p): p is ProductDetail => p !== null);
+
+  const about = brand.description ?? brand.short_description ?? "";
+  const heroImg = brand.hero_image_url ?? brand.logo_url;
+
+  // Starting price chip + JSON-LD offers from real SKU prices.
+  const skus = products.flatMap((p) => p.skus);
+  const uzs = skus
+    .map((s) => (s.display_price ? Math.round(Number(s.display_price.amount)) : null))
+    .filter((n): n is number => n !== null);
+  const startingChip = uzs.length ? formatUzs(locale, Math.min(...uzs)) : null;
+
+  const offers = uzs.length
+    ? {
+        "@type": "AggregateOffer",
+        priceCurrency: CURRENCY,
+        lowPrice: Math.min(...uzs),
+        highPrice: Math.max(...uzs),
+        offerCount: skus.length,
+        availability: "https://schema.org/InStock",
+      }
+    : undefined;
 
   const productLd = {
     "@context": "https://schema.org",
     "@type": "Product",
     name: brand.name,
-    description: about,
-    image: `${SITE}${brand.art}`,
+    description: about || brand.name,
+    image: heroImg ?? undefined,
     brand: { "@type": "Brand", name: brand.name },
-    category: brand.category,
-    offers: {
-      "@type": "AggregateOffer",
-      priceCurrency: "UZS",
-      lowPrice: Math.min(...prices),
-      highPrice: Math.max(...prices),
-      offerCount: brand.packs.length,
-      availability: "https://schema.org/InStock",
-      url: localeUrl(locale, `/store/${brand.slug}`),
-    },
+    category: brand.category_slug,
+    ...(offers ? { offers } : {}),
   };
   const breadcrumbLd = {
     "@context": "https://schema.org",
@@ -116,7 +138,6 @@ export default async function BrandPage({
       <JsonLd data={breadcrumbLd} />
 
       <div className="mx-auto max-w-[1100px] px-6 sm:px-10">
-        {/* breadcrumb */}
         <nav className="text-tx-dim mb-7 flex flex-wrap items-center gap-1.5 font-mono text-[11px]">
           <Link href={prefix} className="hover:text-tx-mute transition">
             {t("breadcrumbHome")}
@@ -131,21 +152,31 @@ export default async function BrandPage({
 
         {/* hero banner */}
         <div className="border-border relative overflow-hidden rounded-2xl border">
-          <Image
-            src={brand.art}
-            alt={brand.name}
-            fill
-            priority
-            sizes="(max-width: 1024px) 100vw, 1040px"
-            className="object-cover"
-          />
+          {heroImg ? (
+            <Image
+              src={heroImg}
+              alt={brand.name}
+              fill
+              priority
+              sizes="(max-width: 1024px) 100vw, 1040px"
+              className="object-cover"
+            />
+          ) : (
+            <div
+              aria-hidden
+              className="absolute inset-0"
+              style={{
+                background: `linear-gradient(135deg, ${brand.accent_color ?? "#AAFF33"}55, #0A0D1A)`,
+              }}
+            />
+          )}
           <div className="absolute inset-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.92)_0%,rgba(0,0,0,0.45)_60%,rgba(0,0,0,0.2)_100%)]" />
           <div className="relative z-10 flex min-h-[260px] flex-col justify-end p-6 sm:min-h-[300px] sm:p-9">
             <div className="flex items-center gap-3">
-              {brand.icon && (
+              {brand.logo_url && (
                 <span className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-[13px] border border-white/15 bg-black/40 backdrop-blur">
                   <Image
-                    src={brand.icon}
+                    src={brand.logo_url}
                     alt=""
                     width={32}
                     height={32}
@@ -153,52 +184,67 @@ export default async function BrandPage({
                   />
                 </span>
               )}
-              <div className="text-[12px] font-bold uppercase tracking-[0.12em] text-white/70">
-                {tc(`cards.${brand.slug}.eyebrow`)}
-              </div>
+              {brand.short_description && (
+                <div className="text-[12px] font-bold uppercase tracking-[0.12em] text-white/70">
+                  {brand.short_description}
+                </div>
+              )}
             </div>
             <h1 className="font-display mt-3 text-[clamp(2rem,5vw,3.2rem)] font-extrabold leading-[0.98] tracking-[-0.03em] text-white">
               {brand.name}
             </h1>
             <div className="mt-4 flex flex-wrap items-center gap-2.5">
-              <Chip icon={<Percent size={13} />}>
-                {t("commissionChip", { pct: brand.commissionFrom })}
-              </Chip>
-              <Chip icon={<Clock size={13} />}>{t("etaChip", { eta: brand.etaMinutes })}</Chip>
+              {startingChip && (
+                <Chip>
+                  {t("from")} {startingChip}
+                </Chip>
+              )}
+              <Chip icon={<Clock size={13} />}>{t("etaChip", { eta: "1–3" })}</Chip>
               <Chip icon={<ShieldCheck size={13} />}>{t("securityChip")}</Chip>
+              {brand.maintenance && <Chip>{t("maintenance")}</Chip>}
             </div>
           </div>
         </div>
 
         <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-[1.4fr_1fr]">
-          {/* left: about + packs */}
+          {/* left: about + product packs */}
           <div>
-            <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t("aboutTitle")}</h2>
-            <p className="text-tx-mute mt-3 max-w-[560px] text-[15px] leading-relaxed">{about}</p>
+            {about && (
+              <>
+                <h2 className="font-display text-xl font-bold tracking-[-0.02em]">
+                  {t("aboutTitle")}
+                </h2>
+                <p className="text-tx-mute mt-3 max-w-[560px] text-[15px] leading-relaxed">
+                  {about}
+                </p>
+              </>
+            )}
 
             <h2 className="font-display mt-10 text-xl font-bold tracking-[-0.02em]">
               {t("packsTitle")}
             </h2>
-            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-2">
-              {brand.packs.map((pack) => (
-                <div
-                  key={pack.id}
-                  className="border-border bg-card hover:border-primary/40 flex flex-col gap-2 rounded-[16px] border p-4 transition"
-                >
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="font-display text-lg font-bold tracking-[-0.01em]">
-                      {packLabel(pack, monthsUnit)}
-                    </span>
-                    {pack.bonus && (
-                      <span className="text-primary text-[12px] font-bold">{pack.bonus}</span>
-                    )}
-                  </div>
-                  <span className="text-tx-mute font-mono text-[13px]">
-                    {formatUzs(locale, pack.priceUzs)}
-                  </span>
+            {products.map((product) => (
+              <div key={product.id} className="mt-6">
+                {products.length > 1 && (
+                  <div className="text-tx-mute mb-3 text-sm font-semibold">{product.name}</div>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  {product.skus.map((sku) => (
+                    <div
+                      key={sku.id}
+                      className="border-border bg-card hover:border-primary/40 flex flex-col gap-2 rounded-[16px] border p-4 transition"
+                    >
+                      <span className="font-display text-lg font-bold tracking-[-0.01em]">
+                        {sku.denomination ?? sku.sku_code}
+                      </span>
+                      <span className="text-tx-mute font-mono text-[13px]">
+                        {packPrice(locale, sku)}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
 
           {/* right: CTA card */}
@@ -229,10 +275,10 @@ export default async function BrandPage({
   );
 }
 
-function Chip({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+function Chip({ icon, children }: { icon?: React.ReactNode; children: React.ReactNode }) {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/40 px-3 py-1.5 text-[12px] font-semibold text-white backdrop-blur">
-      <span className="text-primary">{icon}</span>
+      {icon && <span className="text-primary">{icon}</span>}
       {children}
     </span>
   );

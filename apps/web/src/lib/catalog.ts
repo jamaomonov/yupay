@@ -1,142 +1,122 @@
 /**
- * Static catalog data. Hardcoded until the /catalog API is wired; the shape
- * mirrors the live `Brand`/`Product` contracts so swapping to the API is a
- * drop-in. Copy that must localise (name/eyebrow/tag/about) lives in
- * web.catalog.cards.* and web.store.brands.* — only structural data is here.
- *
- * Prices are display placeholders in whole som (UZS). They never touch the
- * money pipeline (which uses minor units); they exist to render plausible
- * offers + JSON-LD until real pricing arrives.
+ * Catalog data access — now backed by the live API (`/catalog/*`). The DTOs
+ * mirror yupay.modules.catalog.schemas; the API localises name/description by
+ * Accept-Language and returns FX-converted `display_price` when a currency is
+ * passed. Server Components call these directly.
  */
-export type BrandCategory = "games" | "wallets" | "subscriptions";
+import { apiGet, apiGetOrNull } from "./api";
 
-export interface Pack {
+export interface PriceOut {
+  amount: string;
+  currency: string;
+  source: "usd" | "override" | "fx";
+}
+
+export interface BrandSummary {
   id: string;
-  /** ready label for currency packs, e.g. "60 UC", "$10" */
-  label?: string;
-  /** subscription duration in months (rendered with a localised unit) */
-  months?: number;
-  /** display price in whole som */
-  priceUzs: number;
-  /** optional bonus note, e.g. "+25 UC" */
-  bonus?: string;
-}
-
-export interface Brand {
-  /** also the i18n key under web.catalog.cards.* and web.store.brands.* */
   slug: string;
-  /** clean proper name for <h1>, <title>, JSON-LD (not localised) */
+  category_slug: string;
   name: string;
-  category: BrandCategory;
-  /** background key-art in /public/brands */
-  art: string;
-  /** square brand mark (optional) */
-  icon?: string;
-  /** accent hue for tints/gradients */
-  accent: string;
-  /** lowest commission %, surfaced as "from N%" */
-  commissionFrom: number;
-  /** typical credit time, e.g. "1–2" (minutes) */
-  etaMinutes: string;
-  popular?: boolean;
-  packs: Pack[];
+  short_description: string | null;
+  logo_url: string | null;
+  hero_image_url: string | null;
+  accent_color: string | null;
+  maintenance: boolean;
 }
 
-export const BRANDS: Brand[] = [
-  {
-    slug: "steam",
-    name: "Steam",
-    category: "wallets",
-    art: "/brands/steam-bg.jpg",
-    accent: "#66c0f4",
-    commissionFrom: 4,
-    etaMinutes: "1–3",
-    popular: true,
-    packs: [
-      { id: "steam-5", label: "$5", priceUzs: 72000 },
-      { id: "steam-10", label: "$10", priceUzs: 143000 },
-      { id: "steam-25", label: "$25", priceUzs: 356000 },
-      { id: "steam-50", label: "$50", priceUzs: 710000 },
-    ],
-  },
-  {
-    slug: "pubg-mobile",
-    name: "PUBG Mobile",
-    category: "games",
-    art: "/brands/pubg-bg.png",
-    icon: "/brands/pubg-icon.svg",
-    accent: "#f2a900",
-    commissionFrom: 3,
-    etaMinutes: "1–2",
-    popular: true,
-    packs: [
-      { id: "uc-60", label: "60 UC", priceUzs: 11999 },
-      { id: "uc-325", label: "300 UC", bonus: "+25 UC", priceUzs: 59990 },
-      { id: "uc-660", label: "600 UC", bonus: "+60 UC", priceUzs: 119980 },
-      { id: "uc-1800", label: "1500 UC", bonus: "+300 UC", priceUzs: 299950 },
-    ],
-  },
-  {
-    slug: "telegram-premium",
-    name: "Telegram Premium",
-    category: "subscriptions",
-    art: "/brands/telegram-bg.jpg",
-    icon: "/brands/telegram-icon.webp",
-    accent: "#4fb4e0",
-    commissionFrom: 3,
-    etaMinutes: "1–2",
-    popular: true,
-    packs: [
-      { id: "tg-1", months: 1, priceUzs: 49900 },
-      { id: "tg-3", months: 3, priceUzs: 129900 },
-      { id: "tg-6", months: 6, priceUzs: 229900 },
-      { id: "tg-12", months: 12, priceUzs: 399900 },
-    ],
-  },
-  {
-    slug: "delta-force",
-    name: "Delta Force",
-    category: "games",
-    art: "/brands/deltaforce.webp",
-    accent: "#7bb43a",
-    commissionFrom: 4,
-    etaMinutes: "1–3",
-    packs: [
-      { id: "df-300", label: "300 Coins", priceUzs: 39990 },
-      { id: "df-680", label: "680 Coins", priceUzs: 89990 },
-      { id: "df-1480", label: "1480 Coins", priceUzs: 179990 },
-      { id: "df-3280", label: "3280 Coins", priceUzs: 379990 },
-    ],
-  },
-  {
-    slug: "arena-breakout",
-    name: "Arena Breakout",
-    category: "games",
-    art: "/brands/arenabreakout-bg.png",
-    icon: "/brands/arenabreakout-icon.svg",
-    accent: "#5ba8ff",
-    commissionFrom: 4,
-    etaMinutes: "1–3",
-    packs: [
-      { id: "ab-340", label: "340 Bonds", priceUzs: 44990 },
-      { id: "ab-710", label: "710 Bonds", priceUzs: 89990 },
-      { id: "ab-1840", label: "1840 Bonds", priceUzs: 219990 },
-      { id: "ab-3880", label: "3880 Bonds", priceUzs: 449990 },
-    ],
-  },
-];
-
-export const CATEGORIES: BrandCategory[] = ["games", "wallets", "subscriptions"];
-
-export function getBrand(slug: string): Brand | undefined {
-  return BRANDS.find((b) => b.slug === slug);
+export interface CategoryOut {
+  id: string;
+  slug: string;
+  icon: string | null;
+  name: string;
+  description: string | null;
 }
 
-export function brandSlugs(): string[] {
-  return BRANDS.map((b) => b.slug);
+export interface SkuOut {
+  id: string;
+  sku_code: string;
+  denomination: string | null;
+  region: string | null;
+  image_url: string | null;
+  price_usd: string;
+  display_price: PriceOut | null;
 }
 
-export function brandsByCategory(cat?: string): Brand[] {
-  if (!cat || cat === "all") return BRANDS;
-  return BRANDS.filter((b) => b.category === cat);
+export interface ProductSummary {
+  id: string;
+  slug: string;
+  brand_slug: string;
+  category_slug: string;
+  name: string;
+  short_description: string | null;
+  image_url: string | null;
+  kind: "top_up" | "voucher";
+  starting_price_usd: string;
+  starting_display_price: PriceOut | null;
+}
+
+export interface BrandDetail extends BrandSummary {
+  description: string | null;
+  products: ProductSummary[];
+}
+
+export interface ProductDetail extends ProductSummary {
+  brand: BrandSummary;
+  description: string | null;
+  required_fields: unknown[];
+  skus: SkuOut[];
+}
+
+const REVALIDATE = 300;
+
+export async function getCategories(locale: string): Promise<CategoryOut[]> {
+  const r = await apiGet<{ items: CategoryOut[] }>("/catalog/categories", {
+    locale,
+    revalidate: REVALIDATE,
+  });
+  return r.items;
+}
+
+export async function getBrands(locale: string, category?: string): Promise<BrandSummary[]> {
+  const q = category && category !== "all" ? `?category=${encodeURIComponent(category)}` : "";
+  const r = await apiGet<{ items: BrandSummary[] }>(`/catalog/brands${q}`, {
+    locale,
+    revalidate: REVALIDATE,
+  });
+  return r.items;
+}
+
+export function getBrandDetail(
+  slug: string,
+  locale: string,
+  currency?: string,
+): Promise<BrandDetail | null> {
+  return apiGetOrNull<BrandDetail>(`/catalog/brands/${encodeURIComponent(slug)}`, {
+    locale,
+    revalidate: REVALIDATE,
+    ...(currency ? { currency } : {}),
+  });
+}
+
+export function getProductDetail(
+  slug: string,
+  locale: string,
+  currency?: string,
+): Promise<ProductDetail | null> {
+  return apiGetOrNull<ProductDetail>(`/catalog/products/${encodeURIComponent(slug)}`, {
+    locale,
+    revalidate: REVALIDATE,
+    ...(currency ? { currency } : {}),
+  });
+}
+
+/** Brand slugs for sitemap + static params. Resilient: returns [] if the API
+ * is unreachable (e.g. at build time) so the build never fails on it. */
+export async function getBrandSlugs(): Promise<string[]> {
+  try {
+    const items = await getBrands("ru");
+    return items.map((b) => b.slug);
+  } catch {
+    return [];
+  }
 }
