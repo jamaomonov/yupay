@@ -1,0 +1,217 @@
+{
+  "common": {
+    "localeRu": "Русский",
+    "localeEn": "English",
+    "localeUz": "Oʻzbekcha"
+  },
+  "notFound": {
+    "title": "Страница не найдена",
+    "subtitle": "Похоже, этой страницы пока нет или она ещё в разработке. Вернись на главную и открой каталог.",
+    "cta": "На главную"
+  },
+  "meta": {
+    "homeTitle": "yupay — моментальное пополнение игр и подписок",
+    "homeDescription": "Steam, PUBG Mobile, Telegram Premium, Genshin, Valorant и другие игры. Без передачи паролей, зачисление за 2 минуты, оплата картой / СБП / USDT."
+  },
+  "nav": {
+    "store": "Каталог",
+    "how": "Как это работает",
+    "reviews": "Отзывы",
+    "support": "Помощь",
+    "topUp": "Пополнить"
+  },
+  "hero": {
+    "badge": "Игры и подписки · 1 центр",
+    "titleLine1": "Весь донат",
+    "titleLine2": "в одной точке.",
+    "subtitle": "Steam, мобильные игры и подписки — без передачи паролей. Зачисление по UID за 2 минуты, комиссия от 3% (Steam — от 4%).",
+    "ctaPrimary": "Открыть каталог",
+    "ctaSecondary": "Как это работает",
+    "trustCount": "100 482",
+    "trustCountLabel": "успешных пополнений",
+    "rating": "4.9 / 5 · 8 247 отзывов"
+  },
+  "catalog": {
+    "eyebrow": "Каталог",
+    "titleLine1": "Все игры.",
+    "titleLine2": "Один чек.",
+    "viewAll": "Весь каталог",
+    "commission": "Комиссия",
+    "speed": "Скорость",
+    "rating": "Рейтинг",
+    "steamDesc": "Любая страна СНГ, Казахстан, Турция. Зачисление 2 минуты, комиссия от 4%, без передачи пароля.",
+    "cards": {
+      "steam": {
+        "name": "Steam\nКошелёк",
+        "eyebrow": "Valve · СНГ / KZ / TR",
+        "tag": "ХИТ",
+        "statCommission": "от 4%",
+        "statSpeed": "2 мин",
+        "statRating": "★ 5.0"
+      },
+      "pubg-mobile": {
+        "name": "PUBG Mobile",
+        "eyebrow": "Tencent · UC",
+        "tag": "НОВОЕ"
+      },
+      "telegram-premium": {
+        "name": "Telegram\nPremium",
+        "eyebrow": "Telegram FZ",
+        "tag": "−10%"
+      },
+      "delta-force": {
+        "name": "Delta Force",
+        "eyebrow": "Garena · койны",
+        "tag": "ТОП"
+      },
+      "arena-breakout": {
+        "name": "Arena Breakout",
+        "eyebrow": "Tencent · бонды",
+        "tag": "БЫСТРО"
+      }
+    }
+  },
+  "store": {
+    "meta": {
+      "title": "Каталог пополнений игр и подписок в Узбекистане",
+      "description": "Пополняй Steam, PUBG Mobile, Telegram Premium, Delta Force и Arena Breakout по UID. Оплата Click, Payme, Uzum и USDT, цены в сумах, зачисление за пару минут, без передачи пароля — yupay."
+    },
+    "eyebrow": "Каталог",
+    "title": "Пополнение игр и подписок в Узбекистане",
+    "subtitle": "Выбери сервис, введи UID — и получи зачисление за пару минут. Оплата Click, Payme, Uzum или USDT, цены в сумах. Без передачи пароля.",
+    "payWith": "Оплата",
+    "filterAll": "Все",
+    "filterGames": "Игры",
+    "filterWallets": "Кошельки",
+    "filterSubscriptions": "Подписки",
+    "popular": "Хит",
+    "from": "от",
+    "etaUnit": "мин",
+    "monthsShort": "мес",
+    "breadcrumbHome": "Главная",
+    "breadcrumbStore": "Каталог",
+    "aboutTitle": "Об услуге",
+    "packsTitle": "Выберите пакет",
+    "payTitle": "Оплата и зачисление",
+    "ctaNote": "Оформление в Telegram-боте — без регистрации, оплата Click, Payme, Uzum или USDT. Зачисление автоматическое.",
+    "securityNote": "Зачисление по публичному UID — пароль от аккаунта вводить не нужно.",
+    "commissionChip": "Комиссия от {pct}%",
+    "etaChip": "Зачисление {eta} мин",
+    "securityChip": "Без пароля",
+    "brandMetaTitle": "{name} — пополнение в Узбекистане | yupay",
+    "brandMetaDescription": "Пополнение {name} по UID за пару минут. Цены в сумах, оплата Click, Payme, Uzum или USDT. Без передачи пароля — yupay.",
+    "brands": {
+      "steam": {
+        "about": "Пополнение кошелька Steam для аккаунтов СНГ, Казахстана и Турции. Деньги падают на баланс за пару минут — без передачи логина и пароля, оплата в сумах."
+      },
+      "pubg-mobile": {
+        "about": "UC для PUBG Mobile по ID игрока. Зачисление за пару минут без входа в аккаунт — нужен только публичный UID. Оплата Click, Payme, Uzum или USDT."
+      },
+      "telegram-premium": {
+        "about": "Telegram Premium на 1–12 месяцев по @username. Активация за пару минут, оплата в сумах — без передачи пароля."
+      },
+      "delta-force": {
+        "about": "Внутриигровая валюта Delta Force по ID игрока. Быстрое зачисление в сумах, без передачи пароля."
+      },
+      "arena-breakout": {
+        "about": "Bonds для Arena Breakout по ID игрока. Зачисление за пару минут, оплата Click, Payme, Uzum или USDT."
+      }
+    }
+  },
+  "how": {
+    "eyebrow": "Flow",
+    "titleLine1": "От тапа",
+    "titleLine2": "до игры —",
+    "titleLine3": "1:47.",
+    "subtitle": "Без регистрации и верификаций. Три шага — и можно играть.",
+    "step1Title": "Выберите игру",
+    "step1Sub": "Найдите нужную игру в каталоге или через поиск — от Steam до Telegram Premium.",
+    "step2Title": "Введите UID и сумму",
+    "step2Sub": "Без пароля, только публичный ID профиля. Выберите пакет — покажем, что придёт после комиссии.",
+    "step3Title": "Оплатите — и всё",
+    "step3Sub": "Карта, СБП или крипта. Зачисление автоматическое, чек на email, поддержка в любой момент."
+  },
+  "metrics": {
+    "eyebrow": "Numbers",
+    "title": "Цифры, а не маркетинг.",
+    "updatedLabel": "Обновлено",
+    "totalOrdersLabel": "Успешных пополнений",
+    "totalOrdersNote": "за всё время",
+    "avgTimeLabel": "Среднее время",
+    "avgTimeNote": "от оплаты до игры",
+    "supportReplyLabel": "Ответ поддержки",
+    "supportReplyNote": "в среднем в чате"
+  },
+  "reviews": {
+    "eyebrow": "Отзывы",
+    "titleLine1": "Что говорят",
+    "titleLine2": "геймеры.",
+    "score": "4.9/5",
+    "reviewCount": "8 247 отзывов",
+    "alex": {
+      "quote": "Пополнял Стим КЗ — деньги пришли за минуту, комиссия реально меньше чем у других. Кучу таких сайтов перепробовал, тут самые чёткие ребята.",
+      "name": "Alex_Pro",
+      "meta": "Steam · 2 года с нами"
+    },
+    "mage": {
+      "quote": "Луна пришла моментально! Удобно что можно по UID пополнять, без входа в аккаунт.",
+      "name": "MageGamer",
+      "meta": "Genshin Impact"
+    },
+    "vova": {
+      "quote": "Был вопрос по оплате криптой, саппорт ответил за 30 секунд. Респект.",
+      "name": "Vova_CS2",
+      "meta": "Valorant · Steam"
+    },
+    "chicken": {
+      "quote": "UC залетели за 47 секунд. Всё чисто, без заморочек.",
+      "name": "iLoveChicken",
+      "meta": "PUBG Mobile"
+    },
+    "zero": {
+      "quote": "Уже третий раз продлеваю через yupay. Стабильно, без сюрпризов.",
+      "name": "ZeroTwo",
+      "meta": "Telegram Premium"
+    }
+  },
+  "showcase": {
+    "eyebrow": "Приложение",
+    "titleLine1": "Не сайт ради сайта —",
+    "titleLine2": "живое приложение.",
+    "subtitle": "Весь yupay живёт прямо в Telegram. Каталог, оплата и кошелёк — без установки и регистрации, в том же чате, где ты сидишь с друзьями.",
+    "f1Title": "В пару тапов",
+    "f1Sub": "Выбрали игру, ввели UID, оплатили — донат прилетает за минуты. Без передачи пароля.",
+    "f2Title": "Telegram-нативно",
+    "f2Sub": "Открывается из бота как Mini App. Тёмная тема, родные жесты, ничего лишнего.",
+    "f3Title": "Кошелёк и кешбэк",
+    "f3Sub": "Храни баланс, копи кешбэк с каждого пополнения и плати в один тап в следующий раз.",
+    "cta": "Открыть в Telegram",
+    "labelCatalog": "Каталог",
+    "labelTopup": "Пополнение",
+    "labelSettings": "Настройки"
+  },
+  "cta": {
+    "titleLine1": "Готов вернуться",
+    "titleLine2": "в игру?",
+    "subtitle": "Моментальное зачисление и поддержка 24/7. Первое пополнение Steam — без комиссии.",
+    "button": "Открыть каталог",
+    "offerCaption": "комиссия на первый Steam"
+  },
+  "footer": {
+    "tagline": "Моментальный топ-ап игр и подписок. Без передачи паролей, по UID. Работаем с 2024 года.",
+    "productTitle": "Продукт",
+    "helpTitle": "Помощь",
+    "legalTitle": "Юр.",
+    "usTitle": "Мы",
+    "prices": "Цены",
+    "refunds": "Возвраты",
+    "status": "Статус серверов",
+    "terms": "Условия",
+    "privacy": "Конфиденциальность",
+    "imprint": "Реквизиты",
+    "careers": "Карьера",
+    "copyright": "© {year} yupay",
+    "disclaimer": "Не связано с Valve, Tencent, Riot или miHoYo.",
+    "madeBy": "Made by"
+  }
+}

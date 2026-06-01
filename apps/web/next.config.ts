@@ -15,6 +15,11 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "**.yupay.io" },
       { protocol: "https", hostname: "cdn.yupay.io" },
     ],
+    // Brand marks + wordmark are first-party SVGs we control. Allow the image
+    // optimizer to serve them, sandboxed so they can't execute scripts.
+    dangerouslyAllowSVG: true,
+    contentDispositionType: "attachment",
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
   transpilePackages: [
     "@yupay/ui",
