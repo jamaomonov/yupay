@@ -37,18 +37,15 @@ export async function Footer({ locale }: { locale: string }) {
 
           <FooterCol title={t("productTitle")}>
             <FooterLink href={`${prefix}/store`}>{nav("store")}</FooterLink>
-            <FooterLink href="#catalog">{t("prices")}</FooterLink>
+            <FooterLink href={`${prefix}/store`}>{t("prices")}</FooterLink>
             <FooterLink href="#how">{nav("how")}</FooterLink>
-            <FooterLink href="#">API</FooterLink>
           </FooterCol>
 
           <FooterCol title={t("helpTitle")}>
-            <FooterLink href="#">FAQ</FooterLink>
-            <FooterLink href="#" external>
+            <FooterLink href="https://t.me/yupay_support" external>
               {nav("support")}
             </FooterLink>
             <FooterLink href={`${prefix}/legal/refunds`}>{t("refunds")}</FooterLink>
-            <FooterLink href="#">{t("status")}</FooterLink>
           </FooterCol>
 
           <FooterCol title={t("legalTitle")}>
@@ -61,13 +58,9 @@ export async function Footer({ locale }: { locale: string }) {
             <FooterLink href="https://t.me/yupay_support" external>
               Telegram
             </FooterLink>
-            <FooterLink href="#" external>
-              VK
-            </FooterLink>
             <FooterLink href="mailto:hello@yupay.uz" external>
               Email
             </FooterLink>
-            <FooterLink href="#">{t("careers")}</FooterLink>
           </FooterCol>
         </div>
 

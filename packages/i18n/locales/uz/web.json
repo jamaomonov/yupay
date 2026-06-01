@@ -213,5 +213,106 @@
     "copyright": "© {year} yupay",
     "disclaimer": "Valve, Tencent, Riot yoki miHoYo bilan bogʻliq emas.",
     "madeBy": "Made by"
+  },
+  "legal": {
+    "home": "Bosh sahifa",
+    "updatedLabel": "Yangilangan:",
+    "backToStore": "← Katalogga",
+    "terms": {
+      "title": "Foydalanish shartlari",
+      "updated": "2026-yil iyun",
+      "intro": "yupay dan foydalanib, ushbu shartlarga rozilik bildirasiz. yupay — mustaqil raqamli toʻldirish xizmati va Valve, Tencent, Riot, miHoYo hamda boshqa huquq egalari bilan bogʻliq emas.",
+      "sections": [
+        {
+          "h": "Nimani sotamiz",
+          "p": "yupay raqamli mahsulotlarni qayta sotadi: ichki oʻyin valyutasi, hamyon toʻldirish va obunalar. Tushirish siz koʻrsatgan ommaviy UID yoki akkauntga amalga oshiriladi — akkaunt parolini soʻramaymiz."
+        },
+        {
+          "h": "Buyurtma va toʻlov",
+          "p": "Buyurtma roʻyxatdan oʻtmasdan rasmiylashtiriladi. Toʻlov — karta, Click, Payme, Uzum yoki USDT. Narx va komissiya toʻlov paytida qatʼiylanadi; tushadigan yakuniy summani toʻlovdan oldin koʻrasiz."
+        },
+        {
+          "h": "Bajarilishi",
+          "p": "Aksariyat buyurtmalar bir necha daqiqada avtomatik bajariladi. UID va akkaunt maʼlumotlari toʻgʻriligi uchun siz javobgarsiz; notoʻgʻri UID ga tushirilgan mablagʻ qaytarilmaydi."
+        },
+        {
+          "h": "Javobgarlik",
+          "p": "yupay oʻyin platformalari tomonidagi bloklash va cheklovlar uchun javob bermaydi. Xizmat «boricha» taqdim etiladi."
+        },
+        {
+          "h": "Aloqa",
+          "p": "Savollar — Telegramdagi qoʻllab-quvvatlashga: @yupay_support."
+        }
+      ]
+    },
+    "privacy": {
+      "title": "Maxfiylik siyosati",
+      "updated": "2026-yil iyun",
+      "intro": "Buyurtmani bajarish uchun zarur boʻlgan minimal maʼlumotni yigʻamiz va uni uchinchi shaxslarga sotmaymiz.",
+      "sections": [
+        {
+          "h": "Qanday maʼlumot yigʻamiz",
+          "p": "Email (chek va buyurtma holati uchun), oʻyin UID yoki akkaunt identifikatori va toʻlov maʼlumotlari. Karta rekvizitlarini toʻlov provayderi qayta ishlaydi — biz ularni saqlamaymiz."
+        },
+        {
+          "h": "Qanday foydalanamiz",
+          "p": "Faqat buyurtmani bajarish, qoʻllab-quvvatlash va chek yuborish uchun. Maʼlumotlarni reklama maqsadida bermaymiz."
+        },
+        {
+          "h": "Uzatish",
+          "p": "Maʼlumotlar buyurtmani bajarish uchun zarur hajmda yetkazib beruvchilar va toʻlov xizmatlariga uzatiladi."
+        },
+        {
+          "h": "Sizning huquqlaringiz",
+          "p": "Qoʻllab-quvvatlashga yozib, maʼlumotlaringizni oʻchirishni soʻrashingiz mumkin."
+        },
+        {
+          "h": "Cookie",
+          "p": "Sayt interfeys ishlashi va asosiy tahlil uchun texnik cookie-fayllardan foydalanadi."
+        }
+      ]
+    },
+    "refunds": {
+      "title": "Qaytarishlar",
+      "updated": "2026-yil iyun",
+      "intro": "Raqamli mahsulotlar boʻyicha qaytarish imkoniyati ularning tabiati sababli cheklangan.",
+      "sections": [
+        {
+          "h": "Qachon qaytarish mumkin",
+          "p": "Agar buyurtma bajarilmagan boʻlsa (mahsulot tushmagan) va bajarib boʻlmasa, mablagʻni qaytaramiz yoki yupay hamyoniga oʻtkazamiz."
+        },
+        {
+          "h": "Qachon qaytarish mumkin emas",
+          "p": "Muvaffaqiyatli tushirilgandan soʻng, shuningdek UID yoki akkaunt sizning aybingiz bilan notoʻgʻri kiritilgan boʻlsa."
+        },
+        {
+          "h": "Muddatlar",
+          "p": "Murojaat boʻyicha qaror — 24 soat ichida. Asl toʻlov usuliga qaytarish — toʻlov provayderi muddatlari boʻyicha."
+        },
+        {
+          "h": "Qanday soʻrash mumkin",
+          "p": "Telegramdagi qoʻllab-quvvatlashga yozing va buyurtma raqamini koʻrsating."
+        }
+      ]
+    },
+    "imprint": {
+      "title": "Rekvizitlar",
+      "updated": "2026-yil iyun",
+      "intro": "yupay xizmati operatori.",
+      "sections": [
+        {
+          "h": "Operator",
+          "p": "yupay — Oʻzbekiston va MDH uchun oʻyin va raqamli obunalarni toʻldirish xizmati."
+        },
+        {
+          "h": "Aloqa",
+          "p": "Qoʻllab-quvvatlash: Telegram @yupay_support. Email: hello@yupay.uz."
+        },
+        {
+          "h": "Huquqiy holat",
+          "p": "Raqamli mahsulotlarning mustaqil reselleri. Valve, Tencent, Riot, miHoYo va boshqa huquq egalari bilan bogʻliq emas. Toʻliq yuridik rekvizitlar soʻrov boʻyicha taqdim etiladi."
+        }
+      ]
+    }
   }
 }

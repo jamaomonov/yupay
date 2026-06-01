@@ -18,13 +18,22 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const lastModified = new Date();
   const entries: MetadataRoute.Sitemap = [];
 
-  const paths: { path: string; priority: number; changeFrequency: "daily" | "weekly" }[] = [
+  const paths: {
+    path: string;
+    priority: number;
+    changeFrequency: "daily" | "weekly" | "monthly";
+  }[] = [
     { path: "", priority: 1.0, changeFrequency: "daily" },
     { path: "/store", priority: 0.9, changeFrequency: "daily" },
     ...brandSlugs().map((slug) => ({
       path: `/store/${slug}`,
       priority: 0.8,
       changeFrequency: "weekly" as const,
+    })),
+    ...["terms", "privacy", "refunds", "imprint"].map((doc) => ({
+      path: `/legal/${doc}`,
+      priority: 0.3,
+      changeFrequency: "monthly" as const,
     })),
   ];
 
