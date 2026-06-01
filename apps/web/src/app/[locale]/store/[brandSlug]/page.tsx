@@ -9,6 +9,7 @@ import type { Metadata } from "next";
 
 import { JsonLd } from "@/components/JsonLd";
 import { routing } from "@/i18n/routing";
+import { buttonStyles } from "@/lib/button";
 import { brandSlugs, getBrand, type Pack } from "@/lib/catalog";
 import { alternates, formatUzs, GEO_META, localeUrl, ogLocale, SITE } from "@/lib/seo";
 
@@ -129,7 +130,7 @@ export default async function BrandPage({
         </nav>
 
         {/* hero banner */}
-        <div className="border-border relative overflow-hidden rounded-[24px] border">
+        <div className="border-border relative overflow-hidden rounded-2xl border">
           <Image
             src={brand.art}
             alt={brand.name}
@@ -202,7 +203,7 @@ export default async function BrandPage({
 
           {/* right: CTA card */}
           <aside className="lg:sticky lg:top-[100px] lg:self-start">
-            <div className="border-border rounded-[20px] border bg-[linear-gradient(135deg,hsl(var(--card)),hsl(var(--bg)))] p-6">
+            <div className="border-border rounded-xl border bg-[linear-gradient(135deg,hsl(var(--card)),hsl(var(--bg)))] p-6">
               <h2 className="font-display text-lg font-bold tracking-[-0.02em]">{t("payTitle")}</h2>
               <p className="text-tx-mute mt-2 text-[14px] leading-relaxed">{t("ctaNote")}</p>
 
@@ -210,7 +211,7 @@ export default async function BrandPage({
                 href="https://t.me/yupay_bot"
                 target="_blank"
                 rel="noreferrer noopener"
-                className="bg-primary text-primary-foreground mt-5 flex h-[52px] items-center justify-center gap-2 rounded-[12px] text-[15px] font-bold shadow-[0_12px_30px_-10px_hsl(var(--primary)/0.45)] transition hover:-translate-y-0.5"
+                className={buttonStyles({ size: "lg", className: "mt-5 w-full" })}
               >
                 {tShow("cta")}
                 <ArrowUpRight size={17} strokeWidth={2.6} />

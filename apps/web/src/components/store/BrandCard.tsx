@@ -19,7 +19,7 @@ export async function BrandCard({ brand, locale }: { brand: Brand; locale: strin
   return (
     <Link
       href={`${prefix}/store/${brand.slug}`}
-      className="border-border hover:border-primary/30 focus-visible:ring-primary group relative isolate flex h-[240px] flex-col justify-end overflow-hidden rounded-[20px] border transition hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset"
+      className="border-border hover:border-primary/30 focus-visible:ring-primary group relative isolate flex h-[240px] flex-col justify-end overflow-hidden rounded-xl border transition hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset"
     >
       <Image
         src={brand.art}

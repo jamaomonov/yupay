@@ -17,7 +17,7 @@ export async function MetricsBand() {
   return (
     <section className="py-28">
       <div className="mx-auto max-w-[1280px] px-6 sm:px-10">
-        <div className="border-border relative overflow-hidden rounded-[28px] border bg-[linear-gradient(135deg,hsl(var(--muted)/0.6),hsl(var(--card)/0.4))] p-10 sm:p-16">
+        <div className="border-border relative overflow-hidden rounded-2xl border bg-[linear-gradient(135deg,hsl(var(--muted)/0.6),hsl(var(--card)/0.4))] p-10 sm:p-16">
           <div
             aria-hidden
             className="absolute inset-0 opacity-100"

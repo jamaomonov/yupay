@@ -2,6 +2,8 @@ import { ArrowUpRight, Sparkles, Wallet, Zap } from "lucide-react";
 import Image from "next/image";
 import { getTranslations } from "next-intl/server";
 
+import { buttonStyles } from "@/lib/button";
+
 const FEATURES: { key: string; Icon: typeof Zap }[] = [
   { key: "f1", Icon: Zap },
   { key: "f2", Icon: Sparkles },
@@ -21,7 +23,7 @@ export async function AppShowcase() {
   return (
     <section className="py-24">
       <div className="mx-auto max-w-[1280px] px-6 sm:px-10">
-        <div className="border-border relative overflow-hidden rounded-[32px] border bg-[radial-gradient(120%_120%_at_85%_0%,hsl(var(--card)),hsl(var(--bg))_60%)] px-6 py-14 sm:px-12 sm:py-16">
+        <div className="border-border relative overflow-hidden rounded-2xl border bg-[radial-gradient(120%_120%_at_85%_0%,hsl(var(--card)),hsl(var(--bg))_60%)] px-6 py-14 sm:px-12 sm:py-16">
           {/* atmosphere */}
           <div aria-hidden className="pointer-events-none absolute inset-0">
             <div className="dot-cell absolute inset-0 opacity-[0.04]" />
@@ -74,7 +76,7 @@ export async function AppShowcase() {
                 href="https://t.me/yupay_bot"
                 target="_blank"
                 rel="noreferrer noopener"
-                className="bg-primary text-primary-foreground group mt-9 inline-flex h-[52px] items-center gap-2 rounded-[12px] px-6 text-[15px] font-bold shadow-[0_12px_30px_-10px_hsl(var(--primary)/0.45)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_36px_-10px_hsl(var(--primary)/0.6)]"
+                className={buttonStyles({ size: "lg", className: "group mt-9" })}
               >
                 {t("cta")}
                 <ArrowUpRight size={17} strokeWidth={2.6} />

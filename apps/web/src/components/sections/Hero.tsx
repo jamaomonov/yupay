@@ -4,6 +4,8 @@ import { getTranslations } from "next-intl/server";
 
 import { PhoneShowcase } from "./PhoneShowcase";
 
+import { buttonStyles } from "@/lib/button";
+
 /**
  * Storefront hero — type-led left column + a real product shot on the right:
  * two screenshots of the YuPay mini app layered into a floating device
@@ -57,15 +59,12 @@ export async function Hero({ locale }: { locale: string }) {
           <div className="mt-8 flex flex-wrap items-center gap-3.5">
             <Link
               href={`${prefix}/store`}
-              className="bg-primary text-primary-foreground group inline-flex h-[52px] items-center gap-2 rounded-[12px] px-6 text-[15px] font-bold shadow-[0_12px_30px_-10px_hsl(var(--primary)/0.45)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_36px_-10px_hsl(var(--primary)/0.6)]"
+              className={buttonStyles({ size: "lg", className: "group" })}
             >
               {t("ctaPrimary")}
               <ArrowRight size={16} strokeWidth={2.6} />
             </Link>
-            <a
-              href="#how"
-              className="border-border-2 text-foreground hover:border-tx-dim hover:bg-muted inline-flex h-[52px] items-center gap-2 rounded-[12px] border bg-transparent px-6 text-[15px] font-semibold transition"
-            >
+            <a href="#how" className={buttonStyles({ variant: "ghost", size: "lg" })}>
               <span className="border-primary bg-primary/15 flex h-5 w-5 items-center justify-center rounded-full border">
                 <ChevronDown size={12} strokeWidth={2.6} className="text-primary" />
               </span>

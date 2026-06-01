@@ -7,6 +7,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
 import { type AppLocale } from "@/i18n/routing";
+import { buttonStyles } from "@/lib/button";
 
 const LOCALES: { code: AppLocale; label: string }[] = [
   { code: "ru", label: "Русский" },
@@ -53,10 +54,7 @@ export function MobileNav() {
 
   return (
     <div className="flex items-center gap-2 md:hidden">
-      <Link
-        href={`${prefix}/store`}
-        className="bg-primary text-primary-foreground inline-flex h-9 items-center rounded-[10px] px-3.5 text-[13px] font-bold"
-      >
+      <Link href={`${prefix}/store`} className={buttonStyles({ size: "xs" })}>
         {t("topUp")}
       </Link>
       <button
@@ -105,7 +103,7 @@ export function MobileNav() {
               <Link
                 href={`${prefix}/store`}
                 onClick={close}
-                className="bg-primary text-primary-foreground mt-5 flex h-[52px] items-center justify-center gap-2 rounded-[12px] text-[15px] font-bold"
+                className={buttonStyles({ size: "lg", className: "mt-5 w-full" })}
               >
                 {t("topUp")}
                 <ArrowRight size={16} strokeWidth={2.6} />
@@ -115,7 +113,11 @@ export function MobileNav() {
                 target="_blank"
                 rel="noreferrer noopener"
                 onClick={close}
-                className="border-border-2 text-foreground mt-2.5 flex h-[48px] items-center justify-center gap-2 rounded-[12px] border text-[15px] font-semibold"
+                className={buttonStyles({
+                  variant: "ghost",
+                  size: "lg",
+                  className: "mt-2.5 w-full",
+                })}
               >
                 <Send size={16} />
                 {tShow("cta")}

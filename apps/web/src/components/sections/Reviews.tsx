@@ -40,10 +40,10 @@ export async function Reviews() {
       <div className="mx-auto max-w-[1200px] px-6 sm:px-10">
         <div className="mb-14 flex flex-wrap items-end justify-between gap-6">
           <div>
-            <div className="font-mono text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+            <div className="text-primary font-mono text-xs font-semibold uppercase tracking-[0.16em]">
               [ 04 / {t("eyebrow")} ]
             </div>
-            <h2 className="mt-3 font-display text-[clamp(2.2rem,4vw,3.4rem)] font-extrabold leading-[0.98] tracking-[-0.04em]">
+            <h2 className="font-display mt-3 text-[clamp(2.2rem,4vw,3.4rem)] font-extrabold leading-[0.98] tracking-[-0.04em]">
               <span className="block">{t("titleLine1")}</span>
               <span className="block">{t("titleLine2")}</span>
             </h2>
@@ -53,7 +53,7 @@ export async function Reviews() {
             <span className="font-display text-[28px] font-bold tracking-[-0.02em]">
               {t("score")}
             </span>
-            <span className="text-sm text-tx-mute">{t("reviewCount")}</span>
+            <span className="text-tx-mute text-sm">{t("reviewCount")}</span>
           </div>
         </div>
 
@@ -99,7 +99,7 @@ function ReviewCard({
 }) {
   return (
     <div
-      className={`flex flex-col justify-between gap-6 rounded-[20px] border ${
+      className={`flex flex-col justify-between gap-6 rounded-xl border ${
         featured
           ? "border-primary/20 bg-[linear-gradient(135deg,hsl(var(--primary)/0.06),hsl(var(--card)))] p-9 md:row-span-2"
           : "border-border bg-card p-6"
@@ -108,7 +108,7 @@ function ReviewCard({
       <div>
         <Stars size={featured ? 16 : 13} />
         <p
-          className={`mt-4 font-display font-medium tracking-[-0.005em] text-foreground ${
+          className={`font-display text-foreground mt-4 font-medium tracking-[-0.005em] ${
             featured ? "text-2xl leading-snug tracking-[-0.015em]" : "text-[15px] leading-snug"
           }`}
         >
@@ -117,7 +117,7 @@ function ReviewCard({
       </div>
       <div className="flex items-center gap-3">
         <div
-          className="flex h-10 w-10 items-center justify-center rounded-full font-display font-extrabold text-white"
+          className="font-display flex h-10 w-10 items-center justify-center rounded-full font-extrabold text-white"
           style={{ background: avBg }}
         >
           {initial}

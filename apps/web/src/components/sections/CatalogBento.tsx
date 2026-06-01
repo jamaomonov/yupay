@@ -94,7 +94,7 @@ export async function CatalogBento({ locale }: { locale: string }) {
               <Link
                 key={card.slug}
                 href={`${prefix}/store/${card.slug}`}
-                className={`border-border hover:border-primary/30 focus-visible:ring-primary group relative isolate overflow-hidden rounded-[22px] border transition hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset ${
+                className={`border-border hover:border-primary/30 focus-visible:ring-primary group relative isolate overflow-hidden rounded-xl border transition hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset ${
                   isFeature ? "md:row-span-2" : "h-[240px] md:h-auto"
                 }`}
               >

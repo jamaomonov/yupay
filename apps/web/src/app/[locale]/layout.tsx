@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
+import { Inter, JetBrains_Mono, Unbounded } from "next/font/google";
 import { notFound } from "next/navigation";
 import { NextIntlClientProvider, hasLocale } from "next-intl";
 import { getMessages, getTranslations, setRequestLocale } from "next-intl/server";
@@ -17,12 +17,12 @@ const sans = Inter({
   display: "swap",
 });
 
-const display = Space_Grotesk({
-  // Space Grotesk doesn't ship a cyrillic subset on Google Fonts. We fall
-  // back to Inter for cyrillic body copy + the headline still renders fine
-  // because Inter is the next stack entry in --app-font-display.
-  subsets: ["latin", "latin-ext"],
-  weight: ["400", "500", "600", "700"],
+const display = Unbounded({
+  // Unbounded ships a Cyrillic subset, so RU/UZ headlines keep the same
+  // distinctive display face as EN — preserving the display-vs-body contrast
+  // the visual system is built on (Inter handles body in all locales).
+  subsets: ["latin", "cyrillic"],
+  weight: ["500", "600", "700", "800"],
   variable: "--app-font-display",
   display: "swap",
 });
@@ -78,11 +78,8 @@ export default async function LocaleLayout({
   const messages = await getMessages();
 
   return (
-    <html
-      lang={locale}
-      className={`${sans.variable} ${display.variable} ${mono.variable}`}
-    >
-      <body className="min-h-screen bg-bg font-sans text-foreground antialiased">
+    <html lang={locale} className={`${sans.variable} ${display.variable} ${mono.variable}`}>
+      <body className="bg-bg text-foreground min-h-screen font-sans antialiased">
         <NextIntlClientProvider locale={locale} messages={messages}>
           <Header locale={locale} />
           {children}
