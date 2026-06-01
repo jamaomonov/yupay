@@ -40,6 +40,7 @@ function BentoCard({
           src={img}
           alt=""
           fill
+          unoptimized
           sizes={featured ? "(max-width: 768px) 100vw, 540px" : "(max-width: 768px) 100vw, 270px"}
           className="object-cover transition duration-500 group-hover:scale-[1.04]"
         />

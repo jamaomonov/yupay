@@ -1,4 +1,4 @@
-import { ArrowUpRight, ChevronRight, Clock, ShieldCheck } from "lucide-react";
+import { ChevronRight, Clock, ShieldCheck } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -8,26 +8,15 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { Metadata } from "next";
 
 import { JsonLd } from "@/components/JsonLd";
+import { PurchasePanel } from "@/components/store/PurchasePanel";
 import { routing } from "@/i18n/routing";
-import { buttonStyles } from "@/lib/button";
-import {
-  getBrandDetail,
-  getBrandSlugs,
-  getProductDetail,
-  type ProductDetail,
-  type SkuOut,
-} from "@/lib/catalog";
+import { getBrandDetail, getBrandSlugs, getProductDetail, type ProductDetail } from "@/lib/catalog";
 import { alternates, formatUzs, GEO_META, localeUrl, ogLocale } from "@/lib/seo";
 
 const CURRENCY = "UZS";
 
 export async function generateStaticParams() {
   return (await getBrandSlugs()).map((brandSlug) => ({ brandSlug }));
-}
-
-function packPrice(locale: string, sku: SkuOut): string {
-  if (sku.display_price) return formatUzs(locale, Math.round(Number(sku.display_price.amount)));
-  return `$${sku.price_usd}`;
 }
 
 export async function generateMetadata({
@@ -74,7 +63,6 @@ export default async function BrandPage({
   if (!brand) notFound();
 
   const t = await getTranslations("web.store");
-  const tShow = await getTranslations("web.showcase");
   const prefix = `/${locale}`;
 
   const products = (
@@ -158,6 +146,7 @@ export default async function BrandPage({
               alt={brand.name}
               fill
               priority
+              unoptimized
               sizes="(max-width: 1024px) 100vw, 1040px"
               className="object-cover"
             />
@@ -180,6 +169,7 @@ export default async function BrandPage({
                     alt=""
                     width={32}
                     height={32}
+                    unoptimized
                     className="h-8 w-8 object-contain"
                   />
                 </span>
@@ -206,69 +196,19 @@ export default async function BrandPage({
           </div>
         </div>
 
-        <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-[1.4fr_1fr]">
-          {/* left: about + product packs */}
-          <div>
-            {about && (
-              <>
-                <h2 className="font-display text-xl font-bold tracking-[-0.02em]">
-                  {t("aboutTitle")}
-                </h2>
-                <p className="text-tx-mute mt-3 max-w-[560px] text-[15px] leading-relaxed">
-                  {about}
-                </p>
-              </>
-            )}
-
-            <h2 className="font-display mt-10 text-xl font-bold tracking-[-0.02em]">
-              {t("packsTitle")}
-            </h2>
-            {products.map((product) => (
-              <div key={product.id} className="mt-6">
-                {products.length > 1 && (
-                  <div className="text-tx-mute mb-3 text-sm font-semibold">{product.name}</div>
-                )}
-                <div className="grid grid-cols-2 gap-3">
-                  {product.skus.map((sku) => (
-                    <div
-                      key={sku.id}
-                      className="border-border bg-card hover:border-primary/40 flex flex-col gap-2 rounded-[16px] border p-4 transition"
-                    >
-                      <span className="font-display text-lg font-bold tracking-[-0.01em]">
-                        {sku.denomination ?? sku.sku_code}
-                      </span>
-                      <span className="text-tx-mute font-mono text-[13px]">
-                        {packPrice(locale, sku)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
+        {about && (
+          <div className="mt-10">
+            <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t("aboutTitle")}</h2>
+            <p className="text-tx-mute mt-3 max-w-[680px] text-[15px] leading-relaxed">{about}</p>
           </div>
+        )}
 
-          {/* right: CTA card */}
-          <aside className="lg:sticky lg:top-[100px] lg:self-start">
-            <div className="border-border rounded-xl border bg-[linear-gradient(135deg,hsl(var(--card)),hsl(var(--bg)))] p-6">
-              <h2 className="font-display text-lg font-bold tracking-[-0.02em]">{t("payTitle")}</h2>
-              <p className="text-tx-mute mt-2 text-[14px] leading-relaxed">{t("ctaNote")}</p>
-
-              <a
-                href="https://t.me/yupay_bot"
-                target="_blank"
-                rel="noreferrer noopener"
-                className={buttonStyles({ size: "lg", className: "mt-5 w-full" })}
-              >
-                {tShow("cta")}
-                <ArrowUpRight size={17} strokeWidth={2.6} />
-              </a>
-
-              <div className="border-border/70 text-tx-mute mt-5 flex items-start gap-2.5 border-t pt-5 text-[13px] leading-relaxed">
-                <ShieldCheck size={16} className="text-primary mt-0.5 shrink-0" />
-                {t("securityNote")}
-              </div>
-            </div>
-          </aside>
+        <div className="mt-10">
+          {products.length > 0 ? (
+            <PurchasePanel products={products} locale={locale} />
+          ) : (
+            <p className="text-tx-mute">{t("empty")}</p>
+          )}
         </div>
       </div>
     </main>

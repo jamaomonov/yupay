@@ -27,6 +27,7 @@ export async function BrandCard({ brand, locale }: { brand: BrandSummary; locale
           src={img}
           alt=""
           fill
+          unoptimized
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 300px"
           className="object-cover transition duration-500 group-hover:scale-[1.04]"
         />

@@ -12,6 +12,24 @@ export interface PriceOut {
   source: "usd" | "override" | "fx";
 }
 
+export type LocaleMap = Record<string, string>;
+
+export interface FormOption {
+  value: string;
+  label: LocaleMap;
+}
+
+export interface FormField {
+  key: string;
+  label: LocaleMap;
+  type: "text" | "email" | "number" | "select";
+  required: boolean;
+  placeholder?: LocaleMap | null;
+  help_text?: LocaleMap | null;
+  pattern?: string | null;
+  options?: FormOption[] | null;
+}
+
 export interface BrandSummary {
   id: string;
   slug: string;
@@ -63,7 +81,7 @@ export interface BrandDetail extends BrandSummary {
 export interface ProductDetail extends ProductSummary {
   brand: BrandSummary;
   description: string | null;
-  required_fields: unknown[];
+  required_fields: FormField[];
   skus: SkuOut[];
 }
 
