@@ -1,1 +1,217 @@
-@import "@yupay/config-tailwind/preset.css";
+@import "tailwindcss";
+
+/* yupay storefront — deep-navy / electric-lime brand, mirrored from the
+   design reference. Palette stays low-contrast graphite so the lime accent
+   can do all the talking. Type pairing: Unbounded (display) + Inter
+   (body) + JetBrains Mono (eyebrows, monospaced numerals). */
+
+@theme inline {
+  --color-bg: hsl(var(--bg));
+  --color-card: hsl(var(--card));
+  --color-card-2: hsl(var(--card-2));
+  --color-muted: hsl(var(--muted));
+  --color-border: hsl(var(--border));
+  --color-border-2: hsl(var(--border-2));
+
+  --color-foreground: hsl(var(--foreground));
+  --color-tx-mute: hsl(var(--tx-mute));
+  --color-tx-dim: hsl(var(--tx-dim));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-2: hsl(var(--primary-2));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-blue: hsl(var(--blue));
+  --color-violet: hsl(var(--violet));
+  --color-gold: hsl(var(--gold));
+
+  --font-sans: var(--app-font-sans);
+  --font-display: var(--app-font-display);
+  --font-mono: var(--app-font-mono);
+
+  --radius-sm: 0.4rem;
+  --radius-md: 0.625rem;
+  --radius-btn: 0.75rem; /* 12px — canonical button/pill radius */
+  --radius-lg: 0.875rem;
+  --radius-xl: 1.25rem; /* 20px — card radius */
+  --radius-2xl: 1.75rem; /* 28px — panel radius */
+}
+
+:root {
+  /* HSL components — keep them raw so `hsl(var(--x) / 0.4)` works at call sites. */
+  --bg: 232 50% 6%; /* #060712 */
+  --card: 230 45% 8%; /* #0A0D1A */
+  --card-2: 232 41% 12%; /* #11142A */
+  --muted: 228 32% 12%; /* #141829 */
+  --border: 228 38% 16%; /* #1A1F38 */
+  --border-2: 232 36% 23%; /* #242952 */
+
+  --foreground: 0 0% 100%;
+  --tx-mute: 222 33% 70%; /* #9DA8C8 */
+  --tx-dim: 226 17% 50%; /* #6B7395 */
+
+  /* Electric lime — primary accent. */
+  --primary: 80 100% 60%; /* #AAFF33 */
+  --primary-2: 80 100% 70%; /* #C8FF66 */
+  --primary-foreground: 0 0% 0%;
+
+  --blue: 210 100% 68%; /* #5BA8FF */
+  --violet: 263 100% 68%; /* #9D5BFF */
+  --gold: 45 100% 71%; /* #FFD96B */
+
+  /* Type stack — next/font fills the variables. Fallback chain works at SSR. */
+  --app-font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --app-font-display: "Unbounded", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --app-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  color-scheme: dark;
+}
+
+@layer base {
+  html,
+  body {
+    background-color: hsl(var(--bg));
+    color: hsl(var(--foreground));
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background-color: hsl(var(--primary));
+    color: #000;
+  }
+
+  :focus-visible {
+    outline: 2px solid hsl(var(--primary));
+    outline-offset: 2px;
+    border-radius: 0.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ──────────────── reusable atmosphere classes ─────────────────
+   These power the page-level gradients, dot grids, and the orbit
+   keyframes. Components stay token-driven; only the recipes live here. */
+
+.grid-cell {
+  background-image:
+    linear-gradient(hsl(var(--primary) / 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(var(--primary) / 0.025) 1px, transparent 1px);
+  background-size: 52px 52px;
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 60% 40%, black, transparent);
+  mask-image: radial-gradient(ellipse 80% 60% at 60% 40%, black, transparent);
+}
+
+.dot-cell {
+  background-image: radial-gradient(circle, hsl(228 18% 60% / 0.35) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.dot-band {
+  background-image: radial-gradient(circle, hsl(var(--bg) / 0.1) 1.5px, transparent 1.5px);
+  background-size: 26px 26px;
+}
+
+.glow-lime {
+  background: radial-gradient(circle, hsl(var(--primary) / 0.1), transparent 65%);
+  filter: blur(60px);
+}
+
+.glow-blue {
+  background: radial-gradient(circle, hsl(var(--blue) / 0.08), transparent 70%);
+  filter: blur(70px);
+}
+
+/* Orbit ring keyframes — used by the hero stage. */
+@keyframes orbit-cw {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes orbit-ccw {
+  from {
+    transform: rotate(360deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: translate(-50%, -50%) scale(1.06);
+  }
+}
+
+@keyframes ticker-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.anim-orbit-cw {
+  animation: orbit-cw 34s linear infinite;
+}
+.anim-orbit-ccw {
+  animation: orbit-ccw 46s linear infinite;
+}
+.anim-pulse-glow {
+  animation: pulse-glow 7s ease-in-out infinite;
+}
+.anim-ticker {
+  animation: ticker-scroll 50s linear infinite;
+}
+
+/* Counter-rotate the orbit nodes so their content stays upright while the
+   parent ring spins. Combine with .anim-orbit-cw / -ccw on the parent. */
+.anim-orbit-counter-cw {
+  animation: orbit-ccw 34s linear infinite;
+}
+.anim-orbit-counter-ccw {
+  animation: orbit-cw 46s linear infinite;
+}
+
+/* Device float — gentle vertical drift for the product mockups. The wrapper
+   carries any static rotate/scale; the inner element only translates so the
+   two transforms never fight. Two speeds give a parallax feel when phones
+   are layered. */
+@keyframes float-y {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-16px);
+  }
+}
+.anim-float {
+  animation: float-y 6.5s ease-in-out infinite;
+}
+.anim-float-slow {
+  animation: float-y 9s ease-in-out infinite;
+}

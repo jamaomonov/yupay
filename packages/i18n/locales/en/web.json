@@ -1,0 +1,332 @@
+{
+  "common": {
+    "localeRu": "Русский",
+    "localeEn": "English",
+    "localeUz": "Oʻzbekcha"
+  },
+  "notFound": {
+    "title": "Page not found",
+    "subtitle": "This page doesn't exist yet or is still in the works. Head back home and open the catalog.",
+    "cta": "Back home"
+  },
+  "meta": {
+    "homeTitle": "yupay — instant game top-ups and digital subscriptions",
+    "homeDescription": "Steam, PUBG Mobile, Telegram Premium, Genshin, Valorant and more games. No passwords — top up by UID in 2 minutes. Pay with card, SBP or USDT."
+  },
+  "nav": {
+    "store": "Catalog",
+    "how": "How it works",
+    "reviews": "Reviews",
+    "support": "Help",
+    "topUp": "Top up"
+  },
+  "hero": {
+    "badge": "Games & subscriptions · 1 hub",
+    "titleLine1": "All your top-ups",
+    "titleLine2": "in one place.",
+    "subtitle": "Steam, mobile games and subscriptions — no passwords. UID top-ups in 2 minutes with a 3%+ commission (Steam from 4%).",
+    "ctaPrimary": "Browse catalog",
+    "ctaSecondary": "How it works",
+    "trustCount": "100,482",
+    "trustCountLabel": "successful top-ups",
+    "rating": "4.9 / 5 · 8,247 reviews"
+  },
+  "catalog": {
+    "eyebrow": "Catalog",
+    "titleLine1": "Every game.",
+    "titleLine2": "One checkout.",
+    "viewAll": "Full catalog",
+    "commission": "Commission",
+    "speed": "Speed",
+    "rating": "Rating",
+    "steamDesc": "Any CIS country, Kazakhstan, Turkey. 2-minute delivery, 4%+ commission, no password handover.",
+    "cards": {
+      "steam": {
+        "name": "Steam\nWallet",
+        "eyebrow": "Valve · CIS / KZ / TR",
+        "tag": "HOT",
+        "statCommission": "from 4%",
+        "statSpeed": "2 min",
+        "statRating": "★ 5.0"
+      },
+      "pubg-mobile": {
+        "name": "PUBG Mobile",
+        "eyebrow": "Tencent · UC",
+        "tag": "NEW"
+      },
+      "telegram-premium": {
+        "name": "Telegram\nPremium",
+        "eyebrow": "Telegram FZ",
+        "tag": "−10%"
+      },
+      "delta-force": {
+        "name": "Delta Force",
+        "eyebrow": "Garena · coins",
+        "tag": "TOP"
+      },
+      "arena-breakout": {
+        "name": "Arena Breakout",
+        "eyebrow": "Tencent · bonds",
+        "tag": "FAST"
+      }
+    }
+  },
+  "store": {
+    "meta": {
+      "title": "Game & subscription top-ups in Uzbekistan",
+      "description": "Top up Steam, PUBG Mobile, Telegram Premium, Delta Force and Arena Breakout by UID. Pay with Click, Payme, Uzum or USDT, prices in som, credited in minutes, no password handover — yupay."
+    },
+    "eyebrow": "Catalog",
+    "title": "Game & subscription top-ups in Uzbekistan",
+    "subtitle": "Pick a service, enter the UID — and get credited in minutes. Pay with Click, Payme, Uzum or USDT, prices in som. No password handover.",
+    "payWith": "Pay with",
+    "maintenance": "Maintenance",
+    "empty": "Games will appear here soon.",
+    "filterAll": "All",
+    "filterGames": "Games",
+    "filterWallets": "Wallets",
+    "filterSubscriptions": "Subscriptions",
+    "popular": "Popular",
+    "from": "from",
+    "etaUnit": "min",
+    "monthsShort": "mo",
+    "breadcrumbHome": "Home",
+    "breadcrumbStore": "Catalog",
+    "aboutTitle": "About",
+    "packsTitle": "Choose a pack",
+    "payTitle": "Payment & delivery",
+    "ctaNote": "Checkout happens in the Telegram bot — no signup, pay with Click, Payme, Uzum or USDT. Auto-credit.",
+    "securityNote": "Credited by your public UID — no account password required.",
+    "detailsTitle": "Where to credit",
+    "summaryTitle": "Your order",
+    "selectPack": "Pick a pack above",
+    "emailLabel": "Email for the receipt",
+    "emailPlaceholder": "you@example.com",
+    "paymentTitle": "Payment method",
+    "pay": "Pay",
+    "payError": "Couldn't create the order. Try again or contact support.",
+    "successTitle": "Order created",
+    "successNote": "Continue to payment to finish. The receipt will be emailed to you.",
+    "goToPay": "Continue to payment",
+    "orderLabel": "Order",
+    "commissionChip": "Commission from {pct}%",
+    "etaChip": "Credited in {eta} min",
+    "securityChip": "No password",
+    "brandMetaTitle": "{name} top-up in Uzbekistan | yupay",
+    "brandMetaDescription": "Top up {name} by UID in minutes. Prices in som, pay with Click, Payme, Uzum or USDT. No password handover — yupay.",
+    "brands": {
+      "steam": {
+        "about": "Steam wallet top-ups for CIS, Kazakhstan and Turkey accounts. Funds land on your balance in minutes — no login or password handover, pay in som."
+      },
+      "pubg-mobile": {
+        "about": "UC for PUBG Mobile by player ID. Credited in minutes without logging in — just your public UID. Pay with Click, Payme, Uzum or USDT."
+      },
+      "telegram-premium": {
+        "about": "Telegram Premium for 1–12 months by @username. Activated in minutes, pay in som — no password handover."
+      },
+      "delta-force": {
+        "about": "Delta Force in-game currency by player ID. Fast credit in som, no password handover."
+      },
+      "arena-breakout": {
+        "about": "Bonds for Arena Breakout by player ID. Credited in minutes, pay with Click, Payme, Uzum or USDT."
+      }
+    }
+  },
+  "how": {
+    "eyebrow": "Flow",
+    "titleLine1": "From tap",
+    "titleLine2": "to game —",
+    "titleLine3": "1:47.",
+    "subtitle": "No signup, no verifications. Three steps and you're back in the lobby.",
+    "step1Title": "Pick a game",
+    "step1Sub": "Find your game in the catalog or via search — from Steam to Telegram Premium.",
+    "step2Title": "Enter UID and amount",
+    "step2Sub": "No password — just the public profile ID. Pick a pack and we show what lands after commission.",
+    "step3Title": "Pay and you're in",
+    "step3Sub": "Card, SBP or crypto. Auto-credit, email receipt, support whenever you need it."
+  },
+  "metrics": {
+    "eyebrow": "Numbers",
+    "title": "Numbers, not marketing.",
+    "updatedLabel": "Updated",
+    "totalOrdersLabel": "Successful top-ups",
+    "totalOrdersNote": "all-time",
+    "avgTimeLabel": "Average time",
+    "avgTimeNote": "from payment to playable",
+    "supportReplyLabel": "Support reply",
+    "supportReplyNote": "median chat response"
+  },
+  "reviews": {
+    "eyebrow": "Reviews",
+    "titleLine1": "What gamers",
+    "titleLine2": "are saying.",
+    "score": "4.9/5",
+    "reviewCount": "8,247 reviews",
+    "alex": {
+      "quote": "Topped up Steam KZ — money landed in a minute, commission really is lower than the others. Tried plenty of these sites; these guys are the cleanest.",
+      "name": "Alex_Pro",
+      "meta": "Steam · 2 years with us"
+    },
+    "mage": {
+      "quote": "Crystals showed up instantly. Love that you can top up by UID without logging in.",
+      "name": "MageGamer",
+      "meta": "Genshin Impact"
+    },
+    "vova": {
+      "quote": "Had a question about crypto payment — support replied in 30 seconds. Respect.",
+      "name": "Vova_CS2",
+      "meta": "Valorant · Steam"
+    },
+    "chicken": {
+      "quote": "UC dropped in 47 seconds. No hassle, no mess.",
+      "name": "iLoveChicken",
+      "meta": "PUBG Mobile"
+    },
+    "zero": {
+      "quote": "Third renewal through yupay. Steady, no surprises.",
+      "name": "ZeroTwo",
+      "meta": "Telegram Premium"
+    }
+  },
+  "showcase": {
+    "eyebrow": "The app",
+    "titleLine1": "Not a site for show —",
+    "titleLine2": "a live app.",
+    "subtitle": "All of yupay lives right inside Telegram. Catalog, payment and wallet — no install, no signup, in the same chat you hang out with friends.",
+    "f1Title": "A couple of taps",
+    "f1Sub": "Pick a game, enter the UID, pay — the top-up lands in minutes. No password handover.",
+    "f2Title": "Telegram-native",
+    "f2Sub": "Opens from the bot as a Mini App. Dark theme, native gestures, nothing extra.",
+    "f3Title": "Wallet & cashback",
+    "f3Sub": "Keep a balance, stack cashback on every top-up and pay in one tap next time.",
+    "cta": "Open in Telegram",
+    "labelCatalog": "Catalog",
+    "labelTopup": "Top-up",
+    "labelSettings": "Settings"
+  },
+  "cta": {
+    "titleLine1": "Ready to get",
+    "titleLine2": "back in the game?",
+    "subtitle": "Instant delivery and 24/7 support. First Steam top-up — zero commission.",
+    "button": "Open catalog",
+    "offerCaption": "commission on your first Steam"
+  },
+  "footer": {
+    "tagline": "Instant top-ups for games and subscriptions. No passwords, UID-only. Live since 2024.",
+    "productTitle": "Product",
+    "helpTitle": "Help",
+    "legalTitle": "Legal",
+    "usTitle": "Us",
+    "prices": "Pricing",
+    "refunds": "Refunds",
+    "status": "Status page",
+    "terms": "Terms",
+    "privacy": "Privacy",
+    "imprint": "Imprint",
+    "careers": "Careers",
+    "copyright": "© {year} yupay",
+    "disclaimer": "Not affiliated with Valve, Tencent, Riot or miHoYo.",
+    "madeBy": "Made by"
+  },
+  "legal": {
+    "home": "Home",
+    "updatedLabel": "Updated:",
+    "backToStore": "← Back to catalog",
+    "terms": {
+      "title": "Terms of Service",
+      "updated": "June 2026",
+      "intro": "By using yupay you agree to these terms. yupay is an independent digital top-up service and is not affiliated with Valve, Tencent, Riot, miHoYo or other rights holders.",
+      "sections": [
+        {
+          "h": "What we sell",
+          "p": "yupay resells digital goods: in-game currency, wallet top-ups and subscriptions. Credit is delivered to the public UID or account you provide — we never ask for your account password."
+        },
+        {
+          "h": "Orders and payment",
+          "p": "Orders are placed without signup. Pay by card, Click, Payme, Uzum or USDT. Price and commission are locked at payment time; you see the net amount to be credited before you pay."
+        },
+        {
+          "h": "Fulfilment",
+          "p": "Most orders are fulfilled automatically within minutes. You are responsible for the accuracy of the UID and account details; a credit sent to a wrong UID is non-refundable."
+        },
+        {
+          "h": "Liability",
+          "p": "yupay is not responsible for bans or restrictions imposed by game platforms. The service is provided \"as is\"."
+        },
+        {
+          "h": "Contact",
+          "p": "Questions — support on Telegram: @yupay_support."
+        }
+      ]
+    },
+    "privacy": {
+      "title": "Privacy Policy",
+      "updated": "June 2026",
+      "intro": "We collect the minimum data needed to fulfil your order and never sell it to third parties.",
+      "sections": [
+        {
+          "h": "What we collect",
+          "p": "Email (for the receipt and order status), the game UID or account identifier, and payment data. Card details are handled by the payment provider — we do not store them."
+        },
+        {
+          "h": "How we use it",
+          "p": "Only to fulfil the order, provide support and send the receipt. We do not share data for advertising."
+        },
+        {
+          "h": "Sharing",
+          "p": "Data is shared with suppliers and payment services only to the extent needed to fulfil the order."
+        },
+        {
+          "h": "Your rights",
+          "p": "You can request deletion of your data by contacting support."
+        },
+        {
+          "h": "Cookies",
+          "p": "The site uses technical cookies for the interface and basic analytics."
+        }
+      ]
+    },
+    "refunds": {
+      "title": "Refunds",
+      "updated": "June 2026",
+      "intro": "Refunds on digital goods are limited by their nature.",
+      "sections": [
+        {
+          "h": "When a refund is possible",
+          "p": "If an order was not fulfilled (goods not credited) and cannot be fulfilled, we refund the money or credit it to your yupay wallet."
+        },
+        {
+          "h": "When a refund is not possible",
+          "p": "After a successful credit, or if the UID or account were entered incorrectly through your own fault."
+        },
+        {
+          "h": "Timing",
+          "p": "We decide on a request within 24 hours. A refund to the original payment method follows the payment provider's timelines."
+        },
+        {
+          "h": "How to request",
+          "p": "Contact support on Telegram and include your order number."
+        }
+      ]
+    },
+    "imprint": {
+      "title": "Imprint",
+      "updated": "June 2026",
+      "intro": "Operator of the yupay service.",
+      "sections": [
+        {
+          "h": "Operator",
+          "p": "yupay — a top-up service for games and digital subscriptions for Uzbekistan and the CIS."
+        },
+        {
+          "h": "Contact",
+          "p": "Support: Telegram @yupay_support. Email: hello@yupay.uz."
+        },
+        {
+          "h": "Legal status",
+          "p": "Independent reseller of digital goods. Not affiliated with Valve, Tencent, Riot, miHoYo or other rights holders. Full legal details are available on request."
+        }
+      ]
+    }
+  }
+}

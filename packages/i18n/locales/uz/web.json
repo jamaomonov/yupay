@@ -1,0 +1,332 @@
+{
+  "common": {
+    "localeRu": "Русский",
+    "localeEn": "English",
+    "localeUz": "Oʻzbekcha"
+  },
+  "notFound": {
+    "title": "Sahifa topilmadi",
+    "subtitle": "Bu sahifa hali yoʻq yoki ishlanmoqda. Bosh sahifaga qayting va katalogni oching.",
+    "cta": "Bosh sahifa"
+  },
+  "meta": {
+    "homeTitle": "yupay — oʻyinlar va obunalarni bir lahzada toʻldirish",
+    "homeDescription": "Steam, PUBG Mobile, Telegram Premium, Genshin, Valorant va boshqa oʻyinlar. Parol kerak emas — UID orqali 2 daqiqada toʻldiriladi. Karta, SBP yoki USDT bilan toʻlang."
+  },
+  "nav": {
+    "store": "Katalog",
+    "how": "Qanday ishlaydi",
+    "reviews": "Sharhlar",
+    "support": "Yordam",
+    "topUp": "Toʻldirish"
+  },
+  "hero": {
+    "badge": "Oʻyin va obunalar · 1 markaz",
+    "titleLine1": "Barcha donat",
+    "titleLine2": "bir joyda.",
+    "subtitle": "Steam, mobil oʻyinlar va obunalar — parol kerak emas. UID orqali 2 daqiqada, komissiya 3% dan boshlanadi (Steam — 4% dan).",
+    "ctaPrimary": "Katalogni ochish",
+    "ctaSecondary": "Qanday ishlaydi",
+    "trustCount": "100 482",
+    "trustCountLabel": "muvaffaqiyatli toʻldirish",
+    "rating": "4.9 / 5 · 8 247 sharh"
+  },
+  "catalog": {
+    "eyebrow": "Katalog",
+    "titleLine1": "Barcha oʻyinlar.",
+    "titleLine2": "Bitta chek.",
+    "viewAll": "Toʻliq katalog",
+    "commission": "Komissiya",
+    "speed": "Tezlik",
+    "rating": "Reyting",
+    "steamDesc": "MDH, Qozogʻiston, Turkiya. 2 daqiqada yetkazib berish, komissiya 4% dan, parolsiz.",
+    "cards": {
+      "steam": {
+        "name": "Steam\nHamyon",
+        "eyebrow": "Valve · MDH / KZ / TR",
+        "tag": "HIT",
+        "statCommission": "4% dan",
+        "statSpeed": "2 daq",
+        "statRating": "★ 5.0"
+      },
+      "pubg-mobile": {
+        "name": "PUBG Mobile",
+        "eyebrow": "Tencent · UC",
+        "tag": "YANGI"
+      },
+      "telegram-premium": {
+        "name": "Telegram\nPremium",
+        "eyebrow": "Telegram FZ",
+        "tag": "−10%"
+      },
+      "delta-force": {
+        "name": "Delta Force",
+        "eyebrow": "Garena · koinlar",
+        "tag": "TOP"
+      },
+      "arena-breakout": {
+        "name": "Arena Breakout",
+        "eyebrow": "Tencent · bondlar",
+        "tag": "TEZ"
+      }
+    }
+  },
+  "store": {
+    "meta": {
+      "title": "Oʻzbekistonda oʻyin va obunalarni toʻldirish",
+      "description": "Steam, PUBG Mobile, Telegram Premium, Delta Force va Arena Breakout ni UID orqali toʻldiring. Click, Payme, Uzum yoki USDT bilan toʻlang, narxlar soʻmda, bir necha daqiqada tushadi, parolsiz — yupay."
+    },
+    "eyebrow": "Katalog",
+    "title": "Oʻzbekistonda oʻyin va obunalarni toʻldirish",
+    "subtitle": "Xizmatni tanlang, UID kiriting — va bir necha daqiqada hisobingizga tushadi. Click, Payme, Uzum yoki USDT bilan toʻlang, narxlar soʻmda. Parolsiz.",
+    "payWith": "Toʻlov",
+    "maintenance": "Texnik ishlar",
+    "empty": "Tez orada bu yerda oʻyinlar paydo boʻladi.",
+    "filterAll": "Hammasi",
+    "filterGames": "Oʻyinlar",
+    "filterWallets": "Hamyonlar",
+    "filterSubscriptions": "Obunalar",
+    "popular": "Mashhur",
+    "from": "dan",
+    "etaUnit": "daq",
+    "monthsShort": "oy",
+    "breadcrumbHome": "Bosh sahifa",
+    "breadcrumbStore": "Katalog",
+    "aboutTitle": "Xizmat haqida",
+    "packsTitle": "Paketni tanlang",
+    "payTitle": "Toʻlov va yetkazib berish",
+    "ctaNote": "Rasmiylashtirish Telegram-botda — roʻyxatdan oʻtmasdan, Click, Payme, Uzum yoki USDT bilan toʻlang. Avtomatik tushadi.",
+    "securityNote": "Ommaviy UID orqali tushadi — akkaunt paroli kerak emas.",
+    "detailsTitle": "Qayerga tushirish",
+    "summaryTitle": "Sizning buyurtmangiz",
+    "selectPack": "Yuqoridan paket tanlang",
+    "emailLabel": "Chek uchun email",
+    "emailPlaceholder": "you@example.com",
+    "paymentTitle": "Toʻlov usuli",
+    "pay": "Toʻlash",
+    "payError": "Buyurtma yaratilmadi. Qayta urinib koʻring yoki qoʻllab-quvvatlashga yozing.",
+    "successTitle": "Buyurtma yaratildi",
+    "successNote": "Toʻlovni yakunlash uchun davom eting. Chek emailingizga keladi.",
+    "goToPay": "Toʻlovga oʻtish",
+    "orderLabel": "Buyurtma",
+    "commissionChip": "Komissiya {pct}% dan",
+    "etaChip": "{eta} daqiqada",
+    "securityChip": "Parolsiz",
+    "brandMetaTitle": "{name} — Oʻzbekistonda toʻldirish | yupay",
+    "brandMetaDescription": "{name} ni UID orqali bir necha daqiqada toʻldiring. Narxlar soʻmda, Click, Payme, Uzum yoki USDT bilan toʻlang. Parolsiz — yupay.",
+    "brands": {
+      "steam": {
+        "about": "MDH, Qozogʻiston va Turkiya akkauntlari uchun Steam hamyonini toʻldirish. Pul bir necha daqiqada balansga tushadi — login va parolsiz, soʻmda toʻlov."
+      },
+      "pubg-mobile": {
+        "about": "PUBG Mobile uchun UC oʻyinchi IDsi orqali. Akkauntga kirmasdan bir necha daqiqada tushadi — faqat ommaviy UID. Click, Payme, Uzum yoki USDT bilan toʻlang."
+      },
+      "telegram-premium": {
+        "about": "Telegram Premium 1–12 oyga @username orqali. Bir necha daqiqada faollashadi, soʻmda toʻlov — parolsiz."
+      },
+      "delta-force": {
+        "about": "Delta Force ichki oʻyin valyutasi oʻyinchi IDsi orqali. Soʻmda tez tushadi, parolsiz."
+      },
+      "arena-breakout": {
+        "about": "Arena Breakout uchun Bonds oʻyinchi IDsi orqali. Bir necha daqiqada tushadi, Click, Payme, Uzum yoki USDT bilan toʻlang."
+      }
+    }
+  },
+  "how": {
+    "eyebrow": "Flow",
+    "titleLine1": "Bosishdan",
+    "titleLine2": "oʻyingacha —",
+    "titleLine3": "1:47.",
+    "subtitle": "Roʻyxatdan oʻtish va tekshiruvlar yoʻq. Uch qadam — va oʻynay olasiz.",
+    "step1Title": "Oʻyinni tanlang",
+    "step1Sub": "Katalogdan yoki qidiruv orqali oʻyinni toping — Steam dan Telegram Premium gacha.",
+    "step2Title": "UID va summani kiriting",
+    "step2Sub": "Parolsiz — faqat profilning ochiq IDsi. Paketni tanlang, komissiyadan keyin nima keladiganini koʻrsatamiz.",
+    "step3Title": "Toʻlov va tayyor",
+    "step3Sub": "Karta, SBP yoki kripto. Avtomatik tushadi, chek emailga, yordam — istalgan paytda."
+  },
+  "metrics": {
+    "eyebrow": "Numbers",
+    "title": "Raqamlar, marketing emas.",
+    "updatedLabel": "Yangilangan",
+    "totalOrdersLabel": "Muvaffaqiyatli toʻldirish",
+    "totalOrdersNote": "umumiy",
+    "avgTimeLabel": "Oʻrtacha vaqt",
+    "avgTimeNote": "toʻlovdan oʻyingacha",
+    "supportReplyLabel": "Yordam javobi",
+    "supportReplyNote": "chatda oʻrtacha"
+  },
+  "reviews": {
+    "eyebrow": "Sharhlar",
+    "titleLine1": "Geymerlar",
+    "titleLine2": "nima deyishadi.",
+    "score": "4.9/5",
+    "reviewCount": "8 247 sharh",
+    "alex": {
+      "quote": "Steam KZ ni toʻldirdim — pul bir daqiqada keldi, komissiya rostan boshqalardan past. Koʻp shunday saytlarni sinab koʻrdim — bu yerda eng oddiy ishlaydi.",
+      "name": "Alex_Pro",
+      "meta": "Steam · 2 yildan beri"
+    },
+    "mage": {
+      "quote": "Kristallar bir lahzada keldi! UID orqali toʻldirish — akkauntga kirmaslik qulay.",
+      "name": "MageGamer",
+      "meta": "Genshin Impact"
+    },
+    "vova": {
+      "quote": "Kripto toʻlov haqida savol bor edi — yordam 30 soniyada javob berdi. Respect.",
+      "name": "Vova_CS2",
+      "meta": "Valorant · Steam"
+    },
+    "chicken": {
+      "quote": "UC 47 soniyada tushdi. Hammasi toza, muammosiz.",
+      "name": "iLoveChicken",
+      "meta": "PUBG Mobile"
+    },
+    "zero": {
+      "quote": "Yupay orqali uchinchi marta uzaytirdim. Barqaror, kutilmagan holatsiz.",
+      "name": "ZeroTwo",
+      "meta": "Telegram Premium"
+    }
+  },
+  "showcase": {
+    "eyebrow": "Ilova",
+    "titleLine1": "Shunchaki sayt emas —",
+    "titleLine2": "tirik ilova.",
+    "subtitle": "Butun yupay toʻgʻridan-toʻgʻri Telegram ichida. Katalog, toʻlov va hamyon — oʻrnatishsiz va roʻyxatdan oʻtishsiz, doʻstlaringiz bilan turgan chatning oʻzida.",
+    "f1Title": "Bir necha bosishda",
+    "f1Sub": "Oʻyinni tanladingiz, UID kiritdingiz, toʻladingiz — donat bir necha daqiqada keladi. Parolsiz.",
+    "f2Title": "Telegram uchun moslangan",
+    "f2Sub": "Botdan Mini App sifatida ochiladi. Qora mavzu, tabiiy imo-ishoralar, ortiqcha narsa yoʻq.",
+    "f3Title": "Hamyon va keshbek",
+    "f3Sub": "Balansni saqlang, har toʻldirishdan keshbek yigʻing va keyingi safar bir bosishda toʻlang.",
+    "cta": "Telegramda ochish",
+    "labelCatalog": "Katalog",
+    "labelTopup": "Toʻldirish",
+    "labelSettings": "Sozlamalar"
+  },
+  "cta": {
+    "titleLine1": "Oʻyinga",
+    "titleLine2": "qaytishga tayyormisiz?",
+    "subtitle": "Bir lahzada yetkazib berish va 24/7 yordam. Birinchi Steam toʻldirish — komissiyasiz.",
+    "button": "Katalogni ochish",
+    "offerCaption": "birinchi Steamdagi komissiya"
+  },
+  "footer": {
+    "tagline": "Oʻyinlar va obunalar uchun bir lahzali toʻldirish. Parol yoʻq, faqat UID. 2024 yildan beri ishlaymiz.",
+    "productTitle": "Mahsulot",
+    "helpTitle": "Yordam",
+    "legalTitle": "Yuridik",
+    "usTitle": "Biz",
+    "prices": "Narxlar",
+    "refunds": "Qaytarishlar",
+    "status": "Tizim holati",
+    "terms": "Shartlar",
+    "privacy": "Maxfiylik",
+    "imprint": "Rekvizitlar",
+    "careers": "Karyera",
+    "copyright": "© {year} yupay",
+    "disclaimer": "Valve, Tencent, Riot yoki miHoYo bilan bogʻliq emas.",
+    "madeBy": "Made by"
+  },
+  "legal": {
+    "home": "Bosh sahifa",
+    "updatedLabel": "Yangilangan:",
+    "backToStore": "← Katalogga",
+    "terms": {
+      "title": "Foydalanish shartlari",
+      "updated": "2026-yil iyun",
+      "intro": "yupay dan foydalanib, ushbu shartlarga rozilik bildirasiz. yupay — mustaqil raqamli toʻldirish xizmati va Valve, Tencent, Riot, miHoYo hamda boshqa huquq egalari bilan bogʻliq emas.",
+      "sections": [
+        {
+          "h": "Nimani sotamiz",
+          "p": "yupay raqamli mahsulotlarni qayta sotadi: ichki oʻyin valyutasi, hamyon toʻldirish va obunalar. Tushirish siz koʻrsatgan ommaviy UID yoki akkauntga amalga oshiriladi — akkaunt parolini soʻramaymiz."
+        },
+        {
+          "h": "Buyurtma va toʻlov",
+          "p": "Buyurtma roʻyxatdan oʻtmasdan rasmiylashtiriladi. Toʻlov — karta, Click, Payme, Uzum yoki USDT. Narx va komissiya toʻlov paytida qatʼiylanadi; tushadigan yakuniy summani toʻlovdan oldin koʻrasiz."
+        },
+        {
+          "h": "Bajarilishi",
+          "p": "Aksariyat buyurtmalar bir necha daqiqada avtomatik bajariladi. UID va akkaunt maʼlumotlari toʻgʻriligi uchun siz javobgarsiz; notoʻgʻri UID ga tushirilgan mablagʻ qaytarilmaydi."
+        },
+        {
+          "h": "Javobgarlik",
+          "p": "yupay oʻyin platformalari tomonidagi bloklash va cheklovlar uchun javob bermaydi. Xizmat «boricha» taqdim etiladi."
+        },
+        {
+          "h": "Aloqa",
+          "p": "Savollar — Telegramdagi qoʻllab-quvvatlashga: @yupay_support."
+        }
+      ]
+    },
+    "privacy": {
+      "title": "Maxfiylik siyosati",
+      "updated": "2026-yil iyun",
+      "intro": "Buyurtmani bajarish uchun zarur boʻlgan minimal maʼlumotni yigʻamiz va uni uchinchi shaxslarga sotmaymiz.",
+      "sections": [
+        {
+          "h": "Qanday maʼlumot yigʻamiz",
+          "p": "Email (chek va buyurtma holati uchun), oʻyin UID yoki akkaunt identifikatori va toʻlov maʼlumotlari. Karta rekvizitlarini toʻlov provayderi qayta ishlaydi — biz ularni saqlamaymiz."
+        },
+        {
+          "h": "Qanday foydalanamiz",
+          "p": "Faqat buyurtmani bajarish, qoʻllab-quvvatlash va chek yuborish uchun. Maʼlumotlarni reklama maqsadida bermaymiz."
+        },
+        {
+          "h": "Uzatish",
+          "p": "Maʼlumotlar buyurtmani bajarish uchun zarur hajmda yetkazib beruvchilar va toʻlov xizmatlariga uzatiladi."
+        },
+        {
+          "h": "Sizning huquqlaringiz",
+          "p": "Qoʻllab-quvvatlashga yozib, maʼlumotlaringizni oʻchirishni soʻrashingiz mumkin."
+        },
+        {
+          "h": "Cookie",
+          "p": "Sayt interfeys ishlashi va asosiy tahlil uchun texnik cookie-fayllardan foydalanadi."
+        }
+      ]
+    },
+    "refunds": {
+      "title": "Qaytarishlar",
+      "updated": "2026-yil iyun",
+      "intro": "Raqamli mahsulotlar boʻyicha qaytarish imkoniyati ularning tabiati sababli cheklangan.",
+      "sections": [
+        {
+          "h": "Qachon qaytarish mumkin",
+          "p": "Agar buyurtma bajarilmagan boʻlsa (mahsulot tushmagan) va bajarib boʻlmasa, mablagʻni qaytaramiz yoki yupay hamyoniga oʻtkazamiz."
+        },
+        {
+          "h": "Qachon qaytarish mumkin emas",
+          "p": "Muvaffaqiyatli tushirilgandan soʻng, shuningdek UID yoki akkaunt sizning aybingiz bilan notoʻgʻri kiritilgan boʻlsa."
+        },
+        {
+          "h": "Muddatlar",
+          "p": "Murojaat boʻyicha qaror — 24 soat ichida. Asl toʻlov usuliga qaytarish — toʻlov provayderi muddatlari boʻyicha."
+        },
+        {
+          "h": "Qanday soʻrash mumkin",
+          "p": "Telegramdagi qoʻllab-quvvatlashga yozing va buyurtma raqamini koʻrsating."
+        }
+      ]
+    },
+    "imprint": {
+      "title": "Rekvizitlar",
+      "updated": "2026-yil iyun",
+      "intro": "yupay xizmati operatori.",
+      "sections": [
+        {
+          "h": "Operator",
+          "p": "yupay — Oʻzbekiston va MDH uchun oʻyin va raqamli obunalarni toʻldirish xizmati."
+        },
+        {
+          "h": "Aloqa",
+          "p": "Qoʻllab-quvvatlash: Telegram @yupay_support. Email: hello@yupay.uz."
+        },
+        {
+          "h": "Huquqiy holat",
+          "p": "Raqamli mahsulotlarning mustaqil reselleri. Valve, Tencent, Riot, miHoYo va boshqa huquq egalari bilan bogʻliq emas. Toʻliq yuridik rekvizitlar soʻrov boʻyicha taqdim etiladi."
+        }
+      ]
+    }
+  }
+}
