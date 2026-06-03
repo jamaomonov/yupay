@@ -62,6 +62,11 @@ def test_valid_new_brand_payload() -> None:
     assert payload.denominations[0].sku_code == "g2b-pubg-60"
 
 
+def test_invalid_brand_slug_rejected() -> None:
+    with pytest.raises(PydValidationError):
+        NewBrandIn(slug="Bad Slug!", category_id="cat-1", name="X")
+
+
 def test_denominations_must_be_non_empty() -> None:
     with pytest.raises(PydValidationError):
         GameImportIn(

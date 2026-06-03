@@ -13,6 +13,10 @@ from yupay.modules.catalog.schemas import FormField
 MappingKind = Literal["voucher", "game"]
 CatalogKind = Literal["voucher", "game", "game_denom"]
 
+# Mirror catalog.admin_schemas._SLUG_PATTERN so a bad slug fails fast at import
+# time with a clear 422 instead of deep inside create_brand/create_product.
+_SLUG_PATTERN = r"^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$"
+
 
 class SupplierMappingIn(BaseModel):
     """Payload for upserting a SKU↔supplier mapping."""
@@ -187,7 +191,7 @@ class NewBrandIn(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    slug: str = Field(min_length=3, max_length=64)
+    slug: str = Field(pattern=_SLUG_PATTERN)
     category_id: str = Field(min_length=1)
     name: str = Field(min_length=1, max_length=255)
     logo_url: str | None = Field(default=None, max_length=1024)
@@ -200,7 +204,7 @@ class ProductImportIn(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    slug: str = Field(min_length=3, max_length=128)
+    slug: str = Field(pattern=_SLUG_PATTERN)
     name: str = Field(min_length=1, max_length=255)
     required_fields: list[FormField] = Field(default_factory=list)
     image_url: str | None = Field(default=None, max_length=1024)
