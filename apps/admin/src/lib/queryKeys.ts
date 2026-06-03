@@ -129,6 +129,8 @@ export const qk = {
     ["admin", "integrations", "g2b", "games", gameCode, "catalogue"] as const,
   g2bGameFields: (gameCode: string) =>
     ["admin", "integrations", "g2b", "games", gameCode, "fields"] as const,
+  gameDenoms: (code: string) => ["admin", "integrations", "g2b", "denoms", code] as const,
+  gameFields: (code: string) => ["admin", "integrations", "g2b", "fields", code] as const,
   skuPriceHistory: (skuId: string) => ["admin", "integrations", "price-history", skuId] as const,
 
   // payments

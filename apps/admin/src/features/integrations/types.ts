@@ -151,3 +151,62 @@ export type KnownSupplier = (typeof KNOWN_SUPPLIERS)[number];
 export const SUPPLIER_LABELS: Record<KnownSupplier, string> = {
   g2b: "G2Bulk",
 };
+
+export interface GameImportDenom {
+  catalogue_name: string;
+  denomination: string;
+  sku_code: string;
+  cost_usdt: string;
+  price_usd_override?: string;
+  region?: string;
+  quantity: number;
+}
+
+export interface GameImportPayload {
+  game_code: string;
+  target: "new_brand" | "existing_brand";
+  brand_id?: string;
+  new_brand?: {
+    slug: string;
+    category_id: string;
+    name: string;
+    logo_url?: string;
+    hero_image_url?: string;
+    accent_color?: string;
+  };
+  product: {
+    slug: string;
+    name: string;
+    required_fields: FormFieldDto[];
+    image_url?: string;
+  };
+  margin_percent: string;
+  denominations: GameImportDenom[];
+}
+
+export interface GameImportResult {
+  brand_id: string;
+  product_id: string;
+  created_skus: number;
+  created_mappings: number;
+  skipped: string[];
+}
+
+/** Minimal FormField shape we send to the API (matches catalog FormField). */
+export interface FormFieldDto {
+  key: string;
+  label: { ru: string; en: string; uz: string };
+  type: "text";
+  required: boolean;
+}
+
+/** Best-effort ru/en/uz labels for common G2B field names; fallback to the raw key. */
+export function g2bFieldLabel(key: string): { ru: string; en: string; uz: string } {
+  const map: Record<string, { ru: string; en: string; uz: string }> = {
+    userid: { ru: "ID игрока", en: "Player ID", uz: "Oʻyinchi ID" },
+    zoneid: { ru: "ID сервера", en: "Server ID", uz: "Server ID" },
+    server: { ru: "Сервер", en: "Server", uz: "Server" },
+    charname: { ru: "Имя персонажа", en: "Character name", uz: "Belgi nomi" },
+  };
+  return map[key.toLowerCase()] ?? { ru: key, en: key, uz: key };
+}
