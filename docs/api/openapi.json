@@ -2283,6 +2283,86 @@
         "title": "DeliveryOut",
         "type": "object"
       },
+      "DenomImportIn": {
+        "additionalProperties": false,
+        "description": "One supplier denomination to import as a SKU + mapping.",
+        "properties": {
+          "catalogue_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Catalogue Name",
+            "type": "string"
+          },
+          "cost_usdt": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Cost Usdt"
+          },
+          "denomination": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Denomination",
+            "type": "string"
+          },
+          "price_usd_override": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Usd Override"
+          },
+          "quantity": {
+            "default": 1,
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "maxLength": 8,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region"
+          },
+          "sku_code": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Sku Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "catalogue_name",
+          "denomination",
+          "sku_code",
+          "cost_usdt"
+        ],
+        "title": "DenomImportIn",
+        "type": "object"
+      },
       "FormField": {
         "additionalProperties": false,
         "description": "One field of a product's form schema.",
@@ -2702,6 +2782,118 @@
         "title": "GameFieldsOut",
         "type": "object"
       },
+      "GameImportIn": {
+        "additionalProperties": false,
+        "description": "Payload for POST /admin/integrations/g2b/import.",
+        "properties": {
+          "brand_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
+          "denominations": {
+            "items": {
+              "$ref": "#/components/schemas/DenomImportIn"
+            },
+            "minItems": 1,
+            "title": "Denominations",
+            "type": "array"
+          },
+          "game_code": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Game Code",
+            "type": "string"
+          },
+          "margin_percent": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Margin Percent"
+          },
+          "new_brand": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NewBrandIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "product": {
+            "$ref": "#/components/schemas/ProductImportIn"
+          },
+          "target": {
+            "enum": [
+              "new_brand",
+              "existing_brand"
+            ],
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "game_code",
+          "target",
+          "product",
+          "margin_percent",
+          "denominations"
+        ],
+        "title": "GameImportIn",
+        "type": "object"
+      },
+      "GameImportOut": {
+        "description": "Result of a game import.",
+        "properties": {
+          "brand_id": {
+            "title": "Brand Id",
+            "type": "string"
+          },
+          "created_mappings": {
+            "title": "Created Mappings",
+            "type": "integer"
+          },
+          "created_skus": {
+            "title": "Created Skus",
+            "type": "integer"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "skipped": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Skipped",
+            "type": "array"
+          }
+        },
+        "required": [
+          "brand_id",
+          "product_id",
+          "created_skus",
+          "created_mappings",
+          "skipped"
+        ],
+        "title": "GameImportOut",
+        "type": "object"
+      },
       "GuestIn": {
         "additionalProperties": false,
         "description": "Body of ``POST /auth/guest``.",
@@ -2968,6 +3160,71 @@
           "created_at"
         ],
         "title": "MeOut",
+        "type": "object"
+      },
+      "NewBrandIn": {
+        "additionalProperties": false,
+        "description": "New brand to create when importing a game (target='new_brand').",
+        "properties": {
+          "accent_color": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accent Color"
+          },
+          "category_id": {
+            "minLength": 1,
+            "title": "Category Id",
+            "type": "string"
+          },
+          "hero_image_url": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hero Image Url"
+          },
+          "logo_url": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Url"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "pattern": "^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$",
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "category_id",
+          "name"
+        ],
+        "title": "NewBrandIn",
         "type": "object"
       },
       "OrderAdminListOut": {
@@ -4491,6 +4748,48 @@
           "skus"
         ],
         "title": "ProductDetailOut",
+        "type": "object"
+      },
+      "ProductImportIn": {
+        "additionalProperties": false,
+        "description": "The game-as-product to create under the brand.",
+        "properties": {
+          "image_url": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "required_fields": {
+            "items": {
+              "$ref": "#/components/schemas/FormField"
+            },
+            "title": "Required Fields",
+            "type": "array"
+          },
+          "slug": {
+            "pattern": "^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$",
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name"
+        ],
+        "title": "ProductImportIn",
         "type": "object"
       },
       "ProductListOut": {
@@ -8959,6 +9258,82 @@
           }
         },
         "summary": "Required fields the customer must enter for this game",
+        "tags": [
+          "admin:integrations"
+        ]
+      }
+    },
+    "/api/v1/admin/integrations/g2b/import": {
+      "post": {
+        "description": "Atomic import. Idempotency is structural \u2014 re-importing a denomination\nwhose ``sku_code`` already exists skips it (reported in ``skipped``); the\n``Idempotency-Key`` header is accepted for client convenience and logged.\n\nErrors propagate as the module's standard mapping: duplicate brand/product\nslug -> 409, unknown brand_id/category_id -> 404, bad price/payload -> 422.",
+        "operationId": "import_g2b_game_api_v1_admin_integrations_g2b_import_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GameImportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameImportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import a G2B game as a Brand + Product + SKUs + mappings",
         "tags": [
           "admin:integrations"
         ]
