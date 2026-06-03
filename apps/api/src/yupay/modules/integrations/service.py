@@ -22,6 +22,10 @@ from yupay.modules.integrations.models import SkuSupplierMapping, SupplierCatalo
 MappingKind = Literal["voucher", "game"]
 CatalogKind = Literal["voucher", "game", "game_denom"]
 
+# Locales every catalog entity carries a translation for. Typed so the import
+# helper below can feed them straight into ``TranslationIn(locale=...)``.
+_LOCALES: tuple[Literal["ru", "en", "uz"], ...] = ("ru", "en", "uz")
+
 
 @dataclass(frozen=True)
 class MappingUpsert:
@@ -177,7 +181,7 @@ async def import_game(db: AsyncSession, payload: Any, *, admin_id: str) -> GameI
                 accent_color=nb.accent_color,
                 translations=[
                     catalog_schemas.TranslationIn(locale=loc, name=nb.name)
-                    for loc in ("ru", "en", "uz")
+                    for loc in _LOCALES
                 ],
             ),
         )
@@ -197,7 +201,7 @@ async def import_game(db: AsyncSession, payload: Any, *, admin_id: str) -> GameI
             required_fields=payload.product.required_fields,
             translations=[
                 catalog_schemas.TranslationIn(locale=loc, name=payload.product.name)
-                for loc in ("ru", "en", "uz")
+                for loc in _LOCALES
             ],
         ),
     )

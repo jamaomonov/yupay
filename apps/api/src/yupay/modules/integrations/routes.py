@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Header, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
@@ -31,6 +31,8 @@ from yupay.modules.integrations.schemas import (
     GameDenomListOut,
     GameDenomOut,
     GameFieldsOut,
+    GameImportIn,
+    GameImportOut,
     PriceHistoryOut,
     PricePointOut,
     PriceRefreshOut,
@@ -248,6 +250,43 @@ async def sync_g2b_catalog(
         vouchers_synced=vouchers,
         games_synced=games,
         error=error,
+    )
+
+
+@admin_router.post(
+    "/g2b/import",
+    response_model=GameImportOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Import a G2B game as a Brand + Product + SKUs + mappings",
+)
+async def import_g2b_game(
+    body: GameImportIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> GameImportOut:
+    """Atomic import. Idempotency is structural — re-importing a denomination
+    whose ``sku_code`` already exists skips it (reported in ``skipped``); the
+    ``Idempotency-Key`` header is accepted for client convenience and logged.
+
+    Errors propagate as the module's standard mapping: duplicate brand/product
+    slug -> 409, unknown brand_id/category_id -> 404, bad price/payload -> 422.
+    """
+    result = await svc.import_game(db, body, admin_id=admin.id)
+    await db.commit()
+    log.info(
+        "integrations.g2b.import",
+        game_code=body.game_code,
+        created_skus=result.created_skus,
+        skipped=len(result.skipped),
+        idempotency_key=idempotency_key,
+    )
+    return GameImportOut(
+        brand_id=result.brand_id,
+        product_id=result.product_id,
+        created_skus=result.created_skus,
+        created_mappings=result.created_mappings,
+        skipped=result.skipped,
     )
 
 

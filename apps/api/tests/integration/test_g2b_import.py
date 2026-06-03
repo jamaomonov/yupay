@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
+import time
 from decimal import Decimal
+from urllib.parse import urlencode
 
 import pytest
-from sqlalchemy import select
+from httpx import AsyncClient
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.errors import ConflictError
 from yupay.core.ids import new_id
@@ -18,6 +24,7 @@ from yupay.modules.integrations.schemas import (
     NewBrandIn,
     ProductImportIn,
 )
+from yupay.modules.users.models import TelegramLink, User
 
 pytestmark = pytest.mark.asyncio
 
@@ -125,3 +132,70 @@ async def test_duplicate_brand_slug_raises_conflict(db_session: AsyncSession) ->
             ),
             admin_id="a",
         )
+
+
+# ---------- HTTP endpoint ----------
+
+BOT_TOKEN = "123456:TEST"
+
+
+def _sign_init_data(fields: dict[str, str]) -> str:
+    pairs = sorted((k, v) for k, v in fields.items() if k != "hash")
+    data = "\n".join(f"{k}={v}" for k, v in pairs).encode("utf-8")
+    secret = hmac.new(b"WebAppData", BOT_TOKEN.encode("utf-8"), hashlib.sha256).digest()
+    signed = {**fields, "hash": hmac.new(secret, data, hashlib.sha256).hexdigest()}
+    return urlencode(signed)
+
+
+async def _login_admin(client: AsyncClient, db: AsyncSession, tg_id: int = 555) -> str:
+    user_json = json.dumps({"id": tg_id, "first_name": "A"}, separators=(",", ":"))
+    init = _sign_init_data({"user": user_json, "auth_date": str(int(time.time()))})
+    r = await client.post("/api/v1/auth/telegram/webapp", json={"init_data": init})
+    assert r.status_code == 200, r.text
+    user_id = (
+        await db.execute(
+            select(User.id)
+            .join(TelegramLink, TelegramLink.user_id == User.id)
+            .where(TelegramLink.tg_user_id == tg_id)
+        )
+    ).scalar_one()
+    await db.execute(update(User).where(User.id == user_id).values(roles=["admin"]))
+    await db.commit()
+    return r.json()["access_token"]
+
+
+async def test_import_endpoint_creates_brand(
+    db_session: AsyncSession, integration_client: AsyncClient
+) -> None:
+    cat = await _seed_category(db_session)
+    await db_session.commit()
+    token = await _login_admin(integration_client, db_session)
+    body = {
+        "game_code": "pubgmobile",
+        "target": "new_brand",
+        "new_brand": {"slug": "pubg-mobile", "category_id": cat, "name": "PUBG Mobile"},
+        "product": {"slug": "pubg-uc", "name": "PUBG UC"},
+        "margin_percent": "20",
+        "denominations": [
+            {
+                "catalogue_name": "60 UC",
+                "denomination": "60 UC",
+                "sku_code": "g2b-pubg-60",
+                "cost_usdt": "0.85",
+            }
+        ],
+    }
+    r = await integration_client.post(
+        "/api/v1/admin/integrations/g2b/import",
+        json=body,
+        headers={"Authorization": f"Bearer {token}", "Idempotency-Key": "imp-1"},
+    )
+    assert r.status_code == 201, r.text
+    data = r.json()
+    assert data["created_skus"] == 1
+    assert data["created_mappings"] == 1
+
+
+async def test_import_endpoint_requires_admin(integration_client: AsyncClient) -> None:
+    r = await integration_client.post("/api/v1/admin/integrations/g2b/import", json={})
+    assert r.status_code in (401, 403)
