@@ -1,11 +1,11 @@
 import { Star } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 
-type Review = {
+interface Review {
   key: string;
   initial: string;
   avBg: string;
-};
+}
 
 const REVIEWS: Review[] = [
   { key: "alex", initial: "A", avBg: "linear-gradient(135deg,#5BA8FF,#1B2838)" },

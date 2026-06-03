@@ -1,8 +1,8 @@
 "use client";
 
 import { Check, Globe } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
 import { usePathname, useRouter } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 
 import { routing, type AppLocale } from "@/i18n/routing";
@@ -28,7 +28,7 @@ export function LocaleSwitcher() {
       if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
+    return () => { document.removeEventListener("mousedown", onDown); };
   }, [open]);
 
   const pick = (next: AppLocale) => {
@@ -45,7 +45,7 @@ export function LocaleSwitcher() {
     <div ref={wrapRef} className="relative">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => { setOpen((v) => !v); }}
         aria-haspopup="listbox"
         aria-expanded={open}
         className="flex h-[38px] items-center gap-2 rounded-[10px] border border-border bg-muted px-3 text-xs font-semibold uppercase tracking-wider text-tx-mute transition hover:bg-card-2 hover:text-foreground"
@@ -64,7 +64,7 @@ export function LocaleSwitcher() {
               <li key={loc}>
                 <button
                   type="button"
-                  onClick={() => pick(loc)}
+                  onClick={() => { pick(loc); }}
                   role="option"
                   aria-selected={isActive}
                   className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition ${
