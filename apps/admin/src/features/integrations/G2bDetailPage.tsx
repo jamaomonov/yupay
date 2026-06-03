@@ -129,6 +129,13 @@ export function G2bDetailPage() {
           }
         />
         <ActionCard
+          icon={Database}
+          title="Просмотр каталога"
+          description="Откройте список игр поставщика и импортируйте игру как бренд с номиналами одним действием."
+          actionLabel="Перейти к каталогу"
+          to={`/integrations/${slug}/catalog`}
+        />
+        <ActionCard
           icon={TrendingUp}
           title="Цены маппингов"
           description="Прогнать все активные маппинги и обновить cost_usdt. То же делает воркер каждый час; кнопка для ручного запуска."

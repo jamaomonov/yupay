@@ -19,9 +19,11 @@ import { CustomerPage } from "@/features/customers/CustomerPage";
 import { InboxPage } from "@/features/fulfillment/InboxPage";
 import { FxPage } from "@/features/fx/FxPage";
 import { G2bDetailPage } from "@/features/integrations/G2bDetailPage";
+import { GameImportPage } from "@/features/integrations/GameImportPage";
 import { IntegrationsPage } from "@/features/integrations/IntegrationsPage";
 import { MappingEditPage } from "@/features/integrations/MappingEditPage";
 import { MappingsPage } from "@/features/integrations/MappingsPage";
+import { SupplierCatalogPage } from "@/features/integrations/SupplierCatalogPage";
 import { InventoryPage } from "@/features/inventory/InventoryPage";
 import { OrderDetailPage } from "@/features/orders/OrderDetailPage";
 import { OrdersListPage } from "@/features/orders/OrdersListPage";
@@ -78,6 +80,8 @@ export const router = createBrowserRouter([
             path: "/integrations/mappings/:supplier/:sku/edit",
             element: <MappingEditPage />,
           },
+          { path: "/integrations/:slug/catalog", element: <SupplierCatalogPage /> },
+          { path: "/integrations/:slug/catalog/:gameCode", element: <GameImportPage /> },
           { path: "/integrations/:slug", element: <G2bDetailPage /> },
           // Legacy stub route — operators may still have bookmarks.
           { path: "/settings", element: <Navigate to="/integrations" replace /> },
