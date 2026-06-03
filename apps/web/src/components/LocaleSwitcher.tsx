@@ -28,7 +28,9 @@ export function LocaleSwitcher() {
       if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener("mousedown", onDown);
-    return () => { document.removeEventListener("mousedown", onDown); };
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+    };
   }, [open]);
 
   const pick = (next: AppLocale) => {
@@ -45,10 +47,12 @@ export function LocaleSwitcher() {
     <div ref={wrapRef} className="relative">
       <button
         type="button"
-        onClick={() => { setOpen((v) => !v); }}
+        onClick={() => {
+          setOpen((v) => !v);
+        }}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="flex h-[38px] items-center gap-2 rounded-[10px] border border-border bg-muted px-3 text-xs font-semibold uppercase tracking-wider text-tx-mute transition hover:bg-card-2 hover:text-foreground"
+        className="border-border bg-muted text-tx-mute hover:bg-card-2 hover:text-foreground flex h-[38px] items-center gap-2 rounded-[10px] border px-3 text-xs font-semibold uppercase tracking-wider transition"
       >
         <Globe size={14} />
         {current}
@@ -56,7 +60,7 @@ export function LocaleSwitcher() {
       {open && (
         <ul
           role="listbox"
-          className="absolute right-0 top-11 z-40 min-w-[10rem] overflow-hidden rounded-xl border border-border bg-card/95 p-1 shadow-2xl backdrop-blur-xl"
+          className="border-border bg-card/95 absolute right-0 top-11 z-40 min-w-[10rem] overflow-hidden rounded-xl border p-1 shadow-2xl backdrop-blur-xl"
         >
           {routing.locales.map((loc) => {
             const isActive = loc === current;
@@ -64,7 +68,9 @@ export function LocaleSwitcher() {
               <li key={loc}>
                 <button
                   type="button"
-                  onClick={() => { pick(loc); }}
+                  onClick={() => {
+                    pick(loc);
+                  }}
                   role="option"
                   aria-selected={isActive}
                   className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition ${
