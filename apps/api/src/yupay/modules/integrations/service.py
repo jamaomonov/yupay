@@ -38,6 +38,17 @@ class MappingUpsert:
     updated_by: str | None
 
 
+@dataclass(frozen=True)
+class GameImportResult:
+    """Outcome of import_game."""
+
+    brand_id: str
+    product_id: str
+    created_skus: int
+    created_mappings: int
+    skipped: list[str]
+
+
 async def get_mapping(
     db: AsyncSession,
     *,
@@ -121,6 +132,130 @@ async def upsert_mapping(db: AsyncSession, payload: MappingUpsert) -> SkuSupplie
         row = existing
     await db.flush()
     return row
+
+
+def _sell_price(cost_usdt: Any, margin_percent: Any) -> Any:
+    """price = cost * (1 + margin/100), rounded to cents (half-up)."""
+    from decimal import ROUND_HALF_UP, Decimal
+
+    cost = Decimal(str(cost_usdt))
+    margin = Decimal(str(margin_percent))
+    return (cost * (Decimal(1) + margin / Decimal(100))).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+
+async def import_game(db: AsyncSession, payload: Any, *, admin_id: str) -> GameImportResult:
+    """Atomically import a G2B game into the catalog.
+
+    Creates (or reuses) a Brand, creates a Product(kind='top_up'), and for
+    each denomination a SKU + a 'game' supplier mapping. Does NOT commit —
+    the caller (route) owns the transaction boundary, so a failure anywhere
+    rolls the whole import back.
+
+    Args:
+        db: Active session (caller commits).
+        payload: A ``GameImportIn``.
+        admin_id: Id of the admin performing the import (mapping audit field).
+
+    Returns:
+        GameImportResult with counts and skipped sku_codes.
+    """
+    from yupay.modules.catalog import admin_schemas as catalog_schemas
+    from yupay.modules.catalog import admin_service as catalog
+    from yupay.modules.catalog.models import Sku
+
+    if payload.target == "new_brand":
+        nb = payload.new_brand
+        brand = await catalog.create_brand(
+            db,
+            catalog_schemas.BrandCreate(
+                slug=nb.slug,
+                category_id=nb.category_id,
+                logo_url=nb.logo_url,
+                hero_image_url=nb.hero_image_url,
+                accent_color=nb.accent_color,
+                translations=[
+                    catalog_schemas.TranslationIn(locale=loc, name=nb.name)
+                    for loc in ("ru", "en", "uz")
+                ],
+            ),
+        )
+        brand_id = brand.id
+    else:
+        brand = await catalog.get_brand(db, payload.brand_id)
+        brand_id = brand.id
+
+    product = await catalog.create_product(
+        db,
+        catalog_schemas.ProductCreate(
+            slug=payload.product.slug,
+            brand_id=brand_id,
+            kind="top_up",
+            supplier_hint="g2b",
+            image_url=payload.product.image_url,
+            required_fields=payload.product.required_fields,
+            translations=[
+                catalog_schemas.TranslationIn(locale=loc, name=payload.product.name)
+                for loc in ("ru", "en", "uz")
+            ],
+        ),
+    )
+
+    codes = [d.sku_code for d in payload.denominations]
+    existing = set(
+        (await db.execute(select(Sku.sku_code).where(Sku.sku_code.in_(codes)))).scalars().all()
+    )
+
+    created_skus = 0
+    created_mappings = 0
+    skipped: list[str] = []
+    for d in payload.denominations:
+        if d.sku_code in existing:
+            skipped.append(d.sku_code)
+            continue
+        price = (
+            d.price_usd_override
+            if d.price_usd_override is not None
+            else _sell_price(d.cost_usdt, payload.margin_percent)
+        )
+        if price <= 0:
+            raise ValidationError(f"computed price_usd <= 0 for {d.sku_code}")
+        sku = await catalog.create_sku(
+            db,
+            catalog_schemas.SkuCreate(
+                product_id=product.id,
+                sku_code=d.sku_code,
+                denomination=d.denomination,
+                region=d.region,
+                price_usd=price,
+                cost_usdt=d.cost_usdt,
+            ),
+        )
+        created_skus += 1
+        await upsert_mapping(
+            db,
+            MappingUpsert(
+                sku_id=sku.id,
+                supplier_slug="g2b",
+                kind="game",
+                external_product_id=payload.game_code,
+                external_variant_id=d.catalogue_name,
+                quantity=d.quantity,
+                extra={},
+                is_active=True,
+                updated_by=admin_id,
+            ),
+        )
+        created_mappings += 1
+
+    return GameImportResult(
+        brand_id=brand_id,
+        product_id=product.id,
+        created_skus=created_skus,
+        created_mappings=created_mappings,
+        skipped=skipped,
+    )
 
 
 async def delete_mapping(db: AsyncSession, *, sku_id: str, supplier_slug: str) -> None:
@@ -360,10 +495,12 @@ async def list_active_mappings(
 __all__ = [
     "CatalogKind",
     "CostRefreshOutcome",
+    "GameImportResult",
     "MappingKind",
     "MappingUpsert",
     "delete_mapping",
     "get_mapping",
+    "import_game",
     "list_active_mappings",
     "list_catalog",
     "list_mappings",
