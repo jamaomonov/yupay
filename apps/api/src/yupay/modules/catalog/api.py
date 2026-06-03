@@ -1,5 +1,18 @@
 """Public surface of the ``catalog`` module."""
 
+from yupay.modules.catalog.admin_schemas import (
+    BrandCreate,
+    ProductCreate,
+    SkuCreate,
+    TranslationIn,
+)
+from yupay.modules.catalog.admin_service import (
+    create_brand,
+    create_product,
+    create_sku,
+    get_brand,
+    get_category,
+)
 from yupay.modules.catalog.models import (
     Brand,
     BrandTranslation,
@@ -37,6 +50,7 @@ from yupay.modules.catalog.service import (
 
 __all__ = [
     "Brand",
+    "BrandCreate",
     "BrandDetailOut",
     "BrandListOut",
     "BrandOut",
@@ -50,14 +64,22 @@ __all__ = [
     "LocaleMap",
     "PriceOut",
     "Product",
+    "ProductCreate",
     "ProductDetailOut",
     "ProductListOut",
     "ProductSummaryOut",
     "ProductTranslation",
     "Sku",
+    "SkuCreate",
     "SkuOut",
     "SkuPrice",
+    "TranslationIn",
+    "create_brand",
+    "create_product",
+    "create_sku",
+    "get_brand",
     "get_brand_by_slug",
+    "get_category",
     "get_product_by_slug",
     "get_sku_by_id",
     "list_brands",
