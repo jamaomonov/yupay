@@ -9,7 +9,8 @@ by the admin autocomplete UI — never by the live fulfilment path.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from decimal import ROUND_HALF_UP, Decimal
+from typing import TYPE_CHECKING, Any, Literal
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -18,6 +19,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.errors import NotFoundError, ValidationError
 from yupay.modules.integrations.models import SkuSupplierMapping, SupplierCatalogCache
+
+if TYPE_CHECKING:
+    from yupay.modules.integrations.schemas import DenomImportIn, GameImportIn
 
 MappingKind = Literal["voucher", "game"]
 CatalogKind = Literal["voucher", "game", "game_denom"]
@@ -138,18 +142,63 @@ async def upsert_mapping(db: AsyncSession, payload: MappingUpsert) -> SkuSupplie
     return row
 
 
-def _sell_price(cost_usdt: Any, margin_percent: Any) -> Any:
+def _sell_price(cost_usdt: Decimal, margin_percent: Decimal) -> Decimal:
     """price = cost * (1 + margin/100), rounded to cents (half-up)."""
-    from decimal import ROUND_HALF_UP, Decimal
-
-    cost = Decimal(str(cost_usdt))
-    margin = Decimal(str(margin_percent))
+    cost = cost_usdt
+    margin = margin_percent
     return (cost * (Decimal(1) + margin / Decimal(100))).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
 
 
-async def import_game(db: AsyncSession, payload: Any, *, admin_id: str) -> GameImportResult:
+async def _import_denomination(
+    db: AsyncSession,
+    *,
+    product_id: str,
+    game_code: str,
+    denom: DenomImportIn,
+    margin_percent: Decimal,
+    admin_id: str,
+) -> None:
+    """Create one SKU + its G2B 'game' mapping. Caller pre-filters skips."""
+    from yupay.modules.catalog import admin_schemas as catalog_schemas
+    from yupay.modules.catalog import admin_service as catalog
+
+    price = (
+        denom.price_usd_override
+        if denom.price_usd_override is not None
+        else _sell_price(denom.cost_usdt, margin_percent)
+    )
+    if price <= 0:
+        raise ValidationError(f"computed price_usd <= 0 for {denom.sku_code}")
+    sku = await catalog.create_sku(
+        db,
+        catalog_schemas.SkuCreate(
+            product_id=product_id,
+            sku_code=denom.sku_code,
+            denomination=denom.denomination,
+            region=denom.region,
+            price_usd=price,
+            cost_usdt=denom.cost_usdt,
+        ),
+    )
+    await upsert_mapping(
+        db,
+        MappingUpsert(
+            sku_id=sku.id,
+            supplier_slug="g2b",
+            kind="game",
+            external_product_id=game_code,
+            external_variant_id=denom.catalogue_name,
+            quantity=denom.quantity,
+            extra={},
+            is_active=True,
+            updated_by=admin_id,
+        ),
+    )
+
+
+async def import_game(db: AsyncSession, payload: GameImportIn, *, admin_id: str) -> GameImportResult:
     """Atomically import a G2B game into the catalog.
 
     Creates (or reuses) a Brand, creates a Product(kind='top_up'), and for
@@ -169,7 +218,7 @@ async def import_game(db: AsyncSession, payload: Any, *, admin_id: str) -> GameI
     from yupay.modules.catalog import admin_service as catalog
     from yupay.modules.catalog.models import Sku
 
-    if payload.target == "new_brand":
+    if payload.new_brand is not None:
         nb = payload.new_brand
         brand = await catalog.create_brand(
             db,
@@ -187,6 +236,8 @@ async def import_game(db: AsyncSession, payload: Any, *, admin_id: str) -> GameI
         )
         brand_id = brand.id
     else:
+        if payload.brand_id is None:
+            raise ValidationError("brand_id is required for existing_brand import")
         brand = await catalog.get_brand(db, payload.brand_id)
         brand_id = brand.id
 
@@ -212,52 +263,26 @@ async def import_game(db: AsyncSession, payload: Any, *, admin_id: str) -> GameI
     )
 
     created_skus = 0
-    created_mappings = 0
     skipped: list[str] = []
     for d in payload.denominations:
         if d.sku_code in existing:
             skipped.append(d.sku_code)
             continue
-        price = (
-            d.price_usd_override
-            if d.price_usd_override is not None
-            else _sell_price(d.cost_usdt, payload.margin_percent)
-        )
-        if price <= 0:
-            raise ValidationError(f"computed price_usd <= 0 for {d.sku_code}")
-        sku = await catalog.create_sku(
+        await _import_denomination(
             db,
-            catalog_schemas.SkuCreate(
-                product_id=product.id,
-                sku_code=d.sku_code,
-                denomination=d.denomination,
-                region=d.region,
-                price_usd=price,
-                cost_usdt=d.cost_usdt,
-            ),
+            product_id=product.id,
+            game_code=payload.game_code,
+            denom=d,
+            margin_percent=payload.margin_percent,
+            admin_id=admin_id,
         )
         created_skus += 1
-        await upsert_mapping(
-            db,
-            MappingUpsert(
-                sku_id=sku.id,
-                supplier_slug="g2b",
-                kind="game",
-                external_product_id=payload.game_code,
-                external_variant_id=d.catalogue_name,
-                quantity=d.quantity,
-                extra={},
-                is_active=True,
-                updated_by=admin_id,
-            ),
-        )
-        created_mappings += 1
 
     return GameImportResult(
         brand_id=brand_id,
         product_id=product.id,
         created_skus=created_skus,
-        created_mappings=created_mappings,
+        created_mappings=created_skus,
         skipped=skipped,
     )
 
