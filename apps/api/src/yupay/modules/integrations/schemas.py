@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from yupay.modules.catalog.schemas import FormField
 
 MappingKind = Literal["voucher", "game"]
 CatalogKind = Literal["voucher", "game", "game_denom"]
@@ -179,6 +182,76 @@ class CheckPlayerOut(BaseModel):
     reason: str | None = None
 
 
+class NewBrandIn(BaseModel):
+    """New brand to create when importing a game (target='new_brand')."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    slug: str = Field(min_length=3, max_length=64)
+    category_id: str = Field(min_length=1)
+    name: str = Field(min_length=1, max_length=255)
+    logo_url: str | None = Field(default=None, max_length=1024)
+    hero_image_url: str | None = Field(default=None, max_length=1024)
+    accent_color: str | None = Field(default=None, max_length=16)
+
+
+class ProductImportIn(BaseModel):
+    """The game-as-product to create under the brand."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    slug: str = Field(min_length=3, max_length=128)
+    name: str = Field(min_length=1, max_length=255)
+    required_fields: list[FormField] = Field(default_factory=list)
+    image_url: str | None = Field(default=None, max_length=1024)
+
+
+class DenomImportIn(BaseModel):
+    """One supplier denomination to import as a SKU + mapping."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    catalogue_name: str = Field(min_length=1, max_length=128)
+    denomination: str = Field(min_length=1, max_length=64)
+    sku_code: str = Field(min_length=1, max_length=64)
+    cost_usdt: Decimal = Field(gt=0)
+    price_usd_override: Decimal | None = Field(default=None, gt=0)
+    region: str | None = Field(default=None, max_length=8)
+    quantity: int = Field(default=1, ge=1, le=10_000)
+
+
+class GameImportIn(BaseModel):
+    """Payload for POST /admin/integrations/g2b/import."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    game_code: str = Field(min_length=1, max_length=128)
+    target: Literal["new_brand", "existing_brand"]
+    brand_id: str | None = None
+    new_brand: NewBrandIn | None = None
+    product: ProductImportIn
+    margin_percent: Decimal = Field(ge=0, le=1000)
+    denominations: list[DenomImportIn] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _check_target(self) -> GameImportIn:
+        if self.target == "new_brand" and self.new_brand is None:
+            raise ValueError("new_brand is required when target='new_brand'")
+        if self.target == "existing_brand" and not self.brand_id:
+            raise ValueError("brand_id is required when target='existing_brand'")
+        return self
+
+
+class GameImportOut(BaseModel):
+    """Result of a game import."""
+
+    brand_id: str
+    product_id: str
+    created_skus: int
+    created_mappings: int
+    skipped: list[str]
+
+
 __all__ = [
     "CatalogEntryOut",
     "CatalogKind",
@@ -187,13 +260,18 @@ __all__ = [
     "CheckPlayerIn",
     "CheckPlayerOut",
     "CostSyncResult",
+    "DenomImportIn",
     "GameDenomListOut",
     "GameDenomOut",
     "GameFieldsOut",
+    "GameImportIn",
+    "GameImportOut",
     "MappingKind",
+    "NewBrandIn",
     "PriceHistoryOut",
     "PricePointOut",
     "PriceRefreshOut",
+    "ProductImportIn",
     "SupplierHealthOut",
     "SupplierMappingIn",
     "SupplierMappingListOut",
