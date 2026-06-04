@@ -14,6 +14,7 @@
 | `orders:status:{order_id}`            | `orders`    | string (FSM)     | 1 h              | Invalidated on every order event                   | Hot read for WS fan-out                             |
 | `catalog:product:{locale}:{id}`       | `catalog`   | string (JSON)    | 10 min           | Invalidated by `catalog.product.updated` event     | Storefront page data                                |
 | `inventory:available:{sku_id}`        | `inventory` | int              | 30 s             | Invalidated on reservation/issue                   | Cheap "in stock" check; authoritative read is in DB |
+| `stats:analytics:{business\|ops}:{7d\|30d\|90d}` | `stats` | string (JSON)    | 300 s            | Time-only (no explicit busting)                    | Written by the `/analytics` endpoints; trend data, best-effort with live-compute fallback on Redis error |
 | `wallet:balance:{user_id}:{currency}` | `wallet`    | string (Decimal) | 5 min            | Invalidated on any posting                         | Lazy projection; cold computed via SUM              |
 | `ws:channel:{channel}`                | `realtime`  | pubsub           | —                | —                                                  | Redis pub/sub channel, not a regular key            |
 
