@@ -491,6 +491,16 @@
         "title": "AdminUserLedgerOut",
         "type": "object"
       },
+      "AnalyticsRange": {
+        "description": "Selectable analytics window.",
+        "enum": [
+          "7d",
+          "30d",
+          "90d"
+        ],
+        "title": "AnalyticsRange",
+        "type": "string"
+      },
       "AttemptAdminListOut": {
         "properties": {
           "items": {
@@ -983,6 +993,43 @@
         "title": "BrandOut",
         "type": "object"
       },
+      "BrandRevenueOut": {
+        "properties": {
+          "margin_usd": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margin Usd"
+          },
+          "revenue_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Revenue Usd",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "units": {
+            "title": "Units",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slug",
+          "revenue_usd",
+          "units",
+          "margin_usd"
+        ],
+        "title": "BrandRevenueOut",
+        "type": "object"
+      },
       "BrandUpdate": {
         "additionalProperties": false,
         "description": "Body of ``PATCH /admin/catalog/brands/{id}``.",
@@ -1247,6 +1294,122 @@
           "skipped_without_cost"
         ],
         "title": "BulkUzsPriceOut",
+        "type": "object"
+      },
+      "BusinessAnalyticsOut": {
+        "properties": {
+          "customers": {
+            "$ref": "#/components/schemas/CustomersOut"
+          },
+          "funnel": {
+            "$ref": "#/components/schemas/FunnelOut"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "range": {
+            "$ref": "#/components/schemas/AnalyticsRange"
+          },
+          "revenue_series": {
+            "items": {
+              "$ref": "#/components/schemas/RevenuePoint"
+            },
+            "title": "Revenue Series",
+            "type": "array"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/BusinessSummaryOut"
+          },
+          "top_brands": {
+            "items": {
+              "$ref": "#/components/schemas/BrandRevenueOut"
+            },
+            "title": "Top Brands",
+            "type": "array"
+          },
+          "top_skus": {
+            "items": {
+              "$ref": "#/components/schemas/SkuRevenueOut"
+            },
+            "title": "Top Skus",
+            "type": "array"
+          }
+        },
+        "required": [
+          "generated_at",
+          "range",
+          "summary",
+          "revenue_series",
+          "funnel",
+          "top_brands",
+          "top_skus",
+          "customers"
+        ],
+        "title": "BusinessAnalyticsOut",
+        "type": "object"
+      },
+      "BusinessSummaryOut": {
+        "properties": {
+          "aov_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Aov Usd",
+            "type": "string"
+          },
+          "delivered_orders": {
+            "title": "Delivered Orders",
+            "type": "integer"
+          },
+          "fx_pnl_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Fx Pnl Usd",
+            "type": "string"
+          },
+          "gmv_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Gmv Usd",
+            "type": "string"
+          },
+          "gross_margin_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Gross Margin Usd",
+            "type": "string"
+          },
+          "margin_approx": {
+            "title": "Margin Approx",
+            "type": "boolean"
+          },
+          "margin_pct": {
+            "title": "Margin Pct",
+            "type": "number"
+          },
+          "margin_unknown_units": {
+            "title": "Margin Unknown Units",
+            "type": "integer"
+          },
+          "orders": {
+            "title": "Orders",
+            "type": "integer"
+          },
+          "paid_orders": {
+            "title": "Paid Orders",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "gmv_usd",
+          "orders",
+          "paid_orders",
+          "delivered_orders",
+          "aov_usd",
+          "fx_pnl_usd",
+          "gross_margin_usd",
+          "margin_pct",
+          "margin_approx",
+          "margin_unknown_units"
+        ],
+        "title": "BusinessSummaryOut",
         "type": "object"
       },
       "CatalogEntryOut": {
@@ -1770,6 +1933,49 @@
         "title": "CodeAdminOut",
         "type": "object"
       },
+      "CostChangeOut": {
+        "properties": {
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "cost_usdt": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cost Usdt",
+            "type": "string"
+          },
+          "previous_cost_usdt": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Cost Usdt"
+          },
+          "sku_code": {
+            "title": "Sku Code",
+            "type": "string"
+          },
+          "supplier_slug": {
+            "title": "Supplier Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sku_code",
+          "supplier_slug",
+          "cost_usdt",
+          "previous_cost_usdt",
+          "captured_at"
+        ],
+        "title": "CostChangeOut",
+        "type": "object"
+      },
       "CostSyncResult": {
         "description": "Outcome of the on-save cost refresh.\n\nReturned alongside the upsert response so the admin UI can flash\neither \"cost updated from $X.XX \u2192 $Y.YY\" or a clear reason when we\ncouldn't pull a price (cache miss, unknown denom, etc).",
         "properties": {
@@ -2120,6 +2326,45 @@
           "created_at"
         ],
         "title": "CustomerTaskSummary",
+        "type": "object"
+      },
+      "CustomersOut": {
+        "properties": {
+          "guest_orders": {
+            "title": "Guest Orders",
+            "type": "integer"
+          },
+          "new_users_series": {
+            "items": {
+              "$ref": "#/components/schemas/NewUsersPoint"
+            },
+            "title": "New Users Series",
+            "type": "array"
+          },
+          "registered_orders": {
+            "title": "Registered Orders",
+            "type": "integer"
+          },
+          "repeat_rate_pct": {
+            "title": "Repeat Rate Pct",
+            "type": "number"
+          },
+          "top_locales": {
+            "items": {
+              "$ref": "#/components/schemas/LocaleCountOut"
+            },
+            "title": "Top Locales",
+            "type": "array"
+          }
+        },
+        "required": [
+          "new_users_series",
+          "guest_orders",
+          "registered_orders",
+          "repeat_rate_pct",
+          "top_locales"
+        ],
+        "title": "CustomersOut",
         "type": "object"
       },
       "DashboardOut": {
@@ -2691,6 +2936,54 @@
         "title": "FulfillmentTaskOut",
         "type": "object"
       },
+      "FunnelOut": {
+        "properties": {
+          "cancelled": {
+            "title": "Cancelled",
+            "type": "integer"
+          },
+          "created": {
+            "title": "Created",
+            "type": "integer"
+          },
+          "delivered": {
+            "title": "Delivered",
+            "type": "integer"
+          },
+          "expired": {
+            "title": "Expired",
+            "type": "integer"
+          },
+          "fulfilling": {
+            "title": "Fulfilling",
+            "type": "integer"
+          },
+          "paid": {
+            "title": "Paid",
+            "type": "integer"
+          },
+          "payment_conversion_pct": {
+            "title": "Payment Conversion Pct",
+            "type": "number"
+          },
+          "refunded": {
+            "title": "Refunded",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created",
+          "paid",
+          "fulfilling",
+          "delivered",
+          "cancelled",
+          "expired",
+          "refunded",
+          "payment_conversion_pct"
+        ],
+        "title": "FunnelOut",
+        "type": "object"
+      },
       "GameDenomListOut": {
         "properties": {
           "items": {
@@ -2980,6 +3273,24 @@
         "title": "InventorySummary",
         "type": "object"
       },
+      "LocaleCountOut": {
+        "properties": {
+          "locale": {
+            "title": "Locale",
+            "type": "string"
+          },
+          "users": {
+            "title": "Users",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "locale",
+          "users"
+        ],
+        "title": "LocaleCountOut",
+        "type": "object"
+      },
       "LogoutIn": {
         "additionalProperties": false,
         "description": "Body of ``POST /auth/logout``.",
@@ -2995,6 +3306,24 @@
           "refresh_token"
         ],
         "title": "LogoutIn",
+        "type": "object"
+      },
+      "LowStockOut": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "integer"
+          },
+          "sku_code": {
+            "title": "Sku Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sku_code",
+          "available"
+        ],
+        "title": "LowStockOut",
         "type": "object"
       },
       "ManualCompleteIn": {
@@ -3225,6 +3554,95 @@
           "name"
         ],
         "title": "NewBrandIn",
+        "type": "object"
+      },
+      "NewUsersPoint": {
+        "properties": {
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "users": {
+            "title": "Users",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "date",
+          "users"
+        ],
+        "title": "NewUsersPoint",
+        "type": "object"
+      },
+      "OpsAnalyticsOut": {
+        "properties": {
+          "expiring_soon": {
+            "title": "Expiring Soon",
+            "type": "integer"
+          },
+          "fulfillment": {
+            "items": {
+              "$ref": "#/components/schemas/SupplierStatOut"
+            },
+            "title": "Fulfillment",
+            "type": "array"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "low_stock": {
+            "items": {
+              "$ref": "#/components/schemas/LowStockOut"
+            },
+            "title": "Low Stock",
+            "type": "array"
+          },
+          "payments": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderStatOut"
+            },
+            "title": "Payments",
+            "type": "array"
+          },
+          "range": {
+            "$ref": "#/components/schemas/AnalyticsRange"
+          },
+          "stuck_pending": {
+            "title": "Stuck Pending",
+            "type": "integer"
+          },
+          "stuck_tasks": {
+            "title": "Stuck Tasks",
+            "type": "integer"
+          },
+          "supplier_cost": {
+            "items": {
+              "$ref": "#/components/schemas/CostChangeOut"
+            },
+            "title": "Supplier Cost",
+            "type": "array"
+          },
+          "webhook_unhealthy": {
+            "title": "Webhook Unhealthy",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "generated_at",
+          "range",
+          "payments",
+          "stuck_pending",
+          "webhook_unhealthy",
+          "fulfillment",
+          "stuck_tasks",
+          "low_stock",
+          "expiring_soon",
+          "supplier_cost"
+        ],
+        "title": "OpsAnalyticsOut",
         "type": "object"
       },
       "OrderAdminListOut": {
@@ -5010,6 +5428,35 @@
         "title": "ProductUpdate",
         "type": "object"
       },
+      "ProviderStatOut": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "success_rate_pct": {
+            "title": "Success Rate Pct",
+            "type": "number"
+          },
+          "volume_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Volume Usd",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "count",
+          "volume_usd",
+          "success_rate_pct"
+        ],
+        "title": "ProviderStatOut",
+        "type": "object"
+      },
       "RateOut": {
         "description": "A single rate as returned by ``GET /api/v1/fx/rates``.",
         "properties": {
@@ -5118,6 +5565,31 @@
           }
         },
         "title": "RefundIn",
+        "type": "object"
+      },
+      "RevenuePoint": {
+        "properties": {
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "orders": {
+            "title": "Orders",
+            "type": "integer"
+          },
+          "revenue_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Revenue Usd",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "revenue_usd",
+          "orders"
+        ],
+        "title": "RevenuePoint",
         "type": "object"
       },
       "SavedSegmentIn": {
@@ -5636,6 +6108,43 @@
           "price"
         ],
         "title": "SkuPriceOverrideIn",
+        "type": "object"
+      },
+      "SkuRevenueOut": {
+        "properties": {
+          "margin_usd": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margin Usd"
+          },
+          "revenue_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Revenue Usd",
+            "type": "string"
+          },
+          "sku_code": {
+            "title": "Sku Code",
+            "type": "string"
+          },
+          "units": {
+            "title": "Units",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sku_code",
+          "revenue_usd",
+          "units",
+          "margin_usd"
+        ],
+        "title": "SkuRevenueOut",
         "type": "object"
       },
       "SkuUpdate": {
@@ -6169,6 +6678,51 @@
           "cost_sync"
         ],
         "title": "SupplierMappingUpsertOut",
+        "type": "object"
+      },
+      "SupplierStatOut": {
+        "properties": {
+          "avg_attempts": {
+            "title": "Avg Attempts",
+            "type": "number"
+          },
+          "avg_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Seconds"
+          },
+          "manual_count": {
+            "title": "Manual Count",
+            "type": "integer"
+          },
+          "success_rate_pct": {
+            "title": "Success Rate Pct",
+            "type": "number"
+          },
+          "supplier": {
+            "title": "Supplier",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "supplier",
+          "total",
+          "success_rate_pct",
+          "avg_seconds",
+          "manual_count",
+          "avg_attempts"
+        ],
+        "title": "SupplierStatOut",
         "type": "object"
       },
       "TelegramInitDataIn": {
@@ -11104,6 +11658,122 @@
         "summary": "Upsert the rule for a SKU",
         "tags": [
           "admin:sourcing"
+        ]
+      }
+    },
+    "/api/v1/admin/stats/analytics/business": {
+      "get": {
+        "operationId": "analytics_business_api_v1_admin_stats_analytics_business_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/AnalyticsRange",
+              "default": "30d"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessAnalyticsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Business analytics (revenue, margin, funnel, mix, customers)",
+        "tags": [
+          "admin:stats"
+        ]
+      }
+    },
+    "/api/v1/admin/stats/analytics/ops": {
+      "get": {
+        "operationId": "analytics_ops_api_v1_admin_stats_analytics_ops_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/AnalyticsRange",
+              "default": "30d"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsAnalyticsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Operational analytics (payments, fulfilment, inventory)",
+        "tags": [
+          "admin:stats"
         ]
       }
     },
