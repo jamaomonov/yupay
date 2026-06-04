@@ -144,9 +144,7 @@ async def upsert_mapping(db: AsyncSession, payload: MappingUpsert) -> SkuSupplie
 
 def _sell_price(cost_usdt: Decimal, margin_percent: Decimal) -> Decimal:
     """price = cost * (1 + margin/100), rounded to cents (half-up)."""
-    cost = cost_usdt
-    margin = margin_percent
-    return (cost * (Decimal(1) + margin / Decimal(100))).quantize(
+    return (cost_usdt * (Decimal(1) + margin_percent / Decimal(100))).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
 
