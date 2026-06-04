@@ -1,13 +1,10 @@
 import { BarBreakdown } from "./charts/BarBreakdown";
+import { usd, usdt } from "./format";
 import { KpiCard } from "./KpiCard";
 
 import type { OpsAnalytics } from "./types";
 
 import { DataTable } from "@/components/DataTable";
-
-function usd(s: string): string {
-  return `$${Number(s).toLocaleString("ru-RU", { maximumFractionDigits: 2 })}`;
-}
 
 export function OpsTab({ data }: { data: OpsAnalytics }) {
   return (
@@ -88,9 +85,9 @@ export function OpsTab({ data }: { data: OpsAnalytics }) {
               {
                 key: "was",
                 header: "Было",
-                render: (c) => (c.previous_cost_usdt ? usd(c.previous_cost_usdt) : "—"),
+                render: (c) => (c.previous_cost_usdt ? usdt(c.previous_cost_usdt) : "—"),
               },
-              { key: "now", header: "Стало", render: (c) => usd(c.cost_usdt) },
+              { key: "now", header: "Стало", render: (c) => usdt(c.cost_usdt) },
             ]}
           />
         </div>

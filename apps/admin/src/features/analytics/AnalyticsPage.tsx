@@ -46,6 +46,7 @@ export function AnalyticsPage() {
             <button
               key={t}
               type="button"
+              aria-pressed={tab === t}
               onClick={() => {
                 setTab(t);
               }}
@@ -60,6 +61,7 @@ export function AnalyticsPage() {
             <button
               key={r}
               type="button"
+              aria-pressed={range === r}
               onClick={() => {
                 setRange(r);
               }}

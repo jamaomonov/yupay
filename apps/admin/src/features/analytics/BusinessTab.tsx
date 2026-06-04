@@ -1,15 +1,12 @@
 import { DonutShare } from "./charts/DonutShare";
 import { LineTrend } from "./charts/LineTrend";
+import { usd } from "./format";
 import { FunnelBars } from "./FunnelBars";
 import { KpiCard } from "./KpiCard";
 
 import type { BusinessAnalytics } from "./types";
 
 import { DataTable } from "@/components/DataTable";
-
-function usd(s: string): string {
-  return `$${Number(s).toLocaleString("ru-RU", { maximumFractionDigits: 2 })}`;
-}
 
 export function BusinessTab({ data }: { data: BusinessAnalytics }) {
   const s = data.summary;
@@ -66,6 +63,25 @@ export function BusinessTab({ data }: { data: BusinessAnalytics }) {
           <h3 className="mb-2 text-sm font-semibold">Доли брендов</h3>
           <DonutShare
             data={data.top_brands.map((b) => ({ name: b.slug, value: Number(b.revenue_usd) }))}
+          />
+        </div>
+        <div>
+          <h3 className="mb-2 text-sm font-semibold">Топ SKU</h3>
+          <DataTable
+            rows={data.top_skus}
+            rowKey={(s) => s.sku_code}
+            ariaLabel="Топ SKU"
+            empty="Нет продаж за период"
+            columns={[
+              { key: "code", header: "SKU", render: (s) => s.sku_code },
+              { key: "rev", header: "Выручка", render: (s) => usd(s.revenue_usd) },
+              { key: "units", header: "Штук", render: (s) => String(s.units) },
+              {
+                key: "margin",
+                header: "Маржа ≈",
+                render: (s) => (s.margin_usd ? usd(s.margin_usd) : "—"),
+              },
+            ]}
           />
         </div>
       </section>
