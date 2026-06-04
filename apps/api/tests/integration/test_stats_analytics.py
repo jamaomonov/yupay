@@ -18,7 +18,9 @@ from yupay.modules.catalog.models import (
     ProductTranslation,
     Sku,
 )
+from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.orders.models import Order, OrderItem
+from yupay.modules.payments.models import Payment
 from yupay.modules.stats import service as svc
 from yupay.modules.stats.schemas import AnalyticsRange
 
@@ -116,3 +118,102 @@ async def test_range_filtering(db_session: AsyncSession) -> None:
     out90 = await svc.build_business_analytics(db_session, r=AnalyticsRange.D90)
     assert out7.summary.orders == 1
     assert out90.summary.orders == 2
+
+
+async def _bare_order_item(db: AsyncSession, sku_id: str) -> tuple[str, str]:
+    """Create a minimal order + item so fulfilment-task FKs resolve."""
+    moment = now()
+    order = Order(
+        id=new_id(),
+        user_id=None,
+        guest_email="g@example.com",
+        status="paid",
+        currency="USD",
+        total_usd=Decimal("1.00"),
+        total_charged=Decimal("1.00"),
+        created_at=moment,
+        paid_at=moment,
+        expires_at=moment + timedelta(hours=1),
+    )
+    db.add(order)
+    await db.flush()
+    item = OrderItem(
+        id=new_id(), order_id=order.id, sku_id=sku_id, qty=1, unit_price_usd=Decimal("1.00")
+    )
+    db.add(item)
+    await db.flush()
+    return order.id, item.id
+
+
+async def test_ops_payments_and_fulfillment(db_session: AsyncSession) -> None:
+    sku_with, _ = await _seed_catalog(db_session)
+    moment = now()
+    order_id, _ = await _bare_order_item(db_session, sku_with)
+    db_session.add_all(
+        [
+            Payment(
+                id=new_id(),
+                order_id=order_id,
+                provider="octo",
+                status="succeeded",
+                amount=Decimal("10.00"),
+                currency="USD",
+                created_at=moment,
+                succeeded_at=moment,
+            ),
+            Payment(
+                id=new_id(),
+                order_id=order_id,
+                provider="octo",
+                status="failed",
+                amount=Decimal("10.00"),
+                currency="USD",
+                created_at=moment,
+            ),
+            Payment(
+                id=new_id(),
+                order_id=order_id,
+                provider="wallet",
+                status="succeeded",
+                amount=Decimal("3.00"),
+                currency="USD",
+                created_at=moment,
+                succeeded_at=moment,
+            ),
+        ]
+    )
+    g2b_order1, g2b_item1 = await _bare_order_item(db_session, sku_with)
+    g2b_order2, g2b_item2 = await _bare_order_item(db_session, sku_with)
+    db_session.add_all(
+        [
+            FulfillmentTask(
+                id=new_id(),
+                order_id=g2b_order1,
+                order_item_id=g2b_item1,
+                supplier="g2b",
+                status="succeeded",
+                attempts_count=1,
+                created_at=moment - timedelta(seconds=30),
+                succeeded_at=moment,
+            ),
+            FulfillmentTask(
+                id=new_id(),
+                order_id=g2b_order2,
+                order_item_id=g2b_item2,
+                supplier="g2b",
+                status="failed",
+                attempts_count=3,
+                created_at=moment,
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    out = await svc.build_ops_analytics(db_session, r=AnalyticsRange.D30)
+    octo = next(p for p in out.payments if p.provider == "octo")
+    assert octo.count == 2
+    assert octo.success_rate_pct == 50.0
+    g2b = next(f for f in out.fulfillment if f.supplier == "g2b")
+    assert g2b.total == 2
+    assert g2b.success_rate_pct == 50.0
+    assert g2b.avg_attempts == 2.0
