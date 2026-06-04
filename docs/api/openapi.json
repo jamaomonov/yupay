@@ -1361,11 +1361,6 @@
             "title": "Delivered Orders",
             "type": "integer"
           },
-          "fx_pnl_usd": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-            "title": "Fx Pnl Usd",
-            "type": "string"
-          },
           "gmv_usd": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Gmv Usd",
@@ -1403,7 +1398,6 @@
           "paid_orders",
           "delivered_orders",
           "aov_usd",
-          "fx_pnl_usd",
           "gross_margin_usd",
           "margin_pct",
           "margin_approx",

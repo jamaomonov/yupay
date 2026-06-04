@@ -74,14 +74,13 @@ async def build_business_analytics(db: AsyncSession, *, r: AnalyticsRange) -> Bu
 
 
 async def _business_summary(db: AsyncSession, since: datetime) -> BusinessSummaryOut:
-    # Orders + GMV + FX P&L over paid-like orders paid in window.
+    # Orders + GMV over paid-like orders paid in window.
     base = select(
         func.count(Order.id),
         func.coalesce(func.sum(Order.total_usd), 0),
-        func.coalesce(func.sum(Order.total_charged - Order.total_usd), 0),
         func.count(Order.id).filter(Order.status == "delivered"),
     ).where(Order.paid_at >= since, Order.status.in_(_PAID_LIKE))
-    paid_orders_row, gmv_raw, fx_pnl_raw, delivered_raw = (await db.execute(base)).one()
+    paid_orders_row, gmv_raw, delivered_raw = (await db.execute(base)).one()
     paid_orders = int(paid_orders_row or 0)
     gmv = Decimal(str(gmv_raw or 0))
 
@@ -125,7 +124,6 @@ async def _business_summary(db: AsyncSession, since: datetime) -> BusinessSummar
         paid_orders=paid_orders,
         delivered_orders=int(delivered_raw or 0),
         aov_usd=aov.quantize(Decimal("0.01")) if paid_orders else Decimal("0"),
-        fx_pnl_usd=Decimal(str(fx_pnl_raw or 0)),
         gross_margin_usd=margin,
         margin_pct=round(margin_pct, 2),
         margin_approx=True,

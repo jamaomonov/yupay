@@ -87,6 +87,14 @@ are excluded from the margin maths. The payload surfaces this honestly:
 - per-brand / per-SKU `margin_usd` is `None` for any group that has **no**
   known-cost rows, rather than silently reporting 0.
 
+**No FX P&L KPI.** The design brief floated an FX P&L headline of
+`Σ(total_charged − total_usd)`. We **dropped it**: `total_charged` is stored in
+each order's *native* currency (e.g. UZS), while `total_usd` is in USD, so the
+difference subtracts unlike units and yields a meaningless figure for any non-USD
+order. A correct realised-FX metric needs a USD-equivalent snapshot of
+`total_charged` at settlement, which we do not store — deferred with the
+denormalisation work in option 3.
+
 **Code organisation.** The analytics aggregation SQL is split out of
 `stats/service.py` into a dedicated **`stats/analytics.py`** module, keeping the
 operational dashboard logic and the heavier trend aggregations separate.

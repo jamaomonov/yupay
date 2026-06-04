@@ -122,7 +122,6 @@ class BusinessSummaryOut(BaseModel):
     paid_orders: int
     delivered_orders: int
     aov_usd: Decimal
-    fx_pnl_usd: Decimal
     gross_margin_usd: Decimal
     margin_pct: float
     margin_approx: bool

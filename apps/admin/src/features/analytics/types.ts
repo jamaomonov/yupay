@@ -41,7 +41,6 @@ export interface BusinessSummary {
   paid_orders: number;
   delivered_orders: number;
   aov_usd: string;
-  fx_pnl_usd: string;
   gross_margin_usd: string;
   margin_pct: number;
   margin_approx: boolean;

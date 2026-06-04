@@ -25,7 +25,6 @@ export function BusinessTab({ data }: { data: BusinessAnalytics }) {
           value={usd(s.gross_margin_usd)}
           hint={`${String(s.margin_pct)}% · оценочно${s.margin_unknown_units ? ` · ${String(s.margin_unknown_units)} ед. без cost` : ""}`}
         />
-        <KpiCard label="FX P&L" value={usd(s.fx_pnl_usd)} />
       </div>
 
       <section>
