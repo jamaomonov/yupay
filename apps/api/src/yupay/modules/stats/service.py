@@ -15,17 +15,30 @@ from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.clock import now
+from yupay.modules.catalog.models import Brand, Product, Sku
 from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.inventory.models import InventoryCode
-from yupay.modules.orders.models import Order
+from yupay.modules.orders.models import Order, OrderItem
 from yupay.modules.payments.models import Payment
 from yupay.modules.stats.schemas import (
+    AnalyticsRange,
+    BrandRevenueOut,
+    BusinessAnalyticsOut,
+    BusinessSummaryOut,
     CurrencyAmount,
+    CustomersOut,
     DashboardOut,
     DayBucket,
+    FunnelOut,
     InventorySummary,
+    LocaleCountOut,
+    NewUsersPoint,
+    RevenuePoint,
+    SkuRevenueOut,
     StatusCount,
+    range_to_days,
 )
+from yupay.modules.users.models import User
 
 # Window: last N hours for the headline KPIs.
 _DEFAULT_WINDOW_HOURS = 24
@@ -207,4 +220,272 @@ async def _orders_last_7_days(db: AsyncSession, anchor: datetime) -> list[DayBuc
     return out
 
 
-__all__ = ["build_dashboard"]
+_PAID_LIKE = ("paid", "fulfilling", "fulfilled", "delivered")
+
+
+async def build_business_analytics(db: AsyncSession, *, r: AnalyticsRange) -> BusinessAnalyticsOut:
+    """Business tab: revenue, margin (approx), funnel, product mix, customers."""
+    moment = now()
+    since = moment - timedelta(days=range_to_days(r))
+
+    summary = await _business_summary(db, since)
+    revenue_series = await _revenue_series(db, since)
+    funnel = await _funnel(db, since)
+    top_brands = await _top_brands(db, since)
+    top_skus = await _top_skus(db, since)
+    customers = await _customers(db, since)
+
+    return BusinessAnalyticsOut(
+        generated_at=moment,
+        range=r,
+        summary=summary,
+        revenue_series=revenue_series,
+        funnel=funnel,
+        top_brands=top_brands,
+        top_skus=top_skus,
+        customers=customers,
+    )
+
+
+async def _business_summary(db: AsyncSession, since: datetime) -> BusinessSummaryOut:
+    # Orders + GMV + FX P&L over paid-like orders paid in window.
+    base = select(
+        func.count(Order.id),
+        func.coalesce(func.sum(Order.total_usd), 0),
+        func.coalesce(func.sum(Order.total_charged - Order.total_usd), 0),
+        func.count(Order.id).filter(Order.status == "delivered"),
+    ).where(Order.paid_at >= since, Order.status.in_(_PAID_LIKE))
+    paid_orders_row, gmv_raw, fx_pnl_raw, delivered_raw = (await db.execute(base)).one()
+    paid_orders = int(paid_orders_row or 0)
+    gmv = Decimal(str(gmv_raw or 0))
+
+    # Total orders created (for "orders" headline) in same window by created_at.
+    total_created = int(
+        (
+            await db.execute(select(func.count(Order.id)).where(Order.created_at >= since))
+        ).scalar_one()
+        or 0
+    )
+
+    # Margin (approx): join items→sku, only rows with cost_usdt known.
+    m = (
+        select(
+            func.coalesce(
+                func.sum(OrderItem.qty * OrderItem.unit_price_usd).filter(
+                    Sku.cost_usdt.isnot(None)
+                ),
+                0,
+            ),
+            func.coalesce(
+                func.sum(OrderItem.qty * Sku.cost_usdt).filter(Sku.cost_usdt.isnot(None)), 0
+            ),
+            func.coalesce(func.sum(OrderItem.qty).filter(Sku.cost_usdt.is_(None)), 0),
+        )
+        .select_from(OrderItem)
+        .join(Order, Order.id == OrderItem.order_id)
+        .join(Sku, Sku.id == OrderItem.sku_id)
+        .where(Order.paid_at >= since, Order.status.in_(_PAID_LIKE))
+    )
+    known_rev_raw, known_cost_raw, unknown_units = (await db.execute(m)).one()
+    known_rev = Decimal(str(known_rev_raw or 0))
+    known_cost = Decimal(str(known_cost_raw or 0))
+    margin = known_rev - known_cost
+    margin_pct = float(margin / known_rev * 100) if known_rev > 0 else 0.0
+    aov = (gmv / paid_orders) if paid_orders else Decimal("0")
+
+    return BusinessSummaryOut(
+        gmv_usd=gmv,
+        orders=total_created,
+        paid_orders=paid_orders,
+        delivered_orders=int(delivered_raw or 0),
+        aov_usd=aov.quantize(Decimal("0.01")) if paid_orders else Decimal("0"),
+        fx_pnl_usd=Decimal(str(fx_pnl_raw or 0)),
+        gross_margin_usd=margin,
+        margin_pct=round(margin_pct, 2),
+        margin_approx=True,
+        margin_unknown_units=int(unknown_units or 0),
+    )
+
+
+async def _revenue_series(db: AsyncSession, since: datetime) -> list[RevenuePoint]:
+    day = func.date_trunc("day", Order.paid_at)
+    stmt = (
+        select(
+            day.label("d"),
+            func.coalesce(func.sum(Order.total_usd), 0).label("rev"),
+            func.count(Order.id).label("c"),
+        )
+        .where(Order.paid_at >= since, Order.status.in_(_PAID_LIKE))
+        .group_by(day)
+        .order_by(day)
+    )
+    rows = (await db.execute(stmt)).all()
+    return [
+        RevenuePoint(
+            date=d.date() if hasattr(d, "date") else d,
+            revenue_usd=Decimal(str(rev or 0)),
+            orders=int(c or 0),
+        )
+        for d, rev, c in rows
+        if d is not None
+    ]
+
+
+async def _funnel(db: AsyncSession, since: datetime) -> FunnelOut:
+    stmt = (
+        select(Order.status, func.count())
+        .where(Order.created_at >= since)
+        .group_by(Order.status)
+    )
+    counts = {s: int(c) for s, c in (await db.execute(stmt)).all()}
+    created = sum(counts.values())
+    paid = sum(counts.get(s, 0) for s in _PAID_LIKE)
+    conv = (paid / created * 100) if created else 0.0
+    return FunnelOut(
+        created=created,
+        paid=counts.get("paid", 0),
+        fulfilling=counts.get("fulfilling", 0),
+        delivered=counts.get("delivered", 0),
+        cancelled=counts.get("cancelled", 0),
+        expired=counts.get("expired", 0),
+        refunded=counts.get("refunded", 0),
+        payment_conversion_pct=round(conv, 2),
+    )
+
+
+async def _top_brands(db: AsyncSession, since: datetime) -> list[BrandRevenueOut]:
+    stmt = (
+        select(
+            Brand.slug,
+            func.coalesce(func.sum(OrderItem.qty * OrderItem.unit_price_usd), 0),
+            func.coalesce(func.sum(OrderItem.qty), 0),
+            func.coalesce(
+                func.sum(OrderItem.qty * Sku.cost_usdt).filter(Sku.cost_usdt.isnot(None)), 0
+            ),
+        )
+        .select_from(OrderItem)
+        .join(Order, Order.id == OrderItem.order_id)
+        .join(Sku, Sku.id == OrderItem.sku_id)
+        .join(Product, Product.id == Sku.product_id)
+        .join(Brand, Brand.id == Product.brand_id)
+        .where(Order.paid_at >= since, Order.status.in_(_PAID_LIKE))
+        .group_by(Brand.slug)
+        .order_by(func.sum(OrderItem.qty * OrderItem.unit_price_usd).desc())
+        .limit(10)
+    )
+    out: list[BrandRevenueOut] = []
+    for slug, rev, units, cost in (await db.execute(stmt)).all():
+        rev_d = Decimal(str(rev or 0))
+        out.append(
+            BrandRevenueOut(
+                slug=slug,
+                revenue_usd=rev_d,
+                units=int(units or 0),
+                margin_usd=(rev_d - Decimal(str(cost or 0))),
+            )
+        )
+    return out
+
+
+async def _top_skus(db: AsyncSession, since: datetime) -> list[SkuRevenueOut]:
+    stmt = (
+        select(
+            Sku.sku_code,
+            func.coalesce(func.sum(OrderItem.qty * OrderItem.unit_price_usd), 0),
+            func.coalesce(func.sum(OrderItem.qty), 0),
+            func.coalesce(
+                func.sum(OrderItem.qty * Sku.cost_usdt).filter(Sku.cost_usdt.isnot(None)), 0
+            ),
+        )
+        .select_from(OrderItem)
+        .join(Order, Order.id == OrderItem.order_id)
+        .join(Sku, Sku.id == OrderItem.sku_id)
+        .where(Order.paid_at >= since, Order.status.in_(_PAID_LIKE))
+        .group_by(Sku.sku_code)
+        .order_by(func.sum(OrderItem.qty * OrderItem.unit_price_usd).desc())
+        .limit(10)
+    )
+    out: list[SkuRevenueOut] = []
+    for code, rev, units, cost in (await db.execute(stmt)).all():
+        rev_d = Decimal(str(rev or 0))
+        out.append(
+            SkuRevenueOut(
+                sku_code=code,
+                revenue_usd=rev_d,
+                units=int(units or 0),
+                margin_usd=(rev_d - Decimal(str(cost or 0))),
+            )
+        )
+    return out
+
+
+async def _customers(db: AsyncSession, since: datetime) -> CustomersOut:
+    day = func.date_trunc("day", User.created_at)
+    new_rows = (
+        await db.execute(
+            select(day.label("d"), func.count())
+            .where(User.created_at >= since)
+            .group_by(day)
+            .order_by(day)
+        )
+    ).all()
+    new_series = [
+        NewUsersPoint(date=d.date() if hasattr(d, "date") else d, users=int(c))
+        for d, c in new_rows
+        if d is not None
+    ]
+
+    guest = int(
+        (
+            await db.execute(
+                select(func.count(Order.id)).where(
+                    Order.created_at >= since, Order.user_id.is_(None)
+                )
+            )
+        ).scalar_one()
+        or 0
+    )
+    registered = int(
+        (
+            await db.execute(
+                select(func.count(Order.id)).where(
+                    Order.created_at >= since, Order.user_id.isnot(None)
+                )
+            )
+        ).scalar_one()
+        or 0
+    )
+
+    # repeat rate: of distinct users with >=1 order in window, share with >=2.
+    per_user = (
+        await db.execute(
+            select(Order.user_id, func.count(Order.id))
+            .where(Order.created_at >= since, Order.user_id.isnot(None))
+            .group_by(Order.user_id)
+        )
+    ).all()
+    total_users = len(per_user)
+    repeat = sum(1 for _u, c in per_user if int(c) >= 2)
+    repeat_pct = round(repeat / total_users * 100, 2) if total_users else 0.0
+
+    locale_rows = (
+        await db.execute(
+            select(User.locale, func.count())
+            .where(User.created_at >= since)
+            .group_by(User.locale)
+            .order_by(func.count().desc())
+            .limit(5)
+        )
+    ).all()
+    locales = [LocaleCountOut(locale=loc or "—", users=int(c)) for loc, c in locale_rows]
+
+    return CustomersOut(
+        new_users_series=new_series,
+        guest_orders=guest,
+        registered_orders=registered,
+        repeat_rate_pct=repeat_pct,
+        top_locales=locales,
+    )
+
+
+__all__ = ["build_business_analytics", "build_dashboard"]

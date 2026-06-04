@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
 
@@ -59,7 +59,7 @@ class DashboardOut(BaseModel):
     orders_last_7_days: list[DayBucket]
 
 
-class AnalyticsRange(str, Enum):
+class AnalyticsRange(StrEnum):
     """Selectable analytics window."""
 
     D7 = "7d"
