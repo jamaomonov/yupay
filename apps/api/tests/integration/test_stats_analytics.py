@@ -108,6 +108,9 @@ async def test_business_summary_and_margin_approx(db_session: AsyncSession) -> N
     assert out.summary.aov_usd == Decimal("3.50")
     brands = {b.slug: b for b in out.top_brands}
     assert brands["pubg"].units == 3
+    assert brands["pubg"].revenue_usd == Decimal("7.00")
+    # brand margin counts only the known-cost SKU: 2 units * (1.00 - 0.60) = 0.80
+    assert brands["pubg"].margin_usd == Decimal("0.80")
 
 
 async def test_range_filtering(db_session: AsyncSession) -> None:
