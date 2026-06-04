@@ -52,6 +52,17 @@ x-app-env: &app-env
   # USD-equivalent threshold for the proactive "supplier wallet running
   # out" warning the scheduler dispatches every tick. 0 disables it.
   SUPPLIER_LOW_BALANCE_THRESHOLD: ${SUPPLIER_LOW_BALANCE_THRESHOLD:-50}
+  # --- media storage (Cloudflare R2, S3-compatible) ---
+  # Brand/product/SKU images are presigned for direct browser upload. Without
+  # these the admin "upload image" call 500s (R2 credentials not configured).
+  # Prod loads the same keys via env_file (/opt/yupay/secrets/api.env); dev
+  # reads them from .env. Empty R2_ACCOUNT_ID/R2_ACCESS_KEY_ID disables uploads.
+  R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+  R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+  R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+  R2_BUCKET_MEDIA: ${R2_BUCKET_MEDIA:-yupay-media}
+  R2_PUBLIC_BASE_URL: ${R2_PUBLIC_BASE_URL:-https://cdn.yupay.uz}
+  R2_PRESIGN_TTL_SECONDS: ${R2_PRESIGN_TTL_SECONDS:-300}
 
 services:
   postgres:
