@@ -9,6 +9,7 @@ import { Button } from "@yupay/ui";
 import {
   Activity,
   AlertTriangle,
+  BarChart3,
   Boxes,
   Coins,
   CreditCard,
@@ -61,7 +62,10 @@ interface NavGroup {
 const NAV_GROUPS: NavGroup[] = [
   {
     label: null,
-    items: [{ to: "/", label: "Обзор", icon: Gauge, end: true }],
+    items: [
+      { to: "/", label: "Обзор", icon: Gauge, end: true },
+      { to: "/analytics", label: "Аналитика", icon: BarChart3 },
+    ],
   },
   {
     label: "Каталог",

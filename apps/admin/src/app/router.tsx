@@ -4,6 +4,7 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import { Layout } from "./Layout";
 
+import { AnalyticsPage } from "@/features/analytics/AnalyticsPage";
 import { AuditPage } from "@/features/audit/AuditPage";
 import { AuthGuard } from "@/features/auth/AuthGuard";
 import { LoginPage } from "@/features/auth/LoginPage";
@@ -44,6 +45,7 @@ export const router = createBrowserRouter([
         element: <Layout />,
         children: [
           { path: "/", element: <DashboardPage /> },
+          { path: "/analytics", element: <AnalyticsPage /> },
           { path: "/categories", element: <CategoriesListPage /> },
           { path: "/categories/new", element: <CategoryEditPage /> },
           { path: "/categories/:id", element: <CategoryEditPage /> },
