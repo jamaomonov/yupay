@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
+import time
 from datetime import timedelta
 from decimal import Decimal
+from urllib.parse import urlencode
 
 import pytest
+from httpx import AsyncClient
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.ids import new_id
@@ -23,6 +30,7 @@ from yupay.modules.orders.models import Order, OrderItem
 from yupay.modules.payments.models import Payment
 from yupay.modules.stats import service as svc
 from yupay.modules.stats.schemas import AnalyticsRange
+from yupay.modules.users.models import TelegramLink, User
 
 pytestmark = pytest.mark.asyncio
 
@@ -220,3 +228,62 @@ async def test_ops_payments_and_fulfillment(db_session: AsyncSession) -> None:
     assert g2b.total == 2
     assert g2b.success_rate_pct == 50.0
     assert g2b.avg_attempts == 2.0
+
+
+# ---------- HTTP endpoints ----------
+
+BOT_TOKEN = "123456:TEST"
+
+
+def _sign_init_data(fields: dict[str, str]) -> str:
+    pairs = sorted((k, v) for k, v in fields.items() if k != "hash")
+    data = "\n".join(f"{k}={v}" for k, v in pairs).encode("utf-8")
+    secret = hmac.new(b"WebAppData", BOT_TOKEN.encode("utf-8"), hashlib.sha256).digest()
+    signed = {**fields, "hash": hmac.new(secret, data, hashlib.sha256).hexdigest()}
+    return urlencode(signed)
+
+
+async def _login_admin(client: AsyncClient, db: AsyncSession, tg_id: int = 555) -> str:
+    user_json = json.dumps({"id": tg_id, "first_name": "A"}, separators=(",", ":"))
+    init = _sign_init_data({"user": user_json, "auth_date": str(int(time.time()))})
+    r = await client.post("/api/v1/auth/telegram/webapp", json={"init_data": init})
+    assert r.status_code == 200, r.text
+    user_id = (
+        await db.execute(
+            select(User.id)
+            .join(TelegramLink, TelegramLink.user_id == User.id)
+            .where(TelegramLink.tg_user_id == tg_id)
+        )
+    ).scalar_one()
+    await db.execute(update(User).where(User.id == user_id).values(roles=["admin"]))
+    await db.commit()
+    return r.json()["access_token"]
+
+
+async def test_business_endpoint(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    token = await _login_admin(integration_client, db_session)
+    r = await integration_client.get(
+        "/api/v1/admin/stats/analytics/business?range=30d",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["range"] == "30d"
+    assert "summary" in r.json()
+
+
+async def test_ops_endpoint_requires_admin(integration_client: AsyncClient) -> None:
+    r = await integration_client.get("/api/v1/admin/stats/analytics/ops")
+    assert r.status_code in (401, 403)
+
+
+async def test_invalid_range_rejected(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    token = await _login_admin(integration_client, db_session)
+    r = await integration_client.get(
+        "/api/v1/admin/stats/analytics/business?range=bogus",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 422
