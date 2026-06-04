@@ -9,7 +9,7 @@ Each module owns its tables and exposes a narrow Python interface via `apps/api/
 | `users`          | Profile, locale, KYC-lite flags                                                                                | `users`, `user_profiles`                                               |
 | `catalog`        | Products, categories, games, SKUs, denominations, multilingual content                                         | `products`, `categories`, `skus`, `sku_prices`, `product_translations` |
 | `inventory`      | In-house code warehouse: bulk uploads, reservations, atomic issuance                                           | `inventory_codes`, `inventory_reservations`, `inventory_uploads`       |
-| `integrations`   | SKU↔supplier mappings, catalog cache, supplier health probes (adapter code lives in `fulfillment/suppliers/*`) | `sku_supplier_mapping`, `supplier_catalog_cache`                       |
+| `integrations`   | SKU↔supplier mappings, catalog cache, supplier health probes (adapter code lives in `fulfillment/suppliers/*`); `integrations → catalog` (write layer: `create_brand`/`product`/`sku`) for G2B game import | `sku_supplier_mapping`, `supplier_catalog_cache`                       |
 | `sourcing`       | Decides where a SKU is fulfilled from (in-house vs supplier A vs supplier B + fallback)                        | `sku_sourcing_rules`                                                   |
 | `orders`         | Order aggregate, lifecycle FSM, idempotent creation, pricing snapshot                                          | `orders`, `order_items`, `order_events`                                |
 | `payments`       | Gateway abstraction, intents, attempts, webhook verification & dispatch                                        | `payments`, `payment_attempts`, `payment_webhooks`                     |
@@ -33,6 +33,7 @@ flowchart TB
     catalog --> core
     inventory --> core
     integrations --> core
+    integrations --> catalog
     sourcing --> catalog
     sourcing --> inventory
     sourcing --> integrations

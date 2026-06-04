@@ -1,0 +1,34 @@
+sequenceDiagram
+    autonumber
+    title YuPay — G2B game → catalog import (atomic, supplier-first)
+
+    actor Admin
+    participant SPA as Admin SPA
+    participant API as integrations.import_game
+    participant CAT as catalog (write layer)
+    participant DB as Postgres
+
+    Admin->>SPA: open /integrations/g2b/catalog
+    SPA->>API: GET /catalog?supplier_slug=g2b&kind=game (+ mappings for badges)
+    Admin->>SPA: pick game, set margin, select denominations
+
+    Note over SPA: wizard pre-fetched cost/denominations + required_fields; no live G2B call on import
+
+    SPA->>API: POST /g2b/import {game_code, new_brand|brand_id, product, margin_percent, denominations}
+    API->>CAT: create_brand / get_brand
+    API->>CAT: create_product (kind=top_up, supplier_hint=g2b, required_fields)
+    API->>DB: SELECT existing sku_code IN (...) (structural idempotency)
+
+    loop each selected denomination
+        alt sku_code already exists
+            Note over API: skip → skipped[]
+        else new sku_code
+            API->>CAT: create_sku (price = override ?? round(cost*(1+margin/100), 2))
+            API->>DB: upsert sku_supplier_mapping (kind=game, external_product_id=game_code, external_variant_id=catalogue_name)
+        end
+    end
+
+    Note over API,DB: service flushes only — route owns the transaction
+    API->>DB: COMMIT (atomic; any error rolls the whole import back)
+    API-->>SPA: 201 {brand_id, product_id, created_skus, created_mappings, skipped}
+    SPA-->>Admin: toast + navigate /brands/:id
