@@ -21,6 +21,7 @@ SKUs are immediately fulfillable through G2B.
 ## 2. Goals / Non-goals
 
 **Goals**
+
 - Browse the cached G2B game catalog from the admin, with search and an "already imported" badge.
 - Open a game and preview its denominations (live from G2B) and required player fields.
 - Import a game in one atomic action: create (or attach to) a Brand, create a Product
@@ -30,6 +31,7 @@ SKUs are immediately fulfillable through G2B.
   catalog section.
 
 **Non-goals (follow-up)**
+
 - Importing **vouchers** (only games in v1).
 - Uploading denomination artwork during import (only optional `image_url`; edit in SKU later).
 - Re-verifying denominations/cost against G2B inside the import endpoint (the admin-only
@@ -71,6 +73,7 @@ Lives in the `integrations` module (it owns supplier concerns) and orchestrates 
 module through its **public surface** (see §4.3).
 
 **Request — `GameImportIn`:**
+
 ```python
 class NewBrandIn(BaseModel):
     slug: str            # ^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$
@@ -110,13 +113,16 @@ A model validator enforces: `target=new_brand ⇒ new_brand is not None`;
 `target=existing_brand ⇒ brand_id is not None`.
 
 **Pricing (backend):**
+
 ```
 price_usd = price_usd_override            if provided
             else round(cost_usdt * (1 + margin_percent / 100), 2)
 ```
+
 If the computed `price_usd <= 0` → `422` naming the offending `sku_code`.
 
 **Response — `GameImportOut`:**
+
 ```python
 class GameImportOut(BaseModel):
     brand_id: str
@@ -131,14 +137,14 @@ class GameImportOut(BaseModel):
 1. Resolve brand: `target=new_brand` → `catalog.create_brand(BrandCreate(... translations=name×3))`;
    else load + validate `brand_id` exists.
 2. `catalog.create_product(ProductCreate(brand_id, kind="top_up", supplier_hint="g2b",
-   required_fields=..., translations=name×3, slug=...))`.
+required_fields=..., translations=name×3, slug=...))`.
 3. For each denomination:
    - compute `price_usd` (see pricing);
    - if `sku_code` already exists → append to `skipped`, continue;
    - `catalog.create_sku(SkuCreate(product_id, sku_code, denomination, region, price_usd, cost_usdt, ...))`;
    - `integrations.upsert_mapping(MappingUpsert(sku_id, supplier_slug="g2b", kind="game",
-     external_product_id=game_code, external_variant_id=catalogue_name, quantity, updated_by=admin.id))`.
-4. `await db.commit()` once. Any exception → no commit → full rollback (catalog create_* and
+external_product_id=game_code, external_variant_id=catalogue_name, quantity, updated_by=admin.id))`.
+4. `await db.commit()` once. Any exception → no commit → full rollback (catalog create\_\* and
    upsert_mapping only `flush()`, never commit themselves — verified).
 
 **Errors:** duplicate `brand.slug` / `product.slug` → `409` with the offending slug in `detail`;
@@ -149,6 +155,7 @@ unknown `brand_id` / `category_id` → `404`; validation → `422`.
 `catalog/api.py` currently re-exports only **read** helpers. Extend it to expose the write path
 the importer needs, so `integrations` depends on `catalog`'s **public** surface (not the private
 `admin_service`):
+
 - re-export `create_brand`, `create_product`, `create_sku` from `catalog.admin_service`;
 - re-export `BrandCreate`, `ProductCreate`, `SkuCreate`, `TranslationIn` from `catalog.admin_schemas`.
 
@@ -170,6 +177,7 @@ preview, and includes the result in `product.required_fields`. The backend store
 ## 5. Frontend (admin SPA)
 
 **New files** (`apps/admin/src/features/integrations/`)
+
 - `SupplierCatalogPage.tsx` — route `/integrations/g2b/catalog`. `DataTable` of games from
   `GET /catalog?supplier_slug=g2b&kind=game`; debounced `?search=`; imported badge; empty state
   ("Сначала синхронизируйте каталог" → link back to G2B detail).
@@ -178,6 +186,7 @@ preview, and includes the result in `product.required_fields`. The backend store
   `Idempotency-Key` (`crypto.randomUUID()`); on success toast + `navigate(/brands/:id)`.
 
 **Edited files**
+
 - `G2bDetailPage.tsx` — add a second button **"Перейти к каталогу"** (`Link` → `/integrations/g2b/catalog`)
   in the existing "Каталог поставщика" card, beside "Синхронизировать".
 - `app/router.tsx` — two new routes under the authed `Layout`.
@@ -201,6 +210,7 @@ truth for live fulfilment cost remains the hourly `refresh-all-prices` job over
 Touches `catalog` + `integrations` (not payments/wallet/fulfilment) → coverage gate **≥80%**.
 
 **Integration** — `apps/api/tests/integration/test_g2b_import.py` (testcontainers Postgres):
+
 - import into **new brand** → Brand(+3 locales) + Product(top_up, required_fields) + N SKUs +
   N mappings; prices = `cost×(1+margin)`.
 - import into **existing brand** → new Product under `brand_id`; brand not duplicated.

@@ -196,7 +196,9 @@ async def _import_denomination(
     )
 
 
-async def import_game(db: AsyncSession, payload: GameImportIn, *, admin_id: str) -> GameImportResult:
+async def import_game(
+    db: AsyncSession, payload: GameImportIn, *, admin_id: str
+) -> GameImportResult:
     """Atomically import a G2B game into the catalog.
 
     Creates (or reuses) a Brand, creates a Product(kind='top_up'), and for
@@ -227,8 +229,7 @@ async def import_game(db: AsyncSession, payload: GameImportIn, *, admin_id: str)
                 hero_image_url=nb.hero_image_url,
                 accent_color=nb.accent_color,
                 translations=[
-                    catalog_schemas.TranslationIn(locale=loc, name=nb.name)
-                    for loc in _LOCALES
+                    catalog_schemas.TranslationIn(locale=loc, name=nb.name) for loc in _LOCALES
                 ],
             ),
         )

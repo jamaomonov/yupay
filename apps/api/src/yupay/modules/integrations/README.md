@@ -1,7 +1,7 @@
 # `integrations` module
 
 Owns the SKU↔supplier wiring: the `sku_supplier_mapping` table (the source of
-truth for *what* a supplier should sell when the fulfilment saga routes a SKU
+truth for _what_ a supplier should sell when the fulfilment saga routes a SKU
 through them), a `supplier_catalog_cache` that backs admin autocomplete, supplier
 health probes, and supplier-cost refresh. Supplier adapter code itself lives in
 `fulfillment/suppliers/*`.

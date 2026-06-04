@@ -12,7 +12,7 @@ Product → SKU by hand in the catalog admin, then opens the mapping editor and
 binds each SKU to a G2B game/denomination (`sku_supplier_mapping`). That is the
 right flow when the catalog already exists and we are only attaching a supplier.
 
-Onboarding a *new* game the other way around — starting from what G2B sells and
+Onboarding a _new_ game the other way around — starting from what G2B sells and
 materialising it into our catalog — was pure manual labour: read G2B's
 `games/{code}/catalogue`, hand-create a Brand, a Product, one SKU per
 denomination, set a sell price for each, then go back and create one mapping per
@@ -124,7 +124,7 @@ already uses for `set_sku_cost_usdt`.
   duplicate `sku_code` in `skipped[]` and creates nothing new), and the
   rollback path (an error mid-loop leaves zero rows — no orphan Brand).
 - Endpoint returns `201` with `GameImportOut {brand_id, product_id, created_skus,
-  created_mappings, skipped}`.
+created_mappings, skipped}`.
 
 ## Alternatives considered (detail)
 

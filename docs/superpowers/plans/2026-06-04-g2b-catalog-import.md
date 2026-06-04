@@ -32,9 +32,11 @@
 ## File structure
 
 **API — create**
+
 - `apps/api/tests/integration/test_g2b_import.py` — integration tests (endpoint-level).
 
 **API — modify**
+
 - `apps/api/src/yupay/modules/catalog/api.py` — re-export write surface (`create_brand/product/sku`, `BrandCreate/ProductCreate/SkuCreate/TranslationIn`, `get_brand/get_category`).
 - `apps/api/src/yupay/modules/integrations/schemas.py` — add `NewBrandIn`, `ProductImportIn`, `DenomImportIn`, `GameImportIn`, `GameImportOut`.
 - `apps/api/src/yupay/modules/integrations/service.py` — add `GameImportResult` + `import_game(...)` + `_sell_price(...)`.
@@ -42,16 +44,19 @@
 - `apps/api/src/yupay/modules/integrations/README.md` — "Import" section.
 
 **Admin SPA — create**
+
 - `apps/admin/src/features/integrations/SupplierCatalogPage.tsx`
 - `apps/admin/src/features/integrations/GameImportPage.tsx`
 
 **Admin SPA — modify**
+
 - `apps/admin/src/features/integrations/types.ts` — import DTO types + `g2bFieldLabel` helper.
 - `apps/admin/src/features/integrations/G2bDetailPage.tsx` — "Перейти к каталогу" button.
 - `apps/admin/src/app/router.tsx` — two routes.
 - `apps/admin/src/lib/queryKeys.ts` — `gameDenoms`, `gameFields` keys.
 
 **Docs**
+
 - `docs/decisions/0024-g2b-catalog-import.md`
 - `docs/architecture/sequence-diagrams/g2b-catalog-import.mmd`
 - `docs/architecture/module-map.md` (edit)
@@ -62,6 +67,7 @@
 ## Task 1: Extend catalog public surface
 
 **Files:**
+
 - Modify: `apps/api/src/yupay/modules/catalog/api.py`
 
 - [ ] **Step 1: Add write-surface re-exports**
@@ -103,6 +109,7 @@ git commit -m "feat(catalog): expose write API (create_brand/product/sku) on pub
 ## Task 2: Import request/response schemas
 
 **Files:**
+
 - Modify: `apps/api/src/yupay/modules/integrations/schemas.py`
 - Test: `apps/api/tests/unit/test_g2b_import_schemas.py` (create)
 
@@ -286,6 +293,7 @@ git commit -m "feat(integrations): add GameImportIn/Out schemas with target vali
 ## Task 3: Import service (TDD via integration tests)
 
 **Files:**
+
 - Modify: `apps/api/src/yupay/modules/integrations/service.py`
 - Test: `apps/api/tests/integration/test_g2b_import.py` (create)
 
@@ -604,6 +612,7 @@ git commit -m "feat(integrations): import_game — atomic brand+product+sku+mapp
 ## Task 4: HTTP route
 
 **Files:**
+
 - Modify: `apps/api/src/yupay/modules/integrations/routes.py`
 - Test: `apps/api/tests/integration/test_g2b_import.py` (append endpoint test)
 
@@ -753,6 +762,7 @@ git commit -m "feat(integrations): POST /admin/integrations/g2b/import endpoint"
 ## Task 5: Regenerate OpenAPI + TS client
 
 **Files:**
+
 - Regenerated: `docs/api/openapi.json`, `packages/api-client/`
 
 - [ ] **Step 1: Regenerate**
@@ -777,6 +787,7 @@ git commit -m "build(api): regenerate OpenAPI + TS client for g2b import endpoin
 ## Task 6: Admin — query keys + types
 
 **Files:**
+
 - Modify: `apps/admin/src/lib/queryKeys.ts`
 - Modify: `apps/admin/src/features/integrations/types.ts`
 
@@ -873,6 +884,7 @@ git commit -m "feat(admin): query keys + import DTO types for g2b catalog"
 ## Task 7: Admin — supplier catalog browser page
 
 **Files:**
+
 - Create: `apps/admin/src/features/integrations/SupplierCatalogPage.tsx`
 - Modify: `apps/admin/src/app/router.tsx`
 - Modify: `apps/admin/src/features/integrations/G2bDetailPage.tsx`
@@ -926,9 +938,7 @@ export function SupplierCatalogPage() {
   });
 
   const imported = new Set(
-    (mappings.data?.items ?? [])
-      .filter((m) => m.kind === "game")
-      .map((m) => m.external_product_id),
+    (mappings.data?.items ?? []).filter((m) => m.kind === "game").map((m) => m.external_product_id),
   );
 
   return (
@@ -936,7 +946,11 @@ export function SupplierCatalogPage() {
       <PageHeader
         title={`Каталог · ${label}`}
         description="Игры поставщика из локального кэша. Откройте игру, чтобы импортировать её как бренд с номиналами."
-        breadcrumbs={[{ label: "Интеграции", to: "/integrations" }, { label, to: `/integrations/${slug}` }, { label: "Каталог" }]}
+        breadcrumbs={[
+          { label: "Интеграции", to: "/integrations" },
+          { label, to: `/integrations/${slug}` },
+          { label: "Каталог" },
+        ]}
       />
 
       <label className="mb-4 flex max-w-sm items-center gap-2 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3">
@@ -959,25 +973,42 @@ export function SupplierCatalogPage() {
         ariaLabel="Каталог игр поставщика"
         empty={
           <span>
-            Каталог пуст. Сначала <Link to={`/integrations/${slug}`} className="underline">синхронизируйте каталог</Link>.
+            Каталог пуст. Сначала{" "}
+            <Link to={`/integrations/${slug}`} className="underline">
+              синхронизируйте каталог
+            </Link>
+            .
           </span>
         }
         columns={[
-          { key: "title", header: "Игра", render: (r) => <span className="font-medium">{r.title}</span> },
-          { key: "code", header: "game_code", render: (r) => <code className="font-mono text-xs">{r.external_id}</code> },
+          {
+            key: "title",
+            header: "Игра",
+            render: (r) => <span className="font-medium">{r.title}</span>,
+          },
+          {
+            key: "code",
+            header: "game_code",
+            render: (r) => <code className="font-mono text-xs">{r.external_id}</code>,
+          },
           {
             key: "status",
             header: "",
             render: (r) =>
               imported.has(r.external_id) ? (
-                <span className="rounded bg-[var(--bg-accent-soft)] px-2 py-0.5 text-xs text-[var(--accent)]">импортирована</span>
+                <span className="rounded bg-[var(--bg-accent-soft)] px-2 py-0.5 text-xs text-[var(--accent)]">
+                  импортирована
+                </span>
               ) : null,
           },
           {
             key: "action",
             header: "",
             render: (r) => (
-              <Link to={`/integrations/${slug}/catalog/${encodeURIComponent(r.external_id)}`} className="inline-flex items-center gap-1 text-sm font-medium text-[var(--accent)] hover:underline">
+              <Link
+                to={`/integrations/${slug}/catalog/${encodeURIComponent(r.external_id)}`}
+                className="inline-flex items-center gap-1 text-sm font-medium text-[var(--accent)] hover:underline"
+              >
                 <Database className="size-4" /> Импортировать →
               </Link>
             ),
@@ -1010,13 +1041,13 @@ import { GameImportPage } from "@/features/integrations/GameImportPage";
 In `apps/admin/src/features/integrations/G2bDetailPage.tsx`, the "Каталог поставщика" `ActionCard` currently has a single sync button. Replace that `ActionCard` usage with a version that also links to the browser. Simplest: add a second card, or add a link under the sync card. Add this card right after the existing "Каталог поставщика" `ActionCard` in the `<section>` grid:
 
 ```tsx
-        <ActionCard
-          icon={Database}
-          title="Просмотр каталога"
-          description="Откройте список игр поставщика и импортируйте игру как бренд с номиналами одним действием."
-          actionLabel="Перейти к каталогу"
-          to={`/integrations/${slug}/catalog`}
-        />
+<ActionCard
+  icon={Database}
+  title="Просмотр каталога"
+  description="Откройте список игр поставщика и импортируйте игру как бренд с номиналами одним действием."
+  actionLabel="Перейти к каталогу"
+  to={`/integrations/${slug}/catalog`}
+/>
 ```
 
 (`Database` is already imported in this file.) The grid is `md:grid-cols-3`; adding a 4th card flows to the next row cleanly.
@@ -1038,6 +1069,7 @@ git commit -m "feat(admin): supplier catalog browser page + entry button"
 ## Task 8: Admin — game import wizard
 
 **Files:**
+
 - Create: `apps/admin/src/features/integrations/GameImportPage.tsx`
 
 - [ ] **Step 1: Create the wizard page**
@@ -1120,11 +1152,15 @@ export function GameImportPage() {
 
   const denoms = useQuery<DenomListOut>({
     queryKey: qk.gameDenoms(code),
-    queryFn: () => apiGet<DenomListOut>(`/api/v1/admin/integrations/g2b/games/${encodeURIComponent(code)}/catalogue`),
+    queryFn: () =>
+      apiGet<DenomListOut>(
+        `/api/v1/admin/integrations/g2b/games/${encodeURIComponent(code)}/catalogue`,
+      ),
   });
   const fields = useQuery<FieldsOut>({
     queryKey: qk.gameFields(code),
-    queryFn: () => apiGet<FieldsOut>(`/api/v1/admin/integrations/g2b/games/${encodeURIComponent(code)}/fields`),
+    queryFn: () =>
+      apiGet<FieldsOut>(`/api/v1/admin/integrations/g2b/games/${encodeURIComponent(code)}/fields`),
   });
   const categories = useQuery<CategoryRow[]>({
     queryKey: qk.categories(),
@@ -1157,7 +1193,14 @@ export function GameImportPage() {
   }
 
   function setRow(name: string, patch: Partial<DenomState>) {
-    setRows((prev) => ({ ...prev, [name]: { ...rowState({ catalogue_name: name, name, amount: null }), ...prev[name], ...patch } }));
+    setRows((prev) => ({
+      ...prev,
+      [name]: {
+        ...rowState({ catalogue_name: name, name, amount: null }),
+        ...prev[name],
+        ...patch,
+      },
+    }));
   }
 
   function sellPrice(amount: string | null, override: string): string {
@@ -1238,17 +1281,35 @@ export function GameImportPage() {
         <h2 className="mb-3 font-semibold">Назначение</h2>
         <div className="flex gap-4">
           <label className="flex items-center gap-2 text-sm">
-            <input type="radio" checked={target === "new_brand"} onChange={() => { setTarget("new_brand"); }} />
+            <input
+              type="radio"
+              checked={target === "new_brand"}
+              onChange={() => {
+                setTarget("new_brand");
+              }}
+            />
             Новый бренд
           </label>
           <label className="flex items-center gap-2 text-sm">
-            <input type="radio" checked={target === "existing_brand"} onChange={() => { setTarget("existing_brand"); }} />
+            <input
+              type="radio"
+              checked={target === "existing_brand"}
+              onChange={() => {
+                setTarget("existing_brand");
+              }}
+            />
             Существующий бренд
           </label>
         </div>
         {target === "existing_brand" && (
           <Field label="Бренд">
-            <select value={brandId} onChange={(e) => { setBrandId(e.target.value); }} className="h-9 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 text-sm">
+            <select
+              value={brandId}
+              onChange={(e) => {
+                setBrandId(e.target.value);
+              }}
+              className="h-9 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 text-sm"
+            >
               <option value="">— выбери —</option>
               {(brands.data ?? []).map((b) => (
                 <option key={b.id} value={b.id}>
@@ -1262,17 +1323,35 @@ export function GameImportPage() {
 
       {/* Step 2: brand + product */}
       <section className="mb-6 grid grid-cols-1 gap-4 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-4 md:grid-cols-2">
-        <h2 className="md:col-span-2 font-semibold">Бренд и продукт</h2>
+        <h2 className="font-semibold md:col-span-2">Бренд и продукт</h2>
         {target === "new_brand" && (
           <>
             <Field label="Название бренда">
-              <input value={brandName} onChange={(e) => { setBrandName(e.target.value); }} className="h-9 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 text-sm" />
+              <input
+                value={brandName}
+                onChange={(e) => {
+                  setBrandName(e.target.value);
+                }}
+                className="h-9 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 text-sm"
+              />
             </Field>
             <Field label="Slug бренда">
-              <input value={brandSlug} onChange={(e) => { setBrandSlug(e.target.value); }} className="h-9 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 font-mono text-sm" />
+              <input
+                value={brandSlug}
+                onChange={(e) => {
+                  setBrandSlug(e.target.value);
+                }}
+                className="h-9 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 font-mono text-sm"
+              />
             </Field>
             <Field label="Категория">
-              <select value={categoryId} onChange={(e) => { setCategoryId(e.target.value); }} className="h-9 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 text-sm">
+              <select
+                value={categoryId}
+                onChange={(e) => {
+                  setCategoryId(e.target.value);
+                }}
+                className="h-9 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 text-sm"
+              >
                 <option value="">— выбери —</option>
                 {(categories.data ?? []).map((c) => (
                   <option key={c.id} value={c.id}>
@@ -1284,16 +1363,36 @@ export function GameImportPage() {
           </>
         )}
         <Field label="Название продукта">
-          <input value={productName} onChange={(e) => { setProductName(e.target.value); }} className="h-9 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 text-sm" />
+          <input
+            value={productName}
+            onChange={(e) => {
+              setProductName(e.target.value);
+            }}
+            className="h-9 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 text-sm"
+          />
         </Field>
         <Field label="Slug продукта">
-          <input value={productSlug} onChange={(e) => { setProductSlug(e.target.value); }} className="h-9 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 font-mono text-sm" />
+          <input
+            value={productSlug}
+            onChange={(e) => {
+              setProductSlug(e.target.value);
+            }}
+            className="h-9 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 font-mono text-sm"
+          />
         </Field>
         <Field label="Наценка, %">
-          <input value={margin} onChange={(e) => { setMargin(e.target.value); }} inputMode="decimal" className="h-9 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 text-sm" />
+          <input
+            value={margin}
+            onChange={(e) => {
+              setMargin(e.target.value);
+            }}
+            inputMode="decimal"
+            className="h-9 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 text-sm"
+          />
         </Field>
-        <div className="md:col-span-2 text-xs text-[var(--text-secondary)]">
-          Поля игрока (из G2B): {requiredFields.length ? requiredFields.map((f) => f.label.ru).join(", ") : "—"}
+        <div className="text-xs text-[var(--text-secondary)] md:col-span-2">
+          Поля игрока (из G2B):{" "}
+          {requiredFields.length ? requiredFields.map((f) => f.label.ru).join(", ") : "—"}
         </div>
       </section>
 
@@ -1303,7 +1402,9 @@ export function GameImportPage() {
         {denoms.isLoading ? (
           <Spinner label="Загружаем номиналы…" />
         ) : (denoms.data?.items ?? []).length === 0 ? (
-          <p className="text-sm text-[var(--text-secondary)]">G2B не вернул номиналов для этой игры.</p>
+          <p className="text-sm text-[var(--text-secondary)]">
+            G2B не вернул номиналов для этой игры.
+          </p>
         ) : (
           <table className="w-full text-sm">
             <thead>
@@ -1321,7 +1422,13 @@ export function GameImportPage() {
                 return (
                   <tr key={d.catalogue_name} className="border-t border-[var(--border-default)]">
                     <td className="py-1.5">
-                      <input type="checkbox" checked={st.checked} onChange={(e) => { setRow(d.catalogue_name, { checked: e.target.checked }); }} />
+                      <input
+                        type="checkbox"
+                        checked={st.checked}
+                        onChange={(e) => {
+                          setRow(d.catalogue_name, { checked: e.target.checked });
+                        }}
+                      />
                     </td>
                     <td>{d.name || d.catalogue_name}</td>
                     <td className="font-mono">{d.amount ?? "—"}</td>
@@ -1329,7 +1436,9 @@ export function GameImportPage() {
                       <input
                         value={st.price_override}
                         placeholder={sellPrice(d.amount, "")}
-                        onChange={(e) => { setRow(d.catalogue_name, { price_override: e.target.value }); }}
+                        onChange={(e) => {
+                          setRow(d.catalogue_name, { price_override: e.target.value });
+                        }}
                         inputMode="decimal"
                         className="h-8 w-24 rounded border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 font-mono"
                       />
@@ -1337,7 +1446,9 @@ export function GameImportPage() {
                     <td>
                       <input
                         value={st.sku_code}
-                        onChange={(e) => { setRow(d.catalogue_name, { sku_code: e.target.value }); }}
+                        onChange={(e) => {
+                          setRow(d.catalogue_name, { sku_code: e.target.value });
+                        }}
                         className="h-8 w-48 rounded border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 font-mono text-xs"
                       />
                     </td>
@@ -1380,6 +1491,7 @@ Run: `make dev` (or `make dev-api` + `pnpm --filter @yupay/admin dev`). Ensure `
 - [ ] **Step 2: Walk the flow**
 
 In the admin: `/integrations/g2b` → "Перейти к каталогу" → pick a game → set margin / tweak a row → "Импортировать". Then confirm:
+
 - toast shows created counts;
 - `/brands/:id` opens the new brand (3 locales prefilled);
 - `/skus` lists the new SKUs with the computed prices;
@@ -1396,6 +1508,7 @@ Re-run the same import → toast reports `пропущено N` (skipped), no du
 ## Task 10: Documentation
 
 **Files:**
+
 - Create: `docs/decisions/0024-g2b-catalog-import.md`
 - Create: `docs/architecture/sequence-diagrams/g2b-catalog-import.mmd`
 - Modify: `docs/architecture/module-map.md`
@@ -1462,6 +1575,7 @@ Expected: green. Confirm coverage on new `integrations` code ≥ 80%.
 ```bash
 git push -u origin feat/admin-g2b-catalog-import
 ```
+
 Open a PR (base `main`) titled `feat(integrations): G2B catalog browser + game import`. Body: summary, the import flow, testing notes (integration tests + manual run results from Task 9), screenshots of the catalog page + wizard, and a rollback plan (revert the merge; no migration to undo). End with the Co-Authored-By trailer.
 
 ---
