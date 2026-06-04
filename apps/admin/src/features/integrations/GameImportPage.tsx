@@ -4,9 +4,13 @@ import { Button } from "@yupay/ui";
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
+import { DenominationTable } from "./DenominationTable";
 import {
   g2bFieldLabel,
   type FormFieldDto,
+  type GameDenomList,
+  type GameDenomRow,
+  type GameFields,
   type GameImportPayload,
   type GameImportResult,
 } from "./types";
@@ -15,25 +19,11 @@ import type { Brand, Category } from "@/features/catalog/types";
 
 import { Field } from "@/components/Field";
 import { PageHeader } from "@/components/PageHeader";
-import { Spinner } from "@/components/States";
 import { useToast } from "@/components/Toast";
 import { apiGet, apiPost, type ApiError } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
-interface DenomRow {
-  catalogue_name: string;
-  name: string;
-  amount: string | null;
-}
-interface DenomListOut {
-  items: DenomRow[];
-}
-interface FieldsOut {
-  fields: string[];
-  notes: string | null;
-}
-
-interface DenomState {
+export interface DenomState {
   checked: boolean;
   sku_code: string;
   price_override: string; // empty = use margin
@@ -63,17 +53,17 @@ export function GameImportPage() {
   const [margin, setMargin] = useState("20");
   const [rows, setRows] = useState<Record<string, DenomState>>({});
 
-  const denoms = useQuery<DenomListOut>({
-    queryKey: qk.gameDenoms(code),
+  const denoms = useQuery<GameDenomList>({
+    queryKey: qk.g2bGameCatalogue(code),
     queryFn: () =>
-      apiGet<DenomListOut>(
+      apiGet<GameDenomList>(
         `/api/v1/admin/integrations/g2b/games/${encodeURIComponent(code)}/catalogue`,
       ),
   });
-  const fields = useQuery<FieldsOut>({
-    queryKey: qk.gameFields(code),
+  const fields = useQuery<GameFields>({
+    queryKey: qk.g2bGameFields(code),
     queryFn: () =>
-      apiGet<FieldsOut>(`/api/v1/admin/integrations/g2b/games/${encodeURIComponent(code)}/fields`),
+      apiGet<GameFields>(`/api/v1/admin/integrations/g2b/games/${encodeURIComponent(code)}/fields`),
   });
   const categories = useQuery<Category[]>({
     queryKey: qk.categories(),
@@ -95,33 +85,26 @@ export function GameImportPage() {
     [fields.data],
   );
 
-  function rowState(d: DenomRow): DenomState {
-    return (
-      rows[d.catalogue_name] ?? {
-        checked: true,
-        sku_code: slugify(`g2b-${code}-${d.catalogue_name}`),
-        price_override: "",
-      }
-    );
+  function defaultState(catalogueName: string): DenomState {
+    return {
+      checked: true,
+      sku_code: slugify(`g2b-${code}-${catalogueName}`),
+      price_override: "",
+    };
+  }
+
+  function rowState(d: GameDenomRow): DenomState {
+    return rows[d.catalogue_name] ?? defaultState(d.catalogue_name);
   }
 
   function setRow(name: string, patch: Partial<DenomState>) {
     setRows((prev) => ({
       ...prev,
       [name]: {
-        ...rowState({ catalogue_name: name, name, amount: null }),
-        ...prev[name],
+        ...(prev[name] ?? defaultState(name)),
         ...patch,
       },
     }));
-  }
-
-  function sellPrice(amount: string | null, override: string): string {
-    if (override.trim()) return override.trim();
-    const cost = Number(amount ?? 0);
-    const m = Number(margin || 0);
-    if (!cost) return "—";
-    return (Math.round(cost * (1 + m / 100) * 100) / 100).toFixed(2);
   }
 
   const save = useMutation<GameImportResult, ApiError>({
@@ -335,65 +318,13 @@ export function GameImportPage() {
       {/* Step 3: denominations */}
       <section className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-4">
         <h2 className="mb-3 font-semibold">Номиналы</h2>
-        {denoms.isLoading ? (
-          <Spinner label="Загружаем номиналы…" />
-        ) : (denoms.data?.items ?? []).length === 0 ? (
-          <p className="text-sm text-[var(--text-secondary)]">
-            G2B не вернул номиналов для этой игры.
-          </p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-[var(--text-tertiary)]">
-                <th className="py-1"></th>
-                <th>Номинал</th>
-                <th>Себест. $</th>
-                <th>Цена прод. $</th>
-                <th>sku_code</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(denoms.data?.items ?? []).map((d) => {
-                const st = rowState(d);
-                return (
-                  <tr key={d.catalogue_name} className="border-t border-[var(--border-default)]">
-                    <td className="py-1.5">
-                      <input
-                        type="checkbox"
-                        checked={st.checked}
-                        onChange={(e) => {
-                          setRow(d.catalogue_name, { checked: e.target.checked });
-                        }}
-                      />
-                    </td>
-                    <td>{d.name || d.catalogue_name}</td>
-                    <td className="font-mono">{d.amount ?? "—"}</td>
-                    <td>
-                      <input
-                        value={st.price_override}
-                        placeholder={sellPrice(d.amount, "")}
-                        onChange={(e) => {
-                          setRow(d.catalogue_name, { price_override: e.target.value });
-                        }}
-                        inputMode="decimal"
-                        className="h-8 w-24 rounded border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 font-mono"
-                      />
-                    </td>
-                    <td>
-                      <input
-                        value={st.sku_code}
-                        onChange={(e) => {
-                          setRow(d.catalogue_name, { sku_code: e.target.value });
-                        }}
-                        className="h-8 w-48 rounded border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 font-mono text-xs"
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
+        <DenominationTable
+          rows={denoms.data?.items ?? []}
+          loading={denoms.isLoading}
+          margin={margin}
+          rowState={rowState}
+          setRow={setRow}
+        />
       </section>
     </div>
   );
