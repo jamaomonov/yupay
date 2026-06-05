@@ -97,6 +97,16 @@ class Settings(BaseSettings):
 
     # --- telegram ---
     telegram_bot_token: str = Field(default="")
+
+    # --- Email (Resend) ---
+    resend_api_key: str = Field(default="")
+    email_from: str = Field(default="noreply@yupay.uz")
+    email_from_name: str = Field(default="YuPay")
+
+    # --- Auth IP guard (lightweight; full rate limiting is a separate concern) ---
+    auth_ip_guard_max: int = Field(default=10, description="Max sensitive auth hits per window per IP.")
+    auth_ip_guard_window_seconds: int = Field(default=60)
+
     # Public URL of the miniapp — embedded into the inline ``WebAppInfo``
     # button the bot attaches to /start. Falls back to the dev Caddy host
     # when unset so a fresh checkout boots without env tweaks.
