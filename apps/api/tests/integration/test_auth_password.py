@@ -59,3 +59,23 @@ async def test_login_rejects_wrong_password(integration_client: AsyncClient) -> 
         json={"email": "loginbad@example.com", "password": "WRONGWRONG"},
     )
     assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_verify_email_marks_verified(integration_client, db_session) -> None:
+    reg = await integration_client.post(
+        "/api/v1/auth/register",
+        json={"email": "verify@example.com", "password": "hunter2hunter2"},
+    )
+    access = reg.json()["access_token"]
+    from yupay.modules.auth import jwt as authjwt
+    from yupay.modules.auth.service import current_user
+
+    user = await current_user(db_session, access)
+    token = authjwt.mint_email_verify(sub=user.id)
+
+    r = await integration_client.post("/api/v1/auth/verify-email", json={"token": token})
+    assert r.status_code == 204, r.text
+
+    await db_session.refresh(user)
+    assert user.email_verified_at is not None

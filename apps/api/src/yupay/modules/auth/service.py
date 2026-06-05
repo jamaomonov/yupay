@@ -327,6 +327,23 @@ async def _revoke_all_for_user(db: AsyncSession, user_id: str) -> None:
     await db.flush()
 
 
+async def verify_email(
+    db: AsyncSession,
+    *,
+    token: str,
+    settings: Settings | None = None,
+) -> None:
+    """Mark a user's email as verified from a signed ``email_verify`` token."""
+    s = settings or get_settings()
+    claims = authjwt.verify(token, expected_kind="email_verify", settings=s)
+    user = await get_user_by_id(db, claims.sub)
+    if user is None:
+        raise NotFoundError("user not found")
+    if user.email_verified_at is None:
+        user.email_verified_at = now()
+        await db.flush()
+
+
 async def current_user(
     db: AsyncSession,
     access_token: str,
@@ -353,4 +370,5 @@ __all__ = [
     "register_user",
     "telegram_init_data_login",
     "telegram_widget_login",
+    "verify_email",
 ]

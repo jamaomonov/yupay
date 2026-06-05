@@ -28,6 +28,7 @@ from yupay.modules.auth.schemas import (
     TelegramInitDataIn,
     TelegramWidgetIn,
     TokensOut,
+    VerifyEmailIn,
 )
 from yupay.modules.auth.service import (
     SessionTokens,
@@ -38,6 +39,7 @@ from yupay.modules.auth.service import (
     register_user,
     telegram_init_data_login,
     telegram_widget_login,
+    verify_email,
 )
 from yupay.modules.auth.telegram import TelegramAuthError
 from yupay.modules.users.models import User
@@ -173,6 +175,19 @@ async def logout_route(
 ) -> None:
     """Idempotent: silently succeeds even if the token is unknown or already revoked."""
     await logout(db, body.refresh_token)
+
+
+@router.post(
+    "/verify-email",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Confirm an email address from a signed token",
+)
+async def verify_email_route(
+    body: VerifyEmailIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> None:
+    """Mark the user's email as verified using a signed ``email_verify`` JWT."""
+    await verify_email(db, token=body.token)
 
 
 @router.get(
