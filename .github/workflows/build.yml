@@ -39,13 +39,13 @@ jobs:
               VITE_TELEGRAM_BOT_USERNAME=yupayapp_bot
           - image: admin
             dockerfile: infra/docker/admin.Dockerfile
-            # The admin panel logs in via a SEPARATE Telegram bot (domain-bound
-            # to admin.yupay.uz). Once that bot exists, change the username below
-            # to it and set ADMIN_TELEGRAM_BOT_TOKEN in the api secrets. Until
-            # then the customer bot is used (backend falls back to its token).
+            # The admin panel logs in via a SEPARATE Telegram bot (yupayadmin_bot),
+            # domain-bound to admin.yupay.uz via BotFather /setdomain. Set its token
+            # in ADMIN_TELEGRAM_BOT_TOKEN (api secrets); until then the backend
+            # falls back to the customer bot token.
             build_args: |
               VITE_API_BASE_URL=https://api.yupay.uz
-              VITE_TELEGRAM_BOT_USERNAME=yupayapp_bot
+              VITE_TELEGRAM_BOT_USERNAME=yupayadmin_bot
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
