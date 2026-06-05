@@ -32,3 +32,30 @@ async def test_register_duplicate_email_conflicts(integration_client: AsyncClien
     assert first.status_code == 201
     second = await integration_client.post("/api/v1/auth/register", json=payload)
     assert second.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_login_succeeds_with_correct_password(integration_client: AsyncClient) -> None:
+    await integration_client.post(
+        "/api/v1/auth/register",
+        json={"email": "loginok@example.com", "password": "hunter2hunter2"},
+    )
+    r = await integration_client.post(
+        "/api/v1/auth/login",
+        json={"email": "loginok@example.com", "password": "hunter2hunter2"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["access_token"]
+
+
+@pytest.mark.asyncio
+async def test_login_rejects_wrong_password(integration_client: AsyncClient) -> None:
+    await integration_client.post(
+        "/api/v1/auth/register",
+        json={"email": "loginbad@example.com", "password": "hunter2hunter2"},
+    )
+    r = await integration_client.post(
+        "/api/v1/auth/login",
+        json={"email": "loginbad@example.com", "password": "WRONGWRONG"},
+    )
+    assert r.status_code == 401

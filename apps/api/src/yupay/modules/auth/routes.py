@@ -20,6 +20,7 @@ from yupay.modules.auth.schemas import (
     AdminDevLoginIn,
     GuestIn,
     GuestTokenOut,
+    LoginIn,
     LogoutIn,
     MeOut,
     RefreshIn,
@@ -31,6 +32,7 @@ from yupay.modules.auth.schemas import (
 from yupay.modules.auth.service import (
     SessionTokens,
     guest_checkout,
+    login_password,
     logout,
     refresh_session,
     register_user,
@@ -79,6 +81,20 @@ async def register_route(
         locale=body.locale,
         verify_link_base=_web_base(request, body.locale),
     )
+    return _tokens_response(tokens)
+
+
+@router.post(
+    "/login",
+    response_model=TokensOut,
+    summary="Log in with email + password",
+)
+async def login_route(
+    body: LoginIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> TokensOut:
+    """Authenticate an existing email/password account and return a session."""
+    tokens = await login_password(db, email=body.email, password=body.password)
     return _tokens_response(tokens)
 
 

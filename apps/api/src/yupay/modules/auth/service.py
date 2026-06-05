@@ -27,7 +27,13 @@ from yupay.core.ids import new_id
 from yupay.modules.auth import jwt as authjwt
 from yupay.modules.auth import telegram as tg
 from yupay.modules.auth.models import AuthSession
-from yupay.modules.auth.security import email_hash, hash_password, hash_token, new_refresh_token
+from yupay.modules.auth.security import (
+    email_hash,
+    hash_password,
+    hash_token,
+    new_refresh_token,
+    verify_password,
+)
 from yupay.modules.notifications.channels.email import EmailSendError, send_email
 from yupay.modules.notifications.templates import verify_email_email
 from yupay.modules.users.models import User
@@ -153,6 +159,31 @@ async def register_user(
                 text=content.text,
             )
 
+    return await _open_session(db, user=user, settings=s)
+
+
+async def login_password(
+    db: AsyncSession,
+    *,
+    email: str,
+    password: str,
+    settings: Settings | None = None,
+) -> SessionTokens:
+    """Authenticate an email/password user and open a session.
+
+    Raises:
+        UnauthorizedError: On unknown email, Telegram-only account (no password),
+            or wrong password — all surfaced identically to avoid enumeration.
+    """
+    s = settings or get_settings()
+    normalised = email.strip().lower()
+    stmt = select(User).where(
+        User.email == normalised,
+        User.deleted_at.is_(None),
+    )
+    user = (await db.execute(stmt)).scalar_one_or_none()
+    if user is None or not user.password_hash or not verify_password(password, user.password_hash):
+        raise UnauthorizedError("invalid email or password")
     return await _open_session(db, user=user, settings=s)
 
 
@@ -316,6 +347,7 @@ __all__ = [
     "SessionTokens",
     "current_user",
     "guest_checkout",
+    "login_password",
     "logout",
     "refresh_session",
     "register_user",
