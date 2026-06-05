@@ -7,12 +7,12 @@ import { useAuth } from "@/lib/auth";
 /**
  * Injects Telegram's Login Widget <script>. The widget calls a global callback
  * with the signed user payload, which we POST to /auth/telegram/widget.
- * Requires NEXT_PUBLIC_TELEGRAM_BOT and a BotFather /setdomain binding.
+ * Requires NEXT_PUBLIC_TELEGRAM_BOT_USERNAME and a BotFather /setdomain binding.
  */
 export function TelegramLoginButton() {
   const ref = useRef<HTMLDivElement>(null);
   const { loginWithTelegram } = useAuth();
-  const bot = process.env.NEXT_PUBLIC_TELEGRAM_BOT;
+  const bot = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME;
 
   useEffect(() => {
     const el = ref.current;
