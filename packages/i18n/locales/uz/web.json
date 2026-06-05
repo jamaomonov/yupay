@@ -71,6 +71,19 @@
       }
     }
   },
+  "auth": {
+    "email": "Elektron pochta",
+    "password": "Parol",
+    "login": "Kirish",
+    "register": "Roʻyxatdan oʻtish",
+    "emailInvalid": "Toʻgʻri elektron pochta manzilini kiriting",
+    "passwordShort": "Parol kamida 8 ta belgidan iborat boʻlishi kerak",
+    "loginError": "Elektron pochta yoki parol notoʻgʻri",
+    "registerError": "Akkaunt yaratib boʻlmadi. Qayta urinib koʻring.",
+    "toRegister": "Akkaunt yaratish",
+    "toLogin": "Akkauntingiz bormi? Kirish",
+    "forgot": "Parolni unutdingizmi?"
+  },
   "store": {
     "meta": {
       "title": "Oʻzbekistonda oʻyin va obunalarni toʻldirish",

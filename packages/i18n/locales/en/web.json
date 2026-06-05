@@ -71,6 +71,19 @@
       }
     }
   },
+  "auth": {
+    "email": "Email",
+    "password": "Password",
+    "login": "Sign in",
+    "register": "Create account",
+    "emailInvalid": "Please enter a valid email address",
+    "passwordShort": "Password must be at least 8 characters",
+    "loginError": "Incorrect email or password",
+    "registerError": "Could not create account. Please try again.",
+    "toRegister": "Create an account",
+    "toLogin": "Already have an account? Sign in",
+    "forgot": "Forgot password?"
+  },
   "store": {
     "meta": {
       "title": "Game & subscription top-ups in Uzbekistan",
