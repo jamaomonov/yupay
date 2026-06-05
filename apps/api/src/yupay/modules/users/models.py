@@ -22,6 +22,10 @@ class User(Base):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
     email: Mapped[str | None] = mapped_column(CITEXT(), nullable=True)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     locale: Mapped[str] = mapped_column(String(8), nullable=False, server_default="ru")
     # Preferred display currency for prices & balances across the storefront +
     # miniapp. The customer can change it from Settings; persisted server-side
