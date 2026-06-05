@@ -12976,6 +12976,48 @@
         ]
       }
     },
+    "/api/v1/auth/telegram/widget/admin": {
+      "post": {
+        "description": "Verify an admin Login Widget payload (admin bot) and return a session.\n\nVerified against ``admin_telegram_bot_token`` (falls back to the customer bot\ntoken when unset). Non-admin users are rejected with 403.",
+        "operationId": "login_telegram_widget_admin_api_v1_auth_telegram_widget_admin_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelegramWidgetIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokensOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Authenticate the admin panel via its dedicated Telegram Login Widget",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/v1/auth/verify-email": {
       "post": {
         "description": "Mark the user's email as verified using a signed ``email_verify`` JWT.",

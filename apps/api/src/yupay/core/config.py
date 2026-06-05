@@ -106,6 +106,11 @@ class Settings(BaseSettings):
 
     # --- telegram ---
     telegram_bot_token: str = Field(default="")
+    # Separate bot for the admin SPA's Login Widget. The widget is domain-bound
+    # via BotFather /setdomain, and a bot allows only one login domain — so the
+    # admin panel (admin.yupay.uz) needs its own bot. Empty => falls back to
+    # ``telegram_bot_token`` so a single-bot dev/staging setup keeps working.
+    admin_telegram_bot_token: str = Field(default="")
 
     # --- Email (Resend) ---
     resend_api_key: str = Field(default="")

@@ -22,6 +22,12 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
 FROM base AS builder
 COPY --from=deps /app /app
 COPY . .
+# Next.js inlines NEXT_PUBLIC_* into the client bundle at build time, so these
+# must be present here (not just at runtime). CI passes them as build-args.
+ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+ARG NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=
+ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
+ENV NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=${NEXT_PUBLIC_TELEGRAM_BOT_USERNAME}
 RUN pnpm --filter @yupay/web build
 
 FROM node:22-alpine AS runner

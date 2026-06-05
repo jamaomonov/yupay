@@ -35,6 +35,7 @@ from yupay.modules.auth.schemas import (
 )
 from yupay.modules.auth.service import (
     SessionTokens,
+    admin_telegram_widget_login,
     guest_checkout,
     login_password,
     logout,
@@ -139,6 +140,28 @@ async def login_telegram_widget(
         tokens = await telegram_widget_login(db, body.model_dump(exclude_none=True))
     except TelegramAuthError as exc:
         log.info("auth.telegram.widget.rejected", reason=str(exc))
+        raise UnauthorizedError("telegram verification failed") from exc
+    return _tokens_response(tokens)
+
+
+@router.post(
+    "/telegram/widget/admin",
+    response_model=TokensOut,
+    summary="Authenticate the admin panel via its dedicated Telegram Login Widget",
+)
+async def login_telegram_widget_admin(
+    body: TelegramWidgetIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> TokensOut:
+    """Verify an admin Login Widget payload (admin bot) and return a session.
+
+    Verified against ``admin_telegram_bot_token`` (falls back to the customer bot
+    token when unset). Non-admin users are rejected with 403.
+    """
+    try:
+        tokens = await admin_telegram_widget_login(db, body.model_dump(exclude_none=True))
+    except TelegramAuthError as exc:
+        log.info("auth.telegram.widget.admin.rejected", reason=str(exc))
         raise UnauthorizedError("telegram verification failed") from exc
     return _tokens_response(tokens)
 

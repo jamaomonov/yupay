@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.clock import now
 from yupay.core.config import Settings, get_settings
-from yupay.core.errors import ConflictError, NotFoundError, UnauthorizedError
+from yupay.core.errors import ConflictError, ForbiddenError, NotFoundError, UnauthorizedError
 from yupay.core.ids import new_id
 from yupay.core.redis import get_redis
 from yupay.modules.auth import jwt as authjwt
@@ -225,6 +225,42 @@ async def telegram_widget_login(
         max_age_seconds=s.telegram_init_data_ttl_seconds,
     )
     user = await upsert_user_by_telegram(db, verified.user)
+    return await _open_session(db, user=user, settings=s)
+
+
+async def admin_telegram_widget_login(
+    db: AsyncSession,
+    payload: dict[str, str | int | bool],
+    *,
+    settings: Settings | None = None,
+) -> SessionTokens:
+    """Verify an **admin** Login Widget payload and open a session.
+
+    The admin SPA embeds a Login Widget for a dedicated admin bot (domain-bound to
+    the admin panel). The payload is therefore signed with the admin bot's token,
+    so it is verified against ``admin_telegram_bot_token`` (falling back to
+    ``telegram_bot_token`` when the admin bot is not configured yet).
+
+    Only users carrying the ``admin`` role may mint a session here — the admin
+    login surface refuses non-admins outright rather than handing out a token that
+    every admin route would 403 anyway.
+
+    Raises:
+        ForbiddenError: When the verified user is not an admin.
+    """
+    s = settings or get_settings()
+    bot_token = s.admin_telegram_bot_token or s.telegram_bot_token
+    if not bot_token:
+        raise RuntimeError("ADMIN_TELEGRAM_BOT_TOKEN / TELEGRAM_BOT_TOKEN is not configured")
+
+    verified = tg.verify_login_widget(
+        payload,
+        bot_token=bot_token,
+        max_age_seconds=s.telegram_init_data_ttl_seconds,
+    )
+    user = await upsert_user_by_telegram(db, verified.user)
+    if "admin" not in (user.roles or []):
+        raise ForbiddenError("admin role required")
     return await _open_session(db, user=user, settings=s)
 
 
@@ -442,6 +478,7 @@ async def reset_password(
 __all__ = [
     "GuestToken",
     "SessionTokens",
+    "admin_telegram_widget_login",
     "current_user",
     "guest_checkout",
     "login_password",

@@ -27,6 +27,11 @@ jobs:
             dockerfile: infra/docker/bot.Dockerfile
           - image: web
             dockerfile: infra/docker/web.Dockerfile
+            # Next.js inlines NEXT_PUBLIC_* at build time — they must be passed
+            # here, not (only) at runtime, for the client bundle to see them.
+            build_args: |
+              NEXT_PUBLIC_API_BASE_URL=https://api.yupay.uz
+              NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=yupayapp_bot
           - image: miniapp
             dockerfile: infra/docker/miniapp.Dockerfile
             build_args: |
@@ -34,6 +39,10 @@ jobs:
               VITE_TELEGRAM_BOT_USERNAME=yupayapp_bot
           - image: admin
             dockerfile: infra/docker/admin.Dockerfile
+            # The admin panel logs in via a SEPARATE Telegram bot (domain-bound
+            # to admin.yupay.uz). Once that bot exists, change the username below
+            # to it and set ADMIN_TELEGRAM_BOT_TOKEN in the api secrets. Until
+            # then the customer bot is used (backend falls back to its token).
             build_args: |
               VITE_API_BASE_URL=https://api.yupay.uz
               VITE_TELEGRAM_BOT_USERNAME=yupayapp_bot

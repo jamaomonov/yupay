@@ -76,14 +76,16 @@ export function LoginPage() {
       setBusy(true);
       setError(null);
       try {
-        const tokens = await apiPost<TokensOut>("/api/v1/auth/telegram/widget", payload);
+        const tokens = await apiPost<TokensOut>("/api/v1/auth/telegram/widget/admin", payload);
         goNext(tokens);
       } catch (e) {
-        setError(
-          e instanceof ApiError && e.status === 401
-            ? "Telegram сигнатура не прошла."
-            : "Не удалось войти.",
-        );
+        if (e instanceof ApiError && e.status === 401) {
+          setError("Telegram сигнатура не прошла.");
+        } else if (e instanceof ApiError && e.status === 403) {
+          setError("У этого аккаунта нет прав администратора.");
+        } else {
+          setError("Не удалось войти.");
+        }
       } finally {
         setBusy(false);
       }
