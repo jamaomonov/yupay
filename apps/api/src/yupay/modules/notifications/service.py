@@ -9,6 +9,7 @@ business transaction that triggered it.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections.abc import Callable, Coroutine
 from decimal import Decimal
 from typing import Any, Final
@@ -23,6 +24,11 @@ from yupay.core.logging import get_logger
 from yupay.modules.catalog.models import Brand, Product, Sku
 from yupay.modules.fulfillment.models import Delivery
 from yupay.modules.notifications.channels import telegram as tg
+from yupay.modules.notifications.channels.email import send_email
+from yupay.modules.notifications.templates import (
+    order_confirmation_email,
+    order_delivered_email,
+)
 from yupay.modules.orders.models import Order, OrderItem
 from yupay.modules.orders.service import build_item_display
 from yupay.modules.users.models import TelegramLink
@@ -111,18 +117,89 @@ def _summarise_order(order: Order, *, locale: str = "ru") -> str:
     return headline
 
 
+async def _send_guest_email_confirmation(
+    *,
+    order_id: str,
+    guest_email: str | None,
+    web_base: str | None,
+) -> None:
+    """Email a guest buyer that their order was confirmed (best-effort).
+
+    Args:
+        order_id: The order's ID.
+        guest_email: Recipient address, or ``None`` for registered users.
+        web_base: Web base URL including locale prefix (e.g. ``https://yupay.uz/ru``).
+            When empty (dev default) the function returns early without sending.
+
+    No-ops silently when ``guest_email`` or ``web_base`` are absent. Any send
+    failure is swallowed so a best-effort notification never breaks (or rolls
+    back) the caller's order flow.
+    """
+    if not guest_email or not web_base:
+        return
+    link = f"{web_base.rstrip('/')}/orders/{order_id}"
+    content = order_confirmation_email(order_id=order_id, link=link)
+    with contextlib.suppress(Exception):  # best-effort: never break the order flow
+        await send_email(
+            to=guest_email,
+            subject=content.subject,
+            html=content.html,
+            text=content.text,
+        )
+
+
+async def _send_guest_email_delivered(
+    *,
+    order_id: str,
+    guest_email: str | None,
+    web_base: str | None,
+) -> None:
+    """Email a guest buyer that their order was delivered (best-effort).
+
+    Args:
+        order_id: The order's ID.
+        guest_email: Recipient address, or ``None`` for registered users.
+        web_base: Web base URL including locale prefix (e.g. ``https://yupay.uz/ru``).
+            When empty (dev default) the function returns early without sending.
+
+    No-ops silently when ``guest_email`` or ``web_base`` are absent. Any send
+    failure is swallowed so a best-effort notification never breaks (or rolls
+    back) the caller's order flow.
+    """
+    if not guest_email or not web_base:
+        return
+    link = f"{web_base.rstrip('/')}/orders/{order_id}"
+    content = order_delivered_email(order_id=order_id, link=link)
+    with contextlib.suppress(Exception):  # best-effort: never break the order flow
+        await send_email(
+            to=guest_email,
+            subject=content.subject,
+            html=content.html,
+            text=content.text,
+        )
+
+
 async def notify_order_paid(order_id: str) -> bool:
-    """Telegram: «Заказ оплачен, передаём в выдачу». Returns delivery success."""
+    """Telegram + email: «Заказ оплачен, передаём в выдачу». Returns Telegram success."""
     async with get_session_factory()() as db:
         order = await _load_order(db, order_id)
         if order is None:
             return False
         chat = await _resolve_chat_id(db, user_id=order.user_id)
-        if chat is None:
-            return False
-        chat_id, name = chat
+        guest_email: str | None = order.guest_email
 
+    # Email confirmation for guest buyers — best-effort, independent of Telegram.
     settings = get_settings()
+    await _send_guest_email_confirmation(
+        order_id=order_id,
+        guest_email=guest_email,
+        web_base=settings.web_base_url or None,
+    )
+
+    if chat is None:
+        return False
+    chat_id, name = chat
+
     token = settings.telegram_bot_token
     if not token:
         log.info("notify.skipped.no_token", event="order.paid", order_id=order_id)
@@ -136,19 +213,18 @@ async def notify_order_paid(order_id: str) -> bool:
         f"Сумма: <b>{amount}</b>\n\n"
         f"<i>Передаём заказ в выдачу — пришлём код как только будет готово.</i>"
     )
-    return await tg.send_message(bot_token=token, chat_id=chat_id, text=text)
+    result: bool = await tg.send_message(bot_token=token, chat_id=chat_id, text=text)
+    return result
 
 
 async def notify_order_delivered(order_id: str) -> bool:
-    """Telegram: «Заказ выдан + коды»."""
+    """Telegram + email: «Заказ выдан + коды»."""
     async with get_session_factory()() as db:
         order = await _load_order(db, order_id)
         if order is None:
             return False
         chat = await _resolve_chat_id(db, user_id=order.user_id)
-        if chat is None:
-            return False
-        chat_id, _name = chat
+        guest_email: str | None = order.guest_email
 
         # Inline-render up to N voucher codes for the smallest-friction UX.
         # Real top-up receipts and license keys also surface here.
@@ -166,6 +242,18 @@ async def notify_order_delivered(order_id: str) -> bool:
         )
 
     settings = get_settings()
+
+    # Email notification for guest buyers — best-effort, independent of Telegram.
+    await _send_guest_email_delivered(
+        order_id=order_id,
+        guest_email=guest_email,
+        web_base=settings.web_base_url or None,
+    )
+
+    if chat is None:
+        return False
+    chat_id, _name = chat
+
     token = settings.telegram_bot_token
     if not token:
         return False
@@ -302,6 +390,8 @@ def schedule_after_commit(
 
 
 __all__ = [
+    "_send_guest_email_confirmation",
+    "_send_guest_email_delivered",
     "notify_order_delivered",
     "notify_order_failed",
     "notify_order_paid",
