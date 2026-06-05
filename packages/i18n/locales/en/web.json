@@ -108,6 +108,7 @@
     "successTitle": "Order created",
     "successNote": "Continue to payment to finish. The receipt will be emailed to you.",
     "goToPay": "Continue to payment",
+    "orderStatus": "Order status",
     "orderLabel": "Order",
     "commissionChip": "Commission from {pct}%",
     "etaChip": "Credited in {eta} min",

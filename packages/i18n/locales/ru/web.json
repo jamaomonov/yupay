@@ -108,6 +108,7 @@
     "successTitle": "Заказ создан",
     "successNote": "Перейдите к оплате, чтобы завершить покупку. Чек придёт на email.",
     "goToPay": "Перейти к оплате",
+    "orderStatus": "Статус заказа",
     "orderLabel": "Заказ",
     "commissionChip": "Комиссия от {pct}%",
     "etaChip": "Зачисление {eta} мин",

@@ -108,6 +108,7 @@
     "successTitle": "Buyurtma yaratildi",
     "successNote": "Toʻlovni yakunlash uchun davom eting. Chek emailingizga keladi.",
     "goToPay": "Toʻlovga oʻtish",
+    "orderStatus": "Buyurtma holati",
     "orderLabel": "Buyurtma",
     "commissionChip": "Komissiya {pct}% dan",
     "etaChip": "{eta} daqiqada",

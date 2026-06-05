@@ -2,12 +2,15 @@
 
 import { ArrowUpRight, Check, Loader2 } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
 import type { FormField, ProductDetail, SkuOut } from "@/lib/catalog";
 
+import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
+import { getAccessToken } from "@/lib/client";
 import { formatUzs } from "@/lib/seo";
 
 const API = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
@@ -40,6 +43,7 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 export function PurchasePanel({ products, locale }: { products: ProductDetail[]; locale: string }) {
   const t = useTranslations("web.store");
+  const { user } = useAuth();
   const firstSku = products[0]?.skus[0]?.id;
   const [skuId, setSkuId] = useState<string | undefined>(firstSku);
   const [form, setForm] = useState<Record<string, string>>({});
@@ -47,7 +51,11 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
   const [methodId, setMethodId] = useState<string>(METHODS[0]?.id ?? "click");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<{ orderId: string; intentUrl: string | null } | null>(null);
+  const [done, setDone] = useState<{
+    orderId: string;
+    intentUrl: string | null;
+    trackHref: string;
+  } | null>(null);
 
   let selSku: SkuOut | undefined;
   let selProduct: ProductDetail | undefined;
@@ -65,21 +73,15 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
 
   const emailOk = EMAIL_RE.test(email);
   const fieldsOk = fields.every((f) => !f.required || (form[f.key]?.trim() ?? "") !== "");
-  const canPay = Boolean(selSku) && emailOk && fieldsOk && Boolean(methodId) && !loading;
+  // Logged-in users don't need to supply an email — the account email is used server-side.
+  const canPay =
+    Boolean(selSku) && (user !== null || emailOk) && fieldsOk && Boolean(methodId) && !loading;
 
   async function pay() {
     if (!selSku || !canPay) return;
     setLoading(true);
     setError(null);
     try {
-      const g = await fetch(`${API}/api/v1/auth/guest`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-      if (!g.ok) throw new Error("guest");
-      const { access_token } = (await g.json()) as { access_token: string };
-
       const providers = await fetch(`${API}/api/v1/payments/providers`)
         .then((r) => r.json() as Promise<{ providers: string[] }>)
         .catch(() => ({ providers: [] as string[] }));
@@ -90,7 +92,37 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
           ? "mock"
           : wanted;
 
-      const auth = { Authorization: `Guest ${access_token}` };
+      const token = getAccessToken();
+      const isLoggedIn = user !== null && token !== null;
+
+      let auth: { Authorization: string };
+      let emailSuffix: string;
+
+      if (isLoggedIn) {
+        // ── Logged-in path: use Bearer token; no guest step needed ──
+        auth = { Authorization: `Bearer ${token}` };
+        emailSuffix = "";
+      } else {
+        // ── Guest path: obtain a guest token first (unchanged behavior) ──
+        const g = await fetch(`${API}/api/v1/auth/guest`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+        if (!g.ok) throw new Error("guest");
+        const { access_token } = (await g.json()) as { access_token: string };
+        auth = { Authorization: `Guest ${access_token}` };
+        emailSuffix = `?email=${encodeURIComponent(email)}`;
+      }
+
+      const orderBody = isLoggedIn
+        ? { currency: "UZS", items: [{ sku_id: selSku.id, qty: 1, fulfillment_data: form }] }
+        : {
+            currency: "UZS",
+            guest_email: email,
+            items: [{ sku_id: selSku.id, qty: 1, fulfillment_data: form }],
+          };
+
       const ord = await fetch(`${API}/api/v1/orders`, {
         method: "POST",
         headers: {
@@ -99,26 +131,27 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
           "Idempotency-Key": crypto.randomUUID(),
           ...auth,
         },
-        body: JSON.stringify({
-          currency: "UZS",
-          guest_email: email,
-          items: [{ sku_id: selSku.id, qty: 1, fulfillment_data: form }],
-        }),
+        body: JSON.stringify(orderBody),
       });
       if (!ord.ok) throw new Error("order");
       const order = (await ord.json()) as { id: string };
 
-      const intentRes = await fetch(
-        `${API}/api/v1/payments/intents?email=${encodeURIComponent(email)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...auth },
-          body: JSON.stringify({ order_id: order.id, provider }),
-        },
-      );
+      const intentsUrl = isLoggedIn
+        ? `${API}/api/v1/payments/intents`
+        : `${API}/api/v1/payments/intents?email=${encodeURIComponent(email)}`;
+
+      const intentRes = await fetch(intentsUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...auth },
+        body: JSON.stringify({ order_id: order.id, provider }),
+      });
       if (!intentRes.ok) throw new Error("intent");
       const intent = (await intentRes.json()) as { intent_url: string | null };
-      setDone({ orderId: order.id, intentUrl: intent.intent_url });
+      setDone({
+        orderId: order.id,
+        intentUrl: intent.intent_url,
+        trackHref: `/${locale}/orders/${order.id}${emailSuffix}`,
+      });
     } catch {
       setError(t("payError"));
     } finally {
@@ -150,6 +183,17 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
             <ArrowUpRight size={17} strokeWidth={2.6} />
           </a>
         )}
+        <Link
+          href={done.trackHref}
+          className={buttonStyles({
+            variant: "ghost",
+            size: "lg",
+            className: "mx-auto mt-3 w-full max-w-[320px]",
+          })}
+        >
+          {t("orderStatus")}
+          <ArrowUpRight size={17} strokeWidth={2.6} />
+        </Link>
       </div>
     );
   }
