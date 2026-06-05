@@ -1,0 +1,70 @@
+sequenceDiagram
+    autonumber
+    actor User as Browser (user or guest)
+    participant Web as Web (Next.js)
+    participant API as FastAPI (orders / fulfillment)
+    participant Acquirer as Acquirer (Click / Payme / USDT)
+    participant DB as Postgres
+
+    %% ─────────────────────────────────────────────
+    %% Phase 1: Checkout → create order → payment intent
+    %% ─────────────────────────────────────────────
+    rect rgb(240, 248, 255)
+        note over User,DB: Phase 1 — Checkout and order creation
+        User->>Web: Pick SKU, fill fields, enter email, click Pay
+        alt signed-in user
+            Web->>API: POST /api/v1/orders<br/>Authorization: Bearer {access_token}
+        else guest
+            Web->>API: POST /api/v1/orders<br/>Authorization: Guest {guest_token}<br/>(guest_email in order payload)
+        end
+        API->>DB: INSERT orders + order_items + order_events(order.created)
+        DB-->>API: order {id, status=pending_payment}
+        API->>API: create payment intent (gateway = Click / Payme / USDT)
+        API-->>Web: 201 {order_id, payment_url}
+        Web->>User: Redirect to acquirer payment page
+    end
+
+    %% ─────────────────────────────────────────────
+    %% Phase 2: Acquirer payment
+    %% ─────────────────────────────────────────────
+    rect rgb(255, 255, 240)
+        note over User,Acquirer: Phase 2 — Off-site payment
+        User->>Acquirer: Authorise payment (card / wallet / USDT)
+        Acquirer->>API: Webhook POST /webhooks/{provider}<br/>(signature verified before body parse)
+        API->>DB: INSERT payment_webhooks; UPDATE orders status → paid
+        API->>DB: INSERT order_events(payment.confirmed)
+        Acquirer-->>User: Redirect to /orders/{orderId}?email={email}
+    end
+
+    %% ─────────────────────────────────────────────
+    %% Phase 3: Order-status page + polling
+    %% ─────────────────────────────────────────────
+    rect rgb(240, 255, 240)
+        note over User,DB: Phase 3 — Order-status page with polling
+        User->>Web: Land on /orders/{orderId}
+        loop Poll until terminal state
+            alt signed-in user
+                Web->>API: GET /api/v1/orders/{orderId}<br/>Authorization: Bearer {access_token}
+            else guest (email link)
+                Web->>API: GET /api/v1/orders/{orderId}<br/>Authorization: Guest {guest_token}
+            end
+            API->>DB: SELECT orders WHERE id=? AND actor matches
+            DB-->>API: order {status, ...}
+            API-->>Web: 200 OrderOut
+            Web->>Web: Render status badge + progress bar
+
+            alt status in [pending_payment, paid, fulfilling, fulfilled]
+                Web->>API: GET /api/v1/orders/{orderId}/deliveries
+                API->>DB: SELECT deliveries WHERE order_id=?
+                DB-->>API: deliveries (may be empty)
+                API-->>Web: 200 deliveries[]
+                note over Web: refetchInterval active; re-poll in 3-5 s
+            else status = delivered
+                Web->>API: GET /api/v1/orders/{orderId}/deliveries
+                API-->>Web: 200 deliveries (artifact: voucher code / key)
+                Web->>User: Show delivery artifact; stop polling
+            else status = refunded OR failed
+                Web->>User: Show terminal error state; stop polling
+            end
+        end
+    end

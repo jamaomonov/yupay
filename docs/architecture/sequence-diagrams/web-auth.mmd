@@ -1,0 +1,116 @@
+sequenceDiagram
+    autonumber
+    actor User as Web visitor
+    participant Web as Web (Next.js)
+    participant API as FastAPI (auth)
+    participant DB as Postgres
+    participant Redis as Redis
+    participant Resend as Resend (email)
+
+    %% ─────────────────────────────────────────────
+    %% Flow 1: Register → send verification email
+    %% ─────────────────────────────────────────────
+    rect rgb(240, 248, 255)
+        note over User,Resend: Flow 1 — Email/password registration
+        User->>Web: POST /register {email, password}
+        Web->>API: POST /api/v1/auth/register {email, password, locale}
+        API->>API: hash_password(password) → argon2id hash
+        API->>DB: INSERT users (email, password_hash, locale)
+        alt email already registered (unique index violation)
+            DB-->>API: IntegrityError
+            API-->>Web: 409 Conflict
+        else new user
+            DB-->>API: ok
+            API->>DB: INSERT auth_sessions (kind=user, refresh_hash)
+            API->>API: mint access + refresh tokens
+            API->>API: mint email_verify JWT (kind=email_verify, TTL 30 min)
+            API->>Resend: POST /emails {to, subject, html, text}
+            note right of Resend: best-effort; EmailSendError suppressed
+            Resend-->>API: 200 {id}
+            API-->>Web: 201 {access_token, refresh_token}
+            Web->>Web: localStorage.setItem(access_token, refresh_token)
+        end
+    end
+
+    %% ─────────────────────────────────────────────
+    %% Flow 2: Verify email (from link in email)
+    %% ─────────────────────────────────────────────
+    rect rgb(240, 255, 240)
+        note over User,Resend: Flow 2 — Email verification
+        User->>Web: GET /auth/verify?token=<jwt>
+        Web->>API: POST /api/v1/auth/verify-email {token}
+        API->>API: verify JWT (kind=email_verify, signature + expiry)
+        alt invalid or expired token
+            API-->>Web: 401 Unauthorized
+        else valid
+            API->>DB: UPDATE users SET email_verified_at = now()
+            DB-->>API: ok
+            API-->>Web: 204 No Content
+            Web->>User: "Email verified — you're all set"
+        end
+    end
+
+    %% ─────────────────────────────────────────────
+    %% Flow 3: Login (email + password)
+    %% ─────────────────────────────────────────────
+    rect rgb(255, 255, 240)
+        note over User,Resend: Flow 3 — Login with email + password
+        User->>Web: POST /login {email, password}
+        Web->>API: POST /api/v1/auth/login {email, password}
+        API->>Redis: INCR auth:ipguard:login:{ip}
+        alt over threshold
+            API-->>Web: 429 Too Many Requests
+        else within limit
+            API->>DB: SELECT users WHERE lower(email)=? AND deleted_at IS NULL
+            alt user not found OR no password_hash (Telegram-only) OR wrong password
+                API-->>Web: 401 (non-enumerating generic error)
+            else credentials valid
+                API->>DB: INSERT auth_sessions (kind=user, refresh_hash)
+                API->>API: mint access + refresh tokens
+                API-->>Web: 200 {access_token, refresh_token}
+                Web->>Web: localStorage.setItem(access_token, refresh_token)
+            end
+        end
+    end
+
+    %% ─────────────────────────────────────────────
+    %% Flow 4: Forgot → reset password
+    %% ─────────────────────────────────────────────
+    rect rgb(255, 245, 245)
+        note over User,Resend: Flow 4 — Forgot / reset password
+        User->>Web: POST /auth/forgot {email}
+        Web->>API: POST /api/v1/auth/password/forgot {email}
+        API->>Redis: INCR auth:ipguard:forgot:{ip}
+        alt over threshold
+            API-->>Web: 429 Too Many Requests
+        else within limit
+            API->>DB: SELECT users WHERE lower(email)=? AND deleted_at IS NULL
+            note right of API: always returns 204 (no enumeration)
+            alt user exists AND has password_hash
+                API->>API: mint password_reset JWT (TTL 30 min)
+                API->>Resend: POST /emails (reset link)
+                note right of Resend: best-effort; EmailSendError suppressed
+                Resend-->>API: 200 {id}
+            end
+            API-->>Web: 204 No Content
+        end
+
+        User->>Web: GET /auth/reset?token=<jwt>
+        User->>Web: POST {token, new_password}
+        Web->>API: POST /api/v1/auth/password/reset {token, new_password}
+        API->>API: verify JWT (kind=password_reset, signature + expiry)
+        alt invalid or expired token
+            API-->>Web: 401 Unauthorized
+        else valid JWT
+            API->>Redis: SET auth:pwreset:{jti} "1" NX EX 1800
+            alt key already exists (token already used)
+                API-->>Web: 401 Unauthorized
+            else NX succeeded (first use)
+                API->>DB: UPDATE users SET password_hash = hash_password(new_password)
+                API->>DB: DELETE auth_sessions WHERE user_id = ?
+                DB-->>API: ok
+                API-->>Web: 204 No Content
+                Web->>User: "Password updated — please log in again"
+            end
+        end
+    end
