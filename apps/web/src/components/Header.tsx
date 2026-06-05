@@ -2,6 +2,7 @@ import { Globe } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
+import { AccountMenu } from "./auth/AccountMenu";
 import { LocaleSwitcher } from "./LocaleSwitcher";
 import { MobileNav } from "./MobileNav";
 import { Wordmark } from "./Wordmark";
@@ -61,6 +62,7 @@ export async function Header({ locale }: { locale: string }) {
             {region}
           </div>
           <LocaleSwitcher />
+          <AccountMenu locale={locale} />
           <Link href={`${prefix}/store`} className={buttonStyles({ size: "sm" })}>
             {t("topUp")}
           </Link>
