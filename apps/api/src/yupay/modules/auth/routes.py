@@ -16,6 +16,7 @@ from yupay.core.errors import UnauthorizedError
 from yupay.core.logging import get_logger
 from yupay.modules.auth.deps import current_user
 from yupay.modules.auth.dev_login import dev_admin_login
+from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.auth.schemas import (
     AdminDevLoginIn,
     ForgotPasswordIn,
@@ -97,9 +98,11 @@ async def register_route(
 )
 async def login_route(
     body: LoginIn,
+    request: Request,
     db: Annotated[AsyncSession, Depends(db_session)],
 ) -> TokensOut:
     """Authenticate an existing email/password account and return a session."""
+    await guard_ip(request, bucket="login")
     tokens = await login_password(db, email=body.email, password=body.password)
     return _tokens_response(tokens)
 
@@ -205,6 +208,7 @@ async def forgot_route(
     db: Annotated[AsyncSession, Depends(db_session)],
 ) -> None:
     """Non-enumerating: always returns 204 regardless of whether the email is known."""
+    await guard_ip(request, bucket="forgot")
     await request_password_reset(
         db, email=body.email, reset_link_base=_web_base(request, "ru")
     )

@@ -61,6 +61,14 @@ class ForbiddenError(AppError):
     title = "Forbidden"
 
 
+class RateLimitedError(AppError):
+    """Request rate limit exceeded — client should slow down."""
+
+    status_code = 429
+    type_uri = "https://app.yupay.uz/errors/rate-limited"
+    title = "Too many requests"
+
+
 class UpstreamUnavailableError(AppError):
     """A third-party service we depend on (FX, supplier API, payment gateway)
     couldn't be reached. Maps to RFC 7807 with HTTP 502."""
