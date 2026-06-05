@@ -108,11 +108,18 @@ async def integration_client(db_engine) -> AsyncIterator[AsyncClient]:
     """An ASGI HTTP client wired to a fresh FastAPI app + truncated DB."""
     from yupay.bootstrap import create_app
     from yupay.core import db as core_db
+    from yupay.core import redis as core_redis
 
     # Swap the global engine so the app's session dependency uses the test engine.
     factory = async_sessionmaker(bind=db_engine, expire_on_commit=False)
     core_db._engine = db_engine  # type: ignore[attr-defined]
     core_db._session_factory = factory  # type: ignore[attr-defined]
+
+    # Reset the Redis singleton so it is re-created on the current event loop.
+    # Each pytest-asyncio function test runs in its own loop; a cached client from
+    # a previous test would be bound to a closed loop, causing "Future attached to
+    # a different loop" errors for the second Redis-using test in a session.
+    core_redis._client = None  # type: ignore[attr-defined]
 
     app = create_app()
     transport = ASGITransport(app=app)
@@ -121,3 +128,5 @@ async def integration_client(db_engine) -> AsyncIterator[AsyncClient]:
 
     core_db._engine = None  # type: ignore[attr-defined]
     core_db._session_factory = None  # type: ignore[attr-defined]
+    # Close the Redis client so its connection pool doesn't linger on this loop.
+    await core_redis.close_redis()

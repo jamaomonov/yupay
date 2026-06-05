@@ -18,6 +18,7 @@ from yupay.modules.auth.deps import current_user
 from yupay.modules.auth.dev_login import dev_admin_login
 from yupay.modules.auth.schemas import (
     AdminDevLoginIn,
+    ForgotPasswordIn,
     GuestIn,
     GuestTokenOut,
     LoginIn,
@@ -25,6 +26,7 @@ from yupay.modules.auth.schemas import (
     MeOut,
     RefreshIn,
     RegisterIn,
+    ResetPasswordIn,
     TelegramInitDataIn,
     TelegramWidgetIn,
     TokensOut,
@@ -37,6 +39,8 @@ from yupay.modules.auth.service import (
     logout,
     refresh_session,
     register_user,
+    request_password_reset,
+    reset_password,
     telegram_init_data_login,
     telegram_widget_login,
     verify_email,
@@ -188,6 +192,35 @@ async def verify_email_route(
 ) -> None:
     """Mark the user's email as verified using a signed ``email_verify`` JWT."""
     await verify_email(db, token=body.token)
+
+
+@router.post(
+    "/password/forgot",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Request a password-reset email (non-enumerating)",
+)
+async def forgot_route(
+    body: ForgotPasswordIn,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> None:
+    """Non-enumerating: always returns 204 regardless of whether the email is known."""
+    await request_password_reset(
+        db, email=body.email, reset_link_base=_web_base(request, "ru")
+    )
+
+
+@router.post(
+    "/password/reset",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Set a new password from a reset token",
+)
+async def reset_route(
+    body: ResetPasswordIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> None:
+    """Consume a single-use reset token and update the user's password."""
+    await reset_password(db, token=body.token, new_password=body.new_password)
 
 
 @router.get(

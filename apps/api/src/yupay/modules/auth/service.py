@@ -24,6 +24,7 @@ from yupay.core.clock import now
 from yupay.core.config import Settings, get_settings
 from yupay.core.errors import ConflictError, NotFoundError, UnauthorizedError
 from yupay.core.ids import new_id
+from yupay.core.redis import get_redis
 from yupay.modules.auth import jwt as authjwt
 from yupay.modules.auth import telegram as tg
 from yupay.modules.auth.models import AuthSession
@@ -35,7 +36,7 @@ from yupay.modules.auth.security import (
     verify_password,
 )
 from yupay.modules.notifications.channels.email import EmailSendError, send_email
-from yupay.modules.notifications.templates import verify_email_email
+from yupay.modules.notifications.templates import password_reset_email, verify_email_email
 from yupay.modules.users.models import User
 from yupay.modules.users.service import (
     get_user_by_id,
@@ -359,6 +360,85 @@ async def current_user(
     return user
 
 
+async def request_password_reset(
+    db: AsyncSession,
+    *,
+    email: str,
+    settings: Settings | None = None,
+    reset_link_base: str | None = None,
+) -> None:
+    """Send a reset link if the email maps to a password account. Always silent.
+
+    Never reveals whether the email exists (no enumeration): the caller returns
+    204 regardless.
+
+    Args:
+        db: Async database session.
+        email: The email address to look up.
+        settings: Optional settings override.
+        reset_link_base: Absolute URL prefix for the reset link, e.g.
+            ``https://yupay.uz/ru``. When ``None`` no email is sent (dev).
+    """
+    s = settings or get_settings()
+    normalised = email.strip().lower()
+    stmt = select(User).where(
+        User.email == normalised,
+        User.deleted_at.is_(None),
+    )
+    user = (await db.execute(stmt)).scalar_one_or_none()
+    if user is None or not user.password_hash or not reset_link_base:
+        return
+    token = authjwt.mint_password_reset(sub=user.id, settings=s)
+    link = f"{reset_link_base.rstrip('/')}/auth/reset?token={token}"
+    content = password_reset_email(link=link)
+    with contextlib.suppress(EmailSendError):
+        await send_email(
+            to=normalised, subject=content.subject, html=content.html, text=content.text
+        )
+
+
+async def reset_password(
+    db: AsyncSession,
+    *,
+    token: str,
+    new_password: str,
+    settings: Settings | None = None,
+) -> None:
+    """Consume a single-use reset token, set a new password, revoke sessions.
+
+    The single-use guarantee is enforced via a Redis ``SET NX`` on a key
+    derived from the token's ``jti``. On first use the key is set and the
+    password is updated; on any subsequent call the key is already present
+    so ``SET NX`` returns ``None``, triggering ``UnauthorizedError``.
+
+    Args:
+        db: Async database session.
+        token: Signed ``password_reset`` JWT.
+        new_password: Plaintext replacement password (hashed with argon2id).
+        settings: Optional settings override.
+
+    Raises:
+        UnauthorizedError: On an invalid/expired token or one already consumed.
+        NotFoundError: If the user referenced by the token no longer exists.
+    """
+    s = settings or get_settings()
+    claims = authjwt.verify(token, expected_kind="password_reset", settings=s)
+
+    redis = get_redis()
+    marker = f"auth:pwreset:{claims.jti}"
+    # redis-py returns True on successful SET NX, None when the key already exists.
+    was_set = await redis.set(marker, "1", ex=s.jwt_email_token_ttl_seconds, nx=True)
+    if not was_set:
+        raise UnauthorizedError("reset token already used")
+
+    user = await get_user_by_id(db, claims.sub)
+    if user is None:
+        raise NotFoundError("user not found")
+    user.password_hash = hash_password(new_password)
+    await db.flush()
+    await _revoke_all_for_user(db, user.id)
+
+
 __all__ = [
     "GuestToken",
     "SessionTokens",
@@ -368,6 +448,8 @@ __all__ = [
     "logout",
     "refresh_session",
     "register_user",
+    "request_password_reset",
+    "reset_password",
     "telegram_init_data_login",
     "telegram_widget_login",
     "verify_email",
