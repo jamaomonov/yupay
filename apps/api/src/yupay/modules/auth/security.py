@@ -10,6 +10,9 @@ import hashlib
 import hmac
 import secrets
 
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
+
 
 def sha256_hex(data: bytes) -> str:
     """Return a hex-encoded SHA-256 digest of ``data``."""
@@ -40,3 +43,37 @@ def email_hash(email: str, pepper: str) -> str:
 def new_refresh_token() -> str:
     """Mint a fresh, URL-safe refresh token (43 chars, 256 bits of entropy)."""
     return secrets.token_urlsafe(32)
+
+
+_password_hasher = PasswordHasher()
+
+
+def hash_password(plain: str) -> str:
+    """Hash a plaintext password with argon2id.
+
+    Args:
+        plain: The user-supplied password.
+
+    Returns:
+        An encoded argon2id hash safe to persist (``$argon2id$...``).
+    """
+    return _password_hasher.hash(plain)
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    """Constant-time-ish verification of a password against an argon2id hash.
+
+    Returns ``False`` on any mismatch or malformed hash rather than raising, so
+    callers can treat the result as a simple boolean.
+
+    Args:
+        plain: The user-supplied plaintext password.
+        hashed: The stored argon2id hash string.
+
+    Returns:
+        ``True`` if the password matches the hash, ``False`` otherwise.
+    """
+    try:
+        return _password_hasher.verify(hashed, plain)
+    except (VerifyMismatchError, VerificationError, InvalidHashError):
+        return False
