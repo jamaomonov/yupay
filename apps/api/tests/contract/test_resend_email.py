@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import httpx
 import pytest
 import respx
@@ -13,7 +15,7 @@ pytestmark = pytest.mark.asyncio
 
 
 @pytest.fixture(autouse=True)
-def _resend_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def _resend_key(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("RESEND_API_KEY", "re_test_key")
     get_settings.cache_clear()  # type: ignore[attr-defined]
     yield
