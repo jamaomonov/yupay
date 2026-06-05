@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { NextIntlClientProvider, hasLocale } from "next-intl";
 import { getMessages, getTranslations, setRequestLocale } from "next-intl/server";
 
+import { Providers } from "./Providers";
+
 import type { Metadata } from "next";
 
 import { Footer } from "@/components/Footer";
@@ -82,9 +84,11 @@ export default async function LocaleLayout({
     <html lang={locale} className={`${sans.variable} ${display.variable} ${mono.variable}`}>
       <body className="bg-bg text-foreground min-h-screen font-sans antialiased">
         <NextIntlClientProvider locale={locale} messages={messages}>
-          <Header locale={locale} />
-          {children}
-          <Footer locale={locale} />
+          <Providers>
+            <Header locale={locale} />
+            {children}
+            <Footer locale={locale} />
+          </Providers>
         </NextIntlClientProvider>
       </body>
     </html>
