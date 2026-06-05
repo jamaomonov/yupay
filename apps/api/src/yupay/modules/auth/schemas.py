@@ -66,6 +66,42 @@ class LogoutIn(BaseModel):
     refresh_token: str = Field(min_length=20, max_length=200)
 
 
+class RegisterIn(BaseModel):
+    """Body of ``POST /auth/register``."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=200)
+    locale: str = Field(default="ru", max_length=8)
+
+
+class LoginIn(BaseModel):
+    """Body of ``POST /auth/login``."""
+
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=200)
+
+
+class VerifyEmailIn(BaseModel):
+    """Body of ``POST /auth/verify-email``."""
+
+    token: str = Field(min_length=10, max_length=2048)
+
+
+class ForgotPasswordIn(BaseModel):
+    """Body of ``POST /auth/forgot-password``."""
+
+    email: EmailStr
+
+
+class ResetPasswordIn(BaseModel):
+    """Body of ``POST /auth/reset-password``."""
+
+    token: str = Field(min_length=10, max_length=2048)
+    new_password: str = Field(min_length=8, max_length=200)
+
+
 class TokensOut(BaseModel):
     """Response for any endpoint that mints a user session."""
 
@@ -101,12 +137,17 @@ class MeOut(BaseModel):
 
 __all__ = [
     "AdminDevLoginIn",
+    "ForgotPasswordIn",
     "GuestIn",
     "GuestTokenOut",
+    "LoginIn",
     "LogoutIn",
     "MeOut",
     "RefreshIn",
+    "RegisterIn",
+    "ResetPasswordIn",
     "TelegramInitDataIn",
     "TelegramWidgetIn",
     "TokensOut",
+    "VerifyEmailIn",
 ]

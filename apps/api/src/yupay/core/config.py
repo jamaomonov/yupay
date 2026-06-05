@@ -55,6 +55,14 @@ class Settings(BaseSettings):
     debug: bool = Field(default=False)
     service_name: str = Field(default="yupay-api")
     base_url: str = Field(default="http://localhost:8000")
+    web_base_url: str = Field(
+        default="",
+        description=(
+            "Public base URL of the web storefront (e.g. https://yupay.uz). "
+            "Used to construct verify/reset links in transactional emails. "
+            "Falls back to the API's own base_url when empty."
+        ),
+    )
 
     # --- data ---
     database_url: str = Field(

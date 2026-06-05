@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
@@ -23,6 +23,7 @@ from yupay.modules.auth.schemas import (
     LogoutIn,
     MeOut,
     RefreshIn,
+    RegisterIn,
     TelegramInitDataIn,
     TelegramWidgetIn,
     TokensOut,
@@ -32,6 +33,7 @@ from yupay.modules.auth.service import (
     guest_checkout,
     logout,
     refresh_session,
+    register_user,
     telegram_init_data_login,
     telegram_widget_login,
 )
@@ -49,6 +51,35 @@ def _tokens_response(tokens: SessionTokens) -> TokensOut:
         refresh_token=tokens.refresh_token,
         refresh_expires_in=tokens.refresh_expires_in,
     )
+
+
+def _web_base(request: Request, locale: str) -> str:
+    """Best-effort absolute web base for links in emails (e.g. https://host/ru)."""
+    settings = get_settings()
+    base = settings.web_base_url or str(request.base_url).rstrip("/")
+    return f"{base.rstrip('/')}/{locale}"
+
+
+@router.post(
+    "/register",
+    response_model=TokensOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Register an email/password account",
+)
+async def register_route(
+    body: RegisterIn,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> TokensOut:
+    """Create an email/password account and return a session immediately."""
+    tokens = await register_user(
+        db,
+        email=body.email,
+        password=body.password,
+        locale=body.locale,
+        verify_link_base=_web_base(request, body.locale),
+    )
+    return _tokens_response(tokens)
 
 
 @router.post(

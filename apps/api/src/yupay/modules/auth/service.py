@@ -12,20 +12,24 @@ Wraps :mod:`yupay.modules.auth.jwt`, :mod:`yupay.modules.auth.telegram`, and the
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 from datetime import timedelta
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.clock import now
 from yupay.core.config import Settings, get_settings
-from yupay.core.errors import NotFoundError, UnauthorizedError
+from yupay.core.errors import ConflictError, NotFoundError, UnauthorizedError
 from yupay.core.ids import new_id
 from yupay.modules.auth import jwt as authjwt
 from yupay.modules.auth import telegram as tg
 from yupay.modules.auth.models import AuthSession
-from yupay.modules.auth.security import email_hash, hash_token, new_refresh_token
+from yupay.modules.auth.security import email_hash, hash_password, hash_token, new_refresh_token
+from yupay.modules.notifications.channels.email import EmailSendError, send_email
+from yupay.modules.notifications.templates import verify_email_email
 from yupay.modules.users.models import User
 from yupay.modules.users.service import (
     get_user_by_id,
@@ -92,6 +96,64 @@ async def _open_session(
         refresh_expires_in=settings.jwt_refresh_ttl_seconds,
         user=user,
     )
+
+
+async def register_user(
+    db: AsyncSession,
+    *,
+    email: str,
+    password: str,
+    locale: str = "ru",
+    settings: Settings | None = None,
+    verify_link_base: str | None = None,
+) -> SessionTokens:
+    """Create an email/password user, open a session, and send a verify email.
+
+    Args:
+        db: Async session.
+        email: New account email (uniqueness enforced by ``uq_users_email_alive``).
+        password: Plaintext password (hashed with argon2id).
+        locale: Preferred locale for the account.
+        settings: Optional settings override.
+        verify_link_base: Absolute URL prefix for the verification link, e.g.
+            ``https://yupay.uz/ru``. When ``None`` no email is sent (dev).
+
+    Returns:
+        Freshly minted session tokens for immediate login.
+
+    Raises:
+        ConflictError: When the email already belongs to a live account.
+    """
+    s = settings or get_settings()
+    normalised = email.strip().lower()
+    user = User(
+        id=new_id(),
+        email=normalised,
+        locale=locale,
+        password_hash=hash_password(password),
+    )
+    db.add(user)
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        # The request-scoped session (``get_session``) rolls back on any raised
+        # exception, so no explicit rollback is needed here.
+        raise ConflictError("email already registered") from exc
+
+    if verify_link_base:
+        token = authjwt.mint_email_verify(sub=user.id, settings=s)
+        link = f"{verify_link_base.rstrip('/')}/auth/verify?token={token}"
+        content = verify_email_email(link=link)
+        with contextlib.suppress(EmailSendError):
+            # non-blocking: account is usable; user can re-request verification
+            await send_email(
+                to=normalised,
+                subject=content.subject,
+                html=content.html,
+                text=content.text,
+            )
+
+    return await _open_session(db, user=user, settings=s)
 
 
 async def telegram_init_data_login(
@@ -256,6 +318,7 @@ __all__ = [
     "guest_checkout",
     "logout",
     "refresh_session",
+    "register_user",
     "telegram_init_data_login",
     "telegram_widget_login",
 ]
