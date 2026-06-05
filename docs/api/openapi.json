@@ -2602,6 +2602,21 @@
         "title": "DenomImportIn",
         "type": "object"
       },
+      "ForgotPasswordIn": {
+        "description": "Body of ``POST /auth/forgot-password``.",
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "ForgotPasswordIn",
+        "type": "object"
+      },
       "FormField": {
         "additionalProperties": false,
         "description": "One field of a product's form schema.",
@@ -3283,6 +3298,28 @@
           "users"
         ],
         "title": "LocaleCountOut",
+        "type": "object"
+      },
+      "LoginIn": {
+        "description": "Body of ``POST /auth/login``.",
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginIn",
         "type": "object"
       },
       "LogoutIn": {
@@ -5561,6 +5598,57 @@
         "title": "RefundIn",
         "type": "object"
       },
+      "RegisterIn": {
+        "description": "Body of ``POST /auth/register``.",
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "locale": {
+            "default": "ru",
+            "maxLength": 8,
+            "title": "Locale",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 200,
+            "minLength": 8,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "RegisterIn",
+        "type": "object"
+      },
+      "ResetPasswordIn": {
+        "description": "Body of ``POST /auth/reset-password``.",
+        "properties": {
+          "new_password": {
+            "maxLength": 200,
+            "minLength": 8,
+            "title": "New Password",
+            "type": "string"
+          },
+          "token": {
+            "maxLength": 2048,
+            "minLength": 10,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "new_password"
+        ],
+        "title": "ResetPasswordIn",
+        "type": "object"
+      },
       "RevenuePoint": {
         "properties": {
           "date": {
@@ -7361,6 +7449,22 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VerifyEmailIn": {
+        "description": "Body of ``POST /auth/verify-email``.",
+        "properties": {
+          "token": {
+            "maxLength": 2048,
+            "minLength": 10,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "VerifyEmailIn",
         "type": "object"
       },
       "WalletOverviewOut": {
@@ -12507,6 +12611,48 @@
         ]
       }
     },
+    "/api/v1/auth/login": {
+      "post": {
+        "description": "Authenticate an existing email/password account and return a session.",
+        "operationId": "login_route_api_v1_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokensOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Log in with email + password",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/v1/auth/logout": {
       "post": {
         "description": "Idempotent: silently succeeds even if the token is unknown or already revoked.",
@@ -12592,6 +12738,76 @@
         ]
       }
     },
+    "/api/v1/auth/password/forgot": {
+      "post": {
+        "description": "Non-enumerating: always returns 204 regardless of whether the email is known.",
+        "operationId": "forgot_route_api_v1_auth_password_forgot_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgotPasswordIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request a password-reset email (non-enumerating)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/password/reset": {
+      "post": {
+        "description": "Consume a single-use reset token and update the user's password.",
+        "operationId": "reset_route_api_v1_auth_password_reset_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set a new password from a reset token",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/v1/auth/refresh": {
       "post": {
         "description": "Rotate-on-use: revoke the supplied refresh, mint a new pair.",
@@ -12629,6 +12845,48 @@
           }
         },
         "summary": "Rotate a refresh token",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "description": "Create an email/password account and return a session immediately.",
+        "operationId": "register_route_api_v1_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokensOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register an email/password account",
         "tags": [
           "auth"
         ]
@@ -12713,6 +12971,41 @@
           }
         },
         "summary": "Authenticate via the Telegram Login Widget",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/verify-email": {
+      "post": {
+        "description": "Mark the user's email as verified using a signed ``email_verify`` JWT.",
+        "operationId": "verify_email_route_api_v1_auth_verify_email_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyEmailIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm an email address from a signed token",
         "tags": [
           "auth"
         ]
