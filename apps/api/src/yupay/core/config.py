@@ -75,6 +75,7 @@ class Settings(BaseSettings):
     jwt_refresh_ttl_seconds: int = Field(default=60 * 60 * 24 * 30)  # 30 days
     jwt_guest_ttl_seconds: int = Field(default=60 * 30)  # 30 min for guest checkout
     jwt_ws_ttl_seconds: int = Field(default=60)  # 60 s for WS handshake
+    jwt_email_token_ttl_seconds: int = Field(default=60 * 30)  # 30 min for verify/reset links
     auth_email_pepper: str = Field(
         default="",
         description="Pepper mixed into SHA-256 email hashes embedded in guest JWTs.",

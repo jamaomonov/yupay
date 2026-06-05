@@ -21,7 +21,7 @@ from yupay.core.ids import new_id
 
 ALG: Final[str] = "EdDSA"
 
-TokenKind = Literal["access", "refresh", "guest", "ws"]
+TokenKind = Literal["access", "refresh", "guest", "ws", "email_verify", "password_reset"]
 
 
 @dataclass(frozen=True)
@@ -169,6 +169,38 @@ def mint_ws_handshake(
     )
     payload["sid"] = sid
     payload["channel"] = channel
+    return _encode(payload, settings=s)
+
+
+def mint_email_verify(
+    *,
+    sub: str,
+    settings: Settings | None = None,
+) -> str:
+    """Issue a short-lived token confirming ownership of a user's email."""
+    s = _settings_or(settings)
+    payload = _base_payload(
+        sub=sub,
+        kind="email_verify",
+        ttl_seconds=s.jwt_email_token_ttl_seconds,
+        settings=s,
+    )
+    return _encode(payload, settings=s)
+
+
+def mint_password_reset(
+    *,
+    sub: str,
+    settings: Settings | None = None,
+) -> str:
+    """Issue a short-lived, single-use (via Redis marker) password-reset token."""
+    s = _settings_or(settings)
+    payload = _base_payload(
+        sub=sub,
+        kind="password_reset",
+        ttl_seconds=s.jwt_email_token_ttl_seconds,
+        settings=s,
+    )
     return _encode(payload, settings=s)
 
 
