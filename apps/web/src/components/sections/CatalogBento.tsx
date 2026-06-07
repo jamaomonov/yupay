@@ -144,6 +144,16 @@ export async function CatalogBento({ locale }: { locale: string }) {
             />
           ))}
         </div>
+
+        {/* Mobile gets the "view all" CTA below the grid (the header one is
+            desktop-only to keep the heading row uncluttered on phones). */}
+        <Link
+          href={`${prefix}/store`}
+          className="border-border-2 text-foreground hover:border-tx-dim hover:bg-muted mt-4 flex h-[48px] items-center justify-center gap-2 rounded-[12px] border text-sm font-semibold transition sm:hidden"
+        >
+          {t("viewAll")}
+          <ArrowRight size={14} strokeWidth={2.4} />
+        </Link>
       </div>
     </section>
   );
