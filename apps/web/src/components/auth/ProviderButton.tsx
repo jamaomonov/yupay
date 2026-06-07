@@ -29,7 +29,7 @@ export function ProviderButton({ label, icon, surface, onClick, soon }: Provider
       <span className="flex items-center">{icon}</span>
       <span>{label}</span>
       {soon && (
-        <span className="bg-bg/70 text-tx-mute absolute right-2 top-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+        <span className="bg-bg text-tx-mute absolute right-1 top-1 z-10 rounded-full px-1 py-[3px] text-[9px] font-bold uppercase leading-none tracking-wide">
           {t("soon")}
         </span>
       )}

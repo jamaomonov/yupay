@@ -108,8 +108,8 @@ export function LoginModal({ locale }: { locale: string }) {
         <button
           type="button"
           onClick={close}
-          aria-label="Close"
-          className="text-tx-mute hover:bg-muted hover:text-foreground absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full transition"
+          aria-label={t("close")}
+          className="text-tx-mute hover:bg-muted hover:text-foreground absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full transition"
         >
           <X size={18} />
         </button>

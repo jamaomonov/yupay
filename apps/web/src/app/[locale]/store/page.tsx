@@ -177,7 +177,8 @@ export default async function StorePage({
                 <Link
                   key={f.slug}
                   href={href}
-                  className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                  aria-current={isActive ? "page" : undefined}
+                  className={`inline-flex h-11 items-center rounded-full border px-4 text-sm font-semibold transition ${
                     isActive
                       ? "border-primary bg-primary/10 text-primary"
                       : "border-border bg-muted text-tx-mute hover:text-foreground"

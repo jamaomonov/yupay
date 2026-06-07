@@ -23,7 +23,8 @@
     "account": "Аккаунт",
     "orders": "Мои заказы",
     "logout": "Выйти",
-    "menu": "Меню аккаунта"
+    "menu": "Меню аккаунта",
+    "openMenu": "Открыть меню"
   },
   "hero": {
     "badge": "Игры и подписки · 1 центр",
@@ -100,7 +101,8 @@
     "privacy": "Privacy Policy",
     "terms": "Terms of Use",
     "and": "и",
-    "back": "Назад"
+    "back": "Назад",
+    "close": "Закрыть"
   },
   "store": {
     "meta": {

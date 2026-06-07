@@ -289,6 +289,8 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
             </span>
             <input
               type="email"
+              inputMode="email"
+              autoComplete="email"
               value={email}
               placeholder={t("emailPlaceholder")}
               onChange={(e) => {

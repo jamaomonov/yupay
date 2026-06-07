@@ -23,7 +23,8 @@
     "account": "Akkaunt",
     "orders": "Buyurtmalarim",
     "logout": "Chiqish",
-    "menu": "Akkaunt menyusi"
+    "menu": "Akkaunt menyusi",
+    "openMenu": "Menyuni ochish"
   },
   "hero": {
     "badge": "Oʻyin va obunalar · 1 markaz",
@@ -100,7 +101,8 @@
     "privacy": "Privacy Policy",
     "terms": "Terms of Use",
     "and": "va",
-    "back": "Orqaga"
+    "back": "Orqaga",
+    "close": "Yopish"
   },
   "store": {
     "meta": {

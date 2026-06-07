@@ -94,10 +94,10 @@ export async function Footer({ locale }: { locale: string }) {
         </div>
 
         <div className="border-border flex flex-col items-start justify-between gap-4 border-t pt-8 md:flex-row md:items-center">
-          <span className="text-tx-dim font-mono text-[11px]">
-            {t("copyright", { year })} · <span className="text-tx-dim/80">{t("disclaimer")}</span>
+          <span className="text-tx-mute font-mono text-[12px]">
+            {t("copyright", { year })} · <span className="text-tx-mute/70">{t("disclaimer")}</span>
           </span>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
             <div className="flex flex-wrap items-center gap-3">
               {PAY_METHODS.map((p) => (
                 <Image
@@ -113,7 +113,7 @@ export async function Footer({ locale }: { locale: string }) {
                 />
               ))}
             </div>
-            <span className="text-tx-dim font-mono text-[11px]">
+            <span className="text-tx-mute font-mono text-[12px]">
               {t("madeBy")}{" "}
               <a
                 href="https://t.me/jama_omonov"

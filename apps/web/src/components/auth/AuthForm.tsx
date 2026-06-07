@@ -67,6 +67,8 @@ export function AuthForm({
         <span className="text-tx-mute mb-1.5 block text-[13px] font-semibold">{t("email")}</span>
         <input
           type="email"
+          id="auth-email"
+          autoComplete="email"
           {...register("email")}
           className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
         />
@@ -78,6 +80,8 @@ export function AuthForm({
         <span className="text-tx-mute mb-1.5 block text-[13px] font-semibold">{t("password")}</span>
         <input
           type="password"
+          id="auth-password"
+          autoComplete={mode === "login" ? "current-password" : "new-password"}
           {...register("password")}
           className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
         />
@@ -92,6 +96,8 @@ export function AuthForm({
           </span>
           <input
             type="password"
+            id="auth-confirm-password"
+            autoComplete="new-password"
             {...register("confirmPassword")}
             className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
           />

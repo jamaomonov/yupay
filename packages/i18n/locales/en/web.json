@@ -23,7 +23,8 @@
     "account": "Account",
     "orders": "My orders",
     "logout": "Sign out",
-    "menu": "Account menu"
+    "menu": "Account menu",
+    "openMenu": "Open menu"
   },
   "hero": {
     "badge": "Games & subscriptions · 1 hub",
@@ -100,7 +101,8 @@
     "privacy": "Privacy Policy",
     "terms": "Terms of Use",
     "and": "and",
-    "back": "Back"
+    "back": "Back",
+    "close": "Close"
   },
   "store": {
     "meta": {
