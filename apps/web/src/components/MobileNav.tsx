@@ -1,10 +1,12 @@
 "use client";
 
-import { ArrowRight, Menu, Send, X } from "lucide-react";
+import { Menu, Send, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
+
+import { AccountMenu } from "./auth/AccountMenu";
 
 import { type AppLocale } from "@/i18n/routing";
 import { buttonStyles } from "@/lib/button";
@@ -54,9 +56,7 @@ export function MobileNav() {
 
   return (
     <div className="flex items-center gap-2 md:hidden">
-      <Link href={`${prefix}/store`} className={buttonStyles({ size: "xs" })}>
-        {t("topUp")}
-      </Link>
+      <AccountMenu locale={current} />
       <button
         type="button"
         onClick={() => {
@@ -100,14 +100,6 @@ export function MobileNav() {
                 </a>
               </nav>
 
-              <Link
-                href={`${prefix}/store`}
-                onClick={close}
-                className={buttonStyles({ size: "lg", className: "mt-5 w-full" })}
-              >
-                {t("topUp")}
-                <ArrowRight size={16} strokeWidth={2.6} />
-              </Link>
               <a
                 href="https://t.me/yupay_bot"
                 target="_blank"
@@ -116,7 +108,7 @@ export function MobileNav() {
                 className={buttonStyles({
                   variant: "ghost",
                   size: "lg",
-                  className: "mt-2.5 w-full",
+                  className: "mt-5 w-full",
                 })}
               >
                 <Send size={16} />
