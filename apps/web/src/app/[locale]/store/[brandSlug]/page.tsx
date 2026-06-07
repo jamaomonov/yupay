@@ -120,7 +120,7 @@ export default async function BrandPage({
     ],
   };
 
-  const faqs = brand.faqs;
+  const faqs = brand.faqs ?? [];
   // FAQPage structured data — lets Google show the questions as rich results.
   const faqLd =
     faqs.length > 0

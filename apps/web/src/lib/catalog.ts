@@ -81,9 +81,11 @@ export interface Faq {
 
 export interface BrandDetail extends BrandSummary {
   description: string | null;
-  instructions: string | null;
+  // Optional: an older deployed API (or a build prerendering against one) may
+  // omit these, so consumers must tolerate `undefined` — not just `null`.
+  instructions?: string | null;
   products: ProductSummary[];
-  faqs: Faq[];
+  faqs?: Faq[];
 }
 
 export interface ProductDetail extends ProductSummary {
