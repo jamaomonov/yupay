@@ -131,6 +131,8 @@
     "detailsTitle": "Qayerga tushirish",
     "summaryTitle": "Sizning buyurtmangiz",
     "selectPack": "Yuqoridan paket tanlang",
+    "payHintEmail": "Chek uchun email kiriting",
+    "payHintFields": "Toʻldirish maʼlumotlarini kiriting",
     "emailLabel": "Chek uchun email",
     "emailPlaceholder": "you@example.com",
     "paymentTitle": "Toʻlov usuli",

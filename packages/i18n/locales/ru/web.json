@@ -131,6 +131,8 @@
     "detailsTitle": "Куда зачислить",
     "summaryTitle": "Ваш заказ",
     "selectPack": "Выберите пакет выше",
+    "payHintEmail": "Введите email для чека",
+    "payHintFields": "Заполните данные для зачисления",
     "emailLabel": "Email для чека",
     "emailPlaceholder": "you@example.com",
     "paymentTitle": "Способ оплаты",

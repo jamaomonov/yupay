@@ -35,23 +35,25 @@ export async function HowItWorks() {
             {STEPS.map((step, i) => (
               <div
                 key={step.n}
-                className={`grid grid-cols-[auto_1fr_auto] items-start gap-x-9 gap-y-7 py-9 ${
+                className={`grid grid-cols-[auto_1fr] items-start gap-x-5 gap-y-7 py-9 sm:gap-x-9 ${
                   i === 0 ? "border-t" : ""
                 } border-border border-b`}
               >
-                <div className="font-display text-tx-dim w-[1.4em] text-[76px] font-extrabold leading-[0.85] tracking-[-0.05em] opacity-30">
+                <div className="font-display text-tx-dim w-[1.4em] text-[56px] font-extrabold leading-[0.85] tracking-[-0.05em] opacity-30 sm:text-[76px]">
                   {step.n}
                 </div>
                 <div>
-                  <div className="font-display text-2xl font-bold tracking-[-0.025em] sm:text-[30px]">
-                    {t(step.titleKey)}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="font-display text-xl font-bold tracking-[-0.025em] sm:text-[30px]">
+                      {t(step.titleKey)}
+                    </div>
+                    <div className="border-primary/20 bg-primary/10 text-primary shrink-0 rounded-md border px-2.5 py-1.5 font-mono text-[12px] font-semibold sm:text-[13px]">
+                      {step.time}
+                    </div>
                   </div>
-                  <p className="text-tx-mute mt-3 max-w-[480px] text-base leading-relaxed">
+                  <p className="text-tx-mute mt-3 max-w-[480px] text-[15px] leading-relaxed sm:text-base">
                     {t(step.subKey)}
                   </p>
-                </div>
-                <div className="border-primary/20 bg-primary/10 text-primary self-start rounded-md border px-2.5 py-1.5 font-mono text-[13px] font-semibold">
-                  {step.time}
                 </div>
               </div>
             ))}

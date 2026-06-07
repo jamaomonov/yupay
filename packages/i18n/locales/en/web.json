@@ -131,6 +131,8 @@
     "detailsTitle": "Where to credit",
     "summaryTitle": "Your order",
     "selectPack": "Pick a pack above",
+    "payHintEmail": "Enter an email for the receipt",
+    "payHintFields": "Fill in the top-up details",
     "emailLabel": "Email for the receipt",
     "emailPlaceholder": "you@example.com",
     "paymentTitle": "Payment method",

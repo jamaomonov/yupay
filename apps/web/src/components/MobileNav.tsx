@@ -70,72 +70,64 @@ export function MobileNav() {
       </button>
 
       {open && (
-        <>
-          <button
-            type="button"
-            aria-label="Close menu"
-            onClick={close}
-            className="fixed inset-x-0 bottom-0 top-[72px] z-40 bg-black/50 backdrop-blur-sm"
-          />
-          <div className="border-border bg-bg/95 fixed inset-x-0 top-[72px] z-50 border-b backdrop-blur-xl">
-            <div className="mx-auto max-w-[1200px] px-6 py-5">
-              <nav className="flex flex-col">
-                <Link href={`${prefix}/store`} onClick={close} className={linkClass}>
-                  {t("store")}
-                </Link>
-                <a href="#how" onClick={close} className={linkClass}>
-                  {t("how")}
-                </a>
-                <a href="#reviews" onClick={close} className={linkClass}>
-                  {t("reviews")}
-                </a>
-                <a
-                  href="https://t.me/yupay_support"
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  onClick={close}
-                  className={linkClass}
-                >
-                  {t("support")}
-                </a>
-              </nav>
-
+        <div className="bg-bg fixed inset-x-0 top-[72px] z-50 h-[calc(100dvh-72px)] overflow-y-auto">
+          <div className="mx-auto max-w-[1200px] px-6 py-5">
+            <nav className="flex flex-col">
+              <Link href={`${prefix}/store`} onClick={close} className={linkClass}>
+                {t("store")}
+              </Link>
+              <a href="#how" onClick={close} className={linkClass}>
+                {t("how")}
+              </a>
+              <a href="#reviews" onClick={close} className={linkClass}>
+                {t("reviews")}
+              </a>
               <a
-                href="https://t.me/yupay_bot"
+                href="https://t.me/yupay_support"
                 target="_blank"
                 rel="noreferrer noopener"
                 onClick={close}
-                className={buttonStyles({
-                  variant: "ghost",
-                  size: "lg",
-                  className: "mt-5 w-full",
-                })}
+                className={linkClass}
               >
-                <Send size={16} />
-                {tShow("cta")}
+                {t("support")}
               </a>
+            </nav>
 
-              <div className="mt-5 flex gap-2">
-                {LOCALES.map((l) => (
-                  <button
-                    key={l.code}
-                    type="button"
-                    onClick={() => {
-                      pickLocale(l.code);
-                    }}
-                    className={`flex-1 rounded-[10px] border py-2.5 text-sm font-semibold transition ${
-                      l.code === current
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border bg-muted text-tx-mute"
-                    }`}
-                  >
-                    {l.label}
-                  </button>
-                ))}
-              </div>
+            <a
+              href="https://t.me/yupay_bot"
+              target="_blank"
+              rel="noreferrer noopener"
+              onClick={close}
+              className={buttonStyles({
+                variant: "ghost",
+                size: "lg",
+                className: "mt-5 w-full",
+              })}
+            >
+              <Send size={16} />
+              {tShow("cta")}
+            </a>
+
+            <div className="mt-5 flex gap-2">
+              {LOCALES.map((l) => (
+                <button
+                  key={l.code}
+                  type="button"
+                  onClick={() => {
+                    pickLocale(l.code);
+                  }}
+                  className={`flex-1 rounded-[10px] border py-2.5 text-sm font-semibold transition ${
+                    l.code === current
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-muted text-tx-mute"
+                  }`}
+                >
+                  {l.label}
+                </button>
+              ))}
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );

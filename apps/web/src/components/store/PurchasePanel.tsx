@@ -76,6 +76,15 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
   // Logged-in users don't need to supply an email — the account email is used server-side.
   const canPay =
     Boolean(selSku) && (user !== null || emailOk) && fieldsOk && Boolean(methodId) && !loading;
+  // Tell the user *why* the pay button is inactive instead of leaving a dimmed
+  // button with no explanation.
+  const payHint = !selSku
+    ? t("selectPack")
+    : !user && !emailOk
+      ? t("payHintEmail")
+      : !fieldsOk
+        ? t("payHintFields")
+        : null;
 
   async function pay() {
     if (!selSku || !canPay) return;
@@ -220,10 +229,11 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
                   <button
                     key={sku.id}
                     type="button"
+                    aria-pressed={active}
                     onClick={() => {
                       setSkuId(sku.id);
                     }}
-                    className={`flex flex-col items-start gap-2 rounded-[14px] border p-3 text-left transition ${
+                    className={`focus-visible:ring-primary focus-visible:ring-offset-bg flex flex-col items-start gap-2 rounded-[14px] border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
                       active
                         ? "border-primary bg-primary/10"
                         : "border-border bg-card hover:border-border-2"
@@ -342,10 +352,12 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
                   <button
                     key={m.id}
                     type="button"
+                    aria-label={m.name}
+                    aria-pressed={active}
                     onClick={() => {
                       setMethodId(m.id);
                     }}
-                    className={`flex items-center justify-center rounded-[12px] border px-3 py-3 transition ${
+                    className={`focus-visible:ring-primary focus-visible:ring-offset-bg flex items-center justify-center rounded-[12px] border px-3 py-3 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
                       active
                         ? "border-primary bg-primary/10"
                         : "border-border bg-card hover:border-border-2"
@@ -382,6 +394,10 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
               </>
             )}
           </button>
+
+          {!canPay && !loading && !error && payHint && (
+            <p className="text-tx-dim mt-2.5 text-center text-[12px]">{payHint}</p>
+          )}
 
           {error && <p className="mt-3 text-center text-[13px] text-[#FF6B6B]">{error}</p>}
 
