@@ -12,15 +12,14 @@ const SOCIALS = [
   { href: "https://t.me/yupay_channel", label: "Telegram", src: "/social/telegram.svg" },
 ];
 
-/** Real acquirer marks. Intrinsic px dimensions are passed through so next/image
- * keeps the true aspect ratio while we render every mark at a uniform 16px
- * height. `dark` marks are white-on-transparent lockups (Click, СБП) — they sit
- * on a dark chip instead of the white one so their wordmark stays legible. */
-const PAY_METHODS: { src: string; name: string; w: number; h: number; dark?: boolean }[] = [
-  { src: "/payment/click.svg", name: "Click", w: 157, h: 40, dark: true },
+/** Real acquirer marks, rendered bare (no chip) on the dark footer. Intrinsic
+ * px dimensions are passed through so next/image keeps the true aspect ratio
+ * while we render every mark at a uniform height. */
+const PAY_METHODS: { src: string; name: string; w: number; h: number }[] = [
+  { src: "/payment/click.svg", name: "Click", w: 157, h: 40 },
   { src: "/payment/payme.png", name: "Payme", w: 454, h: 179 },
   { src: "/payment/uzum.png", name: "Uzum", w: 506, h: 148 },
-  { src: "/payment/sbp.png", name: "СБП", w: 220, h: 120, dark: true },
+  { src: "/payment/sbp.png", name: "СБП", w: 220, h: 120 },
   { src: "/payment/usdt.png", name: "USDT", w: 2000, h: 2000 },
 ];
 
@@ -99,25 +98,19 @@ export async function Footer({ locale }: { locale: string }) {
             {t("copyright", { year })} · <span className="text-tx-dim/80">{t("disclaimer")}</span>
           </span>
           <div className="flex items-center gap-3">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-3">
               {PAY_METHODS.map((p) => (
-                <span
+                <Image
                   key={p.name}
+                  src={p.src}
+                  alt={p.name}
                   title={p.name}
-                  className={`flex h-7 items-center rounded-md px-2 ${
-                    p.dark ? "border-border bg-card border" : "bg-white"
-                  }`}
-                >
-                  <Image
-                    src={p.src}
-                    alt={p.name}
-                    width={p.w}
-                    height={p.h}
-                    unoptimized
-                    style={{ width: "auto", height: 16 }}
-                    className="object-contain"
-                  />
-                </span>
+                  width={p.w}
+                  height={p.h}
+                  unoptimized
+                  style={{ width: "auto", height: 20 }}
+                  className="object-contain"
+                />
               ))}
             </div>
             <span className="text-tx-dim font-mono text-[11px]">
