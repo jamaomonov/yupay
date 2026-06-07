@@ -10,6 +10,7 @@ import { AccountMenu } from "./auth/AccountMenu";
 
 import { type AppLocale } from "@/i18n/routing";
 import { buttonStyles } from "@/lib/button";
+import { TELEGRAM_MINIAPP_URL } from "@/lib/links";
 
 const LOCALES: { code: AppLocale; label: string }[] = [
   { code: "ru", label: "Русский" },
@@ -94,12 +95,11 @@ export function MobileNav() {
             </nav>
 
             <a
-              href="https://t.me/yupay_bot"
+              href={TELEGRAM_MINIAPP_URL}
               target="_blank"
               rel="noreferrer noopener"
               onClick={close}
               className={buttonStyles({
-                variant: "ghost",
                 size: "lg",
                 className: "mt-5 w-full",
               })}

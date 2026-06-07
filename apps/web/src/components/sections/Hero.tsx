@@ -1,10 +1,11 @@
-import { ArrowRight, ChevronDown, Star } from "lucide-react";
+import { ArrowRight, ChevronDown, Send, Star } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { PhoneShowcase } from "./PhoneShowcase";
 
 import { buttonStyles } from "@/lib/button";
+import { TELEGRAM_MINIAPP_URL } from "@/lib/links";
 
 /**
  * Storefront hero — type-led left column + a real product shot on the right:
@@ -56,18 +57,61 @@ export async function Hero({ locale }: { locale: string }) {
             {t("subtitle")}
           </p>
 
-          <div className="mt-8 flex flex-wrap items-center gap-3.5">
-            <Link
-              href={`${prefix}/store`}
-              className={buttonStyles({ size: "lg", className: "group" })}
+          {/* Device-aware CTA priority. Telegram opens the Mini App (the
+              lower-friction, higher-retention surface on phones, where a deep
+              link is one tap) and is the bold primary on mobile. On desktop,
+              opening Telegram is more friction than just browsing the web
+              store, so the catalog leads and Telegram is the ghost secondary. */}
+          <div className="mt-8">
+            <div className="flex flex-col gap-3.5 sm:flex-row sm:items-center lg:hidden">
+              <a
+                href={TELEGRAM_MINIAPP_URL}
+                target="_blank"
+                rel="noreferrer noopener"
+                className={buttonStyles({ size: "lg", className: "group" })}
+              >
+                <Send size={16} strokeWidth={2.4} />
+                {t("ctaTelegram")}
+                <ArrowRight
+                  size={16}
+                  strokeWidth={2.6}
+                  className="transition group-hover:translate-x-0.5"
+                />
+              </a>
+              <Link
+                href={`${prefix}/store`}
+                className={buttonStyles({ variant: "ghost", size: "lg" })}
+              >
+                {t("ctaPrimary")}
+              </Link>
+            </div>
+            <div className="hidden items-center gap-3.5 lg:flex">
+              <Link
+                href={`${prefix}/store`}
+                className={buttonStyles({ size: "lg", className: "group" })}
+              >
+                {t("ctaPrimary")}
+                <ArrowRight
+                  size={16}
+                  strokeWidth={2.6}
+                  className="transition group-hover:translate-x-0.5"
+                />
+              </Link>
+              <a
+                href={TELEGRAM_MINIAPP_URL}
+                target="_blank"
+                rel="noreferrer noopener"
+                className={buttonStyles({ variant: "ghost", size: "lg" })}
+              >
+                <Send size={16} strokeWidth={2.4} />
+                {t("ctaTelegram")}
+              </a>
+            </div>
+            <a
+              href="#how"
+              className="text-tx-mute hover:text-foreground mt-4 inline-flex items-center gap-1.5 text-sm font-medium transition"
             >
-              {t("ctaPrimary")}
-              <ArrowRight size={16} strokeWidth={2.6} />
-            </Link>
-            <a href="#how" className={buttonStyles({ variant: "ghost", size: "lg" })}>
-              <span className="border-primary bg-primary/15 flex h-5 w-5 items-center justify-center rounded-full border">
-                <ChevronDown size={12} strokeWidth={2.6} className="text-primary" />
-              </span>
+              <ChevronDown size={14} strokeWidth={2.6} className="text-primary" />
               {t("ctaSecondary")}
             </a>
           </div>

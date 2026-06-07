@@ -3,6 +3,7 @@ import Image from "next/image";
 import { getTranslations } from "next-intl/server";
 
 import { buttonStyles } from "@/lib/button";
+import { TELEGRAM_MINIAPP_URL } from "@/lib/links";
 
 const FEATURES: { key: string; Icon: typeof Zap }[] = [
   { key: "f1", Icon: Zap },
@@ -73,7 +74,7 @@ export async function AppShowcase() {
               </div>
 
               <a
-                href="https://t.me/yupay_bot"
+                href={TELEGRAM_MINIAPP_URL}
                 target="_blank"
                 rel="noreferrer noopener"
                 className={buttonStyles({ size: "lg", className: "group mt-9" })}
