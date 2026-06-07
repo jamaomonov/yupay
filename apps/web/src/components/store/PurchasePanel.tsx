@@ -4,7 +4,7 @@ import { ArrowUpRight, Check, Loader2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import type { FormField, ProductDetail, SkuOut } from "@/lib/catalog";
 
@@ -56,6 +56,8 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
     intentUrl: string | null;
     trackHref: string;
   } | null>(null);
+  // The mobile sticky pay bar scrolls here when the form isn't complete yet.
+  const asideRef = useRef<HTMLElement>(null);
 
   let selSku: SkuOut | undefined;
   let selProduct: ProductDetail | undefined;
@@ -212,202 +214,232 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
   }
 
   return (
-    <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1.5fr_1fr]">
-      {/* selection + fields */}
-      <div>
-        <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t("packsTitle")}</h2>
-        {products.map((product) => (
-          <div key={product.id} className="mt-5">
-            {products.length > 1 && (
-              <div className="text-tx-mute mb-3 text-sm font-semibold">{product.name}</div>
+    <>
+      <div className="grid grid-cols-1 gap-8 pb-24 lg:grid-cols-[1.5fr_1fr] lg:pb-0">
+        {/* selection + fields */}
+        <div>
+          <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t("packsTitle")}</h2>
+          {products.map((product) => (
+            <div key={product.id} className="mt-5">
+              {products.length > 1 && (
+                <div className="text-tx-mute mb-3 text-sm font-semibold">{product.name}</div>
+              )}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {product.skus.map((sku) => {
+                  const active = sku.id === skuId;
+                  const img = sku.image_url ?? product.image_url;
+                  return (
+                    <button
+                      key={sku.id}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => {
+                        setSkuId(sku.id);
+                      }}
+                      className={`focus-visible:ring-primary focus-visible:ring-offset-bg flex flex-col items-start gap-2 rounded-[14px] border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                        active
+                          ? "border-primary bg-primary/10"
+                          : "border-border bg-card hover:border-border-2"
+                      }`}
+                    >
+                      <span className="relative h-12 w-12 overflow-hidden rounded-[10px]">
+                        {img && (
+                          <Image
+                            src={img}
+                            alt=""
+                            fill
+                            unoptimized
+                            sizes="48px"
+                            className="object-contain"
+                          />
+                        )}
+                      </span>
+                      <span className="font-display text-[15px] font-bold leading-tight tracking-[-0.01em]">
+                        {sku.denomination ?? sku.sku_code}
+                      </span>
+                      <span className="text-tx-mute font-mono text-[12px]">
+                        {skuPrice(locale, sku)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* summary + payment + pay */}
+        <aside ref={asideRef} className="scroll-mt-[88px] lg:sticky lg:top-[100px] lg:self-start">
+          <div className="border-border rounded-xl border bg-[linear-gradient(135deg,hsl(var(--card)),hsl(var(--bg)))] p-6">
+            <h2 className="font-display text-lg font-bold tracking-[-0.02em]">
+              {t("summaryTitle")}
+            </h2>
+
+            <div className="border-border/70 mt-4 flex items-center justify-between border-b pb-4">
+              {selSku ? (
+                <>
+                  <span className="text-[15px] font-semibold">
+                    {selSku.denomination ?? selSku.sku_code}
+                  </span>
+                  <span className="font-display text-lg font-bold">{skuPrice(locale, selSku)}</span>
+                </>
+              ) : (
+                <span className="text-tx-mute text-sm">{t("selectPack")}</span>
+              )}
+            </div>
+
+            <label className="mt-5 block">
+              <span className="text-tx-mute mb-1.5 block text-[13px] font-semibold">
+                {t("emailLabel")} <span className="text-primary">*</span>
+              </span>
+              <input
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                value={email}
+                placeholder={t("emailPlaceholder")}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                }}
+                className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
+              />
+            </label>
+
+            {fields.length > 0 && (
+              <div className="mt-5 flex flex-col gap-4">
+                {fields.map((f) => (
+                  <label key={f.key} className="block">
+                    <span className="text-tx-mute mb-1.5 block text-[13px] font-semibold">
+                      {label(f.label)}
+                      {f.required && <span className="text-primary"> *</span>}
+                    </span>
+                    {f.type === "select" ? (
+                      <select
+                        value={form[f.key] ?? ""}
+                        onChange={(e) => {
+                          setForm((s) => ({ ...s, [f.key]: e.target.value }));
+                        }}
+                        className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
+                      >
+                        <option value="">—</option>
+                        {f.options?.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {label(o.label)}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type={f.type === "number" ? "text" : f.type}
+                        inputMode={f.type === "number" ? "numeric" : undefined}
+                        value={form[f.key] ?? ""}
+                        placeholder={label(f.placeholder)}
+                        onChange={(e) => {
+                          setForm((s) => ({ ...s, [f.key]: e.target.value }));
+                        }}
+                        className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
+                      />
+                    )}
+                    {f.help_text && (
+                      <span className="text-tx-dim mt-1 block text-xs">{label(f.help_text)}</span>
+                    )}
+                  </label>
+                ))}
+              </div>
             )}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {product.skus.map((sku) => {
-                const active = sku.id === skuId;
-                const img = sku.image_url ?? product.image_url;
-                return (
-                  <button
-                    key={sku.id}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => {
-                      setSkuId(sku.id);
-                    }}
-                    className={`focus-visible:ring-primary focus-visible:ring-offset-bg flex flex-col items-start gap-2 rounded-[14px] border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
-                      active
-                        ? "border-primary bg-primary/10"
-                        : "border-border bg-card hover:border-border-2"
-                    }`}
-                  >
-                    <span className="relative h-12 w-12 overflow-hidden rounded-[10px]">
-                      {img && (
-                        <Image
-                          src={img}
-                          alt=""
-                          fill
-                          unoptimized
-                          sizes="48px"
-                          className="object-contain"
-                        />
-                      )}
-                    </span>
-                    <span className="font-display text-[15px] font-bold leading-tight tracking-[-0.01em]">
-                      {sku.denomination ?? sku.sku_code}
-                    </span>
-                    <span className="text-tx-mute font-mono text-[12px]">
-                      {skuPrice(locale, sku)}
-                    </span>
-                  </button>
-                );
-              })}
+
+            <div className="mt-5">
+              <span className="text-tx-mute mb-2 block text-[13px] font-semibold">
+                {t("paymentTitle")}
+              </span>
+              <div className="grid grid-cols-2 gap-2">
+                {METHODS.map((m) => {
+                  const active = m.id === methodId;
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      aria-label={m.name}
+                      aria-pressed={active}
+                      onClick={() => {
+                        setMethodId(m.id);
+                      }}
+                      className={`focus-visible:ring-primary focus-visible:ring-offset-bg flex items-center justify-center rounded-[12px] border px-3 py-3 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                        active
+                          ? "border-primary bg-primary/10"
+                          : "border-border bg-card hover:border-border-2"
+                      }`}
+                    >
+                      <Image
+                        src={m.icon}
+                        alt={m.name}
+                        title={m.name}
+                        width={m.w}
+                        height={m.h}
+                        unoptimized
+                        style={{ width: "auto", height: 20 }}
+                        className="object-contain"
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              disabled={!canPay}
+              onClick={() => void pay()}
+              className={buttonStyles({ size: "lg", className: "mt-6 w-full" })}
+            >
+              {loading ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : (
+                <>
+                  {t("pay")}
+                  {selSku && ` · ${skuPrice(locale, selSku)}`}
+                </>
+              )}
+            </button>
+
+            {!canPay && !loading && !error && payHint && (
+              <p className="text-tx-dim mt-2.5 text-center text-[12px]">{payHint}</p>
+            )}
+
+            {error && <p className="mt-3 text-center text-[13px] text-[#FF6B6B]">{error}</p>}
+
+            <div className="border-border/70 text-tx-mute mt-5 flex items-start gap-2.5 border-t pt-5 text-[12px] leading-relaxed">
+              {t("securityNote")}
             </div>
           </div>
-        ))}
+        </aside>
       </div>
 
-      {/* summary + payment + pay */}
-      <aside className="lg:sticky lg:top-[100px] lg:self-start">
-        <div className="border-border rounded-xl border bg-[linear-gradient(135deg,hsl(var(--card)),hsl(var(--bg)))] p-6">
-          <h2 className="font-display text-lg font-bold tracking-[-0.02em]">{t("summaryTitle")}</h2>
-
-          <div className="border-border/70 mt-4 flex items-center justify-between border-b pb-4">
-            {selSku ? (
-              <>
-                <span className="text-[15px] font-semibold">
-                  {selSku.denomination ?? selSku.sku_code}
-                </span>
-                <span className="font-display text-lg font-bold">{skuPrice(locale, selSku)}</span>
-              </>
-            ) : (
-              <span className="text-tx-mute text-sm">{t("selectPack")}</span>
-            )}
-          </div>
-
-          <label className="mt-5 block">
-            <span className="text-tx-mute mb-1.5 block text-[13px] font-semibold">
-              {t("emailLabel")} <span className="text-primary">*</span>
-            </span>
-            <input
-              type="email"
-              inputMode="email"
-              autoComplete="email"
-              value={email}
-              placeholder={t("emailPlaceholder")}
-              onChange={(e) => {
-                setEmail(e.target.value);
+      {/* Mobile sticky checkout bar — brings the total + pay CTA up so the
+          customer doesn't scroll past the whole form. Pays when ready, else
+          jumps to the form (which shows what's still missing). */}
+      {selSku && (
+        <div className="border-border bg-bg/95 fixed inset-x-0 bottom-0 z-40 border-t px-4 py-3 backdrop-blur-xl lg:hidden">
+          <div className="mx-auto flex max-w-[1200px] items-center justify-between gap-4">
+            <div className="min-w-0">
+              <div className="text-tx-mute text-[11px] font-semibold">{t("summaryTitle")}</div>
+              <div className="font-display truncate text-lg font-bold leading-tight">
+                {skuPrice(locale, selSku)}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (canPay) void pay();
+                else asideRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
               }}
-              className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
-            />
-          </label>
-
-          {fields.length > 0 && (
-            <div className="mt-5 flex flex-col gap-4">
-              {fields.map((f) => (
-                <label key={f.key} className="block">
-                  <span className="text-tx-mute mb-1.5 block text-[13px] font-semibold">
-                    {label(f.label)}
-                    {f.required && <span className="text-primary"> *</span>}
-                  </span>
-                  {f.type === "select" ? (
-                    <select
-                      value={form[f.key] ?? ""}
-                      onChange={(e) => {
-                        setForm((s) => ({ ...s, [f.key]: e.target.value }));
-                      }}
-                      className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
-                    >
-                      <option value="">—</option>
-                      {f.options?.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {label(o.label)}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type={f.type === "number" ? "text" : f.type}
-                      inputMode={f.type === "number" ? "numeric" : undefined}
-                      value={form[f.key] ?? ""}
-                      placeholder={label(f.placeholder)}
-                      onChange={(e) => {
-                        setForm((s) => ({ ...s, [f.key]: e.target.value }));
-                      }}
-                      className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
-                    />
-                  )}
-                  {f.help_text && (
-                    <span className="text-tx-dim mt-1 block text-xs">{label(f.help_text)}</span>
-                  )}
-                </label>
-              ))}
-            </div>
-          )}
-
-          <div className="mt-5">
-            <span className="text-tx-mute mb-2 block text-[13px] font-semibold">
-              {t("paymentTitle")}
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              {METHODS.map((m) => {
-                const active = m.id === methodId;
-                return (
-                  <button
-                    key={m.id}
-                    type="button"
-                    aria-label={m.name}
-                    aria-pressed={active}
-                    onClick={() => {
-                      setMethodId(m.id);
-                    }}
-                    className={`focus-visible:ring-primary focus-visible:ring-offset-bg flex items-center justify-center rounded-[12px] border px-3 py-3 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
-                      active
-                        ? "border-primary bg-primary/10"
-                        : "border-border bg-card hover:border-border-2"
-                    }`}
-                  >
-                    <Image
-                      src={m.icon}
-                      alt={m.name}
-                      title={m.name}
-                      width={m.w}
-                      height={m.h}
-                      unoptimized
-                      style={{ width: "auto", height: 20 }}
-                      className="object-contain"
-                    />
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <button
-            type="button"
-            disabled={!canPay}
-            onClick={() => void pay()}
-            className={buttonStyles({ size: "lg", className: "mt-6 w-full" })}
-          >
-            {loading ? (
-              <Loader2 size={18} className="animate-spin" />
-            ) : (
-              <>
-                {t("pay")}
-                {selSku && ` · ${skuPrice(locale, selSku)}`}
-              </>
-            )}
-          </button>
-
-          {!canPay && !loading && !error && payHint && (
-            <p className="text-tx-dim mt-2.5 text-center text-[12px]">{payHint}</p>
-          )}
-
-          {error && <p className="mt-3 text-center text-[13px] text-[#FF6B6B]">{error}</p>}
-
-          <div className="border-border/70 text-tx-mute mt-5 flex items-start gap-2.5 border-t pt-5 text-[12px] leading-relaxed">
-            {t("securityNote")}
+              className={buttonStyles({ size: "lg", className: "shrink-0" })}
+            >
+              {loading ? <Loader2 size={18} className="animate-spin" /> : t("pay")}
+            </button>
           </div>
         </div>
-      </aside>
-    </div>
+      )}
+    </>
   );
 }
