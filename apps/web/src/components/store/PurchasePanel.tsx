@@ -28,7 +28,7 @@ interface Method {
  * so checkout falls back to the live `mock` provider when the chosen one isn't
  * available yet — the UI stays honest while the flow works end-to-end. */
 const METHODS: Method[] = [
-  { id: "click", name: "Click", provider: "click", icon: "/payment/click.png", w: 225, h: 225 },
+  { id: "click", name: "Click", provider: "click", icon: "/payment/click.svg", w: 157, h: 40 },
   { id: "payme", name: "Payme", provider: "payme", icon: "/payment/payme.png", w: 454, h: 179 },
   { id: "uzum", name: "Uzum", provider: "uzum", icon: "/payment/uzum.png", w: 506, h: 148 },
   { id: "usdt", name: "USDT", provider: "crypto", icon: "/payment/usdt.png", w: 2000, h: 2000 },
@@ -345,23 +345,22 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
                     onClick={() => {
                       setMethodId(m.id);
                     }}
-                    className={`flex items-center gap-2 rounded-[12px] border px-3 py-2.5 transition ${
+                    className={`flex items-center justify-center rounded-[12px] border px-3 py-3 transition ${
                       active
                         ? "border-primary bg-primary/10"
                         : "border-border bg-card hover:border-border-2"
                     }`}
                   >
-                    <span className="flex h-6 items-center rounded bg-white px-1.5">
-                      <Image
-                        src={m.icon}
-                        alt={m.name}
-                        width={m.w}
-                        height={m.h}
-                        style={{ width: "auto", height: 14 }}
-                        className="object-contain"
-                      />
-                    </span>
-                    <span className="text-[13px] font-semibold">{m.name}</span>
+                    <Image
+                      src={m.icon}
+                      alt={m.name}
+                      title={m.name}
+                      width={m.w}
+                      height={m.h}
+                      unoptimized
+                      style={{ width: "auto", height: 20 }}
+                      className="object-contain"
+                    />
                   </button>
                 );
               })}
