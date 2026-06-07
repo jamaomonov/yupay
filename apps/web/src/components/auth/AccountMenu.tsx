@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/lib/auth";
+import { buttonStyles } from "@/lib/button";
 import { useLoginModal } from "@/store/useLoginModal";
 
 interface Props {
@@ -43,11 +44,7 @@ export function AccountMenu({ locale }: Props) {
 
   if (!user) {
     return (
-      <button
-        type="button"
-        onClick={openLogin}
-        className="border-border-2 text-foreground hover:border-tx-dim hover:bg-muted rounded-btn inline-flex h-[38px] items-center justify-center border px-4 text-sm font-semibold transition"
-      >
+      <button type="button" onClick={openLogin} className={buttonStyles({ size: "sm" })}>
         {t("login")}
       </button>
     );

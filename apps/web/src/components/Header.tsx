@@ -6,8 +6,6 @@ import { LocaleSwitcher } from "./LocaleSwitcher";
 import { MobileNav } from "./MobileNav";
 import { Wordmark } from "./Wordmark";
 
-import { buttonStyles } from "@/lib/button";
-
 /**
  * Fixed glass header. On md+ the full lockup shows (mark + 4 nav links +
  * LocaleSwitcher + account control + lime ‟Пополнить"); below md it collapses
@@ -57,9 +55,6 @@ export async function Header({ locale }: { locale: string }) {
         <div className="hidden items-center gap-2.5 md:flex">
           <LocaleSwitcher />
           <AccountMenu locale={locale} />
-          <Link href={`${prefix}/store`} className={buttonStyles({ size: "sm" })}>
-            {t("topUp")}
-          </Link>
         </div>
 
         {/* Mobile controls */}
