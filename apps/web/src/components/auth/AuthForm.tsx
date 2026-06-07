@@ -22,10 +22,12 @@ export function AuthForm({
   mode,
   locale,
   onSubmit,
+  showTelegram = true,
 }: {
   mode: "login" | "register";
   locale: string;
   onSubmit: (v: Values) => Promise<void>;
+  showTelegram?: boolean;
 }) {
   const t = useTranslations("web.auth");
   const [error, setError] = useState<string | null>(null);
@@ -92,8 +94,12 @@ export function AuthForm({
         )}
       </div>
 
-      <div className="border-border/70 my-2 border-t" />
-      <TelegramLoginButton />
+      {showTelegram && (
+        <>
+          <div className="border-border/70 my-2 border-t" />
+          <TelegramLoginButton />
+        </>
+      )}
     </form>
   );
 }
