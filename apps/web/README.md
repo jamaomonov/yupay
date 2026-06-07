@@ -12,3 +12,13 @@ Next.js 15 (App Router, RSC). SEO-driven, guest-friendly checkout.
 ```bash
 make dev-web   # foreground, requires the API to be reachable
 ```
+
+## Environment
+
+| Variable                            | Description                                                                                                                                                                                                                                |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `NEXT_PUBLIC_API_BASE_URL`          | Base URL of the FastAPI backend (e.g. `https://api.yupay.uz`). Inlined at build time.                                                                                                                                                      |
+| `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` | Telegram bot username (without `@`) used to render the Telegram Login Widget. Inlined at build time.                                                                                                                                       |
+| `NEXT_PUBLIC_TELEGRAM_BOT_ID`       | The bot's numeric id (the token prefix before `:`), used to trigger the Telegram OAuth popup from the login modal's custom button. When empty, the modal renders the official Telegram widget button as a fallback. Inlined at build time. |
+| `NEXT_PUBLIC_SENTRY_DSN`            | Sentry DSN for client-side error reporting. Leave empty to disable.                                                                                                                                                                        |
+| `NEXT_PUBLIC_PLAUSIBLE_DOMAIN`      | Domain registered in Plausible Analytics. Leave empty to disable analytics.                                                                                                                                                                |
