@@ -1,7 +1,15 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createContext, useCallback, useContext, useMemo, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { apiFetch, clearTokens, getAccessToken, setTokens, type Tokens } from "./client";
 
@@ -29,6 +37,15 @@ const AuthContext = createContext<AuthValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
+  // Auth state derives from localStorage, invisible to the server. Stay
+  // "loading" until mounted so every auth-gated consumer (header, /account)
+  // renders the same thing on the server and the first client render — without
+  // this they diverge and React throws a hydration mismatch.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const meQuery = useQuery({
     queryKey: ["me"],
     queryFn: () => apiFetch<Me>("/auth/me"),
@@ -40,7 +57,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const afterTokens = useCallback(
     async (tokens: Tokens) => {
       setTokens(tokens.access_token, tokens.refresh_token ?? null);
-      await qc.invalidateQueries({ queryKey: ["me"] });
+      // Fetch /auth/me imperatively and seed the cache. `invalidateQueries`
+      // would no-op here because the `me` query is still `enabled: false` (its
+      // gate was evaluated before the token landed in localStorage); fetchQuery
+      // ignores that gate, so `user` is populated before the caller navigates
+      // to an auth-gated route.
+      await qc.fetchQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/auth/me") });
     },
     [qc],
   );
@@ -90,13 +112,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthValue>(
     () => ({
       user: meQuery.data ?? null,
-      isLoading: meQuery.isLoading,
+      isLoading: !mounted || meQuery.isLoading,
       login,
       register,
       loginWithTelegram,
       logout,
     }),
-    [meQuery.data, meQuery.isLoading, login, register, loginWithTelegram, logout],
+    [mounted, meQuery.data, meQuery.isLoading, login, register, loginWithTelegram, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

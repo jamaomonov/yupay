@@ -40,6 +40,8 @@ export function AccountMenu({ locale }: Props) {
     };
   }, [open]);
 
+  // isLoading stays true on the server + first client render (AuthProvider gates
+  // it on `mounted`), so this matches between SSR and hydration.
   if (isLoading) return null;
 
   if (!user) {
