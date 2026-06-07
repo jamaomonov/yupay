@@ -82,7 +82,18 @@
     "registerError": "Не удалось создать аккаунт. Попробуйте ещё раз.",
     "toRegister": "Создать аккаунт",
     "toLogin": "Уже есть аккаунт? Войти",
-    "forgot": "Забыли пароль?"
+    "forgot": "Забыли пароль?",
+    "modalTitle": "Войдите или зарегистрируйтесь",
+    "providerTelegram": "Telegram",
+    "providerGoogle": "Google",
+    "providerSteam": "Steam",
+    "providerEmail": "Email",
+    "soon": "скоро",
+    "agreePrefix": "Прочёл и согласен с",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Use",
+    "and": "и",
+    "back": "Назад"
   },
   "store": {
     "meta": {

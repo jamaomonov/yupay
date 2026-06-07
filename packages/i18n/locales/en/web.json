@@ -82,7 +82,18 @@
     "registerError": "Could not create account. Please try again.",
     "toRegister": "Create an account",
     "toLogin": "Already have an account? Sign in",
-    "forgot": "Forgot password?"
+    "forgot": "Forgot password?",
+    "modalTitle": "Sign in or register",
+    "providerTelegram": "Telegram",
+    "providerGoogle": "Google",
+    "providerSteam": "Steam",
+    "providerEmail": "Email",
+    "soon": "soon",
+    "agreePrefix": "I have read and agree to the",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Use",
+    "and": "and",
+    "back": "Back"
   },
   "store": {
     "meta": {

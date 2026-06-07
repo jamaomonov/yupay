@@ -82,7 +82,18 @@
     "registerError": "Akkaunt yaratib boʻlmadi. Qayta urinib koʻring.",
     "toRegister": "Akkaunt yaratish",
     "toLogin": "Akkauntingiz bormi? Kirish",
-    "forgot": "Parolni unutdingizmi?"
+    "forgot": "Parolni unutdingizmi?",
+    "modalTitle": "Kiring yoki roʻyxatdan oʻting",
+    "providerTelegram": "Telegram",
+    "providerGoogle": "Google",
+    "providerSteam": "Steam",
+    "providerEmail": "Email",
+    "soon": "tez orada",
+    "agreePrefix": "Oʻqidim va roziman:",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Use",
+    "and": "va",
+    "back": "Orqaga"
   },
   "store": {
     "meta": {
