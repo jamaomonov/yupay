@@ -14,7 +14,7 @@ const STEPS: { n: string; titleKey: string; subKey: string; time: string }[] = [
 export async function HowItWorks() {
   const t = await getTranslations("web.how");
   return (
-    <section id="how" className="py-28">
+    <section id="how" className="scroll-mt-[88px] py-28">
       <div className="mx-auto max-w-[1200px] px-6 sm:px-10">
         <div className="grid grid-cols-1 gap-12 md:grid-cols-[auto_1fr] md:gap-[70px]">
           <div className="md:sticky md:top-[110px] md:self-start">

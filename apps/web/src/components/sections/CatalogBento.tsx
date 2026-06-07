@@ -51,7 +51,7 @@ function BentoCard({
           style={{ background: `linear-gradient(135deg, ${accent}55, #0A0D1A)` }}
         />
       )}
-      <div className="absolute inset-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.85)_0%,rgba(0,0,0,0.25)_55%,transparent_82%)]" />
+      <div className="absolute inset-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.9)_0%,rgba(0,0,0,0.45)_45%,transparent_80%)]" />
 
       {brand.maintenance && (
         <span className="absolute left-4 top-4 z-10 inline-flex rounded-md bg-black/60 px-2 py-1 text-[10px] font-black uppercase tracking-[0.06em] text-white backdrop-blur">
@@ -61,13 +61,13 @@ function BentoCard({
 
       <div className="absolute inset-x-5 bottom-5 z-10">
         {brand.short_description && (
-          <div className="mb-1.5 line-clamp-1 text-[11px] font-bold uppercase tracking-[0.1em] text-white/65">
+          <div className="mb-1.5 line-clamp-1 text-[11px] font-bold uppercase tracking-[0.1em] text-white/80 [text-shadow:0_1px_6px_rgba(0,0,0,0.7)]">
             {brand.short_description}
           </div>
         )}
         <div className="flex items-end justify-between gap-3">
           <div
-            className="font-display font-extrabold leading-none tracking-[-0.025em] text-white"
+            className="font-display font-extrabold leading-none tracking-[-0.025em] text-white [text-shadow:0_2px_10px_rgba(0,0,0,0.6)]"
             style={{ fontSize: featured ? 48 : 26 }}
           >
             {brand.name}
@@ -106,7 +106,7 @@ export async function CatalogBento({ locale }: { locale: string }) {
   if (!feature) return null;
 
   return (
-    <section id="catalog" className="relative py-28">
+    <section id="catalog" className="relative scroll-mt-[88px] py-28">
       <div className="mx-auto max-w-[1200px] px-6 sm:px-10">
         <div className="mb-14 flex items-end justify-between gap-6">
           <div>

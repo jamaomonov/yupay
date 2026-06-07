@@ -69,6 +69,7 @@ export function AuthForm({
           type="email"
           id="auth-email"
           autoComplete="email"
+          aria-required="true"
           {...register("email")}
           className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
         />
@@ -82,6 +83,7 @@ export function AuthForm({
           type="password"
           id="auth-password"
           autoComplete={mode === "login" ? "current-password" : "new-password"}
+          aria-required="true"
           {...register("password")}
           className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
         />
@@ -98,6 +100,7 @@ export function AuthForm({
             type="password"
             id="auth-confirm-password"
             autoComplete="new-password"
+            aria-required="true"
             {...register("confirmPassword")}
             className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
           />

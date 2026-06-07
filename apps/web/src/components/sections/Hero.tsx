@@ -16,7 +16,7 @@ export async function Hero({ locale }: { locale: string }) {
   const prefix = `/${locale}`;
 
   return (
-    <header className="relative overflow-hidden pb-[120px] pt-[180px]">
+    <header className="relative overflow-hidden pb-20 pt-28 sm:pb-[120px] sm:pt-[180px]">
       {/* Atmospheric layers behind the hero. Tuned to peek through the
           surrounding sections without distracting from the centred content. */}
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">

@@ -296,6 +296,8 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
                 type="email"
                 inputMode="email"
                 autoComplete="email"
+                required
+                aria-required="true"
                 value={email}
                 placeholder={t("emailPlaceholder")}
                 onChange={(e) => {
@@ -315,6 +317,8 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
                     </span>
                     {f.type === "select" ? (
                       <select
+                        required={f.required}
+                        aria-required={f.required}
                         value={form[f.key] ?? ""}
                         onChange={(e) => {
                           setForm((s) => ({ ...s, [f.key]: e.target.value }));
@@ -332,6 +336,8 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
                       <input
                         type={f.type === "number" ? "text" : f.type}
                         inputMode={f.type === "number" ? "numeric" : undefined}
+                        required={f.required}
+                        aria-required={f.required}
                         value={form[f.key] ?? ""}
                         placeholder={label(f.placeholder)}
                         onChange={(e) => {

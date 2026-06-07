@@ -36,7 +36,7 @@ export async function Reviews() {
   if (!featured) return null;
 
   return (
-    <section id="reviews" className="py-24">
+    <section id="reviews" className="scroll-mt-[88px] py-24">
       <div className="mx-auto max-w-[1200px] px-6 sm:px-10">
         <div className="mb-14 flex flex-wrap items-end justify-between gap-6">
           <div>
