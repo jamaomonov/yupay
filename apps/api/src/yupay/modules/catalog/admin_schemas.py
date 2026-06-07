@@ -32,6 +32,9 @@ class TranslationIn(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     short_description: str | None = Field(default=None, max_length=512)
     description: str | None = None
+    # Longform "how to top up / regions / where to find your ID" guide. Only
+    # brands persist this; products ignore it.
+    instructions: str | None = None
 
 
 class CategoryTranslationIn(BaseModel):

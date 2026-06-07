@@ -21,6 +21,7 @@ const translationSchema = z.object({
   name: z.string().min(1, "Обязательно"),
   short_description: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
+  instructions: z.string().optional().nullable(),
 });
 
 const brandSchema = z.object({
@@ -47,9 +48,9 @@ const EMPTY: FormValues = {
   active: true,
   maintenance: false,
   translations: [
-    { locale: "ru", name: "", short_description: "", description: "" },
-    { locale: "en", name: "", short_description: "", description: "" },
-    { locale: "uz", name: "", short_description: "", description: "" },
+    { locale: "ru", name: "", short_description: "", description: "", instructions: "" },
+    { locale: "en", name: "", short_description: "", description: "", instructions: "" },
+    { locale: "uz", name: "", short_description: "", description: "", instructions: "" },
   ],
 };
 
@@ -116,6 +117,7 @@ export function BrandEditPage() {
           name: t?.name ?? "",
           short_description: t?.short_description ?? "",
           description: t?.description ?? "",
+          instructions: t?.instructions ?? "",
         };
       }),
     });
@@ -258,6 +260,12 @@ export function BrandEditPage() {
                 <textarea
                   {...form.register(`translations.${idx}.description`)}
                   className="min-h-20 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2 text-sm"
+                />
+              </Field>
+              <Field label="Инструкция (как пополнить / регионы / где взять ID — SEO-блок)">
+                <textarea
+                  {...form.register(`translations.${idx}.instructions`)}
+                  className="min-h-28 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2 text-sm"
                 />
               </Field>
             </fieldset>

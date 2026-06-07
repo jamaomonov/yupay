@@ -81,6 +81,7 @@ export interface Faq {
 
 export interface BrandDetail extends BrandSummary {
   description: string | null;
+  instructions: string | null;
   products: ProductSummary[];
   faqs: Faq[];
 }

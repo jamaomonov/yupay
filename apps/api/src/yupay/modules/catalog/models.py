@@ -135,6 +135,9 @@ class BrandTranslation(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     short_description: Mapped[str | None] = mapped_column(String(512), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Longform "how to top up / supported regions / where to find your ID" guide,
+    # rendered as an indexable prose section on the brand page.
+    instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (PrimaryKeyConstraint("brand_id", "locale", name="pk_brand_translations"),)
 

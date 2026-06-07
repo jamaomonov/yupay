@@ -36,8 +36,12 @@ def _pick_translation(
     locale: str,
     *,
     fallback: str = DEFAULT_LOCALE,
-) -> tuple[str, str | None, str | None]:
-    """Return ``(name, short_description, description)`` for ``locale`` or fallback."""
+) -> tuple[str, str | None, str | None, str | None]:
+    """Return ``(name, short_description, description, instructions)`` for the locale.
+
+    ``instructions`` only exists on brand translations; product translations
+    return ``None`` for it (read via ``getattr``).
+    """
     by_locale = {t.locale: t for t in translations}
     chosen = (
         by_locale.get(locale)
@@ -45,11 +49,12 @@ def _pick_translation(
         or (translations[0] if translations else None)
     )
     if chosen is None:
-        return ("", None, None)
+        return ("", None, None, None)
     return (
         chosen.name,
         getattr(chosen, "short_description", None),
         getattr(chosen, "description", None),
+        getattr(chosen, "instructions", None),
     )
 
 
@@ -84,7 +89,7 @@ def _pick_category_translation(translations: list[Any], locale: str) -> tuple[st
 
 
 def _brand_summary(brand: Brand, locale: str) -> BrandOut:
-    name, short_desc, _ = _pick_translation(brand.translations, locale)
+    name, short_desc, _, _ = _pick_translation(brand.translations, locale)
     return BrandOut(
         id=brand.id,
         slug=brand.slug,
@@ -134,7 +139,7 @@ def _build_product_summary(
     starting: Sku,
     display: PriceOut | None,
 ) -> ProductSummaryOut:
-    name, short_desc, _ = _pick_translation(product.translations, locale)
+    name, short_desc, _, _ = _pick_translation(product.translations, locale)
     return ProductSummaryOut(
         id=product.id,
         slug=product.slug,
@@ -218,7 +223,7 @@ async def get_brand_by_slug(
     if brand is None:
         return None
 
-    name, short_desc, description = _pick_translation(brand.translations, locale)
+    name, short_desc, description, instructions = _pick_translation(brand.translations, locale)
 
     faqs_out: list[FaqOut] = []
     for faq in sorted((f for f in brand.faqs if f.active), key=lambda f: f.sort_order):
@@ -247,6 +252,7 @@ async def get_brand_by_slug(
         name=name,
         short_description=short_desc,
         description=description,
+        instructions=instructions,
         logo_url=brand.logo_url,
         hero_image_url=brand.hero_image_url,
         accent_color=brand.accent_color,
@@ -319,7 +325,7 @@ async def get_product_by_slug(
     if product is None:
         return None
 
-    name, short_desc, description = _pick_translation(product.translations, locale)
+    name, short_desc, description, _ = _pick_translation(product.translations, locale)
     skus_out: list[SkuOut] = []
     for sku in sorted((s for s in product.skus if s.active), key=lambda s: s.sort_order):
         display = await _resolve_price(sku, currency=currency, fx=fx)

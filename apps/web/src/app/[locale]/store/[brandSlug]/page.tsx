@@ -227,6 +227,17 @@ export default async function BrandPage({
           )}
         </div>
 
+        {brand.instructions && (
+          <section className="mt-16 scroll-mt-[88px]">
+            <h2 className="font-display text-xl font-bold tracking-[-0.02em]">
+              {t("instructionsTitle")}
+            </h2>
+            <div className="text-tx-mute mt-4 max-w-[760px] whitespace-pre-line text-[15px] leading-relaxed">
+              {brand.instructions}
+            </div>
+          </section>
+        )}
+
         {faqs.length > 0 && (
           <section className="mt-16 scroll-mt-[88px]">
             <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t("faqTitle")}</h2>

@@ -11,6 +11,7 @@ export interface Translation {
   name: string;
   short_description?: string | null;
   description?: string | null;
+  instructions?: string | null;
 }
 
 export interface CategoryTranslation {

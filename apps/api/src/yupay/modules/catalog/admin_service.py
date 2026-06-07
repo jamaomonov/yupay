@@ -158,6 +158,7 @@ async def create_brand(db: AsyncSession, body: BrandCreate) -> Brand:
                 name=t.name,
                 short_description=t.short_description,
                 description=t.description,
+                instructions=t.instructions,
             )
             for t in body.translations
         ],
@@ -194,6 +195,7 @@ async def update_brand(db: AsyncSession, brand_id: str, body: BrandUpdate) -> Br
                 name=t.name,
                 short_description=t.short_description,
                 description=t.description,
+                instructions=t.instructions,
             )
             for t in body.translations
         ]

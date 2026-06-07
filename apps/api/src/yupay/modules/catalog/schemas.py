@@ -146,6 +146,7 @@ class BrandDetailOut(BaseModel):
     name: str
     short_description: str | None
     description: str | None
+    instructions: str | None = None
     logo_url: str | None
     hero_image_url: str | None
     accent_color: str | None
