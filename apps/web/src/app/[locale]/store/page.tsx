@@ -15,9 +15,10 @@ import { alternates, GEO_META, localeUrl, ogLocale } from "@/lib/seo";
 export const revalidate = 300;
 
 const PAY = [
-  { src: "/payment/click.png", name: "Click", w: 225, h: 225 },
+  { src: "/payment/click.svg", name: "Click", w: 157, h: 40 },
   { src: "/payment/payme.png", name: "Payme", w: 454, h: 179 },
   { src: "/payment/uzum.png", name: "Uzum", w: 506, h: 148 },
+  { src: "/payment/sbp.png", name: "СБП", w: 220, h: 120 },
   { src: "/payment/usdt.png", name: "USDT", w: 2000, h: 2000 },
 ];
 
@@ -148,25 +149,23 @@ export default async function StorePage({
           {t("subtitle")}
         </p>
 
-        <div className="mt-7 flex flex-wrap items-center gap-2.5">
+        <div className="mt-7 flex flex-wrap items-center gap-3">
           <span className="text-tx-dim font-mono text-[11px] uppercase tracking-[0.12em]">
             {t("payWith")}
           </span>
           {PAY.map((p) => (
-            <span key={p.name} className="flex h-7 items-center rounded-md bg-white px-2">
-              <Image
-                src={p.src}
-                alt={p.name}
-                width={p.w}
-                height={p.h}
-                style={{ width: "auto", height: 16 }}
-                className="object-contain"
-              />
-            </span>
+            <Image
+              key={p.name}
+              src={p.src}
+              alt={p.name}
+              title={p.name}
+              width={p.w}
+              height={p.h}
+              unoptimized
+              style={{ width: "auto", height: 20 }}
+              className="object-contain"
+            />
           ))}
-          <span className="flex h-7 items-center rounded-md bg-white px-2 text-[11px] font-bold text-black">
-            СБП
-          </span>
         </div>
 
         {chips.length > 1 && (
