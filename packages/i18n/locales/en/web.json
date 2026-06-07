@@ -18,7 +18,12 @@
     "how": "How it works",
     "reviews": "Reviews",
     "support": "Help",
-    "topUp": "Top up"
+    "topUp": "Top up",
+    "login": "Sign in",
+    "account": "Account",
+    "orders": "My orders",
+    "logout": "Sign out",
+    "menu": "Account menu"
   },
   "hero": {
     "badge": "Games & subscriptions · 1 hub",

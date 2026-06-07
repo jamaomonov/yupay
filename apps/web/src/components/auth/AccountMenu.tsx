@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/lib/auth";
@@ -21,6 +22,7 @@ interface Props {
  * next.config remotePatterns wiring for Telegram CDN URLs.
  */
 export function AccountMenu({ locale }: Props) {
+  const t = useTranslations("web.nav");
   const { user, isLoading, logout } = useAuth();
   const openLogin = useLoginModal((s) => s.open);
   const [open, setOpen] = useState(false);
@@ -46,7 +48,7 @@ export function AccountMenu({ locale }: Props) {
         onClick={openLogin}
         className="border-border-2 text-foreground hover:border-tx-dim hover:bg-muted rounded-btn inline-flex h-[38px] items-center justify-center border px-4 text-sm font-semibold transition"
       >
-        Войти
+        {t("login")}
       </button>
     );
   }
@@ -62,7 +64,7 @@ export function AccountMenu({ locale }: Props) {
         }}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="Меню аккаунта"
+        aria-label={t("menu")}
         className="border-border bg-muted text-tx-mute hover:bg-card-2 hover:text-foreground flex h-[38px] w-[38px] items-center justify-center rounded-full border text-sm font-bold transition"
       >
         {initial}
@@ -81,7 +83,7 @@ export function AccountMenu({ locale }: Props) {
             }}
             className="text-tx-mute hover:bg-card-2 hover:text-foreground flex w-full items-center rounded-lg px-3 py-2 text-sm transition"
           >
-            Аккаунт
+            {t("account")}
           </Link>
           <Link
             href={`/${locale}/account/orders`}
@@ -91,7 +93,7 @@ export function AccountMenu({ locale }: Props) {
             }}
             className="text-tx-mute hover:bg-card-2 hover:text-foreground flex w-full items-center rounded-lg px-3 py-2 text-sm transition"
           >
-            Мои заказы
+            {t("orders")}
           </Link>
           <div className="border-border my-1 border-t" />
           <button
@@ -103,7 +105,7 @@ export function AccountMenu({ locale }: Props) {
             }}
             className="text-tx-mute hover:bg-card-2 hover:text-foreground flex w-full items-center rounded-lg px-3 py-2 text-sm transition"
           >
-            Выйти
+            {t("logout")}
           </button>
         </div>
       )}

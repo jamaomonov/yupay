@@ -18,7 +18,12 @@
     "how": "Qanday ishlaydi",
     "reviews": "Sharhlar",
     "support": "Yordam",
-    "topUp": "Toʻldirish"
+    "topUp": "Toʻldirish",
+    "login": "Kirish",
+    "account": "Akkaunt",
+    "orders": "Buyurtmalarim",
+    "logout": "Chiqish",
+    "menu": "Akkaunt menyusi"
   },
   "hero": {
     "badge": "Oʻyin va obunalar · 1 markaz",
