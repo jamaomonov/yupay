@@ -29,7 +29,7 @@
     "badge": "Games & subscriptions · 1 hub",
     "titleLine1": "All your top-ups",
     "titleLine2": "in one place.",
-    "subtitle": "Steam, mobile games and subscriptions — no passwords. UID top-ups in 2 minutes with a 3%+ commission (Steam from 4%).",
+    "subtitle": "Steam, mobile games and subscriptions — no passwords. UID top-ups in 2 minutes with a 3%+ commission.",
     "ctaPrimary": "Browse catalog",
     "ctaSecondary": "How it works",
     "trustCount": "100,482",
@@ -44,7 +44,7 @@
     "commission": "Commission",
     "speed": "Speed",
     "rating": "Rating",
-    "steamDesc": "Any CIS country, Kazakhstan, Turkey. 2-minute delivery, 4%+ commission, no password handover.",
+    "steamDesc": "Any CIS country, Kazakhstan, Turkey. 2-minute delivery, no password handover.",
     "cards": {
       "steam": {
         "name": "Steam\nWallet",
