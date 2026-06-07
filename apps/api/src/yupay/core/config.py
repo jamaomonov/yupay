@@ -111,6 +111,10 @@ class Settings(BaseSettings):
     # admin panel (admin.yupay.uz) needs its own bot. Empty => falls back to
     # ``telegram_bot_token`` so a single-bot dev/staging setup keeps working.
     admin_telegram_bot_token: str = Field(default="")
+    # Outbound proxy for the Telegram Bot API (api.telegram.org). Needed when the
+    # host can't reach Telegram directly (e.g. from RU). HTTP proxy, e.g.
+    # ``http://user:pass@host:port``. Empty => connect directly (default).
+    telegram_proxy_url: str = Field(default="")
 
     # --- Email (Resend) ---
     resend_api_key: str = Field(default="")

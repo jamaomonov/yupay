@@ -11,6 +11,8 @@ x-app-env: &app-env
   TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
   # Separate admin-panel Login Widget bot; empty => falls back to TELEGRAM_BOT_TOKEN.
   ADMIN_TELEGRAM_BOT_TOKEN: ${ADMIN_TELEGRAM_BOT_TOKEN:-}
+  # Outbound proxy for api.telegram.org (bot + notifications). Empty => direct.
+  TELEGRAM_PROXY_URL: ${TELEGRAM_PROXY_URL:-}
   JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
   JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
   JWT_EMAIL_TOKEN_TTL_SECONDS: ${JWT_EMAIL_TOKEN_TTL_SECONDS:-1800}

@@ -9,6 +9,7 @@ import asyncio
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram.types import (
@@ -82,8 +83,16 @@ async def run() -> None:
         await asyncio.sleep(3600)
         return
 
+    # Route the Bot API through an outbound proxy when configured (e.g. the host
+    # cannot reach api.telegram.org directly from RU). Empty => direct connection.
+    session = (
+        AiohttpSession(proxy=settings.telegram_proxy_url)
+        if settings.telegram_proxy_url
+        else None
+    )
     bot = Bot(
         token=settings.telegram_bot_token,
+        session=session,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = build_dispatcher(settings)

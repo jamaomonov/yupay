@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import httpx
 
+from yupay.core.config import get_settings
 from yupay.core.logging import get_logger
 
 log = get_logger("yupay.notifications.telegram")
@@ -17,13 +18,16 @@ log = get_logger("yupay.notifications.telegram")
 # Single client reused across the API process. ``httpx.AsyncClient`` is
 # cheap to instantiate but expensive to throw away (no connection pool).
 _client: httpx.AsyncClient | None = None
-_TIMEOUT_SECONDS = 5.0
+_TIMEOUT_SECONDS = 10.0
 
 
 def _get_client() -> httpx.AsyncClient:
     global _client
     if _client is None:
-        _client = httpx.AsyncClient(timeout=_TIMEOUT_SECONDS)
+        # Route through an outbound proxy when configured (e.g. the host cannot
+        # reach api.telegram.org directly from RU). Empty => direct connection.
+        proxy = get_settings().telegram_proxy_url or None
+        _client = httpx.AsyncClient(timeout=_TIMEOUT_SECONDS, proxy=proxy)
     return _client
 
 
