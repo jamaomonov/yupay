@@ -1,6 +1,7 @@
 "use client";
 
-import { Check, Globe } from "lucide-react";
+import { Check } from "lucide-react";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
@@ -11,6 +12,14 @@ const LOCALE_LABEL_KEY: Record<AppLocale, "localeRu" | "localeEn" | "localeUz"> 
   ru: "localeRu",
   en: "localeEn",
   uz: "localeUz",
+};
+
+// Circular flag icons (en → Union Jack), shared with the miniapp. Decorative:
+// the locale code / autonym carries the meaning, so each <Image> is alt="".
+const FLAGS: Record<AppLocale, string> = {
+  ru: "/flags/ru.png",
+  en: "/flags/en.png",
+  uz: "/flags/uz.png",
 };
 
 export function LocaleSwitcher() {
@@ -54,7 +63,13 @@ export function LocaleSwitcher() {
         aria-expanded={open}
         className="border-border bg-muted text-tx-mute hover:bg-card-2 hover:text-foreground flex h-[38px] items-center gap-2 rounded-[10px] border px-3 text-xs font-semibold uppercase tracking-wider transition"
       >
-        <Globe size={14} />
+        <Image
+          src={FLAGS[current]}
+          alt=""
+          width={18}
+          height={18}
+          className="h-[18px] w-[18px] rounded-full object-cover"
+        />
         {current}
       </button>
       {open && (
@@ -79,7 +94,16 @@ export function LocaleSwitcher() {
                       : "text-tx-mute hover:bg-card-2 hover:text-foreground"
                   }`}
                 >
-                  <span>{t(LOCALE_LABEL_KEY[loc])}</span>
+                  <span className="flex items-center gap-2">
+                    <Image
+                      src={FLAGS[loc]}
+                      alt=""
+                      width={18}
+                      height={18}
+                      className="h-[18px] w-[18px] rounded-full object-cover"
+                    />
+                    {t(LOCALE_LABEL_KEY[loc])}
+                  </span>
                   {isActive && <Check size={14} className="text-primary" />}
                 </button>
               </li>
