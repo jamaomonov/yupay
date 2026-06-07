@@ -148,7 +148,7 @@ export default async function BrandPage({
               priority
               unoptimized
               sizes="(max-width: 1024px) 100vw, 1040px"
-              className="object-cover"
+              className="object-cover object-top"
             />
           ) : (
             <div
@@ -160,17 +160,17 @@ export default async function BrandPage({
             />
           )}
           <div className="absolute inset-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.92)_0%,rgba(0,0,0,0.45)_60%,rgba(0,0,0,0.2)_100%)]" />
-          <div className="relative z-10 flex min-h-[260px] flex-col justify-end p-6 sm:min-h-[300px] sm:p-9">
+          <div className="relative z-10 flex min-h-[300px] flex-col justify-end p-6 sm:min-h-[360px] sm:p-9">
             <div className="flex items-center gap-3">
               {brand.logo_url && (
-                <span className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-[13px] border border-white/15 bg-black/40 backdrop-blur">
+                <span className="relative h-14 w-14 shrink-0 overflow-hidden rounded-[14px] border border-white/15 bg-black/40 backdrop-blur">
                   <Image
                     src={brand.logo_url}
                     alt=""
-                    width={32}
-                    height={32}
+                    width={56}
+                    height={56}
                     unoptimized
-                    className="h-8 w-8 object-contain"
+                    className="h-full w-full object-cover"
                   />
                 </span>
               )}
