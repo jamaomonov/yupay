@@ -4,6 +4,14 @@ import { getTranslations } from "next-intl/server";
 
 import { Wordmark } from "./Wordmark";
 
+/** Public social channels. Instagram handle yupay.app, Telegram channel
+ * yupay_channel (distinct from the @yupay_support contact above). Full-colour
+ * brand marks live in public/social. */
+const SOCIALS = [
+  { href: "https://instagram.com/yupay.app", label: "Instagram", src: "/social/instagram.svg" },
+  { href: "https://t.me/yupay_channel", label: "Telegram", src: "/social/telegram.svg" },
+];
+
 /** Real acquirer marks shipped with the mini app — UZ rails + USDT. Intrinsic
  * px dimensions are passed through so next/image keeps the true aspect ratio
  * (no console warning) while we render every mark at a uniform 16px height. */
@@ -33,6 +41,30 @@ export async function Footer({ locale }: { locale: string }) {
             <p className="text-tx-mute mt-5 max-w-[300px] text-sm leading-relaxed">
               {t("tagline")}
             </p>
+            <h4 className="text-tx-dim mb-3 mt-6 font-mono text-[11px] font-bold uppercase tracking-[0.16em]">
+              {t("followUs")}
+            </h4>
+            <div className="flex items-center gap-3">
+              {SOCIALS.map(({ href, label, src }) => (
+                <a
+                  key={label}
+                  href={href}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  aria-label={label}
+                  className="opacity-90 transition hover:opacity-100"
+                >
+                  <Image
+                    src={src}
+                    alt={label}
+                    width={32}
+                    height={32}
+                    unoptimized
+                    className="h-8 w-8"
+                  />
+                </a>
+              ))}
+            </div>
           </div>
 
           <FooterCol title={t("productTitle")}>
