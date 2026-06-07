@@ -21,6 +21,7 @@ existing 24h Dashboard stays untouched.
 ## 2. Goals / Non-goals
 
 **Goals**
+
 - New `/analytics` admin route, two tabs, range selector (7d/30d/90d, default 30d).
 - Two range-parameterised backend endpoints in the existing `stats` module, one per tab.
 - Charts (line/bar/donut) + KPI cards + top-N tables, grounded in real aggregates.
@@ -28,6 +29,7 @@ existing 24h Dashboard stays untouched.
 - Short-TTL Redis cache on the aggregation endpoints.
 
 **Non-goals (deferred)**
+
 - Denormalising cost/fee/fulfilment-cost (precise per-order margin) — margin stays **approximate**.
 - CSV export, custom date ranges, wallet/loyalty tab (group H), Prometheus business metrics.
 - Touching the existing 24h Dashboard.
@@ -60,7 +62,7 @@ timestamp (`now() - N days`); all aggregates filter `created_at >= since`.
   - `revenue_series`: daily `[{date, revenue_usd, orders}]` via `date_trunc('day', paid_at)`
     over paid/delivered orders (zero-filled for empty days in the service layer).
   - `funnel`: counts per status `{created, paid, fulfilling, delivered, cancelled, expired,
-    refunded}` + `payment_conversion_pct` = paid ÷ created.
+refunded}` + `payment_conversion_pct` = paid ÷ created.
   - `top_brands` / `top_skus`: top-N (N=10) `[{slug/name, revenue_usd, units, margin_usd?}]`,
     joined order_items → sku → product → brand.
   - `customers`: `new_users_series` (daily), `guest_orders` vs `registered_orders`,
@@ -71,12 +73,12 @@ timestamp (`now() - N days`); all aggregates filter `created_at >= since`.
     (`status='pending' AND created_at < now()-30m`), `webhook_unhealthy`
     (`signature_ok=false OR processed_at IS NULL`).
   - `fulfillment`: `[{supplier, total, success_rate_pct, avg_seconds, manual_count,
-    avg_attempts}]`, `stuck_tasks` (`status IN ('pending','in_progress') AND
-    next_attempt_at < now()`). `avg_seconds` = `AVG(succeeded_at − created_at)` over succeeded.
+avg_attempts}]`, `stuck_tasks` (`status IN ('pending','in_progress') AND
+next_attempt_at < now()`). `avg_seconds` = `AVG(succeeded_at − created_at)` over succeeded.
   - `inventory`: `low_stock` `[{sku_code, available}]` (available < 10), `expiring_soon`
     (`available AND expires_at < now()+7d`).
   - `supplier_cost`: recent `supplier_price_history` changes `[{sku_code, supplier_slug,
-    cost_usdt, previous_cost_usdt, captured_at}]` within the window (top 20 by `captured_at`).
+cost_usdt, previous_cost_usdt, captured_at}]` within the window (top 20 by `captured_at`).
 
 ### 4.2 Implementation
 
@@ -104,6 +106,7 @@ well within budget. Each list endpoint's query count is asserted by an integrati
 sidebar link in `apps/admin/src/app/Layout.tsx`.
 
 **Files** (`apps/admin/src/features/analytics/`):
+
 - `AnalyticsPage.tsx` — thin container: `PageHeader`, range selector (segmented 7/30/90), tabs
   (Бизнес / Операционка). TanStack Query keyed `(tab, range)`; only the active tab fetches.
 - `BusinessTab.tsx` — KPI row (GMV, orders, AOV, margin≈, FX P&L) → revenue `LineTrend` → funnel

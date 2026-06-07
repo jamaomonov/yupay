@@ -21,7 +21,7 @@ view over a chosen window** (7 / 30 / 90 days) with proper trend charts, sitting
 alongside — not replacing — the 24h operational Dashboard.
 
 A wrinkle is **margin**. We do not (yet) store the supplier cost of each order
-item at order time. The only cost we can read today is the SKU's *current*
+item at order time. The only cost we can read today is the SKU's _current_
 `sku.cost_usdt`, and some SKUs have no cost recorded at all. So any margin we show
 is necessarily **approximate** and must be labelled as such.
 
@@ -89,7 +89,7 @@ are excluded from the margin maths. The payload surfaces this honestly:
 
 **No FX P&L KPI.** The design brief floated an FX P&L headline of
 `Σ(total_charged − total_usd)`. We **dropped it**: `total_charged` is stored in
-each order's *native* currency (e.g. UZS), while `total_usd` is in USD, so the
+each order's _native_ currency (e.g. UZS), while `total_usd` is in USD, so the
 difference subtracts unlike units and yields a meaningless figure for any non-USD
 order. A correct realised-FX metric needs a USD-equivalent snapshot of
 `total_charged` at settlement, which we do not store — deferred with the

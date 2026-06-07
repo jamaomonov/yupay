@@ -86,9 +86,7 @@ async def run() -> None:
     # Route the Bot API through an outbound proxy when configured (e.g. the host
     # cannot reach api.telegram.org directly from RU). Empty => direct connection.
     session = (
-        AiohttpSession(proxy=settings.telegram_proxy_url)
-        if settings.telegram_proxy_url
-        else None
+        AiohttpSession(proxy=settings.telegram_proxy_url) if settings.telegram_proxy_url else None
     )
     bot = Bot(
         token=settings.telegram_bot_token,

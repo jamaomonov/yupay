@@ -41,9 +41,7 @@ async def test_admin_widget_rejects_non_admin(
     integration_client: AsyncClient, fixed_now: int
 ) -> None:
     payload = _sign_widget({"id": "9001", "first_name": "Rando", "auth_date": str(fixed_now)})
-    r = await integration_client.post(
-        "/api/v1/auth/telegram/widget/admin", json=_typed(payload)
-    )
+    r = await integration_client.post("/api/v1/auth/telegram/widget/admin", json=_typed(payload))
     assert r.status_code == 403, r.text
 
 
@@ -52,9 +50,7 @@ async def test_admin_widget_rejects_tampered_hash(
 ) -> None:
     payload = _sign_widget({"id": "9002", "first_name": "Tamper", "auth_date": str(fixed_now)})
     payload["hash"] = "0" * 64
-    r = await integration_client.post(
-        "/api/v1/auth/telegram/widget/admin", json=_typed(payload)
-    )
+    r = await integration_client.post("/api/v1/auth/telegram/widget/admin", json=_typed(payload))
     assert r.status_code == 401, r.text
 
 
@@ -75,9 +71,7 @@ async def test_admin_widget_admin_succeeds(
 
     # Fresh payload (new auth_date so freshness holds), same Telegram id.
     payload = _sign_widget({"id": "9003", "first_name": "Boss", "auth_date": str(fixed_now)})
-    r = await integration_client.post(
-        "/api/v1/auth/telegram/widget/admin", json=_typed(payload)
-    )
+    r = await integration_client.post("/api/v1/auth/telegram/widget/admin", json=_typed(payload))
     assert r.status_code == 200, r.text
     assert r.json()["access_token"]
 

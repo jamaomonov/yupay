@@ -141,7 +141,9 @@ function FaqCard({
             )}
           </label>
           <label className="block">
-            <span className="text-xs font-medium uppercase text-[var(--text-secondary)]">Ответ</span>
+            <span className="text-xs font-medium uppercase text-[var(--text-secondary)]">
+              Ответ
+            </span>
             <textarea
               {...form.register(`translations.${idx}.answer`)}
               className="mt-1 min-h-16 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2 text-sm"

@@ -26,12 +26,8 @@ def _resend_key(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 async def test_send_email_success() -> None:
     from yupay.modules.notifications.channels.email import send_email
 
-    route = respx.post(RESEND_URL).mock(
-        return_value=httpx.Response(200, json={"id": "msg_123"})
-    )
-    msg_id = await send_email(
-        to="buyer@example.com", subject="Hi", html="<b>Hi</b>", text="Hi"
-    )
+    route = respx.post(RESEND_URL).mock(return_value=httpx.Response(200, json={"id": "msg_123"}))
+    msg_id = await send_email(to="buyer@example.com", subject="Hi", html="<b>Hi</b>", text="Hi")
     assert msg_id == "msg_123"
     assert route.called
     sent = route.calls.last.request

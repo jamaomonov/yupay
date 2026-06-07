@@ -79,6 +79,7 @@ git commit -m "feat(web): login modal store"
 Add these keys inside the existing top-level `"auth": { ... }` object of each `web.json`.
 
 `ru/web.json` (`auth`):
+
 ```jsonc
 "modalTitle": "Войдите или зарегистрируйтесь",
 "providerTelegram": "Telegram",
@@ -94,6 +95,7 @@ Add these keys inside the existing top-level `"auth": { ... }` object of each `w
 ```
 
 `en/web.json` (`auth`):
+
 ```jsonc
 "modalTitle": "Sign in or register",
 "providerTelegram": "Telegram",
@@ -109,6 +111,7 @@ Add these keys inside the existing top-level `"auth": { ... }` object of each `w
 ```
 
 `uz/web.json` (`auth`):
+
 ```jsonc
 "modalTitle": "Kiring yoki roʻyxatdan oʻting",
 "providerTelegram": "Telegram",
@@ -126,9 +129,11 @@ Add these keys inside the existing top-level `"auth": { ... }` object of each `w
 - [ ] **Step 2: Verify equal key counts + valid JSON**
 
 Run:
+
 ```bash
 cd /Users/macbook_uz/Projects/yupay && node -e "const r=require('./packages/i18n/locales/ru/web.json'),e=require('./packages/i18n/locales/en/web.json'),u=require('./packages/i18n/locales/uz/web.json');const keys=o=>Object.entries(o).flatMap(([k,v])=>v&&typeof v==='object'?Object.keys(v).map(s=>k+'.'+s):[k]);const rk=keys(r).sort(),ek=keys(e).sort(),uk=keys(u).sort();console.log('ru',rk.length,'en',ek.length,'uz',uk.length);const miss=(a,b,n)=>a.filter(x=>!b.includes(x)).forEach(x=>console.log('MISSING in '+n+':',x));miss(rk,ek,'en');miss(rk,uk,'uz');miss(ek,rk,'ru');"
 ```
+
 Expected: equal counts, no `MISSING` lines.
 
 - [ ] **Step 3: Prettier**
@@ -438,11 +443,11 @@ export function LoginModal({ locale }: { locale: string }) {
 
             <p className="text-tx-dim mt-6 text-center text-xs leading-relaxed">
               {t("agreePrefix")}{" "}
-              <Link href={`/${locale}/legal/privacy`} className="underline hover:text-tx">
+              <Link href={`/${locale}/legal/privacy`} className="hover:text-tx underline">
                 {t("privacy")}
               </Link>{" "}
               {t("and")}{" "}
-              <Link href={`/${locale}/legal/terms`} className="underline hover:text-tx">
+              <Link href={`/${locale}/legal/terms`} className="hover:text-tx underline">
                 {t("terms")}
               </Link>
             </p>
@@ -502,28 +507,31 @@ git commit -m "feat(web): login modal dialog (providers + email screens)"
 In `AccountMenu.tsx`, add the import and replace the unauthenticated `<Link>` with a `<button>`:
 
 Add import (with the other `@/` imports):
+
 ```tsx
 import { useLoginModal } from "@/store/useLoginModal";
 ```
 
 Inside the component, after `const { user, isLoading, logout } = useAuth();`:
+
 ```tsx
-  const openLogin = useLoginModal((s) => s.open);
+const openLogin = useLoginModal((s) => s.open);
 ```
 
 Replace the `if (!user) { return ( <Link ...>Войти</Link> ); }` block:
+
 ```tsx
-  if (!user) {
-    return (
-      <button
-        type="button"
-        onClick={openLogin}
-        className="border-border-2 text-foreground hover:border-tx-dim hover:bg-muted rounded-btn inline-flex h-[38px] items-center justify-center border px-4 text-sm font-semibold transition"
-      >
-        Войти
-      </button>
-    );
-  }
+if (!user) {
+  return (
+    <button
+      type="button"
+      onClick={openLogin}
+      className="border-border-2 text-foreground hover:border-tx-dim hover:bg-muted rounded-btn inline-flex h-[38px] items-center justify-center border px-4 text-sm font-semibold transition"
+    >
+      Войти
+    </button>
+  );
+}
 ```
 
 (`Link` is still used by the authenticated menu, so keep the import.)
@@ -531,6 +539,7 @@ Replace the `if (!user) { return ( <Link ...>Войти</Link> ); }` block:
 - [ ] **Step 2: login/page.tsx — open the modal on mount, close → home**
 
 Replace the whole file `apps/web/src/app/[locale]/login/page.tsx`:
+
 ```tsx
 "use client";
 
@@ -557,16 +566,18 @@ export default function LoginPage() {
 - [ ] **Step 3: layout.tsx — mount the modal**
 
 In `apps/web/src/app/[locale]/layout.tsx`, import and mount `<LoginModal>` inside `<Providers>` (after `<Footer />`):
+
 ```tsx
 import { LoginModal } from "@/components/auth/LoginModal";
 ```
+
 ```tsx
-          <Providers>
-            <Header locale={locale} />
-            {children}
-            <Footer locale={locale} />
-            <LoginModal locale={locale} />
-          </Providers>
+<Providers>
+  <Header locale={locale} />
+  {children}
+  <Footer locale={locale} />
+  <LoginModal locale={locale} />
+</Providers>
 ```
 
 - [ ] **Step 4: Typecheck + lint + prettier (whole touched set)**
@@ -591,23 +602,28 @@ git commit -m "feat(web): wire login modal into header, /login, and layout"
 - [ ] **Step 1: web.Dockerfile — add the build ARG/ENV**
 
 In `infra/docker/web.Dockerfile`, in the `builder` stage next to the existing `NEXT_PUBLIC_*` ARG/ENV (added previously), add:
+
 ```dockerfile
 ARG NEXT_PUBLIC_TELEGRAM_BOT_ID=
 ENV NEXT_PUBLIC_TELEGRAM_BOT_ID=${NEXT_PUBLIC_TELEGRAM_BOT_ID}
 ```
+
 (Place both new lines immediately after the existing `ENV NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=...` line, before `RUN pnpm --filter @yupay/web build`.)
 
 - [ ] **Step 2: build.yml — pass it for the web image**
 
 In `.github/workflows/build.yml`, in the `web` matrix entry's `build_args`, add the line:
+
 ```yaml
-              NEXT_PUBLIC_TELEGRAM_BOT_ID=
+NEXT_PUBLIC_TELEGRAM_BOT_ID=
 ```
+
 > Leave the value empty (the numeric bot id is set at build time when known). With an empty id the modal falls back to the official Telegram widget button, so login still works.
 
 - [ ] **Step 3: env examples**
 
 In both `.env.example` (root) and `apps/web/.env.example`, next to `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`, add:
+
 ```
 NEXT_PUBLIC_TELEGRAM_BOT_ID=
 ```
@@ -619,9 +635,11 @@ In `apps/web/README.md`, document the var: `NEXT_PUBLIC_TELEGRAM_BOT_ID` — the
 - [ ] **Step 5: Validate compose/build still parse**
 
 Run:
+
 ```bash
 cd /Users/macbook_uz/Projects/yupay/apps/api && uv run python -c "import yaml; yaml.safe_load(open('/Users/macbook_uz/Projects/yupay/.github/workflows/build.yml')); print('build.yml ok')"
 ```
+
 Expected: `build.yml ok`.
 
 - [ ] **Step 6: Commit**
@@ -648,9 +666,11 @@ Run the Task 2 Step 2 key-count command again. Expected: equal counts, no `MISSI
 - [ ] **Step 3: Rebuild web image + recreate (dev stack)**
 
 Run:
+
 ```bash
 cd /Users/macbook_uz/Projects/yupay && docker compose -p yupay-dev build web && docker compose -p yupay-dev up -d --no-deps --force-recreate web
 ```
+
 Wait until `http://localhost:3000/ru` returns 200.
 
 - [ ] **Step 4: Manual verification (http://localhost:3000)**

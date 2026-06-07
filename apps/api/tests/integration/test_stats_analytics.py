@@ -260,9 +260,7 @@ async def _login_admin(client: AsyncClient, db: AsyncSession, tg_id: int = 555) 
     return r.json()["access_token"]
 
 
-async def test_business_endpoint(
-    integration_client: AsyncClient, db_session: AsyncSession
-) -> None:
+async def test_business_endpoint(integration_client: AsyncClient, db_session: AsyncSession) -> None:
     token = await _login_admin(integration_client, db_session)
     r = await integration_client.get(
         "/api/v1/admin/stats/analytics/business?range=30d",

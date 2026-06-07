@@ -17,6 +17,7 @@ sign-in providers (Telegram, Google, Steam, Email).
 ## 2. Goals / Non-goals
 
 **Goals**
+
 - A reusable **login modal** opened from the header "Войти" and rendered at `/login`.
 - Provider grid (2×2): **Telegram** and **Email** functional; **Google** and **Steam** shown
   with a "скоро" badge (disabled — backend OAuth/OpenID not built yet).
@@ -25,6 +26,7 @@ sign-in providers (Telegram, Google, Steam, Email).
 - All three locales (ru/en/uz) for new strings.
 
 **Non-goals (deferred / out)**
+
 - Google OAuth 2.0 and Steam OpenID **backend** — a later slice; the buttons are inert now.
 - VK / Yandex / Facebook providers (present in the reference mockup, not requested).
 - Promo-code field (explicitly dropped).
@@ -75,9 +77,10 @@ sign-in providers (Telegram, Google, Steam, Email).
 
 The widget script (`https://telegram.org/js/telegram-widget.js?22`) exposes
 `window.Telegram.Login.auth({ bot_id, request_access }, callback)`. The Telegram button:
+
 1. Ensures the script is loaded (inject once, idempotent).
 2. On click, calls `Telegram.Login.auth({ bot_id: Number(NEXT_PUBLIC_TELEGRAM_BOT_ID),
-   request_access: 'write' }, (user) => user && void loginWithTelegram(user))`.
+request_access: 'write' }, (user) => user && void loginWithTelegram(user))`.
 3. If `NEXT_PUBLIC_TELEGRAM_BOT_ID` is unset, render the existing `TelegramLoginButton`
    (official widget) instead — login still works, just with Telegram's own button styling.
 

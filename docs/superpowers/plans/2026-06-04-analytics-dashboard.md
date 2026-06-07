@@ -30,6 +30,7 @@
 - Next ADR number: **0025**. `docs/architecture/cache-keys.md` exists.
 
 ### Scoping conventions (apply consistently)
+
 - `range` → `since`: `7d→7`, `30d→30`, `90d→90` days; `since = now() - timedelta(days=N)`.
 - **Revenue / margin** scoped by `paid_at >= since` AND `status IN paid_like` (money that landed in the window; paid-like guarantees `paid_at` non-null).
 - **Funnel / customers / payments / fulfilment / supplier_cost** scoped by `created_at >= since` (`captured_at >= since` for supplier_cost).
@@ -40,12 +41,14 @@
 ## File structure
 
 **API**
+
 - Modify `apps/api/src/yupay/modules/stats/schemas.py` — analytics DTOs + `AnalyticsRange`.
 - Modify `apps/api/src/yupay/modules/stats/service.py` — `build_business_analytics`, `build_ops_analytics` + helpers.
 - Modify `apps/api/src/yupay/modules/stats/routes.py` — two endpoints + Redis cache.
 - Create `apps/api/tests/integration/test_stats_analytics.py`.
 
 **Admin**
+
 - Modify `apps/admin/package.json` — add `recharts`.
 - Modify `apps/admin/src/lib/queryKeys.ts` — `analyticsBusiness(range)`, `analyticsOps(range)`.
 - Create `apps/admin/src/features/analytics/types.ts`.
@@ -54,6 +57,7 @@
 - Modify `apps/admin/src/app/router.tsx`, `apps/admin/src/app/Layout.tsx`.
 
 **Docs**
+
 - Create `docs/decisions/0025-analytics-dashboard.md`; modify `docs/architecture/cache-keys.md`, `docs/architecture/module-map.md`; regenerate `docs/api/openapi.json`.
 
 ---
@@ -65,6 +69,7 @@
 - [ ] **Step 1: Write the failing test**
 
 Create `apps/api/tests/unit/test_stats_analytics_schemas.py`:
+
 ```python
 """Unit tests for analytics schema range parsing."""
 
@@ -91,6 +96,7 @@ Expected: ImportError (`AnalyticsRange` not defined).
 - [ ] **Step 3: Add schemas**
 
 Append to `apps/api/src/yupay/modules/stats/schemas.py` (it already imports `from pydantic import BaseModel`; add `from enum import Enum`, `from datetime import date, datetime`, `from decimal import Decimal` if not present):
+
 ```python
 class AnalyticsRange(str, Enum):
     """Selectable analytics window."""
@@ -223,6 +229,7 @@ class OpsAnalyticsOut(BaseModel):
     expiring_soon: int
     supplier_cost: list[CostChangeOut]
 ```
+
 Add the new public names to the module's `__all__` if one exists.
 
 - [ ] **Step 4: Run, expect PASS**
@@ -230,6 +237,7 @@ Add the new public names to the module's `__all__` if one exists.
 Run: `cd apps/api && uv run pytest tests/unit/test_stats_analytics_schemas.py -v` → 4 passed.
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add apps/api/src/yupay/modules/stats/schemas.py apps/api/tests/unit/test_stats_analytics_schemas.py
 git commit -m "feat(stats): analytics DTOs + range enum"
@@ -244,6 +252,7 @@ git commit -m "feat(stats): analytics DTOs + range enum"
 - [ ] **Step 1: Write the failing integration test**
 
 Create `apps/api/tests/integration/test_stats_analytics.py`:
+
 ```python
 """Integration tests for analytics aggregation services."""
 
@@ -518,6 +527,7 @@ async def _customers(db: AsyncSession, since: datetime) -> CustomersOut:
     return CustomersOut(new_users_series=new_series, guest_orders=guest, registered_orders=registered,
                         repeat_rate_pct=repeat_pct, top_locales=locales)
 ```
+
 Add `build_business_analytics` to `__all__` if present.
 
 - [ ] **Step 4: Run, expect PASS** (2 passed)
@@ -530,6 +540,7 @@ Run: `cd apps/api && uv run ruff check src/yupay/modules/stats && cd /Users/macb
 Fix issues (no rule-disabling on hand-written code).
 
 - [ ] **Step 6: Commit**
+
 ```bash
 git add apps/api/src/yupay/modules/stats/service.py apps/api/tests/integration/test_stats_analytics.py
 git commit -m "feat(stats): business analytics aggregations (revenue, margin approx, funnel, mix, customers)"
@@ -544,6 +555,7 @@ git commit -m "feat(stats): business analytics aggregations (revenue, margin app
 - [ ] **Step 1: Append failing tests**
 
 Add to `apps/api/tests/integration/test_stats_analytics.py` (imports: `from yupay.modules.payments.models import Payment`, `from yupay.modules.fulfillment.models import FulfillmentTask`):
+
 ```python
 async def test_ops_payments_and_fulfillment(db_session: AsyncSession) -> None:
     moment = now()
@@ -581,6 +593,7 @@ Run: `cd apps/api && uv run pytest tests/integration/test_stats_analytics.py -k 
 - [ ] **Step 3: Implement ops service**
 
 In `apps/api/src/yupay/modules/stats/service.py` add imports `from yupay.modules.payments.models import Payment, PaymentWebhook`, `from yupay.modules.integrations.models import SupplierPriceHistory`. (`FulfillmentTask`, `InventoryCode` already imported.) Append:
+
 ```python
 async def build_ops_analytics(db: AsyncSession, *, r: AnalyticsRange) -> OpsAnalyticsOut:
     """Ops tab: payments, fulfilment, inventory, supplier cost movements."""
@@ -709,6 +722,7 @@ async def _supplier_cost_changes(db: AsyncSession, since: datetime) -> list[Cost
         for code, slug, cost, prev, cap in (await db.execute(stmt)).all()
     ]
 ```
+
 Add `build_ops_analytics` to `__all__` if present.
 
 - [ ] **Step 4: Run, expect PASS** (3 passed total)
@@ -718,6 +732,7 @@ Run: `cd apps/api && uv run pytest tests/integration/test_stats_analytics.py -v`
 - [ ] **Step 5: Lint/type** (same commands as Task 2 Step 5).
 
 - [ ] **Step 6: Commit**
+
 ```bash
 git add apps/api/src/yupay/modules/stats/service.py apps/api/tests/integration/test_stats_analytics.py
 git commit -m "feat(stats): ops analytics aggregations (payments, fulfilment, inventory, cost changes)"
@@ -732,6 +747,7 @@ git commit -m "feat(stats): ops analytics aggregations (payments, fulfilment, in
 - [ ] **Step 1: Append failing endpoint tests**
 
 Add to the test file (auth helpers `_login_admin` — copy from `apps/api/tests/integration/test_integrations_mapping.py` if a shared fixture isn't available; the import endpoints test in `test_g2b_import.py` shows the exact copy). Use the `integration_client` fixture (it swaps the DB engine — confirm by reading `tests/integration/conftest.py`):
+
 ```python
 from httpx import AsyncClient
 
@@ -768,6 +784,7 @@ Run: `cd apps/api && uv run pytest tests/integration/test_stats_analytics.py -k 
 - [ ] **Step 3: Add routes + cache**
 
 In `apps/api/src/yupay/modules/stats/routes.py`: add to imports `from yupay.modules.stats.schemas import AnalyticsRange, BusinessAnalyticsOut, OpsAnalyticsOut` and `from yupay.core.redis import get_redis`. Add a small cache helper + two routes:
+
 ```python
 _ANALYTICS_TTL = 300
 
@@ -826,6 +843,7 @@ async def analytics_ops(
         lambda: svc.build_ops_analytics(db, r=range),
     )
 ```
+
 Note: FastAPI maps an unknown `range` value to 422 automatically because `AnalyticsRange` is an enum. The cache key embeds only the validated `range.value`.
 
 - [ ] **Step 4: Run, expect PASS** (full file green)
@@ -837,6 +855,7 @@ Run: `cd apps/api && uv run pytest tests/integration/test_stats_analytics.py -v`
 Run: `cd apps/api && uv run ruff check src/yupay/modules/stats && cd /Users/macbook_uz/Projects/yupay && uv run mypy apps/api/src/yupay/modules/stats/routes.py`
 
 - [ ] **Step 6: Commit**
+
 ```bash
 git add apps/api/src/yupay/modules/stats/routes.py apps/api/tests/integration/test_stats_analytics.py
 git commit -m "feat(stats): /admin/stats/analytics business+ops endpoints with Redis cache"
@@ -848,10 +867,12 @@ git commit -m "feat(stats): /admin/stats/analytics business+ops endpoints with R
 
 - [ ] **Step 1:** Run `make gen-api`. Expected: `docs/api/openapi.json` gains both `/admin/stats/analytics/...` paths; `grep -c "analytics/business" docs/api/openapi.json` ≥ 1.
 - [ ] **Step 2:** Commit:
+
 ```bash
 git add docs/api/openapi.json packages/api-client
 git commit -m "build(api): regenerate OpenAPI for analytics endpoints"
 ```
+
 (If `packages/api-client/src/generated` is gitignored, only `openapi.json` is staged — that's expected.)
 
 ---
@@ -867,6 +888,7 @@ Run: `pnpm --filter @yupay/admin add recharts` (pins a 2.x version into `apps/ad
 - [ ] **Step 2: Query keys**
 
 In `apps/admin/src/lib/queryKeys.ts`, inside the `qk` object (match the existing factory style), add:
+
 ```typescript
   analyticsBusiness: (range: string) => ["admin", "stats", "analytics", "business", range] as const,
   analyticsOps: (range: string) => ["admin", "stats", "analytics", "ops", range] as const,
@@ -875,52 +897,117 @@ In `apps/admin/src/lib/queryKeys.ts`, inside the `qk` object (match the existing
 - [ ] **Step 3: Types**
 
 Create `apps/admin/src/features/analytics/types.ts` mirroring the backend DTOs (money/decimals arrive as JSON strings):
+
 ```typescript
 export type AnalyticsRange = "7d" | "30d" | "90d";
 
-export interface RevenuePoint { date: string; revenue_usd: string; orders: number; }
-export interface FunnelOut {
-  created: number; paid: number; fulfilling: number; delivered: number;
-  cancelled: number; expired: number; refunded: number; payment_conversion_pct: number;
+export interface RevenuePoint {
+  date: string;
+  revenue_usd: string;
+  orders: number;
 }
-export interface BrandRevenue { slug: string; revenue_usd: string; units: number; margin_usd: string | null; }
-export interface SkuRevenue { sku_code: string; revenue_usd: string; units: number; margin_usd: string | null; }
-export interface LocaleCount { locale: string; users: number; }
-export interface NewUsersPoint { date: string; users: number; }
+export interface FunnelOut {
+  created: number;
+  paid: number;
+  fulfilling: number;
+  delivered: number;
+  cancelled: number;
+  expired: number;
+  refunded: number;
+  payment_conversion_pct: number;
+}
+export interface BrandRevenue {
+  slug: string;
+  revenue_usd: string;
+  units: number;
+  margin_usd: string | null;
+}
+export interface SkuRevenue {
+  sku_code: string;
+  revenue_usd: string;
+  units: number;
+  margin_usd: string | null;
+}
+export interface LocaleCount {
+  locale: string;
+  users: number;
+}
+export interface NewUsersPoint {
+  date: string;
+  users: number;
+}
 export interface BusinessSummary {
-  gmv_usd: string; orders: number; paid_orders: number; delivered_orders: number;
-  aov_usd: string; fx_pnl_usd: string; gross_margin_usd: string; margin_pct: number;
-  margin_approx: boolean; margin_unknown_units: number;
+  gmv_usd: string;
+  orders: number;
+  paid_orders: number;
+  delivered_orders: number;
+  aov_usd: string;
+  fx_pnl_usd: string;
+  gross_margin_usd: string;
+  margin_pct: number;
+  margin_approx: boolean;
+  margin_unknown_units: number;
 }
 export interface Customers {
-  new_users_series: NewUsersPoint[]; guest_orders: number; registered_orders: number;
-  repeat_rate_pct: number; top_locales: LocaleCount[];
+  new_users_series: NewUsersPoint[];
+  guest_orders: number;
+  registered_orders: number;
+  repeat_rate_pct: number;
+  top_locales: LocaleCount[];
 }
 export interface BusinessAnalytics {
-  generated_at: string; range: AnalyticsRange; summary: BusinessSummary;
-  revenue_series: RevenuePoint[]; funnel: FunnelOut; top_brands: BrandRevenue[];
-  top_skus: SkuRevenue[]; customers: Customers;
+  generated_at: string;
+  range: AnalyticsRange;
+  summary: BusinessSummary;
+  revenue_series: RevenuePoint[];
+  funnel: FunnelOut;
+  top_brands: BrandRevenue[];
+  top_skus: SkuRevenue[];
+  customers: Customers;
 }
-export interface ProviderStat { provider: string; count: number; volume_usd: string; success_rate_pct: number; }
+export interface ProviderStat {
+  provider: string;
+  count: number;
+  volume_usd: string;
+  success_rate_pct: number;
+}
 export interface SupplierStat {
-  supplier: string; total: number; success_rate_pct: number; avg_seconds: number | null;
-  manual_count: number; avg_attempts: number;
+  supplier: string;
+  total: number;
+  success_rate_pct: number;
+  avg_seconds: number | null;
+  manual_count: number;
+  avg_attempts: number;
 }
-export interface LowStock { sku_code: string; available: number; }
+export interface LowStock {
+  sku_code: string;
+  available: number;
+}
 export interface CostChange {
-  sku_code: string; supplier_slug: string; cost_usdt: string;
-  previous_cost_usdt: string | null; captured_at: string;
+  sku_code: string;
+  supplier_slug: string;
+  cost_usdt: string;
+  previous_cost_usdt: string | null;
+  captured_at: string;
 }
 export interface OpsAnalytics {
-  generated_at: string; range: AnalyticsRange; payments: ProviderStat[]; stuck_pending: number;
-  webhook_unhealthy: number; fulfillment: SupplierStat[]; stuck_tasks: number;
-  low_stock: LowStock[]; expiring_soon: number; supplier_cost: CostChange[];
+  generated_at: string;
+  range: AnalyticsRange;
+  payments: ProviderStat[];
+  stuck_pending: number;
+  webhook_unhealthy: number;
+  fulfillment: SupplierStat[];
+  stuck_tasks: number;
+  low_stock: LowStock[];
+  expiring_soon: number;
+  supplier_cost: CostChange[];
 }
 ```
 
 - [ ] **Step 4: Typecheck + commit**
 
 Run: `pnpm --filter @yupay/admin exec tsc --noEmit` → 0 errors.
+
 ```bash
 git add apps/admin/package.json pnpm-lock.yaml apps/admin/src/lib/queryKeys.ts apps/admin/src/features/analytics/types.ts
 git commit -m "feat(admin): recharts dep + analytics query keys/types"
@@ -935,6 +1022,7 @@ git commit -m "feat(admin): recharts dep + analytics query keys/types"
 - [ ] **Step 1: KpiCard**
 
 Create `apps/admin/src/features/analytics/KpiCard.tsx`:
+
 ```tsx
 interface KpiCardProps {
   label: string;
@@ -956,8 +1044,17 @@ export function KpiCard({ label, value, hint }: KpiCardProps) {
 - [ ] **Step 2: LineTrend (recharts wrapper)**
 
 Create `apps/admin/src/features/analytics/charts/LineTrend.tsx`:
+
 ```tsx
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 interface LineTrendProps {
   data: { x: string; y: number }[];
@@ -989,6 +1086,7 @@ export function LineTrend({ data, height = 240 }: LineTrendProps) {
 - [ ] **Step 3: BarBreakdown**
 
 Create `apps/admin/src/features/analytics/charts/BarBreakdown.tsx`:
+
 ```tsx
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
@@ -1022,6 +1120,7 @@ export function BarBreakdown({ data, height = 240 }: BarBreakdownProps) {
 - [ ] **Step 4: DonutShare**
 
 Create `apps/admin/src/features/analytics/charts/DonutShare.tsx`:
+
 ```tsx
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 
@@ -1036,7 +1135,14 @@ export function DonutShare({ data, height = 240 }: DonutShareProps) {
   return (
     <ResponsiveContainer width="100%" height={height}>
       <PieChart>
-        <Pie data={data} dataKey="value" nameKey="name" innerRadius={56} outerRadius={88} paddingAngle={2}>
+        <Pie
+          data={data}
+          dataKey="value"
+          nameKey="name"
+          innerRadius={56}
+          outerRadius={88}
+          paddingAngle={2}
+        >
           {data.map((d, i) => (
             <Cell key={d.name} fill={PALETTE[i % PALETTE.length]} />
           ))}
@@ -1058,6 +1164,7 @@ export function DonutShare({ data, height = 240 }: DonutShareProps) {
 - [ ] **Step 5: FunnelBars**
 
 Create `apps/admin/src/features/analytics/FunnelBars.tsx`:
+
 ```tsx
 import type { FunnelOut } from "./types";
 
@@ -1091,6 +1198,7 @@ export function FunnelBars({ funnel }: { funnel: FunnelOut }) {
 - [ ] **Step 6: Typecheck + lint + commit**
 
 Run: `pnpm --filter @yupay/admin exec tsc --noEmit && pnpm --filter @yupay/admin run lint` (0 errors; the new files 0 warnings). Then `pnpm exec prettier --write apps/admin/src/features/analytics/`.
+
 ```bash
 git add apps/admin/src/features/analytics/KpiCard.tsx apps/admin/src/features/analytics/FunnelBars.tsx apps/admin/src/features/analytics/charts
 git commit -m "feat(admin): analytics chart + KPI + funnel components"
@@ -1105,6 +1213,7 @@ git commit -m "feat(admin): analytics chart + KPI + funnel components"
 - [ ] **Step 1: BusinessTab**
 
 Create `apps/admin/src/features/analytics/BusinessTab.tsx`. It receives the fetched payload and renders KPIs + charts + tables. Use `DataTable` for top brands/SKUs. (Format money from the string decimals with `Number(x).toLocaleString()`.)
+
 ```tsx
 import { DataTable } from "@/components/DataTable";
 
@@ -1136,7 +1245,9 @@ export function BusinessTab({ data }: { data: BusinessAnalytics }) {
 
       <section>
         <h3 className="mb-2 text-sm font-semibold">Выручка по дням</h3>
-        <LineTrend data={data.revenue_series.map((p) => ({ x: p.date.slice(5), y: Number(p.revenue_usd) }))} />
+        <LineTrend
+          data={data.revenue_series.map((p) => ({ x: p.date.slice(5), y: Number(p.revenue_usd) }))}
+        />
       </section>
 
       <section>
@@ -1155,20 +1266,28 @@ export function BusinessTab({ data }: { data: BusinessAnalytics }) {
               { key: "slug", header: "Бренд", render: (b) => b.slug },
               { key: "rev", header: "Выручка", render: (b) => usd(b.revenue_usd) },
               { key: "units", header: "Штук", render: (b) => String(b.units) },
-              { key: "margin", header: "Маржа ≈", render: (b) => (b.margin_usd ? usd(b.margin_usd) : "—") },
+              {
+                key: "margin",
+                header: "Маржа ≈",
+                render: (b) => (b.margin_usd ? usd(b.margin_usd) : "—"),
+              },
             ]}
           />
         </div>
         <div>
           <h3 className="mb-2 text-sm font-semibold">Доли брендов</h3>
-          <DonutShare data={data.top_brands.map((b) => ({ name: b.slug, value: Number(b.revenue_usd) }))} />
+          <DonutShare
+            data={data.top_brands.map((b) => ({ name: b.slug, value: Number(b.revenue_usd) }))}
+          />
         </div>
       </section>
 
       <section className="grid gap-6 lg:grid-cols-2">
         <div>
           <h3 className="mb-2 text-sm font-semibold">Новые пользователи</h3>
-          <LineTrend data={data.customers.new_users_series.map((p) => ({ x: p.date.slice(5), y: p.users }))} />
+          <LineTrend
+            data={data.customers.new_users_series.map((p) => ({ x: p.date.slice(5), y: p.users }))}
+          />
         </div>
         <div>
           <h3 className="mb-2 text-sm font-semibold">Гость vs зарегистрированный</h3>
@@ -1191,6 +1310,7 @@ export function BusinessTab({ data }: { data: BusinessAnalytics }) {
 - [ ] **Step 2: OpsTab**
 
 Create `apps/admin/src/features/analytics/OpsTab.tsx`:
+
 ```tsx
 import { DataTable } from "@/components/DataTable";
 
@@ -1243,7 +1363,11 @@ export function OpsTab({ data }: { data: OpsAnalytics }) {
             { key: "s", header: "Поставщик", render: (f) => f.supplier },
             { key: "t", header: "Всего", render: (f) => String(f.total) },
             { key: "ok", header: "Success", render: (f) => `${f.success_rate_pct}%` },
-            { key: "avg", header: "Ср. время", render: (f) => (f.avg_seconds != null ? `${f.avg_seconds}s` : "—") },
+            {
+              key: "avg",
+              header: "Ср. время",
+              render: (f) => (f.avg_seconds != null ? `${f.avg_seconds}s` : "—"),
+            },
             { key: "m", header: "Вручную", render: (f) => String(f.manual_count) },
             { key: "att", header: "Ср. попыток", render: (f) => String(f.avg_attempts) },
           ]}
@@ -1274,7 +1398,11 @@ export function OpsTab({ data }: { data: OpsAnalytics }) {
             columns={[
               { key: "sku", header: "SKU", render: (c) => c.sku_code },
               { key: "sup", header: "Поставщик", render: (c) => c.supplier_slug },
-              { key: "was", header: "Было", render: (c) => (c.previous_cost_usdt ? usd(c.previous_cost_usdt) : "—") },
+              {
+                key: "was",
+                header: "Было",
+                render: (c) => (c.previous_cost_usdt ? usd(c.previous_cost_usdt) : "—"),
+              },
               { key: "now", header: "Стало", render: (c) => usd(c.cost_usdt) },
             ]}
           />
@@ -1288,6 +1416,7 @@ export function OpsTab({ data }: { data: OpsAnalytics }) {
 - [ ] **Step 3: AnalyticsPage**
 
 Create `apps/admin/src/features/analytics/AnalyticsPage.tsx`:
+
 ```tsx
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -1302,7 +1431,11 @@ import { OpsTab } from "./OpsTab";
 import type { AnalyticsRange, BusinessAnalytics, OpsAnalytics } from "./types";
 
 const RANGES: AnalyticsRange[] = ["7d", "30d", "90d"];
-const RANGE_LABEL: Record<AnalyticsRange, string> = { "7d": "7 дней", "30d": "30 дней", "90d": "90 дней" };
+const RANGE_LABEL: Record<AnalyticsRange, string> = {
+  "7d": "7 дней",
+  "30d": "30 дней",
+  "90d": "90 дней",
+};
 
 export function AnalyticsPage() {
   const [tab, setTab] = useState<"business" | "ops">("business");
@@ -1310,7 +1443,8 @@ export function AnalyticsPage() {
 
   const business = useQuery<BusinessAnalytics>({
     queryKey: qk.analyticsBusiness(range),
-    queryFn: () => apiGet<BusinessAnalytics>(`/api/v1/admin/stats/analytics/business?range=${range}`),
+    queryFn: () =>
+      apiGet<BusinessAnalytics>(`/api/v1/admin/stats/analytics/business?range=${range}`),
     enabled: tab === "business",
   });
   const ops = useQuery<OpsAnalytics>({
@@ -1379,6 +1513,7 @@ In `apps/admin/src/app/router.tsx`, import `AnalyticsPage` and add `{ path: "/an
 Run: `pnpm --filter @yupay/admin exec tsc --noEmit && pnpm --filter @yupay/admin run lint` (0 errors; new files 0 warnings) then `pnpm exec prettier --write apps/admin/src/features/analytics apps/admin/src/app/router.tsx apps/admin/src/app/Layout.tsx`. Brace any void-returning arrow handlers; fix import order.
 
 - [ ] **Step 6: Commit**
+
 ```bash
 git add apps/admin/src/features/analytics/AnalyticsPage.tsx apps/admin/src/features/analytics/BusinessTab.tsx apps/admin/src/features/analytics/OpsTab.tsx apps/admin/src/app/router.tsx apps/admin/src/app/Layout.tsx
 git commit -m "feat(admin): analytics page with business + ops tabs and range selector"
@@ -1411,6 +1546,7 @@ In `docs/architecture/cache-keys.md`, add an entry (match the file's table/secti
 In `docs/architecture/module-map.md`, note under `stats`: reads `orders, order_items, payments, payment_webhooks, fulfillment_tasks, inventory_codes, catalog (sku/product/brand), users, integrations (supplier_price_history)` for read-only analytics aggregation. Match existing formatting.
 
 - [ ] **Step 4: Commit**
+
 ```bash
 git add docs/decisions/0025-analytics-dashboard.md docs/architecture/cache-keys.md docs/architecture/module-map.md
 git commit -m "docs(stats): ADR + cache-keys + module-map for analytics dashboard"

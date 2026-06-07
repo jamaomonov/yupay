@@ -15,6 +15,7 @@
 ## File Structure
 
 **Backend (`apps/api`):**
+
 - `pyproject.toml` — add `argon2-cffi`.
 - `src/yupay/core/config.py` — `resend_api_key`, `email_from`, `email_from_name`, `auth_ip_guard_*`.
 - `src/yupay/modules/auth/security.py` — `hash_password` / `verify_password` (argon2id).
@@ -30,6 +31,7 @@
 - Tests under `tests/unit/`, `tests/integration/`, `tests/contract/`.
 
 **Frontend (`apps/web`):**
+
 - `src/lib/client.ts` — browser fetch + localStorage tokens + refresh (NEW; do not touch `lib/api.ts`).
 - `src/lib/auth.tsx` — `AuthProvider`, `useAuth`, `useMe`.
 - `src/app/[locale]/Providers.tsx` — `QueryClientProvider` + `AuthProvider` (client).
@@ -50,6 +52,7 @@
 ### Task 1: Config fields + argon2 dependency
 
 **Files:**
+
 - Modify: `apps/api/pyproject.toml` (dependencies)
 - Modify: `apps/api/src/yupay/core/config.py` (after `telegram_bot_token`, ~line 99)
 
@@ -93,6 +96,7 @@ git commit -m "build(api): argon2-cffi dep + Resend/auth-guard settings"
 ### Task 2: argon2 password hashing helpers
 
 **Files:**
+
 - Modify: `apps/api/src/yupay/modules/auth/security.py`
 - Test: `apps/api/tests/unit/test_auth_security_password.py`
 
@@ -186,6 +190,7 @@ git commit -m "feat(auth): argon2id password hash/verify helpers"
 ### Task 3: JWT kinds for email verification + password reset
 
 **Files:**
+
 - Modify: `apps/api/src/yupay/modules/auth/jwt.py`
 - Test: `apps/api/tests/unit/test_auth_jwt_email_tokens.py`
 
@@ -301,6 +306,7 @@ git commit -m "feat(auth): email_verify + password_reset JWT kinds"
 ### Task 4: Resend email channel + contract test
 
 **Files:**
+
 - Create: `apps/api/src/yupay/modules/notifications/channels/email.py`
 - Test: `apps/api/tests/contract/test_resend_email.py`
 
@@ -451,6 +457,7 @@ git commit -m "feat(notifications): Resend email channel"
 ### Task 5: Email template builders
 
 **Files:**
+
 - Create: `apps/api/src/yupay/modules/notifications/templates.py`
 - Test: `apps/api/tests/unit/test_email_templates.py`
 
@@ -618,6 +625,7 @@ git commit -m "feat(notifications): transactional email templates"
 ### Task 6: Migration — password_hash, email_verified_at, unique email index
 
 **Files:**
+
 - Create: `apps/api/migrations/versions/0017_user_passwords.py`
 
 > Confirm the latest revision id first: `ls apps/api/migrations/versions | sort | tail -1` and open it to read its `revision = "..."`. Use that value as `down_revision` below (shown as `<PREV_REVISION>`).
@@ -695,6 +703,7 @@ git commit -m "feat(users): password_hash + email_verified_at + unique live-emai
 ### Task 7: Register flow (service + schema + route)
 
 **Files:**
+
 - Modify: `apps/api/src/yupay/modules/auth/service.py`
 - Modify: `apps/api/src/yupay/modules/auth/schemas.py`
 - Modify: `apps/api/src/yupay/modules/auth/routes.py`
@@ -913,6 +922,7 @@ git commit -m "feat(auth): email/password registration"
 ### Task 8: Login flow
 
 **Files:**
+
 - Modify: `apps/api/src/yupay/modules/auth/service.py`, `routes.py`
 - Test: append to `apps/api/tests/integration/test_auth_password.py`
 
@@ -1020,6 +1030,7 @@ git commit -m "feat(auth): email/password login"
 ### Task 9: Verify-email flow
 
 **Files:**
+
 - Modify: `service.py`, `routes.py`
 - Test: append to `test_auth_password.py`
 
@@ -1108,6 +1119,7 @@ git commit -m "feat(auth): email verification endpoint"
 ### Task 10: Forgot + reset password (Redis one-time marker + session revoke)
 
 **Files:**
+
 - Modify: `service.py`, `routes.py`
 - Test: append to `test_auth_password.py`
 
@@ -1304,6 +1316,7 @@ git commit -m "feat(auth): password forgot/reset with single-use token + session
 ### Task 11: Redis per-IP guard on sensitive endpoints
 
 **Files:**
+
 - Create: `apps/api/src/yupay/modules/auth/ip_guard.py`
 - Modify: `apps/api/src/yupay/modules/auth/routes.py` (wire `guard_ip` into login + forgot)
 - Test: `apps/api/tests/integration/test_auth_ip_guard.py`
@@ -1413,6 +1426,7 @@ git commit -m "feat(auth): Redis per-IP guard on login/forgot"
 ### Task 12: Wire guest order emails into the notifications dispatch
 
 **Files:**
+
 - Modify: `apps/api/src/yupay/modules/notifications/service.py`
 - Test: `apps/api/tests/integration/test_order_emails.py` (or unit with a send spy)
 
@@ -1506,6 +1520,7 @@ git commit -m "feat(notifications): email guests on order confirmation/delivery"
 ### Task 13: Regenerate OpenAPI + TS client
 
 **Files:**
+
 - Modify: `docs/api/openapi.json`, `packages/api-client/**` (generated)
 
 - [ ] **Step 1: Regenerate**
@@ -1531,6 +1546,7 @@ git commit -m "build(api): regenerate OpenAPI for auth password endpoints"
 ### Task 14: Browser API client + token storage
 
 **Files:**
+
 - Create: `apps/web/src/lib/client.ts`
 
 > Do NOT modify `apps/web/src/lib/api.ts` (server-only catalog fetcher). This is a separate browser module.
@@ -1668,6 +1684,7 @@ git commit -m "feat(web): browser API client with token storage + refresh"
 ### Task 15: AuthProvider + QueryClient provider
 
 **Files:**
+
 - Create: `apps/web/src/lib/auth.tsx`
 - Create: `apps/web/src/app/[locale]/Providers.tsx`
 - Modify: `apps/web/src/app/[locale]/layout.tsx` (wrap children in `<Providers>`)
@@ -1819,10 +1836,8 @@ In `apps/web/src/app/[locale]/layout.tsx`, wrap the children currently inside `<
 import { Providers } from "./Providers";
 // ...
 <NextIntlClientProvider locale={locale} messages={messages}>
-  <Providers>
-    {/* existing header/children/footer tree */}
-  </Providers>
-</NextIntlClientProvider>
+  <Providers>{/* existing header/children/footer tree */}</Providers>
+</NextIntlClientProvider>;
 ```
 
 - [ ] **Step 4: Typecheck**
@@ -1842,6 +1857,7 @@ git commit -m "feat(web): AuthProvider + QueryClient provider"
 ### Task 16: Login + register pages + shared auth form
 
 **Files:**
+
 - Create: `apps/web/src/components/auth/AuthForm.tsx`
 - Create: `apps/web/src/components/auth/TelegramLoginButton.tsx`
 - Create: `apps/web/src/app/[locale]/login/page.tsx`
@@ -1953,7 +1969,9 @@ export function AuthForm({
           {...register("email")}
           className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
         />
-        {errors.email && <span className="mt-1 block text-xs text-[#FF6B6B]">{t("emailInvalid")}</span>}
+        {errors.email && (
+          <span className="mt-1 block text-xs text-[#FF6B6B]">{t("emailInvalid")}</span>
+        )}
       </label>
       <label className="block">
         <span className="text-tx-mute mb-1.5 block text-[13px] font-semibold">{t("password")}</span>
@@ -2050,6 +2068,7 @@ git commit -m "feat(web): login + register pages with Telegram widget"
 ### Task 17: Forgot / reset / verify pages
 
 **Files:**
+
 - Create: `apps/web/src/app/[locale]/auth/forgot/page.tsx`
 - Create: `apps/web/src/app/[locale]/auth/reset/page.tsx`
 - Create: `apps/web/src/app/[locale]/auth/verify/page.tsx`
@@ -2120,6 +2139,7 @@ git commit -m "feat(web): forgot/reset/verify pages"
 ### Task 18: Account + order history pages
 
 **Files:**
+
 - Create: `apps/web/src/app/[locale]/account/page.tsx`
 - Create: `apps/web/src/app/[locale]/account/orders/page.tsx`
 
@@ -2179,6 +2199,7 @@ git commit -m "feat(web): account + order history pages"
 ### Task 19: Order-status page with polling
 
 **Files:**
+
 - Create: `apps/web/src/components/order/OrderStatus.tsx`
 - Create: `apps/web/src/app/[locale]/orders/[orderId]/page.tsx`
 
@@ -2225,7 +2246,7 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
   if (order.isError || !order.data) return <p className="text-[#FF6B6B]">Заказ не найден.</p>;
 
   return (
-    <div className="border-border rounded-2xl border bg-card p-6">
+    <div className="border-border bg-card rounded-2xl border p-6">
       <p className="text-tx-dim font-mono text-xs">#{order.data.id.slice(0, 8)}</p>
       <h2 className="font-display mt-2 text-xl font-bold">{statusLabel(order.data.status)}</h2>
       {status === "delivered" &&
@@ -2295,6 +2316,7 @@ git commit -m "feat(web): order-status page with polling"
 ### Task 20: Header auth state
 
 **Files:**
+
 - Modify: `apps/web/src/components/Header.tsx`
 - Create: `apps/web/src/components/auth/AccountMenu.tsx`
 
@@ -2323,11 +2345,13 @@ git commit -m "feat(web): header account menu / login state"
 ### Task 21: PurchasePanel — user-owned orders + route to status
 
 **Files:**
+
 - Modify: `apps/web/src/components/store/PurchasePanel.tsx`
 
 - [ ] **Step 1: Use the user token when signed in**
 
 In `PurchasePanel.tsx`, import `useAuth` and `getAccessToken`/`apiFetch` from the client. Change `pay()` so that:
+
 - If a logged-in user is present (`getAccessToken()` returns a token and `useAuth().user`), skip the `/auth/guest` step and create the order with `Authorization: Bearer <token>` (no `guest_email`), then the payment intent with the Bearer token.
 - Otherwise keep the existing guest path unchanged.
 
@@ -2387,6 +2411,7 @@ git commit -m "feat(web): user-owned checkout + link to order status"
 ### Task 22: i18n keys (ru/en/uz)
 
 **Files:**
+
 - Modify: `packages/i18n/locales/ru/web.json`, `packages/i18n/locales/en/web.json`, `packages/i18n/locales/uz/web.json`
 
 - [ ] **Step 1: Add namespaces**
@@ -2448,6 +2473,7 @@ git commit -m "feat(web): i18n for auth/account/order (ru/en/uz)"
 ### Task 23: ADRs, module-map, cache-keys, sequence diagrams
 
 **Files:**
+
 - Create: `docs/decisions/0026-web-password-auth.md`
 - Create: `docs/decisions/0027-resend-email-channel.md`
 - Modify: `docs/architecture/module-map.md`, `docs/architecture/cache-keys.md`

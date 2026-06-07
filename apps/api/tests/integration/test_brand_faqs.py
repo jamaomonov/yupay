@@ -161,9 +161,7 @@ async def test_faq_admin_crud_and_public_embedding(
     assert len(r.json()["faqs"]) == 1
 
     # DELETE removes the row.
-    r = await integration_client.delete(
-        f"/api/v1/admin/catalog/faqs/{faq2['id']}", headers=headers
-    )
+    r = await integration_client.delete(f"/api/v1/admin/catalog/faqs/{faq2['id']}", headers=headers)
     assert r.status_code == 204
     r = await integration_client.get(
         f"/api/v1/admin/catalog/brands/{brand_id}/faqs", headers=headers

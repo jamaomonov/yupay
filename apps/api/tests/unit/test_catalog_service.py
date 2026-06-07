@@ -91,7 +91,7 @@ def test_pick_translation_uses_requested_locale() -> None:
             self.description = None
 
     translations = [_T("ru", "Игры"), _T("en", "Games"), _T("uz", "Oʻyinlar")]
-    name, _, _ = _pick_translation(translations, "en")
+    name, _, _, _ = _pick_translation(translations, "en")
     assert name == "Games"
 
 
@@ -104,10 +104,10 @@ def test_pick_translation_falls_back_to_ru() -> None:
             self.description = None
 
     translations = [_T("ru", "Игры")]
-    name, _, _ = _pick_translation(translations, "en")
+    name, _, _, _ = _pick_translation(translations, "en")
     assert name == "Игры"
 
 
 def test_pick_translation_empty_returns_blank() -> None:
-    name, _, _ = _pick_translation([], "ru")
+    name, _, _, _ = _pick_translation([], "ru")
     assert name == ""

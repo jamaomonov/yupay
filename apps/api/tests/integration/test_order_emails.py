@@ -26,9 +26,7 @@ async def test_delivered_guest_order_sends_email(monkeypatch: pytest.MonkeyPatch
         sent.append({"to": to, "subject": subject})
         return "msg_test"
 
-    monkeypatch.setattr(
-        "yupay.modules.notifications.service.send_email", _spy, raising=False
-    )
+    monkeypatch.setattr("yupay.modules.notifications.service.send_email", _spy, raising=False)
 
     await _send_guest_email_delivered(
         order_id="abcdef1234",
@@ -50,9 +48,7 @@ async def test_delivered_email_embeds_codes(monkeypatch: pytest.MonkeyPatch) -> 
         sent.append({"to": to, "html": html, "text": text})
         return "msg_test"
 
-    monkeypatch.setattr(
-        "yupay.modules.notifications.service.send_email", _spy, raising=False
-    )
+    monkeypatch.setattr("yupay.modules.notifications.service.send_email", _spy, raising=False)
 
     await _send_guest_email_delivered(
         order_id="abcdef1234",
@@ -96,9 +92,7 @@ async def test_delivered_no_guest_email_skips_send(monkeypatch: pytest.MonkeyPat
         sent.append({"to": to, "subject": subject})
         return "msg_test"
 
-    monkeypatch.setattr(
-        "yupay.modules.notifications.service.send_email", _spy, raising=False
-    )
+    monkeypatch.setattr("yupay.modules.notifications.service.send_email", _spy, raising=False)
 
     await _send_guest_email_delivered(
         order_id="abcdef1234",
@@ -118,9 +112,7 @@ async def test_delivered_no_web_base_skips_send(monkeypatch: pytest.MonkeyPatch)
         sent.append({"to": to, "subject": subject})
         return "msg_test"
 
-    monkeypatch.setattr(
-        "yupay.modules.notifications.service.send_email", _spy, raising=False
-    )
+    monkeypatch.setattr("yupay.modules.notifications.service.send_email", _spy, raising=False)
 
     await _send_guest_email_delivered(
         order_id="abcdef1234",
@@ -140,9 +132,7 @@ async def test_confirmation_guest_order_sends_email(monkeypatch: pytest.MonkeyPa
         sent.append({"to": to, "subject": subject})
         return "msg_test"
 
-    monkeypatch.setattr(
-        "yupay.modules.notifications.service.send_email", _spy, raising=False
-    )
+    monkeypatch.setattr("yupay.modules.notifications.service.send_email", _spy, raising=False)
 
     await _send_guest_email_confirmation(
         order_id="abcdef1234",
@@ -164,9 +154,7 @@ async def test_confirmation_no_guest_email_skips_send(monkeypatch: pytest.Monkey
         sent.append({"to": to, "subject": subject})
         return "msg_test"
 
-    monkeypatch.setattr(
-        "yupay.modules.notifications.service.send_email", _spy, raising=False
-    )
+    monkeypatch.setattr("yupay.modules.notifications.service.send_email", _spy, raising=False)
 
     await _send_guest_email_confirmation(
         order_id="abcdef1234",
@@ -184,9 +172,7 @@ async def test_email_send_error_is_swallowed(monkeypatch: pytest.MonkeyPatch) ->
     async def _fail(*, to: str, subject: str, html: str, text: str) -> str:
         raise EmailSendError("resend returned 503")
 
-    monkeypatch.setattr(
-        "yupay.modules.notifications.service.send_email", _fail, raising=False
-    )
+    monkeypatch.setattr("yupay.modules.notifications.service.send_email", _fail, raising=False)
 
     # Must not raise.
     await _send_guest_email_delivered(

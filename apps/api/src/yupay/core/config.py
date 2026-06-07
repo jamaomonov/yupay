@@ -122,7 +122,9 @@ class Settings(BaseSettings):
     email_from_name: str = Field(default="YuPay")
 
     # --- Auth IP guard (lightweight; full rate limiting is a separate concern) ---
-    auth_ip_guard_max: int = Field(default=10, description="Max sensitive auth hits per window per IP.")
+    auth_ip_guard_max: int = Field(
+        default=10, description="Max sensitive auth hits per window per IP."
+    )
     auth_ip_guard_window_seconds: int = Field(default=60)
 
     # Public URL of the miniapp — embedded into the inline ``WebAppInfo``

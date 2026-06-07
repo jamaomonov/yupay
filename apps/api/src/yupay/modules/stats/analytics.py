@@ -157,9 +157,7 @@ async def _revenue_series(db: AsyncSession, since: datetime) -> list[RevenuePoin
 
 async def _funnel(db: AsyncSession, since: datetime) -> FunnelOut:
     stmt = (
-        select(Order.status, func.count())
-        .where(Order.created_at >= since)
-        .group_by(Order.status)
+        select(Order.status, func.count()).where(Order.created_at >= since).group_by(Order.status)
     )
     counts = {s: int(c) for s, c in (await db.execute(stmt)).all()}
     created = sum(counts.values())

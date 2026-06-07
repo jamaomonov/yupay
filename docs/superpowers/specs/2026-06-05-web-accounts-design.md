@@ -24,6 +24,7 @@ UI: auth pages, an account area, and an order-status page with live polling.
 ## 2. Goals / Non-goals
 
 **Goals (slice 1)**
+
 - Two web auth methods into one account: **Telegram Login Widget** (backend already done) and
   **email + password** (new).
 - Minimal **email channel (Resend)** for email verification and password reset (and, as a bonus
@@ -34,6 +35,7 @@ UI: auth pages, an account area, and an order-status page with live polling.
 - All three locales (ru/en/uz) for new strings; tests; docs; ADR(s).
 
 **Non-goals (deferred to later slices / future)**
+
 - **Cart** (multi-item checkout) — separate slice; API already accepts `items[]`.
 - **Search** — separate slice.
 - Auto-merging a Telegram account and an email/password account that share an email.
@@ -61,6 +63,7 @@ UI: auth pages, an account area, and an order-status page with live polling.
 ## 4. Backend
 
 ### 4.1 Email channel (`notifications`)
+
 - `apps/api/src/yupay/modules/notifications/channels/email.py` — async Resend client over `httpx`.
 - Config (`core/config.py`): `resend_api_key`, `email_from`, `email_from_name` (placeholders; real
   key supplied by the user; dev may use Resend test mode).
@@ -74,6 +77,7 @@ UI: auth pages, an account area, and an order-status page with live polling.
 - Contract test with `respx` mocking the Resend API (success, 4xx, 429).
 
 ### 4.2 Password auth (`auth`)
+
 - **Migration:** add `users.password_hash` (nullable), `users.email_verified_at` (nullable), and a
   **partial unique index** on `lower(email) WHERE deleted_at IS NULL`. Guest checkouts do not create
   user rows (per the `User` model docstring), so existing data cannot violate the constraint; the
@@ -102,6 +106,7 @@ UI: auth pages, an account area, and an order-status page with live polling.
   payload against `telegram_bot_token`).
 
 ### 4.3 Order history / tracking
+
 - No backend change. `GET /orders` (list, Bearer user), `GET /orders/{id}` and
   `GET /orders/{id}/deliveries` (owner-only, tolerate Bearer **and** guest actors) already exist and
   are reused by the web client.
@@ -109,12 +114,14 @@ UI: auth pages, an account area, and an order-status page with live polling.
 ## 5. Frontend (`apps/web`)
 
 ### 5.1 Auth client
+
 - `src/lib/api.ts` + `src/lib/auth.ts` — mirror `apps/miniapp`: access+refresh in localStorage,
   auto-refresh on 401 via `POST /auth/refresh`, `apiGet`/`apiPost` attaching `Authorization`.
 - `AuthProvider` (React context) exposing `user`, `login`, `register`, `logout`,
   `loginWithTelegram`, with a TanStack Query `me` query (`GET /auth/me`).
 
 ### 5.2 Pages (under `src/app/[locale]/`)
+
 - `login/page.tsx` — email/password form + Telegram Login Widget button + links to register/forgot.
 - `register/page.tsx` — email/password + Telegram widget.
 - `auth/forgot/page.tsx` — request reset.
@@ -126,6 +133,7 @@ UI: auth pages, an account area, and an order-status page with live polling.
 - `orders/[orderId]/page.tsx` — **order status with polling** (see §5.4).
 
 ### 5.3 Header & checkout integration
+
 - `components/Header.tsx` — auth state: "Войти" when anonymous; account menu (avatar + logout) when
   signed in.
 - `components/store/PurchasePanel.tsx` — when signed in, create the order with the user Bearer token
@@ -133,13 +141,15 @@ UI: auth pages, an account area, and an order-status page with live polling.
   panel. The guest path is preserved for anonymous buyers and also routes to `/orders/{id}?email=…`.
 
 ### 5.4 Order-status page
+
 - Polls `GET /orders/{id}` + `GET /orders/{id}/deliveries`, reusing the miniapp `OrderSuccess`
   pattern: `refetchInterval` while the order is in motion (`pending_payment|paid|fulfilling|
-  fulfilled`), stop on terminal states, render delivery artifacts, react to `refunded`.
+fulfilled`), stop on terminal states, render delivery artifacts, react to `refunded`.
 - Auth: logged-in users use the Bearer token; guests use the Guest token + `?email=` carried in the
   link (the same owner check the backend already enforces).
 
 ### 5.5 i18n
+
 - New keys in `packages/i18n/locales/{ru,en,uz}/web.json` — namespaces for auth, account, and
   order-status. All three locales in the same PR (AGENTS.md §11).
 

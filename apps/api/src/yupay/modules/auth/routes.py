@@ -232,9 +232,7 @@ async def forgot_route(
 ) -> None:
     """Non-enumerating: always returns 204 regardless of whether the email is known."""
     await guard_ip(request, bucket="forgot")
-    await request_password_reset(
-        db, email=body.email, reset_link_base=_web_base(request, "ru")
-    )
+    await request_password_reset(db, email=body.email, reset_link_base=_web_base(request, "ru"))
 
 
 @router.post(
