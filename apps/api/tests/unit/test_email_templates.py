@@ -31,3 +31,25 @@ def test_order_confirmation_has_order_id() -> None:
 def test_order_delivered_has_link() -> None:
     t = order_delivered_email(order_id="abcdef12", link="https://yupay.uz/ru/orders/abcdef12")
     assert "abcdef12" in t.text
+
+
+def test_order_delivered_embeds_codes() -> None:
+    t = order_delivered_email(
+        order_id="abcdef12",
+        link="https://yupay.uz/ru/orders/abcdef12",
+        codes=["STEAM-AAAA-BBBB", "STEAM-CCCC-DDDD"],
+    )
+    assert "STEAM-AAAA-BBBB" in t.html
+    assert "STEAM-CCCC-DDDD" in t.html
+    assert "STEAM-AAAA-BBBB" in t.text
+    assert "STEAM-CCCC-DDDD" in t.text
+
+
+def test_order_delivered_escapes_html_in_codes() -> None:
+    t = order_delivered_email(
+        order_id="abcdef12",
+        link="https://yupay.uz/ru/orders/abcdef12",
+        codes=["<script>x</script>"],
+    )
+    assert "<script>" not in t.html
+    assert "&lt;script&gt;" in t.html

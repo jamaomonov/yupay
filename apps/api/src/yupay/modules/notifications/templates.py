@@ -8,6 +8,8 @@ to unit-test and review.
 
 from __future__ import annotations
 
+import html
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -72,17 +74,40 @@ def order_confirmation_email(*, order_id: str, link: str) -> EmailContent:
     )
 
 
-def order_delivered_email(*, order_id: str, link: str) -> EmailContent:
-    """Order-delivered notification for guest buyers."""
+def order_delivered_email(
+    *, order_id: str, link: str, codes: list[str] | None = None
+) -> EmailContent:
+    """Order-delivered notification for guest buyers.
+
+    When ``codes`` is given (voucher/license keys, or a 'credited' line for
+    top-ups) they are rendered inline in the body so the buyer gets their goods
+    straight from the email. Otherwise the email just links to the order page.
+    """
     short = order_id[:8]
-    return EmailContent(
-        subject=f"Заказ #{short} выполнен — YuPay",
-        html=_wrap(
+    if codes:
+        html_codes = "".join(
+            '<div style="font-family:monospace;font-size:15px;background:#f4f4f5;'
+            f'border-radius:8px;padding:10px 12px;margin:6px 0">{html.escape(c)}</div>'
+            for c in codes
+        )
+        body_html = (
+            "<h2>Ваш заказ выполнен</h2>"
+            f"<p>Заказ <b>#{short}</b> доставлен:</p>"
+            f"{html_codes}"
+            f'<p style="margin-top:16px"><a href="{link}">Открыть заказ</a></p>'
+        )
+        text = f"Заказ #{short} выполнен.\n\n" + "\n".join(codes) + f"\n\nОткрыть: {link}"
+    else:
+        body_html = (
             "<h2>Ваш заказ выполнен</h2>"
             f"<p>Заказ <b>#{short}</b> доставлен. Откройте, чтобы увидеть артефакт:</p>"
             f'<p><a href="{link}">Открыть заказ</a></p>'
-        ),
-        text=f"Заказ #{short} выполнен. Откройте: {link}",
+        )
+        text = f"Заказ #{short} выполнен. Откройте: {link}"
+    return EmailContent(
+        subject=f"Заказ #{short} выполнен — YuPay",
+        html=_wrap(body_html),
+        text=text,
     )
 
 

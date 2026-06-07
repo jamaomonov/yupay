@@ -42,6 +42,52 @@ async def test_delivered_guest_order_sends_email(monkeypatch: pytest.MonkeyPatch
 
 
 @pytest.mark.asyncio
+async def test_delivered_email_embeds_codes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Voucher codes passed to the delivered email land in the html + text body."""
+    sent: list[dict[str, str]] = []
+
+    async def _spy(*, to: str, subject: str, html: str, text: str) -> str:
+        sent.append({"to": to, "html": html, "text": text})
+        return "msg_test"
+
+    monkeypatch.setattr(
+        "yupay.modules.notifications.service.send_email", _spy, raising=False
+    )
+
+    await _send_guest_email_delivered(
+        order_id="abcdef1234",
+        guest_email="guest@example.com",
+        web_base="https://yupay.uz/ru",
+        codes=["STEAM-AAAA-BBBB"],
+    )
+
+    assert len(sent) == 1
+    assert "STEAM-AAAA-BBBB" in sent[0]["html"]
+    assert "STEAM-AAAA-BBBB" in sent[0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_delivery_codes_for_email_extracts_codes_and_topup() -> None:
+    """The extractor returns raw voucher codes and a 'credited' line for top-ups."""
+    from yupay.modules.notifications.service import (
+        _delivery_codes_for_email,  # type: ignore[attr-defined]
+    )
+
+    class _D:
+        def __init__(self, artifact: dict[str, object], kind: str) -> None:
+            self.artifact = artifact
+            self.artifact_kind = kind
+
+    rows = [
+        _D({"code": "VOUCHER-1"}, "voucher_code"),
+        _D({"key": "LICENSE-2"}, "license_key"),
+        _D({"fulfillment_data": {"player_id": "42"}}, "topup_receipt"),
+    ]
+    lines = _delivery_codes_for_email(rows)  # type: ignore[arg-type]
+    assert lines == ["VOUCHER-1", "LICENSE-2", "Зачислено на ваш аккаунт"]
+
+
+@pytest.mark.asyncio
 async def test_delivered_no_guest_email_skips_send(monkeypatch: pytest.MonkeyPatch) -> None:
     """A delivered order without a guest_email must NOT call send_email."""
     sent: list[dict[str, str]] = []

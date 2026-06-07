@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Sequence
 from decimal import Decimal
 from typing import Any, Final
 
@@ -92,6 +92,23 @@ def _format_target_fields(fields: dict[str, object]) -> str | None:
     return ", ".join(parts) if parts else None
 
 
+def _delivery_codes_for_email(deliveries: Sequence[Delivery]) -> list[str]:
+    """Plain (non-HTML) artifact lines for the delivery email body.
+
+    Voucher / license artifacts surface the raw code so the buyer gets their key
+    straight from the email; top-up receipts surface a short 'credited' line
+    instead of a secret. Capped at :data:`_MAX_INLINE_CODES`.
+    """
+    lines: list[str] = []
+    for d in deliveries[:_MAX_INLINE_CODES]:
+        code = d.artifact.get("code") or d.artifact.get("key")
+        if isinstance(code, str) and code:
+            lines.append(code)
+        elif d.artifact_kind == "topup_receipt":
+            lines.append("Зачислено на ваш аккаунт")
+    return lines
+
+
 def _summarise_order(order: Order, *, locale: str = "ru") -> str:
     """One-line product summary, e.g. ``PUBG Mobile · 660 UC +1``.
 
@@ -153,6 +170,7 @@ async def _send_guest_email_delivered(
     order_id: str,
     guest_email: str | None,
     web_base: str | None,
+    codes: list[str] | None = None,
 ) -> None:
     """Email a guest buyer that their order was delivered (best-effort).
 
@@ -161,6 +179,9 @@ async def _send_guest_email_delivered(
         guest_email: Recipient address, or ``None`` for registered users.
         web_base: Web base URL including locale prefix (e.g. ``https://yupay.uz/ru``).
             When empty (dev default) the function returns early without sending.
+        codes: Voucher/license keys (or a 'credited' line for top-ups) to render
+            inline in the email body, so the buyer gets their goods straight from
+            the email. ``None`` => link-only.
 
     No-ops silently when ``guest_email`` or ``web_base`` are absent. Any send
     failure is swallowed so a best-effort notification never breaks (or rolls
@@ -169,7 +190,7 @@ async def _send_guest_email_delivered(
     if not guest_email or not web_base:
         return
     link = f"{web_base.rstrip('/')}/orders/{order_id}"
-    content = order_delivered_email(order_id=order_id, link=link)
+    content = order_delivered_email(order_id=order_id, link=link, codes=codes)
     with contextlib.suppress(Exception):  # best-effort: never break the order flow
         await send_email(
             to=guest_email,
@@ -244,10 +265,12 @@ async def notify_order_delivered(order_id: str) -> bool:
     settings = get_settings()
 
     # Email notification for guest buyers — best-effort, independent of Telegram.
+    # Inline the same voucher codes / top-up receipts the Telegram message shows.
     await _send_guest_email_delivered(
         order_id=order_id,
         guest_email=guest_email,
         web_base=settings.web_base_url or None,
+        codes=_delivery_codes_for_email(deliveries),
     )
 
     if chat is None:
