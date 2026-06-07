@@ -12,19 +12,17 @@ const SOCIALS = [
   { href: "https://t.me/yupay_channel", label: "Telegram", src: "/social/telegram.svg" },
 ];
 
-/** Real acquirer marks shipped with the mini app — UZ rails + USDT. Intrinsic
- * px dimensions are passed through so next/image keeps the true aspect ratio
- * (no console warning) while we render every mark at a uniform 16px height. */
-const PAY_METHODS = [
-  { src: "/payment/click.png", name: "Click", w: 225, h: 225 },
+/** Real acquirer marks. Intrinsic px dimensions are passed through so next/image
+ * keeps the true aspect ratio while we render every mark at a uniform 16px
+ * height. `dark` marks are white-on-transparent lockups (Click, СБП) — they sit
+ * on a dark chip instead of the white one so their wordmark stays legible. */
+const PAY_METHODS: { src: string; name: string; w: number; h: number; dark?: boolean }[] = [
+  { src: "/payment/click.svg", name: "Click", w: 157, h: 40, dark: true },
   { src: "/payment/payme.png", name: "Payme", w: 454, h: 179 },
   { src: "/payment/uzum.png", name: "Uzum", w: 506, h: 148 },
+  { src: "/payment/sbp.png", name: "СБП", w: 220, h: 120, dark: true },
   { src: "/payment/usdt.png", name: "USDT", w: 2000, h: 2000 },
 ];
-
-/** RU rails are promised in copy but have no logo asset yet — render as a
- * text mark so the depicted set matches the acquirer scope (UZ + СБП + USDT). */
-const PAY_TEXT = ["СБП"];
 
 export async function Footer({ locale }: { locale: string }) {
   const t = await getTranslations("web.footer");
@@ -106,24 +104,19 @@ export async function Footer({ locale }: { locale: string }) {
                 <span
                   key={p.name}
                   title={p.name}
-                  className="flex h-7 items-center rounded-md bg-white px-2"
+                  className={`flex h-7 items-center rounded-md px-2 ${
+                    p.dark ? "border-border bg-card border" : "bg-white"
+                  }`}
                 >
                   <Image
                     src={p.src}
                     alt={p.name}
                     width={p.w}
                     height={p.h}
+                    unoptimized
                     style={{ width: "auto", height: 16 }}
                     className="object-contain"
                   />
-                </span>
-              ))}
-              {PAY_TEXT.map((label) => (
-                <span
-                  key={label}
-                  className="flex h-7 items-center rounded-md bg-white px-2 text-[11px] font-bold text-black"
-                >
-                  {label}
                 </span>
               ))}
             </div>
