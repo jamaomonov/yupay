@@ -9,7 +9,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AuthForm } from "./AuthForm";
 import { ProviderButton } from "./ProviderButton";
 import { GoogleIcon, SteamIcon, TelegramIcon } from "./ProviderIcons";
-import { TelegramLoginButton } from "./TelegramLoginButton";
 
 import { useAuth } from "@/lib/auth";
 import { useLoginModal } from "@/store/useLoginModal";
@@ -124,18 +123,6 @@ export function LoginModal({ locale }: { locale: string }) {
         {screen === "providers" ? (
           <>
             <div className="mt-6 grid grid-cols-2 gap-3">
-              {BOT_ID ? (
-                <ProviderButton
-                  label={t("providerTelegram")}
-                  icon={<TelegramIcon />}
-                  surface="bg-[#2AABEE] text-white"
-                  onClick={onTelegram}
-                />
-              ) : (
-                <div className="col-span-2 flex justify-center">
-                  <TelegramLoginButton />
-                </div>
-              )}
               <ProviderButton
                 label={t("providerEmail")}
                 icon={<Mail size={18} />}
@@ -155,6 +142,12 @@ export function LoginModal({ locale }: { locale: string }) {
                 icon={<SteamIcon />}
                 surface="bg-[#1b2838] text-white"
                 soon
+              />
+              <ProviderButton
+                label={t("providerTelegram")}
+                icon={<TelegramIcon />}
+                surface="bg-[#2AABEE] text-white"
+                onClick={onTelegram}
               />
             </div>
 
