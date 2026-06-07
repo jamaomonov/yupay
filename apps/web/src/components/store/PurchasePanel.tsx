@@ -225,7 +225,7 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
                         : "border-border bg-card hover:border-border-2"
                     }`}
                   >
-                    <span className="bg-muted relative h-12 w-12 overflow-hidden rounded-[10px]">
+                    <span className="relative h-12 w-12 overflow-hidden rounded-[10px]">
                       {img && (
                         <Image
                           src={img}
