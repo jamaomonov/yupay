@@ -125,7 +125,7 @@
 }
 
 .glow-lime {
-  background: radial-gradient(circle, hsl(var(--primary) / 0.1), transparent 65%);
+  background: radial-gradient(circle, hsl(var(--primary) / 0.25), transparent 68%);
   filter: blur(60px);
 }
 
