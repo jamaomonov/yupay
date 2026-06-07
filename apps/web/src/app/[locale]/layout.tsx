@@ -10,6 +10,7 @@ import type { Metadata } from "next";
 import { LoginModal } from "@/components/auth/LoginModal";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
+import { SupportFab } from "@/components/SupportFab";
 import { routing } from "@/i18n/routing";
 
 import "../globals.css";
@@ -90,6 +91,7 @@ export default async function LocaleLayout({
             {children}
             <Footer locale={locale} />
             <LoginModal locale={locale} />
+            <SupportFab />
           </Providers>
         </NextIntlClientProvider>
       </body>
