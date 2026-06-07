@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/lib/auth";
+import { useLoginModal } from "@/store/useLoginModal";
 
 interface Props {
   locale: string;
@@ -21,6 +22,7 @@ interface Props {
  */
 export function AccountMenu({ locale }: Props) {
   const { user, isLoading, logout } = useAuth();
+  const openLogin = useLoginModal((s) => s.open);
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -39,12 +41,13 @@ export function AccountMenu({ locale }: Props) {
 
   if (!user) {
     return (
-      <Link
-        href={`/${locale}/login`}
+      <button
+        type="button"
+        onClick={openLogin}
         className="border-border-2 text-foreground hover:border-tx-dim hover:bg-muted rounded-btn inline-flex h-[38px] items-center justify-center border px-4 text-sm font-semibold transition"
       >
         Войти
-      </Link>
+      </button>
     );
   }
 

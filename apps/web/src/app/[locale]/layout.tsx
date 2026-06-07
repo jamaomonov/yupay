@@ -7,6 +7,7 @@ import { Providers } from "./Providers";
 
 import type { Metadata } from "next";
 
+import { LoginModal } from "@/components/auth/LoginModal";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { routing } from "@/i18n/routing";
@@ -88,6 +89,7 @@ export default async function LocaleLayout({
             <Header locale={locale} />
             {children}
             <Footer locale={locale} />
+            <LoginModal locale={locale} />
           </Providers>
         </NextIntlClientProvider>
       </body>
