@@ -26,6 +26,10 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   partially_refunded: { label: "Частичный возврат", cls: "bg-tx-dim/15 text-tx-dim" },
 };
 
+// Hide checkouts the customer never paid for — these clutter the history with
+// "clicked Pay, didn't finish" rows (the scheduler eventually expires them).
+const HIDDEN_STATUSES = new Set(["pending_payment", "expired"]);
+
 function orderTitle(o: OrderOut): string {
   const d = o.items[0]?.display;
   if (!d) return `Заказ #${o.id.slice(0, 8)}`;
@@ -62,7 +66,7 @@ export default function OrdersPage({ params }: { params: Promise<{ locale: strin
     );
   }
 
-  const items = orders.data?.items ?? [];
+  const items = (orders.data?.items ?? []).filter((o) => !HIDDEN_STATUSES.has(o.status));
   const settled = !orders.isLoading && !orders.isError;
 
   return (

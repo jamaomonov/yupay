@@ -147,11 +147,15 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
       });
       if (!intentRes.ok) throw new Error("intent");
       const intent = (await intentRes.json()) as { intent_url: string | null };
-      setDone({
-        orderId: order.id,
-        intentUrl: intent.intent_url,
-        trackHref: `/${locale}/orders/${order.id}${emailSuffix}`,
-      });
+      const trackHref = `/${locale}/orders/${order.id}${emailSuffix}`;
+      if (intent.intent_url && provider !== "mock") {
+        // Real acquirer → go straight to the hosted payment page. The dev `mock`
+        // provider returns a non-resolvable URL, so we keep its clickable
+        // confirmation screen instead of redirecting into a dead end.
+        window.location.href = intent.intent_url;
+        return;
+      }
+      setDone({ orderId: order.id, intentUrl: intent.intent_url, trackHref });
     } catch {
       setError(t("payError"));
     } finally {
