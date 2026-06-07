@@ -193,17 +193,36 @@ services:
       - ./apps:/app/apps
 
   web:
+    # Dev image: `next dev` with HMR over the bind-mounted apps/web + packages,
+    # so source edits hot-reload without rebuilding. The production build
+    # (next build/start) lives in web.Dockerfile and is consumed by
+    # docker-compose.prod.yml via the GHCR tag.
     build:
       context: .
-      dockerfile: infra/docker/web.Dockerfile
+      dockerfile: infra/docker/web.dev.Dockerfile
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_BASE_URL: http://api:8000
+      # next dev reads NEXT_PUBLIC_* from the env at runtime (no static build),
+      # so these take effect immediately. Server Components fetch the catalog
+      # over the docker network (api:8000); the browser hits localhost:8000.
+      API_INTERNAL_URL: http://api:8000
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
       NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+      NEXT_PUBLIC_TELEGRAM_BOT_ID: ${TELEGRAM_BOT_ID:-}
+      # Poll the bind-mounted FS so Next's watcher sees edits on macOS/Docker.
+      WATCHPACK_POLLING: "true"
     ports:
       - "3000:3000"
     depends_on:
       - api
+    volumes:
+      # Live source — edits hot-reload through Next's Fast Refresh.
+      - ./apps/web:/app/apps/web
+      - ./packages:/app/packages
+      # Anonymous volumes mask the bind-mounts so the image's node_modules
+      # (pnpm install) survive; without these `next dev` crashes on missing deps.
+      - /app/node_modules
+      - /app/apps/web/node_modules
 
   miniapp:
     # Dev image: runs `vite dev` with HMR. Source is bind-mounted below so
