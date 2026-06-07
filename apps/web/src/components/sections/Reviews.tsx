@@ -41,7 +41,7 @@ export async function Reviews() {
         <div className="mb-14 flex flex-wrap items-end justify-between gap-6">
           <div>
             <div className="text-primary font-mono text-xs font-semibold uppercase tracking-[0.16em]">
-              [ 04 / {t("eyebrow")} ]
+              [ 05 / {t("eyebrow")} ]
             </div>
             <h2 className="font-display mt-3 text-[clamp(2.2rem,4vw,3.4rem)] font-extrabold leading-[0.98] tracking-[-0.04em]">
               <span className="block">{t("titleLine1")}</span>

@@ -41,7 +41,7 @@ export async function AppShowcase() {
             {/* ── LEFT: copy + features ── */}
             <div>
               <div className="text-primary font-mono text-xs font-semibold uppercase tracking-[0.16em]">
-                [ 05 / {t("eyebrow")} ]
+                [ 03 / {t("eyebrow")} ]
               </div>
               <h2 className="font-display mt-3 text-[clamp(2rem,3.8vw,3.2rem)] font-extrabold leading-[0.98] tracking-[-0.04em]">
                 <span className="block">{t("titleLine1")}</span>

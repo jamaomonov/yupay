@@ -35,11 +35,11 @@ export async function HowItWorks() {
             {STEPS.map((step, i) => (
               <div
                 key={step.n}
-                className={`grid grid-cols-[88px_1fr_auto] items-start gap-7 py-9 ${
+                className={`grid grid-cols-[auto_1fr_auto] items-start gap-x-9 gap-y-7 py-9 ${
                   i === 0 ? "border-t" : ""
                 } border-border border-b`}
               >
-                <div className="font-display text-tx-dim text-[88px] font-extrabold leading-[0.85] tracking-[-0.05em] opacity-40">
+                <div className="font-display text-tx-dim w-[1.4em] text-[76px] font-extrabold leading-[0.85] tracking-[-0.05em] opacity-30">
                   {step.n}
                 </div>
                 <div>

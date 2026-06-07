@@ -29,7 +29,7 @@ export async function MetricsBand() {
           />
           <div className="relative mb-12">
             <div className="text-primary font-mono text-xs font-semibold uppercase tracking-[0.16em]">
-              [ 03 / {t("eyebrow")} ]
+              [ 04 / {t("eyebrow")} ]
             </div>
             <h2 className="font-display mt-3 text-[clamp(1.9rem,3.5vw,3rem)] font-extrabold leading-[0.95] tracking-[-0.035em]">
               {t("title")}
