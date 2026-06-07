@@ -47,7 +47,7 @@ export function AccountMenu({ locale }: Props) {
 
   if (!user) {
     return (
-      <button type="button" onClick={openLogin} className={buttonStyles({ size: "sm" })}>
+      <button type="button" onClick={openLogin} className={buttonStyles({ size: "md" })}>
         {t("login")}
       </button>
     );
@@ -65,7 +65,7 @@ export function AccountMenu({ locale }: Props) {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={t("menu")}
-        className="border-border bg-muted text-tx-mute hover:bg-card-2 hover:text-foreground flex h-[38px] w-[38px] items-center justify-center overflow-hidden rounded-full border text-sm font-bold transition"
+        className="border-border bg-muted text-tx-mute hover:bg-card-2 hover:text-foreground flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border text-sm font-bold transition"
       >
         {user.photo_url ? (
           // eslint-disable-next-line @next/next/no-img-element -- external Telegram CDN avatar; a plain <img> avoids next/image remotePatterns wiring for a 38px thumbnail

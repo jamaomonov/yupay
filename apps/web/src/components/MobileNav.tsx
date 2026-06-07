@@ -64,7 +64,7 @@ export function MobileNav() {
         }}
         aria-label={t("openMenu")}
         aria-expanded={open}
-        className="border-border bg-muted text-tx-mute flex h-10 w-10 items-center justify-center rounded-[10px] border"
+        className="border-border bg-muted text-tx-mute flex h-11 w-11 items-center justify-center rounded-[10px] border"
       >
         {open ? <X size={18} /> : <Menu size={18} />}
       </button>
