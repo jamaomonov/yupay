@@ -85,16 +85,6 @@ export function AccountMenu({ locale }: Props) {
           className="border-border bg-card/95 absolute right-0 top-11 z-40 min-w-[11rem] overflow-hidden rounded-xl border p-1 shadow-2xl backdrop-blur-xl"
         >
           <Link
-            href={`/${locale}/account`}
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-            }}
-            className="text-tx-mute hover:bg-card-2 hover:text-foreground flex w-full items-center rounded-lg px-3 py-2 text-sm transition"
-          >
-            {t("account")}
-          </Link>
-          <Link
             href={`/${locale}/account/orders`}
             role="menuitem"
             onClick={() => {

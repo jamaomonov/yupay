@@ -1,29 +1,39 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { use, useEffect } from "react";
 
-import type { OrderListOut } from "@/lib/orders-types";
+import type { OrderListOut, OrderOut } from "@/lib/orders-types";
 
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { apiFetch } from "@/lib/client";
 import { useLoginModal } from "@/store/useLoginModal";
 
-const STATUS_LABELS: Record<string, string> = {
-  pending_payment: "Ожидает оплаты",
-  paid: "Оплачен",
-  fulfilling: "Выполняется",
-  fulfilled: "Выполнен",
-  delivered: "Доставлен",
-  failed: "Ошибка",
-  cancelled: "Отменён",
-  expired: "Истёк",
-  refunded: "Возврат",
-  partially_refunded: "Частичный возврат",
+const STATUS: Record<string, { label: string; cls: string }> = {
+  pending_payment: { label: "Ожидает оплаты", cls: "bg-amber-500/15 text-amber-400" },
+  paid: { label: "Оплачен", cls: "bg-emerald-500/15 text-emerald-400" },
+  fulfilling: { label: "Выполняется", cls: "bg-sky-500/15 text-sky-400" },
+  fulfilled: { label: "Выполнен", cls: "bg-emerald-500/15 text-emerald-400" },
+  delivered: { label: "Доставлен", cls: "bg-emerald-500/15 text-emerald-400" },
+  failed: { label: "Ошибка", cls: "bg-red-500/15 text-red-400" },
+  cancelled: { label: "Отменён", cls: "bg-tx-dim/15 text-tx-dim" },
+  expired: { label: "Истёк", cls: "bg-tx-dim/15 text-tx-dim" },
+  refunded: { label: "Возврат", cls: "bg-tx-dim/15 text-tx-dim" },
+  partially_refunded: { label: "Частичный возврат", cls: "bg-tx-dim/15 text-tx-dim" },
 };
+
+function orderTitle(o: OrderOut): string {
+  const d = o.items[0]?.display;
+  if (!d) return `Заказ #${o.id.slice(0, 8)}`;
+  const name = d.brand_name || d.product_name;
+  const denom = d.denomination ? ` · ${d.denomination}` : "";
+  const extra = o.items.length > 1 ? ` +${String(o.items.length - 1)}` : "";
+  return `${name}${denom}${extra}`;
+}
 
 export default function OrdersPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = use(params);
@@ -44,67 +54,78 @@ export default function OrdersPage({ params }: { params: Promise<{ locale: strin
     enabled: Boolean(user),
   });
 
-  if (authLoading) {
+  if (authLoading || !user) {
     return (
-      <main className="mx-auto max-w-[560px] px-4 py-16">
-        <p className="text-tx-dim text-sm">Загрузка…</p>
+      <main className="mx-auto max-w-[640px] px-4 pb-24 pt-[120px]">
+        {authLoading && <p className="text-tx-dim text-sm">Загрузка…</p>}
       </main>
     );
   }
 
-  if (!user) {
-    return null;
-  }
+  const items = orders.data?.items ?? [];
+  const settled = !orders.isLoading && !orders.isError;
 
   return (
-    <main className="mx-auto max-w-[560px] px-4 py-16">
-      <div className="mb-6 flex items-center gap-3">
-        <Link
-          href={`/${locale}/account`}
-          className={buttonStyles({ variant: "ghost", size: "xs" })}
-        >
-          ← Аккаунт
-        </Link>
-        <h1 className="font-display text-2xl font-bold tracking-[-0.02em]">Мои заказы</h1>
-      </div>
+    <main className="mx-auto max-w-[640px] px-4 pb-24 pt-[120px]">
+      <h1 className="font-display mb-6 text-3xl font-bold tracking-[-0.02em]">Мои заказы</h1>
 
       {orders.isLoading && <p className="text-tx-dim text-sm">Загрузка заказов…</p>}
 
       {orders.isError && (
-        <p className="text-sm text-red-500">Не удалось загрузить заказы. Попробуйте позже.</p>
+        <p className="text-sm text-red-400">Не удалось загрузить заказы. Попробуйте позже.</p>
       )}
 
-      {orders.data?.items.length === 0 && (
-        <div className="border-border bg-card rounded-2xl border p-8 text-center">
-          <p className="text-tx-dim text-sm">Заказов пока нет.</p>
+      {settled && items.length === 0 && (
+        <div className="border-border bg-card rounded-2xl border p-10 text-center">
+          <p className="text-tx-mute mb-5">Заказов пока нет.</p>
+          <Link href={`/${locale}/store`} className={buttonStyles({ size: "sm" })}>
+            В каталог
+          </Link>
         </div>
       )}
 
-      {(orders.data?.items.length ?? 0) > 0 && (
+      {items.length > 0 && (
         <ul className="space-y-3">
-          {orders.data?.items.map((o) => (
-            <li key={o.id}>
-              <Link
-                href={`/${locale}/orders/${o.id}`}
-                className="border-border bg-card hover:border-tx-dim block rounded-xl border p-4 transition"
-              >
-                <div className="flex items-center justify-between gap-4">
+          {items.map((o) => {
+            const st = STATUS[o.status] ?? { label: o.status, cls: "bg-tx-dim/15 text-tx-dim" };
+            const img = o.items[0]?.display?.image_url;
+            return (
+              <li key={o.id}>
+                <Link
+                  href={`/${locale}/orders/${o.id}`}
+                  className="border-border bg-card hover:border-tx-dim flex items-center gap-4 rounded-2xl border p-4 transition"
+                >
+                  <span className="bg-muted relative h-12 w-12 shrink-0 overflow-hidden rounded-xl">
+                    {img && (
+                      <Image
+                        src={img}
+                        alt=""
+                        fill
+                        unoptimized
+                        sizes="48px"
+                        className="object-contain"
+                      />
+                    )}
+                  </span>
                   <div className="min-w-0 flex-1">
-                    <p className="font-mono text-sm font-semibold">#{o.id.slice(0, 8)}</p>
+                    <p className="text-foreground truncate font-semibold">{orderTitle(o)}</p>
                     <p className="text-tx-dim mt-0.5 text-xs">
+                      #{o.id.slice(0, 8)} ·{" "}
                       {new Intl.DateTimeFormat(locale).format(new Date(o.created_at))}
                     </p>
                   </div>
-                  <div className="flex flex-col items-end gap-0.5">
-                    <span className="text-foreground text-sm font-semibold">${o.total_usd}</span>
-                    <span className="text-tx-dim text-xs">
-                      {STATUS_LABELS[o.status] ?? o.status}
+                  <div className="flex shrink-0 flex-col items-end gap-1.5">
+                    <span className="font-display text-foreground font-bold">${o.total_usd}</span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.cls}`}
+                    >
+                      {st.label}
                     </span>
                   </div>
-                </div>
-              </Link>
-            </li>
-          ))}
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       )}
     </main>

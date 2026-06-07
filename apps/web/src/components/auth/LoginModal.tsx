@@ -2,7 +2,6 @@
 
 import { Mail, X } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -26,7 +25,6 @@ const BOT_ID = process.env.NEXT_PUBLIC_TELEGRAM_BOT_ID;
 
 export function LoginModal({ locale }: { locale: string }) {
   const t = useTranslations("web.auth");
-  const router = useRouter();
   const { isOpen, close } = useLoginModal();
   const { login, register, loginWithTelegram } = useAuth();
   const [screen, setScreen] = useState<"providers" | "email">("providers");
@@ -186,8 +184,9 @@ export function LoginModal({ locale }: { locale: string }) {
                 } else {
                   await login(v.email, v.password);
                 }
+                // Stay on the current page — the header reflects the signed-in
+                // state; no dedicated account page to navigate to.
                 close();
-                router.push(`/${locale}/account`);
               }}
             />
           </div>
