@@ -10,6 +10,7 @@ import type { OrderListOut } from "@/lib/orders-types";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { apiFetch } from "@/lib/client";
+import { useLoginModal } from "@/store/useLoginModal";
 
 const STATUS_LABELS: Record<string, string> = {
   pending_payment: "Ожидает оплаты",
@@ -28,12 +29,14 @@ export default function OrdersPage({ params }: { params: Promise<{ locale: strin
   const { locale } = use(params);
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
+  const openLogin = useLoginModal((s) => s.open);
 
   useEffect(() => {
     if (!authLoading && !user) {
-      router.push(`/${locale}/login`);
+      router.replace(`/${locale}`);
+      openLogin();
     }
-  }, [authLoading, user, router, locale]);
+  }, [authLoading, user, router, locale, openLogin]);
 
   const orders = useQuery({
     queryKey: ["orders"],

@@ -29,13 +29,17 @@ export function LoginModal({ locale }: { locale: string }) {
   const t = useTranslations("web.auth");
   const router = useRouter();
   const { isOpen, close } = useLoginModal();
-  const { login, loginWithTelegram } = useAuth();
+  const { login, register, loginWithTelegram } = useAuth();
   const [screen, setScreen] = useState<"providers" | "email">("providers");
+  const [mode, setMode] = useState<"login" | "register">("login");
   const cardRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    if (isOpen) setScreen("providers");
+    if (isOpen) {
+      setScreen("providers");
+      setMode("login");
+    }
   }, [isOpen]);
 
   // Focus management: move focus into the dialog on open, restore it to the
@@ -177,11 +181,18 @@ export function LoginModal({ locale }: { locale: string }) {
               ← {t("back")}
             </button>
             <AuthForm
-              mode="login"
+              mode={mode}
               locale={locale}
               showTelegram={false}
+              onToggleMode={() => {
+                setMode((m) => (m === "login" ? "register" : "login"));
+              }}
               onSubmit={async (v) => {
-                await login(v.email, v.password);
+                if (mode === "register") {
+                  await register(v.email, v.password, locale);
+                } else {
+                  await login(v.email, v.password);
+                }
                 close();
                 router.push(`/${locale}/account`);
               }}

@@ -23,11 +23,14 @@ export function AuthForm({
   locale,
   onSubmit,
   showTelegram = true,
+  onToggleMode,
 }: {
   mode: "login" | "register";
   locale: string;
   onSubmit: (v: Values) => Promise<void>;
   showTelegram?: boolean;
+  /** Switch between login and register in place (used by the modal). */
+  onToggleMode?: () => void;
 }) {
   const t = useTranslations("web.auth");
   const [error, setError] = useState<string | null>(null);
@@ -80,18 +83,22 @@ export function AuthForm({
       <div className="text-tx-mute flex justify-between text-[13px]">
         {mode === "login" ? (
           <>
-            <Link href={`/${locale}/register`} className="hover:text-tx">
-              {t("toRegister")}
-            </Link>
+            {onToggleMode ? (
+              <button type="button" onClick={onToggleMode} className="hover:text-tx">
+                {t("toRegister")}
+              </button>
+            ) : (
+              <span />
+            )}
             <Link href={`/${locale}/auth/forgot`} className="hover:text-tx">
               {t("forgot")}
             </Link>
           </>
-        ) : (
-          <Link href={`/${locale}/login`} className="hover:text-tx">
+        ) : onToggleMode ? (
+          <button type="button" onClick={onToggleMode} className="hover:text-tx">
             {t("toLogin")}
-          </Link>
-        )}
+          </button>
+        ) : null}
       </div>
 
       {showTelegram && (

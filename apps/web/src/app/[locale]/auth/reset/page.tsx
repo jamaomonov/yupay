@@ -1,15 +1,16 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, use, useState } from "react";
+import { Suspense, useState } from "react";
 
 import { buttonStyles } from "@/lib/button";
 import { ApiError, apiFetch } from "@/lib/client";
+import { useLoginModal } from "@/store/useLoginModal";
 
-function ResetInner({ locale }: { locale: string }) {
+function ResetInner() {
   const token = useSearchParams().get("token");
+  const openLogin = useLoginModal((s) => s.open);
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState<"idle" | "ok" | "invalid" | "error">(
@@ -44,9 +45,9 @@ function ResetInner({ locale }: { locale: string }) {
         <h1 className="font-display mb-6 text-2xl font-bold tracking-[-0.02em]">Пароль изменён</h1>
         <p className="text-[15px] leading-relaxed">
           Ваш пароль успешно изменён.{" "}
-          <Link href={`/${locale}/login`} className="text-primary hover:underline">
+          <button type="button" onClick={openLogin} className="text-primary hover:underline">
             Войти
-          </Link>
+          </button>
         </p>
       </main>
     );
@@ -102,11 +103,10 @@ function ResetFallback() {
   );
 }
 
-export default function ResetPage({ params }: { params: Promise<{ locale: string }> }) {
-  const { locale } = use(params);
+export default function ResetPage() {
   return (
     <Suspense fallback={<ResetFallback />}>
-      <ResetInner locale={locale} />
+      <ResetInner />
     </Suspense>
   );
 }

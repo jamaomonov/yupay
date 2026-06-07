@@ -6,17 +6,20 @@ import { use, useEffect } from "react";
 
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
+import { useLoginModal } from "@/store/useLoginModal";
 
 export default function AccountPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = use(params);
   const { user, isLoading, logout } = useAuth();
   const router = useRouter();
+  const openLogin = useLoginModal((s) => s.open);
 
   useEffect(() => {
     if (!isLoading && !user) {
-      router.push(`/${locale}/login`);
+      router.replace(`/${locale}`);
+      openLogin();
     }
-  }, [isLoading, user, router, locale]);
+  }, [isLoading, user, router, locale, openLogin]);
 
   if (isLoading) {
     return (
