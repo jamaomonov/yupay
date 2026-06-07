@@ -29,7 +29,7 @@
     "badge": "Games & subscriptions · 1 hub",
     "titleLine1": "All your top-ups",
     "titleLine2": "in one place.",
-    "subtitle": "Steam, mobile games and subscriptions — no passwords. UID top-ups in 2 minutes with a 3%+ commission.",
+    "subtitle": "Steam, mobile games and subscriptions — no passwords. UID top-ups in 2 minutes.",
     "ctaPrimary": "Browse catalog",
     "ctaSecondary": "How it works",
     "trustCount": "100,482",
@@ -173,7 +173,7 @@
     "step1Title": "Pick a game",
     "step1Sub": "Find your game in the catalog or via search — from Steam to Telegram Premium.",
     "step2Title": "Enter UID and amount",
-    "step2Sub": "No password — just the public profile ID. Pick a pack and we show what lands after commission.",
+    "step2Sub": "No password — just the public profile ID. Pick a pack and we show exactly what lands.",
     "step3Title": "Pay and you're in",
     "step3Sub": "Card, SBP or crypto. Auto-credit, email receipt, support whenever you need it."
   },
@@ -195,7 +195,7 @@
     "score": "4.9/5",
     "reviewCount": "8,247 reviews",
     "alex": {
-      "quote": "Topped up Steam KZ — money landed in a minute, commission really is lower than the others. Tried plenty of these sites; these guys are the cleanest.",
+      "quote": "Topped up Steam KZ — money landed in a minute, prices really are lower than the others. Tried plenty of these sites; these guys are the cleanest.",
       "name": "Alex_Pro",
       "meta": "Steam · 2 years with us"
     },
@@ -239,12 +239,12 @@
   "cta": {
     "titleLine1": "Ready to get",
     "titleLine2": "back in the game?",
-    "subtitle": "Instant delivery and 24/7 support. First Steam top-up — zero commission.",
+    "subtitle": "Instant delivery and help whenever you need it.",
     "button": "Open catalog",
-    "offerCaption": "commission on your first Steam"
+    "offerCaption": "support, always on"
   },
   "footer": {
-    "tagline": "Instant top-ups for games and subscriptions. No passwords, UID-only. Live since 2024.",
+    "tagline": "Instant top-ups for games and subscriptions. No passwords, UID-only.",
     "followUs": "Follow us",
     "productTitle": "Product",
     "helpTitle": "Help",
@@ -276,7 +276,7 @@
         },
         {
           "h": "Orders and payment",
-          "p": "Orders are placed without signup. Pay by card, Click, Payme, Uzum or USDT. Price and commission are locked at payment time; you see the net amount to be credited before you pay."
+          "p": "Orders are placed without signup. Pay by card, Click, Payme, Uzum or USDT. The price is locked at payment time; you see the net amount to be credited before you pay."
         },
         {
           "h": "Fulfilment",

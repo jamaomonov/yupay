@@ -29,7 +29,7 @@
     "badge": "Oʻyin va obunalar · 1 markaz",
     "titleLine1": "Barcha donat",
     "titleLine2": "bir joyda.",
-    "subtitle": "Steam, mobil oʻyinlar va obunalar — parol kerak emas. UID orqali 2 daqiqada, komissiya 3% dan boshlanadi.",
+    "subtitle": "Steam, mobil oʻyinlar va obunalar — parol kerak emas. UID orqali 2 daqiqada.",
     "ctaPrimary": "Katalogni ochish",
     "ctaSecondary": "Qanday ishlaydi",
     "trustCount": "100 482",
@@ -173,7 +173,7 @@
     "step1Title": "Oʻyinni tanlang",
     "step1Sub": "Katalogdan yoki qidiruv orqali oʻyinni toping — Steam dan Telegram Premium gacha.",
     "step2Title": "UID va summani kiriting",
-    "step2Sub": "Parolsiz — faqat profilning ochiq IDsi. Paketni tanlang, komissiyadan keyin nima keladiganini koʻrsatamiz.",
+    "step2Sub": "Parolsiz — faqat profilning ochiq IDsi. Paketni tanlang, hisobingizga nima tushishini koʻrsatamiz.",
     "step3Title": "Toʻlov va tayyor",
     "step3Sub": "Karta, SBP yoki kripto. Avtomatik tushadi, chek emailga, yordam — istalgan paytda."
   },
@@ -195,7 +195,7 @@
     "score": "4.9/5",
     "reviewCount": "8 247 sharh",
     "alex": {
-      "quote": "Steam KZ ni toʻldirdim — pul bir daqiqada keldi, komissiya rostan boshqalardan past. Koʻp shunday saytlarni sinab koʻrdim — bu yerda eng oddiy ishlaydi.",
+      "quote": "Steam KZ ni toʻldirdim — pul bir daqiqada keldi, narxlar rostan boshqalardan past. Koʻp shunday saytlarni sinab koʻrdim — bu yerda eng oddiy ishlaydi.",
       "name": "Alex_Pro",
       "meta": "Steam · 2 yildan beri"
     },
@@ -239,12 +239,12 @@
   "cta": {
     "titleLine1": "Oʻyinga",
     "titleLine2": "qaytishga tayyormisiz?",
-    "subtitle": "Bir lahzada yetkazib berish va 24/7 yordam. Birinchi Steam toʻldirish — komissiyasiz.",
+    "subtitle": "Bir lahzada yetkazib berish va istalgan vaqtda yordam.",
     "button": "Katalogni ochish",
-    "offerCaption": "birinchi Steamdagi komissiya"
+    "offerCaption": "doimiy yordam"
   },
   "footer": {
-    "tagline": "Oʻyinlar va obunalar uchun bir lahzali toʻldirish. Parol yoʻq, faqat UID. 2024 yildan beri ishlaymiz.",
+    "tagline": "Oʻyinlar va obunalar uchun bir lahzali toʻldirish. Parol yoʻq, faqat UID.",
     "followUs": "Bizni kuzating",
     "productTitle": "Mahsulot",
     "helpTitle": "Yordam",
@@ -276,7 +276,7 @@
         },
         {
           "h": "Buyurtma va toʻlov",
-          "p": "Buyurtma roʻyxatdan oʻtmasdan rasmiylashtiriladi. Toʻlov — karta, Click, Payme, Uzum yoki USDT. Narx va komissiya toʻlov paytida qatʼiylanadi; tushadigan yakuniy summani toʻlovdan oldin koʻrasiz."
+          "p": "Buyurtma roʻyxatdan oʻtmasdan rasmiylashtiriladi. Toʻlov — karta, Click, Payme, Uzum yoki USDT. Narx toʻlov paytida qatʼiylanadi; tushadigan yakuniy summani toʻlovdan oldin koʻrasiz."
         },
         {
           "h": "Bajarilishi",

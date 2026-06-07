@@ -5,10 +5,9 @@ import { getTranslations } from "next-intl/server";
 import { buttonStyles } from "@/lib/button";
 
 /**
- * Closing CTA band — large lime card with a dark counter-CTA. Uses a
- * dotted texture overlay and a giant ‟0%" headline on the right to anchor
- * the offer (free first Steam top-up). Lime gradient → primary-2 to feel
- * like an emissive panel rather than a flat fill.
+ * Closing CTA band — large lime card with a dark counter-CTA. A giant ‟24/7"
+ * headline on the right anchors the always-on support promise. Lime gradient →
+ * primary-2 to feel like an emissive panel rather than a flat fill.
  */
 export async function CtaBand({ locale }: { locale: string }) {
   const t = await getTranslations("web.cta");
@@ -42,8 +41,8 @@ export async function CtaBand({ locale }: { locale: string }) {
             </div>
 
             <div className="relative">
-              <div className="font-display text-bg text-[clamp(5rem,11vw,7.5rem)] font-extrabold leading-[0.8] tracking-[-0.05em]">
-                0%
+              <div className="font-display text-bg text-[clamp(4rem,9vw,6.5rem)] font-extrabold leading-[0.8] tracking-[-0.04em]">
+                24/7
               </div>
               <div className="text-bg/70 mt-1 max-w-[260px] text-base font-semibold">
                 {t("offerCaption")}
