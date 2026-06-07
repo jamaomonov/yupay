@@ -1,5 +1,6 @@
 "use client";
 
+import { LogOut, Package } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
@@ -90,8 +91,9 @@ export function AccountMenu({ locale }: Props) {
             onClick={() => {
               setOpen(false);
             }}
-            className="text-tx-mute hover:bg-card-2 hover:text-foreground flex w-full items-center rounded-lg px-3 py-2 text-sm transition"
+            className="text-tx-mute hover:bg-card-2 hover:text-foreground flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition"
           >
+            <Package size={16} />
             {t("orders")}
           </Link>
           <div className="border-border my-1 border-t" />
@@ -102,8 +104,9 @@ export function AccountMenu({ locale }: Props) {
               setOpen(false);
               logout();
             }}
-            className="text-tx-mute hover:bg-card-2 hover:text-foreground flex w-full items-center rounded-lg px-3 py-2 text-sm transition"
+            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-[#FF6B6B] transition hover:bg-[#FF6B6B]/10"
           >
+            <LogOut size={16} />
             {t("logout")}
           </button>
         </div>
