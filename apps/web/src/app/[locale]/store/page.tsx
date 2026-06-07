@@ -7,6 +7,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { Metadata } from "next";
 
 import { JsonLd } from "@/components/JsonLd";
+import { TrustBand } from "@/components/sections/TrustBand";
 import { BrandCard } from "@/components/store/BrandCard";
 import { routing } from "@/i18n/routing";
 import { getBrands, getCategories, type BrandSummary, type CategoryOut } from "@/lib/catalog";
@@ -200,6 +201,10 @@ export default async function StorePage({
         ) : (
           <p className="text-tx-mute mt-10 text-base">{t("empty")}</p>
         )}
+      </div>
+
+      <div className="mt-16">
+        <TrustBand />
       </div>
     </main>
   );

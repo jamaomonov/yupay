@@ -77,6 +77,24 @@
       }
     }
   },
+  "trust": {
+    "speed": {
+      "title": "Delivery in 1–3 minutes",
+      "sub": "Automatic after payment"
+    },
+    "noPassword": {
+      "title": "No password handover",
+      "sub": "We top up by public UID"
+    },
+    "guarantee": {
+      "title": "Money-back guarantee",
+      "sub": "Not delivered — we refund"
+    },
+    "support": {
+      "title": "Telegram support",
+      "sub": "We help at any step"
+    }
+  },
   "auth": {
     "email": "Email",
     "password": "Password",

@@ -8,6 +8,7 @@ import { HowItWorks } from "@/components/sections/HowItWorks";
 import { MetricsBand } from "@/components/sections/MetricsBand";
 import { Reviews } from "@/components/sections/Reviews";
 import { Ticker } from "@/components/sections/Ticker";
+import { TrustBand } from "@/components/sections/TrustBand";
 
 export default async function HomePage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
@@ -17,6 +18,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
     <>
       <Hero locale={locale} />
       <Ticker />
+      <TrustBand />
       <CatalogBento locale={locale} />
       <HowItWorks />
       <AppShowcase />

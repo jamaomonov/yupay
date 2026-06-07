@@ -77,6 +77,24 @@
       }
     }
   },
+  "trust": {
+    "speed": {
+      "title": "1–3 daqiqada yetkazib berish",
+      "sub": "Toʻlovdan keyin avtomatik"
+    },
+    "noPassword": {
+      "title": "Parolsiz",
+      "sub": "Ommaviy UID orqali toʻldiramiz"
+    },
+    "guarantee": {
+      "title": "Pulni qaytaramiz",
+      "sub": "Tushmasa — toʻlovni qaytaramiz"
+    },
+    "support": {
+      "title": "Telegram qoʻllab-quvvatlash",
+      "sub": "Har bosqichda yordam beramiz"
+    }
+  },
   "auth": {
     "email": "Elektron pochta",
     "password": "Parol",
