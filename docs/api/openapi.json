@@ -282,6 +282,43 @@
         "title": "AdminDevLoginIn",
         "type": "object"
       },
+      "AdminFaqOut": {
+        "description": "Admin-side FAQ view including inactive rows + per-locale translations.",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "brand_id": {
+            "title": "Brand Id",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "translations": {
+            "items": {
+              "$ref": "#/components/schemas/FaqTranslationIn"
+            },
+            "title": "Translations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "brand_id",
+          "sort_order",
+          "active",
+          "translations"
+        ],
+        "title": "AdminFaqOut",
+        "type": "object"
+      },
       "AdminProductOut": {
         "description": "Admin-side product view.",
         "properties": {
@@ -821,6 +858,13 @@
               }
             ],
             "title": "Description"
+          },
+          "faqs": {
+            "items": {
+              "$ref": "#/components/schemas/FaqOut"
+            },
+            "title": "Faqs",
+            "type": "array"
           },
           "hero_image_url": {
             "anyOf": [
@@ -2600,6 +2644,136 @@
           "cost_usdt"
         ],
         "title": "DenomImportIn",
+        "type": "object"
+      },
+      "FaqCreate": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /admin/catalog/brands/{brand_id}/faqs``. Brand comes from the path.",
+        "properties": {
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "sort_order": {
+            "default": 0,
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "translations": {
+            "items": {
+              "$ref": "#/components/schemas/FaqTranslationIn"
+            },
+            "minItems": 1,
+            "title": "Translations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "translations"
+        ],
+        "title": "FaqCreate",
+        "type": "object"
+      },
+      "FaqOut": {
+        "description": "A localised FAQ entry shown on the brand page.",
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "question",
+          "answer"
+        ],
+        "title": "FaqOut",
+        "type": "object"
+      },
+      "FaqTranslationIn": {
+        "additionalProperties": false,
+        "description": "One ``locale`` of a FAQ question/answer.",
+        "properties": {
+          "answer": {
+            "minLength": 1,
+            "title": "Answer",
+            "type": "string"
+          },
+          "locale": {
+            "enum": [
+              "ru",
+              "en",
+              "uz"
+            ],
+            "title": "Locale",
+            "type": "string"
+          },
+          "question": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "locale",
+          "question",
+          "answer"
+        ],
+        "title": "FaqTranslationIn",
+        "type": "object"
+      },
+      "FaqUpdate": {
+        "additionalProperties": false,
+        "description": "Body of ``PATCH /admin/catalog/faqs/{id}``. All fields optional.",
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          },
+          "sort_order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort Order"
+          },
+          "translations": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FaqTranslationIn"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Translations"
+          }
+        },
+        "title": "FaqUpdate",
         "type": "object"
       },
       "ForgotPasswordIn": {
@@ -7949,6 +8123,134 @@
         ]
       }
     },
+    "/api/v1/admin/catalog/brands/{brand_id}/faqs": {
+      "get": {
+        "operationId": "list_brand_faqs_api_v1_admin_catalog_brands__brand_id__faqs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "brand_id",
+            "required": true,
+            "schema": {
+              "title": "Brand Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdminFaqOut"
+                  },
+                  "title": "Response List Brand Faqs Api V1 Admin Catalog Brands  Brand Id  Faqs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Brand Faqs",
+        "tags": [
+          "admin:catalog"
+        ]
+      },
+      "post": {
+        "operationId": "create_faq_api_v1_admin_catalog_brands__brand_id__faqs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "brand_id",
+            "required": true,
+            "schema": {
+              "title": "Brand Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FaqCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminFaqOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Faq",
+        "tags": [
+          "admin:catalog"
+        ]
+      }
+    },
     "/api/v1/admin/catalog/categories": {
       "get": {
         "description": "All categories (incl. inactive) for the admin tree.",
@@ -8172,6 +8474,123 @@
           }
         },
         "summary": "Update Category",
+        "tags": [
+          "admin:catalog"
+        ]
+      }
+    },
+    "/api/v1/admin/catalog/faqs/{faq_id}": {
+      "delete": {
+        "operationId": "delete_faq_api_v1_admin_catalog_faqs__faq_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "faq_id",
+            "required": true,
+            "schema": {
+              "title": "Faq Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Faq",
+        "tags": [
+          "admin:catalog"
+        ]
+      },
+      "patch": {
+        "operationId": "update_faq_api_v1_admin_catalog_faqs__faq_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "faq_id",
+            "required": true,
+            "schema": {
+              "title": "Faq Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FaqUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminFaqOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Faq",
         "tags": [
           "admin:catalog"
         ]

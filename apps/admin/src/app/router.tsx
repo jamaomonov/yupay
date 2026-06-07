@@ -9,6 +9,7 @@ import { AuditPage } from "@/features/audit/AuditPage";
 import { AuthGuard } from "@/features/auth/AuthGuard";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { BrandEditPage } from "@/features/catalog/brands/BrandEditPage";
+import { BrandFaqsPage } from "@/features/catalog/brands/BrandFaqsPage";
 import { BrandsListPage } from "@/features/catalog/brands/BrandsListPage";
 import { CategoriesListPage } from "@/features/catalog/categories/CategoriesListPage";
 import { CategoryEditPage } from "@/features/catalog/categories/CategoryEditPage";
@@ -52,6 +53,7 @@ export const router = createBrowserRouter([
           { path: "/brands", element: <BrandsListPage /> },
           { path: "/brands/new", element: <BrandEditPage /> },
           { path: "/brands/:id", element: <BrandEditPage /> },
+          { path: "/brands/:id/faqs", element: <BrandFaqsPage /> },
           { path: "/products", element: <ProductsListPage /> },
           { path: "/products/new", element: <ProductEditPage /> },
           { path: "/products/:id", element: <ProductEditPage /> },

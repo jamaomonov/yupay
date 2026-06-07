@@ -120,10 +120,26 @@ export default async function BrandPage({
     ],
   };
 
+  const faqs = brand.faqs;
+  // FAQPage structured data — lets Google show the questions as rich results.
+  const faqLd =
+    faqs.length > 0
+      ? {
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          mainEntity: faqs.map((f) => ({
+            "@type": "Question",
+            name: f.question,
+            acceptedAnswer: { "@type": "Answer", text: f.answer },
+          })),
+        }
+      : undefined;
+
   return (
     <main className="relative min-h-screen pb-28 pt-[120px]">
       <JsonLd data={productLd} />
       <JsonLd data={breadcrumbLd} />
+      {faqLd && <JsonLd data={faqLd} />}
 
       <div className="mx-auto max-w-[1100px] px-6 sm:px-10">
         <nav className="text-tx-dim mb-7 flex flex-wrap items-center gap-1.5 font-mono text-[11px]">
@@ -210,6 +226,28 @@ export default async function BrandPage({
             <p className="text-tx-mute">{t("empty")}</p>
           )}
         </div>
+
+        {faqs.length > 0 && (
+          <section className="mt-16 scroll-mt-[88px]">
+            <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t("faqTitle")}</h2>
+            <div className="border-border/70 mt-5 max-w-[760px] border-y">
+              {faqs.map((f) => (
+                <details key={f.id} className="border-border/70 group border-b last:border-b-0">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-[15px] font-semibold [&::-webkit-details-marker]:hidden">
+                    {f.question}
+                    <ChevronRight
+                      size={16}
+                      className="text-tx-dim shrink-0 transition group-open:rotate-90"
+                    />
+                  </summary>
+                  <p className="text-tx-mute -mt-1 pb-4 pr-8 text-[15px] leading-relaxed">
+                    {f.answer}
+                  </p>
+                </details>
+              ))}
+            </div>
+          </section>
+        )}
       </div>
     </main>
   );

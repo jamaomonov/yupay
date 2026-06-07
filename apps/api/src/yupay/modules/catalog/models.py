@@ -113,6 +113,12 @@ class Brand(Base):
         lazy="selectin",
         order_by="Product.sort_order",
     )
+    faqs: Mapped[list[BrandFaq]] = relationship(
+        back_populates="brand",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="BrandFaq.sort_order",
+    )
 
 
 class BrandTranslation(Base):
@@ -133,6 +139,59 @@ class BrandTranslation(Base):
     __table_args__ = (PrimaryKeyConstraint("brand_id", "locale", name="pk_brand_translations"),)
 
     brand: Mapped[Brand] = relationship(back_populates="translations")
+
+
+class BrandFaq(Base):
+    """A single FAQ entry attached to a brand.
+
+    Rendered as an accordion on the brand page and emitted as ``FAQPage``
+    structured data so the questions can win FAQ rich results in search.
+    """
+
+    __tablename__ = "brand_faqs"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
+    brand_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("brands.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+
+    brand: Mapped[Brand] = relationship(back_populates="faqs")
+    translations: Mapped[list[BrandFaqTranslation]] = relationship(
+        back_populates="faq",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+
+class BrandFaqTranslation(Base):
+    """Localised question/answer for a brand FAQ entry."""
+
+    __tablename__ = "brand_faq_translations"
+
+    brand_faq_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("brand_faqs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    locale: Mapped[str] = mapped_column(String(8), nullable=False)
+    question: Mapped[str] = mapped_column(String(512), nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+
+    __table_args__ = (
+        PrimaryKeyConstraint("brand_faq_id", "locale", name="pk_brand_faq_translations"),
+    )
+
+    faq: Mapped[BrandFaq] = relationship(back_populates="translations")
 
 
 class Product(Base):

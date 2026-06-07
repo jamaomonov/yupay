@@ -73,9 +73,16 @@ export interface ProductSummary {
   starting_display_price: PriceOut | null;
 }
 
+export interface Faq {
+  id: string;
+  question: string;
+  answer: string;
+}
+
 export interface BrandDetail extends BrandSummary {
   description: string | null;
   products: ProductSummary[];
+  faqs: Faq[];
 }
 
 export interface ProductDetail extends ProductSummary {

@@ -4,7 +4,7 @@ import { Button, Input } from "@yupay/ui";
 import { Trash2 } from "lucide-react";
 import { useEffect } from "react";
 import { Controller, useForm, useFieldArray } from "react-hook-form";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { z } from "zod";
 
 import type { Brand, Category } from "../types";
@@ -152,6 +152,13 @@ export function BrandEditPage() {
         description="Бренд = игра/сервис/вендор, который видит покупатель."
         actions={
           <>
+            {!isNew && (
+              <Link to={`/brands/${params.id ?? ""}/faqs`}>
+                <Button type="button" variant="ghost">
+                  FAQ
+                </Button>
+              </Link>
+            )}
             {!isNew && (
               <Button
                 type="button"

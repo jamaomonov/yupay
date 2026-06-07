@@ -127,6 +127,14 @@ class ProductDetailOut(BaseModel):
     skus: list[SkuOut]
 
 
+class FaqOut(BaseModel):
+    """A localised FAQ entry shown on the brand page."""
+
+    id: str
+    question: str
+    answer: str
+
+
 class BrandDetailOut(BaseModel):
     """Full brand page payload: brand metadata + all its active products."""
 
@@ -143,6 +151,7 @@ class BrandDetailOut(BaseModel):
     accent_color: str | None
     maintenance: bool = False
     products: list[ProductSummaryOut]
+    faqs: list[FaqOut] = Field(default_factory=list)
 
 
 class CategoryListOut(BaseModel):

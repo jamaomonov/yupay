@@ -19,6 +19,8 @@ from yupay.core.errors import ConflictError, NotFoundError
 from yupay.core.ids import new_id
 from yupay.modules.catalog.models import (
     Brand,
+    BrandFaq,
+    BrandFaqTranslation,
     BrandTranslation,
     Category,
     CategoryTranslation,
@@ -34,6 +36,8 @@ if TYPE_CHECKING:
         BrandUpdate,
         CategoryCreate,
         CategoryUpdate,
+        FaqCreate,
+        FaqUpdate,
         ProductCreate,
         ProductUpdate,
         SkuCreate,
@@ -203,6 +207,69 @@ async def update_brand(db: AsyncSession, brand_id: str, body: BrandUpdate) -> Br
 
 async def delete_brand(db: AsyncSession, brand_id: str) -> None:
     row = await get_brand(db, brand_id)
+    await db.delete(row)
+    await db.flush()
+
+
+# ---------- brand FAQs ----------
+
+
+async def list_faqs_for_brand(db: AsyncSession, brand_id: str) -> list[BrandFaq]:
+    stmt = (
+        select(BrandFaq)
+        .options(selectinload(BrandFaq.translations))
+        .where(BrandFaq.brand_id == brand_id)
+        .order_by(BrandFaq.sort_order)
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def get_faq(db: AsyncSession, faq_id: str) -> BrandFaq:
+    stmt = (
+        select(BrandFaq).options(selectinload(BrandFaq.translations)).where(BrandFaq.id == faq_id)
+    )
+    row = (await db.execute(stmt)).scalar_one_or_none()
+    if row is None:
+        raise NotFoundError("faq not found")
+    return row
+
+
+async def create_faq(db: AsyncSession, brand_id: str, body: FaqCreate) -> BrandFaq:
+    # Validate the parent brand exists.
+    await get_brand(db, brand_id)
+    row = BrandFaq(
+        id=new_id(),
+        brand_id=brand_id,
+        sort_order=body.sort_order,
+        active=body.active,
+        translations=[
+            BrandFaqTranslation(locale=t.locale, question=t.question, answer=t.answer)
+            for t in body.translations
+        ],
+    )
+    db.add(row)
+    await db.flush()
+    return row
+
+
+async def update_faq(db: AsyncSession, faq_id: str, body: FaqUpdate) -> BrandFaq:
+    row = await get_faq(db, faq_id)
+    for attr in ("sort_order", "active"):
+        value = getattr(body, attr)
+        if value is not None:
+            setattr(row, attr, value)
+    if body.translations is not None:
+        row.translations = [
+            BrandFaqTranslation(locale=t.locale, question=t.question, answer=t.answer)
+            for t in body.translations
+        ]
+    row.updated_at = now()
+    await db.flush()
+    return row
+
+
+async def delete_faq(db: AsyncSession, faq_id: str) -> None:
+    row = await get_faq(db, faq_id)
     await db.delete(row)
     await db.flush()
 

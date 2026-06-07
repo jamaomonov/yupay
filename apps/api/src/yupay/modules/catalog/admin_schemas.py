@@ -106,6 +106,51 @@ class BrandUpdate(BaseModel):
     translations: list[TranslationIn] | None = None
 
 
+# ---------- brand FAQs ----------
+
+
+class FaqTranslationIn(BaseModel):
+    """One ``locale`` of a FAQ question/answer."""
+
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    locale: Literal["ru", "en", "uz"]
+    question: str = Field(min_length=1, max_length=512)
+    answer: str = Field(min_length=1)
+
+
+class FaqCreate(BaseModel):
+    """Body of ``POST /admin/catalog/brands/{brand_id}/faqs``. Brand comes from the path."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    sort_order: int = 0
+    active: bool = True
+    translations: list[FaqTranslationIn] = Field(min_length=1)
+
+
+class FaqUpdate(BaseModel):
+    """Body of ``PATCH /admin/catalog/faqs/{id}``. All fields optional."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    sort_order: int | None = None
+    active: bool | None = None
+    translations: list[FaqTranslationIn] | None = None
+
+
+class AdminFaqOut(BaseModel):
+    """Admin-side FAQ view including inactive rows + per-locale translations."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    brand_id: str
+    sort_order: int
+    active: bool
+    translations: list[FaqTranslationIn]
+
+
 # ---------- products ----------
 
 
@@ -297,6 +342,7 @@ class BulkUzsPriceOut(BaseModel):
 __all__ = [
     "AdminBrandOut",
     "AdminCategoryOut",
+    "AdminFaqOut",
     "AdminProductOut",
     "AdminSkuOut",
     "BrandCreate",
@@ -305,6 +351,9 @@ __all__ = [
     "CategoryCreate",
     "CategoryTranslationIn",
     "CategoryUpdate",
+    "FaqCreate",
+    "FaqTranslationIn",
+    "FaqUpdate",
     "ProductCreate",
     "ProductUpdate",
     "SkuCreate",

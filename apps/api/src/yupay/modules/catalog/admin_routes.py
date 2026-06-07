@@ -17,6 +17,7 @@ from yupay.modules.catalog import admin_service as svc
 from yupay.modules.catalog.admin_schemas import (
     AdminBrandOut,
     AdminCategoryOut,
+    AdminFaqOut,
     AdminProductOut,
     AdminSkuOut,
     BrandCreate,
@@ -24,6 +25,8 @@ from yupay.modules.catalog.admin_schemas import (
     BulkUzsPriceOut,
     CategoryCreate,
     CategoryUpdate,
+    FaqCreate,
+    FaqUpdate,
     ProductCreate,
     ProductUpdate,
     SkuCreate,
@@ -121,6 +124,53 @@ async def delete_brand(
     _admin: Annotated[User, Depends(require_admin)],
 ) -> None:
     await svc.delete_brand(db, brand_id)
+
+
+# ---------- brand FAQs ----------
+
+
+@router.get("/brands/{brand_id}/faqs", response_model=list[AdminFaqOut])
+async def list_brand_faqs(
+    brand_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+) -> list[AdminFaqOut]:
+    return [AdminFaqOut.model_validate(f) for f in await svc.list_faqs_for_brand(db, brand_id)]
+
+
+@router.post(
+    "/brands/{brand_id}/faqs",
+    response_model=AdminFaqOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_faq(
+    brand_id: str,
+    body: FaqCreate,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+) -> AdminFaqOut:
+    row = await svc.create_faq(db, brand_id, body)
+    return AdminFaqOut.model_validate(row)
+
+
+@router.patch("/faqs/{faq_id}", response_model=AdminFaqOut)
+async def update_faq(
+    faq_id: str,
+    body: FaqUpdate,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+) -> AdminFaqOut:
+    row = await svc.update_faq(db, faq_id, body)
+    return AdminFaqOut.model_validate(row)
+
+
+@router.delete("/faqs/{faq_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_faq(
+    faq_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+) -> None:
+    await svc.delete_faq(db, faq_id)
 
 
 # ---------- products ----------

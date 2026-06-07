@@ -12,11 +12,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from yupay.modules.catalog.models import Brand, Category, Product, Sku
+from yupay.modules.catalog.models import Brand, BrandFaq, Category, Product, Sku
 from yupay.modules.catalog.schemas import (
     BrandDetailOut,
     BrandOut,
     CategoryOut,
+    FaqOut,
     FormField,
     PriceOut,
     ProductDetailOut,
@@ -50,6 +51,24 @@ def _pick_translation(
         getattr(chosen, "short_description", None),
         getattr(chosen, "description", None),
     )
+
+
+def _pick_faq(
+    translations: list[Any],
+    locale: str,
+    *,
+    fallback: str = DEFAULT_LOCALE,
+) -> tuple[str, str] | None:
+    """Return ``(question, answer)`` for ``locale``/fallback, or None if untranslated."""
+    by_locale = {t.locale: t for t in translations}
+    chosen = (
+        by_locale.get(locale)
+        or by_locale.get(fallback)
+        or (translations[0] if translations else None)
+    )
+    if chosen is None:
+        return None
+    return (chosen.question, chosen.answer)
 
 
 def _pick_category_translation(translations: list[Any], locale: str) -> tuple[str, str | None]:
@@ -187,6 +206,7 @@ async def get_brand_by_slug(
         select(Brand)
         .options(
             selectinload(Brand.translations),
+            selectinload(Brand.faqs).selectinload(BrandFaq.translations),
             selectinload(Brand.products).selectinload(Product.translations),
             selectinload(Brand.products)
             .selectinload(Product.skus)
@@ -199,6 +219,13 @@ async def get_brand_by_slug(
         return None
 
     name, short_desc, description = _pick_translation(brand.translations, locale)
+
+    faqs_out: list[FaqOut] = []
+    for faq in sorted((f for f in brand.faqs if f.active), key=lambda f: f.sort_order):
+        picked = _pick_faq(faq.translations, locale)
+        if picked is not None:
+            faqs_out.append(FaqOut(id=faq.id, question=picked[0], answer=picked[1]))
+
     products_out: list[ProductSummaryOut] = []
     for product in sorted((p for p in brand.products if p.active), key=lambda p: p.sort_order):
         active_skus = sorted(
@@ -225,6 +252,7 @@ async def get_brand_by_slug(
         accent_color=brand.accent_color,
         maintenance=brand.maintenance,
         products=products_out,
+        faqs=faqs_out,
     )
 
 

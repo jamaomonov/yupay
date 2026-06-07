@@ -41,6 +41,20 @@ export interface Brand {
   translations: Translation[];
 }
 
+export interface FaqTranslation {
+  locale: Locale;
+  question: string;
+  answer: string;
+}
+
+export interface BrandFaq {
+  id: string;
+  brand_id: string;
+  sort_order: number;
+  active: boolean;
+  translations: FaqTranslation[];
+}
+
 export type ProductKind = "top_up" | "voucher";
 export type FieldType = "text" | "email" | "number" | "select";
 

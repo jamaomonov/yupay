@@ -12,6 +12,7 @@ export const qk = {
   category: (id: string) => ["admin", "categories", id] as const,
   brands: () => ["admin", "brands"] as const,
   brand: (id: string) => ["admin", "brands", id] as const,
+  brandFaqs: (brandId: string) => ["admin", "brands", brandId, "faqs"] as const,
   products: (filters?: { brandId?: string | null }) =>
     ["admin", "products", filters?.brandId ?? null] as const,
   product: (id: string) => ["admin", "products", id] as const,
