@@ -78,6 +78,8 @@
     "register": "Create account",
     "emailInvalid": "Please enter a valid email address",
     "passwordShort": "Password must be at least 8 characters",
+    "confirmPassword": "Confirm password",
+    "passwordMismatch": "Passwords do not match",
     "loginError": "Incorrect email or password",
     "registerError": "Could not create account. Please try again.",
     "toRegister": "Create an account",

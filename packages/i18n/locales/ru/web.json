@@ -78,6 +78,8 @@
     "register": "Зарегистрироваться",
     "emailInvalid": "Введите корректный email",
     "passwordShort": "Пароль должен содержать не менее 8 символов",
+    "confirmPassword": "Подтвердите пароль",
+    "passwordMismatch": "Пароли не совпадают",
     "loginError": "Неверный email или пароль",
     "registerError": "Не удалось создать аккаунт. Попробуйте ещё раз.",
     "toRegister": "Создать аккаунт",

@@ -78,6 +78,8 @@
     "register": "Roʻyxatdan oʻtish",
     "emailInvalid": "Toʻgʻri elektron pochta manzilini kiriting",
     "passwordShort": "Parol kamida 8 ta belgidan iborat boʻlishi kerak",
+    "confirmPassword": "Parolni tasdiqlang",
+    "passwordMismatch": "Parollar mos kelmadi",
     "loginError": "Elektron pochta yoki parol notoʻgʻri",
     "registerError": "Akkaunt yaratib boʻlmadi. Qayta urinib koʻring.",
     "toRegister": "Akkaunt yaratish",
