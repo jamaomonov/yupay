@@ -6,6 +6,11 @@ requires-python = ">=3.12"
 dependencies = [
     "yupay",
     "aiogram>=3.13",
+    # Required by aiogram's AiohttpSession whenever a proxy is configured
+    # (TELEGRAM_PROXY_URL) — it builds the connector via aiohttp_socks, which
+    # covers both HTTP and SOCKS proxies. Without it the bot crashes on startup
+    # in environments that route the Bot API through a proxy (e.g. RU hosting).
+    "aiohttp-socks>=0.9",
     "structlog>=24.4",
 ]
 
