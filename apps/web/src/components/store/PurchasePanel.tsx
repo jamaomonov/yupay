@@ -249,13 +249,43 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
             </div>
           </div>
         ))}
+      </div>
 
-        {fields.length > 0 && (
-          <div className="mt-9">
-            <h2 className="font-display text-xl font-bold tracking-[-0.02em]">
-              {t("detailsTitle")}
-            </h2>
-            <div className="mt-4 flex flex-col gap-4">
+      {/* summary + payment + pay */}
+      <aside className="lg:sticky lg:top-[100px] lg:self-start">
+        <div className="border-border rounded-xl border bg-[linear-gradient(135deg,hsl(var(--card)),hsl(var(--bg)))] p-6">
+          <h2 className="font-display text-lg font-bold tracking-[-0.02em]">{t("summaryTitle")}</h2>
+
+          <div className="border-border/70 mt-4 flex items-center justify-between border-b pb-4">
+            {selSku ? (
+              <>
+                <span className="text-[15px] font-semibold">
+                  {selSku.denomination ?? selSku.sku_code}
+                </span>
+                <span className="font-display text-lg font-bold">{skuPrice(locale, selSku)}</span>
+              </>
+            ) : (
+              <span className="text-tx-mute text-sm">{t("selectPack")}</span>
+            )}
+          </div>
+
+          <label className="mt-5 block">
+            <span className="text-tx-mute mb-1.5 block text-[13px] font-semibold">
+              {t("emailLabel")} <span className="text-primary">*</span>
+            </span>
+            <input
+              type="email"
+              value={email}
+              placeholder={t("emailPlaceholder")}
+              onChange={(e) => {
+                setEmail(e.target.value);
+              }}
+              className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
+            />
+          </label>
+
+          {fields.length > 0 && (
+            <div className="mt-5 flex flex-col gap-4">
               {fields.map((f) => (
                 <label key={f.key} className="block">
                   <span className="text-tx-mute mb-1.5 block text-[13px] font-semibold">
@@ -295,42 +325,7 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
                 </label>
               ))}
             </div>
-          </div>
-        )}
-      </div>
-
-      {/* summary + payment + pay */}
-      <aside className="lg:sticky lg:top-[100px] lg:self-start">
-        <div className="border-border rounded-xl border bg-[linear-gradient(135deg,hsl(var(--card)),hsl(var(--bg)))] p-6">
-          <h2 className="font-display text-lg font-bold tracking-[-0.02em]">{t("summaryTitle")}</h2>
-
-          <div className="border-border/70 mt-4 flex items-center justify-between border-b pb-4">
-            {selSku ? (
-              <>
-                <span className="text-[15px] font-semibold">
-                  {selSku.denomination ?? selSku.sku_code}
-                </span>
-                <span className="font-display text-lg font-bold">{skuPrice(locale, selSku)}</span>
-              </>
-            ) : (
-              <span className="text-tx-mute text-sm">{t("selectPack")}</span>
-            )}
-          </div>
-
-          <label className="mt-5 block">
-            <span className="text-tx-mute mb-1.5 block text-[13px] font-semibold">
-              {t("emailLabel")} <span className="text-primary">*</span>
-            </span>
-            <input
-              type="email"
-              value={email}
-              placeholder={t("emailPlaceholder")}
-              onChange={(e) => {
-                setEmail(e.target.value);
-              }}
-              className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
-            />
-          </label>
+          )}
 
           <div className="mt-5">
             <span className="text-tx-mute mb-2 block text-[13px] font-semibold">
