@@ -25,6 +25,7 @@ yupay.uz, www.yupay.uz {
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Permissions-Policy "interest-cohort=()"
+		Content-Security-Policy "script-src 'self' https://telegram.org https://*.telegram.org; style-src 'self' https://telegram.org https://*.telegram.org;"
 	}
 	# Force the canonical apex so SEO does not split between yupay.uz / www.
 	@redirectWww host www.yupay.uz
