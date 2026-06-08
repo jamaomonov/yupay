@@ -32,7 +32,7 @@ jobs:
             build_args: |
               NEXT_PUBLIC_API_BASE_URL=https://api.yupay.uz
               NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=yupayapp_bot
-              NEXT_PUBLIC_TELEGRAM_BOT_ID=
+              NEXT_PUBLIC_TELEGRAM_BOT_ID=8702808191
           - image: miniapp
             dockerfile: infra/docker/miniapp.Dockerfile
             build_args: |
