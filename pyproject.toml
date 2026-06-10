@@ -195,8 +195,15 @@ markers = [
 ]
 
 [tool.coverage.run]
-branch = true
 source = ["apps"]
+# sys.monitoring tracer, line coverage only. The default ctrace core loses
+# the trace after the first ``await db.execute(...)`` in a frame
+# (SQLAlchemy's async engine hops through greenlets) and silently
+# undercounted every service-layer function by 20-40 points;
+# ``concurrency = greenlet`` did not help. branch coverage must stay off:
+# on Python 3.12 it forces a fallback to the broken ctrace core — honest
+# line numbers beat strict-looking-but-wrong branch numbers.
+core = "sysmon"
 omit = [
     "**/migrations/*",
     "**/generated/*",
@@ -206,9 +213,9 @@ omit = [
 [tool.coverage.report]
 show_missing = true
 skip_covered = false
-# Ratchet floor — keep in sync with --cov-fail-under in ci.yml. The AGENTS.md
-# §8 target is 80%; raise this every time coverage lands above it.
-fail_under = 75
+# Ratchet floor — keep in sync with --cov-fail-under in ci.yml. Already above
+# the AGENTS.md §8 80% target; raise this every time coverage lands above it.
+fail_under = 88
 exclude_lines = [
     "pragma: no cover",
     "raise NotImplementedError",

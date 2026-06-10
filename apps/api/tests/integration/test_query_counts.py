@@ -74,7 +74,7 @@ async def sql_counter(db_engine) -> AsyncIterator[dict[str, int]]:
     """Counts every cursor execution on the engine the app is wired to."""
     holder = {"n": 0}
 
-    def _before(conn, cursor, statement, parameters, context, executemany) -> None:  # noqa: ANN001
+    def _before(conn, cursor, statement, parameters, context, executemany) -> None:
         holder["n"] += 1
 
     sync_engine = db_engine.sync_engine

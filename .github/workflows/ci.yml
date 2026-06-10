@@ -85,6 +85,9 @@ jobs:
       ENVIRONMENT: test
       DATABASE_URL: postgresql+asyncpg://yupay_app:yupay_app@localhost:5432/yupay_test
       REDIS_URL: redis://localhost:6379/0
+      # sys.monitoring tracer — pytest-cov ignores the ``core`` config key,
+      # so the env var does the forcing. See [tool.coverage.run] for why.
+      COVERAGE_CORE: sysmon
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
@@ -92,13 +95,13 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
       - run: uv sync --frozen --all-packages --all-groups
-      # Gate at the *current* baseline (75%) rather than the eventual
-      # target (80%, per AGENTS.md §8); bump this floor every time we ship
-      # coverage above it so the gate never walks backwards. The per-module
-      # ratchet (scripts/check_module_coverage.py) holds the same line for
-      # the critical modules (payments / wallet / fulfillment / inventory /
-      # supplier adapters; target 95%).
-      - run: uv run pytest --cov=apps --cov-report=xml --cov-report=json --cov-fail-under=75
+      # Ratchet at the *current* baseline (88%, line coverage via sysmon —
+      # above the 80% AGENTS.md §8 target); bump this floor every time we
+      # ship coverage above it so the gate never walks backwards. The
+      # per-module ratchet (scripts/check_module_coverage.py) holds the same
+      # line for the critical modules (payments / wallet / fulfillment /
+      # inventory / supplier adapters; target 95%).
+      - run: uv run pytest --cov=apps --cov-report=xml --cov-report=json --cov-fail-under=88
       - run: uv run python scripts/check_module_coverage.py coverage.json
 
   test-ts:

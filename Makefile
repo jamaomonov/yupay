@@ -116,7 +116,7 @@ test: test-py test-ts ## All tests (Python + TS)
 
 .PHONY: test-py
 test-py: ## Python unit + integration tests
-	uv run pytest
+	COVERAGE_CORE=sysmon uv run pytest
 
 .PHONY: test-ts
 test-ts: ## TS tests across all packages and apps
