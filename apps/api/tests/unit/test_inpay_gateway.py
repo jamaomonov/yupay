@@ -92,6 +92,28 @@ async def test_bearer_token_is_cached(_inpay_env: None) -> None:
 
 
 @pytest.mark.asyncio
+async def test_concurrent_intents_authorize_once(_inpay_env: None) -> None:
+    """Two concurrent requests on a cold token cache must not both hit
+    ``/authorization`` — the singleton gateway serialises the refresh."""
+    import asyncio
+
+    class _SlowAuthClient(_FakeClient):
+        async def authorize(self) -> str:  # type: ignore[override]
+            self.authorize_calls += 1
+            await asyncio.sleep(0.01)  # widen the race window
+            return "BEARER"
+
+    fake = _SlowAuthClient()
+    gw = InpayGateway(client=fake)
+    order = SimpleNamespace(id="o1", currency="UZS", total_charged=Decimal("15000"))
+    await asyncio.gather(
+        gw.create_intent(db=cast(Any, None), order=order, return_url=""),
+        gw.create_intent(db=cast(Any, None), order=order, return_url=""),
+    )
+    assert fake.authorize_calls == 1
+
+
+@pytest.mark.asyncio
 async def test_verify_webhook_reverifies_status(_inpay_env: None) -> None:
     gw = InpayGateway(client=_FakeClient())
     # Body claims "failed" but /transactions says "success" — we trust the API.

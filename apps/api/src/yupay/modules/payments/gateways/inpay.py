@@ -221,6 +221,9 @@ class InpayGateway(PaymentGateway):
         # 24h bearer token cached on the singleton gateway instance.
         self._bearer: str | None = None
         self._bearer_exp: float = 0.0
+        # Serialises refreshes: without it, concurrent requests on a cold /
+        # expired cache all hit /authorization and clobber each other's token.
+        self._token_lock = asyncio.Lock()
 
     def _client(self) -> InpayClient:
         if self._client_override is not None:
@@ -234,13 +237,17 @@ class InpayGateway(PaymentGateway):
         )
 
     async def _ensure_token(self, client: InpayClient) -> str:
-        now_m = time.monotonic()
-        if self._bearer and now_m < self._bearer_exp:
+        if self._bearer and time.monotonic() < self._bearer_exp:
             return self._bearer
-        token = await client.authorize()
-        self._bearer = token
-        self._bearer_exp = now_m + _TOKEN_TTL_SECONDS
-        return token
+        async with self._token_lock:
+            # Double-check: the coroutine that held the lock may have already
+            # refreshed while we waited.
+            if self._bearer and time.monotonic() < self._bearer_exp:
+                return self._bearer
+            token = await client.authorize()
+            self._bearer = token
+            self._bearer_exp = time.monotonic() + _TOKEN_TTL_SECONDS
+            return token
 
     @property
     def available(self) -> bool:

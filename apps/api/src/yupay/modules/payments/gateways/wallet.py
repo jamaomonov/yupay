@@ -182,10 +182,12 @@ class WalletGateway:
         except ValidationError as exc:
             raise PaymentGatewayError(f"ledger rejected wallet posting: {exc.detail}") from exc
 
+        # No ``user_id`` here: it maps 1:1 to a Telegram identity, and logs
+        # must never correlate identity with financial activity (AGENTS.md §9).
+        # The ledger txn metadata keeps it for admin-only audit.
         log.info(
             "payments.wallet.charged",
             order_id=order.id,
-            user_id=order.user_id,
             amount=str(amount),
             currency=account.currency,
             wallet_txn_id=txn.id,
