@@ -14,8 +14,10 @@ echo "[restore] decrypting ${src} ..."
 age --decrypt --identity "$BACKUP_AGE_IDENTITY" --output "$tmp_dump" "$src"
 
 echo "[restore] dropping & recreating ${PGDATABASE} ..."
-psql -d postgres -c "DROP DATABASE IF EXISTS ${PGDATABASE};"
-psql -d postgres -c "CREATE DATABASE ${PGDATABASE};"
+# psql :"var" interpolation quotes the identifier server-side — a PGDATABASE
+# with spaces/metacharacters can't break out of the statement.
+psql -d postgres -v db="$PGDATABASE" -c 'DROP DATABASE IF EXISTS :"db";'
+psql -d postgres -v db="$PGDATABASE" -c 'CREATE DATABASE :"db";'
 
 echo "[restore] pg_restore ..."
 pg_restore --no-owner --no-privileges --dbname "$PGDATABASE" "$tmp_dump"

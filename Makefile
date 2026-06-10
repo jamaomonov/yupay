@@ -149,10 +149,10 @@ deploy: ## Deploy via GitHub Actions: make deploy env=prod
 ##@ Ops
 
 .PHONY: backup
-backup: ## Run pg_backup.sh against the prod-compose postgres
-	$(COMPOSE_PROD) run --rm backup /scripts/pg_backup.sh
+backup: ## One-off pg_backup.sh run (the backup service itself runs nightly)
+	$(COMPOSE_PROD) run --rm backup /bin/bash /scripts/pg_backup.sh
 
 .PHONY: restore
 restore: ## Restore DB from backup: make restore file=path
 	@if [ -z "$(file)" ]; then echo "Usage: make restore file=/path/to/backup.dump"; exit 1; fi
-	$(COMPOSE_PROD) run --rm -v $(file):/restore.dump backup /scripts/restore.sh /restore.dump
+	$(COMPOSE_PROD) run --rm -v $(file):/restore.dump backup /bin/bash /scripts/restore.sh /restore.dump

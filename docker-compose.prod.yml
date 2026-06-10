@@ -221,7 +221,10 @@ services:
 
   backup:
     image: alpine:3.20
-    restart: "no"
+    # Long-running: run_nightly.sh sleeps until BACKUP_HOUR_UTC (default 02:00)
+    # and runs pg_backup.sh daily. unless-stopped keeps the schedule alive
+    # across reboots. One-off runs override the command (see `make backup`).
+    restart: unless-stopped
     env_file: /opt/yupay/secrets/backup.env
     volumes:
       - ./infra/backup:/scripts:ro
@@ -231,8 +234,10 @@ services:
       [
         "/bin/sh",
         "-c",
-        "apk add --no-cache postgresql-client age rclone bash && /scripts/pg_backup.sh",
+        'apk add --no-cache postgresql-client age rclone bash >/dev/null && exec "$@"',
+        "--",
       ]
+    command: ["/bin/sh", "/scripts/run_nightly.sh"]
 
 volumes:
   postgres-data:

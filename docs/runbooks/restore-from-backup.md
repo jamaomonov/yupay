@@ -3,6 +3,16 @@
 > Drilled quarterly. If it has been > 90 days since the last drill, the deploy workflow
 > will flag the runbook as stale.
 
+## Where backups come from
+
+The `backup` service in `docker-compose.prod.yml` is long-running
+(`restart: unless-stopped`): `infra/backup/run_nightly.sh` sleeps until
+`BACKUP_HOUR_UTC` (default **02:00 UTC**) and runs `pg_backup.sh`
+(pg_dump → age → rclone → R2) every night. A failed run is logged as
+`[backup] NIGHTLY RUN FAILED` — Loki picks it up; check it after any
+postgres maintenance. `make backup` still works for a one-off run
+(it overrides the container command).
+
 ## Preconditions
 
 - You have `age` key in `~/.config/sops/age/keys.txt`.
