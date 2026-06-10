@@ -750,56 +750,62 @@ async def complete_manual_task(
     item = (
         await db.execute(select(OrderItem).where(OrderItem.id == task.order_item_id))
     ).scalar_one()
+    # Captured before the savepoint: its rollback expires ORM instances, and
+    # touching ``item.id`` in the except-branch would trigger a lazy refresh.
+    order_item_id = item.id
 
-    db.add(
-        Delivery(
-            id=new_id(),
-            order_item_id=item.id,
-            channel=resolved_channel,
-            artifact_kind=artifact_kind,
-            artifact=artifact,
-        )
-    )
-    moment = now()
-    task.status = "succeeded"
-    task.succeeded_at = moment
-    task.last_error = None
-    task.completed_by = admin_id
-    task.admin_note = admin_note
-    task.updated_at = moment
-    new_meta: dict[str, Any] = {}
-    if proof_url is not None and proof_url.strip():
-        new_meta["proof_url"] = proof_url.strip()
-    if force:
-        # Audit marker — the admin overrode a real-supplier task instead
-        # of completing a regular manual one. Surfaced in the activity
-        # feed so it's clear this delivery never passed through the
-        # supplier's fulfilment pipeline.
-        new_meta["force_complete"] = True
-    if new_meta:
-        task.extra_metadata = {**(task.extra_metadata or {}), **new_meta}
-    item.fulfillment_state = "delivered"
-    _record_attempt(
-        db,
-        task=task,
-        kind="fulfill",
-        status="ok",
-        payload={
-            "manual": True,
-            "admin_id": admin_id,
-            **({"force_complete": True} if force else {}),
-        },
-    )
     try:
-        await db.flush()
+        # UNIQUE(order_item_id) on ``deliveries`` is the DB-level idempotency
+        # guarantee — even if two admins race the in-process status guard,
+        # only one row lands. The SAVEPOINT opens BEFORE the Delivery is
+        # added: ``begin_nested()`` autoflushes pending state first, so a
+        # later savepoint would let the failing INSERT poison the outer
+        # transaction instead of rolling back just this block.
+        async with db.begin_nested():
+            db.add(
+                Delivery(
+                    id=new_id(),
+                    order_item_id=item.id,
+                    channel=resolved_channel,
+                    artifact_kind=artifact_kind,
+                    artifact=artifact,
+                )
+            )
+            moment = now()
+            task.status = "succeeded"
+            task.succeeded_at = moment
+            task.last_error = None
+            task.completed_by = admin_id
+            task.admin_note = admin_note
+            task.updated_at = moment
+            new_meta: dict[str, Any] = {}
+            if proof_url is not None and proof_url.strip():
+                new_meta["proof_url"] = proof_url.strip()
+            if force:
+                # Audit marker — the admin overrode a real-supplier task
+                # instead of completing a regular manual one. Surfaced in the
+                # activity feed so it's clear this delivery never passed
+                # through the supplier's fulfilment pipeline.
+                new_meta["force_complete"] = True
+            if new_meta:
+                task.extra_metadata = {**(task.extra_metadata or {}), **new_meta}
+            item.fulfillment_state = "delivered"
+            _record_attempt(
+                db,
+                task=task,
+                kind="fulfill",
+                status="ok",
+                payload={
+                    "manual": True,
+                    "admin_id": admin_id,
+                    **({"force_complete": True} if force else {}),
+                },
+            )
+            await db.flush()
     except IntegrityError as exc:
-        # UNIQUE(order_item_id) on ``deliveries`` is the DB-level
-        # idempotency guarantee — even if two admins race the in-process
-        # status guard, only one row lands.
-        await db.rollback()
         raise ConflictError(
             "item already has a delivery",
-            extra={"order_item_id": item.id},
+            extra={"order_item_id": order_item_id},
         ) from exc
     await _try_settle_order(db, order_id=task.order_id)
     await db.flush()

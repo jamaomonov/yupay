@@ -19,6 +19,12 @@ voucher-warehouse) заглушены — слоты зарезервирова�
    `FulfillmentAttempt`, обновляет статус task'а, пишет `Delivery` с артефактом.
 5. Когда все tasks `succeeded` — order `fulfilling → delivered`.
 
+> **Manual-завершение и дубликаты.** `complete_manual_task` пишет `Delivery`
+> внутри SAVEPOINT, открытого **до** `db.add(...)`: `begin_nested()` делает
+> autoflush уже накопленного состояния, поэтому поздний savepoint позволил бы
+> упавшему INSERT отравить всю request-транзакцию. Конфликт по
+> `UNIQUE(order_item_id)` откатывает только этот блок и отвечает 409.
+
 ## Контракт `Fulfiller`
 
 ```python
