@@ -83,7 +83,9 @@ stateDiagram-v2
   через `IntegrityError` под SAVEPOINT'ом (`begin_nested`) — дубль откатывает только
   вставку webhook-строки, не всю request-транзакцию. Дубль → 200 `{"status": "duplicate"}`.
 - **Bad signature / shape**: 422 + `ValidationError`. Никогда не отвечаем 200 на
-  невалидный webhook.
+  невалидный webhook. Аудит-строка отказа (`signature_ok=false`) и error-attempt
+  отклонённого рефанда **коммитятся до raise** — иначе откат request-транзакции
+  молча стирал бы след, который код обещает хранить.
 
 ## HTTP
 

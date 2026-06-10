@@ -330,6 +330,9 @@ async def handle_webhook(
                 signature_ok=False,
             )
         )
+        # Commit NOW: the raise below makes the request transaction roll
+        # back, which would silently erase this audit row otherwise.
+        await db.commit()
         raise ValidationError(
             "webhook signature or shape verification failed",
             extra={"provider": gw.provider, "reason": str(exc)},
@@ -641,7 +644,9 @@ async def refund_admin(
                 payload=refund_metadata,
                 error=str(exc),
             )
-            await db.flush()
+            # Commit NOW: the raise below makes the request transaction roll
+            # back, which would silently erase this audit row otherwise.
+            await db.commit()
             raise ConflictError(
                 "payment provider rejected the refund",
                 extra={"reason": str(exc)},
