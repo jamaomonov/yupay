@@ -39,6 +39,7 @@ from yupay.modules.payments.gateways.base import (
     RefundResult,
     WebhookEvent,
     WebhookOutcome,
+    to_wire_amount,
 )
 
 if TYPE_CHECKING:
@@ -164,7 +165,7 @@ class OctoClient:
             "auto_capture": auto_capture,
             "init_time": init_time,
             "test": test,
-            "total_sum": float(total_sum),
+            "total_sum": to_wire_amount(total_sum),
             "currency": currency,
             "description": description,
             "return_url": return_url,
@@ -198,7 +199,7 @@ class OctoClient:
             {
                 "octo_payment_UUID": octo_payment_uuid,
                 "shop_refund_id": shop_refund_id,
-                "amount": float(amount),
+                "amount": to_wire_amount(amount),
             },
         )
         d = data.get("data") or data

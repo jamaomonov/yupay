@@ -28,6 +28,28 @@ class PaymentNotIntegratedError(NotImplementedError):
     """Raised by stub adapters that haven't been hooked up to a real provider yet."""
 
 
+def to_wire_amount(amount: Decimal) -> float:
+    """Convert a money ``Decimal`` to the JSON number a provider API expects.
+
+    ``json.dumps`` renders a float via ``repr`` (shortest round-trip), so the
+    wire text is exact only when ``Decimal(repr(float(amount))) == amount``.
+    Raises instead of silently sending a different amount than agreed.
+
+    Args:
+        amount: Quantized major-unit amount (e.g. ``Decimal("1000.00")``).
+
+    Returns:
+        A float whose JSON serialisation parses back to exactly ``amount``.
+
+    Raises:
+        PaymentGatewayError: If the amount is not exactly representable.
+    """
+    wire = float(amount)
+    if Decimal(repr(wire)) != amount:
+        raise PaymentGatewayError(f"amount {amount} is not exactly representable as a JSON number")
+    return wire
+
+
 @dataclass(frozen=True)
 class PaymentIntent:
     """What a successful ``create_intent`` returns."""

@@ -41,6 +41,7 @@ from yupay.modules.payments.gateways.base import (
     RefundResult,
     WebhookEvent,
     WebhookOutcome,
+    to_wire_amount,
 )
 
 if TYPE_CHECKING:
@@ -168,7 +169,7 @@ class InpayClient:
         body: dict[str, Any] = {
             "merchant_id": self._merchant_id,
             "token": self._merchant_token,
-            "amount": float(amount),
+            "amount": to_wire_amount(amount),
             "description": description,
             "callback_url": callback_url,
         }
