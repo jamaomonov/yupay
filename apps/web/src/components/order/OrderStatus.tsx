@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import type { OrderOut } from "@/lib/orders-types";
 
@@ -23,6 +24,7 @@ interface DeliveryListOut {
 }
 
 export function OrderStatus({ orderId, email }: { orderId: string; email?: string }) {
+  const t = useTranslations("web.orders");
   const suffix = email ? `?email=${encodeURIComponent(email)}` : "";
 
   const order = useQuery({
@@ -39,13 +41,17 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
     queryFn: () => apiFetch<DeliveryListOut>(`/orders/${orderId}/deliveries${suffix}`),
   });
 
-  if (order.isLoading) return <p className="text-tx-mute">Загрузка…</p>;
-  if (order.isError || !order.data) return <p className="text-[#FF6B6B]">Заказ не найден.</p>;
+  if (order.isLoading) return <p className="text-tx-mute">{t("loading")}</p>;
+  if (order.isError || !order.data) return <p className="text-[#FF6B6B]">{t("notFound")}</p>;
 
   return (
     <div className="border-border bg-card rounded-2xl border p-6">
       <p className="text-tx-dim font-mono text-xs">#{order.data.id.slice(0, 8)}</p>
-      <h2 className="font-display mt-2 text-xl font-bold">{statusLabel(order.data.status)}</h2>
+      <h2 className="font-display mt-2 text-xl font-bold">
+        {KNOWN_STATUSES.has(order.data.status)
+          ? t(`status.${order.data.status}`)
+          : order.data.status}
+      </h2>
 
       {status === "delivered" &&
         deliveries.data?.items.map((d) => (
@@ -57,18 +63,16 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
   );
 }
 
-function statusLabel(s: string): string {
-  const map: Record<string, string> = {
-    pending_payment: "Ожидает оплаты",
-    paid: "Оплачено",
-    fulfilling: "Выполняется",
-    fulfilled: "Готово",
-    delivered: "Доставлено",
-    failed: "Ошибка",
-    refunded: "Возврат",
-    partially_refunded: "Частичный возврат",
-    cancelled: "Отменён",
-    expired: "Истёк",
-  };
-  return map[s] ?? s;
-}
+/** Statuses with a ``web.orders.status.*`` catalog entry; raw codes fall through. */
+const KNOWN_STATUSES = new Set([
+  "pending_payment",
+  "paid",
+  "fulfilling",
+  "fulfilled",
+  "delivered",
+  "failed",
+  "refunded",
+  "partially_refunded",
+  "cancelled",
+  "expired",
+]);

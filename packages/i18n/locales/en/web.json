@@ -386,5 +386,27 @@
         }
       ]
     }
+  },
+  "orders": {
+    "title": "My orders",
+    "loading": "Loading…",
+    "listLoading": "Loading orders…",
+    "listError": "Couldn't load your orders. Please try again later.",
+    "empty": "No orders yet.",
+    "toCatalog": "Browse catalog",
+    "notFound": "Order not found.",
+    "fallbackTitle": "Order #{id}",
+    "status": {
+      "pending_payment": "Awaiting payment",
+      "paid": "Paid",
+      "fulfilling": "Processing",
+      "fulfilled": "Fulfilled",
+      "delivered": "Delivered",
+      "failed": "Failed",
+      "cancelled": "Cancelled",
+      "expired": "Expired",
+      "refunded": "Refunded",
+      "partially_refunded": "Partially refunded"
+    }
   }
 }

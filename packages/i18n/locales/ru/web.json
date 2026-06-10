@@ -386,5 +386,27 @@
         }
       ]
     }
+  },
+  "orders": {
+    "title": "Мои заказы",
+    "loading": "Загрузка…",
+    "listLoading": "Загрузка заказов…",
+    "listError": "Не удалось загрузить заказы. Попробуйте позже.",
+    "empty": "Заказов пока нет.",
+    "toCatalog": "В каталог",
+    "notFound": "Заказ не найден.",
+    "fallbackTitle": "Заказ #{id}",
+    "status": {
+      "pending_payment": "Ожидает оплаты",
+      "paid": "Оплачен",
+      "fulfilling": "Выполняется",
+      "fulfilled": "Выполнен",
+      "delivered": "Доставлен",
+      "failed": "Ошибка",
+      "cancelled": "Отменён",
+      "expired": "Истёк",
+      "refunded": "Возврат",
+      "partially_refunded": "Частичный возврат"
+    }
   }
 }

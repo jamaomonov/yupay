@@ -386,5 +386,27 @@
         }
       ]
     }
+  },
+  "orders": {
+    "title": "Buyurtmalarim",
+    "loading": "Yuklanmoqda…",
+    "listLoading": "Buyurtmalar yuklanmoqda…",
+    "listError": "Buyurtmalarni yuklab boʻlmadi. Keyinroq urinib koʻring.",
+    "empty": "Hozircha buyurtmalar yoʻq.",
+    "toCatalog": "Katalogga oʻtish",
+    "notFound": "Buyurtma topilmadi.",
+    "fallbackTitle": "Buyurtma #{id}",
+    "status": {
+      "pending_payment": "Toʻlov kutilmoqda",
+      "paid": "Toʻlandi",
+      "fulfilling": "Bajarilmoqda",
+      "fulfilled": "Bajarildi",
+      "delivered": "Yetkazildi",
+      "failed": "Xatolik",
+      "cancelled": "Bekor qilindi",
+      "expired": "Muddati oʻtdi",
+      "refunded": "Qaytarildi",
+      "partially_refunded": "Qisman qaytarildi"
+    }
   }
 }

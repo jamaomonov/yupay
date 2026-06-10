@@ -1,5 +1,6 @@
 "use client";
 
+import { formatMoney } from "@yupay/utils";
 import { ArrowUpRight, Check, Loader2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -36,7 +37,7 @@ const METHODS: Method[] = [
 
 function skuPrice(locale: string, sku: SkuOut): string {
   if (sku.display_price) return formatUzs(locale, Math.round(Number(sku.display_price.amount)));
-  return `$${sku.price_usd}`;
+  return formatMoney(sku.price_usd, "USD", locale);
 }
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
