@@ -24,18 +24,33 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     steps:
+      # The tag is a free-form dispatch input. Validate the shape here and
+      # pass it to the remote script as an env var (never interpolate
+      # ${{ }} into shell text — that is a command-injection vector).
+      - name: Validate image tag
+        env:
+          IMAGE_TAG_INPUT: ${{ inputs.image_tag }}
+        run: |
+          if ! printf '%s' "$IMAGE_TAG_INPUT" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$'; then
+            echo "::error::invalid image_tag: must match ^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$"
+            exit 1
+          fi
+
       - name: SSH deploy
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          IMAGE_TAG_INPUT: ${{ inputs.image_tag }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: IMAGE_TAG_INPUT
           script: |
             set -euo pipefail
             cd /opt/yupay
             git fetch --all --tags
-            git checkout "${{ inputs.image_tag }}" || git checkout main
-            export IMAGE_TAG="${{ inputs.image_tag }}"
+            git checkout "$IMAGE_TAG_INPUT" || git checkout main
+            export IMAGE_TAG="$IMAGE_TAG_INPUT"
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
             docker compose -f docker-compose.prod.yml up -d --remove-orphans

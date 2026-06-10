@@ -223,7 +223,7 @@ yupay/
 - Auth tokens: short-lived access (15 min EdDSA JWT), rotating refresh (30 days), revocable
   via a server-side hash blocklist.
 - Rate limit every public endpoint at both Caddy and FastAPI (slowapi).
-- `gitleaks` runs pre-commit; CodeQL runs weekly in CI.
+- `gitleaks` runs pre-commit; CodeQL is wired up but manual-only while the repo is private without GHAS (the scan API rejects it) — switch `codeql.yml` to a weekly cron when the repo goes public or GHAS is purchased.
 
 ---
 

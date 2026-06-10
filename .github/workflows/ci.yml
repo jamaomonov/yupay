@@ -28,7 +28,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile=false
+      - run: pnpm install --frozen-lockfile
       - run: pnpm exec commitlint --from origin/${{ github.base_ref }} --to HEAD --verbose
 
   lint-py:
@@ -57,7 +57,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile=false
+      - run: pnpm install --frozen-lockfile
       - run: pnpm exec turbo run lint typecheck
       - run: pnpm exec prettier --check .
 
@@ -111,7 +111,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile=false
+      - run: pnpm install --frozen-lockfile
       - run: pnpm exec turbo run test
 
   openapi-drift:
@@ -131,7 +131,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: uv sync --frozen --all-packages --all-groups
-      - run: pnpm install --frozen-lockfile=false
+      - run: pnpm install --frozen-lockfile
       - run: |
           cd apps/api && uv run python -m yupay.scripts.export_openapi ../../docs/api/openapi.json
           cd ../.. && pnpm --filter @yupay/api-client gen:api
