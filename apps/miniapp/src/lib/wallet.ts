@@ -36,27 +36,6 @@ export interface ParsedBalance {
   raw: BalanceOut;
 }
 
-export const ACCOUNT_META: Record<
-  UserAccountKind,
-  { label: string; description: string; tone: "primary" | "amber" | "violet" }
-> = {
-  user_wallet: {
-    label: "Кошелёк",
-    description: "Основной баланс, тратится на любые услуги",
-    tone: "primary",
-  },
-  user_cashback: {
-    label: "Кэшбэк",
-    description: "Возврат за покупки — копится автоматически",
-    tone: "amber",
-  },
-  user_promo_credit: {
-    label: "Промо",
-    description: "Промо-кредиты и реферальные бонусы",
-    tone: "violet",
-  },
-};
-
 /**
  * Account kinds rendered as chips on the wallet page.
  *

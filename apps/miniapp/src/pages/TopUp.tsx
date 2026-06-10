@@ -82,8 +82,17 @@ const PROVIDER_BY_METHOD_FULL: Record<string, string> = {
 };
 
 function formatMoney(value: number, code: string): string {
-  if (code === "USD" || code === "USDT") return `$${value.toFixed(2)}`;
-  return `${value.toLocaleString(getActiveLocale(), { maximumFractionDigits: 2 })} ${code}`;
+  const locale = getActiveLocale();
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: 2,
+    }).format(value);
+  } catch {
+    // Non-ISO pseudocurrency (USDT) — format the number, suffix the code.
+    return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value)} ${code}`;
+  }
 }
 
 // ─── Step heading ──────────────────────────────────────────────────────────────
