@@ -87,9 +87,9 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_started }
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/healthz || exit 1"]
-      interval: 30s
+    # No compose-level healthcheck: the image (infra/docker/api.Dockerfile)
+    # ships a python-urllib HEALTHCHECK. The old wget override here failed
+    # forever — the slim image has no wget — keeping the service "unhealthy".
 
   worker:
     image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-worker:${IMAGE_TAG:-main}
