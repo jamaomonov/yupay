@@ -35,6 +35,8 @@ flowchart LR
 | **Repudiation**            | Customer disputes order                 | Order events table + ledger trail; all webhooks persisted with `external_event_id` |
 | **Information disclosure** | PII in logs                             | Structured logger redactor; PII fields blocklisted                                 |
 | **Information disclosure** | Voucher codes stolen                    | Codes encrypted at rest (libsodium / pgcrypto)                                     |
+| **Information disclosure** | Prometheus `/metrics` on public API host | Blocked at Caddy (`respond 404`); Prometheus scrapes `api:8000` over the internal docker network only |
+| **Tampering**              | Stored XSS via catalog-sourced JSON-LD (brand names, FAQ) | `serializeJsonLd` escapes `<` so `</script>` can't terminate the tag; storefront CSP pins `default-src`/`object-src`/`base-uri`/`form-action` (`script-src 'unsafe-inline'` remains — forced by Next.js SSG, no per-request nonce possible) |
 | **DoS**                    | Public endpoints flooded                | Caddy rate limit + FastAPI slowapi; CDN in front of catalog later                  |
 | **DoS**                    | Supplier API rate-limited               | Per-supplier outbound token bucket; circuit breaker                                |
 | **EoP**                    | Guest checkout token used outside scope | Token scoped to `email` + `order_id`; backend enforces                             |
