@@ -99,12 +99,13 @@ async def bulk_upload(
             state="available",
             uploaded_by=uploaded_by,
         )
-        db.add(row)
+        # SAVEPOINT: a duplicate rolls back only this row, keeping the codes
+        # already inserted earlier in the batch (and the caller's transaction).
         try:
-            await db.flush()
+            async with db.begin_nested():
+                db.add(row)
+                await db.flush()
         except IntegrityError:
-            await db.rollback()
-            # Re-fetch the existing row's id is unnecessary; we just count it.
             duplicates += 1
             continue
         succeeded += 1

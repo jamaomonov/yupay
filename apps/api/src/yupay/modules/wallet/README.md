@@ -52,6 +52,10 @@ async def admin_adjust(db, *, user_id, kind, currency, amount, reason, idempoten
 
 - Реджектит `len(legs) < 2`, `amount ≤ 0`, валюту, не совпадающую со счётом, frozen-счёт.
 - Реплей по `idempotency_key` возвращает существующую транзакцию (без второго набора проводок).
+- Проигранная гонка (конкурентная вставка того же `idempotency_key` / того же счёта в
+  `ensure_account`) откатывается через SAVEPOINT (`begin_nested`), а не `rollback()` всей
+  сессии — ранее сделанная в той же request-транзакции работа (статус заказа, payment-строки)
+  переживает восстановление.
 
 ## HTTP
 

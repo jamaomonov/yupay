@@ -284,20 +284,22 @@ async def handle_webhook(
         ) from exc
 
     # Idempotency: rely on the partial unique on (provider, external_event_id).
-    db.add(
-        PaymentWebhook(
-            id=new_id(),
-            provider=gw.provider,
-            external_event_id=event.external_event_id,
-            payload=event.raw,
-            signature_ok=True,
-            processed_at=now(),
-        )
-    )
+    # SAVEPOINT: a duplicate must roll back only this insert, never the
+    # caller's request-scoped transaction.
     try:
-        await db.flush()
+        async with db.begin_nested():
+            db.add(
+                PaymentWebhook(
+                    id=new_id(),
+                    provider=gw.provider,
+                    external_event_id=event.external_event_id,
+                    payload=event.raw,
+                    signature_ok=True,
+                    processed_at=now(),
+                )
+            )
+            await db.flush()
     except IntegrityError:
-        await db.rollback()
         log.info(
             "payments.webhook.duplicate",
             provider=provider,

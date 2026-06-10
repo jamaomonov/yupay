@@ -112,11 +112,13 @@ async def ensure_account(
         kind=kind,
         currency=currency,
     )
-    db.add(account)
+    # SAVEPOINT: a lost race must roll back only this insert, never the
+    # caller's request-scoped transaction (order status, payment rows, …).
     try:
-        await db.flush()
+        async with db.begin_nested():
+            db.add(account)
+            await db.flush()
     except IntegrityError:
-        await db.rollback()
         return (await db.execute(stmt)).scalar_one()
     return account
 
@@ -179,22 +181,24 @@ async def post(
         actor=actor,
         extra_metadata=metadata or {},
     )
-    db.add(txn)
-    for leg in legs:
-        db.add(
-            WalletPosting(
-                id=new_id(),
-                transaction_id=txn.id,
-                account_id=leg.account_id,
-                direction=leg.direction,
-                amount=leg.amount,
-                currency=leg.currency,
-            )
-        )
+    # SAVEPOINT: a lost idempotency race must roll back only this txn's
+    # inserts, never the caller's request-scoped transaction.
     try:
-        await db.flush()
+        async with db.begin_nested():
+            db.add(txn)
+            for leg in legs:
+                db.add(
+                    WalletPosting(
+                        id=new_id(),
+                        transaction_id=txn.id,
+                        account_id=leg.account_id,
+                        direction=leg.direction,
+                        amount=leg.amount,
+                        currency=leg.currency,
+                    )
+                )
+            await db.flush()
     except IntegrityError as exc:
-        await db.rollback()
         # Concurrent insert with same key — replay.
         again = (
             await db.execute(

@@ -72,7 +72,8 @@ stateDiagram-v2
 - **Intent**: повторный POST для того же заказа с тем же провайдером возвращает
   существующий pending-payment (без создания нового). Разный провайдер → 409.
 - **Webhook**: `payment_webhooks(provider, external_event_id) UNIQUE` ловит дубли
-  через `IntegrityError`. Дубль → 200 `{"status": "duplicate"}`.
+  через `IntegrityError` под SAVEPOINT'ом (`begin_nested`) — дубль откатывает только
+  вставку webhook-строки, не всю request-транзакцию. Дубль → 200 `{"status": "duplicate"}`.
 - **Bad signature / shape**: 422 + `ValidationError`. Никогда не отвечаем 200 на
   невалидный webhook.
 
