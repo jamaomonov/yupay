@@ -37,7 +37,7 @@ flowchart LR
 | **Information disclosure** | Voucher codes stolen                    | Codes encrypted at rest (libsodium / pgcrypto)                                     |
 | **Information disclosure** | Prometheus `/metrics` on public API host | Blocked at Caddy (`respond 404`); Prometheus scrapes `api:8000` over the internal docker network only |
 | **Tampering**              | Stored XSS via catalog-sourced JSON-LD (brand names, FAQ) | `serializeJsonLd` escapes `<` so `</script>` can't terminate the tag; storefront CSP pins `default-src`/`object-src`/`base-uri`/`form-action` (`script-src 'unsafe-inline'` remains — forced by Next.js SSG, no per-request nonce possible) |
-| **DoS**                    | Public endpoints flooded                | Caddy rate limit + FastAPI slowapi; CDN in front of catalog later                  |
+| **DoS**                    | Public endpoints flooded                | FastAPI slowapi per-IP limit on every route (ADR-0028) + Redis `ip_guard` on auth; Caddy-layer limit pending (stock image lacks `rate_limit`), Cloudflare as escalation |
 | **DoS**                    | Supplier API rate-limited               | Per-supplier outbound token bucket; circuit breaker                                |
 | **EoP**                    | Guest checkout token used outside scope | Token scoped to `email` + `order_id`; backend enforces                             |
 | **EoP**                    | Refresh token leaked                    | Stored hashed in DB; rotation on every use; revocable blocklist                    |

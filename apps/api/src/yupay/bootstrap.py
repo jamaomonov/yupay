@@ -9,9 +9,12 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from yupay.api.v1 import router as v1_router
 from yupay.core.config import Settings, get_settings
@@ -19,6 +22,44 @@ from yupay.core.db import dispose_engine
 from yupay.core.errors import AppError, app_error_handler
 from yupay.core.logging import configure_logging, get_logger
 from yupay.core.redis import close_redis
+
+
+def _client_ip(request: Request) -> str:
+    """Rate-limit key: the client IP as seen by Caddy.
+
+    In prod the API sits behind Caddy, which appends the real client to
+    ``X-Forwarded-For`` — the direct peer is always the proxy, so the first
+    entry is the customer. The API port is not exposed publicly (compose), so
+    the header can't be spoofed around the proxy.
+    """
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _build_limiter(settings: Settings) -> Limiter:
+    """Global per-IP limiter (AGENTS.md §9).
+
+    Storage is per-process memory, NOT Redis: ``limits``' Redis backend is
+    synchronous and would block the event loop on every request. With a
+    single-VPS deploy and a handful of uvicorn workers the per-process
+    approximation (N workers ⇒ ≤ N× the nominal limit) is an acceptable
+    outer circuit breaker; auth endpoints add their own Redis-backed
+    ``ip_guard`` on top. See ADR-0028.
+    """
+    enabled = (
+        settings.rate_limit_enabled
+        if settings.rate_limit_enabled is not None
+        else not settings.is_test
+    )
+    return Limiter(
+        key_func=_client_ip,
+        default_limits=[settings.rate_limit_default],
+        storage_uri="memory://",
+        enabled=enabled,
+        headers_enabled=True,
+    )
 
 
 def _init_sentry(settings: Settings) -> None:
@@ -104,12 +145,19 @@ def create_app() -> FastAPI:
 
     app.add_exception_handler(AppError, app_error_handler)  # type: ignore[arg-type]
 
+    limiter = _build_limiter(settings)
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+    app.add_middleware(SlowAPIMiddleware)
+
     @app.get("/healthz", tags=["meta"], summary="Liveness probe")
+    @limiter.exempt  # type: ignore[untyped-decorator]  # slowapi ships no decorator types
     async def healthz() -> dict[str, str]:
         """Return ``{"status": "ok"}`` if the process is alive."""
         return {"status": "ok"}
 
     @app.get("/readyz", tags=["meta"], summary="Readiness probe")
+    @limiter.exempt  # type: ignore[untyped-decorator]  # slowapi ships no decorator types
     async def readyz() -> dict[str, str]:
         """Return ``{"status": "ready"}`` once all dependencies are reachable.
 

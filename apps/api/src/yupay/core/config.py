@@ -74,6 +74,20 @@ class Settings(BaseSettings):
     # --- broker ---
     dramatiq_broker_url: str = Field(default="redis://localhost:6379/1")
 
+    # --- rate limiting ---
+    rate_limit_enabled: bool | None = Field(
+        default=None,
+        description=(
+            "Force the global per-IP limiter on/off. Unset (None) means "
+            "on everywhere except ENVIRONMENT=test, where the suite would "
+            "trip it instantly."
+        ),
+    )
+    rate_limit_default: str = Field(
+        default="120/minute",
+        description="Default per-IP limit applied to every route (slowapi syntax).",
+    )
+
     # --- auth ---
     jwt_public_key: str = Field(default="")
     jwt_private_key: str = Field(default="")
