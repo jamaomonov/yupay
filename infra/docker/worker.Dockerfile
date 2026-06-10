@@ -24,4 +24,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 ENV PATH="/opt/venv/bin:$PATH"
 WORKDIR /app/apps/worker
 
+# Drop root: the service only reads /app and the venv; nothing is written
+# locally at runtime (logs go to stdout, tmp files to /tmp).
+RUN groupadd --system app && useradd --system --gid app --no-create-home app
+USER app
+
 CMD ["dramatiq", "yupay_worker.main", "--processes", "2", "--threads", "8"]
