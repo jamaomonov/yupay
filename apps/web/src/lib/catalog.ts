@@ -84,7 +84,7 @@ export interface BrandDetail extends BrandSummary {
   // Optional: an older deployed API (or a build prerendering against one) may
   // omit these, so consumers must tolerate `undefined` — not just `null`.
   instructions?: string | null;
-  products: ProductSummary[];
+  products?: ProductSummary[];
   faqs?: Faq[];
 }
 
