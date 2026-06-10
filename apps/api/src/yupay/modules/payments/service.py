@@ -90,15 +90,53 @@ async def _find_active_payment(db: AsyncSession, order_id: str) -> Payment | Non
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
+async def _payment_by_idempotency_key(db: AsyncSession, key: str) -> Payment | None:
+    stmt = (
+        select(Payment)
+        .options(selectinload(Payment.attempts))
+        .where(Payment.idempotency_key == key)
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+def _validate_intent_replay(payment: Payment, *, order_id: str, provider: str) -> Payment:
+    """A replayed key must reference the same request; anything else is misuse."""
+    if payment.order_id != order_id or payment.provider != provider:
+        raise ConflictError(
+            "Idempotency-Key was already used for a different request",
+            extra={"payment_id": payment.id},
+        )
+    return payment
+
+
 async def create_intent(
     db: AsyncSession,
     *,
     order_id: str,
     provider: str,
     return_url: str | None,
+    idempotency_key: str | None = None,
 ) -> Payment:
-    """Create or reuse a payment intent for ``order_id`` via ``provider``."""
+    """Create or reuse a payment intent for ``order_id`` via ``provider``.
+
+    A repeated ``idempotency_key`` replays the original payment — including
+    after the order walked past ``pending_payment`` (the timeout-retry case),
+    where the status guard below would otherwise answer 409.
+    """
+    if idempotency_key is not None:
+        replay = await _payment_by_idempotency_key(db, idempotency_key)
+        if replay is not None:
+            return _validate_intent_replay(replay, order_id=order_id, provider=provider)
+
     order = await _load_order(db, order_id, for_update=True)
+
+    if idempotency_key is not None:
+        # Re-check under the order lock: a concurrent retry that won the race
+        # committed its payment while we waited on FOR UPDATE.
+        replay = await _payment_by_idempotency_key(db, idempotency_key)
+        if replay is not None:
+            return _validate_intent_replay(replay, order_id=order_id, provider=provider)
+
     if order.status != "pending_payment":
         raise ConflictError("order is not awaiting payment", extra={"status": order.status})
 
@@ -147,20 +185,34 @@ async def create_intent(
         intent_url=intent.intent_url,
         external_id=intent.external_id,
         extra_metadata=intent.extra_metadata,
+        idempotency_key=idempotency_key,
     )
-    db.add(payment)
-    _record_attempt(
-        db,
-        payment_id=payment_id,
-        kind="create_intent",
-        status="ok",
-        payload={
-            "external_id": intent.external_id,
-            "intent_url": intent.intent_url,
-            "metadata": intent.extra_metadata,
-        },
-    )
-    await db.flush()
+    # SAVEPOINT: a key collision (concurrent retry, or reuse on another order)
+    # must roll back only this insert, never the request transaction.
+    try:
+        async with db.begin_nested():
+            db.add(payment)
+            _record_attempt(
+                db,
+                payment_id=payment_id,
+                kind="create_intent",
+                status="ok",
+                payload={
+                    "external_id": intent.external_id,
+                    "intent_url": intent.intent_url,
+                    "metadata": intent.extra_metadata,
+                },
+            )
+            await db.flush()
+    except IntegrityError as exc:
+        replay = (
+            await _payment_by_idempotency_key(db, idempotency_key)
+            if idempotency_key is not None
+            else None
+        )
+        if replay is not None:
+            return _validate_intent_replay(replay, order_id=order.id, provider=gw.provider)
+        raise ConflictError("payment could not be created") from exc
 
     # Synchronous gateways (the wallet today; possibly direct-debit
     # crypto later) settle inside ``create_intent`` itself — there's no
@@ -400,125 +452,20 @@ async def get_payment(db: AsyncSession, payment_id: str) -> Payment:
     return payment
 
 
-async def refund_admin(
+async def _book_refund_ledger(
     db: AsyncSession,
     *,
-    payment_id: str,
+    payment: Payment,
+    order: Order,
+    refund_amount: Decimal,
+    reason: str | None,
+    is_full: bool,
     admin_id: str,
-    amount: Decimal | None = None,
-    reason: str | None = None,
-) -> Payment:
-    """Admin-initiated refund.
-
-    Calls the gateway's ``refund`` hook (if implemented), flips the payment to
-    ``refunded`` / ``partially_refunded``, walks the order to ``refunded``, and
-    posts a double-entry on the ledger. The posting depends on how the order
-    was paid (see ADR-0023):
-
-    * External provider (card / Click / Payme / crypto) — money is clawed back
-      through the acquirer, so the refund is booked as a house expense::
-
-          D house_refunds                 amount
-          C provider_clearing:<provider>  amount
-
-    * Wallet — the customer paid from their in-house balance and there is no
-      external leg to settle. The refund is the **exact inverse** of the
-      original ``wallet_payment`` so the money lands straight back in the
-      customer's wallet::
-
-          D user_wallet:<user>            amount   (balance ↑)
-          C house_payments_received       amount   (reverses the receipt)
-
-    ``amount`` defaults to the full charged amount. The skeleton treats any
-    ``amount < payment.amount`` as a partial refund — it does not currently
-    track cumulative refunds, so calling refund_admin twice on the same
-    payment is rejected. Add a ``payment_refunds`` row if you need that.
-    """
-    payment = await get_payment(db, payment_id)
-    if payment.status not in ("succeeded", "partially_refunded"):
-        raise ConflictError(
-            "payment can't be refunded in its current state",
-            extra={"status": payment.status},
-        )
-    refund_amount = amount if amount is not None else payment.amount
-    if refund_amount <= 0:
-        raise ValidationError("refund amount must be positive")
-    if refund_amount > payment.amount:
-        raise ValidationError(
-            "refund amount exceeds payment amount",
-            extra={"amount": str(refund_amount), "max": str(payment.amount)},
-        )
-
-    gw = get_gateway(payment.provider)
-    moment = now()
-    refund_metadata: dict[str, Any] = {
-        "refund_amount": str(refund_amount),
-        "reason": reason or "",
-        "admin_id": admin_id,
-    }
-
-    if gw.available:
-        try:
-            result = await gw.refund(payment=payment, amount=refund_amount)
-            refund_metadata["external_refund_id"] = result.external_refund_id
-            refund_metadata.update(result.extra_metadata)
-        except (PaymentGatewayError, PaymentNotIntegratedError) as exc:
-            _record_attempt(
-                db,
-                payment_id=payment.id,
-                kind="refund",
-                status="error",
-                payload=refund_metadata,
-                error=str(exc),
-            )
-            await db.flush()
-            raise ConflictError(
-                "payment provider rejected the refund",
-                extra={"reason": str(exc)},
-            ) from exc
-    else:
-        # Stubbed provider — record the intent but skip the network call.
-        refund_metadata["dry_run"] = True
-
-    is_full = refund_amount == payment.amount
-    payment.status = "refunded" if is_full else "partially_refunded"
-    payment.updated_at = moment
-    payment.extra_metadata = {**payment.extra_metadata, "last_refund": refund_metadata}
-
-    _record_attempt(
-        db,
-        payment_id=payment.id,
-        kind="refund",
-        status="ok",
-        payload=refund_metadata,
-    )
-
-    # Order: mark refunded only for a full refund. Partial refunds keep the
-    # original status — they're an accounting concern, not an FSM concern.
-    order = (await db.execute(select(Order).where(Order.id == payment.order_id))).scalar_one()
-    if is_full and order.status != "refunded":
-        order.status = "refunded"
-        order.updated_at = moment
-    db.add(
-        OrderEvent(
-            id=new_id(),
-            order_id=order.id,
-            kind="payment.refunded",
-            payload={
-                "payment_id": payment.id,
-                "provider": payment.provider,
-                "amount": str(refund_amount),
-                "full": is_full,
-                "reason": reason or "",
-            },
-            actor=f"admin:{admin_id}",
-        )
-    )
-
-    # Ledger: book the refund through the wallet module. A wallet-funded
-    # payment is reversed straight back to the customer's balance (the exact
-    # inverse of the original ``wallet_payment``); every other provider books
-    # the refund as a house expense against provider clearing. See ADR-0023.
+) -> None:
+    """Book the refund on the ledger. A wallet-funded payment is reversed
+    straight back to the customer's balance (the exact inverse of the original
+    ``wallet_payment``); every other provider books the refund as a house
+    expense against provider clearing. See ADR-0023."""
     if payment.provider == "wallet":
         # Wallet payments always have a logged-in user (the gateway rejects
         # guest orders), so order.user_id is set here.
@@ -599,6 +546,154 @@ async def refund_admin(
             actor=f"admin:{admin_id}",
             metadata={"reason": reason or "", "full": is_full},
         )
+
+
+async def refund_admin(
+    db: AsyncSession,
+    *,
+    payment_id: str,
+    admin_id: str,
+    amount: Decimal | None = None,
+    reason: str | None = None,
+    idempotency_key: str | None = None,
+) -> Payment:
+    """Admin-initiated refund.
+
+    Calls the gateway's ``refund`` hook (if implemented), flips the payment to
+    ``refunded`` / ``partially_refunded``, walks the order to ``refunded``, and
+    posts a double-entry on the ledger. The posting depends on how the order
+    was paid (see ADR-0023):
+
+    * External provider (card / Click / Payme / crypto) — money is clawed back
+      through the acquirer, so the refund is booked as a house expense::
+
+          D house_refunds                 amount
+          C provider_clearing:<provider>  amount
+
+    * Wallet — the customer paid from their in-house balance and there is no
+      external leg to settle. The refund is the **exact inverse** of the
+      original ``wallet_payment`` so the money lands straight back in the
+      customer's wallet::
+
+          D user_wallet:<user>            amount   (balance ↑)
+          C house_payments_received       amount   (reverses the receipt)
+
+    ``amount`` defaults to the full charged amount. The skeleton treats any
+    ``amount < payment.amount`` as a partial refund — it does not currently
+    track cumulative refunds, so calling refund_admin twice on the same
+    payment is rejected. Add a ``payment_refunds`` row if you need that.
+    """
+    # FOR UPDATE serialises concurrent refunds of the same payment so the
+    # replay check below sees the winner's committed metadata, not a stale row.
+    payment = (
+        await db.execute(
+            select(Payment)
+            .options(selectinload(Payment.attempts))
+            .where(Payment.id == payment_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if payment is None:
+        raise NotFoundError("payment not found")
+
+    if idempotency_key is not None:
+        last_refund = (payment.extra_metadata or {}).get("last_refund") or {}
+        if last_refund.get("idempotency_key") == idempotency_key:
+            # Replay: the refund already happened — no gateway call, no
+            # second ledger posting, same payment back.
+            return payment
+
+    if payment.status not in ("succeeded", "partially_refunded"):
+        raise ConflictError(
+            "payment can't be refunded in its current state",
+            extra={"status": payment.status},
+        )
+    refund_amount = amount if amount is not None else payment.amount
+    if refund_amount <= 0:
+        raise ValidationError("refund amount must be positive")
+    if refund_amount > payment.amount:
+        raise ValidationError(
+            "refund amount exceeds payment amount",
+            extra={"amount": str(refund_amount), "max": str(payment.amount)},
+        )
+
+    gw = get_gateway(payment.provider)
+    moment = now()
+    refund_metadata: dict[str, Any] = {
+        "refund_amount": str(refund_amount),
+        "reason": reason or "",
+        "admin_id": admin_id,
+    }
+    if idempotency_key is not None:
+        refund_metadata["idempotency_key"] = idempotency_key
+
+    if gw.available:
+        try:
+            result = await gw.refund(payment=payment, amount=refund_amount)
+            refund_metadata["external_refund_id"] = result.external_refund_id
+            refund_metadata.update(result.extra_metadata)
+        except (PaymentGatewayError, PaymentNotIntegratedError) as exc:
+            _record_attempt(
+                db,
+                payment_id=payment.id,
+                kind="refund",
+                status="error",
+                payload=refund_metadata,
+                error=str(exc),
+            )
+            await db.flush()
+            raise ConflictError(
+                "payment provider rejected the refund",
+                extra={"reason": str(exc)},
+            ) from exc
+    else:
+        # Stubbed provider — record the intent but skip the network call.
+        refund_metadata["dry_run"] = True
+
+    is_full = refund_amount == payment.amount
+    payment.status = "refunded" if is_full else "partially_refunded"
+    payment.updated_at = moment
+    payment.extra_metadata = {**payment.extra_metadata, "last_refund": refund_metadata}
+
+    _record_attempt(
+        db,
+        payment_id=payment.id,
+        kind="refund",
+        status="ok",
+        payload=refund_metadata,
+    )
+
+    # Order: mark refunded only for a full refund. Partial refunds keep the
+    # original status — they're an accounting concern, not an FSM concern.
+    order = (await db.execute(select(Order).where(Order.id == payment.order_id))).scalar_one()
+    if is_full and order.status != "refunded":
+        order.status = "refunded"
+        order.updated_at = moment
+    db.add(
+        OrderEvent(
+            id=new_id(),
+            order_id=order.id,
+            kind="payment.refunded",
+            payload={
+                "payment_id": payment.id,
+                "provider": payment.provider,
+                "amount": str(refund_amount),
+                "full": is_full,
+                "reason": reason or "",
+            },
+            actor=f"admin:{admin_id}",
+        )
+    )
+
+    await _book_refund_ledger(
+        db,
+        payment=payment,
+        order=order,
+        refund_amount=refund_amount,
+        reason=reason,
+        is_full=is_full,
+        admin_id=admin_id,
+    )
 
     # A full refund walks the order to ``refunded`` — cancel any still-open
     # fulfilment task so the saga stops trying to deliver (or stops sitting in

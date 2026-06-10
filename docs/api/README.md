@@ -20,7 +20,9 @@ apps/api  ──▶  FastAPI.openapi()  ──▶  docs/api/openapi.json
 - JSON only; `snake_case` keys; ISO-8601 timestamps; cursor pagination
   (`?cursor=...&limit=...`).
 - Errors are RFC 7807 `problem+json` with stable `type` URIs.
-- All write endpoints accept an `Idempotency-Key` header. **Missing key on a write request → 400.**
+- All write endpoints accept an `Idempotency-Key` header (>=16 chars). Enforced today on
+  `POST /orders`, `POST /payments/intents`, `POST /admin/payments/{id}/refund` —
+  **missing/short key → 422**; a repeated key replays the original result.
 - Money is `{ "amount": "12345.678", "currency": "USD" }` — strings to preserve precision.
 
 ## Auth

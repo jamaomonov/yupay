@@ -172,7 +172,10 @@ async def test_octo_happy_path_to_delivered(
     )
     intent = await integration_client.post(
         "/api/v1/payments/intents",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "ik-octo-payment-flow-01-padpadpad",
+        },
         json={"order_id": order_id, "provider": "octo"},
     )
     assert intent.status_code == 201, intent.text
@@ -209,7 +212,10 @@ async def test_octo_webhook_replay_is_idempotent(
     )
     await integration_client.post(
         "/api/v1/payments/intents",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "ik-octo-payment-flow-02-padpadpad",
+        },
         json={"order_id": order_id, "provider": "octo"},
     )
     payload = _signed_webhook_body(uuid, "succeeded")
@@ -240,7 +246,10 @@ async def test_octo_webhook_bad_signature_rejected(
     )
     await integration_client.post(
         "/api/v1/payments/intents",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "ik-octo-payment-flow-03-padpadpad",
+        },
         json={"order_id": order_id, "provider": "octo"},
     )
     bad = json.dumps({"octo_payment_UUID": uuid, "status": "succeeded", "signature": "deadbeef"})

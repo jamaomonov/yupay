@@ -39,6 +39,9 @@ class Payment(Base):
     currency: Mapped[str] = mapped_column(String(8), nullable=False)
     intent_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     external_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Client retry token; partial UNIQUE (see migration 0023). NULL for old rows
+    # and internal callers (simulate-webhook, tests that hit the service layer).
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     extra_metadata: Mapped[dict[str, Any]] = mapped_column(
         "metadata",
         JSONB,

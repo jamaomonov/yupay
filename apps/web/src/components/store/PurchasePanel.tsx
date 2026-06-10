@@ -153,7 +153,11 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
 
       const intentRes = await fetch(intentsUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...auth },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": crypto.randomUUID(),
+          ...auth,
+        },
         body: JSON.stringify({ order_id: order.id, provider }),
       });
       if (!intentRes.ok) throw new Error("intent");

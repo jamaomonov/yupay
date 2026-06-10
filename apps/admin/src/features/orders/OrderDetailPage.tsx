@@ -72,9 +72,11 @@ export function OrderDetailPage() {
 
   const refund = useMutation<PaymentAdminOut, ApiError, { id: string; reason: string }>({
     mutationFn: ({ id, reason }) =>
-      apiPost<PaymentAdminOut>(`/api/v1/admin/payments/${id}/refund`, {
-        reason,
-      }),
+      apiPost<PaymentAdminOut>(
+        `/api/v1/admin/payments/${id}/refund`,
+        { reason },
+        { "Idempotency-Key": crypto.randomUUID() },
+      ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "orders"] });
       void qc.invalidateQueries({ queryKey: ["admin", "payments"] });

@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
 from yupay.core.config import get_settings
 from yupay.core.errors import UnauthorizedError, ValidationError
+from yupay.core.idempotency import IDEMPOTENCY_HEADER, MIN_IDEMPOTENCY_KEY_LENGTH
 from yupay.modules.admin.api import require_admin
 from yupay.modules.auth import jwt as authjwt
 from yupay.modules.auth.security import email_hash
@@ -43,6 +44,15 @@ admin_webhook_router = APIRouter(
     dependencies=[Depends(require_admin)],
 )
 webhook_router = APIRouter(prefix="/webhooks/payments", tags=["webhooks:payments"])
+
+
+def _require_idempotency_key(idempotency_key: str | None) -> str:
+    if not idempotency_key or len(idempotency_key) < MIN_IDEMPOTENCY_KEY_LENGTH:
+        raise ValidationError(
+            f"Idempotency-Key header is required (>={MIN_IDEMPOTENCY_KEY_LENGTH} chars)",
+            extra={"header": IDEMPOTENCY_HEADER},
+        )
+    return idempotency_key
 
 
 async def _resolve_actor(request: Request, db: AsyncSession) -> Actor:
@@ -97,7 +107,9 @@ async def create_intent_route(
     body: PaymentIntentIn,
     request: Request,
     db: Annotated[AsyncSession, Depends(db_session)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
 ) -> PaymentOut:
+    key = _require_idempotency_key(idempotency_key)
     actor = await _resolve_actor(request, db)
     await _ensure_actor_owns_order(db, actor=actor, order_id=body.order_id)
     payment = await svc.create_intent(
@@ -105,6 +117,7 @@ async def create_intent_route(
         order_id=body.order_id,
         provider=body.provider,
         return_url=body.return_url,
+        idempotency_key=key,
     )
     return PaymentOut.model_validate(payment)
 
@@ -232,13 +245,16 @@ async def admin_refund_payment(
     body: RefundIn,
     db: Annotated[AsyncSession, Depends(db_session)],
     admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
 ) -> PaymentAdminOut:
+    key = _require_idempotency_key(idempotency_key)
     payment = await svc.refund_admin(
         db,
         payment_id=payment_id,
         admin_id=admin.id,
         amount=body.amount,
         reason=body.reason,
+        idempotency_key=key,
     )
     return PaymentAdminOut.model_validate(payment)
 

@@ -170,10 +170,14 @@ export function useCheckout() {
         },
         { idempotencyKey: newIdempotencyKey("order") },
       );
-      const payment = await apiPost<PaymentOut>("/api/v1/payments/intents", {
-        order_id: order.id,
-        provider,
-      });
+      const payment = await apiPost<PaymentOut>(
+        "/api/v1/payments/intents",
+        {
+          order_id: order.id,
+          provider,
+        },
+        { idempotencyKey: newIdempotencyKey("payment") },
+      );
       return { order, payment };
     },
     onSuccess: () => {

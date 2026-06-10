@@ -162,7 +162,10 @@ async def _pay_order(client: AsyncClient, *, token: str, sku_id: str, key_suffix
     order_id = create.json()["id"]
     intent = await client.post(
         "/api/v1/payments/intents",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "ik-inventory-sourcing-routes-01-padpadpad",
+        },
         json={"order_id": order_id, "provider": "mock"},
     )
     external_id = intent.json()["external_id"]

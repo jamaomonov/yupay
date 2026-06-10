@@ -168,9 +168,14 @@ async def _pay_with_wallet(
     token: str,
     order_id: str,
 ) -> tuple[int, dict[str, Any]]:
+    # Fresh key per call: these tests exercise double-tap / concurrency with
+    # *new* requests, not an Idempotency-Key replay of the same one.
     r = await client.post(
         "/api/v1/payments/intents",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": f"ik-wallet-pay-{new_id()}",
+        },
         json={"order_id": order_id, "provider": "wallet"},
     )
     body = r.json() if r.status_code < 500 else {}

@@ -134,7 +134,10 @@ async def _pay_and_fulfill(client: AsyncClient, *, token: str, sku_id: str, key_
     order_id = create.json()["id"]
     intent = await client.post(
         "/api/v1/payments/intents",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "ik-fulfillment-routes-01-padpadpad",
+        },
         json={"order_id": order_id, "provider": "mock"},
     )
     external_id = intent.json()["external_id"]
@@ -345,7 +348,10 @@ async def _pay_to_in_progress(
     order_id = create.json()["id"]
     intent = await client.post(
         "/api/v1/payments/intents",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "ik-fulfillment-routes-02-padpadpad",
+        },
         json={"order_id": order_id, "provider": "mock"},
     )
     external_id = intent.json()["external_id"]

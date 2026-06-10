@@ -80,9 +80,11 @@ export function PaymentsPage() {
 
   const refundMutation = useMutation<PaymentAdminOut, ApiError, { id: string; reason: string }>({
     mutationFn: ({ id, reason }) =>
-      apiPost<PaymentAdminOut>(`/api/v1/admin/payments/${id}/refund`, {
-        reason,
-      }),
+      apiPost<PaymentAdminOut>(
+        `/api/v1/admin/payments/${id}/refund`,
+        { reason },
+        { "Idempotency-Key": crypto.randomUUID() },
+      ),
     onSuccess: (data) => {
       toast.success(`Возврат оформлен → статус: ${data.status}.`);
       void qc.invalidateQueries({ queryKey: ["admin", "payments"] });

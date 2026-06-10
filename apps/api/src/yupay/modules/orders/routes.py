@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
 from yupay.core.errors import UnauthorizedError, ValidationError
-from yupay.core.idempotency import IDEMPOTENCY_HEADER
+from yupay.core.idempotency import IDEMPOTENCY_HEADER, MIN_IDEMPOTENCY_KEY_LENGTH
 from yupay.modules.admin.api import require_admin
 from yupay.modules.auth.deps import current_user
 from yupay.modules.auth.dev_login import DEV_ADMIN_ID
@@ -56,8 +56,7 @@ admin_router = APIRouter(
     dependencies=[Depends(require_admin)],
 )
 
-# Idempotency keys shorter than this are rejected — they're too likely to collide.
-_MIN_IDEMPOTENCY_KEY_LEN = 16
+_MIN_IDEMPOTENCY_KEY_LEN = MIN_IDEMPOTENCY_KEY_LENGTH
 
 
 async def _resolve_actor(

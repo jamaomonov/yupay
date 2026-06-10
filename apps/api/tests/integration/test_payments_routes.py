@@ -157,7 +157,10 @@ async def test_create_intent_for_owned_order(
     )
     r = await integration_client.post(
         "/api/v1/payments/intents",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "ik-payments-routes-01-padpadpad",
+        },
         json={"order_id": order_id, "provider": "mock"},
     )
     assert r.status_code == 201, r.text
@@ -180,7 +183,10 @@ async def test_get_active_payment_by_order(integration_client: AsyncClient, _see
     )
     intent = await integration_client.post(
         "/api/v1/payments/intents",
-        headers={"Authorization": f"Bearer {owner}"},
+        headers={
+            "Authorization": f"Bearer {owner}",
+            "Idempotency-Key": "ik-payments-routes-02-padpadpad",
+        },
         json={"order_id": order_id, "provider": "mock"},
     )
     assert intent.status_code == 201, intent.text
@@ -230,12 +236,12 @@ async def test_create_intent_reuses_pending_payment(
     auth = {"Authorization": f"Bearer {token}"}
     first = await integration_client.post(
         "/api/v1/payments/intents",
-        headers=auth,
+        headers={**auth, "Idempotency-Key": "ik-payments-routes-03-padpadpad"},
         json={"order_id": order_id, "provider": "mock"},
     )
     second = await integration_client.post(
         "/api/v1/payments/intents",
-        headers=auth,
+        headers={**auth, "Idempotency-Key": "ik-payments-routes-04-padpadpad"},
         json={"order_id": order_id, "provider": "mock"},
     )
     assert first.status_code == 201
@@ -251,7 +257,10 @@ async def test_intent_for_other_user_404(integration_client: AsyncClient, _seed_
     )
     r = await integration_client.post(
         "/api/v1/payments/intents",
-        headers={"Authorization": f"Bearer {stranger}"},
+        headers={
+            "Authorization": f"Bearer {stranger}",
+            "Idempotency-Key": "ik-payments-routes-05-padpadpad",
+        },
         json={"order_id": order_id, "provider": "mock"},
     )
     assert r.status_code == 404
@@ -264,7 +273,10 @@ async def test_stub_provider_refuses(integration_client: AsyncClient, _seed_sku:
     )
     r = await integration_client.post(
         "/api/v1/payments/intents",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "ik-payments-routes-06-padpadpad",
+        },
         json={"order_id": order_id, "provider": "click"},
     )
     assert r.status_code == 409
@@ -285,7 +297,10 @@ async def test_webhook_flips_order_to_paid(
     )
     intent = await integration_client.post(
         "/api/v1/payments/intents",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "ik-payments-routes-07-padpadpad",
+        },
         json={"order_id": order_id, "provider": "mock"},
     )
     external_id = intent.json()["external_id"]
@@ -319,7 +334,10 @@ async def test_webhook_replay_is_idempotent(
     )
     intent = await integration_client.post(
         "/api/v1/payments/intents",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "ik-payments-routes-08-padpadpad",
+        },
         json={"order_id": order_id, "provider": "mock"},
     )
     external_id = intent.json()["external_id"]
@@ -374,7 +392,10 @@ async def test_get_payment_owner_only(integration_client: AsyncClient, _seed_sku
     )
     intent = await integration_client.post(
         "/api/v1/payments/intents",
-        headers={"Authorization": f"Bearer {owner}"},
+        headers={
+            "Authorization": f"Bearer {owner}",
+            "Idempotency-Key": "ik-payments-routes-09-padpadpad",
+        },
         json={"order_id": order_id, "provider": "mock"},
     )
     payment_id = intent.json()["id"]
@@ -403,7 +424,10 @@ async def test_admin_can_list_and_simulate_webhook(
     )
     intent = await integration_client.post(
         "/api/v1/payments/intents",
-        headers={"Authorization": f"Bearer {user}"},
+        headers={
+            "Authorization": f"Bearer {user}",
+            "Idempotency-Key": "ik-payments-routes-10-padpadpad",
+        },
         json={"order_id": order_id, "provider": "mock"},
     )
     payment_id = intent.json()["id"]
@@ -487,7 +511,10 @@ async def test_external_refund_books_house_expense_not_wallet(
     )
     intent = await integration_client.post(
         "/api/v1/payments/intents",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "ik-payments-routes-11-padpadpad",
+        },
         json={"order_id": order_id, "provider": "mock"},
     )
     external_id = intent.json()["external_id"]

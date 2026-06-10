@@ -225,7 +225,10 @@ async def _pay_order(
     order_id = create.json()["id"]
     intent = await client.post(
         "/api/v1/payments/intents",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "ik-g2b-fulfillment-01-padpadpad",
+        },
         json={"order_id": order_id, "provider": "mock"},
     )
     assert intent.status_code in (200, 201), intent.text

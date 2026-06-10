@@ -178,7 +178,10 @@ async def test_inpay_happy_path_to_delivered(
     )
     intent = await integration_client.post(
         "/api/v1/payments/intents",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "ik-inpay-payment-flow-01-padpadpad",
+        },
         json={"order_id": order_id, "provider": "inpay"},
     )
     assert intent.status_code == 201, intent.text
@@ -218,7 +221,10 @@ async def test_inpay_webhook_replay_is_idempotent(
     )
     await integration_client.post(
         "/api/v1/payments/intents",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "ik-inpay-payment-flow-02-padpadpad",
+        },
         json={"order_id": order_id, "provider": "inpay"},
     )
     payload = json.dumps({"order_id": inpay_order, "status": "success"})
@@ -251,7 +257,10 @@ async def test_inpay_pending_status_is_noop(
     )
     await integration_client.post(
         "/api/v1/payments/intents",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "ik-inpay-payment-flow-03-padpadpad",
+        },
         json={"order_id": order_id, "provider": "inpay"},
     )
     wh = await integration_client.post(

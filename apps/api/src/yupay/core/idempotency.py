@@ -11,5 +11,8 @@ from __future__ import annotations
 IDEMPOTENCY_HEADER = "Idempotency-Key"
 """Canonical header name."""
 
+MIN_IDEMPOTENCY_KEY_LENGTH = 16
+"""Keys shorter than this are rejected — they're too likely to collide."""
+
 IDEMPOTENCY_KEY_TTL_SECONDS = 24 * 60 * 60
 """How long we remember a response for replay (24 h)."""
