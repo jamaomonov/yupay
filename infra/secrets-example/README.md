@@ -28,6 +28,7 @@ chmod 600 *.env
 | ----------------------- | -------------------------------------------------------------------- |
 | `postgres.env`          | `postgres` container — initial role/db creation                      |
 | `postgres-exporter.env` | `postgres-exporter` container (Prometheus scrape)                    |
+| `redis.env`             | `redis` (requirepass) + `redis-exporter`; password also goes into the Redis URLs in `api.env` |
 | `minio.env`             | `minio` container                                                    |
 | `api.env`               | `api`, `worker`, `scheduler`, `bot` (all share the same runtime env) |
 | `web.env`               | `web` (Next.js storefront) — bundled into the JS, public             |
