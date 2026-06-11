@@ -25,6 +25,8 @@ from yupay.modules.payments.api import admin_router as payments_admin_router
 from yupay.modules.payments.api import admin_webhook_router as payments_admin_webhook_router
 from yupay.modules.payments.api import router as payments_router
 from yupay.modules.payments.api import webhook_router as payments_webhook_router
+from yupay.modules.promo.api import admin_router as promo_admin_router
+from yupay.modules.promo.api import router as promo_router
 from yupay.modules.sourcing.api import admin_router as sourcing_admin_router
 from yupay.modules.stats.api import admin_router as stats_admin_router
 from yupay.modules.storage.api import admin_router as storage_admin_router
@@ -58,4 +60,6 @@ router.include_router(storage_admin_router)
 router.include_router(users_router)
 router.include_router(users_admin_router)
 router.include_router(wallet_router)
+router.include_router(promo_router)
+router.include_router(promo_admin_router)
 router.include_router(wallet_admin_router)

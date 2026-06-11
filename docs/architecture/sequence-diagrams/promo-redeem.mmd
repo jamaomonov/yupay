@@ -1,0 +1,27 @@
+sequenceDiagram
+    autonumber
+    participant MA as Miniapp (Wallet)
+    participant API as FastAPI /promo
+    participant SVC as promo.service
+    participant W as wallet.api
+    participant DB as Postgres
+
+    MA->>API: POST /promo/redeem {code} (Bearer, Idempotency-Key)
+    API->>SVC: redeem(user_id, code, key)
+    SVC->>DB: SELECT promo_codes WHERE code=UPPER(:code) FOR UPDATE
+    SVC->>DB: SELECT promo_redemptions (promo, user)
+    alt уже активирован этим пользователем
+        alt тот же Idempotency-Key
+            SVC-->>API: исходная redemption (replay)
+        else новый ключ
+            SVC-->>API: 409 already redeemed
+        end
+    else первый раз
+        SVC->>SVC: guards: active / expires_at / max_redemptions(count)
+        SVC->>W: ensure_account(user_wallet), ensure_account(house_promo_expense)
+        SVC->>W: post(kind=promo.redeem, D user / C house, key=promo:{id}:{user})
+        W->>DB: INSERT wallet_transaction + postings
+        SVC->>DB: INSERT promo_redemptions (SAVEPOINT; UNIQUE(code,user))
+        SVC-->>API: {code, amount, currency}
+    end
+    API-->>MA: 200 → тост «Начислено X» + рефреш баланса
