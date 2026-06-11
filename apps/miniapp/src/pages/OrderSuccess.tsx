@@ -389,7 +389,10 @@ function StatusCard({
         : "hsl(220 70% 60%)";
 
   const isDelayed = isProcessing && elapsedSeconds >= SLA_DELAYED_SECONDS;
-  const showSupport = isProcessing && elapsedSeconds >= SLA_WARN_SECONDS;
+  // Slow order → soft escape after the SLA warning; terminal failure
+  // (cancelled / expired / refunded) → support immediately, that's exactly
+  // the moment the customer wants a human.
+  const showSupport = isFailed || (isProcessing && elapsedSeconds >= SLA_WARN_SECONDS);
   const subtitle = isDelayed ? t("success.delayedSub") : stage.subtitle;
 
   const supportHref = supportDeepLink(order.id);

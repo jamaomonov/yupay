@@ -8,12 +8,14 @@ import {
   CheckCircle2,
   Clock3,
   Receipt,
+  RotateCcw,
   Undo2,
   Wallet as WalletIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 
+import { SafeImage } from "@/components/ui/safe-image";
 import { useMe } from "@/lib/auth";
 import { useT, useLocale, type MessageKey } from "@/lib/i18n";
 import { useMyOrders, orderToHistoryRow, type HistoryRow } from "@/lib/orders";
@@ -160,6 +162,9 @@ function SegmentedTabs<T extends string>({
 
 // ---------- orders tab ----------
 
+const STATUS_FILTERS = ["all", "success", "processing", "failed", "refunded"] as const;
+type StatusFilter = (typeof STATUS_FILTERS)[number];
+
 function OrdersTab() {
   // Tab content is unmounted/remounted when the segmented switcher
   // flips, and ``refetchOnMount: "always"`` on the underlying query
@@ -168,9 +173,12 @@ function OrdersTab() {
   // dedicated refresh button.
   const { t, tn } = useT();
   const locale = useLocale();
+  const [, navigate] = useLocation();
   const ordersQuery = useMyOrders();
   const orders = ordersQuery.data ?? [];
-  const rows: HistoryRow[] = orders.map(orderToHistoryRow);
+  const allRows: HistoryRow[] = orders.map(orderToHistoryRow);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const rows = statusFilter === "all" ? allRows : allRows.filter((r) => r.status === statusFilter);
 
   const grouped = rows.reduce<Record<string, HistoryRow[]>>((acc, tx) => {
     const key = monthYearKey(tx.raw.created_at, locale);
@@ -184,13 +192,56 @@ function OrdersTab() {
         <div className="py-10 text-center text-sm text-white/40">{t("common.loading")}</div>
       )}
 
+      {/* Status filter — only worth the row once there's something to narrow. */}
+      {allRows.length > 0 && (
+        <div className="no-scrollbar -mt-1 flex gap-2 overflow-x-auto">
+          {STATUS_FILTERS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => {
+                setStatusFilter(s);
+              }}
+              className="flex-shrink-0 whitespace-nowrap rounded-xl px-3 py-1.5 text-[11px] font-semibold transition-all"
+              style={{
+                background: statusFilter === s ? "hsl(var(--primary))" : "hsl(var(--card))",
+                color: statusFilter === s ? "#000" : "rgba(255,255,255,0.55)",
+                border:
+                  statusFilter === s
+                    ? "1px solid hsl(var(--primary))"
+                    : "1px solid hsl(var(--border))",
+              }}
+              data-testid={`history-filter-${s}`}
+            >
+              {s === "all" ? t("history.filterAll") : t(STATUS_KEY[s])}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Filter matched nothing (but there ARE orders) — offer a way back. */}
+      {!ordersQuery.isLoading && allRows.length > 0 && rows.length === 0 && (
+        <div className="border-border bg-card rounded-2xl border p-8 text-center">
+          <p className="text-sm text-white/60">{t("history.filterEmpty")}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setStatusFilter("all");
+            }}
+            className="text-primary mt-2 text-sm font-semibold"
+          >
+            {t("history.filterReset")}
+          </button>
+        </div>
+      )}
+
       {ordersQuery.isError && (
         <div className="rounded-2xl border border-rose-500/30 bg-rose-500/5 p-4 text-sm text-rose-200">
           {t("history.ordersError")}
         </div>
       )}
 
-      {!ordersQuery.isLoading && rows.length === 0 && (
+      {!ordersQuery.isLoading && allRows.length === 0 && (
         <div className="border-border bg-card space-y-3 rounded-2xl border p-10 text-center">
           <Receipt size={28} className="mx-auto text-white/30" />
           <p className="text-sm text-white/60">{t("history.ordersEmpty")}</p>
@@ -226,7 +277,11 @@ function OrdersTab() {
                 >
                   <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl">
                     {tx.imageUrl ? (
-                      <img src={tx.imageUrl} alt="" className="h-full w-full object-cover" />
+                      <SafeImage
+                        src={tx.imageUrl}
+                        className="h-full w-full object-cover"
+                        fallback={<Receipt size={18} className="text-muted-foreground" />}
+                      />
                     ) : (
                       <Receipt size={18} className="text-muted-foreground" />
                     )}
@@ -239,6 +294,23 @@ function OrdersTab() {
                       {tx.subtitle ? ` · ${tx.subtitle}` : ""}
                       {tx.itemsCount > 1 ? ` · ${tn("orders.positions", tx.itemsCount)}` : ""}
                     </p>
+                    {tx.gameSlug && tx.status === "success" && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          // The row itself is a Link to the order — keep the
+                          // repeat tap from triggering that navigation.
+                          e.preventDefault();
+                          e.stopPropagation();
+                          navigate(`/topup/${tx.gameSlug}`);
+                        }}
+                        className="text-primary mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold"
+                        data-testid={`history-repeat-${tx.id}`}
+                      >
+                        <RotateCcw size={10} aria-hidden="true" />
+                        {t("history.repeat")}
+                      </button>
+                    )}
                   </div>
 
                   <div className="shrink-0 space-y-1 text-right">

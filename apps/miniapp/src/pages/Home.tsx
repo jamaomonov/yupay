@@ -363,14 +363,19 @@ export default function Home() {
               transition={{ duration: 0.15 }}
               className="no-scrollbar flex gap-2 overflow-x-auto"
             >
-              {/* Search button on the LEFT */}
+              {/* Search trigger on the LEFT — icon + label, not a bare 36px
+                  icon: a bigger tap target and it reads as "search" without
+                  decoding the glyph. */}
               <button
                 onClick={openSearch}
-                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl transition-all"
+                className="flex h-9 flex-shrink-0 items-center gap-1.5 rounded-xl px-3 transition-all"
                 style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}
                 data-testid="open-search"
               >
-                <Search size={15} className="text-body-muted" />
+                <Search size={15} className="text-body-muted" aria-hidden="true" />
+                <span className="text-body-muted text-xs font-semibold">
+                  {t("home.searchButton")}
+                </span>
               </button>
               {categoryChips.map((cat) => (
                 <button
@@ -454,6 +459,16 @@ export default function Home() {
               <div className="flex flex-col items-center justify-center gap-2 py-14">
                 <Search size={28} className="text-white/15" />
                 <p className="text-body-faint text-sm">{t("home.nothingFound")}</p>
+                {searchOpen && search.trim() !== "" && (
+                  <button
+                    type="button"
+                    onClick={closeSearch}
+                    className="text-primary mt-1 text-sm font-semibold"
+                    data-testid="reset-search"
+                  >
+                    {t("home.resetSearch")}
+                  </button>
+                )}
               </div>
             ) : (
               <div className="grid grid-cols-4 gap-x-2 gap-y-4">
