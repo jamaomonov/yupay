@@ -215,7 +215,7 @@ show_missing = true
 skip_covered = false
 # Ratchet floor — keep in sync with --cov-fail-under in ci.yml. Already above
 # the AGENTS.md §8 80% target; raise this every time coverage lands above it.
-fail_under = 88
+fail_under = 90
 exclude_lines = [
     "pragma: no cover",
     "raise NotImplementedError",

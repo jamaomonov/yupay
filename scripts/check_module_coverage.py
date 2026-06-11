@@ -18,9 +18,9 @@ from collections import defaultdict
 
 # module prefix (after apps/api/src/yupay/) -> (floor %, target %)
 FLOORS: dict[str, tuple[float, float]] = {
-    "modules/payments": (90.0, 95.0),
+    "modules/payments": (96.0, 95.0),
     "modules/wallet": (94.0, 95.0),
-    "modules/fulfillment": (88.0, 95.0),
+    "modules/fulfillment": (95.0, 95.0),
     "modules/inventory": (89.0, 95.0),
     "modules/integrations": (90.0, 95.0),
 }

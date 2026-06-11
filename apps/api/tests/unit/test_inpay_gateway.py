@@ -132,3 +132,131 @@ async def test_refund_not_supported(_inpay_env: None) -> None:
     payment = SimpleNamespace(id="p1", external_id="oid-1")
     with pytest.raises(PaymentGatewayError, match="no refund API"):
         await gw.refund(payment=payment, amount=Decimal("100"))
+
+
+# ---------- client error paths (httpx.MockTransport, no network) ----------
+
+
+def _http_client(handler) -> InpayClient:
+    import httpx
+
+    return InpayClient(
+        merchant_id="22715",
+        merchant_token="tok-32",
+        base_url="https://inpay.test/api/v1",
+        max_retries=1,
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+
+
+@pytest.mark.asyncio
+async def test_client_4xx_raises() -> None:
+    import httpx
+
+    c = _http_client(lambda req: httpx.Response(403, text="forbidden"))
+    with pytest.raises(PaymentGatewayError, match="HTTP 403"):
+        await c.authorize()
+
+
+@pytest.mark.asyncio
+async def test_client_5xx_exhausts_retries() -> None:
+    import httpx
+
+    calls = {"n": 0}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(503, text="down")
+
+    c = _http_client(handler)
+    with pytest.raises(PaymentGatewayError, match="upstream error"):
+        await c.authorize()
+    assert calls["n"] == 2
+
+
+@pytest.mark.asyncio
+async def test_client_non_json_raises() -> None:
+    import httpx
+
+    c = _http_client(lambda req: httpx.Response(200, text="<html>"))
+    with pytest.raises(PaymentGatewayError, match="non-JSON"):
+        await c.authorize()
+
+
+@pytest.mark.asyncio
+async def test_client_success_false_raises() -> None:
+    import httpx
+
+    c = _http_client(
+        lambda req: httpx.Response(200, json={"success": False, "message": "bad merchant"})
+    )
+    with pytest.raises(PaymentGatewayError, match="bad merchant"):
+        await c.authorize()
+
+
+@pytest.mark.asyncio
+async def test_authorize_missing_token_raises() -> None:
+    import httpx
+
+    c = _http_client(lambda req: httpx.Response(200, json={"success": True}))
+    with pytest.raises(PaymentGatewayError, match="bearer_token"):
+        await c.authorize()
+
+
+@pytest.mark.asyncio
+async def test_create_missing_fields_raises() -> None:
+    import httpx
+
+    c = _http_client(lambda req: httpx.Response(200, json={"order_id": "o-1"}))
+    with pytest.raises(PaymentGatewayError, match="order_id / pay_url"):
+        await c.create(
+            bearer="B", amount=Decimal("5000.00"), description="d", callback_url="https://cb"
+        )
+
+
+@pytest.mark.asyncio
+async def test_get_status_missing_status_raises() -> None:
+    import httpx
+
+    c = _http_client(lambda req: httpx.Response(200, json={"order_id": "o-1"}))
+    with pytest.raises(PaymentGatewayError, match="missing status"):
+        await c.get_status(bearer="B", order_id="o-1")
+
+
+# ---------- remaining gateway guards ----------
+
+
+@pytest.mark.asyncio
+async def test_create_intent_missing_amount(_inpay_env: None) -> None:
+    gw = InpayGateway(client=_FakeClient())
+    order = SimpleNamespace(id="o1", currency="UZS", total_charged=None)
+    with pytest.raises(PaymentGatewayError, match="missing"):
+        await gw.create_intent(db=cast(Any, None), order=order, return_url="")
+
+
+@pytest.mark.asyncio
+async def test_verify_webhook_shape_guards(_inpay_env: None) -> None:
+    gw = InpayGateway(client=_FakeClient())
+    with pytest.raises(PaymentGatewayError, match="invalid body"):
+        await gw.verify_webhook(headers={}, body=b"\xff\xfe nope")
+    with pytest.raises(PaymentGatewayError, match="not a JSON object"):
+        await gw.verify_webhook(headers={}, body=b"[1, 2]")
+    with pytest.raises(PaymentGatewayError, match="missing order_id"):
+        await gw.verify_webhook(headers={}, body=b"{}")
+
+
+@pytest.mark.asyncio
+async def test_verify_webhook_requires_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Empty strings (not delenv): process env outranks any local .env file
+    # pydantic-settings might pick up when the suite runs from the repo root.
+    monkeypatch.setenv("INPAY_MERCHANT_ID", "")
+    monkeypatch.setenv("INPAY_MERCHANT_TOKEN", "")
+    cfg.get_settings.cache_clear()
+    try:
+        gw = InpayGateway()
+        with pytest.raises(PaymentGatewayError, match="not configured"):
+            await gw.verify_webhook(headers={}, body=b'{"order_id": "o-1"}')
+    finally:
+        cfg.get_settings.cache_clear()

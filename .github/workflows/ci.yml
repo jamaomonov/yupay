@@ -95,13 +95,13 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
       - run: uv sync --frozen --all-packages --all-groups
-      # Ratchet at the *current* baseline (88%, line coverage via sysmon —
+      # Ratchet at the *current* baseline (90%, line coverage via sysmon —
       # above the 80% AGENTS.md §8 target); bump this floor every time we
       # ship coverage above it so the gate never walks backwards. The
       # per-module ratchet (scripts/check_module_coverage.py) holds the same
       # line for the critical modules (payments / wallet / fulfillment /
       # inventory / supplier adapters; target 95%).
-      - run: uv run pytest --cov=apps --cov-report=xml --cov-report=json --cov-fail-under=88
+      - run: uv run pytest --cov=apps --cov-report=xml --cov-report=json --cov-fail-under=90
       - run: uv run python scripts/check_module_coverage.py coverage.json
 
   test-ts:
