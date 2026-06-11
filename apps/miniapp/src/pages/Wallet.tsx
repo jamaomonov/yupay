@@ -1,3 +1,4 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -5,10 +6,14 @@ import {
   ArrowRight,
   ChevronRight,
   Plus,
+  Ticket,
   Wallet as WalletIcon,
 } from "lucide-react";
+import { useState } from "react";
 import { useLocation } from "wouter";
 
+import { useToast } from "@/hooks/use-toast";
+import { ApiError, apiPost, newIdempotencyKey } from "@/lib/api";
 import { useMe } from "@/lib/auth";
 import { useDisplayCurrency } from "@/lib/currency";
 import { useT } from "@/lib/i18n";
@@ -152,6 +157,10 @@ export default function Wallet() {
         </section>
       )}
 
+      {/* Promo code: the cheapest gift rail we have — credits user_wallet
+          directly, so the money shows up in the hero card above instantly. */}
+      {me.data && <PromoCodeCard />}
+
       {/* History moved to /history (split into Orders / Finance tabs).
           Link gives the operator a single jump from the balance view. */}
       {me.data && (
@@ -180,6 +189,95 @@ export default function Wallet() {
         </section>
       )}
     </motion.div>
+  );
+}
+
+interface PromoRedeemOut {
+  code: string;
+  amount: string;
+  currency: string;
+}
+
+function PromoCodeCard() {
+  const { t } = useT();
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [code, setCode] = useState("");
+
+  const redeem = useMutation<PromoRedeemOut, Error, string>({
+    mutationFn: (value) =>
+      apiPost<PromoRedeemOut>(
+        "/api/v1/promo/redeem",
+        { code: value },
+        { idempotencyKey: newIdempotencyKey("promo") },
+      ),
+    onSuccess: (data) => {
+      setCode("");
+      toast({ title: t("wallet.promoSuccess", { amount: `${data.amount} ${data.currency}` }) });
+      // The hero balance card sits right above — refresh it immediately.
+      void qc.invalidateQueries({ queryKey: ["wallet"] });
+    },
+    onError: (err) => {
+      const title =
+        err instanceof ApiError && err.status === 404
+          ? t("wallet.promoNotFound")
+          : err instanceof ApiError && err.status === 409
+            ? t("wallet.promoUsed")
+            : t("wallet.promoError");
+      toast({ title, variant: "destructive" });
+    },
+  });
+
+  const trimmed = code.trim();
+  const submit = () => {
+    if (!trimmed || redeem.isPending) return;
+    redeem.mutate(trimmed);
+  };
+
+  return (
+    <section className="mx-4 mb-5">
+      <div
+        className="rounded-2xl p-3.5"
+        style={{ background: "hsl(var(--surface-1))", border: "1px solid hsl(var(--border))" }}
+      >
+        <div className="mb-2.5 flex items-center gap-2">
+          <Ticket size={14} style={{ color: "hsl(var(--primary))" }} aria-hidden="true" />
+          <span className="text-sm font-medium text-white">{t("wallet.promoTitle")}</span>
+        </div>
+        <div className="flex gap-2">
+          <input
+            value={code}
+            onChange={(e) => {
+              setCode(e.target.value);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submit();
+            }}
+            placeholder={t("wallet.promoPlaceholder")}
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+            enterKeyHint="send"
+            className="placeholder:text-body-faint min-w-0 flex-1 rounded-xl px-3.5 py-2.5 text-sm font-semibold uppercase tracking-wide text-white outline-none"
+            style={{
+              background: "hsl(var(--surface-2))",
+              border: "1px solid hsl(var(--border))",
+            }}
+            data-testid="promo-input"
+          />
+          <button
+            type="button"
+            onClick={submit}
+            disabled={!trimmed || redeem.isPending}
+            className="flex-shrink-0 rounded-xl px-4 text-sm font-bold transition-opacity disabled:opacity-40"
+            style={{ background: "hsl(var(--primary))", color: "#000" }}
+            data-testid="promo-apply"
+          >
+            {t("wallet.promoApply")}
+          </button>
+        </div>
+      </div>
+    </section>
   );
 }
 
