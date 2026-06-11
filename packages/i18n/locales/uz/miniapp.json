@@ -1,7 +1,6 @@
 {
   "app.notFound": "404 — Topilmadi",
   "app.notFoundBody": "Sahifa ko'chirilgan yoki o'chirilgan bo'lishi mumkin.",
-
   "common.guest": "Mehmon",
   "common.openInTelegram": "Telegram'da oching",
   "common.openBot": "Botni ochish",
@@ -11,12 +10,10 @@
   "common.copyFailed": "Nusxa olinmadi",
   "common.copyManual": "Belgilab, qo'lda nusxalang",
   "common.loading": "Yuklanmoqda…",
-
   "nav.home": "Bosh sahifa",
   "nav.history": "Tarix",
   "nav.settings": "Sozlamalar",
   "nav.primary": "Asosiy navigatsiya",
-
   "header.openWallet": "Hamyonni ochish",
   "header.topUp": "To'ldirish",
   "header.profile": "Profil",
@@ -27,7 +24,6 @@
     "many": "Yana {count} valyuta",
     "other": "Yana {count} valyuta"
   },
-
   "bootstrap.connecting": "Ulanmoqda…",
   "bootstrap.connectingTelegram": "Telegram'ga ulanmoqda…",
   "bootstrap.loadingCatalog": "Katalog yuklanmoqda…",
@@ -36,11 +32,9 @@
   "bootstrap.errorGeneric": "Ilovani yuklab bo'lmadi.",
   "bootstrap.tagline": "o'yin va xizmatlarni to'ldirish",
   "bootstrap.madeFor": "v0.1 · made for telegram",
-
   "errorBoundary.title": "Nimadir buzildi",
   "errorBoundary.body": "Ilovani qayta ishga tushiring yoki chatga qaytib, mini ilovani qayta oching.",
   "errorBoundary.reload": "Qayta yuklash",
-
   "field.whereToFind": "Qayerdan topish mumkin?",
   "field.whereToFindLabel": "{label}ni qayerdan topish mumkin",
   "field.whereToFindTitle": "«{label}»ni qayerdan topish mumkin",
@@ -48,17 +42,14 @@
   "field.lastTime": "O'tgan safar",
   "field.noOptions": "Hozircha variantlar yo'q",
   "field.chooseOption": "Variantni tanlang",
-
   "payment.inpay.sub": "Click · Payme · kartalar",
   "payment.click.sub": "Karta · Humo · Uzcard",
   "payment.payme.sub": "Karta · Humo · Uzcard",
   "payment.uzum.sub": "Humo · Uzcard",
   "payment.usdt.sub": "TRC-20 / ERC-20",
-
   "category.games": "O'yinlar",
   "category.services": "Xizmatlar",
   "category.cards": "Sovg'a kartalari",
-
   "wallet.docTitle": "Hamyon",
   "wallet.title": "Hamyon",
   "wallet.openInTgTitle": "Telegram'da oching",
@@ -70,16 +61,13 @@
   "wallet.methods": "Click · Payme · Uzum · SBP · USDT",
   "wallet.historyTitle": "Operatsiyalar tarixi",
   "wallet.historySubtitle": "Buyurtmalar va balans harakatlari",
-
   "wallet.tx.adminAdjust": "Admin tomonidan tuzatish",
   "wallet.tx.refund": "Buyurtma uchun qaytarish",
   "wallet.tx.orderPayment": "Buyurtma to'lovi",
   "wallet.tx.cashback": "Xarid uchun keshbek",
   "wallet.tx.promo": "Promo-kredit",
   "wallet.tx.topup": "To'ldirish",
-
   "checkout.providerUnavailable": "To'lov usuli vaqtincha mavjud emas",
-
   "walletTopUp.title": "To'ldirish",
   "walletTopUp.backToWallet": "Hamyonga qaytish",
   "walletTopUp.amountLabel": "To'ldirish summasi",
@@ -91,7 +79,6 @@
   "walletTopUp.disclaimerBefore": "Pul",
   "walletTopUp.walletName": "Hamyon",
   "walletTopUp.disclaimerAfter": "hisobiga siz to'laydigan valyutada tushadi. Qaytarishlar ham o'sha yerga qaytadi.",
-
   "topup.docTitle": "To'ldirish",
   "topup.docTitleNamed": "To'ldirish · {game}",
   "topup.walletPay": "Balansdan to'lash",
@@ -147,7 +134,6 @@
   "topup.processingBtn": "Ishlanmoqda...",
   "topup.availableInTg": "Telegram'da mavjud",
   "topup.pay": "To'lash",
-
   "success.docTitle": "Buyurtma",
   "success.docTitleNamed": "Buyurtma {id}…",
   "success.orderLabel": "Buyurtma",
@@ -204,7 +190,6 @@
   "success.createdAt": "Yaratilgan",
   "success.paidAt": "To'langan",
   "success.deliveredAt": "Yetkazilgan",
-
   "orders.orderTitle": "Buyurtma {id}",
   "orders.region": "hudud {region}",
   "orders.positions": {
@@ -213,7 +198,6 @@
     "many": "{count} ta",
     "other": "{count} ta"
   },
-
   "history.title": "Tarix",
   "history.subtitle": "Barcha xaridlaringiz va balans harakatlari",
   "history.authHint": "Tarix faqat Telegram Mini App orqali tizimga kirganda mavjud.",
@@ -229,8 +213,8 @@
   "history.status.refunded": "Qaytarildi",
   "history.financeError": "Moliyaviy operatsiyalarni yuklab bo'lmadi.",
   "history.financeEmpty": "Hali to'ldirish va tuzatishlar bo'lmagan.",
-
   "settings.title": "Sozlamalar",
+  "settings.langSaveFailed": "Tilni saqlab boʻlmadi — qayta urinib koʻring",
   "settings.notAuthorized": "Tizimga kirilmagan",
   "settings.notAuthorizedBody": "Profilni ko'rish uchun ilovani Telegram orqali oching va tizimga kiring.",
   "settings.copyTgId": "Telegram ID nusxasi",
@@ -250,7 +234,6 @@
   "settings.companySince": "{year}-yildan beri ishlaymiz",
   "settings.aboutBlurb": "YuPay — o'yinlarni to'ldirish, vaucherlar va obunalar. Litsenziya — xususiy; kod yopiq repozitoriyda.",
   "settings.aboutSupport": "Har qanday savol bo'yicha qo'llab-quvvatlashga yozing — bir soat ichida javob beramiz.",
-
   "hero.instant.title": "Bir daqiqada to'ldirish",
   "hero.instant.subtitle": "O'yinlar, obunalar va sovg'a kartalari",
   "hero.wallet.title": "YuPay hamyoni",
@@ -259,7 +242,6 @@
   "hero.pay.subtitle": "Click · Payme · Uzum · USDT",
   "hero.soon3d": "3D tez orada",
   "hero.slide": "Slayd {n}",
-
   "home.docTitle": "Bosh sahifa",
   "home.title": "O'yinlarni to'ldirish",
   "home.payNote": "Karta va SBP orqali to'lov",

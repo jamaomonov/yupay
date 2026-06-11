@@ -17,12 +17,42 @@ export function resolveLocale(candidate: string | null | undefined): Locale {
   return isLocale(base) ? base : DEFAULT_LOCALE;
 }
 
-// Module-level mirror of the active locale. Seeded by ``index.tsx`` (Telegram
-// launch language) and kept in sync with ``me.locale`` by ``I18nProvider``.
+// Module-level mirror of the active locale. Seeded by ``index.tsx`` (stored
+// choice, then Telegram launch language) and kept in sync with ``me.locale``
+// by ``I18nProvider``. Components subscribe via ``useSyncExternalStore`` so an
+// anonymous-session switch (no ``me`` to observe) still re-renders the tree.
 let activeLocale: Locale = DEFAULT_LOCALE;
+const localeListeners = new Set<() => void>();
+
+const LOCALE_STORAGE_KEY = "yupay.miniapp.locale";
+
+/** The locale the user explicitly picked, surviving relaunches without auth. */
+export function readStoredLocale(): Locale | null {
+  try {
+    const stored = window.localStorage.getItem(LOCALE_STORAGE_KEY);
+    return stored !== null && isLocale(stored) ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+export function persistLocale(locale: Locale): void {
+  try {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, locale);
+  } catch {
+    /* storage blocked — the choice just won't survive a relaunch */
+  }
+}
 
 export function setActiveLocale(locale: Locale): void {
+  if (locale === activeLocale) return;
   activeLocale = locale;
+  for (const listener of localeListeners) listener();
+}
+
+export function subscribeActiveLocale(listener: () => void): () => void {
+  localeListeners.add(listener);
+  return () => localeListeners.delete(listener);
 }
 
 export function getActiveLocale(): Locale {

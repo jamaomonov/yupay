@@ -6,6 +6,7 @@ import { Link } from "wouter";
 import type { Game } from "@/lib/constants-types";
 
 import { HeroCarousel } from "@/components/HeroCarousel";
+import { SafeImage } from "@/components/ui/safe-image";
 import { useCategoriesList, useGames } from "@/lib/catalog";
 import { CATEGORY_LABELS } from "@/lib/constants";
 import { useT, type MessageKey } from "@/lib/i18n";
@@ -39,6 +40,7 @@ function PromoStrip({ games }: { games: Game[] }) {
       <div className="no-scrollbar flex gap-3 overflow-x-auto px-4 pb-1">
         {featured.map((game, i) => {
           const badge = PROMO_BADGES[game.id];
+          const promoSrc = game.bgUrl || game.appIcon;
           return (
             <Link key={game.id} href={`/topup/${game.id}`}>
               <motion.div
@@ -48,11 +50,15 @@ function PromoStrip({ games }: { games: Game[] }) {
                 transition={{ delay: i * 0.06 }}
                 className="relative h-[108px] w-[148px] flex-shrink-0 cursor-pointer overflow-hidden rounded-2xl"
               >
-                {game.bgUrl || game.appIcon ? (
-                  <img
-                    src={game.bgUrl || game.appIcon}
+                {promoSrc ? (
+                  <SafeImage
+                    src={promoSrc}
                     className="absolute inset-0 h-full w-full object-cover"
-                    alt={game.name}
+                    fallback={
+                      <div
+                        className={`absolute inset-0 bg-gradient-to-br ${game.gradient || "from-card to-background"}`}
+                      />
+                    }
                   />
                 ) : (
                   <div
@@ -90,13 +96,7 @@ function PromoStrip({ games }: { games: Game[] }) {
 
 // ─── Game card (icon grid) ────────────────────────────────────────────────────
 function GameCardThumb({ game }: { game: Game }) {
-  if (game.appIcon) {
-    return <img src={game.appIcon} className="h-full w-full object-cover" alt={game.name} />;
-  }
-  if (game.bgUrl) {
-    return <img src={game.bgUrl} className="h-full w-full object-cover" alt={game.name} />;
-  }
-  return (
+  const fallback = (
     <div
       className={`h-full w-full bg-gradient-to-br ${game.gradient || "from-card to-background"} flex items-center justify-center`}
     >
@@ -105,6 +105,9 @@ function GameCardThumb({ game }: { game: Game }) {
       )}
     </div>
   );
+  const src = game.appIcon || game.bgUrl;
+  if (!src) return fallback;
+  return <SafeImage src={src} className="h-full w-full object-cover" fallback={fallback} />;
 }
 
 function GameCard({ game, index }: { game: Game; index: number }) {
@@ -153,13 +156,7 @@ function GameCard({ game, index }: { game: Game; index: number }) {
 
 // ─── Search result row ────────────────────────────────────────────────────────
 function SearchResultThumb({ game }: { game: Game }) {
-  if (game.appIcon) {
-    return <img src={game.appIcon} className="h-full w-full object-cover" alt={game.name} />;
-  }
-  if (game.bgUrl) {
-    return <img src={game.bgUrl} className="h-full w-full object-cover" alt={game.name} />;
-  }
-  return (
+  const fallback = (
     <div
       className={`h-full w-full bg-gradient-to-br ${game.gradient || "from-card to-background"} flex items-center justify-center`}
     >
@@ -168,6 +165,9 @@ function SearchResultThumb({ game }: { game: Game }) {
       )}
     </div>
   );
+  const src = game.appIcon || game.bgUrl;
+  if (!src) return fallback;
+  return <SafeImage src={src} className="h-full w-full object-cover" fallback={fallback} />;
 }
 
 function SearchResultCard({ game, index }: { game: Game; index: number }) {

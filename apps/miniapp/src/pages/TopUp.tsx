@@ -29,6 +29,7 @@ import {
 import { useDisplayCurrency } from "@/lib/currency";
 import { useT } from "@/lib/i18n";
 import { getActiveLocale } from "@/lib/i18n/core";
+import { SafeImage } from "@/components/ui/safe-image";
 import { useAvailableProviders, useCheckout } from "@/lib/orders";
 import { ACQUIRER_BY_METHOD, PAYMENT_METHODS, PROVIDER_BY_METHOD } from "@/lib/payment-methods";
 import { getRecentFulfillment, rememberFulfillment } from "@/lib/recent-checkout";
@@ -270,9 +271,11 @@ export default function TopUp() {
   // method instead of letting them tap a button that will refuse.
   useEffect(() => {
     if (liveProviderSet === null) return;
-    if (isMethodAvailable(paymentMethod)) return;
+    if (paymentMethod === "" || isMethodAvailable(paymentMethod)) return;
+    // No live acquirer at all → deselect instead of leaving the highlight on
+    // a method that renders with a «Скоро» badge (selected-but-disabled).
     const fallback = PAYMENT_METHODS.find((m) => isMethodAvailable(m.id));
-    if (fallback) setPaymentMethod(fallback.id);
+    setPaymentMethod(fallback ? fallback.id : "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveProviderSet, paymentMethod]);
 
@@ -486,10 +489,12 @@ export default function TopUp() {
         {/* ── Hero ── */}
         <div className="relative h-56 overflow-hidden">
           {game.bgUrl ? (
-            <img
+            <SafeImage
               src={game.bgUrl}
               className="absolute inset-0 h-full w-full object-cover"
-              alt={game.name}
+              fallback={
+                <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950" />
+              }
             />
           ) : (
             <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950" />
@@ -499,7 +504,18 @@ export default function TopUp() {
           <div className="absolute bottom-0 left-0 right-0 z-10 flex items-end gap-3 px-4 pb-4">
             <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-2xl border border-white/15 shadow-xl">
               {game.appIcon ? (
-                <img src={game.appIcon} className="h-full w-full object-cover" alt={game.name} />
+                <SafeImage
+                  src={game.appIcon}
+                  className="h-full w-full object-cover"
+                  fallback={
+                    <div
+                      className="flex h-full w-full items-center justify-center text-xl font-bold text-white/80"
+                      style={{ background: game.color }}
+                    >
+                      {game.name.charAt(0)}
+                    </div>
+                  }
+                />
               ) : (
                 <div
                   className="flex h-full w-full items-center justify-center text-xl font-bold text-white/80"
@@ -619,7 +635,11 @@ export default function TopUp() {
                     >
                       <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-black/30">
                         {p.image_url ? (
-                          <img src={p.image_url} className="h-full w-full object-cover" alt="" />
+                          <SafeImage
+                            src={p.image_url}
+                            className="h-full w-full object-cover"
+                            fallback={<PackageIcon size={11} className="text-white/40" />}
+                          />
                         ) : (
                           <PackageIcon size={11} className="text-white/40" />
                         )}
@@ -716,8 +736,9 @@ export default function TopUp() {
 
             <div className="mb-3 grid grid-cols-4 gap-2">
               {PAYMENT_METHODS.map((m) => {
-                const active = paymentMethod === m.id;
                 const available = isMethodAvailable(m.id);
+                // An unavailable method can never look selected.
+                const active = paymentMethod === m.id && available;
                 return (
                   <button
                     key={m.id}
@@ -953,7 +974,7 @@ function PackageThumb({ pkg, fallback }: { pkg: Package; fallback: string | null
   if (src) {
     return (
       <div className="h-9 w-9 flex-shrink-0 overflow-hidden rounded-xl bg-black/30">
-        <img src={src} className="h-full w-full object-cover" alt={pkg.label} />
+        <SafeImage src={src} className="h-full w-full object-cover" />
       </div>
     );
   }

@@ -12,7 +12,15 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import type { Locale } from "@yupay/i18n";
-import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 
 import { useMe } from "@/lib/auth";
 import { getWebApp } from "@/lib/telegram";
@@ -21,8 +29,10 @@ import {
   getActiveLocale,
   lookup,
   lookupPlural,
+  readStoredLocale,
   resolveLocale,
   setActiveLocale,
+  subscribeActiveLocale,
   type Params,
 } from "./core";
 import type { MessageKey, PluralKey } from "./messages";
@@ -30,9 +40,12 @@ import type { MessageKey, PluralKey } from "./messages";
 export { translate } from "./core";
 export type { MessageKey, PluralKey } from "./messages";
 
-// Seed the mirror from the Telegram launch language so even the pre-auth
-// bootstrap prefetch (catalog) requests the right locale.
-setActiveLocale(resolveLocale(getWebApp()?.initDataUnsafe.user?.language_code ?? null));
+// Seed the mirror so even the pre-auth bootstrap prefetch (catalog) requests
+// the right locale. An explicitly stored choice (anonymous sessions persist
+// it locally) wins over the Telegram launch language.
+setActiveLocale(
+  readStoredLocale() ?? resolveLocale(getWebApp()?.initDataUnsafe.user?.language_code ?? null),
+);
 
 interface I18nValue {
   locale: Locale;
@@ -45,7 +58,13 @@ const I18nContext = createContext<I18nValue | null>(null);
 export function I18nProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const { data: me } = useMe();
-  const locale = useMemo(() => resolveLocale(me?.locale ?? null), [me?.locale]);
+  // The server-side preference wins for authenticated users; anonymous
+  // sessions follow the local mirror (seeded above, flipped by Settings).
+  const mirrorLocale = useSyncExternalStore(subscribeActiveLocale, getActiveLocale);
+  const locale = useMemo(
+    () => (me?.locale ? resolveLocale(me.locale) : mirrorLocale),
+    [me?.locale, mirrorLocale],
+  );
   const prevLocale = useRef(getActiveLocale());
 
   useEffect(() => {

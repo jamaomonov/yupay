@@ -47,9 +47,14 @@ export interface TelegramWebApp {
   contentSafeAreaInset?: { top: number; right: number; bottom: number; left: number };
   ready: () => void;
   expand: () => void;
+  // Available since Bot API 6.1; lets us gate newer methods by client version
+  // instead of mere existence (telegram-web-app.js defines them on every
+  // client and logs a console error itself when the version is too old).
+  isVersionAtLeast?: (version: string) => boolean;
   // Bot API 8.0+. Falls back to a no-op on older clients; we feature-detect.
   requestFullscreen?: () => void;
   exitFullscreen?: () => void;
+  // Bot API 7.7+.
   disableVerticalSwipes?: () => void;
   // Bot API 6.1+. ``bg_color`` is the area outside the WebView (e.g.
   // the strip behind the close/back chip when in fullscreen); the
@@ -161,8 +166,19 @@ export function maximiseTelegramViewport(): void {
       /* not supported */
     }
   }
+  // ``typeof === "function"`` is not enough here: telegram-web-app.js
+  // defines these methods on EVERY client and logs
+  // "Method … is not supported in version X" itself when called on an old
+  // one — gate on the announced Bot API version instead.
+  const versionAtLeast = (version: string): boolean => {
+    try {
+      return wa.isVersionAtLeast?.(version) ?? false;
+    } catch {
+      return false;
+    }
+  };
   let wentFullscreen = false;
-  if (typeof wa.requestFullscreen === "function") {
+  if (typeof wa.requestFullscreen === "function" && versionAtLeast("8.0")) {
     try {
       wa.requestFullscreen();
       wentFullscreen = true;
@@ -170,7 +186,7 @@ export function maximiseTelegramViewport(): void {
       /* not supported on this client */
     }
   }
-  if (typeof wa.disableVerticalSwipes === "function") {
+  if (typeof wa.disableVerticalSwipes === "function" && versionAtLeast("7.7")) {
     try {
       wa.disableVerticalSwipes();
     } catch {

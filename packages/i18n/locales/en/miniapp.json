@@ -1,7 +1,6 @@
 {
   "app.notFound": "404 — Not found",
   "app.notFoundBody": "The page may have been moved or removed.",
-
   "common.guest": "Guest",
   "common.openInTelegram": "Open in Telegram",
   "common.openBot": "Open the bot",
@@ -11,12 +10,10 @@
   "common.copyFailed": "Couldn't copy",
   "common.copyManual": "Select and copy manually",
   "common.loading": "Loading…",
-
   "nav.home": "Home",
   "nav.history": "History",
   "nav.settings": "Settings",
   "nav.primary": "Primary navigation",
-
   "header.openWallet": "Open wallet",
   "header.topUp": "Top up",
   "header.profile": "Profile",
@@ -27,7 +24,6 @@
     "many": "{count} more currencies",
     "other": "{count} more currencies"
   },
-
   "bootstrap.connecting": "Connecting…",
   "bootstrap.connectingTelegram": "Connecting to Telegram…",
   "bootstrap.loadingCatalog": "Loading catalog…",
@@ -36,11 +32,9 @@
   "bootstrap.errorGeneric": "Couldn't load the app.",
   "bootstrap.tagline": "top up games and services",
   "bootstrap.madeFor": "v0.1 · made for telegram",
-
   "errorBoundary.title": "Something broke",
   "errorBoundary.body": "Restart the app or return to the chat and reopen the mini app.",
   "errorBoundary.reload": "Reload",
-
   "field.whereToFind": "Where to find it?",
   "field.whereToFindLabel": "Where to find {label}",
   "field.whereToFindTitle": "Where to find “{label}”",
@@ -48,17 +42,14 @@
   "field.lastTime": "Last time",
   "field.noOptions": "No options yet",
   "field.chooseOption": "Choose an option",
-
   "payment.inpay.sub": "Click · Payme · cards",
   "payment.click.sub": "Card · Humo · Uzcard",
   "payment.payme.sub": "Card · Humo · Uzcard",
   "payment.uzum.sub": "Humo · Uzcard",
   "payment.usdt.sub": "TRC-20 / ERC-20",
-
   "category.games": "Games",
   "category.services": "Services",
   "category.cards": "Gift cards",
-
   "wallet.docTitle": "Wallet",
   "wallet.title": "Wallet",
   "wallet.openInTgTitle": "Open in Telegram",
@@ -70,16 +61,13 @@
   "wallet.methods": "Click · Payme · Uzum · SBP · USDT",
   "wallet.historyTitle": "Transaction history",
   "wallet.historySubtitle": "Orders and balance movements",
-
   "wallet.tx.adminAdjust": "Admin adjustment",
   "wallet.tx.refund": "Order refund",
   "wallet.tx.orderPayment": "Order payment",
   "wallet.tx.cashback": "Purchase cashback",
   "wallet.tx.promo": "Promo credit",
   "wallet.tx.topup": "Top-up",
-
   "checkout.providerUnavailable": "This payment method is temporarily unavailable",
-
   "walletTopUp.title": "Top up",
   "walletTopUp.backToWallet": "Back to wallet",
   "walletTopUp.amountLabel": "Top-up amount",
@@ -91,7 +79,6 @@
   "walletTopUp.disclaimerBefore": "Money lands in your",
   "walletTopUp.walletName": "Wallet",
   "walletTopUp.disclaimerAfter": "in the same currency you pay with. Refunds go back there too.",
-
   "topup.docTitle": "Top up",
   "topup.docTitleNamed": "Top up · {game}",
   "topup.walletPay": "Pay from balance",
@@ -147,7 +134,6 @@
   "topup.processingBtn": "Processing...",
   "topup.availableInTg": "Available in Telegram",
   "topup.pay": "Pay",
-
   "success.docTitle": "Order",
   "success.docTitleNamed": "Order {id}…",
   "success.orderLabel": "Order",
@@ -204,7 +190,6 @@
   "success.createdAt": "Created",
   "success.paidAt": "Paid",
   "success.deliveredAt": "Delivered",
-
   "orders.orderTitle": "Order {id}",
   "orders.region": "region {region}",
   "orders.positions": {
@@ -213,7 +198,6 @@
     "many": "{count} items",
     "other": "{count} items"
   },
-
   "history.title": "History",
   "history.subtitle": "All your purchases and balance movements",
   "history.authHint": "History is only available when signed in via the Telegram Mini App.",
@@ -229,8 +213,8 @@
   "history.status.refunded": "Refunded",
   "history.financeError": "Couldn't load financial operations.",
   "history.financeEmpty": "No top-ups or adjustments yet.",
-
   "settings.title": "Settings",
+  "settings.langSaveFailed": "Couldn't save the language — try again",
   "settings.notAuthorized": "Not signed in",
   "settings.notAuthorizedBody": "Open the app from Telegram to sign in and see your profile.",
   "settings.copyTgId": "Copy Telegram ID",
@@ -250,7 +234,6 @@
   "settings.companySince": "Operating since {year}",
   "settings.aboutBlurb": "YuPay — game top-ups, vouchers and subscriptions. Proprietary license; code in a private repo.",
   "settings.aboutSupport": "For any questions, message support — we reply within an hour.",
-
   "hero.instant.title": "Top up in a minute",
   "hero.instant.subtitle": "Games, subscriptions and gift cards",
   "hero.wallet.title": "YuPay Wallet",
@@ -259,7 +242,6 @@
   "hero.pay.subtitle": "Click · Payme · Uzum · USDT",
   "hero.soon3d": "3D soon",
   "hero.slide": "Slide {n}",
-
   "home.docTitle": "Home",
   "home.title": "Game top-ups",
   "home.payNote": "Pay by card or SBP",

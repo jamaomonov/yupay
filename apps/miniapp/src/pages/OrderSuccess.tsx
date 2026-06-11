@@ -27,6 +27,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useParams, Link } from "wouter";
 
+import { SafeImage } from "@/components/ui/safe-image";
 import { useToast } from "@/hooks/use-toast";
 import { useT, type MessageKey } from "@/lib/i18n";
 import { getActiveLocale, translate } from "@/lib/i18n/core";
@@ -566,10 +567,17 @@ function ItemCard({
     >
       <div className="flex items-center gap-3">
         {display?.image_url ? (
-          <img
+          <SafeImage
             src={display.image_url}
             className="size-11 flex-shrink-0 rounded-xl object-cover"
-            alt=""
+            fallback={
+              <div
+                className="flex size-11 flex-shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white/40"
+                style={{ background: "hsl(var(--surface-2))" }}
+              >
+                {display?.brand_name?.[0]?.toUpperCase() ?? "?"}
+              </div>
+            }
           />
         ) : (
           <div

@@ -30,17 +30,6 @@ type Phase = "booting" | "ready" | "error";
  */
 type BootError = { detail: string } | { key: MessageKey };
 
-interface PrefetchSpec {
-  key: readonly unknown[];
-  /** Returns the query result; failures are swallowed individually. The
-   *  returned value MUST match the shape the corresponding ``useQuery``
-   *  hook expects — otherwise the cache will short-circuit the hook with
-   *  the wrong type. */
-  fetch: () => Promise<unknown>;
-  /** When false, skip this prefetch (e.g. needs auth and we're anonymous). */
-  required?: boolean;
-}
-
 /** Minimum splash duration in ms. Prevents flashes on instant loads. */
 const MIN_SPLASH_MS = 650;
 
@@ -116,34 +105,23 @@ export function BootstrapGate({ children }: { children: ReactNode }) {
       setStage("bootstrap.loadingCatalog");
       const hasAuth = Boolean(getAccessToken());
 
-      const specs: PrefetchSpec[] = [
-        {
-          key: brandsQueryOptions.queryKey,
-          fetch: brandsQueryOptions.queryFn,
-          required: true,
-        },
-        {
-          key: categoriesQueryOptions.queryKey,
-          fetch: categoriesQueryOptions.queryFn,
-          required: true,
-        },
-        {
-          key: ["me"],
-          fetch: () => apiGet<unknown>("/api/v1/auth/me"),
-          required: hasAuth,
-        },
-      ];
-
-      // Run all prefetches in parallel; one failure should not block the others.
-      await Promise.all(
-        specs
-          .filter((s) => s.required !== false)
-          .map((s) =>
-            qc
-              .fetchQuery({ queryKey: s.key, queryFn: s.fetch, staleTime: 60_000 })
-              .catch(() => undefined),
-          ),
-      );
+      // Catalog warms in the BACKGROUND — every page renders skeletons for
+      // it, so blocking the whole splash on it just turned a slow network
+      // into seconds of black screen. Only ``me`` (cheap, single call) gates
+      // the release: the header/profile chrome looks broken without it.
+      void qc.prefetchQuery({ ...brandsQueryOptions, staleTime: 60_000 }).catch(() => undefined);
+      void qc
+        .prefetchQuery({ ...categoriesQueryOptions, staleTime: 60_000 })
+        .catch(() => undefined);
+      if (hasAuth) {
+        await qc
+          .fetchQuery({
+            queryKey: ["me"],
+            queryFn: () => apiGet<unknown>("/api/v1/auth/me"),
+            staleTime: 60_000,
+          })
+          .catch(() => undefined);
+      }
 
       clearTimeout(hardTimer);
       if (attemptRef.current === attempt) await release();

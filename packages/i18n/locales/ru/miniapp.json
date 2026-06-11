@@ -1,7 +1,6 @@
 {
   "app.notFound": "404 — Не найдено",
   "app.notFoundBody": "Возможно, страница была перемещена или удалена.",
-
   "common.guest": "Гость",
   "common.openInTelegram": "Откройте в Telegram",
   "common.openBot": "Открыть бота",
@@ -11,12 +10,10 @@
   "common.copyFailed": "Не удалось скопировать",
   "common.copyManual": "Выделите и скопируйте вручную",
   "common.loading": "Загрузка…",
-
   "nav.home": "Главная",
   "nav.history": "История",
   "nav.settings": "Настройки",
   "nav.primary": "Основная навигация",
-
   "header.openWallet": "Открыть кошелёк",
   "header.topUp": "Пополнить",
   "header.profile": "Профиль",
@@ -27,7 +24,6 @@
     "many": "Ещё {count} валют",
     "other": "Ещё {count} валюты"
   },
-
   "bootstrap.connecting": "Подключаемся…",
   "bootstrap.connectingTelegram": "Подключаемся к Telegram…",
   "bootstrap.loadingCatalog": "Загружаем каталог…",
@@ -36,11 +32,9 @@
   "bootstrap.errorGeneric": "Не удалось загрузить приложение.",
   "bootstrap.tagline": "пополнение игр и сервисов",
   "bootstrap.madeFor": "v0.1 · made for telegram",
-
   "errorBoundary.title": "Что-то сломалось",
   "errorBoundary.body": "Перезапустите приложение или вернитесь в чат и откройте миниапп заново.",
   "errorBoundary.reload": "Перезагрузить",
-
   "field.whereToFind": "Где найти?",
   "field.whereToFindLabel": "Где найти {label}",
   "field.whereToFindTitle": "Где найти «{label}»",
@@ -48,17 +42,14 @@
   "field.lastTime": "Прошлый раз",
   "field.noOptions": "Опций пока нет",
   "field.chooseOption": "Выберите вариант",
-
   "payment.inpay.sub": "Click · Payme · карты",
   "payment.click.sub": "Карта · Humo · Uzcard",
   "payment.payme.sub": "Карта · Humo · Uzcard",
   "payment.uzum.sub": "Humo · Uzcard",
   "payment.usdt.sub": "TRC-20 / ERC-20",
-
   "category.games": "Игры",
   "category.services": "Сервисы",
   "category.cards": "Подарочные карты",
-
   "wallet.docTitle": "Кошелёк",
   "wallet.title": "Кошелёк",
   "wallet.openInTgTitle": "Откройте в Telegram",
@@ -70,16 +61,13 @@
   "wallet.methods": "Click · Payme · Uzum · СБП · USDT",
   "wallet.historyTitle": "История операций",
   "wallet.historySubtitle": "Заказы и движения по балансу",
-
   "wallet.tx.adminAdjust": "Корректировка от админа",
   "wallet.tx.refund": "Возврат за заказ",
   "wallet.tx.orderPayment": "Оплата заказа",
   "wallet.tx.cashback": "Кэшбэк за покупку",
   "wallet.tx.promo": "Промо-кредит",
   "wallet.tx.topup": "Пополнение",
-
   "checkout.providerUnavailable": "Способ оплаты временно недоступен",
-
   "walletTopUp.title": "Пополнение",
   "walletTopUp.backToWallet": "Назад к кошельку",
   "walletTopUp.amountLabel": "Сумма пополнения",
@@ -91,7 +79,6 @@
   "walletTopUp.disclaimerBefore": "Деньги попадают на счёт",
   "walletTopUp.walletName": "Кошелёк",
   "walletTopUp.disclaimerAfter": "в той же валюте, которой вы платите. Возвраты возвращаются туда же.",
-
   "topup.docTitle": "Пополнение",
   "topup.docTitleNamed": "Пополнение · {game}",
   "topup.walletPay": "Оплата с баланса",
@@ -147,7 +134,6 @@
   "topup.processingBtn": "Обработка...",
   "topup.availableInTg": "Доступно в Telegram",
   "topup.pay": "Оплатить",
-
   "success.docTitle": "Заказ",
   "success.docTitleNamed": "Заказ {id}…",
   "success.orderLabel": "Заказ",
@@ -204,7 +190,6 @@
   "success.createdAt": "Создан",
   "success.paidAt": "Оплачен",
   "success.deliveredAt": "Выдан",
-
   "orders.orderTitle": "Заказ {id}",
   "orders.region": "регион {region}",
   "orders.positions": {
@@ -213,7 +198,6 @@
     "many": "{count} позиций",
     "other": "{count} позиции"
   },
-
   "history.title": "История",
   "history.subtitle": "Все ваши покупки и движения по балансу",
   "history.authHint": "История доступна только под авторизацией через Telegram Mini App.",
@@ -229,8 +213,8 @@
   "history.status.refunded": "Возврат",
   "history.financeError": "Не удалось загрузить финансовые операции.",
   "history.financeEmpty": "Пополнений и корректировок ещё не было.",
-
   "settings.title": "Настройки",
+  "settings.langSaveFailed": "Не удалось сохранить язык — попробуйте ещё раз",
   "settings.notAuthorized": "Не авторизованы",
   "settings.notAuthorizedBody": "Откройте приложение из Telegram, чтобы войти и видеть свой профиль.",
   "settings.copyTgId": "Скопировать Telegram ID",
@@ -250,7 +234,6 @@
   "settings.companySince": "Работаем с {year} года",
   "settings.aboutBlurb": "YuPay — пополнение игр, ваучеры и подписки. Лицензия — проприетарная; код в приватном репо.",
   "settings.aboutSupport": "По любым вопросам пишите в поддержку — ответим в течение часа.",
-
   "hero.instant.title": "Пополнение за минуту",
   "hero.instant.subtitle": "Игры, подписки и гифт-карты",
   "hero.wallet.title": "Кошелёк YuPay",
@@ -259,7 +242,6 @@
   "hero.pay.subtitle": "Click · Payme · Uzum · USDT",
   "hero.soon3d": "3D скоро",
   "hero.slide": "Слайд {n}",
-
   "home.docTitle": "Главная",
   "home.title": "Пополнение игр",
   "home.payNote": "Оплата картой и СБП",
