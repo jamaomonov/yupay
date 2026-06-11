@@ -47,11 +47,7 @@ services:
       # from the env_file at runtime, not from compose interpolation. A bare
       # ``pg_isready`` probes as OS user root and spams the server log with
       # ``FATAL: role "root" does not exist`` every interval.
-      test:
-        [
-          "CMD-SHELL",
-          "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-postgres}",
-        ]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-postgres}"]
       interval: 10s
 
   postgres-exporter:
@@ -72,12 +68,7 @@ services:
     # password-carrying REDIS_URL/DRAMATIQ_BROKER_URL in api.env — see
     # docs/runbooks/redis-auth-rollout.md before deploying this change.
     env_file: /opt/yupay/secrets/redis.env
-    command:
-      [
-        "sh",
-        "-c",
-        'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"',
-      ]
+    command: ["sh", "-c", 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"']
     volumes:
       - redis-data:/data
 

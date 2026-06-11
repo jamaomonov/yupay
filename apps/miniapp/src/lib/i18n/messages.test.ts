@@ -10,9 +10,11 @@ import { describe, expect, it } from "vitest";
 
 import { CATALOGS } from "./messages";
 
-type Tree = { [k: string]: string | Tree };
+// Catalogs are flat: a value is either a string or a plural-form object.
+type PluralForms = Record<string, string>;
+type Tree = Record<string, string | PluralForms>;
 
-function shapeOf(value: string | Tree): string {
+function shapeOf(value: string | PluralForms): string {
   if (typeof value === "string") return "string";
   return `{${Object.keys(value).sort().join(",")}}`;
 }
@@ -37,7 +39,7 @@ describe("message catalogs", () => {
           expect(value.trim(), `key "${key}" in ${locale}`).not.toBe("");
         } else {
           for (const [form, text] of Object.entries(value)) {
-            expect(String(text).trim(), `key "${key}.${form}" in ${locale}`).not.toBe("");
+            expect(text.trim(), `key "${key}.${form}" in ${locale}`).not.toBe("");
           }
         }
       }

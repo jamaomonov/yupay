@@ -24,17 +24,17 @@ chmod 600 *.env
 
 ## What lives where
 
-| File                    | Consumed by                                                          |
-| ----------------------- | -------------------------------------------------------------------- |
-| `postgres.env`          | `postgres` container — initial role/db creation                      |
-| `postgres-exporter.env` | `postgres-exporter` container (Prometheus scrape)                    |
+| File                    | Consumed by                                                                                   |
+| ----------------------- | --------------------------------------------------------------------------------------------- |
+| `postgres.env`          | `postgres` container — initial role/db creation                                               |
+| `postgres-exporter.env` | `postgres-exporter` container (Prometheus scrape)                                             |
 | `redis.env`             | `redis` (requirepass) + `redis-exporter`; password also goes into the Redis URLs in `api.env` |
-| `minio.env`             | `minio` container                                                    |
-| `api.env`               | `api`, `worker`, `scheduler`, `bot` (all share the same runtime env) |
-| `web.env`               | `web` (Next.js storefront) — bundled into the JS, public             |
-| `miniapp.env`           | `miniapp` (Vite mini app) — bundled into the JS, public              |
-| `grafana.env`           | `grafana` admin creds + Caddy basic-auth hash                        |
-| `backup.env`            | nightly `pg_dump → age → rclone` pipeline                            |
+| `minio.env`             | `minio` container                                                                             |
+| `api.env`               | `api`, `worker`, `scheduler`, `bot` (all share the same runtime env)                          |
+| `web.env`               | `web` (Next.js storefront) — bundled into the JS, public                                      |
+| `miniapp.env`           | `miniapp` (Vite mini app) — bundled into the JS, public                                       |
+| `grafana.env`           | `grafana` admin creds + Caddy basic-auth hash                                                 |
+| `backup.env`            | nightly `pg_dump → age → rclone` pipeline                                                     |
 
 ## Generating the bits inside
 

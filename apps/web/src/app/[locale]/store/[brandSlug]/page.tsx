@@ -66,9 +66,7 @@ export default async function BrandPage({
   const prefix = `/${locale}`;
 
   const products = (
-    await Promise.all(
-      (brand.products ?? []).map((p) => getProductDetail(p.slug, locale, CURRENCY)),
-    )
+    await Promise.all((brand.products ?? []).map((p) => getProductDetail(p.slug, locale, CURRENCY)))
   ).filter((p): p is ProductDetail => p !== null);
 
   const about = brand.description ?? brand.short_description ?? "";
