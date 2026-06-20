@@ -30,15 +30,15 @@
     "zustand": "^5.0.1"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.0.0-beta.5",
+    "@tailwindcss/postcss": "^4.3.1",
     "@types/node": "^22.9.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@yupay/config-eslint": "workspace:*",
     "@yupay/config-tailwind": "workspace:*",
     "@yupay/config-tsconfig": "workspace:*",
-    "postcss": "^8.4.49",
-    "tailwindcss": "^4.0.0-beta.5",
+    "postcss": "^8.5.15",
+    "tailwindcss": "^4.3.1",
     "typescript": "^5.6.3",
     "vitest": "^2.1.4"
   }
