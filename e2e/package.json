@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@playwright/test": "^1.48.2",
+    "@playwright/test": "^1.61.1",
     "@types/node": "^22.9.0",
     "@yupay/config-eslint": "workspace:*",
     "@yupay/config-tsconfig": "workspace:*",
