@@ -33,7 +33,7 @@ rclone copy "r2:yupay-backups/$BACKUP" /tmp/restore/
 age --decrypt -i ~/.config/sops/age/keys.txt -o /tmp/restore/yupay.dump /tmp/restore/$(basename "$BACKUP")
 
 # 4. Stop the app (API, worker, scheduler, bot — keep DB up)
-ssh deploy@prod.yupay.io 'cd /opt/yupay && docker compose -f docker-compose.prod.yml stop api worker scheduler bot'
+ssh deploy@prod.yupay.io 'cd ~/opt/yupay && docker compose -f docker-compose.prod.yml stop api worker scheduler bot'
 
 # 5. Rename current DB and restore into a fresh one
 docker compose -f docker-compose.prod.yml exec -T postgres psql -U postgres <<'SQL'

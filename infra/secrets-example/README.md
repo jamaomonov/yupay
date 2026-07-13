@@ -1,25 +1,28 @@
 # Production secrets
 
-`docker-compose.prod.yml` mounts env files from `/opt/yupay/secrets/`
-on the host. **This folder is the template** — copy each `.env` to
-the host's secrets directory, fill in real values, then `chmod 600`
-the lot.
+`docker-compose.prod.yml` mounts env files from `./secrets/` — a git-ignored
+directory next to it, inside the checkout on the server. **This folder is the
+template**: copy each `.env` there, fill in real values, then `chmod 600` the lot.
+
+The server holds the only copy. `/secrets/` is in `.gitignore` and the server's
+deploy key is read-only, so these files cannot be pushed back — but that also
+means nothing restores them for you. Keep an offline copy of whatever you cannot
+regenerate (notably `JWT_PRIVATE_KEY`: rotating it invalidates every live session).
 
 ## On the host (one-time)
 
 ```bash
-sudo mkdir -p /opt/yupay/secrets
-sudo chown $(whoami):$(whoami) /opt/yupay/secrets
-chmod 700 /opt/yupay/secrets
+cd ~/opt/yupay          # the checkout
+install -d -m 0700 secrets
 
-# Then, from your laptop:
-rsync -a infra/secrets-example/ deploy-user@yupay.uz:/opt/yupay/secrets/
+# Copy the templates in, then fill in real values:
+cp infra/secrets-example/*.env secrets/
+$EDITOR secrets/postgres.env secrets/api.env secrets/grafana.env \
+        secrets/backup.env secrets/minio.env
+chmod 600 secrets/*.env
 
-# On the host, rename and fill in:
-cd /opt/yupay/secrets
-for f in *.env; do mv "$f" "$f.tmp" && mv "$f.tmp" "$f"; done
-$EDITOR postgres.env api.env grafana.env backup.env minio.env
-chmod 600 *.env
+# Sanity check — must return nothing:
+grep -RIn 'CHANGE_ME' secrets/
 ```
 
 ## What lives where
@@ -98,8 +101,8 @@ Before the first `docker compose up`, sanity-check that nothing still
 says `CHANGE_ME`:
 
 ```bash
-cd /opt/yupay/secrets
-grep -RIn 'CHANGE_ME' .  # must return nothing
+cd ~/opt/yupay
+grep -RIn 'CHANGE_ME' secrets/  # must return nothing
 ```
 
 ## Rotation

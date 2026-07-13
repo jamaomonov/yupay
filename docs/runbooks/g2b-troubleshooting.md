@@ -2,15 +2,15 @@
 
 ## Symptoms → diagnosis
 
-| Symptom (admin sees)                                                                         | Likely cause                                | First action                                                                                                           |
-| -------------------------------------------------------------------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `/admin/integrations/g2b/health` → `available: false, reason: G2B_API_KEY is not configured` | Env var missing in `api.env`                | Add `G2B_API_KEY=…` to `/opt/yupay/secrets/api.env`, then `docker compose up -d --force-recreate api worker scheduler` |
-| `available: false, reason: g2b HTTP 401`                                                     | Wrong / revoked / banned key                | **STOP making calls** — repeated 401s permanently ban our IP. Get a fresh key via the G2B Telegram bot                 |
-| `available: true, balance: 0`                                                                | Pre-paid wallet empty on G2B side           | Top up the G2B account via their Telegram bot                                                                          |
-| Task stuck `in_progress` after ~10 min, no webhook                                           | Webhook never reached us                    | See "Webhook lost" below                                                                                               |
-| Task `failed`, `last_error: g2b purchase failed: HTTP 410`                                   | Order was refunded / cancelled on G2B side  | Refund the customer via `/admin/payments/{id}/refund`; the G2B balance was already returned automatically              |
-| Task `failed`, `last_error: no active g2b mapping for SKU`                                   | Missing or `is_active=false` mapping        | Create the mapping at `/admin/integrations/mappings`                                                                   |
-| Game task `failed`, `last_error: missing fulfillment_data.player_id`                         | Customer didn't enter player_id at checkout | Refund + ask product team why the form let the order through                                                           |
+| Symptom (admin sees)                                                                         | Likely cause                                | First action                                                                                                |
+| -------------------------------------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `/admin/integrations/g2b/health` → `available: false, reason: G2B_API_KEY is not configured` | Env var missing in `api.env`                | Add `G2B_API_KEY=…` to `secrets/api.env`, then `docker compose up -d --force-recreate api worker scheduler` |
+| `available: false, reason: g2b HTTP 401`                                                     | Wrong / revoked / banned key                | **STOP making calls** — repeated 401s permanently ban our IP. Get a fresh key via the G2B Telegram bot      |
+| `available: true, balance: 0`                                                                | Pre-paid wallet empty on G2B side           | Top up the G2B account via their Telegram bot                                                               |
+| Task stuck `in_progress` after ~10 min, no webhook                                           | Webhook never reached us                    | See "Webhook lost" below                                                                                    |
+| Task `failed`, `last_error: g2b purchase failed: HTTP 410`                                   | Order was refunded / cancelled on G2B side  | Refund the customer via `/admin/payments/{id}/refund`; the G2B balance was already returned automatically   |
+| Task `failed`, `last_error: no active g2b mapping for SKU`                                   | Missing or `is_active=false` mapping        | Create the mapping at `/admin/integrations/mappings`                                                        |
+| Game task `failed`, `last_error: missing fulfillment_data.player_id`                         | Customer didn't enter player_id at checkout | Refund + ask product team why the form let the order through                                                |
 
 ## Webhook lost — manual reconciliation
 
@@ -37,7 +37,7 @@ If a leak is suspected, rotate:
 
 ```bash
 python -c "import secrets; print(secrets.token_urlsafe(32))"
-# update /opt/yupay/secrets/api.env: G2B_WEBHOOK_SECRET + G2B_CALLBACK_URL
+# update secrets/api.env: G2B_WEBHOOK_SECRET + G2B_CALLBACK_URL
 docker compose up -d --force-recreate api worker scheduler
 ```
 

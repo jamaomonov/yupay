@@ -108,42 +108,50 @@ docker compose version
 
 ## 3. Clone the repository
 
+Anywhere the deploy user owns — no root-owned path is needed, and every path in
+`docker-compose.prod.yml` is relative to the checkout. On the current VPS it is
+`~/opt/yupay`.
+
 ```bash
-sudo mkdir -p /opt/yupay
-sudo chown deploy:deploy /opt/yupay
-cd /opt
-git clone https://github.com/<your-org>/yupay.git
-cd /opt/yupay
+install -d ~/opt && cd ~/opt
+git clone git@github.com:<your-org>/yupay.git
+cd ~/opt/yupay
 git checkout main   # or the tagged release you want to ship
 ```
+
+Use a **read-only deploy key** for that clone (GitHub → Settings → Deploy keys),
+so a compromised box cannot push to the repository.
 
 ---
 
 ## 4. Configure secrets
 
+They live in `secrets/` inside the checkout — git-ignored via `/secrets/`, and
+mounted by relative path (`env_file: ./secrets/api.env`). Owned by the deploy
+user, so editing them needs no `sudo`.
+
 ```bash
-sudo mkdir -p /opt/yupay/secrets
-sudo chown deploy:deploy /opt/yupay/secrets
-chmod 700 /opt/yupay/secrets
+cd ~/opt/yupay
+install -d -m 0700 secrets
 
 # Copy templates from the repo:
-cp infra/secrets-example/*.env /opt/yupay/secrets/
+cp infra/secrets-example/*.env secrets/
 
 # Edit each file and replace every "CHANGE_ME":
-$EDITOR /opt/yupay/secrets/postgres.env
-$EDITOR /opt/yupay/secrets/postgres-exporter.env
-$EDITOR /opt/yupay/secrets/api.env
-$EDITOR /opt/yupay/secrets/web.env
-$EDITOR /opt/yupay/secrets/miniapp.env
-$EDITOR /opt/yupay/secrets/minio.env
-$EDITOR /opt/yupay/secrets/grafana.env
-$EDITOR /opt/yupay/secrets/backup.env
+$EDITOR secrets/postgres.env
+$EDITOR secrets/postgres-exporter.env
+$EDITOR secrets/api.env
+$EDITOR secrets/web.env
+$EDITOR secrets/miniapp.env
+$EDITOR secrets/minio.env
+$EDITOR secrets/grafana.env
+$EDITOR secrets/backup.env
 
 # Lock down permissions.
-chmod 600 /opt/yupay/secrets/*.env
+chmod 600 secrets/*.env
 
 # Sanity check — must return nothing:
-grep -RIn 'CHANGE_ME' /opt/yupay/secrets/
+grep -RIn 'CHANGE_ME' secrets/
 ```
 
 See `infra/secrets-example/README.md` for how to generate JWT
@@ -172,7 +180,7 @@ when run as `root`.
 ## 6. Bring the stack up
 
 ```bash
-cd /opt/yupay
+cd ~/opt/yupay
 
 # Pull pre-built images from GHCR — the build workflow pushes :main on every
 # push to main, and tagged releases land as :v1.2.3.
@@ -254,13 +262,13 @@ it to a host crontab:
 ```bash
 sudo crontab -e
 # Add (3 AM UTC = 8 AM Tashkent):
-0 3 * * * cd /opt/yupay && docker compose -f docker-compose.prod.yml run --rm backup >> /var/log/yupay-backup.log 2>&1
+0 3 * * * cd ~/opt/yupay && docker compose -f docker-compose.prod.yml run --rm backup >> /var/log/yupay-backup.log 2>&1
 ```
 
 Trigger one manual run to verify the pipeline end-to-end:
 
 ```bash
-cd /opt/yupay
+cd ~/opt/yupay
 docker compose -f docker-compose.prod.yml run --rm backup
 # Then on your laptop:
 rclone ls r2:yupay-backups/$(date -u +%Y-%m-%d)/

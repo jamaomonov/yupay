@@ -93,6 +93,12 @@ Alongside this, the RU-cloud egress workarounds were removed: no `enable_ipv6`/U
 - Requires an out-of-band `docker network create yupay-edge` before the first deploy, and a
   matching edit to a _second_ repository (`streamers-parser`'s compose) that is not versioned
   here. That edit is documented in `docs/runbooks/deploy-shared-vps.md`.
+- The stack is now fully self-contained under one directory: the compose file, the configs it
+  mounts, and the git-ignored `secrets/` it reads all live in the checkout, addressed
+  relatively. An earlier revision of this deploy split them — secrets under a root-owned
+  `/opt/yupay`, code in the deploy user's home — which bought nothing beyond what `.gitignore`
+  plus a read-only deploy key already guarantee, while costing `sudo` on every secret edit and
+  a compose file that could not be checked out anywhere else.
 - `X-Forwarded-*` correctness now depends on `trusted_proxies` being right. Get it wrong and
   the failure is silent — wrong client IPs in rate limits rather than an error.
 

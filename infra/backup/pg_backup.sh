@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Nightly Postgres backup: pg_dump -> age -> rclone -> Cloudflare R2.
-# Expected env vars (mounted via /opt/yupay/secrets/backup.env):
+# Expected env vars (mounted via secrets/backup.env):
 #   PGHOST=postgres
 #   PGUSER=...
 #   PGPASSWORD=...

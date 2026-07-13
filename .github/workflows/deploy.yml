@@ -47,9 +47,9 @@ jobs:
           envs: IMAGE_TAG_INPUT
           script: |
             set -euo pipefail
-            # The checkout lives in the deploy user's home; only the secrets are
-            # under /opt/yupay (root-owned, referenced absolutely by the compose
-            # env_file entries) so they can never be swept into a git commit.
+            # Everything lives in the deploy user's checkout: compose, configs,
+            # and the git-ignored secrets/ it mounts by relative path. No
+            # root-owned paths, so no sudo anywhere in this script.
             cd /home/ubuntu/opt/yupay
             git fetch --all --tags
             git checkout "$IMAGE_TAG_INPUT" || git checkout main

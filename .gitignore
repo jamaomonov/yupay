@@ -65,6 +65,11 @@ docker-compose.override.yml
 !*.enc.env
 !infra/secrets/*.enc.env
 
+# Live production secrets, mounted by docker-compose.prod.yml (env_file:
+# ./secrets/*.env). Present only on the server; never committed. The templates
+# in infra/secrets-example/ are the versioned counterpart.
+/secrets/
+
 # --- Backups ---
 *.dump
 *.sql.gz

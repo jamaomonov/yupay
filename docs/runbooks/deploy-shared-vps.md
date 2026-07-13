@@ -48,12 +48,18 @@ Idempotent in the deploy workflow, but it must exist before either stack starts.
 
 ### 2. Secrets
 
-They live in `/opt/yupay/secrets/` — **outside the checkout**, so they can never be swept into
-a commit. Root-owned, group-readable by the deploy user, `0640`:
+They live in `secrets/` **inside the checkout**, next to `docker-compose.prod.yml`, which
+mounts them by relative path (`env_file: ./secrets/api.env`). Owned by the deploy user so no
+`sudo` is needed to edit them, and readable by nobody else:
 
 ```bash
-sudo install -d -o root -g ubuntu -m 0750 /opt/yupay/secrets
+install -d -m 0700 /home/ubuntu/opt/yupay/secrets   # files inside: 0600
 ```
+
+They are kept out of git by `/secrets/` in `.gitignore`, backed up by `gitleaks` in
+pre-commit; and the server's deploy key is **read-only**, so nothing can be pushed from there
+even if a file did get staged. The server holds the only copy — losing the box loses the
+secrets, so keep an offline copy of anything you cannot regenerate.
 
 Nine files are required; `infra/secrets-example/` holds the templates and
 `infra/secrets-example/README.md` documents every key:

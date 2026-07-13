@@ -14,12 +14,12 @@
 ```bash
 ssh deploy@prod.yupay.io
 
-cd /opt/yupay
+cd ~/opt/yupay
 git fetch --all --tags
 git checkout vX.Y.Z
 
 # Refresh decrypted env files (if rotated)
-sops -d infra/secrets/api.enc.env > /opt/yupay/secrets/api.env
+sops -d infra/secrets/api.enc.env > secrets/api.env
 
 # Pull new images
 docker compose -f docker-compose.prod.yml pull

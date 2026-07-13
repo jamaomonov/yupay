@@ -1,4 +1,10 @@
 name: yupay-prod
+#
+# Secrets live in ``./secrets/*.env``, next to this file and git-ignored. They
+# are deliberately NOT in the image and NOT in git: the server holds the only
+# copy, and its deploy key is read-only, so nothing here can be pushed back.
+# ``infra/secrets-example/`` documents every key. Paths are relative so the
+# stack can be checked out anywhere — it does not depend on a fixed /opt path.
 
 x-app-env: &app-env
   ENVIRONMENT: prod
@@ -18,7 +24,7 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
-    env_file: /opt/yupay/secrets/postgres.env
+    env_file: ./secrets/postgres.env
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
@@ -33,7 +39,7 @@ services:
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.19.1
     restart: unless-stopped
-    env_file: /opt/yupay/secrets/postgres-exporter.env
+    env_file: ./secrets/postgres-exporter.env
     depends_on:
       - postgres
 
@@ -44,10 +50,10 @@ services:
     # queue and rate-limit state, so it must not be an open door to anything that
     # gets a foothold on the docker networks. $$ defers expansion to the
     # container shell; REDIS_PASSWORD comes from the env file.
-    # ROLLOUT: requires /opt/yupay/secrets/redis.env on the server AND
-    # password-carrying REDIS_URL/DRAMATIQ_BROKER_URL in api.env — see
+    # ROLLOUT: requires secrets/redis.env on the server AND password-carrying
+    # REDIS_URL/DRAMATIQ_BROKER_URL in api.env — see
     # docs/runbooks/redis-auth-rollout.md before deploying this change.
-    env_file: /opt/yupay/secrets/redis.env
+    env_file: ./secrets/redis.env
     command: ["sh", "-c", 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"']
     volumes:
       - redis-data:/data
@@ -56,7 +62,7 @@ services:
     image: oliver006/redis_exporter:v1.86.0
     restart: unless-stopped
     # Reads REDIS_PASSWORD straight from the shared redis.env.
-    env_file: /opt/yupay/secrets/redis.env
+    env_file: ./secrets/redis.env
     environment:
       REDIS_ADDR: redis://redis:6379
     depends_on:
@@ -66,7 +72,7 @@ services:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     restart: unless-stopped
     command: server /data --console-address ":9001"
-    env_file: /opt/yupay/secrets/minio.env
+    env_file: ./secrets/minio.env
     volumes:
       - minio-data:/data
 
@@ -75,7 +81,7 @@ services:
     restart: unless-stopped
     environment:
       <<: *app-env
-    env_file: /opt/yupay/secrets/api.env
+    env_file: ./secrets/api.env
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_started }
@@ -88,7 +94,7 @@ services:
     restart: unless-stopped
     environment:
       <<: *app-env
-    env_file: /opt/yupay/secrets/api.env
+    env_file: ./secrets/api.env
     depends_on: [postgres, redis]
 
   scheduler:
@@ -96,7 +102,7 @@ services:
     restart: unless-stopped
     environment:
       <<: *app-env
-    env_file: /opt/yupay/secrets/api.env
+    env_file: ./secrets/api.env
     depends_on: [postgres, redis]
 
   bot:
@@ -104,18 +110,18 @@ services:
     restart: unless-stopped
     environment:
       <<: *app-env
-    env_file: /opt/yupay/secrets/api.env
+    env_file: ./secrets/api.env
     depends_on: [api]
 
   web:
     image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-web:${IMAGE_TAG:-main}
     restart: unless-stopped
-    env_file: /opt/yupay/secrets/web.env
+    env_file: ./secrets/web.env
 
   miniapp:
     image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-miniapp:${IMAGE_TAG:-main}
     restart: unless-stopped
-    env_file: /opt/yupay/secrets/miniapp.env
+    env_file: ./secrets/miniapp.env
 
   admin:
     image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-admin:${IMAGE_TAG:-main}
@@ -129,7 +135,7 @@ services:
     # GRAFANA_BASIC_AUTH_HASH lives in grafana.env — Caddy substitutes
     # it into the {$GRAFANA_BASIC_AUTH_HASH} placeholder on
     # grafana.yupay.uz. Other keys in the file are ignored.
-    env_file: /opt/yupay/secrets/grafana.env
+    env_file: ./secrets/grafana.env
     # No host ports: the shared edge proxy (infra/edge/) owns 80/443 on this
     # box because a second stack (streamers-parser) shares the VPS and only one
     # process can bind them. The edge terminates TLS and forwards here over the
@@ -183,7 +189,7 @@ services:
   grafana:
     image: grafana/grafana:13.0.2
     restart: unless-stopped
-    env_file: /opt/yupay/secrets/grafana.env
+    env_file: ./secrets/grafana.env
     volumes:
       - grafana-data:/var/lib/grafana
       - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
@@ -214,7 +220,7 @@ services:
     # and runs pg_backup.sh daily. unless-stopped keeps the schedule alive
     # across reboots. One-off runs override the command (see `make backup`).
     restart: unless-stopped
-    env_file: /opt/yupay/secrets/backup.env
+    env_file: ./secrets/backup.env
     volumes:
       - ./infra/backup:/scripts:ro
       - backup-tmp:/tmp/backup

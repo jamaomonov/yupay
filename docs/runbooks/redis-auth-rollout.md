@@ -20,12 +20,12 @@ there. `requirepass` closes that door.
 python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 
 # 1. Create the redis secrets file on the VPS
-cat > /opt/yupay/secrets/redis.env <<'ENV'
+cat > secrets/redis.env <<'ENV'
 REDIS_PASSWORD=<generated>
 ENV
-chmod 600 /opt/yupay/secrets/redis.env
+chmod 600 secrets/redis.env
 
-# 2. Update the client URLs in /opt/yupay/secrets/api.env
+# 2. Update the client URLs in secrets/api.env
 #    (note the colon before the password — empty username)
 REDIS_URL=redis://:<generated>@redis:6379/0
 DRAMATIQ_BROKER_URL=redis://:<generated>@redis:6379/1
