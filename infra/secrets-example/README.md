@@ -116,11 +116,37 @@ cd ~/opt/yupay
 grep -RIn 'CHANGE_ME' secrets/  # must return nothing
 ```
 
+## Applying a changed secret
+
+**`docker compose restart` does not do it.** Compose reads `env_file` when it *creates* a
+container; `restart` reuses the existing one, so the process comes back with the old values and
+nothing tells you. Verified on the box: after editing `api.env`, `restart` left the container id
+unchanged and the new variable absent, while `up -d` replaced the container and picked it up.
+
+Use `up -d` (it recreates any service whose config hash changed):
+
+```bash
+docker compose -f docker-compose.prod.yml up -d api worker scheduler bot
+```
+
+Then confirm the value actually landed, rather than assuming:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T api printenv TELEGRAM_BOT_TOKEN | head -c 12
+```
+
+This matters most for `TELEGRAM_BOT_TOKEN`: the mini app's `initData` is HMAC-signed by
+Telegram with the bot's token, so a stale token in `api` makes every `/auth/telegram/webapp`
+call fail with 401 and every mini-app user lands on the error screen — while the bot container,
+recreated separately, looks perfectly healthy.
+
 ## Rotation
 
 When a credential is compromised:
 
 1. Generate the replacement (see sections above).
 2. Update the relevant `.env`.
-3. Restart only the affected services: `docker compose restart api worker scheduler bot`.
-4. For Postgres password changes, also `ALTER ROLE yupay_app WITH PASSWORD '…'` first.
+3. Apply it with `up -d` as above — **not** `restart`.
+4. For Postgres password changes, `ALTER ROLE yupay_app WITH PASSWORD '…'` **first**, then
+   update `postgres.env`, `postgres-exporter.env`, `backup.env` and the `DATABASE_URL` in
+   `api.env` — they all carry the same password, and a half-rotated set takes the API down.

@@ -93,12 +93,70 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
 
+# Settings that a production deploy is broken without, mapped to what silently
+# stops working when they are empty. Not a completeness check — payment gateways
+# and suppliers report ``available=false`` and degrade visibly, so they stay out.
+_REQUIRED_IN_PROD: tuple[tuple[str, str, str], ...] = (
+    (
+        "TELEGRAM_BOT_TOKEN",
+        "telegram_bot_token",
+        "mini-app login: initData is HMAC-signed with the bot token, so "
+        "/auth/telegram/webapp 401s for every user",
+    ),
+    ("AUTH_EMAIL_PEPPER", "auth_email_pepper", "guest JWTs hash emails with an empty pepper"),
+    ("R2_ACCOUNT_ID", "r2_account_id", "media upload raises on the first presign"),
+    ("R2_ACCESS_KEY_ID", "r2_access_key_id", "media upload raises on the first presign"),
+    ("R2_SECRET_ACCESS_KEY", "r2_secret_access_key", "media upload raises on the first presign"),
+)
+
+
+def missing_prod_settings(settings: Settings) -> list[str]:
+    """Return the env var names a prod deploy is missing.
+
+    Empty outside prod: local and CI runs routinely have no third-party
+    credentials, and nagging about it there trains people to ignore the warning.
+
+    Args:
+        settings: The resolved application settings.
+
+    Returns:
+        Env var names that are empty but required in production, in declaration
+        order. Empty list when the environment is not prod, or nothing is missing.
+    """
+    if not settings.is_prod:
+        return []
+    return [
+        env_name
+        for env_name, field, _ in _REQUIRED_IN_PROD
+        if not str(getattr(settings, field, "")).strip()
+    ]
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """App lifespan — wire startup and shutdown side effects."""
     configure_logging()
     logger = get_logger("yupay.bootstrap")
-    logger.info("startup", environment=get_settings().environment)
+    settings = get_settings()
+    logger.info("startup", environment=settings.environment)
+
+    # Warn, don't raise: a stack has to be able to boot before its third-party
+    # credentials exist, and refusing to start would take the storefront down
+    # over a disabled integration. But it must not be silent — an empty bot token
+    # breaks mini-app login for every user while every container stays "healthy",
+    # and the usual cause is applying a secret with ``docker compose restart``,
+    # which does not re-read env_file (use ``up -d``).
+    missing = missing_prod_settings(settings)
+    if missing:
+        reasons = {name: why for name, _, why in _REQUIRED_IN_PROD if name in missing}
+        logger.warning(
+            "prod_config_incomplete",
+            missing=missing,
+            impact=reasons,
+            hint="apply secrets with `docker compose up -d`, not `restart` — "
+            "restart reuses the container and keeps the old env_file values",
+        )
+
     try:
         yield
     finally:
