@@ -61,7 +61,7 @@ pre-commit; and the server's deploy key is **read-only**, so nothing can be push
 even if a file did get staged. The server holds the only copy — losing the box loses the
 secrets, so keep an offline copy of anything you cannot regenerate.
 
-Nine files are required; `infra/secrets-example/` holds the templates and
+Eight files are required; `infra/secrets-example/` holds the templates and
 `infra/secrets-example/README.md` documents every key:
 
 | File                    | Consumed by                        |
@@ -69,7 +69,6 @@ Nine files are required; `infra/secrets-example/` holds the templates and
 | `postgres.env`          | postgres                           |
 | `postgres-exporter.env` | postgres-exporter                  |
 | `redis.env`             | redis, redis-exporter              |
-| `minio.env`             | minio                              |
 | `api.env`               | api, worker, scheduler, bot        |
 | `web.env`               | web                                |
 | `miniapp.env`           | miniapp                            |
@@ -152,8 +151,8 @@ docker compose -f infra/edge/docker-compose.yml down
 docker compose -f /home/ubuntu/opt/streamers-parser/docker-compose.prod.yml up -d
 ```
 
-YuPay is then unreachable (its Caddy publishes nothing), but no state is lost: Postgres, Redis
-and MinIO volumes are untouched. To restore YuPay instead, re-add `ports: 80/443` to its Caddy
+YuPay is then unreachable (its Caddy publishes nothing), but no state is lost: the Postgres and
+Redis volumes are untouched, and media lives in Cloudflare R2, off-box entirely. To restore YuPay instead, re-add `ports: 80/443` to its Caddy
 service, revert `auto_https off` in `infra/caddy/Caddyfile.prod`, and stop the neighbouring
 stack's Caddy.
 

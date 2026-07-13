@@ -17,8 +17,7 @@ install -d -m 0700 secrets
 
 # Copy the templates in, then fill in real values:
 cp infra/secrets-example/*.env secrets/
-$EDITOR secrets/postgres.env secrets/api.env secrets/grafana.env \
-        secrets/backup.env secrets/minio.env
+$EDITOR secrets/postgres.env secrets/api.env secrets/grafana.env secrets/backup.env
 chmod 600 secrets/*.env
 
 # Sanity check — must return nothing:
@@ -32,7 +31,6 @@ grep -RIn 'CHANGE_ME' secrets/
 | `postgres.env`          | `postgres` container — initial role/db creation                                               |
 | `postgres-exporter.env` | `postgres-exporter` container (Prometheus scrape)                                             |
 | `redis.env`             | `redis` (requirepass) + `redis-exporter`; password also goes into the Redis URLs in `api.env` |
-| `minio.env`             | `minio` container                                                                             |
 | `api.env`               | `api`, `worker`, `scheduler`, `bot` (all share the same runtime env)                          |
 | `web.env`               | `web` (Next.js storefront) — bundled into the JS, public                                      |
 | `miniapp.env`           | `miniapp` (Vite mini app) — bundled into the JS, public                                       |

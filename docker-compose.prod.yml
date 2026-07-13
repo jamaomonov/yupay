@@ -68,13 +68,12 @@ services:
     depends_on:
       - redis
 
-  minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    env_file: ./secrets/minio.env
-    volumes:
-      - minio-data:/data
+  # No object store here on purpose. Media (brand/product images) lives in
+  # Cloudflare R2 — see ADR-0018 and modules/storage/. The admin SPA uploads
+  # straight to R2 with a presigned PUT this API issues, so large images never
+  # touch FastAPI and there is nothing for a local S3 to serve. A MinIO service
+  # used to sit here, reachable by no code path at all: R2_* are the only storage
+  # settings the code reads, and S3_* were never wired to anything.
 
   api:
     image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-api:${IMAGE_TAG:-main}
@@ -237,7 +236,6 @@ services:
 volumes:
   postgres-data:
   redis-data:
-  minio-data:
   caddy-data:
   caddy-config:
   prometheus-data:
@@ -246,7 +244,7 @@ volumes:
   backup-tmp:
 
 networks:
-  # Private stack network: postgres, redis, minio, api, worker, bot, the
+  # Private stack network: postgres, redis, api, worker, bot, the
   # frontends and the monitoring sidecars all talk over this and publish
   # nothing to the host.
   default:

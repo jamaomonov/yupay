@@ -143,7 +143,6 @@ $EDITOR secrets/postgres-exporter.env
 $EDITOR secrets/api.env
 $EDITOR secrets/web.env
 $EDITOR secrets/miniapp.env
-$EDITOR secrets/minio.env
 $EDITOR secrets/grafana.env
 $EDITOR secrets/backup.env
 
