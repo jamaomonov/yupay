@@ -14,6 +14,10 @@
 # network. See ADR-0030.
 #
 # Consequences of sitting behind that edge:
+#   * Every site address is written ``http://…``. This is load-bearing: a bare
+#     ``yupay.uz`` is an HTTPS site to Caddy, so it binds :443 and never answers
+#     the edge's cleartext forward on :80. ``auto_https off`` does NOT change
+#     that — it only suppresses certificates and redirects, not the port.
 #   * ``auto_https off`` — certificates are the edge's job. Without this Caddy
 #     would try to solve ACME challenges on ports it cannot bind.
 #   * ``trusted_proxies`` — the edge is the only hop in front of us, so its
@@ -31,7 +35,7 @@
 }
 
 # ---------- public storefront ----------
-yupay.uz, www.yupay.uz {
+http://yupay.uz, http://www.yupay.uz {
 	encode zstd gzip
 	header {
 		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
@@ -55,7 +59,7 @@ yupay.uz, www.yupay.uz {
 }
 
 # ---------- Telegram Mini App ----------
-app.yupay.uz {
+http://app.yupay.uz {
 	encode zstd gzip
 	header {
 		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
@@ -70,7 +74,7 @@ app.yupay.uz {
 }
 
 # ---------- internal admin SPA ----------
-admin.yupay.uz {
+http://admin.yupay.uz {
 	encode zstd gzip
 	header {
 		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
@@ -83,7 +87,7 @@ admin.yupay.uz {
 }
 
 # ---------- API + websockets ----------
-api.yupay.uz {
+http://api.yupay.uz {
 	encode zstd gzip
 	header {
 		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
@@ -117,7 +121,7 @@ api.yupay.uz {
 }
 
 # ---------- Grafana (operators only) ----------
-grafana.yupay.uz {
+http://grafana.yupay.uz {
 	encode zstd gzip
 	# basic_auth gates the surface even before Grafana's own login —
 	# anyone scanning subdomains for /login pages gets an instant 401
