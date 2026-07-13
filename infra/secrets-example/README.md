@@ -118,7 +118,7 @@ grep -RIn 'CHANGE_ME' secrets/  # must return nothing
 
 ## Applying a changed secret
 
-**`docker compose restart` does not do it.** Compose reads `env_file` when it *creates* a
+**`docker compose restart` does not do it.** Compose reads `env_file` when it _creates_ a
 container; `restart` reuses the existing one, so the process comes back with the old values and
 nothing tells you. Verified on the box: after editing `api.env`, `restart` left the container id
 unchanged and the new variable absent, while `up -d` replaced the container and picked it up.
