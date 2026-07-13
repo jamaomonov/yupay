@@ -1,4 +1,4 @@
-# Caddy — production config.
+# Caddy — production config: the YuPay stack's internal host-router.
 #
 # Domain plan for yupay.uz:
 #   yupay.uz, www.yupay.uz  → web (Next.js public storefront)
@@ -7,13 +7,27 @@
 #   api.yupay.uz            → FastAPI + WebSocket
 #   grafana.yupay.uz        → Grafana, gated by basic-auth
 #
-# DNS prerequisite: A records for the apex + each subdomain pointing
-# at the server's public IP. Caddy fetches Let's Encrypt certs on
-# first request — no manual cert work required.
+# This Caddy does NOT face the internet and does NOT own :80/:443 — the VPS is
+# shared with a second stack (streamers-parser) and only one process can bind
+# those ports, so a standalone edge proxy (infra/edge/) holds them, terminates
+# TLS with Let's Encrypt, and forwards cleartext HTTP here over the ``yupay-edge``
+# network. See ADR-0030.
+#
+# Consequences of sitting behind that edge:
+#   * ``auto_https off`` — certificates are the edge's job. Without this Caddy
+#     would try to solve ACME challenges on ports it cannot bind.
+#   * ``trusted_proxies`` — the edge is the only hop in front of us, so its
+#     X-Forwarded-{For,Proto,Host} must be preserved rather than overwritten.
+#     Otherwise every request reaches FastAPI as plain http from the proxy's own
+#     IP, which breaks scheme-aware URL building and IP-based rate limiting.
+#
+# DNS prerequisite: A records for the apex + each subdomain point at the VPS.
 
 {
-	# Replace with a real address — Let's Encrypt expiry warnings land here.
-	email ops@yupay.uz
+	auto_https off
+	servers {
+		trusted_proxies static private_ranges
+	}
 }
 
 # ---------- public storefront ----------

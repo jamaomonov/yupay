@@ -47,10 +47,20 @@ jobs:
           envs: IMAGE_TAG_INPUT
           script: |
             set -euo pipefail
-            cd /opt/yupay
+            # The checkout lives in the deploy user's home; only the secrets are
+            # under /opt/yupay (root-owned, referenced absolutely by the compose
+            # env_file entries) so they can never be swept into a git commit.
+            cd /home/ubuntu/opt/yupay
             git fetch --all --tags
             git checkout "$IMAGE_TAG_INPUT" || git checkout main
             export IMAGE_TAG="$IMAGE_TAG_INPUT"
+
+            # The shared edge proxy owns :80/:443 for every stack on this box
+            # (see ADR-0030). It is idempotent and must be up before the app
+            # stack registers its ``yupay-caddy`` alias on the network.
+            docker network inspect yupay-edge >/dev/null 2>&1 || docker network create yupay-edge
+            docker compose -f infra/edge/docker-compose.yml up -d
+
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
             docker compose -f docker-compose.prod.yml up -d --remove-orphans

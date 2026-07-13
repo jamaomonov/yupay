@@ -1,0 +1,36 @@
+# Shared edge proxy — the single owner of :80 / :443 on the VPS.
+#
+# The box hosts two independent compose stacks (YuPay and streamers-parser).
+# Only one process can bind the privileged ports, so neither stack's own Caddy
+# does: this one accepts every inbound request, terminates TLS, and forwards
+# cleartext HTTP to the stack that owns the hostname over the ``yupay-edge``
+# docker network. Each stack keeps its own routing/CSP/auth rules in its own
+# Caddyfile — this file only decides which stack a hostname belongs to.
+#
+# See ADR-0030 and docs/runbooks/deploy-shared-vps.md.
+
+{
+	# Let's Encrypt expiry warnings land here.
+	email ops@yupay.uz
+}
+
+# ---------- YuPay ----------
+# One block for all five hostnames: the upstream (the YuPay stack's Caddy)
+# re-routes by Host, and Caddy forwards the original Host header untouched.
+# Certificates are issued per-hostname via HTTP-01 on :80.
+yupay.uz, www.yupay.uz, app.yupay.uz, admin.yupay.uz, api.yupay.uz, grafana.yupay.uz {
+	reverse_proxy yupay-caddy:80
+}
+
+# ---------- streamers-parser ----------
+# Fronted by Cloudflare (proxied DNS). Cloudflare provides the public cert; the
+# origin hop is secured with a self-signed cert (``tls internal``), which is
+# what CF's "Full" mode expects. Declaring both schemes disables Caddy's
+# HTTP→HTTPS redirect, which would otherwise loop under CF "Flexible".
+# This mirrors what streamers-parser's own Caddy did before it moved behind
+# this proxy — do not "fix" it into a Let's Encrypt block without checking the
+# Cloudflare SSL mode first.
+http://marketing.kolikosoft.com, https://marketing.kolikosoft.com {
+	tls internal
+	reverse_proxy streamers-caddy:80
+}

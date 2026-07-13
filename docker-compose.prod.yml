@@ -6,33 +6,13 @@ x-app-env: &app-env
   LOG_LEVEL: INFO
   LOG_JSON: "true"
 
-# Telegram's IPv4 ranges are blocked on this host's egress (RU cloud):
-# ``curl -4 https://api.telegram.org`` times out while ``curl -6``
-# returns 302 in ~0.1s. Every container that calls the Telegram Bot API
-# must therefore reach it over IPv6:
-#   - ``bot`` is outbound-only (long-poll) with no internal-network deps,
-#     so it uses ``network_mode: host`` to borrow the host's working IPv6.
-#   - ``api`` / ``worker`` / ``scheduler`` keep the bridge (they need the
-#     postgres/redis/api service-name DNS) and get IPv6 egress from the
-#     ``enable_ipv6`` + ULA + NAT66 on the ``default`` network below.
-# See docs/runbooks/telegram-connectivity.md.
-#
-# ICMP "fragmentation needed" is often filtered on cloud egress, so the
-# kernel can't learn the path MTU from ICMP. tcp_mtu_probing=2 forces TCP
-# MTU probing (RFC 4821) for every connection — free on healthy paths,
-# recovers from black-hole MTU drops on the bad ones. Kept for the
-# remaining IPv4 egress (e.g. payment providers).
-x-mtu-probe: &mtu-probe
-  - net.ipv4.tcp_mtu_probing=2
-
-# Bridge containers reach Telegram only over IPv6, but their sole IPv6
-# source is the ULA (fc00::/7). RFC 6724's default label table demotes a
-# global-IPv6 destination against a ULA source (Rule 5, mismatched label),
-# so getaddrinfo hands back the blocked IPv4 first and httpx ConnectTimeouts
-# on admin alerts. Mounting this gai.conf relabels fc00::/7 to the global
-# label (1) so IPv6 sorts first. See docs/runbooks/telegram-connectivity.md.
-x-gai-volume: &gai-volume
-  - ./infra/docker/gai.conf:/etc/gai.conf:ro
+# NOTE on egress: this stack previously ran on an RU cloud where Telegram's
+# IPv4 ranges were blocked, which forced an IPv6-only egress path (ULA subnet
+# + NAT66, a gai.conf that re-labels fc00::/7, and ``network_mode: host`` on
+# the bot). The current host reaches api.telegram.org over IPv4 directly and
+# has no global IPv6 at all, so those workarounds are not merely redundant —
+# they break egress. They were removed; see ADR-0030 and
+# docs/runbooks/telegram-connectivity.md.
 
 services:
   postgres:
@@ -60,10 +40,10 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    # requirepass: the bot shares the host netns (see below), so anything that
-    # compromises it can reach this port via the bridge — Redis must not be
-    # an open door to the task queue and rate-limit state. $$ defers expansion
-    # to the container shell; REDIS_PASSWORD comes from the env file.
+    # requirepass: the VPS is shared with another stack and Redis holds the task
+    # queue and rate-limit state, so it must not be an open door to anything that
+    # gets a foothold on the docker networks. $$ defers expansion to the
+    # container shell; REDIS_PASSWORD comes from the env file.
     # ROLLOUT: requires /opt/yupay/secrets/redis.env on the server AND
     # password-carrying REDIS_URL/DRAMATIQ_BROKER_URL in api.env — see
     # docs/runbooks/redis-auth-rollout.md before deploying this change.
@@ -96,8 +76,6 @@ services:
     environment:
       <<: *app-env
     env_file: /opt/yupay/secrets/api.env
-    sysctls: *mtu-probe
-    volumes: *gai-volume
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_started }
@@ -111,8 +89,6 @@ services:
     environment:
       <<: *app-env
     env_file: /opt/yupay/secrets/api.env
-    sysctls: *mtu-probe
-    volumes: *gai-volume
     depends_on: [postgres, redis]
 
   scheduler:
@@ -121,8 +97,6 @@ services:
     environment:
       <<: *app-env
     env_file: /opt/yupay/secrets/api.env
-    sysctls: *mtu-probe
-    volumes: *gai-volume
     depends_on: [postgres, redis]
 
   bot:
@@ -131,13 +105,6 @@ services:
     environment:
       <<: *app-env
     env_file: /opt/yupay/secrets/api.env
-    # Telegram is reachable only over IPv6 from this host (IPv4 blocked).
-    # The bot is outbound-only (long-poll) with no internal-network deps,
-    # so it borrows the host netns to use the host's working IPv6 directly.
-    # Namespaced net.* sysctls are incompatible with host networking, so the
-    # tcp_mtu_probing tweak is dropped here — the host sets its own.
-    # See docs/runbooks/telegram-connectivity.md.
-    network_mode: host
     depends_on: [api]
 
   web:
@@ -163,9 +130,17 @@ services:
     # it into the {$GRAFANA_BASIC_AUTH_HASH} placeholder on
     # grafana.yupay.uz. Other keys in the file are ignored.
     env_file: /opt/yupay/secrets/grafana.env
-    ports:
-      - "443:443"
-      - "80:80"
+    # No host ports: the shared edge proxy (infra/edge/) owns 80/443 on this
+    # box because a second stack (streamers-parser) shares the VPS and only one
+    # process can bind them. The edge terminates TLS and forwards here over the
+    # ``edge`` network, so this Caddy is a plain HTTP host-router — see ADR-0030.
+    # The alias is what the edge's Caddyfile proxies to; the bare service name
+    # ``caddy`` would collide with the neighbouring stack's own Caddy on the
+    # shared network.
+    networks:
+      default: {}
+      edge:
+        aliases: [yupay-caddy]
     volumes:
       - ./infra/caddy/Caddyfile.prod:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
@@ -264,29 +239,17 @@ volumes:
   loki-data:
   backup-tmp:
 
-# Pin the bridge MTU to 1450. Yandex Cloud's VPC has a smaller
-# effective path MTU than 1500: small packets (TLS handshakes,
-# getUpdates long-polls, getMe responses) survive, but larger ones
-# (e.g. an HTML ``sendMessage`` POST with an inline_keyboard) get
-# fragmented somewhere on the egress and never make it to
-# ``api.telegram.org``. Symptom — only outgoing messages time out
-# while ``get_me`` and ``getUpdates`` work fine.
-# 1450 is the Yandex VPC recommended value and matches most other
-# Russian cloud providers (Selectel / Timeweb / VK Cloud).
 networks:
+  # Private stack network: postgres, redis, minio, api, worker, bot, the
+  # frontends and the monitoring sidecars all talk over this and publish
+  # nothing to the host.
   default:
     driver: bridge
-    # Telegram's IPv4 is blocked on this host; the only working route is
-    # IPv6 (see the x-mtu-probe note + the runbook). Bridge containers that
-    # call the Bot API (api/worker/scheduler) need IPv6 egress. Docker ≥ 27
-    # has ip6tables on by default and NAT66-masquerades a ULA subnet to the
-    # host's global IPv6 automatically — verify with:
-    #   docker version --format '{{.Server.Version}}'
-    # On older Docker set ``"ip6tables": true`` in /etc/docker/daemon.json
-    # and restart the daemon, else the ULA addresses have no route out.
-    enable_ipv6: true
-    ipam:
-      config:
-        - subnet: fd00:c0de:cafe::/64
-    driver_opts:
-      com.docker.network.driver.mtu: "1450"
+
+  # Shared with the edge proxy and the co-hosted streamers-parser stack.
+  # Only ``caddy`` joins it, so nothing else in this stack is reachable
+  # from the neighbouring project. Created out-of-band:
+  #   docker network create yupay-edge
+  edge:
+    external: true
+    name: yupay-edge

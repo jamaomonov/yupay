@@ -1,0 +1,40 @@
+# Shared edge proxy for the VPS — see infra/edge/Caddyfile and ADR-0030.
+#
+# Lifecycle is deliberately independent of both application stacks: restarting
+# YuPay must not drop TLS for streamers-parser, and vice versa. Bring it up on
+# its own, once, and leave it running:
+#
+#   docker network create yupay-edge          # once, out-of-band
+#   docker compose -f infra/edge/docker-compose.yml up -d
+#
+# The upstreams (``yupay-caddy``, ``streamers-caddy``) are network aliases that
+# each stack registers on the ``yupay-edge`` network. Caddy resolves them lazily
+# per request, so the edge starts fine even when a stack is down — those
+# hostnames simply return 502 until it comes back.
+name: edge
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: edge-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Let's Encrypt certificates and account keys for BOTH stacks live here.
+      # Losing this volume means re-issuing every cert — mind LE's rate limits
+      # (50 certs/week per registered domain) before pruning volumes.
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [edge]
+
+volumes:
+  caddy-data:
+  caddy-config:
+
+networks:
+  edge:
+    external: true
+    name: yupay-edge
