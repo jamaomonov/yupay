@@ -84,13 +84,26 @@ Paste the output into `GRAFANA_BASIC_AUTH_HASH` in `grafana.env`.
 
 ### rclone remote (Cloudflare R2)
 
-On the host, one-time:
+**Do not run `rclone config`.** The backup container mounts no `rclone.conf`, so a
+remote configured on the host is invisible to it. The remote is defined by the
+`RCLONE_CONFIG_R2_*` variables in `backup.env` instead — see that file.
+
+Two things must be true on the Cloudflare side:
+
+1. **The bucket exists.** R2 API tokens are object-scoped and cannot create buckets
+   (`rclone mkdir` returns 403). Create `yupay-backups` in the dashboard.
+2. **The token's scope covers it.** A token issued for the media bucket alone gets
+   403 on the backup bucket. Either extend it to both, or issue a second token —
+   a separate one is the safer choice, since the media token is present in every
+   `api` / `worker` / `scheduler` / `bot` container, and sharing it means anything
+   that compromises one of them can also delete the database backups.
+
+Verify end to end rather than trusting a green log line:
 
 ```bash
-rclone config
-# new remote → name "r2" → type "s3" → provider "Cloudflare" →
-# paste R2 access key / secret / endpoint URL.
-# Then create the bucket: rclone mkdir r2:yupay-backups
+docker compose -f docker-compose.prod.yml exec -T backup bash /scripts/pg_backup.sh
+docker compose -f docker-compose.prod.yml exec -T backup rclone ls r2:yupay-backups
+# Then restore-test it — see docs/runbooks/restore-from-backup.md.
 ```
 
 ## Validation
