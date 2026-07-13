@@ -19,7 +19,16 @@
 # re-routes by Host, and Caddy forwards the original Host header untouched.
 # Certificates are issued per-hostname via HTTP-01 on :80.
 yupay.uz, www.yupay.uz, app.yupay.uz, admin.yupay.uz, api.yupay.uz, grafana.yupay.uz {
-	reverse_proxy yupay-caddy:80
+	# Overwrite, do not append. Caddy's default is to append the peer to any
+	# inbound X-Forwarded-For, but the API trusts the *first* entry of that
+	# chain as the client (see ``_client_ip`` in bootstrap.py, which feeds both
+	# the slowapi rate limiter and the auth IP guard). Appending would let a
+	# caller send their own X-Forwarded-For and pick whatever IP they like,
+	# spoofing their way around both. Clients reach these hostnames directly —
+	# there is no upstream proxy whose header we'd be discarding.
+	reverse_proxy yupay-caddy:80 {
+		header_up X-Forwarded-For {remote_host}
+	}
 }
 
 # ---------- streamers-parser ----------
@@ -32,5 +41,9 @@ yupay.uz, www.yupay.uz, app.yupay.uz, admin.yupay.uz, api.yupay.uz, grafana.yupa
 # Cloudflare SSL mode first.
 http://marketing.kolikosoft.com, https://marketing.kolikosoft.com {
 	tls internal
+	# No X-Forwarded-For rewrite here, unlike the YuPay block: the peer is
+	# Cloudflare, not the end user, so overwriting the header would replace the
+	# real client IP with a Cloudflare edge address. The inbound chain is the
+	# trustworthy one.
 	reverse_proxy streamers-caddy:80
 }
