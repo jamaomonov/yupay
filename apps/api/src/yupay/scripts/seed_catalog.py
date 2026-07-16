@@ -1,4 +1,4 @@
-"""Seed the catalog with a starter set following the 3-level structure (ADR-0009).
+"""Seed the catalog with the curated 6-game CIS catalog (ADR-0009) + G2B supplier mappings.
 
 Idempotent — re-running matches by ``slug`` / ``sku_code`` and updates in place.
 Run via ``docker compose exec api python -m yupay.scripts.seed_catalog``.
@@ -7,6 +7,7 @@ Run via ``docker compose exec api python -m yupay.scripts.seed_catalog``.
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
@@ -25,6 +26,7 @@ from yupay.modules.catalog.models import (
     ProductTranslation,
     Sku,
 )
+from yupay.modules.integrations.models import SkuSupplierMapping
 
 
 @dataclass
@@ -41,6 +43,9 @@ class SkuSpec:
     denomination: str
     region: str | None
     price_usd: Decimal
+    cost_usdt: Decimal
+    g2b_game_code: str
+    g2b_variant: str
     sort_order: int = 0
 
 
@@ -108,317 +113,377 @@ def _server_field(options: list[tuple[str, str, str, str]]) -> dict[str, Any]:
     }
 
 
-def _email_field() -> dict[str, Any]:
-    return {
-        "key": "account_email",
-        "label": {"ru": "Email аккаунта", "en": "Account email", "uz": "Hisob email"},
-        "type": "email",
-        "required": True,
-    }
-
-
-def _wallet_address_field() -> dict[str, Any]:
-    return {
-        "key": "wallet_address",
-        "label": {"ru": "Адрес кошелька", "en": "Wallet address", "uz": "Hamyon manzili"},
-        "type": "text",
-        "required": True,
-        "pattern": "^T[A-Za-z0-9]{33}$",
-        "help_text": {
-            "ru": "USDT TRC-20 адрес (начинается с T)",
-            "en": "USDT TRC-20 address (starts with T)",
-            "uz": "USDT TRC-20 manzili (T bilan boshlanadi)",
-        },
-    }
-
-
 CATEGORIES: list[CategorySpec] = [
     CategorySpec(
         slug="games",
-        icon="gamepad",
-        sort_order=10,
+        icon="gamepad-2",
+        sort_order=0,
         translations=[
-            TranslationSpec("ru", "Игры", "Пополнение игровых аккаунтов"),
-            TranslationSpec("en", "Games", "Top up your game accounts"),
-            TranslationSpec("uz", "Oʻyinlar", "Oʻyin hisoblarini toʻldirish"),
-        ],
-    ),
-    CategorySpec(
-        slug="subscriptions",
-        icon="play",
-        sort_order=20,
-        translations=[
-            TranslationSpec("ru", "Подписки", "Музыка, фильмы, сервисы"),
-            TranslationSpec("en", "Subscriptions", "Music, movies, services"),
-            TranslationSpec("uz", "Obunalar", "Musiqa, filmlar, xizmatlar"),
-        ],
-    ),
-    CategorySpec(
-        slug="gift-cards",
-        icon="gift",
-        sort_order=30,
-        translations=[
-            TranslationSpec("ru", "Подарочные карты", "Apple, Google Play, Amazon"),
-            TranslationSpec("en", "Gift cards", "Apple, Google Play, Amazon"),
-            TranslationSpec("uz", "Sovgʻa kartalari", "Apple, Google Play, Amazon"),
-        ],
-    ),
-    CategorySpec(
-        slug="crypto",
-        icon="coins",
-        sort_order=40,
-        translations=[
-            TranslationSpec("ru", "Криптовалюта", "Покупка USDT и других монет"),
-            TranslationSpec("en", "Crypto", "Buy USDT and other coins"),
-            TranslationSpec("uz", "Kriptovalyuta", "USDT va boshqa tangalar"),
+            TranslationSpec("ru", "Игры"),
+            TranslationSpec("en", "Games"),
+            TranslationSpec("uz", "Oʻyinlar"),
         ],
     ),
 ]
 
 
-BRANDS: list[BrandSpec] = [
-    BrandSpec(
-        slug="pubg-mobile",
-        category_slug="games",
-        logo_url="https://cdn.yupay.uz/brands/pubg-mobile.png",
-        hero_image_url="https://cdn.yupay.uz/brands/pubg-mobile-hero.jpg",
-        accent_color="#F2A900",
-        sort_order=10,
-        translations=[
-            TranslationSpec(
-                "ru",
-                "PUBG Mobile",
-                short_description="Пополнение UC, Royal Pass и косметика",
-            ),
-            TranslationSpec(
-                "en",
-                "PUBG Mobile",
-                short_description="UC top-up, Royal Pass and cosmetics",
-            ),
-            TranslationSpec(
-                "uz",
-                "PUBG Mobile",
-                short_description="UC toʻldirish, Royal Pass va kosmetika",
-            ),
+# ---------- G2B catalogue snapshot ----------
+#
+# Auto-generated snapshot of the live G2B catalogue (currency + passes/subscriptions
+# only; packs already excluded). Committed and embedded — the seed does NOT fetch G2B
+# at runtime. Shape: ``{ game_code: { bucket: [ (g2b_name, cost_str), ... ] } }``, where
+# ``bucket`` is one of ``"currency" | "pass" | "sub"``.
+CATALOG_SNAPSHOT: dict[str, dict[str, list[tuple[str, str]]]] = {
+    "pubgm": {
+        "sub": [
+            ("Prime (1 Month)", "0.88"),
+            ("Prime (3 Months)", "2.64"),
+            ("Prime (6 Months)", "5.28"),
+            ("Prime Plus (1 Month)", "8.8"),
+            ("Prime (12 Months)", "10.56"),
+            ("Prime Plus (3 Months)", "26.4"),
+            ("Prime Plus (6 Months)", "52"),
+            ("Prime Plus (12 Months)", "105"),
         ],
+        "currency": [
+            ("60", "0.89"),
+            ("325", "4.45"),
+            ("660", "8.9"),
+            ("985", "13.5"),
+            ("1320", "18"),
+            ("1800", "22.25"),
+            ("2460", "31.5"),
+            ("3850", "44.5"),
+            ("5650", "67.5"),
+            ("8100", "90.5"),
+            ("11950", "135"),
+            ("16200", "178"),
+        ],
+        "pass": [
+            ("Elite Pass LV1-50", "5.3"),
+            ("Elite Pass LV1-100", "10.692"),
+            ("Elite Pass Plus LV1-100", "26.553"),
+        ],
+    },
+    "freefire_cis": {
+        "currency": [
+            ("110", "0.82"),
+            ("341", "2.47"),
+            ("572", "4.02"),
+            ("1166", "8.07"),
+            ("2398", "16.14"),
+            ("6160", "40.9"),
+        ],
+        "sub": [
+            ("Weekly Membership", "1.61"),
+            ("Monthly Membership", "5.81"),
+        ],
+    },
+    "deltaforce": {
+        "currency": [
+            ("18", "0.235"),
+            ("30", "0.388"),
+            ("60", "0.785"),
+            ("320", "3.937"),
+            ("460", "5.722"),
+            ("750", "7.895"),
+            ("1480", "15.779"),
+            ("1980", "19.717"),
+            ("3950", "39.443"),
+            ("8100", "78.887"),
+            ("16200", "157.774"),
+            ("24300", "236.66"),
+        ],
+        "pass": [
+            ("Season Pass Warfare Special", "4.274"),
+            ("Season Pass Operations Special", "4.274"),
+            ("Season Pass Delta Force Deluxe", "5.916"),
+            ("Pass Upgrade Level 20", "6.304"),
+            ("Pass Upgrade Level 10", "10.516"),
+            ("Pass Upgrade Level 30", "31.487"),
+            ("Pass Upgrade Level 40", "41.749"),
+            ("Pass Upgrade Level 60", "62.251"),
+            ("Pass Upgrade Level 80", "82.396"),
+        ],
+    },
+    "genshin": {
+        "currency": [
+            ("60", "1"),
+            ("330", "5"),
+            ("1090", "15"),
+            ("2240", "30"),
+            ("3880", "50"),
+            ("8080", "100"),
+        ],
+        "sub": [
+            ("Blessing", "5"),
+        ],
+    },
+    "arena_breakout": {
+        "currency": [
+            ("66", "0.796"),
+            ("335", "4.029"),
+            ("675", "8.068"),
+            ("1690", "20.155"),
+            ("3400", "40.372"),
+            ("6820", "82.192"),
+            ("13640", "164.393"),
+            ("20460", "246.585"),
+        ],
+        "pass": [
+            ("Monthly Advanced Battle Pass Activation Pass", "0.877"),
+            ("Monthly Premium Battle Pass Activation Pass", "3.529"),
+            ("Quarterly Premium Battle Pass Bundle Activation Pass Bundle", "10.618"),
+        ],
+    },
+    "arena_breakout_infinite": {
+        "currency": [
+            ("100", "0.989"),
+            ("500", "4.937"),
+            ("1000", "9.598"),
+            ("2500", "23.837"),
+            ("5000", "47.542"),
+            ("10000", "94.962"),
+        ],
+        "pass": [
+            ("Advanced Battle Pass Activation Card", "4.998"),
+            ("Premium Battle Pass Activation Card", "15.004"),
+        ],
+    },
+}
+
+
+# ---------- game metadata → BRANDS builder ----------
+
+
+def _tr(
+    name_ru: str, name_en: str | None = None, name_uz: str | None = None
+) -> list[TranslationSpec]:
+    """Build ru/en/uz ``TranslationSpec``s for a product name.
+
+    ``name_en``/``name_uz`` default to ``name_ru`` when the same string is used in all
+    three locales (e.g. "UC", "Bonds", "Season Pass").
+    """
+    return [
+        TranslationSpec("ru", name_ru),
+        TranslationSpec("en", name_en if name_en is not None else name_ru),
+        TranslationSpec("uz", name_uz if name_uz is not None else name_ru),
+    ]
+
+
+@dataclass
+class ProductMeta:
+    slug: str
+    game_code: str  # CATALOG_SNAPSHOT top-level key
+    bucket: str  # "currency" | "pass" | "sub"
+    unit: str | None  # appended to the denomination for "currency" bucket SKUs
+    translations: list[TranslationSpec]
+
+
+@dataclass
+class GameMeta:
+    brand_slug: str
+    name: str  # same string used for ru/en/uz brand translations
+    required_fields: list[dict[str, Any]]
+    products: list[ProductMeta]
+
+
+GAME_META: list[GameMeta] = [
+    GameMeta(
+        brand_slug="pubg-mobile",
+        name="PUBG Mobile",
+        required_fields=[_player_id_field(check={"provider": "g2b"})],
         products=[
-            ProductSpec(
-                slug="pubg-uc",
-                kind="top_up",
-                supplier_hint="codashop",
-                image_url="https://cdn.yupay.uz/products/pubg-uc.png",
-                sort_order=10,
-                required_fields=[
-                    _player_id_field(check={"provider": "g2b", "server_field": "server"}),
-                    _server_field(
-                        [
-                            ("as", "Азия", "Asia", "Osiyo"),
-                            ("eu", "Европа", "Europe", "Yevropa"),
-                            ("na", "Сев. Америка", "North America", "Shimoliy Amerika"),
-                            ("kr", "Корея/Япония", "Korea/Japan", "Koreya/Yaponiya"),
-                        ]
-                    ),
-                ],
-                translations=[
-                    TranslationSpec("ru", "UC", short_description="Игровая валюта PUBG Mobile"),
-                    TranslationSpec("en", "UC", short_description="PUBG Mobile in-game currency"),
-                    TranslationSpec("uz", "UC", short_description="PUBG Mobile oʻyin valyutasi"),
-                ],
-                skus=[
-                    SkuSpec("pubg-uc-60-tr", "60 UC", "TR", Decimal("0.85"), 10),
-                    SkuSpec("pubg-uc-60-as", "60 UC", "AS", Decimal("0.99"), 11),
-                    SkuSpec("pubg-uc-300-tr", "300 UC", "TR", Decimal("4.20"), 20),
-                    SkuSpec("pubg-uc-300-as", "300 UC", "AS", Decimal("4.99"), 21),
-                    SkuSpec("pubg-uc-660-tr", "660 UC", "TR", Decimal("8.50"), 30),
-                    SkuSpec("pubg-uc-1800-tr", "1800 UC", "TR", Decimal("22.50"), 40),
-                ],
+            ProductMeta("pubg-uc", "pubgm", "currency", "UC", _tr("UC")),
+            ProductMeta("pubg-prime", "pubgm", "sub", None, _tr("Prime")),
+            ProductMeta("pubg-royal-pass", "pubgm", "pass", None, _tr("Royal Pass")),
+        ],
+    ),
+    GameMeta(
+        brand_slug="free-fire",
+        name="Free Fire",
+        # G2B returns "No validation required" for Free Fire — no player-id check.
+        required_fields=[_player_id_field()],
+        products=[
+            ProductMeta(
+                "free-fire-diamonds",
+                "freefire_cis",
+                "currency",
+                "Diamonds",
+                _tr("Алмазы", "Diamonds", "Olmoslar"),
             ),
-            ProductSpec(
-                slug="pubg-royal-pass",
-                kind="top_up",
-                supplier_hint="codashop",
-                image_url="https://cdn.yupay.uz/products/pubg-royal-pass.png",
-                sort_order=20,
-                required_fields=[
-                    _player_id_field(check={"provider": "g2b", "server_field": "server"}),
-                    _server_field(
-                        [
-                            ("as", "Азия", "Asia", "Osiyo"),
-                            ("eu", "Европа", "Europe", "Yevropa"),
-                            ("na", "Сев. Америка", "North America", "Shimoliy Amerika"),
-                        ]
-                    ),
-                ],
-                translations=[
-                    TranslationSpec("ru", "Royal Pass", short_description="Боевой пропуск сезона"),
-                    TranslationSpec("en", "Royal Pass", short_description="Season battle pass"),
-                    TranslationSpec("uz", "Royal Pass", short_description="Mavsumiy jangovar pass"),
-                ],
-                skus=[
-                    SkuSpec("pubg-rp-elite", "Elite Pass", None, Decimal("9.99"), 10),
-                    SkuSpec("pubg-rp-elite-plus", "Elite Pass Plus", None, Decimal("24.99"), 20),
-                ],
+            ProductMeta(
+                "free-fire-membership",
+                "freefire_cis",
+                "sub",
+                None,
+                _tr("Подписка", "Membership", "Obuna"),
             ),
         ],
     ),
-    BrandSpec(
-        slug="steam",
-        category_slug="games",
-        logo_url="https://cdn.yupay.uz/brands/steam.png",
-        hero_image_url=None,
-        accent_color="#1B2838",
-        sort_order=20,
-        translations=[
-            TranslationSpec("ru", "Steam", short_description="Steam Wallet и подарочные карты"),
-            TranslationSpec("en", "Steam", short_description="Steam Wallet and gift cards"),
-            TranslationSpec("uz", "Steam", short_description="Steam Wallet va sovgʻa kartalari"),
+    GameMeta(
+        brand_slug="delta-force",
+        name="Delta Force",
+        required_fields=[_player_id_field(check={"provider": "g2b"})],
+        products=[
+            ProductMeta(
+                "delta-force-coins", "deltaforce", "currency", "Delta Coins", _tr("Delta Coins")
+            ),
+            ProductMeta("delta-force-season-pass", "deltaforce", "pass", None, _tr("Season Pass")),
+        ],
+    ),
+    GameMeta(
+        brand_slug="genshin-impact",
+        name="Genshin Impact",
+        # No G2B validation for Genshin; server selection is required alongside the UID.
+        required_fields=[
+            _player_id_field(label_ru="UID"),
+            _server_field(
+                [
+                    ("os_usa", "Америка", "America", "Amerika"),
+                    ("os_euro", "Европа", "Europe", "Yevropa"),
+                    ("os_asia", "Азия", "Asia", "Osiyo"),
+                    ("os_cht", "TW/HK/MO", "TW/HK/MO", "TW/HK/MO"),
+                ]
+            ),
         ],
         products=[
-            ProductSpec(
-                slug="steam-wallet",
-                kind="voucher",
-                supplier_hint="kupikod",
-                image_url="https://cdn.yupay.uz/products/steam-wallet.png",
-                sort_order=10,
-                required_fields=[],
-                translations=[
-                    TranslationSpec(
-                        "ru",
-                        "Steam Wallet",
-                        short_description="Код пополнения кошелька Steam",
-                    ),
-                    TranslationSpec(
-                        "en",
-                        "Steam Wallet",
-                        short_description="Steam Wallet top-up code",
-                    ),
-                    TranslationSpec(
-                        "uz",
-                        "Steam Wallet",
-                        short_description="Steam Wallet toʻldirish kodi",
-                    ),
-                ],
-                skus=[
-                    SkuSpec("steam-wallet-100-ru", "100 RUB", "RU", Decimal("1.40"), 10),
-                    SkuSpec("steam-wallet-500-ru", "500 RUB", "RU", Decimal("6.20"), 20),
-                    SkuSpec("steam-wallet-1000-ru", "1000 RUB", "RU", Decimal("12.00"), 30),
-                    SkuSpec("steam-wallet-25-us", "25 USD", "US", Decimal("26.50"), 40),
-                ],
+            ProductMeta(
+                "genshin-crystals",
+                "genshin",
+                "currency",
+                "Genesis Crystals",
+                _tr("Кристаллы Сотворения", "Genesis Crystals", "Genesis Crystals"),
+            ),
+            ProductMeta(
+                "genshin-welkin",
+                "genshin",
+                "sub",
+                None,
+                _tr(
+                    "Благословение полой луны",
+                    "Blessing of the Welkin Moon",
+                    "Welkin Moon",
+                ),
             ),
         ],
     ),
-    BrandSpec(
-        slug="spotify",
-        category_slug="subscriptions",
-        logo_url="https://cdn.yupay.uz/brands/spotify.png",
-        hero_image_url=None,
-        accent_color="#1DB954",
-        sort_order=10,
-        translations=[
-            TranslationSpec("ru", "Spotify", short_description="Подписки Spotify Premium"),
-            TranslationSpec("en", "Spotify", short_description="Spotify Premium subscriptions"),
-            TranslationSpec("uz", "Spotify", short_description="Spotify Premium obunalari"),
-        ],
+    GameMeta(
+        brand_slug="arena-breakout",
+        name="Arena Breakout",
+        required_fields=[_player_id_field(check={"provider": "g2b"})],
         products=[
-            ProductSpec(
-                slug="spotify-premium",
-                kind="voucher",
-                supplier_hint="aggregator",
-                image_url="https://cdn.yupay.uz/products/spotify-premium.png",
-                sort_order=10,
-                required_fields=[_email_field()],
-                translations=[
-                    TranslationSpec("ru", "Premium", short_description="Spotify Premium"),
-                    TranslationSpec("en", "Premium", short_description="Spotify Premium"),
-                    TranslationSpec("uz", "Premium", short_description="Spotify Premium"),
-                ],
-                skus=[
-                    SkuSpec("spotify-1mo", "1 месяц", None, Decimal("4.99"), 10),
-                    SkuSpec("spotify-3mo", "3 месяца", None, Decimal("13.99"), 20),
-                    SkuSpec("spotify-12mo", "12 месяцев", None, Decimal("49.99"), 30),
-                ],
+            ProductMeta(
+                "arena-breakout-bonds", "arena_breakout", "currency", "Bonds", _tr("Bonds")
+            ),
+            ProductMeta(
+                "arena-breakout-battle-pass", "arena_breakout", "pass", None, _tr("Battle Pass")
             ),
         ],
     ),
-    BrandSpec(
-        slug="apple",
-        category_slug="gift-cards",
-        logo_url="https://cdn.yupay.uz/brands/apple.png",
-        hero_image_url=None,
-        accent_color="#000000",
-        sort_order=10,
-        translations=[
-            TranslationSpec("ru", "Apple", short_description="Apple Gift Card"),
-            TranslationSpec("en", "Apple", short_description="Apple Gift Card"),
-            TranslationSpec("uz", "Apple", short_description="Apple Gift Card"),
-        ],
+    GameMeta(
+        brand_slug="arena-breakout-infinite",
+        name="Arena Breakout: Infinite",
+        required_fields=[_player_id_field(check={"provider": "g2b"})],
         products=[
-            ProductSpec(
-                slug="apple-gift-card",
-                kind="voucher",
-                supplier_hint="kupikod",
-                image_url="https://cdn.yupay.uz/products/apple-gift-card.png",
-                sort_order=10,
-                required_fields=[],
-                translations=[
-                    TranslationSpec(
-                        "ru",
-                        "Gift Card",
-                        short_description="Подарочная карта Apple (US)",
-                    ),
-                    TranslationSpec(
-                        "en",
-                        "Gift Card",
-                        short_description="Apple gift card (US region)",
-                    ),
-                    TranslationSpec(
-                        "uz",
-                        "Gift Card",
-                        short_description="Apple sovgʻa kartasi (US)",
-                    ),
-                ],
-                skus=[
-                    SkuSpec("apple-25-us", "25 USD", "US", Decimal("26.50"), 10),
-                    SkuSpec("apple-50-us", "50 USD", "US", Decimal("52.00"), 20),
-                    SkuSpec("apple-100-us", "100 USD", "US", Decimal("103.00"), 30),
-                ],
+            ProductMeta(
+                "arena-breakout-infinite-coins",
+                "arena_breakout_infinite",
+                "currency",
+                "Coins",
+                _tr("Coins"),
             ),
-        ],
-    ),
-    BrandSpec(
-        slug="usdt",
-        category_slug="crypto",
-        logo_url="https://cdn.yupay.uz/brands/usdt.png",
-        hero_image_url=None,
-        accent_color="#26A17B",
-        sort_order=10,
-        translations=[
-            TranslationSpec("ru", "USDT", short_description="Стейблкоин Tether"),
-            TranslationSpec("en", "USDT", short_description="Tether stablecoin"),
-            TranslationSpec("uz", "USDT", short_description="Tether stablecoin"),
-        ],
-        products=[
-            ProductSpec(
-                slug="usdt-trc20",
-                kind="top_up",
-                supplier_hint="crypto-acquirer",
-                image_url="https://cdn.yupay.uz/products/usdt-trc20.png",
-                sort_order=10,
-                required_fields=[_wallet_address_field()],
-                translations=[
-                    TranslationSpec("ru", "TRC-20", short_description="USDT в сети TRON"),
-                    TranslationSpec("en", "TRC-20", short_description="USDT on TRON"),
-                    TranslationSpec("uz", "TRC-20", short_description="TRON tarmogʻida USDT"),
-                ],
-                skus=[
-                    SkuSpec("usdt-10", "10 USDT", None, Decimal("10.30"), 10),
-                    SkuSpec("usdt-50", "50 USDT", None, Decimal("51.20"), 20),
-                    SkuSpec("usdt-100", "100 USDT", None, Decimal("102.00"), 30),
-                ],
+            ProductMeta(
+                "arena-breakout-infinite-battle-pass",
+                "arena_breakout_infinite",
+                "pass",
+                None,
+                _tr("Battle Pass"),
             ),
         ],
     ),
 ]
+
+
+def _slugify(name: str) -> str:
+    """Lowercase ``name`` and collapse runs of non-alphanumerics into single dashes.
+
+    E.g. ``"Prime (1 Month)"`` → ``"prime-1-month"``, ``"60"`` → ``"60"``.
+    """
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+
+
+def _build_skus(game_code: str, bucket: str, unit: str | None) -> list[SkuSpec]:
+    """Generate one ``SkuSpec`` per ``(g2b_name, cost_str)`` pair in the snapshot bucket."""
+    items = CATALOG_SNAPSHOT[game_code][bucket]
+    skus: list[SkuSpec] = []
+    for i, (g2b_name, cost_str) in enumerate(items):
+        cost = Decimal(cost_str)
+        price_usd = (cost * Decimal("1.20")).quantize(Decimal("0.01"))
+        denomination = f"{g2b_name} {unit}" if bucket == "currency" else g2b_name
+        skus.append(
+            SkuSpec(
+                sku_code=f"{game_code}-{_slugify(g2b_name)}",
+                denomination=denomination,
+                region=None,
+                price_usd=price_usd,
+                cost_usdt=cost,
+                g2b_game_code=game_code,
+                g2b_variant=g2b_name,
+                sort_order=i,
+            )
+        )
+    return skus
+
+
+def _build_brands() -> list[BrandSpec]:
+    """Build ``BRANDS`` from ``GAME_META`` + ``CATALOG_SNAPSHOT``. Pure and deterministic."""
+    brands: list[BrandSpec] = []
+    for bi, game in enumerate(GAME_META):
+        products = [
+            ProductSpec(
+                slug=pmeta.slug,
+                kind="top_up",
+                supplier_hint="g2b",
+                image_url=None,
+                sort_order=pi,
+                required_fields=game.required_fields,
+                translations=pmeta.translations,
+                skus=_build_skus(pmeta.game_code, pmeta.bucket, pmeta.unit),
+            )
+            for pi, pmeta in enumerate(game.products)
+        ]
+        brands.append(
+            BrandSpec(
+                slug=game.brand_slug,
+                category_slug="games",
+                logo_url=None,
+                hero_image_url=None,
+                accent_color=None,
+                sort_order=bi,
+                translations=[
+                    TranslationSpec("ru", game.name),
+                    TranslationSpec("en", game.name),
+                    TranslationSpec("uz", game.name),
+                ],
+                products=products,
+            )
+        )
+    return brands
+
+
+def _assert_unique_sku_codes(brands: list[BrandSpec]) -> None:
+    seen: set[str] = set()
+    for b in brands:
+        for p in b.products:
+            for s in p.skus:
+                if s.sku_code in seen:
+                    raise AssertionError(f"Duplicate sku_code in seed data: {s.sku_code!r}")
+                seen.add(s.sku_code)
+
+
+BRANDS: list[BrandSpec] = _build_brands()
+_assert_unique_sku_codes(BRANDS)
 
 
 async def _upsert_category(session, spec: CategorySpec) -> str:
@@ -570,25 +635,63 @@ async def _upsert_product(session, spec: ProductSpec, brand: Brand) -> None:
 
     skus = await product.awaitable_attrs.skus
     existing_skus = {s.sku_code: s for s in skus}
+    sku_ids: list[tuple[str, SkuSpec]] = []
     for sspec in spec.skus:
         row = existing_skus.get(sspec.sku_code)
         if row is None:
+            sku_id = new_id()
             session.add(
                 Sku(
-                    id=new_id(),
+                    id=sku_id,
                     product_id=product.id,
                     sku_code=sspec.sku_code,
                     denomination=sspec.denomination,
                     region=sspec.region,
                     price_usd=sspec.price_usd,
+                    cost_usdt=sspec.cost_usdt,
                     sort_order=sspec.sort_order,
                 )
             )
         else:
+            sku_id = row.id
             row.denomination = sspec.denomination
             row.region = sspec.region
             row.price_usd = sspec.price_usd
+            row.cost_usdt = sspec.cost_usdt
             row.sort_order = sspec.sort_order
+        sku_ids.append((sku_id, sspec))
+
+    # SkuSupplierMapping.sku_id is a plain FK column, not a relationship, so SQLAlchemy
+    # won't order the pending Sku inserts ahead of the mapping inserts for us — flush
+    # explicitly so every sku_id referenced below is backed by a persisted row.
+    await session.flush()
+
+    for sku_id, sspec in sku_ids:
+        mapping = (
+            await session.execute(
+                select(SkuSupplierMapping).where(
+                    SkuSupplierMapping.sku_id == sku_id,
+                    SkuSupplierMapping.supplier_slug == "g2b",
+                )
+            )
+        ).scalar_one_or_none()
+        if mapping is None:
+            session.add(
+                SkuSupplierMapping(
+                    sku_id=sku_id,
+                    supplier_slug="g2b",
+                    kind="game",
+                    external_product_id=sspec.g2b_game_code,
+                    external_variant_id=sspec.g2b_variant,
+                    quantity=1,
+                    is_active=True,
+                )
+            )
+        else:
+            mapping.kind = "game"
+            mapping.external_product_id = sspec.g2b_game_code
+            mapping.external_variant_id = sspec.g2b_variant
+            mapping.is_active = True
 
 
 async def seed() -> None:
