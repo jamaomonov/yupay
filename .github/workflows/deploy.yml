@@ -51,8 +51,19 @@ jobs:
             # and the git-ignored secrets/ it mounts by relative path. No
             # root-owned paths, so no sudo anywhere in this script.
             cd /home/ubuntu/opt/yupay
-            git fetch --all --tags
-            git checkout "$IMAGE_TAG_INPUT" || git checkout main
+            git fetch --all --tags --prune --force
+            # Land the checkout on the freshly-fetched commit. A plain
+            # ``git checkout main`` switches to the LOCAL branch and does not
+            # move it to origin, so the on-disk compose/Caddyfiles stayed behind
+            # origin/main while only the images updated — an infra change would
+            # then silently not deploy. For a branch input, hard-reset the local
+            # branch to its remote ref; a sha/tag input has no origin/<x> and
+            # falls through to a (detached) checkout.
+            if git rev-parse -q --verify "origin/$IMAGE_TAG_INPUT" >/dev/null; then
+              git checkout -B "$IMAGE_TAG_INPUT" "origin/$IMAGE_TAG_INPUT"
+            else
+              git checkout --force "$IMAGE_TAG_INPUT" || git checkout --force main
+            fi
             export IMAGE_TAG="$IMAGE_TAG_INPUT"
 
             # The shared edge proxy owns :80/:443 for every stack on this box
