@@ -79,8 +79,10 @@ class CategorySpec:
 # ---------- form-field presets ----------
 
 
-def _player_id_field(*, label_ru: str = "ID игрока") -> dict[str, Any]:
-    return {
+def _player_id_field(
+    *, label_ru: str = "ID игрока", check: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    field: dict[str, Any] = {
         "key": "player_id",
         "label": {"ru": label_ru, "en": "Player ID", "uz": "Oʻyinchi ID"},
         "type": "text",
@@ -88,6 +90,9 @@ def _player_id_field(*, label_ru: str = "ID игрока") -> dict[str, Any]:
         "pattern": "^[0-9]{6,15}$",
         "placeholder": {"ru": "12345678", "en": "12345678", "uz": "12345678"},
     }
+    if check is not None:
+        field["check"] = check
+    return field
 
 
 def _server_field(options: list[tuple[str, str, str, str]]) -> dict[str, Any]:
@@ -204,7 +209,7 @@ BRANDS: list[BrandSpec] = [
                 image_url="https://cdn.yupay.uz/products/pubg-uc.png",
                 sort_order=10,
                 required_fields=[
-                    _player_id_field(),
+                    _player_id_field(check={"provider": "g2b", "server_field": "server"}),
                     _server_field(
                         [
                             ("as", "Азия", "Asia", "Osiyo"),
@@ -235,7 +240,7 @@ BRANDS: list[BrandSpec] = [
                 image_url="https://cdn.yupay.uz/products/pubg-royal-pass.png",
                 sort_order=20,
                 required_fields=[
-                    _player_id_field(),
+                    _player_id_field(check={"provider": "g2b", "server_field": "server"}),
                     _server_field(
                         [
                             ("as", "Азия", "Asia", "Osiyo"),
