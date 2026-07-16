@@ -5,13 +5,14 @@ import { ArrowUpRight, Check, Loader2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { FormField, ProductDetail, SkuOut } from "@/lib/catalog";
 
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { getAccessToken } from "@/lib/client";
+import { canCheck, IDLE, runPlayerCheck, type CheckState } from "@/lib/player-check-state";
 import { formatUzs } from "@/lib/seo";
 
 const API = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
@@ -41,6 +42,59 @@ function skuPrice(locale: string, sku: SkuOut): string {
 }
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/**
+ * Advisory player-id lookup button rendered next to a checkable field
+ * (`f.check` set on the catalog schema). Owns its own check state via the
+ * shared `player-check-state` unit so `PurchasePanel` stays thin glue; a
+ * failed lookup never blocks checkout — it just shows a muted note.
+ */
+function PlayerCheckControl({
+  productId,
+  value,
+  pattern,
+  serverId,
+  t,
+}: {
+  productId: string;
+  value: string;
+  pattern?: string | null | undefined;
+  serverId: string | null;
+  t: (key: string, values?: Record<string, string>) => string;
+}) {
+  const [state, setState] = useState<CheckState>(IDLE);
+  useEffect(() => {
+    setState(IDLE);
+  }, [value]);
+  const enabled = canCheck(value, pattern);
+
+  async function onCheck() {
+    setState({ phase: "loading" });
+    setState(await runPlayerCheck(productId, { playerId: value, serverId }));
+  }
+
+  return (
+    <div className="mt-1.5 flex items-center gap-2">
+      <button
+        type="button"
+        disabled={!enabled || state.phase === "loading"}
+        onClick={() => void onCheck()}
+        aria-label={t("check")}
+        className={buttonStyles({ variant: "ghost", size: "xs", className: "h-8 px-3 text-[12px]" })}
+      >
+        {state.phase === "loading" ? t("checking") : t("check")}
+      </button>
+      {state.phase === "done" &&
+        (state.result.valid ? (
+          <span className="text-primary truncate text-[12px] font-medium">
+            {t("checkNickname", { name: state.result.name ?? "" })}
+          </span>
+        ) : (
+          <span className="text-tx-dim truncate text-[12px] font-medium">{t("checkFailed")}</span>
+        ))}
+    </div>
+  );
+}
 
 export function PurchasePanel({ products, locale }: { products: ProductDetail[]; locale: string }) {
   const t = useTranslations("web.store");
@@ -353,6 +407,17 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
                     )}
                     {f.help_text && (
                       <span className="text-tx-dim mt-1 block text-xs">{label(f.help_text)}</span>
+                    )}
+                    {f.check && selProduct && (
+                      <PlayerCheckControl
+                        productId={selProduct.id}
+                        value={form[f.key] ?? ""}
+                        pattern={f.pattern}
+                        serverId={
+                          f.check.server_field ? (form[f.check.server_field] ?? null) : null
+                        }
+                        t={t}
+                      />
                     )}
                   </label>
                 ))}

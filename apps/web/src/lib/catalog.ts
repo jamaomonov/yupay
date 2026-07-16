@@ -19,6 +19,11 @@ export interface FormOption {
   label: LocaleMap;
 }
 
+export interface FieldCheck {
+  provider: "g2b";
+  server_field?: string | null;
+}
+
 export interface FormField {
   key: string;
   label: LocaleMap;
@@ -28,6 +33,7 @@ export interface FormField {
   help_text?: LocaleMap | null;
   pattern?: string | null;
   options?: FormOption[] | null;
+  check?: FieldCheck | null;
 }
 
 export interface BrandSummary {
