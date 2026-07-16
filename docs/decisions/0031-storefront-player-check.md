@@ -158,7 +158,7 @@ rule with one in-handler call to G2B. Justification:
 
 ## Validation
 
-`apps/api/tests/integration/test_player_check_routes.py` (and the
+`apps/api/tests/integration/test_player_check_endpoint.py` (and the
 `integrations` service unit tests) cover: game_code resolution happy path and
 no-mapping → `unavailable`; response mapping for valid/invalid/exception
 cases via respx (no real HTTP); not-checkable product → 422; unknown product
