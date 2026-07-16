@@ -186,6 +186,24 @@ class CheckPlayerOut(BaseModel):
     reason: str | None = None
 
 
+class PlayerCheckIn(BaseModel):
+    """Storefront player-verification request (no charname — it's a lookup)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    player_id: str = Field(min_length=1, max_length=64)
+    server_id: str | None = Field(default=None, max_length=64)
+
+
+class PlayerCheckOut(BaseModel):
+    """Storefront player-verification result. ``openid`` is intentionally
+    omitted — it's an internal G2B id and must not leak to the storefront."""
+
+    valid: bool
+    name: str | None = None
+    reason: str | None = None
+
+
 class NewBrandIn(BaseModel):
     """New brand to create when importing a game (target='new_brand')."""
 
@@ -272,6 +290,8 @@ __all__ = [
     "GameImportOut",
     "MappingKind",
     "NewBrandIn",
+    "PlayerCheckIn",
+    "PlayerCheckOut",
     "PriceHistoryOut",
     "PricePointOut",
     "PriceRefreshOut",
