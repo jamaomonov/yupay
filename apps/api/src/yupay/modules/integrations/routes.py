@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Annotated
 
-from fastapi import APIRouter, Depends, Header, Query, status
+from fastapi import APIRouter, Depends, Header, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
@@ -19,7 +19,9 @@ from yupay.api.v1.deps import db_session
 from yupay.core.clock import now
 from yupay.core.logging import get_logger
 from yupay.modules.admin.api import require_admin
+from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.integrations import service as svc
+from yupay.modules.integrations.player_check import check_player_for_product
 from yupay.modules.integrations.schemas import (
     CatalogEntryOut,
     CatalogKind,
@@ -33,6 +35,8 @@ from yupay.modules.integrations.schemas import (
     GameFieldsOut,
     GameImportIn,
     GameImportOut,
+    PlayerCheckIn,
+    PlayerCheckOut,
     PriceHistoryOut,
     PricePointOut,
     PriceRefreshOut,
@@ -52,6 +56,29 @@ admin_router = APIRouter(
     tags=["admin:integrations"],
     dependencies=[Depends(require_admin)],
 )
+
+router = APIRouter(prefix="/catalog", tags=["catalog"])
+
+
+@router.post(
+    "/products/{product_id}/check-player",
+    response_model=PlayerCheckOut,
+    summary="Verify a player id for a product (advisory nickname lookup)",
+)
+async def check_player(
+    product_id: str,
+    body: PlayerCheckIn,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> PlayerCheckOut:
+    """Storefront-facing. Advisory — folds upstream errors into
+    ``{valid: false}``; never blocks checkout. Rate-limited per IP. See ADR-0031.
+    """
+    await guard_ip(request, bucket="check_player")
+    return await check_player_for_product(
+        db, product_id=product_id, player_id=body.player_id, server_id=body.server_id
+    )
+
 
 _KNOWN_SUPPLIERS = {"g2b"}
 

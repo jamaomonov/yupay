@@ -7,7 +7,8 @@ without touching callers (e.g. swapping single-account env vars for a
 """
 
 from yupay.modules.integrations.models import SkuSupplierMapping, SupplierCatalogCache
-from yupay.modules.integrations.routes import admin_router
+from yupay.modules.integrations.player_check import check_player_for_product
+from yupay.modules.integrations.routes import admin_router, router
 from yupay.modules.integrations.schemas import (
     CatalogEntryOut,
     CatalogKind,
@@ -20,6 +21,8 @@ from yupay.modules.integrations.schemas import (
     GameDenomOut,
     GameFieldsOut,
     MappingKind,
+    PlayerCheckIn,
+    PlayerCheckOut,
     PriceHistoryOut,
     PricePointOut,
     PriceRefreshOut,
@@ -52,6 +55,8 @@ __all__ = [
     "GameFieldsOut",
     "MappingKind",
     "MappingUpsert",
+    "PlayerCheckIn",
+    "PlayerCheckOut",
     "PriceHistoryOut",
     "PricePointOut",
     "PriceRefreshOut",
@@ -63,10 +68,12 @@ __all__ = [
     "SupplierMappingOut",
     "SupplierMappingUpsertOut",
     "admin_router",
+    "check_player_for_product",
     "delete_mapping",
     "get_mapping",
     "list_catalog",
     "list_mappings",
+    "router",
     "upsert_catalog_entry",
     "upsert_mapping",
 ]
