@@ -7,6 +7,7 @@ Run via ``docker compose exec api python -m yupay.scripts.seed_catalog``.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import re
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -413,6 +414,22 @@ def _slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
+def _sku_code(game_code: str, g2b_name: str) -> str:
+    """Stable, unique sku_code that fits the 64-char column.
+
+    Short names read cleanly (``pubgm-60``); long catalogue names (e.g. Arena
+    Breakout's "Quarterly Premium Battle Pass Bundle …") overflow 64 chars, so
+    the slug is truncated and a short deterministic hash of the full name is
+    appended to preserve uniqueness and idempotency.
+    """
+    code = f"{game_code}-{_slugify(g2b_name)}"
+    if len(code) <= 64:
+        return code
+    digest = hashlib.sha256(g2b_name.encode("utf-8")).hexdigest()[:8]
+    keep = 64 - len(game_code) - 2 - len(digest)  # game_code + '-' + slug + '-' + digest
+    return f"{game_code}-{_slugify(g2b_name)[:keep]}-{digest}"
+
+
 def _build_skus(game_code: str, bucket: str, unit: str | None) -> list[SkuSpec]:
     """Generate one ``SkuSpec`` per ``(g2b_name, cost_str)`` pair in the snapshot bucket."""
     items = CATALOG_SNAPSHOT[game_code][bucket]
@@ -423,7 +440,7 @@ def _build_skus(game_code: str, bucket: str, unit: str | None) -> list[SkuSpec]:
         denomination = f"{g2b_name} {unit}" if bucket == "currency" else g2b_name
         skus.append(
             SkuSpec(
-                sku_code=f"{game_code}-{_slugify(g2b_name)}",
+                sku_code=_sku_code(game_code, g2b_name),
                 denomination=denomination,
                 region=None,
                 price_usd=price_usd,
