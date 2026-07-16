@@ -83,6 +83,11 @@ export interface FormOption {
   label: Record<string, string>;
 }
 
+export interface FieldCheck {
+  provider: "g2b";
+  server_field?: string | null;
+}
+
 export interface FormField {
   key: string;
   label: Record<string, string>;
@@ -92,6 +97,7 @@ export interface FormField {
   help_text?: Record<string, string> | null;
   pattern?: string | null;
   options?: FormOption[] | null;
+  check?: FieldCheck | null;
 }
 
 // --- adapters --------------------------------------------------------------
