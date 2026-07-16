@@ -2787,6 +2787,33 @@
         "title": "FaqUpdate",
         "type": "object"
       },
+      "FieldCheck": {
+        "additionalProperties": false,
+        "description": "Opts a form field into storefront player verification.\n\nPresent only on the player-id field. ``server_field`` names the sibling\nfield whose value is passed as the checker's ``server_id`` (games like\nMobile Legends need a zone; PUBG Mobile does not).",
+        "properties": {
+          "provider": {
+            "const": "g2b",
+            "title": "Provider",
+            "type": "string"
+          },
+          "server_field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server Field"
+          }
+        },
+        "required": [
+          "provider"
+        ],
+        "title": "FieldCheck",
+        "type": "object"
+      },
       "ForgotPasswordIn": {
         "description": "Body of ``POST /auth/forgot-password``.",
         "properties": {
@@ -2806,6 +2833,16 @@
         "additionalProperties": false,
         "description": "One field of a product's form schema.",
         "properties": {
+          "check": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FieldCheck"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "help_text": {
             "anyOf": [
               {
@@ -4931,6 +4968,71 @@
           "payload"
         ],
         "title": "PaymentWebhookOut",
+        "type": "object"
+      },
+      "PlayerCheckIn": {
+        "additionalProperties": false,
+        "description": "Storefront player-verification request (no charname \u2014 it's a lookup).",
+        "properties": {
+          "player_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Player Id",
+            "type": "string"
+          },
+          "server_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server Id"
+          }
+        },
+        "required": [
+          "player_id"
+        ],
+        "title": "PlayerCheckIn",
+        "type": "object"
+      },
+      "PlayerCheckOut": {
+        "description": "Storefront player-verification result. ``openid`` is intentionally\nomitted \u2014 it's an internal G2B id and must not leak to the storefront.",
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "valid"
+        ],
+        "title": "PlayerCheckOut",
         "type": "object"
       },
       "PostingOut": {
@@ -14184,6 +14286,59 @@
           }
         },
         "summary": "List products, optionally filtered by category and/or brand",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/products/{product_id}/check-player": {
+      "post": {
+        "description": "Storefront-facing. Advisory \u2014 folds upstream errors into\n``{valid: false}``; never blocks checkout. Rate-limited per IP. See ADR-0031.",
+        "operationId": "check_player_api_v1_catalog_products__product_id__check_player_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "title": "Product Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayerCheckIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayerCheckOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify a player id for a product (advisory nickname lookup)",
         "tags": [
           "catalog"
         ]
