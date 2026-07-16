@@ -28,8 +28,8 @@ class FieldCheck(BaseModel):
     """Opts a form field into storefront player verification.
 
     Present only on the player-id field. ``server_field`` names the sibling
-    field whose value is passed as the checker's ``server_id`` (games like
-    Mobile Legends need a zone; PUBG Mobile does not).
+    field whose value is passed as the checker's ``server_id``; set it when
+    the product has a sibling server/zone field, leave unset otherwise.
     """
 
     model_config = ConfigDict(extra="forbid")

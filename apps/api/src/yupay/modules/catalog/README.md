@@ -91,6 +91,30 @@ typed form, and that the API validates on order creation.
 Supported `type` values at MVP: `text`, `email`, `number`, `select`. Adding a new type
 requires extending the `FormField` schema **and** the storefront's form renderer.
 
+### The `check` descriptor
+
+A field may carry an optional `check` object that opts it into the storefront's
+player-id verification lookup (a "Проверить" button that resolves the id to an
+account nickname before the customer pays — see
+[ADR-0031](../../../../../docs/decisions/0031-storefront-player-check.md)):
+
+```jsonc
+{
+  "key": "player_id",
+  "label": { "ru": "ID игрока", "en": "Player ID" },
+  "type": "text",
+  "pattern": "^[0-9]{6,15}$",
+  "check": {
+    "provider": "g2b", // which checker backs this field
+    "server_field": "server", // optional: key of the sibling field supplying server_id
+  },
+}
+```
+
+`check` opts the field into the storefront nickname lookup (`POST
+/api/v1/catalog/products/{id}/check-player`); it is advisory only and never
+gates checkout.
+
 ## Display-price policy
 
 For every SKU and a requested currency `Q`:

@@ -1,0 +1,198 @@
+# 0031. Storefront player-id check (advisory G2B nickname lookup)
+
+- **Status**: Accepted
+- **Date**: 2026-07-16
+- **Deciders**: @jamaomonov
+- **Tags**: backend | catalog | integrations | frontend
+
+## Context and problem statement
+
+For game top-ups (PUBG Mobile, Mobile Legends, …) the customer types a numeric
+player id at checkout. A typo means the top-up is delivered to a stranger's
+account and is effectively unrecoverable. G2B exposes a `checkPlayerId` call
+that resolves an id to the account's nickname, and YuPay already wraps it
+(`games_check_player` on the G2B client) behind an **admin-only** diagnostic
+route (ADR-0019). Customers had no way to reach it before ordering.
+
+We want the customer to type an id, tap a "check" button, and see the
+nickname it resolves to — catching a wrong id before paying — without adding
+a new failure mode to checkout.
+
+## Decision drivers
+
+- Checkout must stay resilient to G2B being down or a game having no checker
+  configured — the check is a UX convenience, not a gate.
+- AGENTS.md §10 forbids synchronous external HTTP calls in request handlers,
+  but the "check → nickname in ~1s" interaction is inherently a live external
+  round trip; the admin route already made the same call synchronously.
+- The `integrations` module already owns the G2B client and
+  `sku_supplier_mapping`; `catalog` must not gain a dependency on it.
+
+## Considered options
+
+1. **Advisory, synchronous, cached endpoint in `integrations`** — one public
+   POST route that calls G2B in-request, folds every failure into
+   `{valid: false}`, and caches results briefly in Redis.
+2. **Async job + WebSocket/poll result** — matches the general §10 rule (no
+   sync external calls in handlers) but turns a "tap and see" interaction
+   into a job-status dance for a non-critical, already-fast lookup.
+3. **Gate checkout on a valid check** — forces every top-up order through a
+   working G2B call, making checkout availability depend on an upstream
+   integration.
+
+## Decision outcome
+
+**Chosen option:** Option 1. The check stays advisory (never gates checkout —
+see "Non-goals") and reuses the exact synchronous-call shape the admin route
+already established, so the deviation from §10 is not new engineering, just a
+second call site for a pattern already accepted in production. Option 2 is
+rejected as needless complexity for a lookup that is already sub-second and
+whose failure is invisible to the order flow. Option 3 is rejected outright —
+G2B availability must never become a checkout dependency.
+
+### The `check` descriptor (`FormField.check`)
+
+`Product.required_fields` is a jsonb list of `FormField`. One optional nested
+object, `check`, opts a field into the storefront lookup — explicit opt-in on
+the field, not a convention on the field's key:
+
+```jsonc
+{
+  "key": "player_id",
+  "label": { "ru": "ID игрока", "en": "Player ID", "uz": "Oʻyinchi ID" },
+  "type": "text",
+  "pattern": "^[0-9]{6,15}$",
+  "check": {
+    "provider": "g2b", // which checker backs this field
+    "server_field": "server", // optional: key of the sibling field supplying server_id
+  },
+}
+```
+
+`FieldCheck` is a `pydantic.BaseModel` (`provider: Literal["g2b"]`,
+`server_field: str | None = None`, `extra="forbid"`) nested on `FormField`. No
+DB migration — `required_fields` is jsonb, and `admin_schemas` builds on
+`FormField`, so the admin create/update API accepts `check` automatically.
+Only fields carrying the descriptor render the storefront's check button.
+
+### The endpoint
+
+```
+POST /api/v1/catalog/products/{product_id}/check-player
+body:  { "player_id": "<str>", "server_id": "<str|null>" }
+200:   { "valid": true, "name": "Nickname", "reason": null }
+```
+
+Handler logic (`yupay.modules.integrations.player_check.check_player_for_product`):
+
+1. Load the product. Unknown `product_id` → **404**. A product with no field
+   carrying `check.provider == "g2b"` → **422** — this codebase maps
+   `ValidationError` to 422 app-wide (`yupay.core.errors.ValidationError`),
+   so the check-descriptor precondition follows the same convention as every
+   other domain-validation failure. (The original spec draft called this a
+   `400`; the implementation and this ADR standardise on 422 for
+   consistency with the rest of the API.)
+2. Resolve the G2B `game_code`: the first **active**
+   `sku_supplier_mapping` among the product's SKUs with
+   `supplier_slug='g2b'`, `kind='game'` → `external_product_id`. No mapping →
+   `{valid: false, reason: "unavailable"}` — advisory, never an error
+   boundary.
+3. Call `games_check_player(game_code, player_id, server_id, charname=None)`.
+4. Map the raw response to the public `PlayerCheckOut` shape
+   (`{valid, name, reason}`, dropping the internal `openid`). **Any**
+   exception — timeout, non-2xx, malformed response — is folded into
+   `{valid: false, reason: "unavailable"}`, mirroring the existing admin
+   route. The endpoint never returns a 5xx for an upstream failure.
+
+### Placement: route lives in `integrations`, not `catalog`
+
+The route and its service live in the `integrations` module, which already
+owns the G2B client and `sku_supplier_mapping`. `integrations` already
+depends on `catalog` (for `Product`, `Sku`); the reverse dependency
+(`catalog → integrations`) would be a cycle. The router is mounted with
+`prefix="/catalog"` so the URL still reads as the storefront path
+`/api/v1/catalog/products/{id}/check-player` — the URL namespace does not
+have to match the owning module. `integrations/api.py` exposes the service as
+`check_player_for_product(session, product_id, player_id, server_id) ->
+PlayerCheckOut` for reuse.
+
+### §10 deviation — one synchronous external HTTP call
+
+AGENTS.md §10 states: "No synchronous external HTTP calls in request
+handlers. Always enqueue and respond with a pending status; the client
+subscribes via WebSocket or polls." This endpoint deliberately violates that
+rule with one in-handler call to G2B. Justification:
+
+- **Advisory, not on the order path.** No order, payment, or fulfilment
+  state depends on this call succeeding — it is pure UX feedback before
+  checkout.
+- **User-initiated, not automated.** The customer taps a button; there is no
+  background fan-out that could turn one slow call into cascading load.
+- **Short timeout, capped blast radius.** The call uses the G2B client's
+  existing request timeout; a hang blocks one request, not a queue worker.
+- **Redis-cached.** Repeat taps and abuse hit the cache
+  (`playercheck:g2b:{game_code}:{server_id|-}:{player_id}`, 300s TTL — see
+  `docs/architecture/cache-keys.md`) instead of G2B.
+- **Precedent already in production.** The admin check-player route
+  (`GET /admin/integrations/g2b/games/{game_code}/check-player`, ADR-0019)
+  already makes this exact synchronous call; this endpoint reuses the same
+  shape for a second, public caller instead of introducing a new pattern.
+
+### Positive consequences
+
+- Customers catch a wrong player id before paying, cutting misdelivered
+  top-ups without adding any new checkout dependency.
+- One shared endpoint serves both miniapp (`DynamicFields`) and web
+  (`PurchasePanel`).
+- No schema migration, no admin UI work — `check` passes through the
+  existing jsonb form schema and admin API untouched.
+
+### Negative consequences
+
+- A second synchronous external call site in the codebase alongside the
+  admin route — anyone auditing §10 compliance must know both are
+  intentional, not drift. Both are now cross-referenced to this ADR.
+- Per-IP rate limiting (`guard_ip`, bucket `check_player`) is required to
+  blunt id-enumeration abuse; a misconfigured or removed limiter would
+  reopen that surface.
+
+## Validation
+
+`apps/api/tests/integration/test_player_check_routes.py` (and the
+`integrations` service unit tests) cover: game_code resolution happy path and
+no-mapping → `unavailable`; response mapping for valid/invalid/exception
+cases via respx (no real HTTP); not-checkable product → 422; unknown product
+→ 404; rate-limit 429; `player_id` absent from emitted logs (hash only, via
+the G2B module's existing redaction helper). Revisit if a second checkable
+provider (non-G2B) or a `charname` pre-purchase check is ever requested — the
+`check` descriptor's `provider` field is already `Literal`-extensible for
+that.
+
+## Alternatives considered (detail)
+
+### Option 2 — async job + poll/WebSocket
+
+Would keep the request handler free of external I/O, matching §10 to the
+letter. Rejected because the lookup already completes in about a second and
+the UI need is synchronous ("tap → see nickname"); wrapping it in a job with
+a status channel adds a queue hop, a WebSocket subscription (or poll loop),
+and idempotency-key bookkeeping for a call whose failure mode is already
+fully contained (advisory, cached, rate-limited).
+
+### Option 3 — gate checkout on a valid check
+
+Would give the strongest typo protection but makes G2B availability a
+checkout dependency, contradicting the resilience goal that motivated
+keeping payments/fulfilment decoupled from suppliers elsewhere in the
+codebase (ADR-0013, ADR-0019). Rejected outright during brainstorming.
+
+## References
+
+- `docs/superpowers/specs/2026-07-16-storefront-player-check-design.md` — feature design spec
+- [ADR-0019](./0019-g2b-integration.md) — G2B integration, admin check-player precedent
+- [ADR-0009](./0009-catalog-three-level-plus-form-schema.md) — `required_fields` form schema
+- [ADR-0028](./0028-fastapi-rate-limiting.md) — rate-limiting infrastructure (`guard_ip` / slowapi)
+- `docs/architecture/cache-keys.md` — `playercheck:g2b:{game_code}:{server_id|-}:{player_id}`
+- `apps/api/src/yupay/modules/integrations/player_check.py` — service implementation
+- `apps/api/src/yupay/modules/integrations/routes.py` — public + admin routes
+- `apps/api/src/yupay/modules/catalog/schemas.py` — `FieldCheck` / `FormField`
