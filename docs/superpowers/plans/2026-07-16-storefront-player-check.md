@@ -808,7 +808,22 @@ git commit -m "feat(miniapp): FormField.check type + checkPlayer API wrapper"
 
 ## Task 9: miniapp — check button + states + i18n
 
+> **AMENDED 2026-07-16 (testing approach).** The repo has no `@testing-library/react`/`jsdom`
+> and vitest runs in the `node` environment (only pure-logic tests exist, e.g.
+> `messages.test.ts`). Per the user's decision, do NOT introduce component-test infra. Instead
+> extract the check state + orchestration into a framework-agnostic unit
+> `apps/miniapp/src/lib/player-check-state.ts` and unit-test THAT in the node env; the
+> `DynamicFields.tsx` button is thin glue over the unit, covered by `tsc` + a real run. The
+> steps below supersede the original component-test steps.
+
 **Files:**
+
+- Create: `apps/miniapp/src/lib/player-check-state.ts` (pure state/orchestration unit)
+- Test: `apps/miniapp/src/lib/player-check-state.test.ts` (node env)
+- Modify: `apps/miniapp/src/components/DynamicFields.tsx`, `apps/miniapp/src/pages/TopUp.tsx`
+- Modify: `packages/i18n/locales/{ru,en,uz}/miniapp.json`
+
+**Original files (superseded test file removed):**
 
 - Modify: `apps/miniapp/src/components/DynamicFields.tsx`
 - Modify: `packages/i18n/locales/{ru,en,uz}/<miniapp-namespace>.json`
@@ -951,6 +966,12 @@ git commit -m "feat(miniapp): player-check button in the top-up form"
 ---
 
 ## Task 10: web — check button + states + i18n
+
+> **AMENDED 2026-07-16 (testing approach).** Same as Task 9: no component-test infra in the web
+> app either. Reuse the framework-agnostic unit from Task 9 (`player-check-state.ts`) if the web
+> app can import it, or create the web equivalent `apps/web/src/lib/player-check-state.ts` with a
+> node test; the `PurchasePanel.tsx` button is thin glue covered by `tsc` + a real run. No
+> `PurchasePanel.test.tsx` with testing-library.
 
 **Files:**
 
