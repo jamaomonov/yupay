@@ -7,6 +7,7 @@ from decimal import Decimal
 import httpx
 import pytest
 import respx
+import structlog.testing
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core import config as cfg
@@ -229,3 +230,47 @@ async def test_unknown_product_404(client) -> None:
         json={"player_id": "1"},
     )
     assert r.status_code == 404
+
+
+@respx.mock
+async def test_rate_limited_after_threshold(client, seed_g2b_product) -> None:
+    respx.post(url__regex=r".*/games/checkPlayerId").mock(
+        return_value=httpx.Response(200, json={"valid": "valid", "name": "Neo"})
+    )
+    url = f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player"
+    last = None
+    for _ in range(15):  # window max defaults to 10 (auth_ip_guard_max)
+        last = await client.post(url, json={"player_id": "51234567"})
+    assert last is not None
+    assert last.status_code == 429
+
+
+@respx.mock
+async def test_player_id_never_logged_plaintext(client, seed_g2b_product) -> None:
+    """The brief's original body asserts against ``caplog.text``, but this
+    codebase's ``configure_logging()`` (``yupay.core.logging``) wires structlog
+    with ``structlog.PrintLoggerFactory()``, which writes straight to stdout and
+    never touches the stdlib ``logging`` module — so ``caplog`` (which hooks a
+    handler onto stdlib logging) stays empty no matter what is logged. Verified
+    with a throwaway probe: `logger.info(...)` calls during a request left
+    ``caplog.text == ""`` and ``caplog.records == []``. Asserting
+    ``secret not in caplog.text`` against an always-empty string is vacuously
+    true — it would pass even if the raw player_id were logged, which fails the
+    "verify real behavior" bar. ``structlog.testing.capture_logs()`` captures the
+    actual emitted event dicts regardless of the configured logger factory
+    (confirmed against this same request: it captured the ``player_check`` event
+    with ``player_id_hash`` and no raw id), so it is the real-behavior-verifying
+    substitute for the brief's ``caplog`` fixture here.
+    """
+    respx.post(url__regex=r".*/games/checkPlayerId").mock(
+        return_value=httpx.Response(200, json={"valid": "valid", "name": "Neo"})
+    )
+    secret = "51234567"
+    with structlog.testing.capture_logs() as cap:
+        r = await client.post(
+            f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player",
+            json={"player_id": secret},
+        )
+    assert r.status_code == 200
+    log_text = " ".join(repr(entry) for entry in cap)
+    assert secret not in log_text
