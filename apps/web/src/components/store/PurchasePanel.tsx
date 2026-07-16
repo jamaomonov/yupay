@@ -79,7 +79,6 @@ function PlayerCheckControl({
         type="button"
         disabled={!enabled || state.phase === "loading"}
         onClick={() => void onCheck()}
-        aria-label={t("check")}
         className={buttonStyles({ variant: "ghost", size: "xs", className: "h-8 px-3 text-[12px]" })}
       >
         {state.phase === "loading" ? t("checking") : t("check")}

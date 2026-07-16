@@ -8,6 +8,7 @@ so the storefront never hits an error boundary. See ADR-0031.
 from __future__ import annotations
 
 import contextlib
+import uuid
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
@@ -16,6 +17,7 @@ from yupay.core.errors import NotFoundError, ValidationError
 from yupay.core.logging import get_logger
 from yupay.core.redis import get_redis
 from yupay.modules.catalog.models import Product, Sku
+from yupay.modules.fulfillment.suppliers.g2b import _hash_short
 from yupay.modules.integrations.models import SkuSupplierMapping
 from yupay.modules.integrations.schemas import PlayerCheckOut
 
@@ -61,7 +63,13 @@ async def resolve_g2b_game_code(session: AsyncSession, product_id: str) -> str |
 
 
 def _cache_key(game_code: str, player_id: str, server_id: str | None) -> str:
-    return f"playercheck:g2b:{game_code}:{server_id or '-'}:{player_id}"
+    """Redis key for a cached player-check result.
+
+    ``player_id`` is hashed (never stored raw) so the key carries no PII —
+    it would otherwise be plaintext-visible via ``MONITOR``/``SCAN`` (§9).
+    ``_hash_short`` is deterministic, so identical inputs still cache-hit.
+    """
+    return f"playercheck:g2b:{game_code}:{server_id or '-'}:{_hash_short(player_id)}"
 
 
 async def check_player_for_product(
@@ -72,9 +80,18 @@ async def check_player_for_product(
     server_id: str | None,
 ) -> PlayerCheckOut:
     """Verify a player id for a product. Never raises on upstream failure —
-    folds it into ``{valid: False, reason}``."""
-    from yupay.modules.fulfillment.suppliers.g2b import _hash_short
+    folds it into ``{valid: False, reason}``.
+
+    A malformed (non-UUID) ``product_id`` is treated as "not found" rather
+    than propagating the driver's ``DBAPIError`` — see ADR-0031: unknown
+    product -> 404, and this endpoint never 5xx's.
+    """
     from yupay.modules.integrations.routes import _g2b_fulfiller_or_none
+
+    try:
+        uuid.UUID(product_id)
+    except ValueError as exc:
+        raise NotFoundError("product not found") from exc
 
     product = await session.get(Product, product_id)
     if product is None:

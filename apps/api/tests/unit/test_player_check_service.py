@@ -28,3 +28,15 @@ def test_map_g2b_response_invalid() -> None:
     assert out.valid is False
     assert out.name is None
     assert out.reason == "not found"
+
+
+def test_cache_key_does_not_embed_raw_player_id() -> None:
+    key = pc._cache_key("pubgm", "51234567", None)
+    assert "51234567" not in key
+
+
+def test_cache_key_is_deterministic() -> None:
+    assert pc._cache_key("pubgm", "51234567", None) == pc._cache_key("pubgm", "51234567", None)
+    assert pc._cache_key("pubgm", "51234567", "srv1") == pc._cache_key(
+        "pubgm", "51234567", "srv1"
+    )

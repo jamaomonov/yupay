@@ -232,6 +232,16 @@ async def test_unknown_product_404(client) -> None:
     assert r.status_code == 404
 
 
+async def test_malformed_product_id_404_not_500(client) -> None:
+    """``Product.id`` is a UUID column — a non-UUID path segment must fold
+    into the same "not found" contract (ADR-0031), not a raw DBAPIError."""
+    r = await client.post(
+        "/api/v1/catalog/products/not-a-uuid/check-player",
+        json={"player_id": "1"},
+    )
+    assert r.status_code == 404
+
+
 @respx.mock
 async def test_rate_limited_after_threshold(client, seed_g2b_product) -> None:
     respx.post(url__regex=r".*/games/checkPlayerId").mock(
