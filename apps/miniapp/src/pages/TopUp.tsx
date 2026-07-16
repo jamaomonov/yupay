@@ -670,6 +670,7 @@ export default function TopUp() {
                 sub={fillingHint}
               />
               <DynamicFields
+                productId={productQuery.data?.product.id ?? ""}
                 fields={requiredFields}
                 values={fulfillment}
                 suggestions={suggestions}

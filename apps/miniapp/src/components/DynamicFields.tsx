@@ -7,12 +7,11 @@
  * available.
  */
 
-import type { Locale } from "@yupay/i18n";
 import { HelpCircle, History, X } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import type { FormField } from "@/lib/catalog";
-import { useT } from "@/lib/i18n";
+import type { Locale } from "@yupay/i18n";
 
 import {
   Sheet,
@@ -21,6 +20,8 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useT } from "@/lib/i18n";
+import { canCheck, IDLE, runPlayerCheck, type CheckState } from "@/lib/player-check-state";
 
 /** Picks the active-locale value out of a server-provided multilingual map,
  *  falling back to the first available translation, then to ``fallback``. */
@@ -34,6 +35,9 @@ function pickLocalized(
 }
 
 export interface DynamicFieldsProps {
+  /** Product these fields belong to — required for the player-check button,
+   *  which looks up the nickname against this specific product's provider. */
+  productId: string;
   fields: FormField[];
   values: Record<string, string>;
   onChange: (key: string, value: string) => void;
@@ -42,15 +46,23 @@ export interface DynamicFieldsProps {
   suggestions?: Record<string, string>;
 }
 
-export function DynamicFields({ fields, values, onChange, suggestions }: DynamicFieldsProps) {
+export function DynamicFields({
+  productId,
+  fields,
+  values,
+  onChange,
+  suggestions,
+}: DynamicFieldsProps) {
   if (fields.length === 0) return null;
   return (
     <div className="space-y-3">
       {fields.map((field) => (
         <DynamicField
           key={field.key}
+          productId={productId}
           field={field}
           value={values[field.key] ?? ""}
+          allValues={values}
           suggestion={suggestions?.[field.key] ?? null}
           onChange={(v) => {
             onChange(field.key, v);
@@ -62,13 +74,17 @@ export function DynamicFields({ fields, values, onChange, suggestions }: Dynamic
 }
 
 function DynamicField({
+  productId,
   field,
   value,
+  allValues,
   onChange,
   suggestion,
 }: {
+  productId: string;
   field: FormField;
   value: string;
+  allValues: Record<string, string>;
   onChange: (v: string) => void;
   suggestion: string | null;
 }) {
@@ -133,8 +149,10 @@ function DynamicField({
         />
       ) : (
         <TextLikeField
+          productId={productId}
           field={field}
           value={value}
+          allValues={allValues}
           onChange={onChange}
           placeholder={placeholder}
           fieldId={fieldId}
@@ -161,16 +179,20 @@ function DynamicField({
 }
 
 function TextLikeField({
+  productId,
   field,
   value,
+  allValues,
   onChange,
   placeholder,
   fieldId,
   required,
   suggestion,
 }: {
+  productId: string;
   field: FormField;
   value: string;
+  allValues: Record<string, string>;
   onChange: (v: string) => void;
   placeholder: string;
   fieldId: string;
@@ -184,6 +206,21 @@ function TextLikeField({
   // Offer the last-used value only while the field is still empty — once the
   // customer starts typing we get out of the way.
   const showSuggestion = suggestion !== null && suggestion.length > 0 && !filled;
+
+  // Advisory player-id lookup (e.g. Steam/game nickname preview). Only
+  // rendered when the catalog schema marks this field as checkable.
+  const checkConfig = field.check;
+  const [check, setCheck] = useState<CheckState>(IDLE);
+  useEffect(() => {
+    setCheck(IDLE);
+  }, [value]);
+  const canRunCheck = canCheck(value, field.pattern);
+
+  const handleCheck = async () => {
+    setCheck({ phase: "loading" });
+    const serverId = checkConfig?.server_field ? (allValues[checkConfig.server_field] ?? null) : null;
+    setCheck(await runPlayerCheck(productId, { playerId: value, serverId }));
+  };
 
   const handleChange = (v: string) => {
     if (field.type === "number") {
@@ -230,6 +267,36 @@ function TextLikeField({
           </button>
         )}
       </div>
+      {checkConfig && (
+        <div className="mt-1.5 flex items-center gap-2">
+          <button
+            type="button"
+            disabled={!canRunCheck || check.phase === "loading"}
+            onClick={() => {
+              void handleCheck();
+            }}
+            aria-label={t("field.check")}
+            className="shrink-0 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition-opacity active:opacity-70 disabled:opacity-40"
+            style={{
+              background: "hsl(var(--primary) / 0.12)",
+              border: "1px solid hsl(var(--primary) / 0.35)",
+              color: "hsl(var(--primary))",
+            }}
+          >
+            {check.phase === "loading" ? t("field.checking") : t("field.check")}
+          </button>
+          {check.phase === "done" &&
+            (check.result.valid ? (
+              <span className="truncate text-[12px] font-medium" style={{ color: "hsl(var(--primary))" }}>
+                {t("field.checkNickname", { name: check.result.name ?? "" })}
+              </span>
+            ) : (
+              <span className="truncate text-[12px] font-medium text-white/40">
+                {t("field.checkFailed")}
+              </span>
+            ))}
+        </div>
+      )}
       {showSuggestion && (
         <button
           type="button"
