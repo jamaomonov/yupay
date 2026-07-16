@@ -2789,7 +2789,7 @@
       },
       "FieldCheck": {
         "additionalProperties": false,
-        "description": "Opts a form field into storefront player verification.\n\nPresent only on the player-id field. ``server_field`` names the sibling\nfield whose value is passed as the checker's ``server_id`` (games like\nMobile Legends need a zone; PUBG Mobile does not).",
+        "description": "Opts a form field into storefront player verification.\n\nPresent only on the player-id field. ``server_field`` names the sibling\nfield whose value is passed as the checker's ``server_id``; set it when\nthe product has a sibling server/zone field, leave unset otherwise.",
         "properties": {
           "provider": {
             "const": "g2b",
