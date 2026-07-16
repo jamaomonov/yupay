@@ -24,6 +24,20 @@ class FormOption(BaseModel):
     label: LocaleMap
 
 
+class FieldCheck(BaseModel):
+    """Opts a form field into storefront player verification.
+
+    Present only on the player-id field. ``server_field`` names the sibling
+    field whose value is passed as the checker's ``server_id`` (games like
+    Mobile Legends need a zone; PUBG Mobile does not).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Literal["g2b"]
+    server_field: str | None = None
+
+
 class FormField(BaseModel):
     """One field of a product's form schema."""
 
@@ -37,6 +51,7 @@ class FormField(BaseModel):
     help_text: LocaleMap | None = None
     pattern: str | None = None
     options: list[FormOption] | None = None
+    check: FieldCheck | None = None
 
 
 class PriceOut(BaseModel):
