@@ -129,7 +129,10 @@ export const TX_KIND_LABEL: Record<string, MessageKey> = {
   "payment.refund": "wallet.tx.refund",
   "order.payment": "wallet.tx.orderPayment",
   "cashback.grant": "wallet.tx.cashback",
-  "promo.grant": "wallet.tx.promo",
+  // Backend posts the promo redemption as ``promo.redeem`` (promo/service.py),
+  // not ``promo.grant`` — the old key never matched, so the history row fell
+  // through to the raw ledger kind.
+  "promo.redeem": "wallet.tx.promo",
   topup: "wallet.tx.topup",
 };
 
