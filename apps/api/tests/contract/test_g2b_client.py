@@ -188,3 +188,42 @@ async def test_network_error_raises_upstream_unavailable(
     respx.get("https://g2b.test/v1/getMe").mock(side_effect=httpx.ConnectTimeout("timeout"))
     with pytest.raises(UpstreamUnavailableError):
         await _client(max_retries=1).get_me()
+
+
+@respx.mock
+async def test_check_player_200_valid() -> None:
+    respx.post("https://g2b.test/v1/games/checkPlayerId").mock(
+        return_value=httpx.Response(200, json={"valid": "valid", "name": "JAMA"})
+    )
+    out = await _client().games_check_player(
+        game_code="pubgm", player_id="5395045830", server_id=None, charname=None
+    )
+    assert out["valid"] == "valid"
+    assert out["name"] == "JAMA"
+
+
+@respx.mock
+async def test_check_player_400_invalid_verdict_is_unwrapped_not_raised() -> None:
+    # G2B returns HTTP 400 for an invalid id, with the verdict in the body.
+    # The client must return that body, NOT raise — so the caller can tell an
+    # invalid id apart from a real error.
+    respx.post("https://g2b.test/v1/games/checkPlayerId").mock(
+        return_value=httpx.Response(400, json={"valid": "invalid", "name": ""})
+    )
+    out = await _client().games_check_player(
+        game_code="pubgm", player_id="9", server_id=None, charname=None
+    )
+    assert out["valid"] == "invalid"
+
+
+@respx.mock
+async def test_check_player_400_without_verdict_raises() -> None:
+    # A 400 that is NOT a verdict (no ``valid`` key) is a genuine error.
+    respx.post("https://g2b.test/v1/games/checkPlayerId").mock(
+        return_value=httpx.Response(400, json={"message": "bad request"})
+    )
+    with pytest.raises(G2bError) as excinfo:
+        await _client().games_check_player(
+            game_code="pubgm", player_id="9", server_id=None, charname=None
+        )
+    assert excinfo.value.status == 400

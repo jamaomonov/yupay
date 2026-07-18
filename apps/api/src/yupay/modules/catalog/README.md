@@ -72,7 +72,7 @@ typed form, and that the API validates on order creation.
     "label": { "ru": "ID игрока", "en": "Player ID", "uz": "Oʻyinchi ID" },
     "type": "text",
     "required": true,
-    "pattern": "^[0-9]{6,15}$",
+    "pattern": "^[0-9]{6,20}$",
     "placeholder": { "ru": "12345678", "en": "12345678" },
   },
   {
@@ -103,7 +103,7 @@ account nickname before the customer pays — see
   "key": "player_id",
   "label": { "ru": "ID игрока", "en": "Player ID" },
   "type": "text",
-  "pattern": "^[0-9]{6,15}$",
+  "pattern": "^[0-9]{6,20}$",
   "check": {
     "provider": "g2b", // which checker backs this field
     "server_field": "server", // optional: key of the sibling field supplying server_id

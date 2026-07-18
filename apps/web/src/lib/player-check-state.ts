@@ -38,6 +38,8 @@ export async function runPlayerCheck(
   try {
     return { phase: "done", result: await run(productId, input) };
   } catch {
-    return { phase: "done", result: { valid: false, name: null, reason: null } };
+    // A thrown fetch (network, our 5xx, 429) is our/provider fault, not the
+    // customer's — surface it as `error`, never `invalid`.
+    return { phase: "done", result: { status: "error", name: null } };
   }
 }

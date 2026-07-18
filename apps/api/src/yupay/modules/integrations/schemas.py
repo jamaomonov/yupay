@@ -196,12 +196,23 @@ class PlayerCheckIn(BaseModel):
 
 
 class PlayerCheckOut(BaseModel):
-    """Storefront player-verification result. ``openid`` is intentionally
-    omitted — it's an internal G2B id and must not leak to the storefront."""
+    """Storefront player-verification result.
 
-    valid: bool
+    ``status`` discriminates three outcomes so the storefront can message each
+    precisely:
+      * ``valid``   — the id resolved; ``name`` is the account nickname.
+      * ``invalid`` — the supplier answered but the id does not exist (the
+        customer mistyped it). The storefront tells them the player isn't found.
+      * ``error``   — a fault on our or the supplier's side (no mapping,
+        unconfigured, upstream/network failure). The storefront shows a generic
+        "couldn't check" and never blames the customer.
+
+    ``openid`` is intentionally omitted — it's an internal G2B id and must not
+    leak to the storefront.
+    """
+
+    status: Literal["valid", "invalid", "error"]
     name: str | None = None
-    reason: str | None = None
 
 
 class NewBrandIn(BaseModel):

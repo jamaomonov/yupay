@@ -162,6 +162,7 @@
     "checking": "Checking…",
     "checkNickname": "Nickname: {name}",
     "checkFailed": "Could not verify",
+    "checkNotFound": "Player not found",
     "paymentTitle": "Payment method",
     "pay": "Pay",
     "payError": "Couldn't create the order. Try again or contact support.",

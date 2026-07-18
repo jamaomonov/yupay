@@ -162,6 +162,7 @@
     "checking": "Tekshirilmoqda…",
     "checkNickname": "Nik: {name}",
     "checkFailed": "Tekshirib boʻlmadi",
+    "checkNotFound": "Oʻyinchi topilmadi",
     "paymentTitle": "Toʻlov usuli",
     "pay": "Toʻlash",
     "payError": "Buyurtma yaratilmadi. Qayta urinib koʻring yoki qoʻllab-quvvatlashga yozing.",

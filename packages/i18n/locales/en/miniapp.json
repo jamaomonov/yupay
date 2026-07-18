@@ -46,6 +46,7 @@
   "field.checking": "Checking…",
   "field.checkNickname": "Nickname: {name}",
   "field.checkFailed": "Could not verify",
+  "field.checkNotFound": "Player not found",
   "payment.inpay.sub": "Click · Payme · cards",
   "payment.click.sub": "Card · Humo · Uzcard",
   "payment.payme.sub": "Card · Humo · Uzcard",

@@ -79,18 +79,25 @@ function PlayerCheckControl({
         type="button"
         disabled={!enabled || state.phase === "loading"}
         onClick={() => void onCheck()}
-        className={buttonStyles({ variant: "ghost", size: "xs", className: "h-8 px-3 text-[12px]" })}
+        className={buttonStyles({
+          variant: "ghost",
+          size: "xs",
+          className: "h-8 px-3 text-[12px]",
+        })}
       >
         {state.phase === "loading" ? t("checking") : t("check")}
       </button>
-      {state.phase === "done" &&
-        (state.result.valid ? (
-          <span className="text-primary truncate text-[12px] font-medium">
-            {t("checkNickname", { name: state.result.name ?? "" })}
-          </span>
-        ) : (
-          <span className="text-tx-dim truncate text-[12px] font-medium">{t("checkFailed")}</span>
-        ))}
+      {state.phase === "done" && state.result.status === "valid" && (
+        <span className="text-primary truncate text-[12px] font-medium">
+          {t("checkNickname", { name: state.result.name ?? "" })}
+        </span>
+      )}
+      {state.phase === "done" && state.result.status === "invalid" && (
+        <span className="truncate text-[12px] font-medium text-red-400">{t("checkNotFound")}</span>
+      )}
+      {state.phase === "done" && state.result.status === "error" && (
+        <span className="text-tx-dim truncate text-[12px] font-medium">{t("checkFailed")}</span>
+      )}
     </div>
   );
 }

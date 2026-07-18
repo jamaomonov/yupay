@@ -218,7 +218,9 @@ function TextLikeField({
 
   const handleCheck = async () => {
     setCheck({ phase: "loading" });
-    const serverId = checkConfig?.server_field ? (allValues[checkConfig.server_field] ?? null) : null;
+    const serverId = checkConfig?.server_field
+      ? (allValues[checkConfig.server_field] ?? null)
+      : null;
     setCheck(await runPlayerCheck(productId, { playerId: value, serverId }));
   };
 
@@ -285,16 +287,27 @@ function TextLikeField({
           >
             {check.phase === "loading" ? t("field.checking") : t("field.check")}
           </button>
-          {check.phase === "done" &&
-            (check.result.valid ? (
-              <span className="truncate text-[12px] font-medium" style={{ color: "hsl(var(--primary))" }}>
-                {t("field.checkNickname", { name: check.result.name ?? "" })}
-              </span>
-            ) : (
-              <span className="truncate text-[12px] font-medium text-white/40">
-                {t("field.checkFailed")}
-              </span>
-            ))}
+          {check.phase === "done" && check.result.status === "valid" && (
+            <span
+              className="truncate text-[12px] font-medium"
+              style={{ color: "hsl(var(--primary))" }}
+            >
+              {t("field.checkNickname", { name: check.result.name ?? "" })}
+            </span>
+          )}
+          {check.phase === "done" && check.result.status === "invalid" && (
+            <span
+              className="truncate text-[12px] font-medium"
+              style={{ color: "hsl(var(--destructive))" }}
+            >
+              {t("field.checkNotFound")}
+            </span>
+          )}
+          {check.phase === "done" && check.result.status === "error" && (
+            <span className="truncate text-[12px] font-medium text-white/40">
+              {t("field.checkFailed")}
+            </span>
+          )}
         </div>
       )}
       {showSuggestion && (

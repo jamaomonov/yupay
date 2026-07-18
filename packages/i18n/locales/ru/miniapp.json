@@ -46,6 +46,7 @@
   "field.checking": "Проверяем…",
   "field.checkNickname": "Ник: {name}",
   "field.checkFailed": "Не удалось проверить",
+  "field.checkNotFound": "Игрок с таким ID не найден",
   "payment.inpay.sub": "Click · Payme · карты",
   "payment.click.sub": "Карта · Humo · Uzcard",
   "payment.payme.sub": "Карта · Humo · Uzcard",

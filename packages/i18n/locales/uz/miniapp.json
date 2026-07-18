@@ -46,6 +46,7 @@
   "field.checking": "Tekshirilmoqda…",
   "field.checkNickname": "Nik: {name}",
   "field.checkFailed": "Tekshirib bo'lmadi",
+  "field.checkNotFound": "Oʻyinchi topilmadi",
   "payment.inpay.sub": "Click · Payme · kartalar",
   "payment.click.sub": "Karta · Humo · Uzcard",
   "payment.payme.sub": "Karta · Humo · Uzcard",

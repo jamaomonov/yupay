@@ -32,7 +32,7 @@ a new failure mode to checkout.
 
 1. **Advisory, synchronous, cached endpoint in `integrations`** — one public
    POST route that calls G2B in-request, folds every failure into
-   `{valid: false}`, and caches results briefly in Redis.
+   `status="error"`, and caches results briefly in Redis.
 2. **Async job + WebSocket/poll result** — matches the general §10 rule (no
    sync external calls in handlers) but turns a "tap and see" interaction
    into a job-status dance for a non-critical, already-fast lookup.
@@ -61,7 +61,7 @@ the field, not a convention on the field's key:
   "key": "player_id",
   "label": { "ru": "ID игрока", "en": "Player ID", "uz": "Oʻyinchi ID" },
   "type": "text",
-  "pattern": "^[0-9]{6,15}$",
+  "pattern": "^[0-9]{6,20}$",
   "check": {
     "provider": "g2b", // which checker backs this field
     "server_field": "server", // optional: key of the sibling field supplying server_id
@@ -80,8 +80,15 @@ Only fields carrying the descriptor render the storefront's check button.
 ```
 POST /api/v1/catalog/products/{product_id}/check-player
 body:  { "player_id": "<str>", "server_id": "<str|null>" }
-200:   { "valid": true, "name": "Nickname", "reason": null }
+200:   { "status": "valid", "name": "Nickname" }
 ```
+
+`status` is a three-way discriminator — `valid` (nickname resolved),
+`invalid` (the supplier answered but the id does not exist — the customer's
+mistake), `error` (our/supplier fault) — so the storefront can message each
+case precisely and never blame the customer for an outage. (An earlier draft
+returned `{valid: bool, reason}`; that collapsed "wrong id" and "our fault"
+into one "couldn't check", which mis-told users to re-check a correct id.)
 
 Handler logic (`yupay.modules.integrations.player_check.check_player_for_product`):
 
@@ -95,14 +102,14 @@ Handler logic (`yupay.modules.integrations.player_check.check_player_for_product
 2. Resolve the G2B `game_code`: the first **active**
    `sku_supplier_mapping` among the product's SKUs with
    `supplier_slug='g2b'`, `kind='game'` → `external_product_id`. No mapping →
-   `{valid: false, reason: "unavailable"}` — advisory, never an error
-   boundary.
+   `status="error"` — advisory, never an error boundary.
 3. Call `games_check_player(game_code, player_id, server_id, charname=None)`.
 4. Map the raw response to the public `PlayerCheckOut` shape
-   (`{valid, name, reason}`, dropping the internal `openid`). **Any**
-   exception — timeout, non-2xx, malformed response — is folded into
-   `{valid: false, reason: "unavailable"}`, mirroring the existing admin
-   route. The endpoint never returns a 5xx for an upstream failure.
+   (`{status, name}`, dropping the internal `openid`). A 200 body whose
+   `valid != "valid"` maps to `status="invalid"` (the id genuinely does not
+   resolve). **Any** exception — timeout, non-2xx, malformed response — is
+   folded into `status="error"`, mirroring the existing admin route. The
+   endpoint never returns a 5xx for an upstream failure.
 
 ### Placement: route lives in `integrations`, not `catalog`
 

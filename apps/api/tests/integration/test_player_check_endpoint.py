@@ -51,10 +51,10 @@ async def client(integration_client: AsyncClient) -> AsyncClient:
     - the ``check_player`` ip-guard bucket for this fixed ASGITransport IP
       (127.0.0.1);
     - the ``playercheck:g2b:pubgm:*`` cache keys, since
-      ``test_check_player_valid`` and ``test_g2b_error_degrades_to_unavailable``
+      ``test_check_player_valid`` and ``test_g2b_error_degrades_to_error_status``
       both check the same ``player_id`` ("51234567") against the same
       ``game_code`` ("pubgm") — without this flush the second test would read
-      back the first test's cached ``{valid: true}`` instead of exercising the
+      back the first test's cached ``{status: valid}`` instead of exercising the
       G2B-failure path.
     """
     from yupay.core.redis import get_redis
@@ -176,13 +176,16 @@ async def test_check_player_valid(client: httpx.AsyncClient, seed_g2b_product: P
         json={"player_id": "51234567", "server_id": None},
     )
     assert r.status_code == 200
-    assert r.json() == {"valid": True, "name": "Neo", "reason": None}
+    assert r.json() == {"status": "valid", "name": "Neo"}
 
 
 @respx.mock
 async def test_check_player_invalid(client: httpx.AsyncClient, seed_g2b_product: Product) -> None:
+    # Real G2B behaviour: an invalid player id comes back as HTTP 400 carrying
+    # the verdict body (not a 200). The client unwraps that to a normal verdict,
+    # and the endpoint reports status="invalid" — NOT "error".
     respx.post(url__regex=r".*/games/checkPlayerId").mock(
-        return_value=httpx.Response(200, json={"valid": "invalid", "message": "not found"})
+        return_value=httpx.Response(400, json={"valid": "invalid", "name": ""})
     )
     r = await client.post(
         f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player",
@@ -190,19 +193,36 @@ async def test_check_player_invalid(client: httpx.AsyncClient, seed_g2b_product:
     )
     assert r.status_code == 200
     body = r.json()
-    assert body["valid"] is False
+    assert body["status"] == "invalid"
     assert body["name"] is None
 
 
 @respx.mock
-async def test_g2b_error_degrades_to_unavailable(client, seed_g2b_product: Product) -> None:
+async def test_check_player_real_400_error_is_error_not_invalid(
+    client: httpx.AsyncClient, seed_g2b_product: Product
+) -> None:
+    # A 400 WITHOUT a verdict body (e.g. a malformed request / unknown game) is
+    # a genuine fault, not an invalid id → status="error".
+    respx.post(url__regex=r".*/games/checkPlayerId").mock(
+        return_value=httpx.Response(400, json={"message": "bad request"})
+    )
+    r = await client.post(
+        f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player",
+        json={"player_id": "9"},
+    )
+    assert r.status_code == 200
+    assert r.json()["status"] == "error"
+
+
+@respx.mock
+async def test_g2b_error_degrades_to_error_status(client, seed_g2b_product: Product) -> None:
     respx.post(url__regex=r".*/games/checkPlayerId").mock(side_effect=httpx.ConnectError("down"))
     r = await client.post(
         f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player",
         json={"player_id": "51234567"},
     )
     assert r.status_code == 200
-    assert r.json()["valid"] is False
+    assert r.json()["status"] == "error"
 
 
 async def test_not_checkable_product_422(client, seed_plain_product: Product) -> None:

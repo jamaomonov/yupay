@@ -17,6 +17,7 @@ means the order has failed / been refunded — treat as terminal-failed.
 from __future__ import annotations
 
 import asyncio
+import json
 import secrets
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -327,7 +328,20 @@ class G2bClient:
             payload["server_id"] = server_id
         if charname:
             payload["charname"] = charname
-        resp = await self._request("POST", "/games/checkPlayerId", json=payload)
+        try:
+            resp = await self._request("POST", "/games/checkPlayerId", json=payload)
+        except G2bError as exc:
+            # G2B answers an *invalid player id* with HTTP 400 carrying the same
+            # verdict body as a 200 (``{"valid": "invalid", ...}``). That is a
+            # real answer ("no such player"), not a transport/our-side fault, so
+            # return the verdict instead of raising — the caller distinguishes
+            # ``valid != "valid"`` as an invalid id. A 400 without a ``valid``
+            # verdict (malformed request, unknown game) is a genuine error and
+            # still propagates.
+            verdict = _verdict_or_none(exc)
+            if verdict is not None:
+                return verdict
+            raise
         return resp.json()  # type: ignore[no-any-return]
 
     async def fetch_products(self, *, page: int = 1, limit: int = 100) -> list[dict[str, Any]]:
@@ -356,6 +370,25 @@ def _safe_body(resp: httpx.Response) -> str:
         return resp.text[:500]
     except (UnicodeDecodeError, AttributeError):
         return "<binary>"
+
+
+def _verdict_or_none(exc: G2bError) -> dict[str, Any] | None:
+    """Extract a ``checkPlayerId`` verdict from a 400 error, else ``None``.
+
+    G2B returns HTTP 400 for an invalid player id but with the normal verdict
+    body (``{"valid": "invalid", ...}``). Only that shape — a 400 whose JSON
+    body carries a ``valid`` key — counts as a verdict; anything else (other
+    status, non-JSON, or a body without ``valid``) is a genuine error.
+    """
+    if exc.status != 400:
+        return None
+    try:
+        body = json.loads(exc.body)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if isinstance(body, dict) and "valid" in body:
+        return body
+    return None
 
 
 def _normalise_game_status(

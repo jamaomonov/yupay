@@ -5000,7 +5000,7 @@
         "type": "object"
       },
       "PlayerCheckOut": {
-        "description": "Storefront player-verification result. ``openid`` is intentionally\nomitted \u2014 it's an internal G2B id and must not leak to the storefront.",
+        "description": "Storefront player-verification result.\n\n``status`` discriminates three outcomes so the storefront can message each\nprecisely:\n  * ``valid``   \u2014 the id resolved; ``name`` is the account nickname.\n  * ``invalid`` \u2014 the supplier answered but the id does not exist (the\n    customer mistyped it). The storefront tells them the player isn't found.\n  * ``error``   \u2014 a fault on our or the supplier's side (no mapping,\n    unconfigured, upstream/network failure). The storefront shows a generic\n    \"couldn't check\" and never blames the customer.\n\n``openid`` is intentionally omitted \u2014 it's an internal G2B id and must not\nleak to the storefront.",
         "properties": {
           "name": {
             "anyOf": [
@@ -5013,24 +5013,18 @@
             ],
             "title": "Name"
           },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+          "status": {
+            "enum": [
+              "valid",
+              "invalid",
+              "error"
             ],
-            "title": "Reason"
-          },
-          "valid": {
-            "title": "Valid",
-            "type": "boolean"
+            "title": "Status",
+            "type": "string"
           }
         },
         "required": [
-          "valid"
+          "status"
         ],
         "title": "PlayerCheckOut",
         "type": "object"

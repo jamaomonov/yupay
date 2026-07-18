@@ -1,8 +1,9 @@
 """Storefront player-id verification (G2B nickname lookup).
 
 Advisory: resolves a product's G2B ``game_code`` from its supplier mapping and
-proxies ``games_check_player``. Errors are folded into ``{valid: False, reason}``
-so the storefront never hits an error boundary. See ADR-0031.
+proxies ``games_check_player``. The result carries a three-way ``status``
+(``valid``/``invalid``/``error``); faults degrade to ``status="error"`` so the
+storefront never hits an error boundary. See ADR-0031.
 """
 
 from __future__ import annotations
@@ -39,10 +40,18 @@ def product_is_checkable(required_fields: list[dict[str, Any]]) -> bool:
 
 
 def _map_response(resp: dict[str, Any]) -> PlayerCheckOut:
-    raw_valid = str(resp.get("valid") or "").lower()
-    if raw_valid == "valid":
-        return PlayerCheckOut(valid=True, name=str(resp["name"]) if resp.get("name") else None)
-    return PlayerCheckOut(valid=False, reason=str(resp.get("message") or "rejected"))
+    """Map a successful G2B ``checkPlayerId`` body to a public result.
+
+    A 200 response with ``valid == "valid"`` is a real hit; any other body
+    (``"invalid"``, empty, unexpected) means the supplier answered but the id
+    does not resolve — that is the customer's mistake, so ``status="invalid"``,
+    NOT ``"error"`` (which is reserved for our/supplier faults).
+    """
+    if str(resp.get("valid") or "").lower() == "valid":
+        return PlayerCheckOut(
+            status="valid", name=str(resp["name"]) if resp.get("name") else None
+        )
+    return PlayerCheckOut(status="invalid")
 
 
 async def resolve_g2b_game_code(session: AsyncSession, product_id: str) -> str | None:
@@ -80,7 +89,7 @@ async def check_player_for_product(
     server_id: str | None,
 ) -> PlayerCheckOut:
     """Verify a player id for a product. Never raises on upstream failure —
-    folds it into ``{valid: False, reason}``.
+    folds it into ``status="error"``.
 
     A malformed (non-UUID) ``product_id`` is treated as "not found" rather
     than propagating the driver's ``DBAPIError`` — see ADR-0031: unknown
@@ -101,7 +110,7 @@ async def check_player_for_product(
 
     game_code = await resolve_g2b_game_code(session, product_id)
     if game_code is None:
-        return PlayerCheckOut(valid=False, reason="unavailable")
+        return PlayerCheckOut(status="error")
 
     redis = get_redis()
     key = _cache_key(game_code, player_id, server_id)
@@ -114,7 +123,7 @@ async def check_player_for_product(
 
     fulfiller = _g2b_fulfiller_or_none()
     if fulfiller is None:
-        return PlayerCheckOut(valid=False, reason="unavailable")
+        return PlayerCheckOut(status="error")
 
     try:
         resp = await fulfiller._client().games_check_player(
@@ -127,13 +136,13 @@ async def check_player_for_product(
             player_id_hash=_hash_short(player_id),
             error=str(exc)[:200],
         )
-        return PlayerCheckOut(valid=False, reason="unavailable")
+        return PlayerCheckOut(status="error")
 
     out = _map_response(resp)
     with contextlib.suppress(Exception):  # cache is best-effort
         await redis.set(key, out.model_dump_json(), ex=_CACHE_TTL_SECONDS)
     logger.info(
         "player_check", game_code=game_code, player_id_hash=_hash_short(player_id),
-        valid=out.valid,
+        status=out.status,
     )
     return out

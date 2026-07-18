@@ -18,16 +18,21 @@ def test_product_is_checkable_false_without_check() -> None:
 
 def test_map_g2b_response_valid() -> None:
     out = pc._map_response({"valid": "valid", "name": "Neo", "openid": "x"})
-    assert out.valid is True
+    assert out.status == "valid"
     assert out.name == "Neo"
-    assert out.reason is None
 
 
 def test_map_g2b_response_invalid() -> None:
     out = pc._map_response({"valid": "invalid", "message": "not found"})
-    assert out.valid is False
+    assert out.status == "invalid"
     assert out.name is None
-    assert out.reason == "not found"
+
+
+def test_map_g2b_response_unexpected_body_is_invalid_not_error() -> None:
+    # A 200 with an unexpected shape still means "the id didn't resolve",
+    # which is the customer's problem (invalid), not our fault (error).
+    out = pc._map_response({})
+    assert out.status == "invalid"
 
 
 def test_cache_key_does_not_embed_raw_player_id() -> None:
