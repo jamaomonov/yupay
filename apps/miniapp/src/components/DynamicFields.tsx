@@ -7,7 +7,7 @@
  * available.
  */
 
-import { HelpCircle, History, X } from "lucide-react";
+import { Check, HelpCircle, History, Loader2, X } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 
 import type { FormField } from "@/lib/catalog";
@@ -232,6 +232,58 @@ function TextLikeField({
     }
   };
 
+  const checkDone = checkConfig && check.phase === "done" ? check.result : null;
+
+  // Resolved id → collapse the input into a confirmation pill (nickname + id).
+  if (checkDone?.status === "valid") {
+    return (
+      <div className="flex items-center gap-2.5 rounded-2xl border border-emerald-500/40 bg-emerald-500/[0.06] py-1.5 pl-1.5 pr-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
+          <Check size={17} strokeWidth={3} />
+        </span>
+        <div className="min-w-0 flex-1 leading-tight">
+          <div className="truncate text-[14px] font-bold text-white">{checkDone.name}</div>
+          <div className="truncate font-mono text-[12px] text-emerald-400">{value}</div>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setCheck(IDLE);
+          }}
+          className="shrink-0 text-[13px] font-medium text-white/45 active:opacity-70"
+        >
+          {t("field.checkEdit")}
+        </button>
+      </div>
+    );
+  }
+
+  // Wrong id — the customer mistyped it; offer to fix, never block checkout.
+  if (checkDone?.status === "invalid") {
+    return (
+      <div className="flex items-center gap-2.5 rounded-2xl border border-red-500/40 bg-red-500/[0.06] py-1.5 pl-1.5 pr-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-500/15 text-red-400">
+          <X size={17} strokeWidth={3} />
+        </span>
+        <div className="min-w-0 flex-1 leading-tight">
+          <div className="truncate text-[13.5px] font-semibold text-red-300">
+            {t("field.checkNotFound")}
+          </div>
+          <div className="truncate font-mono text-[12px] text-white/40">{value}</div>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setCheck(IDLE);
+          }}
+          className="shrink-0 text-[13px] font-medium text-white/45 active:opacity-70"
+        >
+          {t("field.checkEdit")}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="relative">
@@ -270,7 +322,7 @@ function TextLikeField({
         )}
       </div>
       {checkConfig && (
-        <div className="mt-1.5 flex items-center gap-2">
+        <div className="mt-2">
           <button
             type="button"
             disabled={!canRunCheck || check.phase === "loading"}
@@ -278,35 +330,30 @@ function TextLikeField({
               void handleCheck();
             }}
             aria-label={t("field.check")}
-            className="shrink-0 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition-opacity active:opacity-70 disabled:opacity-40"
+            className="flex w-full items-center justify-center gap-2 rounded-2xl py-2.5 text-[13px] font-semibold transition-opacity active:opacity-70 disabled:opacity-40"
             style={{
               background: "hsl(var(--primary) / 0.12)",
               border: "1px solid hsl(var(--primary) / 0.35)",
               color: "hsl(var(--primary))",
             }}
           >
+            {check.phase === "loading" && <Loader2 size={15} className="animate-spin" />}
             {check.phase === "loading" ? t("field.checking") : t("field.check")}
           </button>
-          {check.phase === "done" && check.result.status === "valid" && (
-            <span
-              className="truncate text-[12px] font-medium"
-              style={{ color: "hsl(var(--primary))" }}
-            >
-              {t("field.checkNickname", { name: check.result.name ?? "" })}
-            </span>
-          )}
-          {check.phase === "done" && check.result.status === "invalid" && (
-            <span
-              className="truncate text-[12px] font-medium"
-              style={{ color: "hsl(var(--destructive))" }}
-            >
-              {t("field.checkNotFound")}
-            </span>
-          )}
           {check.phase === "done" && check.result.status === "error" && (
-            <span className="truncate text-[12px] font-medium text-white/40">
-              {t("field.checkFailed")}
-            </span>
+            <p className="mt-1.5 px-1 text-[12px] text-white/40">
+              {t("field.checkFailed")} ·{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  void handleCheck();
+                }}
+                className="font-medium"
+                style={{ color: "hsl(var(--primary))" }}
+              >
+                {t("field.checkRetry")}
+              </button>
+            </p>
           )}
         </div>
       )}

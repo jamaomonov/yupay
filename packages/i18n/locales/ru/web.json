@@ -192,7 +192,11 @@
       "arena-breakout": {
         "about": "Bonds для Arena Breakout по ID игрока. Зачисление за пару минут, оплата Click, Payme, Uzum или USDT."
       }
-    }
+    },
+    "checkEdit": "Изменить",
+    "checkRetry": "Повторить",
+    "playerIdPlaceholder": "Введите ID игрока",
+    "whereToFind": "Где найти ID"
   },
   "how": {
     "eyebrow": "Flow",

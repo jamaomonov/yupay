@@ -192,7 +192,11 @@
       "arena-breakout": {
         "about": "Bonds for Arena Breakout by player ID. Credited in minutes, pay with Click, Payme, Uzum or USDT."
       }
-    }
+    },
+    "checkEdit": "Edit",
+    "checkRetry": "Retry",
+    "playerIdPlaceholder": "Enter player ID",
+    "whereToFind": "Where to find the ID"
   },
   "how": {
     "eyebrow": "Flow",

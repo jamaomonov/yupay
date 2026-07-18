@@ -1,7 +1,7 @@
 "use client";
 
 import { formatMoney } from "@yupay/utils";
-import { ArrowUpRight, Check, Loader2 } from "lucide-react";
+import { ArrowUpRight, Check, Info, Loader2, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
@@ -44,25 +44,37 @@ function skuPrice(locale: string, sku: SkuOut): string {
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 /**
- * Advisory player-id lookup button rendered next to a checkable field
- * (`f.check` set on the catalog schema). Owns its own check state via the
- * shared `player-check-state` unit so `PurchasePanel` stays thin glue; a
- * failed lookup never blocks checkout — it just shows a muted note.
+ * The checkable player-id field: a pill input paired with an advisory
+ * nickname lookup (`f.check` on the catalog schema). Owns its own check state
+ * via the shared `player-check-state` unit; the value still flows up through
+ * `onChange` so checkout gating is unchanged. A resolved id collapses the
+ * input into a confirmation pill; a wrong id or a lookup fault never blocks
+ * checkout — the customer can pay regardless.
  */
-function PlayerCheckControl({
+function CheckablePlayerField({
   productId,
+  label,
   value,
+  onChange,
   pattern,
+  required,
   serverId,
+  help,
   t,
 }: {
   productId: string;
+  label: string;
   value: string;
+  onChange: (v: string) => void;
   pattern?: string | null | undefined;
+  required: boolean;
   serverId: string | null;
+  help: string | null;
   t: (key: string, values?: Record<string, string>) => string;
 }) {
   const [state, setState] = useState<CheckState>(IDLE);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     setState(IDLE);
   }, [value]);
@@ -72,33 +84,133 @@ function PlayerCheckControl({
     setState({ phase: "loading" });
     setState(await runPlayerCheck(productId, { playerId: value, serverId }));
   }
+  function edit() {
+    setState(IDLE);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }
 
+  const done = state.phase === "done" ? state.result : null;
+
+  // Confirmed-hit pill — nickname + the id it resolved to.
+  if (done?.status === "valid") {
+    return (
+      <div>
+        <FieldLabel label={label} required={required} />
+        <div className="flex items-center gap-2.5 rounded-full border border-emerald-500/40 bg-emerald-500/[0.06] py-1.5 pl-1.5 pr-4">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
+            <Check size={17} strokeWidth={3} />
+          </span>
+          <div className="min-w-0 flex-1 leading-tight">
+            <div className="truncate text-[14px] font-bold">{done.name}</div>
+            <div className="truncate font-mono text-[12px] text-emerald-400">{value}</div>
+          </div>
+          <button
+            type="button"
+            onClick={edit}
+            className="text-tx-dim hover:text-tx-mute shrink-0 text-[13px] font-medium transition"
+          >
+            {t("checkEdit")}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Wrong id — the customer mistyped it; offer to fix it, never block.
+  if (done?.status === "invalid") {
+    return (
+      <div>
+        <FieldLabel label={label} required={required} />
+        <div className="flex items-center gap-2.5 rounded-full border border-red-500/40 bg-red-500/[0.06] py-1.5 pl-1.5 pr-4">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-500/15 text-red-400">
+            <X size={17} strokeWidth={3} />
+          </span>
+          <div className="min-w-0 flex-1 leading-tight">
+            <div className="truncate text-[13.5px] font-semibold text-red-300">
+              {t("checkNotFound")}
+            </div>
+            <div className="text-tx-dim truncate font-mono text-[12px]">{value}</div>
+          </div>
+          <button
+            type="button"
+            onClick={edit}
+            className="text-tx-dim hover:text-tx-mute shrink-0 text-[13px] font-medium transition"
+          >
+            {t("checkEdit")}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Idle / loading / our-or-provider fault: show the input + check button.
   return (
-    <div className="mt-1.5 flex items-center gap-2">
-      <button
-        type="button"
-        disabled={!enabled || state.phase === "loading"}
-        onClick={() => void onCheck()}
-        className={buttonStyles({
-          variant: "ghost",
-          size: "xs",
-          className: "h-8 px-3 text-[12px]",
-        })}
-      >
-        {state.phase === "loading" ? t("checking") : t("check")}
-      </button>
-      {state.phase === "done" && state.result.status === "valid" && (
-        <span className="text-primary truncate text-[12px] font-medium">
-          {t("checkNickname", { name: state.result.name ?? "" })}
-        </span>
+    <div>
+      <FieldLabel label={label} required={required} />
+      <div className="flex items-center gap-2.5">
+        <div className="relative min-w-0 flex-1">
+          <input
+            ref={inputRef}
+            type="text"
+            inputMode="numeric"
+            required={required}
+            aria-required={required}
+            value={value}
+            placeholder={t("playerIdPlaceholder")}
+            onChange={(e) => {
+              onChange(e.target.value);
+            }}
+            className={`border-border-2 bg-card focus:border-primary/60 placeholder:text-tx-dim h-[46px] w-full rounded-full border pl-4 text-[15px] outline-none transition ${help ? "pr-11" : "pr-4"}`}
+          />
+          {help && (
+            <button
+              type="button"
+              onClick={() => {
+                setHelpOpen((o) => !o);
+              }}
+              aria-label={t("whereToFind")}
+              aria-expanded={helpOpen}
+              className="bg-muted text-tx-mute hover:text-primary hover:bg-primary/10 absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full transition"
+            >
+              <Info size={15} />
+            </button>
+          )}
+        </div>
+        <button
+          type="button"
+          disabled={!enabled || state.phase === "loading"}
+          onClick={() => void onCheck()}
+          className="border-primary/35 bg-primary/[0.12] text-primary hover:bg-primary/20 inline-flex h-[46px] shrink-0 items-center justify-center gap-2 rounded-full border px-5 text-[14px] font-semibold transition disabled:pointer-events-none disabled:opacity-40"
+        >
+          {state.phase === "loading" && <Loader2 size={16} className="animate-spin" />}
+          {state.phase === "loading" ? t("checking") : t("check")}
+        </button>
+      </div>
+      {help && helpOpen && (
+        <p className="text-tx-dim mt-2 px-1 text-[13px] leading-relaxed">{help}</p>
       )}
-      {state.phase === "done" && state.result.status === "invalid" && (
-        <span className="truncate text-[12px] font-medium text-red-400">{t("checkNotFound")}</span>
-      )}
-      {state.phase === "done" && state.result.status === "error" && (
-        <span className="text-tx-dim truncate text-[12px] font-medium">{t("checkFailed")}</span>
+      {done?.status === "error" && (
+        <p className="text-tx-dim mt-2 px-1 text-[13px]">
+          {t("checkFailed")} ·{" "}
+          <button
+            type="button"
+            onClick={() => void onCheck()}
+            className="text-primary hover:text-primary-2 font-medium"
+          >
+            {t("checkRetry")}
+          </button>
+        </p>
       )}
     </div>
+  );
+}
+
+function FieldLabel({ label, required }: { label: string; required: boolean }) {
+  return (
+    <span className="text-tx-dim mb-2 block text-[12px] font-semibold uppercase tracking-[0.08em]">
+      {label}
+      {required && <span className="text-primary"> *</span>}
+    </span>
   );
 }
 
@@ -374,59 +486,65 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
 
             {fields.length > 0 && (
               <div className="mt-5 flex flex-col gap-4">
-                {fields.map((f) => (
-                  <label key={f.key} className="block">
-                    <span className="text-tx-mute mb-1.5 block text-[13px] font-semibold">
-                      {label(f.label)}
-                      {f.required && <span className="text-primary"> *</span>}
-                    </span>
-                    {f.type === "select" ? (
-                      <select
-                        required={f.required}
-                        aria-required={f.required}
-                        value={form[f.key] ?? ""}
-                        onChange={(e) => {
-                          setForm((s) => ({ ...s, [f.key]: e.target.value }));
-                        }}
-                        className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
-                      >
-                        <option value="">—</option>
-                        {f.options?.map((o) => (
-                          <option key={o.value} value={o.value}>
-                            {label(o.label)}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type={f.type === "number" ? "text" : f.type}
-                        inputMode={f.type === "number" ? "numeric" : undefined}
-                        required={f.required}
-                        aria-required={f.required}
-                        value={form[f.key] ?? ""}
-                        placeholder={label(f.placeholder)}
-                        onChange={(e) => {
-                          setForm((s) => ({ ...s, [f.key]: e.target.value }));
-                        }}
-                        className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
-                      />
-                    )}
-                    {f.help_text && (
-                      <span className="text-tx-dim mt-1 block text-xs">{label(f.help_text)}</span>
-                    )}
-                    {f.check && selProduct && (
-                      <PlayerCheckControl
-                        productId={selProduct.id}
-                        value={form[f.key] ?? ""}
-                        pattern={f.pattern}
-                        serverId={
-                          f.check.server_field ? (form[f.check.server_field] ?? null) : null
-                        }
-                        t={t}
-                      />
-                    )}
-                  </label>
-                ))}
+                {fields.map((f) =>
+                  f.check && selProduct ? (
+                    <CheckablePlayerField
+                      key={f.key}
+                      productId={selProduct.id}
+                      label={label(f.label)}
+                      value={form[f.key] ?? ""}
+                      onChange={(v) => {
+                        setForm((s) => ({ ...s, [f.key]: v }));
+                      }}
+                      pattern={f.pattern}
+                      required={f.required}
+                      serverId={f.check.server_field ? (form[f.check.server_field] ?? null) : null}
+                      help={f.help_text ? label(f.help_text) : null}
+                      t={t}
+                    />
+                  ) : (
+                    <label key={f.key} className="block">
+                      <span className="text-tx-mute mb-1.5 block text-[13px] font-semibold">
+                        {label(f.label)}
+                        {f.required && <span className="text-primary"> *</span>}
+                      </span>
+                      {f.type === "select" ? (
+                        <select
+                          required={f.required}
+                          aria-required={f.required}
+                          value={form[f.key] ?? ""}
+                          onChange={(e) => {
+                            setForm((s) => ({ ...s, [f.key]: e.target.value }));
+                          }}
+                          className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
+                        >
+                          <option value="">—</option>
+                          {f.options?.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {label(o.label)}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type={f.type === "number" ? "text" : f.type}
+                          inputMode={f.type === "number" ? "numeric" : undefined}
+                          required={f.required}
+                          aria-required={f.required}
+                          value={form[f.key] ?? ""}
+                          placeholder={label(f.placeholder)}
+                          onChange={(e) => {
+                            setForm((s) => ({ ...s, [f.key]: e.target.value }));
+                          }}
+                          className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
+                        />
+                      )}
+                      {f.help_text && (
+                        <span className="text-tx-dim mt-1 block text-xs">{label(f.help_text)}</span>
+                      )}
+                    </label>
+                  ),
+                )}
               </div>
             )}
 

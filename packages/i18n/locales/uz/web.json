@@ -192,7 +192,11 @@
       "arena-breakout": {
         "about": "Arena Breakout uchun Bonds oʻyinchi IDsi orqali. Bir necha daqiqada tushadi, Click, Payme, Uzum yoki USDT bilan toʻlang."
       }
-    }
+    },
+    "checkEdit": "Tahrirlash",
+    "checkRetry": "Qayta urinish",
+    "playerIdPlaceholder": "Oʻyinchi ID kiriting",
+    "whereToFind": "ID qayerdan olinadi"
   },
   "how": {
     "eyebrow": "Flow",
