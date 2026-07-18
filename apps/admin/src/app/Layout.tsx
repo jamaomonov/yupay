@@ -25,6 +25,7 @@ import {
   Search,
   ShieldCheck,
   Tag,
+  Ticket,
   Truck,
   Users as UsersIcon,
   Wallet,
@@ -84,6 +85,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/payments/triage", label: "Триаж платежей", icon: AlertTriangle },
       { to: "/webhooks", label: "Webhooks", icon: Radio },
       { to: "/fulfillment", label: "Fulfilment Inbox", icon: Truck },
+      { to: "/promo", label: "Промокоды", icon: Ticket },
     ],
   },
   {

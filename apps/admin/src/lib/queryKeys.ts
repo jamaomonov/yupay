@@ -148,4 +148,7 @@ export const qk = {
       filters.status ?? null,
     ] as const,
   payment: (id: string) => ["admin", "payments", id] as const,
+
+  // promo
+  promoCodes: () => ["admin", "promo"] as const,
 };
