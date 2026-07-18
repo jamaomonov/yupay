@@ -96,7 +96,7 @@ function CheckablePlayerField({
     return (
       <div>
         <FieldLabel label={label} required={required} />
-        <div className="flex items-center gap-2.5 rounded-full border border-emerald-500/40 bg-emerald-500/[0.06] py-1.5 pl-1.5 pr-4">
+        <div className="flex items-center gap-2.5 rounded-[12px] border border-emerald-500/40 bg-emerald-500/[0.06] py-1.5 pl-1.5 pr-4">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
             <Check size={17} strokeWidth={3} />
           </span>
@@ -121,7 +121,7 @@ function CheckablePlayerField({
     return (
       <div>
         <FieldLabel label={label} required={required} />
-        <div className="flex items-center gap-2.5 rounded-full border border-red-500/40 bg-red-500/[0.06] py-1.5 pl-1.5 pr-4">
+        <div className="flex items-center gap-2.5 rounded-[12px] border border-red-500/40 bg-red-500/[0.06] py-1.5 pl-1.5 pr-4">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-500/15 text-red-400">
             <X size={17} strokeWidth={3} />
           </span>
@@ -160,7 +160,7 @@ function CheckablePlayerField({
             onChange={(e) => {
               onChange(e.target.value);
             }}
-            className={`border-border-2 bg-card focus:border-primary/60 placeholder:text-tx-dim h-[46px] w-full rounded-full border pl-4 text-[15px] outline-none transition ${help ? "pr-11" : "pr-4"}`}
+            className={`border-border-2 bg-card focus:border-primary/60 placeholder:text-tx-dim h-[46px] w-full rounded-[12px] border pl-4 text-[15px] outline-none transition ${help ? "pr-11" : "pr-4"}`}
           />
           {help && (
             <button
@@ -180,7 +180,7 @@ function CheckablePlayerField({
           type="button"
           disabled={!enabled || state.phase === "loading"}
           onClick={() => void onCheck()}
-          className="border-primary/35 bg-primary/[0.12] text-primary hover:bg-primary/20 inline-flex h-[46px] shrink-0 items-center justify-center gap-2 rounded-full border px-5 text-[14px] font-semibold transition disabled:pointer-events-none disabled:opacity-40"
+          className="border-primary/35 bg-primary/[0.12] text-primary hover:bg-primary/20 inline-flex h-[46px] shrink-0 items-center justify-center gap-2 rounded-[12px] border px-5 text-[14px] font-semibold transition disabled:pointer-events-none disabled:opacity-40"
         >
           {state.phase === "loading" && <Loader2 size={16} className="animate-spin" />}
           {state.phase === "loading" ? t("checking") : t("check")}

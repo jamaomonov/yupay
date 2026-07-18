@@ -286,43 +286,43 @@ function TextLikeField({
 
   return (
     <div>
-      <div className="relative">
-        <input
-          id={fieldId}
-          type={inputType}
-          inputMode={inputMode}
-          value={value}
-          onChange={(e) => {
-            handleChange(e.target.value);
-          }}
-          placeholder={placeholder || field.key}
-          required={required}
-          aria-required={required}
-          className="w-full rounded-2xl px-4 py-3.5 text-base text-white outline-none transition-all placeholder:text-white/25"
-          style={{
-            background: "hsl(var(--surface-2))",
-            border: filled
-              ? "1.5px solid hsl(var(--primary) / 0.7)"
-              : "1px solid hsl(var(--border))",
-            color: filled ? "hsl(var(--primary))" : "white",
-            letterSpacing: field.type === "number" && filled ? "0.08em" : "normal",
-          }}
-        />
-        {value && (
-          <button
-            type="button"
-            onClick={() => {
-              onChange("");
+      <div className="flex items-stretch gap-2">
+        <div className="relative min-w-0 flex-1">
+          <input
+            id={fieldId}
+            type={inputType}
+            inputMode={inputMode}
+            value={value}
+            onChange={(e) => {
+              handleChange(e.target.value);
             }}
-            className="absolute right-3.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full bg-white/10"
-            aria-label={t("field.clear")}
-          >
-            <X size={12} className="text-white/60" />
-          </button>
-        )}
-      </div>
-      {checkConfig && (
-        <div className="mt-2">
+            placeholder={placeholder || field.key}
+            required={required}
+            aria-required={required}
+            className="w-full rounded-2xl px-4 py-3.5 text-base text-white outline-none transition-all placeholder:text-white/25"
+            style={{
+              background: "hsl(var(--surface-2))",
+              border: filled
+                ? "1.5px solid hsl(var(--primary) / 0.7)"
+                : "1px solid hsl(var(--border))",
+              color: filled ? "hsl(var(--primary))" : "white",
+              letterSpacing: field.type === "number" && filled ? "0.08em" : "normal",
+            }}
+          />
+          {value && (
+            <button
+              type="button"
+              onClick={() => {
+                onChange("");
+              }}
+              className="absolute right-3 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full bg-white/10"
+              aria-label={t("field.clear")}
+            >
+              <X size={12} className="text-white/60" />
+            </button>
+          )}
+        </div>
+        {checkConfig && (
           <button
             type="button"
             disabled={!canRunCheck || check.phase === "loading"}
@@ -330,7 +330,7 @@ function TextLikeField({
               void handleCheck();
             }}
             aria-label={t("field.check")}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl py-2.5 text-[13px] font-semibold transition-opacity active:opacity-70 disabled:opacity-40"
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl px-5 text-[13px] font-semibold transition-opacity active:opacity-70 disabled:opacity-40"
             style={{
               background: "hsl(var(--primary) / 0.12)",
               border: "1px solid hsl(var(--primary) / 0.35)",
@@ -340,22 +340,22 @@ function TextLikeField({
             {check.phase === "loading" && <Loader2 size={15} className="animate-spin" />}
             {check.phase === "loading" ? t("field.checking") : t("field.check")}
           </button>
-          {check.phase === "done" && check.result.status === "error" && (
-            <p className="mt-1.5 px-1 text-[12px] text-white/40">
-              {t("field.checkFailed")} ·{" "}
-              <button
-                type="button"
-                onClick={() => {
-                  void handleCheck();
-                }}
-                className="font-medium"
-                style={{ color: "hsl(var(--primary))" }}
-              >
-                {t("field.checkRetry")}
-              </button>
-            </p>
-          )}
-        </div>
+        )}
+      </div>
+      {checkConfig && check.phase === "done" && check.result.status === "error" && (
+        <p className="mt-1.5 px-1 text-[12px] text-white/40">
+          {t("field.checkFailed")} ·{" "}
+          <button
+            type="button"
+            onClick={() => {
+              void handleCheck();
+            }}
+            className="font-medium"
+            style={{ color: "hsl(var(--primary) / 1)" }}
+          >
+            {t("field.checkRetry")}
+          </button>
+        </p>
       )}
       {showSuggestion && (
         <button
