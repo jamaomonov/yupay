@@ -425,3 +425,27 @@ async def test_steam_check_upstream_failure_is_error(
     )
     assert r.status_code == 200
     assert r.json()["status"] == "error"
+
+
+@respx.mock
+async def test_steam_login_never_logged_plaintext(
+    client: httpx.AsyncClient, seed_waxpeer_product: Product
+) -> None:
+    """Same PII guarantee as ``test_player_id_never_logged_plaintext``, for
+    the waxpeer branch: the raw Steam login must never reach a log event,
+    only its ``_hash_short`` hash. The upstream-error path is the best
+    trigger here — it's the one line (``player_check_failed``) that logs the
+    login-derived field via ``logger.warning`` instead of ``logger.info``,
+    so this also exercises the warning call site the other steam tests
+    don't."""
+    respx.get(url__regex=r".*/steam-topup/validate").mock(side_effect=httpx.ConnectError("down"))
+    secret = "gaben-secret-login"
+    with structlog.testing.capture_logs() as cap:
+        r = await client.post(
+            f"/api/v1/catalog/products/{seed_waxpeer_product.id}/check-player",
+            json={"player_id": secret},
+        )
+    assert r.status_code == 200
+    assert r.json()["status"] == "error"
+    log_text = " ".join(repr(entry) for entry in cap)
+    assert secret not in log_text

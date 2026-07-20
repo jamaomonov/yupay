@@ -113,7 +113,9 @@ account nickname before the customer pays — see
 
 `check` opts the field into the storefront nickname lookup (`POST
 /api/v1/catalog/products/{id}/check-player`); it is advisory only and never
-gates checkout.
+gates checkout. `provider` may also be `"waxpeer"` — that branch validates a
+Steam login instead of resolving a game player id, and returns no nickname
+(`name` is always `null`).
 
 ## Display-price policy
 

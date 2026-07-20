@@ -69,7 +69,7 @@ the field, not a convention on the field's key:
 }
 ```
 
-`FieldCheck` is a `pydantic.BaseModel` (`provider: Literal["g2b"]`,
+`FieldCheck` is a `pydantic.BaseModel` (`provider: Literal["g2b", "waxpeer"]`,
 `server_field: str | None = None`, `extra="forbid"`) nested on `FormField`. No
 DB migration — `required_fields` is jsonb, and `admin_schemas` builds on
 `FormField`, so the admin create/update API accepts `check` automatically.
@@ -110,6 +110,34 @@ Handler logic (`yupay.modules.integrations.player_check.check_player_for_product
    resolve). **Any** exception — timeout, non-2xx, malformed response — is
    folded into `status="error"`, mirroring the existing admin route. The
    endpoint never returns a 5xx for an upstream failure.
+
+### A second provider: waxpeer (Steam login)
+
+The Validation section below anticipated this: "Revisit if a second
+checkable provider (non-G2B) ... is ever requested." It was — Steam top-ups
+need the customer's Waxpeer-facing Steam login validated before checkout,
+the same typo-catching problem G2B solves for numeric game player ids. The
+decision held: `check_player_for_product` now resolves the field's
+`check.provider` once and branches, rather than gaining a second endpoint or
+a new response shape.
+
+`provider: Literal["g2b", "waxpeer"]` on `FieldCheck` — a `waxpeer`-checked
+field looks the same as the g2b example above, just
+`"check": {"provider": "waxpeer"}` (no `server_field`; Steam has no
+server/zone concept). For that branch, `check_player_for_product` skips game
+code resolution entirely (Steam has no `game_code`/`sku_supplier_mapping` to
+resolve — the login itself is the lookup key) and proxies
+`WaxpeerClient.validate_login(steam_login)` instead of
+`games_check_player`. The result still maps onto the same three-way
+`PlayerCheckOut` contract (`valid`/`invalid`/`error`), with one difference:
+`name` is always `None` — Steam has no equivalent of G2B's account nickname
+resolution, so there is nothing to return on a `valid` hit. The result
+caches under `playercheck:waxpeer:{login_hash}` (300 s TTL, same as g2b —
+see `docs/architecture/cache-keys.md`), with `login_hash = _hash_short(steam_login)`
+so the raw login is never stored or logged, mirroring the `player_id`
+hashing rule below. See
+`apps/api/src/yupay/modules/integrations/player_check.py` for the
+implementation.
 
 ### Placement: route lives in `integrations`, not `catalog`
 
@@ -170,10 +198,16 @@ rule with one in-handler call to G2B. Justification:
 no-mapping → `unavailable`; response mapping for valid/invalid/exception
 cases via respx (no real HTTP); not-checkable product → 422; unknown product
 → 404; rate-limit 429; `player_id` absent from emitted logs (hash only, via
-the G2B module's existing redaction helper). Revisit if a second checkable
-provider (non-G2B) or a `charname` pre-purchase check is ever requested — the
-`check` descriptor's `provider` field is already `Literal`-extensible for
-that.
+the G2B module's existing redaction helper). The same suite now also covers
+the waxpeer branch (see "A second provider: waxpeer" above): valid/invalid/
+error mapping via respx, `product_is_checkable` recognising a
+`waxpeer`-only field, and the Steam login absent from emitted logs (hash
+only) — the second-checkable-provider case this section used to flag as a
+"revisit" trigger has happened and slotted into the existing three-way
+contract without a schema or endpoint change, confirming the extensibility
+bet this ADR made. Still open: a `charname` pre-purchase check is not
+implemented — the `check` descriptor's `provider` field remains
+`Literal`-extensible for that if it's ever requested.
 
 ## Alternatives considered (detail)
 
@@ -199,7 +233,8 @@ codebase (ADR-0013, ADR-0019). Rejected outright during brainstorming.
 - [ADR-0019](./0019-g2b-integration.md) — G2B integration, admin check-player precedent
 - [ADR-0009](./0009-catalog-three-level-plus-form-schema.md) — `required_fields` form schema
 - [ADR-0028](./0028-fastapi-rate-limiting.md) — rate-limiting infrastructure (`guard_ip` / slowapi)
-- `docs/architecture/cache-keys.md` — `playercheck:g2b:{game_code}:{server_id|-}:{player_id}`
+- `docs/architecture/cache-keys.md` — `playercheck:g2b:{game_code}:{server_id|-}:{player_id}`,
+  `playercheck:waxpeer:{login_hash}`
 - `apps/api/src/yupay/modules/integrations/player_check.py` — service implementation
 - `apps/api/src/yupay/modules/integrations/routes.py` — public + admin routes
 - `apps/api/src/yupay/modules/catalog/schemas.py` — `FieldCheck` / `FormField`
