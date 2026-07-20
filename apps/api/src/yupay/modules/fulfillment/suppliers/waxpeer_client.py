@@ -189,10 +189,15 @@ class WaxpeerClient:
         user = body.get("user")
         wallet = user.get("wallet") if isinstance(user, dict) else None
         if not isinstance(wallet, int) or isinstance(wallet, bool):
-            log.warning("waxpeer.missing_wallet", body=body)
-            raise WaxpeerError(
-                f"/user response missing numeric user.wallet: {body!r}"[:500], body=raw_text
+            # Log the shape, never the payload: this response carries the
+            # account's Steam API key and trade link. ``.body`` on the raised
+            # error still has the full text for a human debugging in context.
+            log.warning(
+                "waxpeer.missing_wallet",
+                user_keys=sorted(user) if isinstance(user, dict) else None,
+                wallet_type=type(wallet).__name__,
             )
+            raise WaxpeerError("/user response missing numeric user.wallet", body=raw_text)
         return wallet
 
 
