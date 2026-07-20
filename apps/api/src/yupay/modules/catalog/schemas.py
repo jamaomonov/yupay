@@ -34,7 +34,7 @@ class FieldCheck(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    provider: Literal["g2b"]
+    provider: Literal["g2b", "waxpeer"]
     server_field: str | None = None
 
 

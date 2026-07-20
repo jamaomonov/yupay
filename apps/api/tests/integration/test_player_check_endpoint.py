@@ -27,6 +27,7 @@ from yupay.modules.integrations.models import SkuSupplierMapping
 pytestmark = pytest.mark.integration
 
 G2B_BASE = "https://g2b.test/v1"
+WAXPEER_BASE = "https://waxpeer.test/v1"
 
 
 @pytest.fixture(autouse=True)
@@ -35,6 +36,18 @@ def _g2b_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     fulfiller only reports ``available`` when ``G2B_API_KEY`` is set."""
     monkeypatch.setenv("G2B_API_KEY", "test-key")
     monkeypatch.setenv("G2B_BASE_URL", G2B_BASE)
+    cfg.get_settings.cache_clear()
+    yield
+    cfg.get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _waxpeer_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Same wiring, for the waxpeer branch: ``WaxpeerFulfiller.available``
+    only reports ``True`` when ``WAXPEER_API_KEY`` is set (see
+    ``test_waxpeer_fulfiller.py``'s ``_env`` fixture)."""
+    monkeypatch.setenv("WAXPEER_API_KEY", "test-waxpeer-key")
+    monkeypatch.setenv("WAXPEER_BASE_URL", WAXPEER_BASE)
     cfg.get_settings.cache_clear()
     yield
     cfg.get_settings.cache_clear()
@@ -56,13 +69,17 @@ async def client(integration_client: AsyncClient) -> AsyncClient:
       both check the same ``player_id`` ("51234567") against the same
       ``game_code`` ("pubgm") — without this flush the second test would read
       back the first test's cached ``{status: valid}`` instead of exercising the
-      G2B-failure path.
+      G2B-failure path;
+    - the ``playercheck:waxpeer:*`` cache keys, for the same reason on the
+      Steam-login tests below (they reuse the login "gaben" across the
+      valid/invalid/error cases).
     """
     from yupay.core.redis import get_redis
 
     redis = get_redis()
     await redis.delete("auth:ipguard:check_player:127.0.0.1")
     stale_cache_keys = await redis.keys("playercheck:g2b:pubgm:*")
+    stale_cache_keys += await redis.keys("playercheck:waxpeer:*")
     if stale_cache_keys:
         await redis.delete(*stale_cache_keys)
     return integration_client
@@ -163,6 +180,59 @@ async def seed_plain_product(db_session: AsyncSession) -> Product:
         translations=[ProductTranslation(locale="ru", name="Steam Gift Card")],
     )
     db_session.add_all([category, brand, product])
+    await db_session.commit()
+    return product
+
+
+@pytest.fixture
+async def seed_waxpeer_product(db_session: AsyncSession) -> Product:
+    """A checkable product whose player-id field routes to waxpeer: a Steam
+    wallet top-up SKU with a ``check.provider == "waxpeer"`` field. Unlike
+    the g2b fixture, no ``SkuSupplierMapping`` is needed — the waxpeer branch
+    validates the login directly, it doesn't resolve a game_code."""
+    category = Category(
+        id=new_id(),
+        slug="steam-topups-check",
+        sort_order=10,
+        active=True,
+        translations=[CategoryTranslation(locale="ru", name="Пополнения")],
+    )
+    brand = Brand(
+        id=new_id(),
+        slug="steam-wallet-check",
+        category_id=category.id,
+        sort_order=10,
+        active=True,
+        translations=[BrandTranslation(locale="ru", name="Steam Wallet")],
+    )
+    product = Product(
+        id=new_id(),
+        slug="steam-wallet-topup-check",
+        brand_id=brand.id,
+        kind="top_up",
+        sort_order=10,
+        active=True,
+        required_fields=[
+            {
+                "key": "steam_login",
+                "label": {"ru": "Логин Steam"},
+                "type": "text",
+                "check": {"provider": "waxpeer"},
+            }
+        ],
+        translations=[ProductTranslation(locale="ru", name="Steam Wallet Top-up")],
+    )
+    sku = Sku(
+        id=new_id(),
+        product_id=product.id,
+        sku_code="steam-wallet-variable-check",
+        denomination="variable",
+        region="WW",
+        price_usd=Decimal("1.00"),
+        sort_order=10,
+        active=True,
+    )
+    db_session.add_all([category, brand, product, sku])
     await db_session.commit()
     return product
 
@@ -305,3 +375,53 @@ async def test_player_id_never_logged_plaintext(client, seed_g2b_product) -> Non
     assert r.status_code == 200
     log_text = " ".join(repr(entry) for entry in cap)
     assert secret not in log_text
+
+
+@respx.mock
+async def test_steam_login_valid(client: httpx.AsyncClient, seed_waxpeer_product: Product) -> None:
+    """A supported login answers status "valid"."""
+    respx.get(url__regex=r".*/steam-topup/validate").mock(
+        return_value=httpx.Response(200, json={"success": True, "valid": True})
+    )
+    r = await client.post(
+        f"/api/v1/catalog/products/{seed_waxpeer_product.id}/check-player",
+        json={"player_id": "gaben-valid"},
+    )
+    assert r.status_code == 200
+    assert r.json() == {"status": "valid", "name": None}
+
+
+@respx.mock
+async def test_steam_login_invalid(
+    client: httpx.AsyncClient, seed_waxpeer_product: Product
+) -> None:
+    """An unsupported login answers status "invalid", not an error — the
+    customer mistyped, nothing is broken."""
+    respx.get(url__regex=r".*/steam-topup/validate").mock(
+        return_value=httpx.Response(
+            200, json={"success": True, "valid": False, "msg": "account not found"}
+        )
+    )
+    r = await client.post(
+        f"/api/v1/catalog/products/{seed_waxpeer_product.id}/check-player",
+        json={"player_id": "gaben-invalid"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "invalid"
+    assert body["name"] is None
+
+
+@respx.mock
+async def test_steam_check_upstream_failure_is_error(
+    client: httpx.AsyncClient, seed_waxpeer_product: Product
+) -> None:
+    """Waxpeer unreachable answers status "error" so the UI blames us, not the
+    customer, and never blocks checkout."""
+    respx.get(url__regex=r".*/steam-topup/validate").mock(side_effect=httpx.ConnectError("down"))
+    r = await client.post(
+        f"/api/v1/catalog/products/{seed_waxpeer_product.id}/check-player",
+        json={"player_id": "gaben-error"},
+    )
+    assert r.status_code == 200
+    assert r.json()["status"] == "error"

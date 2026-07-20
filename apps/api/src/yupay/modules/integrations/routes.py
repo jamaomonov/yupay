@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
     from yupay.modules.fulfillment.suppliers.g2b import G2bFulfiller
+    from yupay.modules.fulfillment.suppliers.waxpeer import WaxpeerFulfiller
 
 from yupay.api.v1.deps import db_session
 from yupay.core.clock import now
@@ -328,6 +329,21 @@ def _g2b_fulfiller_or_none() -> G2bFulfiller | None:
 
     fulfiller = REGISTRY.get("g2b")
     if isinstance(fulfiller, G2bFulfiller) and fulfiller.available:
+        return fulfiller
+    return None
+
+
+def _waxpeer_fulfiller_or_none() -> WaxpeerFulfiller | None:
+    """Return the registered Waxpeer adapter iff ``WAXPEER_API_KEY`` is set.
+
+    Mirrors :func:`_g2b_fulfiller_or_none` above — used by the Steam-login
+    branch of ``player_check.check_player_for_product``.
+    """
+    from yupay.modules.fulfillment.suppliers import REGISTRY
+    from yupay.modules.fulfillment.suppliers.waxpeer import WaxpeerFulfiller
+
+    fulfiller = REGISTRY.get("waxpeer")
+    if isinstance(fulfiller, WaxpeerFulfiller) and fulfiller.available:
         return fulfiller
     return None
 

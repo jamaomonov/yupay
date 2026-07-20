@@ -17,6 +17,18 @@ def test_product_is_checkable_false_without_check() -> None:
     assert pc.product_is_checkable(fields) is False
 
 
+def test_product_is_checkable_true_when_field_has_waxpeer_check() -> None:
+    fields = [
+        {
+            "key": "steam_login",
+            "label": {"ru": "Логин Steam"},
+            "type": "text",
+            "check": {"provider": "waxpeer"},
+        }
+    ]
+    assert pc.product_is_checkable(fields) is True
+
+
 def test_map_g2b_response_valid() -> None:
     out = pc._map_response({"valid": "valid", "name": "Neo", "openid": "x"})
     assert out.status == "valid"
@@ -44,3 +56,18 @@ def test_cache_key_does_not_embed_raw_player_id() -> None:
 def test_cache_key_is_deterministic() -> None:
     assert pc._cache_key("pubgm", "51234567", None) == pc._cache_key("pubgm", "51234567", None)
     assert pc._cache_key("pubgm", "51234567", "srv1") == pc._cache_key("pubgm", "51234567", "srv1")
+
+
+def test_waxpeer_cache_key_does_not_embed_raw_login() -> None:
+    key = pc._waxpeer_cache_key("gaben")
+    assert "gaben" not in key
+
+
+def test_waxpeer_cache_key_is_deterministic() -> None:
+    assert pc._waxpeer_cache_key("gaben") == pc._waxpeer_cache_key("gaben")
+
+
+def test_waxpeer_cache_key_differs_from_g2b_cache_key_namespace() -> None:
+    # Different providers must never collide on the same Redis key even if a
+    # g2b player_id and a Steam login happened to be equal strings.
+    assert pc._waxpeer_cache_key("51234567") != pc._cache_key("pubgm", "51234567", None)
