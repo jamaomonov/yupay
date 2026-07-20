@@ -6509,6 +6509,30 @@
             ],
             "title": "Image Url"
           },
+          "max_amount_usd": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Amount Usd"
+          },
+          "min_amount_usd": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Amount Usd"
+          },
           "price_usd": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Price Usd",
@@ -6528,6 +6552,11 @@
           "sku_code": {
             "title": "Sku Code",
             "type": "string"
+          },
+          "variable_amount": {
+            "default": false,
+            "title": "Variable Amount",
+            "type": "boolean"
           }
         },
         "required": [

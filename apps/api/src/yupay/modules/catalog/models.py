@@ -287,6 +287,15 @@ class Sku(Base):
     # UZS-price calculation (cost × current_fx_rate) and per-SKU
     # margin reporting. Nullable: legacy SKUs predate the column.
     cost_usdt: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    # Variable-amount SKUs (Steam wallet): the customer picks the amount, so
+    # ``price_usd`` is not the price — it is computed at checkout from the
+    # amount, the guarded FX rate and ``rate_multiplier``. The bounds are the
+    # supplier's per-transaction limits.
+    variable_amount: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    min_amount_usd: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    max_amount_usd: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    # Margin: the customer-facing rate is the market rate times this.
+    rate_multiplier: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
     image_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
@@ -302,6 +311,13 @@ class Sku(Base):
         CheckConstraint(
             "cost_usdt IS NULL OR cost_usdt > 0",
             name="ck_skus_cost_usdt_positive",
+        ),
+        CheckConstraint(
+            "NOT variable_amount OR ("
+            " min_amount_usd IS NOT NULL AND max_amount_usd IS NOT NULL"
+            " AND rate_multiplier IS NOT NULL AND min_amount_usd > 0"
+            " AND max_amount_usd >= min_amount_usd AND rate_multiplier > 0)",
+            name="ck_skus_variable_amount_complete",
         ),
     )
 

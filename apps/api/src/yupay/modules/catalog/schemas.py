@@ -101,6 +101,9 @@ class SkuOut(BaseModel):
     region: str | None
     image_url: str | None
     price_usd: Decimal
+    variable_amount: bool = False
+    min_amount_usd: Decimal | None = None
+    max_amount_usd: Decimal | None = None
     display_price: PriceOut | None = Field(
         default=None,
         description="Localised price. Returned only when the request specifies a currency.",
