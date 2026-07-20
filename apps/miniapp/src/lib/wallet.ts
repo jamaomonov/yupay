@@ -124,15 +124,25 @@ export interface UserTransactionView {
   createdAt: string;
 }
 
+/**
+ * Ledger transaction kind → label. Keys MUST mirror the ``kind=`` values the
+ * backend passes to ``wallet.post`` — an unlisted kind falls through to the raw
+ * ledger string in the customer's history (that's how ``promo.redeem`` and
+ * ``wallet_payment`` both slipped out). ``wallet.test.ts`` pins the mapping.
+ *
+ * Posted today: admin.adjust (wallet/service.py), payment.refund
+ * (payments/service.py), wallet_payment (payments/gateways/wallet.py),
+ * promo.redeem (promo/service.py).
+ */
 export const TX_KIND_LABEL: Record<string, MessageKey> = {
   "admin.adjust": "wallet.tx.adminAdjust",
   "payment.refund": "wallet.tx.refund",
-  "order.payment": "wallet.tx.orderPayment",
-  "cashback.grant": "wallet.tx.cashback",
-  // Backend posts the promo redemption as ``promo.redeem`` (promo/service.py),
-  // not ``promo.grant`` — the old key never matched, so the history row fell
-  // through to the raw ledger kind.
+  // Paying an order from the wallet balance — reads as "Оплата заказа".
+  wallet_payment: "wallet.tx.orderPayment",
   "promo.redeem": "wallet.tx.promo",
+  // Pre-wired for flows that don't post yet (no cashback engine, no real
+  // top-up endpoint). Harmless now, and ready the day they land.
+  "cashback.grant": "wallet.tx.cashback",
   topup: "wallet.tx.topup",
 };
 
