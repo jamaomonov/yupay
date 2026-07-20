@@ -2,17 +2,24 @@ import { Home, Clock, Settings } from "lucide-react";
 import { Link, useLocation } from "wouter";
 
 import { useT } from "@/lib/i18n";
+import { useKeyboardOpen } from "@/lib/use-keyboard-open";
 import { cn } from "@/lib/utils";
 
 export function BottomNav() {
   const [location] = useLocation();
   const { t } = useT();
+  const keyboardOpen = useKeyboardOpen();
 
   const navItems = [
     { href: "/", label: t("nav.home"), icon: Home },
     { href: "/history", label: t("nav.history"), icon: Clock },
     { href: "/settings", label: t("nav.settings"), icon: Settings },
   ];
+
+  // Nobody navigates mid-typing, and on a phone with the keyboard up this bar
+  // plus the pay button swallow most of the remaining screen. `--app-nav-h`
+  // collapses in step (lib/telegram.ts), so the layout closes the gap.
+  if (keyboardOpen) return null;
 
   return (
     <nav

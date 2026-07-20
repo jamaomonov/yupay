@@ -105,6 +105,11 @@ export interface TelegramWebApp {
   lockOrientation?: () => void;
   // Bot API 8.0+. `false` while the app is minimised — we pause polling on it.
   isActive?: boolean;
+  // Bot API 6.1+. `viewportHeight` shrinks when the on-screen keyboard opens;
+  // `viewportStableHeight` keeps the last settled value, so the difference
+  // between them is the keyboard.
+  viewportHeight?: number;
+  viewportStableHeight?: number;
   // Bot API 8.0+. Home-screen shortcut. `checkHomeScreenStatus` answers
   // "unsupported" | "unknown" | "added" | "missed".
   addToHomeScreen?: () => void;
@@ -333,12 +338,50 @@ export function syncTelegramInsets({ assumeFullscreen = false } = {}): void {
   if (next) setInsetVars(next.top, next.bottom);
 }
 
+/**
+ * Smallest drop in viewport height we'll read as "the keyboard came up".
+ *
+ * Soft keyboards are 250px and taller; the wobble from Telegram's own chrome
+ * is far smaller. A floor in between keeps a stray resize from collapsing the
+ * navigation under the customer's thumb.
+ */
+const KEYBOARD_MIN_PX = 120;
+
+/** Is the on-screen keyboard eating the bottom of the viewport? */
+export function computeKeyboardOpen(
+  viewportHeight: number | undefined,
+  stableHeight: number | undefined,
+): boolean {
+  if (typeof viewportHeight !== "number" || typeof stableHeight !== "number") return false;
+  return stableHeight - viewportHeight >= KEYBOARD_MIN_PX;
+}
+
+export function isKeyboardOpen(): boolean {
+  const wa = getWebApp();
+  if (!wa) return false;
+  return computeKeyboardOpen(wa.viewportHeight, wa.viewportStableHeight);
+}
+
+/**
+ * Collapse the bottom-nav band while the keyboard is up.
+ *
+ * The nav is dead weight mid-typing and, on a phone with the keyboard open,
+ * it and the pay button together eat most of what's left of the screen.
+ * Zeroing `--app-nav-h` is enough: `--app-nav-total` is derived from it, so
+ * the pay button drops and the content padding shrinks with no extra wiring.
+ */
+function syncKeyboardState(): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty("--app-nav-h", isKeyboardOpen() ? "0px" : "56px");
+}
+
 /** Keep the inset vars in step with rotation / fullscreen / viewport changes. */
 export function watchTelegramInsets(): void {
   const wa = getWebApp();
   if (!wa || typeof wa.onEvent !== "function") return;
   const handler = () => {
     syncTelegramInsets();
+    syncKeyboardState();
   };
   for (const event of INSET_EVENTS) {
     try {
