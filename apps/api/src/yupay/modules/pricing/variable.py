@@ -22,7 +22,14 @@ _CENT = Decimal("0.01")
 
 
 def to_units(amount_usd: Decimal, *, fee_rate: Decimal) -> int:
-    """Supplier units to send so the wallet receives ``amount_usd``."""
+    """Supplier units to send so the wallet receives ``amount_usd``.
+
+    Raises:
+        ValidationError: If ``amount_usd`` is not positive, or if ``fee_rate``
+            is outside [0, 1).
+    """
+    if amount_usd <= 0:
+        raise ValidationError("amount must be positive", extra={"amount_usd": str(amount_usd)})
     if fee_rate < 0 or fee_rate >= 1:
         raise ValidationError("fee rate must be in [0, 1)", extra={"fee_rate": str(fee_rate)})
     gross = amount_usd / (Decimal("1") - fee_rate)
@@ -40,12 +47,21 @@ def price_in_quote(amount_usd: Decimal, *, rate: Decimal) -> Decimal:
     ``rate`` is the customer-facing rate from :func:`display_rate`, not the raw
     market rate — the parameter is deliberately not called ``display_rate`` so
     it cannot shadow that function at call sites.
+
+    Six decimals are used for intermediate precision here; rounding to the
+    currency's actual minor units (UZS/RUB both have 2 decimals) happens when
+    the full order total is assembled at checkout.
     """
     return (amount_usd * rate).quantize(Decimal("1.000000"), rounding=ROUND_HALF_UP)
 
 
 def validate_amount(amount_usd: Decimal, *, minimum: Decimal, maximum: Decimal) -> None:
-    """Reject anything the supplier or the SKU will not accept."""
+    """Reject anything the supplier or the SKU will not accept.
+
+    Raises:
+        ValidationError: If ``amount_usd`` has more than two decimals, or if it
+            is outside the closed interval [minimum, maximum].
+    """
     if amount_usd.quantize(_CENT) != amount_usd:
         raise ValidationError(
             "amount supports at most two decimals", extra={"amount": str(amount_usd)}

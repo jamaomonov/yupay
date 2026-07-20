@@ -52,3 +52,23 @@ def test_amount_above_maximum_is_rejected() -> None:
 def test_more_than_two_decimals_is_rejected() -> None:
     with pytest.raises(ValidationError):
         validate_amount(Decimal("10.123"), minimum=Decimal("1"), maximum=Decimal("300"))
+
+
+def test_negative_amount_is_rejected_in_to_units() -> None:
+    with pytest.raises(ValidationError):
+        to_units(Decimal("-5"), fee_rate=Decimal("0.05"))
+
+
+def test_zero_amount_is_rejected_in_to_units() -> None:
+    with pytest.raises(ValidationError):
+        to_units(Decimal("0"), fee_rate=Decimal("0.05"))
+
+
+def test_amount_at_exact_minimum_is_accepted() -> None:
+    # Should not raise; amount == minimum is valid.
+    validate_amount(Decimal("1"), minimum=Decimal("1"), maximum=Decimal("300"))
+
+
+def test_amount_at_exact_maximum_is_accepted() -> None:
+    # Should not raise; amount == maximum is valid.
+    validate_amount(Decimal("300"), minimum=Decimal("1"), maximum=Decimal("300"))
