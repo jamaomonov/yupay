@@ -6,6 +6,7 @@ the price-resolution policy (override → FX → USD-only). See ADR-0009 for the
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
@@ -24,6 +25,8 @@ from yupay.modules.catalog.schemas import (
     ProductSummaryOut,
     SkuOut,
 )
+from yupay.modules.pricing.fx_guard import RateRejected, guarded_usd_rate
+from yupay.modules.pricing.variable import display_rate, price_in_quote
 
 if TYPE_CHECKING:
     from yupay.modules.fx.service import FxService
@@ -103,18 +106,43 @@ def _brand_summary(brand: Brand, locale: str) -> BrandOut:
     )
 
 
+async def _resolve_variable_price(db: AsyncSession, sku: Sku, cu: str) -> PriceOut | None:
+    """Display price for a variable-amount SKU: the guarded rate times the
+    SKU's own margin multiplier, applied to ``price_usd`` — the same
+    computation checkout uses for that many dollars of the product. Returns
+    ``None`` when the FX trust gate rejects the rate; never falls back to the
+    raw market rate, since selling without margin is the loss the gate
+    exists to prevent."""
+    try:
+        market = await guarded_usd_rate(db, quote=cu)
+    except RateRejected:
+        return None
+    rate = display_rate(market, sku.rate_multiplier or Decimal("1"))
+    return PriceOut(amount=price_in_quote(sku.price_usd, rate=rate), currency=cu, source="fx")
+
+
 async def _resolve_price(
+    db: AsyncSession,
     sku: Sku,
     *,
     currency: str | None,
     fx: FxService | None,
 ) -> PriceOut | None:
-    """Resolve the display price. Override → FX → ``None``. FX failures swallowed."""
+    """Resolve the display price. Override → FX → ``None``. FX failures swallowed.
+
+    Variable-amount SKUs (the customer picks the dollar amount at checkout —
+    Steam wallet top-ups) go through :func:`_resolve_variable_price` instead:
+    there's no SkuPrice override and no plain FX snapshot for them, only the
+    guarded rate times the margin multiplier.
+    """
     if not currency:
         return None
     cu = currency.upper()
     if cu == "USD":
         return PriceOut(amount=sku.price_usd, currency="USD", source="usd")
+
+    if sku.variable_amount:
+        return await _resolve_variable_price(db, sku, cu)
 
     overrides = {o.currency.upper(): o for o in sku.price_overrides}
     explicit = overrides.get(cu)
@@ -123,6 +151,13 @@ async def _resolve_price(
 
     if fx is None:
         return None
+    return await _resolve_fx_price(sku, cu, fx)
+
+
+async def _resolve_fx_price(sku: Sku, cu: str, fx: FxService) -> PriceOut | None:
+    """Plain FX conversion for a fixed-price SKU with no override. ``None``
+    on any FX outage — swallowed, not surfaced, so the rest of the page still
+    renders without a price for this one SKU."""
     from yupay.modules.fx.service import FxUnavailableError
 
     try:
@@ -240,7 +275,7 @@ async def get_brand_by_slug(
         if not active_skus:
             continue
         starting = active_skus[0]
-        display = await _resolve_price(starting, currency=currency, fx=fx)
+        display = await _resolve_price(db, starting, currency=currency, fx=fx)
         products_out.append(
             _build_product_summary(product, locale=locale, starting=starting, display=display)
         )
@@ -297,7 +332,7 @@ async def list_products(
         if not active_skus:
             continue
         starting = active_skus[0]
-        display = await _resolve_price(starting, currency=currency, fx=fx)
+        display = await _resolve_price(db, starting, currency=currency, fx=fx)
         summaries.append(
             _build_product_summary(product, locale=locale, starting=starting, display=display)
         )
@@ -328,7 +363,7 @@ async def get_product_by_slug(
     name, short_desc, description, _ = _pick_translation(product.translations, locale)
     skus_out: list[SkuOut] = []
     for sku in sorted((s for s in product.skus if s.active), key=lambda s: s.sort_order):
-        display = await _resolve_price(sku, currency=currency, fx=fx)
+        display = await _resolve_price(db, sku, currency=currency, fx=fx)
         skus_out.append(
             SkuOut(
                 id=sku.id,
@@ -337,6 +372,9 @@ async def get_product_by_slug(
                 region=sku.region,
                 image_url=sku.image_url,
                 price_usd=sku.price_usd,
+                variable_amount=sku.variable_amount,
+                min_amount_usd=sku.min_amount_usd,
+                max_amount_usd=sku.max_amount_usd,
                 display_price=display,
             )
         )
@@ -372,7 +410,7 @@ async def get_sku_by_id(
     sku = (await db.execute(stmt)).scalar_one_or_none()
     if sku is None:
         return None
-    display = await _resolve_price(sku, currency=currency, fx=fx)
+    display = await _resolve_price(db, sku, currency=currency, fx=fx)
     return SkuOut(
         id=sku.id,
         sku_code=sku.sku_code,
@@ -380,6 +418,9 @@ async def get_sku_by_id(
         region=sku.region,
         image_url=sku.image_url,
         price_usd=sku.price_usd,
+        variable_amount=sku.variable_amount,
+        min_amount_usd=sku.min_amount_usd,
+        max_amount_usd=sku.max_amount_usd,
         display_price=display,
     )
 

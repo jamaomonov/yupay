@@ -30,6 +30,10 @@ class OrderItemIn(BaseModel):
     sku_id: str
     qty: int = Field(ge=1, le=100)
     fulfillment_data: dict[str, Any] = Field(default_factory=dict)
+    # Set only for variable-amount SKUs (Steam wallet): how many dollars the
+    # customer is buying. The price is derived from it server-side; the client
+    # never sends a price.
+    amount_usd: Decimal | None = Field(default=None, gt=0)
 
 
 class OrderCreate(BaseModel):

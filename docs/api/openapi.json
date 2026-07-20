@@ -4241,6 +4241,22 @@
         "additionalProperties": false,
         "description": "One line of a new-order request.",
         "properties": {
+          "amount_usd": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Usd"
+          },
           "fulfillment_data": {
             "additionalProperties": true,
             "title": "Fulfillment Data",

@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from yupay.core.clock import now
-from yupay.core.config import Settings
+from yupay.core.config import Settings, get_settings
 from yupay.core.errors import (
     ConflictError,
     NotFoundError,
@@ -23,12 +23,16 @@ from yupay.core.errors import (
 )
 from yupay.core.ids import new_id
 from yupay.modules.catalog.models import Brand, Product, Sku
+from yupay.modules.fulfillment.suppliers import WaxpeerFulfiller, get_fulfiller
 from yupay.modules.fx.factory import build_default_service
 from yupay.modules.fx.service import FxUnavailableError
 from yupay.modules.orders.models import Order, OrderEvent, OrderItem
-from yupay.modules.orders.schemas import OrderCreate, OrderItemDisplay
+from yupay.modules.orders.schemas import OrderCreate, OrderItemDisplay, OrderItemIn
 from yupay.modules.orders.validation import validate_fulfillment_data
 from yupay.modules.payments.models import Payment, PaymentAttempt
+from yupay.modules.pricing.fx_guard import RateRejected, guarded_usd_rate
+from yupay.modules.pricing.variable import display_rate, price_in_quote, to_units, validate_amount
+from yupay.modules.sourcing.service import resolve_for_sku
 
 
 def _order_load_options() -> tuple[Any, ...]:
@@ -153,6 +157,168 @@ async def _existing_idempotent_order(
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
+def _resolve_line_unit_price(sku: Sku, line: OrderItemIn) -> Decimal:
+    """The USD amount one order line bills for.
+
+    A variable-amount SKU (Steam wallet top-up) bills for the customer's
+    chosen ``amount_usd``, validated against the SKU's own bounds; a fixed
+    SKU bills for its catalog ``price_usd`` and must not receive an amount at
+    all — either direction of mismatch is a 422, never a silently-ignored or
+    silently-zeroed price.
+
+    Raises:
+        ValidationError: ``amount_usd`` is missing/out of bounds for a
+            variable SKU, or present for a fixed one.
+    """
+    if sku.variable_amount:
+        if line.amount_usd is None:
+            raise ValidationError("amount is required for this product", extra={"sku_id": sku.id})
+        validate_amount(
+            line.amount_usd,
+            minimum=sku.min_amount_usd or Decimal("0"),
+            maximum=sku.max_amount_usd or Decimal("0"),
+        )
+        return line.amount_usd
+    if line.amount_usd is not None:
+        raise ValidationError("this product has a fixed price", extra={"sku_id": sku.id})
+    return sku.price_usd
+
+
+async def _variable_line_charge(
+    db: AsyncSession,
+    *,
+    sku: Sku,
+    unit_price_usd: Decimal,
+    qty: int,
+    currency: str,
+    rate_cache: dict[str, Decimal],
+) -> Decimal:
+    """Amount charged, in ``currency``, for one variable-amount line.
+
+    Never uses a ``SkuPrice`` override or the plain FX snapshot — only the
+    guarded rate times the SKU's own margin multiplier. ``rate_cache``
+    memoizes the guarded market rate per currency across an order's lines:
+    every variable line in the same currency shares the same market rate
+    (only the multiplier differs per SKU), so this avoids re-querying the
+    FX trust gate once per line.
+
+    Raises:
+        UpstreamUnavailableError: the FX trust gate rejects the rate.
+    """
+    market = rate_cache.get(currency)
+    if market is None:
+        try:
+            market = await guarded_usd_rate(db, quote=currency)
+        except RateRejected as exc:
+            raise UpstreamUnavailableError(
+                "Цена временно недоступна. Попробуйте позже.",
+                base="USD",
+                quote=currency,
+                reason=exc.reason,
+            ) from exc
+        rate_cache[currency] = market
+    rate = display_rate(market, sku.rate_multiplier or Decimal("1"))
+    return price_in_quote(unit_price_usd, rate=rate) * qty
+
+
+async def _compute_total_charged(
+    db: AsyncSession,
+    *,
+    body: OrderCreate,
+    skus: dict[str, Sku],
+    items: list[OrderItem],
+    total_usd: Decimal,
+    currency: str,
+    fx_service_factory: Callable[[], FxService] | None,
+) -> tuple[Decimal, str | None]:
+    """Per-currency total. Catalog already returned a native price for SKUs
+    that have a ``SkuPrice`` override in the order currency — checkout must
+    charge that exact figure, otherwise the user sees one number in the
+    package picker and a different (FX-derived) one at submit. Falls back to
+    a live FX rate only when no override exists for the selected currency;
+    variable-amount lines never use either path (see
+    :func:`_variable_line_charge`).
+
+    Returns:
+        ``(total_charged, fx_snapshot_id)`` — ``fx_snapshot_id`` stays
+        ``None`` when every line was priced from an override, USD, or a
+        variable-amount line's own guarded rate.
+    """
+    if currency == "USD":
+        return total_usd, None
+
+    total_charged = Decimal("0")
+    fx_snapshot_id: str | None = None
+    fx_snap = None
+    rate_cache: dict[str, Decimal] = {}
+    for line, item in zip(body.items, items, strict=True):
+        sku = skus[line.sku_id]
+
+        if sku.variable_amount:
+            total_charged += await _variable_line_charge(
+                db,
+                sku=sku,
+                unit_price_usd=item.unit_price_usd,
+                qty=line.qty,
+                currency=currency,
+                rate_cache=rate_cache,
+            )
+            continue
+
+        override = next(
+            (o for o in sku.price_overrides if o.currency.upper() == currency),
+            None,
+        )
+        if override is not None:
+            total_charged += override.price * line.qty
+            continue
+        if fx_snap is None:
+            factory = fx_service_factory or build_default_service
+            fx = factory()
+            try:
+                fx_snap = await fx.snapshot(db, base="USD", quote=currency)
+            except FxUnavailableError as exc:
+                raise UpstreamUnavailableError(
+                    f"Не удалось получить курс USD→{currency}. Попробуйте позже или "
+                    "оплатите в USD.",
+                    base="USD",
+                    quote=currency,
+                ) from exc
+            fx_snapshot_id = fx_snap.id
+        total_charged += (sku.price_usd * line.qty * fx_snap.rate).quantize(Decimal("1.000000"))
+
+    return total_charged, fx_snapshot_id
+
+
+async def _preflight_variable_supplier_balance(
+    db: AsyncSession, *, sku: Sku, unit_price_usd: Decimal, qty: int
+) -> None:
+    """Refuse a variable-amount line before we take the customer's money if
+    the supplier we'd route it to cannot actually fund it.
+
+    Only Waxpeer (Steam wallet top-ups) is preflighted today — a no-op for
+    fixed SKUs and for anything else ``sourcing.resolve_for_sku`` decides on,
+    same as :meth:`G2bFulfiller._check_balance_or_none` does inside its own
+    adapter for G2B. We must not accept payment for a top-up we cannot
+    deliver; catching this at checkout is cheaper than a stuck fulfilment
+    task and a refund.
+    """
+    if not sku.variable_amount:
+        return
+    decision = await resolve_for_sku(db, sku.id)
+    if decision.primary != "supplier:waxpeer":
+        return
+    fulfiller = get_fulfiller("waxpeer")
+    if not isinstance(fulfiller, WaxpeerFulfiller):
+        return
+    needed = to_units(unit_price_usd, fee_rate=get_settings().waxpeer_fee_rate)
+    if not await fulfiller.has_balance(needed * qty):
+        raise UpstreamUnavailableError(
+            "Пополнение временно недоступно. Попробуйте позже.",
+            supplier="waxpeer",
+        )
+
+
 async def create_order(
     db: AsyncSession,
     body: OrderCreate,
@@ -187,54 +353,35 @@ async def create_order(
         sku = skus[line.sku_id]
         product: Product = sku.product
         cleaned = validate_fulfillment_data(product=product, data=line.fulfillment_data)
+        unit_price_usd = _resolve_line_unit_price(sku, line)
+
+        await _preflight_variable_supplier_balance(
+            db, sku=sku, unit_price_usd=unit_price_usd, qty=line.qty
+        )
+
         items.append(
             OrderItem(
                 id=new_id(),
                 order_id=order_id,
                 sku_id=sku.id,
                 qty=line.qty,
-                unit_price_usd=sku.price_usd,
+                unit_price_usd=unit_price_usd,
                 fulfillment_data=cleaned,
             )
         )
-        total_usd += sku.price_usd * line.qty
+        total_usd += unit_price_usd * line.qty
 
-    # 3) Per-currency total. Catalog already returned a native price for
-    # SKUs that have a SkuPrice override in the order currency — checkout
-    # must charge that exact figure, otherwise the user sees one number
-    # in the package picker and a different (FX-derived) one at submit.
-    # Falls back to a live FX rate only when no override exists for the
-    # selected currency.
+    # 3) Per-currency total (see _compute_total_charged for the policy).
     currency = body.currency.upper()
-    fx_snapshot_id: str | None = None
-    if currency == "USD":
-        total_charged = total_usd
-    else:
-        total_charged = Decimal("0")
-        fx_snap = None
-        for line in body.items:
-            sku = skus[line.sku_id]
-            override = next(
-                (o for o in sku.price_overrides if o.currency.upper() == currency),
-                None,
-            )
-            if override is not None:
-                total_charged += override.price * line.qty
-                continue
-            if fx_snap is None:
-                factory = fx_service_factory or build_default_service
-                fx = factory()
-                try:
-                    fx_snap = await fx.snapshot(db, base="USD", quote=currency)
-                except FxUnavailableError as exc:
-                    raise UpstreamUnavailableError(
-                        f"Не удалось получить курс USD→{currency}. Попробуйте позже или "
-                        "оплатите в USD.",
-                        base="USD",
-                        quote=currency,
-                    ) from exc
-                fx_snapshot_id = fx_snap.id
-            total_charged += (sku.price_usd * line.qty * fx_snap.rate).quantize(Decimal("1.000000"))
+    total_charged, fx_snapshot_id = await _compute_total_charged(
+        db,
+        body=body,
+        skus=skus,
+        items=items,
+        total_usd=total_usd,
+        currency=currency,
+        fx_service_factory=fx_service_factory,
+    )
 
     # 4) Persist the order.
     created = now()

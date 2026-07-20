@@ -7,10 +7,16 @@ requires SQL is covered by the integration tests.
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any, cast
 
 import pytest
 from yupay.modules.catalog.models import Sku, SkuPrice
 from yupay.modules.catalog.service import _pick_translation, _resolve_price
+
+# None of the SKUs built by ``_sku()`` below are variable-amount, so
+# ``_resolve_price`` never touches its ``db`` argument in these tests — a
+# type-checker-satisfying placeholder keeps this file DB-free as advertised.
+_NO_DB = cast(Any, None)
 
 
 class _StubFx:
@@ -45,12 +51,12 @@ def _sku(price_usd: str, overrides: dict[str, str] | None = None) -> Sku:
 
 @pytest.mark.asyncio
 async def test_resolve_price_returns_none_when_no_currency() -> None:
-    assert await _resolve_price(_sku("10"), currency=None, fx=None) is None
+    assert await _resolve_price(_NO_DB, _sku("10"), currency=None, fx=None) is None
 
 
 @pytest.mark.asyncio
 async def test_resolve_price_usd_short_circuits() -> None:
-    result = await _resolve_price(_sku("10"), currency="USD", fx=None)
+    result = await _resolve_price(_NO_DB, _sku("10"), currency="USD", fx=None)
     assert result is not None
     assert result.amount == Decimal("10")
     assert result.source == "usd"
@@ -60,7 +66,7 @@ async def test_resolve_price_usd_short_circuits() -> None:
 async def test_resolve_price_prefers_override_over_fx() -> None:
     sku = _sku("10", overrides={"RUB": "950"})
     fx = _StubFx(Decimal("90"))
-    result = await _resolve_price(sku, currency="RUB", fx=fx)  # type: ignore[arg-type]
+    result = await _resolve_price(_NO_DB, sku, currency="RUB", fx=fx)  # type: ignore[arg-type]
     assert result is not None
     assert result.amount == Decimal("950")
     assert result.source == "override"
@@ -69,7 +75,7 @@ async def test_resolve_price_prefers_override_over_fx() -> None:
 @pytest.mark.asyncio
 async def test_resolve_price_falls_back_to_fx_when_no_override() -> None:
     fx = _StubFx(Decimal("90"))
-    result = await _resolve_price(_sku("10"), currency="RUB", fx=fx)  # type: ignore[arg-type]
+    result = await _resolve_price(_NO_DB, _sku("10"), currency="RUB", fx=fx)  # type: ignore[arg-type]
     assert result is not None
     assert result.amount == Decimal("900")
     assert result.source == "fx"
@@ -78,7 +84,7 @@ async def test_resolve_price_falls_back_to_fx_when_no_override() -> None:
 @pytest.mark.asyncio
 async def test_resolve_price_no_fx_no_override_yields_none() -> None:
     """Caller falls back to ``price_usd`` rather than 503."""
-    result = await _resolve_price(_sku("10"), currency="RUB", fx=None)
+    result = await _resolve_price(_NO_DB, _sku("10"), currency="RUB", fx=None)
     assert result is None
 
 
