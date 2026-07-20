@@ -776,7 +776,9 @@ git commit -m "feat(api/pricing): trust gate for rates that set prices"
   - `UNITS_PER_USD = 1000`
   - `to_units(amount_usd: Decimal, *, fee_rate: Decimal) -> int`
   - `display_rate(market_rate: Decimal, multiplier: Decimal) -> Decimal`
-  - `price_in_quote(amount_usd: Decimal, *, display_rate: Decimal) -> Decimal`
+  - `price_in_quote(amount_usd: Decimal, *, rate: Decimal) -> Decimal` — the
+    keyword is `rate`, deliberately not `display_rate`, so it cannot shadow the
+    `display_rate()` function it is called with
   - `validate_amount(amount_usd: Decimal, *, minimum: Decimal, maximum: Decimal) -> None` raising `ValidationError`
 
 - [ ] **Step 1: Write the failing tests**
@@ -1559,8 +1561,10 @@ in the rate instead of a percentage.
 
 `waxpeer-troubleshooting.md`: how to read a stuck top-up (`GET /v1/steam-topup?custom_id=`),
 what each status means for the customer's money, what to do about
-`needs_reconciliation` (the `error` case: we refunded the customer, Waxpeer has
-not refunded us — open a ticket with the pay id), how to top up our Waxpeer
+`needs_reconciliation` (the `error` case: Waxpeer kept the money and did not
+refund us; the task is in the fulfilment inbox — the admin refunds the customer
+from there, same as any other supplier failure, then opens a Waxpeer ticket with
+the pay id to recover our side), how to top up our Waxpeer
 balance, and what a `give_amount` shortfall alert means (a supplier fee
 appeared: set `WAXPEER_FEE_RATE` and redeploy).
 
@@ -1574,6 +1578,94 @@ appeared: set `WAXPEER_FEE_RATE` and redeploy).
 ```bash
 git add docs apps/api/src/yupay/modules/pricing/README.md
 git commit -m "docs: variable-amount SKUs, pricing gate, Waxpeer runbook"
+```
+
+---
+
+### Task 12: Reconcile in-flight Waxpeer top-ups
+
+Waxpeer has no webhook, so a top-up that comes back `created`/`sending` from
+`fulfill` needs something to drive it to a terminal state. `check_status`
+(Task 6) does the work; this task gives it a caller. A periodic scheduler sweep
+is chosen over the dramatiq self-reschedule pattern `poll_g2b_task` uses,
+because that actor is only ever kicked by G2B's webhook — Waxpeer has none — and
+a sweep additionally self-heals: it reconciles ANY stuck task, including ones
+that predate a restart.
+
+**Files:**
+
+- Create: `apps/scheduler/src/yupay_scheduler/jobs/waxpeer_reconcile.py`
+- Modify: `apps/scheduler/src/yupay_scheduler/main.py` (register the job)
+- Modify: `apps/api/src/yupay/modules/fulfillment/api.py` (expose a query for
+  in-flight tasks by supplier, if one is not already public)
+- Test: `apps/api/tests/integration/test_waxpeer_reconcile.py`
+
+**Interfaces:**
+
+- Consumes: `fulfillment.service.process_webhook_update(db, task_id=...)` (the
+  existing supplier-generic reconciler — it dispatches on `task.supplier` and
+  calls the fulfiller's `check_status`), Task 6's `WaxpeerFulfiller.check_status`.
+- Produces: a scheduler job `register(scheduler)` following the shape of
+  `apps/scheduler/src/yupay_scheduler/jobs/expire_orders.py`.
+
+- [ ] **Step 1: Write the failing integration test**
+
+`apps/api/tests/integration/test_waxpeer_reconcile.py`:
+
+```python
+async def test_sweep_completes_a_credited_topup(...) -> None:
+    """An in_progress waxpeer task whose Waxpeer status is now `completed`
+    reaches `delivered` after one sweep."""
+
+
+async def test_sweep_flags_an_errored_topup_for_reconciliation(...) -> None:
+    """status=error ⇒ task failed, needs_reconciliation surfaced, not silently
+    left in_progress."""
+
+
+async def test_sweep_leaves_a_still_in_flight_topup_alone(...) -> None:
+    """status still `sending` ⇒ task stays in_progress, picked up next sweep."""
+
+
+async def test_sweep_ignores_other_suppliers(...) -> None:
+    """A g2b in_progress task is not touched by the waxpeer sweep."""
+```
+
+Drive these by seeding a `FulfillmentTask` in each state and stubbing the
+Waxpeer client's `get_topup` via respx, following Task 6's test fixtures.
+
+- [ ] **Step 2: Run to verify they fail**
+
+Run: `cd apps/api && uv run pytest tests/integration/test_waxpeer_reconcile.py -q`
+Expected: FAIL — the job module does not exist yet.
+
+- [ ] **Step 3: Implement the sweep**
+
+The job queries fulfilment tasks where `supplier == "waxpeer"` and
+`status == "in_progress"` (add a narrow admin query in `fulfillment/api.py` if
+none is public — do not reach into the ORM from the scheduler), and calls
+`process_webhook_update(db, task_id=t.id)` for each, in its own session per task
+so one failure does not abort the batch. Read
+`apps/scheduler/src/yupay_scheduler/jobs/expire_orders.py` for the session and
+`register()` idioms and match them. Cadence: every 60s (a customer waiting on a
+Steam credit should not wait minutes).
+
+- [ ] **Step 4: Register the job**
+
+In `apps/scheduler/src/yupay_scheduler/main.py`, import and `.register(scheduler)`
+alongside `expire_orders` and `refresh_supplier_prices`.
+
+- [ ] **Step 5: Run tests**
+
+Run: `cd apps/api && uv run pytest tests/integration/test_waxpeer_reconcile.py -q`
+Expected: PASS
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/scheduler/src apps/api/src/yupay/modules/fulfillment/api.py \
+        apps/api/tests/integration/test_waxpeer_reconcile.py
+git commit -m "feat(scheduler): reconcile in-flight Waxpeer top-ups"
 ```
 
 ---
