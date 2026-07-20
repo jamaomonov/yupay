@@ -79,6 +79,36 @@ export interface TelegramWebApp {
   // client is harmless, they simply never fire.
   onEvent?: (event: string, handler: () => void) => void;
   offEvent?: (event: string, handler: () => void) => void;
+  // Bot API 6.2+. Guards against a stray swipe-down closing the app.
+  enableClosingConfirmation?: () => void;
+  disableClosingConfirmation?: () => void;
+  // Bot API 6.2+. Native dialogs — look like Telegram, not like a web modal.
+  showConfirm?: (message: string, callback?: (confirmed: boolean) => void) => void;
+  // Bot API 6.9+. Lets the bot message the user (order status, delivered codes).
+  requestWriteAccess?: (callback?: (granted: boolean) => void) => void;
+  // Bot API 7.0+. Native entry in the client's ⋮ menu.
+  SettingsButton?: {
+    isVisible: boolean;
+    show: () => void;
+    hide: () => void;
+    onClick: (cb: () => void) => void;
+    offClick: (cb: () => void) => void;
+  };
+  // Bot API 7.8+ / 8.0+. Sharing hooks.
+  shareToStory?: (
+    mediaUrl: string,
+    params?: { text?: string; widget_link?: { url: string; name?: string } },
+  ) => void;
+  // Bot API 7.10+. On Android this also tints the system navigation bar.
+  setBottomBarColor?: (color: string) => void;
+  // Bot API 8.0+. Our layout is portrait-only.
+  lockOrientation?: () => void;
+  // Bot API 8.0+. `false` while the app is minimised — we pause polling on it.
+  isActive?: boolean;
+  // Bot API 8.0+. Home-screen shortcut. `checkHomeScreenStatus` answers
+  // "unsupported" | "unknown" | "added" | "missed".
+  addToHomeScreen?: () => void;
+  checkHomeScreenStatus?: (callback?: (status: string) => void) => void;
 }
 
 declare global {
@@ -148,13 +178,6 @@ export function maximiseTelegramViewport(): void {
   } catch {
     /* very old clients */
   }
-  // Paint the Telegram-owned chrome (strip behind close/back chip,
-  // status-bar area, overscroll bounce) the same dark colour as the
-  // app background so the user never sees a white flash when pulling
-  // to refresh or when the WebView resizes. ``--background`` is HSL
-  // ``228 35% 11%`` → ``#121927`` (also pinned in ``index.html``'s
-  // ``theme-color``).
-  const APP_BG = "#121927";
   if (typeof wa.setBackgroundColor === "function") {
     try {
       wa.setBackgroundColor(APP_BG);
@@ -169,17 +192,15 @@ export function maximiseTelegramViewport(): void {
       /* not supported */
     }
   }
-  // ``typeof === "function"`` is not enough here: telegram-web-app.js
-  // defines these methods on EVERY client and logs
-  // "Method … is not supported in version X" itself when called on an old
-  // one — gate on the announced Bot API version instead.
-  const versionAtLeast = (version: string): boolean => {
+  // The bottom bar completes the chrome we already paint — on Android it is
+  // the system navigation bar, which would otherwise stay stock-black.
+  if (typeof wa.setBottomBarColor === "function" && versionAtLeast("7.10")) {
     try {
-      return wa.isVersionAtLeast?.(version) ?? false;
+      wa.setBottomBarColor(APP_BG);
     } catch {
-      return false;
+      /* not supported */
     }
-  };
+  }
   let wentFullscreen = false;
   if (typeof wa.requestFullscreen === "function" && versionAtLeast("8.0")) {
     try {
@@ -196,12 +217,47 @@ export function maximiseTelegramViewport(): void {
       /* not supported */
     }
   }
+  // The layout is portrait-only (max-w-430px column); a landscape flip just
+  // stretches it. Pin the orientation the app launched in.
+  if (typeof wa.lockOrientation === "function" && versionAtLeast("8.0")) {
+    try {
+      wa.lockOrientation();
+    } catch {
+      /* not supported */
+    }
+  }
   // Telegram hydrates its own inset vars asynchronously — they're empty on
   // the first paint. Publish what the client already knows, then let the
   // subscription below correct it as values land and as the user rotates,
   // enters/leaves fullscreen, or the keyboard resizes the viewport.
   syncTelegramInsets({ assumeFullscreen: wentFullscreen });
   watchTelegramInsets();
+}
+
+/**
+ * Telegram-owned chrome (strip behind the close/back chip, status-bar area,
+ * overscroll bounce, Android nav bar) is painted the same colour as the app so
+ * the user never sees a white flash on pull-to-refresh or a WebView resize.
+ * ``--background`` is HSL ``228 35% 11%`` → also pinned as ``theme-color`` in
+ * ``index.html``.
+ */
+const APP_BG = "#121927";
+
+/**
+ * Gate a call on the client's announced Bot API version.
+ *
+ * ``typeof wa.method === "function"`` is not enough: telegram-web-app.js
+ * defines every method on every client and logs "Method … is not supported in
+ * version X" itself when an old one is called.
+ */
+function versionAtLeast(version: string): boolean {
+  const wa = getWebApp();
+  if (!wa) return false;
+  try {
+    return wa.isVersionAtLeast?.(version) ?? false;
+  } catch {
+    return false;
+  }
 }
 
 /** Chip footprint to assume while the client hasn't reported insets yet. */
@@ -312,4 +368,225 @@ export async function waitForInitData(timeoutMs = 2_000, stepMs = 50): Promise<s
     initData = getWebApp()?.initData ?? "";
   }
   return initData || null;
+}
+
+// ---------------------------------------------------------------------------
+// Closing confirmation
+// ---------------------------------------------------------------------------
+
+/**
+ * Guard the app against a stray swipe-down / tap on ×.
+ *
+ * Kept scoped to the moments that actually matter — a payment in flight —
+ * rather than switched on globally: a confirmation on every close would nag
+ * users for whom nothing is at stake.
+ */
+export function setClosingConfirmation(enabled: boolean): void {
+  const wa = getWebApp();
+  if (!wa || !versionAtLeast("6.2")) return;
+  try {
+    if (enabled) wa.enableClosingConfirmation?.();
+    else wa.disableClosingConfirmation?.();
+  } catch {
+    /* not supported */
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Activity — pause background work while minimised
+// ---------------------------------------------------------------------------
+
+let appActive = true;
+
+/**
+ * ``false`` while the Mini App is minimised (Bot API 8.0+).
+ *
+ * Defaults to ``true`` everywhere else, so callers that gate polling on this
+ * behave exactly as before on clients that never report activity.
+ */
+export function isAppActive(): boolean {
+  return appActive;
+}
+
+/**
+ * Track minimise/restore. ``onChange`` fires only on an actual transition;
+ * returns an unsubscribe function.
+ */
+export function watchTelegramActivity(onChange?: (active: boolean) => void): () => void {
+  const wa = getWebApp();
+  if (!wa || typeof wa.onEvent !== "function") return () => undefined;
+  const set = (next: boolean) => {
+    if (appActive === next) return;
+    appActive = next;
+    onChange?.(next);
+  };
+  const onActivated = () => {
+    set(true);
+  };
+  const onDeactivated = () => {
+    set(false);
+  };
+  try {
+    wa.onEvent("activated", onActivated);
+    wa.onEvent("deactivated", onDeactivated);
+  } catch {
+    return () => undefined;
+  }
+  return () => {
+    try {
+      wa.offEvent?.("activated", onActivated);
+      wa.offEvent?.("deactivated", onDeactivated);
+    } catch {
+      /* ignore */
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Native dialogs
+// ---------------------------------------------------------------------------
+
+/**
+ * Native confirmation dialog.
+ *
+ * Resolves ``null`` when the client is too old to show one, so the caller can
+ * decide: fall back to a web dialog, or just proceed.
+ */
+export async function confirmNatively(message: string): Promise<boolean | null> {
+  const wa = getWebApp();
+  if (!wa || typeof wa.showConfirm !== "function" || !versionAtLeast("6.2")) return null;
+  return new Promise<boolean | null>((resolve) => {
+    try {
+      wa.showConfirm?.(message, (confirmed) => {
+        resolve(confirmed);
+      });
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Write access — so the bot may deliver order updates
+// ---------------------------------------------------------------------------
+
+/**
+ * Ask permission for the bot to message the user (Bot API 6.9+).
+ *
+ * We deliver order status and voucher codes through the bot, so a customer who
+ * opened the Mini App from a link and never pressed /start would otherwise
+ * never hear back. Resolves ``null`` when the client can't ask.
+ */
+export async function requestWriteAccess(): Promise<boolean | null> {
+  const wa = getWebApp();
+  if (!wa || typeof wa.requestWriteAccess !== "function" || !versionAtLeast("6.9")) return null;
+  return new Promise<boolean | null>((resolve) => {
+    try {
+      wa.requestWriteAccess?.((granted) => {
+        resolve(granted);
+      });
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Settings button — native entry in the client's ⋮ menu
+// ---------------------------------------------------------------------------
+
+/** Show the native Settings entry; returns a cleanup that hides it again. */
+export function showSettingsButton(onClick: () => void): () => void {
+  const wa = getWebApp();
+  const button = wa?.SettingsButton;
+  if (!button || !versionAtLeast("7.0")) return () => undefined;
+  try {
+    button.onClick(onClick);
+    button.show();
+  } catch {
+    return () => undefined;
+  }
+  return () => {
+    try {
+      button.offClick(onClick);
+      button.hide();
+    } catch {
+      /* ignore */
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Home screen shortcut
+// ---------------------------------------------------------------------------
+
+export type HomeScreenStatus = "unsupported" | "unknown" | "added" | "missed";
+
+/**
+ * Whether a home-screen shortcut is possible / already there (Bot API 8.0+).
+ * ``null`` means the client can't tell us, so don't offer it.
+ */
+export async function getHomeScreenStatus(): Promise<HomeScreenStatus | null> {
+  const wa = getWebApp();
+  if (!wa || typeof wa.checkHomeScreenStatus !== "function" || !versionAtLeast("8.0")) return null;
+  return new Promise<HomeScreenStatus | null>((resolve) => {
+    // The event may never fire on a client that only pretends to support it.
+    const timer = setTimeout(() => {
+      resolve(null);
+    }, 3_000);
+    try {
+      wa.checkHomeScreenStatus?.((status) => {
+        clearTimeout(timer);
+        resolve(status as HomeScreenStatus);
+      });
+    } catch {
+      clearTimeout(timer);
+      resolve(null);
+    }
+  });
+}
+
+/** Prompt to add the Mini App to the device home screen (Bot API 8.0+). */
+export function addToHomeScreen(): void {
+  const wa = getWebApp();
+  if (!wa || typeof wa.addToHomeScreen !== "function" || !versionAtLeast("8.0")) return;
+  try {
+    wa.addToHomeScreen();
+  } catch {
+    /* not supported */
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sharing
+// ---------------------------------------------------------------------------
+
+/** Whether the client can open the native story composer (Bot API 7.8+). */
+export function canShareToStory(): boolean {
+  const wa = getWebApp();
+  return Boolean(wa && typeof wa.shareToStory === "function" && versionAtLeast("7.8"));
+}
+
+/** Open the story composer with our media pre-loaded (Bot API 7.8+). */
+export function shareToStory(
+  mediaUrl: string,
+  params?: { text?: string; widgetUrl?: string; widgetName?: string },
+): void {
+  const wa = getWebApp();
+  if (!canShareToStory() || !wa) return;
+  try {
+    wa.shareToStory?.(mediaUrl, {
+      ...(params?.text === undefined ? {} : { text: params.text }),
+      ...(params?.widgetUrl === undefined
+        ? {}
+        : {
+            widget_link: {
+              url: params.widgetUrl,
+              ...(params.widgetName === undefined ? {} : { name: params.widgetName }),
+            },
+          }),
+    });
+  } catch {
+    /* not supported */
+  }
 }

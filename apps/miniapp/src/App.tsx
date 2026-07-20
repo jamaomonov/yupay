@@ -1,7 +1,7 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { MotionConfig } from "framer-motion";
 import { useEffect } from "react";
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 
 import { BootstrapGate } from "@/components/BootstrapGate";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -9,6 +9,7 @@ import { Shell } from "@/components/layout/Shell";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { I18nProvider, useT } from "@/lib/i18n";
+import { showSettingsButton, watchTelegramActivity } from "@/lib/telegram";
 import { useTelegramBackButton } from "@/lib/use-telegram-back-button";
 import History from "@/pages/History";
 import Home from "@/pages/Home";
@@ -25,10 +26,36 @@ function NotFound() {
 
 const queryClient = new QueryClient();
 
+/**
+ * Native Settings entry (client ⋮ menu) → our settings route, and background
+ * work paused while the app is minimised.
+ *
+ * Polling is gated on `isAppActive()` inside the queries themselves; all this
+ * has to do is refetch the moment the customer comes back, so a payment that
+ * completed while minimised is on screen immediately instead of one tick later.
+ */
+function useTelegramIntegration() {
+  const [, navigate] = useLocation();
+  const qc = useQueryClient();
+  useEffect(() => {
+    const hideSettings = showSettingsButton(() => {
+      navigate("/settings");
+    });
+    const unwatch = watchTelegramActivity((active) => {
+      if (active) void qc.invalidateQueries();
+    });
+    return () => {
+      hideSettings();
+      unwatch();
+    };
+  }, [navigate, qc]);
+}
+
 function Router() {
   // Sync Telegram's native BackButton with the route — shown on every
   // non-root page, taps the browser history (or falls back to Home).
   useTelegramBackButton();
+  useTelegramIntegration();
   return (
     <Shell>
       <Switch>

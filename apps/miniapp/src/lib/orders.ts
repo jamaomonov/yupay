@@ -11,6 +11,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiGet, apiPost, newIdempotencyKey } from "./api";
 import { useMe } from "./auth";
 import { getActiveLocale, translate, translatePlural } from "./i18n/core";
+import { isAppActive } from "./telegram";
 
 // --- DTOs -----------------------------------------------------------------
 
@@ -201,6 +202,9 @@ export function useOrder(orderId: string | undefined) {
     refetchInterval: (q) => {
       const status = q.state.data?.status;
       if (!status) return false;
+      // Minimised app: stop burning the customer's battery and our API on an
+      // order nobody is watching. `activated` refetches immediately (App.tsx).
+      if (!isAppActive()) return false;
       // Poll while the order is in motion. Once terminal, stop.
       if (["pending_payment", "paid", "fulfilling", "fulfilled"].includes(status)) {
         return 3_000;
@@ -264,6 +268,7 @@ export function useDeliveries(orderId: string | undefined, parentStatus: OrderSt
     refetchInterval: () => {
       if (!parentStatus) return false;
       if (parentStatus === "delivered") return false;
+      if (!isAppActive()) return false;
       return ["paid", "fulfilling", "fulfilled"].includes(parentStatus) ? 2_000 : false;
     },
   });

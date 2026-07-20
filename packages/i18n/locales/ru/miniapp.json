@@ -295,5 +295,10 @@
     "few": "{count} позиции",
     "many": "{count} позиций",
     "other": "{count} позиций"
-  }
+  },
+  "settings.logoutConfirm": "Выйти из аккаунта?",
+  "success.addToHome": "На главный экран",
+  "success.share": "Поделиться",
+  "success.shareStoryText": "Пополнил {game} за пару минут — YuPay",
+  "success.shareStoryTextGeneric": "Пополнил игру за пару минут — YuPay"
 }

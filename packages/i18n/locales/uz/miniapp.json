@@ -295,5 +295,10 @@
     "few": "{count} ta pozitsiya",
     "many": "{count} ta pozitsiya",
     "other": "{count} ta pozitsiya"
-  }
+  },
+  "settings.logoutConfirm": "Hisobdan chiqasizmi?",
+  "success.addToHome": "Bosh ekranga",
+  "success.share": "Ulashish",
+  "success.shareStoryText": "{game} bir necha daqiqada toʻldirildi — YuPay",
+  "success.shareStoryTextGeneric": "Oʻyin bir necha daqiqada toʻldirildi — YuPay"
 }

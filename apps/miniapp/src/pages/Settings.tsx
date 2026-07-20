@@ -25,7 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLogout, useMe } from "@/lib/auth";
 import { useLocale, useT } from "@/lib/i18n";
 import { useUpdateLocale } from "@/lib/i18n/use-update-locale";
-import { getWebApp } from "@/lib/telegram";
+import { confirmNatively, getWebApp } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
 // Language autonyms — shown in their own language regardless of UI locale,
@@ -291,7 +291,13 @@ export default function Settings() {
       {user && (
         <button
           onClick={() => {
-            logout.mutate();
+            void (async () => {
+              // Native prompt on clients that have one; older clients get the
+              // old straight-through behaviour rather than a web modal.
+              const ok = await confirmNatively(t("settings.logoutConfirm"));
+              if (ok === false) return;
+              logout.mutate();
+            })();
           }}
           className="text-muted-foreground hover:text-destructive flex w-full items-center justify-center gap-2 py-3.5 text-sm font-medium transition-colors"
           data-testid="btn-logout"

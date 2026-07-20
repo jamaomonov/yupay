@@ -33,10 +33,11 @@ import { SafeImage } from "@/components/ui/safe-image";
 import { useAvailableProviders, useCheckout } from "@/lib/orders";
 import { ACQUIRER_BY_METHOD, PAYMENT_METHODS, PROVIDER_BY_METHOD } from "@/lib/payment-methods";
 import { getRecentFulfillment, rememberFulfillment } from "@/lib/recent-checkout";
-import { isInsideTelegram } from "@/lib/telegram";
+import { isInsideTelegram, setClosingConfirmation } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { cn } from "@/lib/utils";
 import { formatBalance, groupBalancesByCurrency, useWallet } from "@/lib/wallet";
+import { ensureBotCanWrite } from "@/lib/write-access";
 
 // ─── Adapter: API Package → local Package ─────────────────────────────────────
 // Keeps badge/bonus optional for future enrichment.
@@ -432,6 +433,13 @@ export default function TopUp() {
       const v = (fulfillment[f.key] ?? "").trim();
       if (v) fulfillmentData[f.key] = v;
     }
+    // Codes and status updates are delivered by the bot. Someone who opened
+    // the Mini App from a link and never pressed /start can't be written to,
+    // so ask once, here, where the reason is obvious.
+    await ensureBotCanWrite();
+    // Money is about to move and the next step may be a redirect to the
+    // acquirer — a stray swipe-down here loses the customer mid-payment.
+    setClosingConfirmation(true);
     try {
       const result = await checkout.mutateAsync({
         skuId: activePkg.id,
@@ -474,6 +482,11 @@ export default function TopUp() {
         description: detail,
         variant: "destructive",
       });
+    } finally {
+      // Checkout is over either way — stop nagging on close. Runs on the
+      // redirect path too (`finally` fires on `return`), which is what we
+      // want: we're navigating to the acquirer, not closing the app.
+      setClosingConfirmation(false);
     }
   };
 

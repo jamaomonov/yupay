@@ -19,7 +19,9 @@ import {
   CreditCard,
   ExternalLink,
   HeadphonesIcon,
+  Home,
   Loader2,
+  Share2,
   ShoppingBag,
   Sparkles,
   XCircle,
@@ -41,7 +43,13 @@ import {
   type OrderStatus,
   type ProductKind,
 } from "@/lib/orders";
-import { getWebApp } from "@/lib/telegram";
+import {
+  addToHomeScreen,
+  canShareToStory,
+  getHomeScreenStatus,
+  getWebApp,
+  shareToStory,
+} from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
 const PROCESSING: OrderStatus[] = ["pending_payment", "paid", "fulfilling", "fulfilled"];
@@ -351,7 +359,77 @@ export default function OrderSuccess() {
           />
         </Link>
       </div>
+
+      {isDelivered && (
+        <DeliveredExtras
+          brandName={order.items[0]?.display?.brand_name ?? null}
+          imageUrl={order.items[0]?.display?.image_url ?? null}
+        />
+      )}
     </motion.div>
+  );
+}
+
+/**
+ * Post-delivery offers: pin the app, brag about the top-up.
+ *
+ * Deliberately only on a delivered order — asking someone to install a
+ * shortcut before they know the purchase worked is noise. Each affordance
+ * hides itself unless the client actually supports it, so on older Telegram
+ * versions this section simply isn't there.
+ */
+function DeliveredExtras({
+  brandName,
+  imageUrl,
+}: {
+  brandName: string | null;
+  imageUrl: string | null;
+}) {
+  const { t } = useT();
+  const [canPin, setCanPin] = useState(false);
+  const canShare = canShareToStory() && Boolean(imageUrl);
+
+  useEffect(() => {
+    let alive = true;
+    void getHomeScreenStatus().then((status) => {
+      // "missed" = supported and not installed yet. "added" / "unsupported" /
+      // null all mean there's nothing worth offering.
+      if (alive) setCanPin(status === "missed");
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (!canPin && !canShare) return null;
+
+  return (
+    <div className="grid grid-cols-2 gap-3 px-4 pt-1">
+      {canPin && (
+        <ActionButton
+          icon={<Home size={15} />}
+          label={t("success.addToHome")}
+          variant="secondary"
+          onClick={() => {
+            addToHomeScreen();
+          }}
+        />
+      )}
+      {canShare && imageUrl && (
+        <ActionButton
+          icon={<Share2 size={15} />}
+          label={t("success.share")}
+          variant="secondary"
+          onClick={() => {
+            shareToStory(imageUrl, {
+              text: brandName
+                ? t("success.shareStoryText", { game: brandName })
+                : t("success.shareStoryTextGeneric"),
+            });
+          }}
+        />
+      )}
+    </div>
   );
 }
 
