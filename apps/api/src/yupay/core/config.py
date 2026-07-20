@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+from decimal import Decimal
 from functools import lru_cache
 from typing import Literal
 
@@ -233,6 +234,15 @@ class Settings(BaseSettings):
         ),
     )
     g2b_request_timeout_seconds: float = Field(default=20.0)
+
+    # Waxpeer — Steam wallet top-ups. Empty key disables the supplier the same
+    # way an empty g2b key does.
+    waxpeer_api_key: str = Field(default="")
+    waxpeer_base_url: str = Field(default="https://api.waxpeer.com/v1")
+    waxpeer_request_timeout_seconds: float = Field(default=20.0)
+    # Waxpeer's cut of a top-up. 0 today; a non-zero value makes us gross the
+    # amount up so the customer still receives what they asked for.
+    waxpeer_fee_rate: Decimal = Field(default=Decimal("0"), ge=0, lt=1)
 
     # --- acquirer: Octo (octo.uz) ---
     # Hosted-page card acquirer for the UZ market (Uzcard/Humo/Visa). Empty
