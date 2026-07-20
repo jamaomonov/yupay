@@ -28,6 +28,7 @@ from yupay.modules.catalog.models import (
     Sku,
 )
 from yupay.modules.integrations.models import SkuSupplierMapping
+from yupay.modules.sourcing.models import SkuSourcingRule
 
 
 @dataclass
@@ -44,10 +45,25 @@ class SkuSpec:
     denomination: str
     region: str | None
     price_usd: Decimal
-    cost_usdt: Decimal
-    g2b_game_code: str
-    g2b_variant: str
+    # ``None`` for variable-amount SKUs — the wholesale cost isn't a fixed
+    # per-unit figure, so it's left unknown rather than a misleading
+    # placeholder. Margin reporting already treats ``cost_usdt IS NULL`` as
+    # "excluded from cost-based margin" (see ``stats/analytics.py``).
+    cost_usdt: Decimal | None = None
+    # G2B routing key. Empty for non-G2B SKUs (e.g. Steam) — the
+    # mapping-upsert loop below skips any SKU without a ``g2b_game_code``.
+    g2b_game_code: str = ""
+    g2b_variant: str = ""
     sort_order: int = 0
+    # Variable-amount SKUs (Steam wallet): the customer picks the amount at
+    # checkout, so ``price_usd`` above is an unused placeholder that only
+    # satisfies the ``ck_skus_price_positive`` CHECK. See ``Sku.variable_amount``
+    # and the ``ck_skus_variable_amount_complete`` CHECK for the invariant these
+    # three fields must jointly satisfy when ``variable_amount`` is set.
+    variable_amount: bool = False
+    min_amount_usd: Decimal | None = None
+    max_amount_usd: Decimal | None = None
+    rate_multiplier: Decimal | None = None
 
 
 @dataclass
@@ -489,6 +505,65 @@ def _build_brands() -> list[BrandSpec]:
     return brands
 
 
+# ---------- Steam wallet top-up (Waxpeer, not G2B) ----------
+#
+# Not part of ``GAME_META``/``CATALOG_SNAPSHOT``: Steam has one variable-amount
+# SKU with no G2B mapping at all. It is routed to Waxpeer via a
+# ``SkuSourcingRule`` (mode="force_supplier"), not a ``SkuSupplierMapping`` —
+# ``SkuSupplierMapping.kind`` only allows ``'voucher'``/``'game'`` and
+# ``WaxpeerFulfiller`` reads ``steam_login`` straight out of the order item's
+# ``fulfillment_data``, never a mapping row. See the mapping-upsert loop in
+# ``_upsert_product`` below, which skips SKUs with no ``g2b_game_code`` and
+# creates/updates the sourcing rule for them instead.
+
+_STEAM_LOGIN_FIELD: dict[str, Any] = {
+    "key": "steam_login",
+    "label": {"ru": "Логин Steam", "en": "Steam login", "uz": "Steam login"},
+    "type": "text",
+    "required": True,
+    "pattern": r"^[A-Za-z0-9_-]{3,64}$",
+    "check": {"provider": "waxpeer"},
+}
+
+_STEAM_BRAND = BrandSpec(
+    slug="steam",
+    category_slug="games",
+    logo_url=None,
+    hero_image_url=None,
+    accent_color=None,
+    sort_order=len(GAME_META),
+    translations=[
+        TranslationSpec("ru", "Steam"),
+        TranslationSpec("en", "Steam"),
+        TranslationSpec("uz", "Steam"),
+    ],
+    products=[
+        ProductSpec(
+            slug="steam-wallet",
+            kind="top_up",
+            supplier_hint="waxpeer",
+            image_url=None,
+            sort_order=0,
+            required_fields=[_STEAM_LOGIN_FIELD],
+            translations=_tr("Пополнение кошелька Steam", "Steam Wallet", "Steam hamyoni"),
+            skus=[
+                SkuSpec(
+                    sku_code="steam-wallet-usd",
+                    denomination="Любая сумма",
+                    region=None,
+                    price_usd=Decimal("1"),
+                    sort_order=0,
+                    variable_amount=True,
+                    min_amount_usd=Decimal("1.00"),
+                    max_amount_usd=Decimal("300.00"),
+                    rate_multiplier=Decimal("1.0800"),
+                ),
+            ],
+        ),
+    ],
+)
+
+
 def _assert_unique_sku_codes(brands: list[BrandSpec]) -> None:
     seen: set[str] = set()
     for b in brands:
@@ -499,7 +574,7 @@ def _assert_unique_sku_codes(brands: list[BrandSpec]) -> None:
                 seen.add(s.sku_code)
 
 
-BRANDS: list[BrandSpec] = _build_brands()
+BRANDS: list[BrandSpec] = [*_build_brands(), _STEAM_BRAND]
 _assert_unique_sku_codes(BRANDS)
 
 
@@ -667,6 +742,10 @@ async def _upsert_product(session, spec: ProductSpec, brand: Brand) -> None:
                     price_usd=sspec.price_usd,
                     cost_usdt=sspec.cost_usdt,
                     sort_order=sspec.sort_order,
+                    variable_amount=sspec.variable_amount,
+                    min_amount_usd=sspec.min_amount_usd,
+                    max_amount_usd=sspec.max_amount_usd,
+                    rate_multiplier=sspec.rate_multiplier,
                 )
             )
         else:
@@ -676,6 +755,10 @@ async def _upsert_product(session, spec: ProductSpec, brand: Brand) -> None:
             row.price_usd = sspec.price_usd
             row.cost_usdt = sspec.cost_usdt
             row.sort_order = sspec.sort_order
+            row.variable_amount = sspec.variable_amount
+            row.min_amount_usd = sspec.min_amount_usd
+            row.max_amount_usd = sspec.max_amount_usd
+            row.rate_multiplier = sspec.rate_multiplier
         sku_ids.append((sku_id, sspec))
 
     # SkuSupplierMapping.sku_id is a plain FK column, not a relationship, so SQLAlchemy
@@ -684,6 +767,14 @@ async def _upsert_product(session, spec: ProductSpec, brand: Brand) -> None:
     await session.flush()
 
     for sku_id, sspec in sku_ids:
+        if not sspec.g2b_game_code:
+            # Not a G2B-sourced SKU (e.g. Steam) — no SkuSupplierMapping to write
+            # (SkuSupplierMapping.kind only allows 'voucher'/'game'; Waxpeer isn't
+            # routed through a mapping at all). Route it with a sourcing rule
+            # instead, per the product's ``supplier_hint``.
+            await _upsert_sourcing_rule(session, sku_id=sku_id, supplier_slug=spec.supplier_hint)
+            continue
+
         mapping = (
             await session.execute(
                 select(SkuSupplierMapping).where(
@@ -709,6 +800,33 @@ async def _upsert_product(session, spec: ProductSpec, brand: Brand) -> None:
             mapping.external_product_id = sspec.g2b_game_code
             mapping.external_variant_id = sspec.g2b_variant
             mapping.is_active = True
+
+
+async def _upsert_sourcing_rule(session, *, sku_id: str, supplier_slug: str | None) -> None:
+    """Force fulfilment to a specific supplier for SKUs with no supplier mapping.
+
+    Used for non-G2B top-up SKUs (currently just Steam → Waxpeer). Mirrors
+    ``yupay.modules.sourcing.service.set_rule`` but is written directly against
+    the ORM, matching this file's existing upsert style (see the
+    ``SkuSupplierMapping`` loop above) rather than going through the service,
+    which requires an ``admin_id`` that doesn't make sense for seed data.
+    """
+    if not supplier_slug:
+        return
+    rule = (
+        await session.execute(select(SkuSourcingRule).where(SkuSourcingRule.sku_id == sku_id))
+    ).scalar_one_or_none()
+    if rule is None:
+        session.add(
+            SkuSourcingRule(
+                sku_id=sku_id,
+                mode="force_supplier",
+                supplier_slug=supplier_slug,
+            )
+        )
+    else:
+        rule.mode = "force_supplier"
+        rule.supplier_slug = supplier_slug
 
 
 async def seed() -> None:
