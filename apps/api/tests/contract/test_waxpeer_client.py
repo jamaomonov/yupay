@@ -188,5 +188,8 @@ async def test_get_balance_units_raises_when_user_wallet_missing() -> None:
     respx.get(f"{BASE}/user").mock(
         return_value=httpx.Response(200, json={"success": True, "user": {"id": 1}})
     )
-    with pytest.raises(WaxpeerError):
+    with pytest.raises(WaxpeerError) as exc:
         await _client().get_balance_units()
+    assert exc.value.body != ""
+    assert "success" in exc.value.body
+    assert "user" in exc.value.body

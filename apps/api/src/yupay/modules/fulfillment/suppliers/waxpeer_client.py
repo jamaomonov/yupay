@@ -103,8 +103,11 @@ class WaxpeerClient:
         *,
         params: dict[str, Any] | None = None,
         json: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], str]:
         """Issue a request and unwrap Waxpeer's ``success`` envelope.
+
+        Returns ``(body_dict, raw_text)`` where ``raw_text`` is the original
+        response body.
 
         Raises :class:`WaxpeerUnavailableError` on network failure,
         :class:`WaxpeerError` on HTTP >= 400 or on HTTP 200 with
@@ -128,7 +131,7 @@ class WaxpeerClient:
             raise WaxpeerError(
                 str(body.get("msg") or "waxpeer refused the request"), body=resp.text
             )
-        return body
+        return body, resp.text
 
     @staticmethod
     def _parse_topup(body: dict[str, Any]) -> WaxpeerTopup:
@@ -148,7 +151,7 @@ class WaxpeerClient:
         Returns ``(valid, reason)`` — ``reason`` is Waxpeer's ``msg`` when
         ``valid`` is ``False``, else ``None``.
         """
-        body = await self._request(
+        body, _ = await self._request(
             "GET", "/steam-topup/validate", params={"steam_login": steam_login}
         )
         return bool(body.get("valid", False)), body.get("msg")
@@ -157,7 +160,7 @@ class WaxpeerClient:
         self, *, steam_login: str, amount_units: int, custom_id: str
     ) -> WaxpeerTopup:
         """Create a top-up. Raises :class:`WaxpeerError` on refusal (e.g. insufficient balance)."""
-        body = await self._request(
+        body, _ = await self._request(
             "POST",
             "/steam-topup",
             json={
@@ -170,7 +173,7 @@ class WaxpeerClient:
 
     async def get_topup(self, *, custom_id: str) -> WaxpeerTopup:
         """Look up a previously created top-up by our ``custom_id``."""
-        body = await self._request("GET", "/steam-topup", params={"custom_id": custom_id})
+        body, _ = await self._request("GET", "/steam-topup", params={"custom_id": custom_id})
         return self._parse_topup(body)
 
     async def get_balance_units(self) -> int:
@@ -182,11 +185,14 @@ class WaxpeerClient:
         ``user.wallet`` is missing or not an ``int``, rather than risking a
         silently wrong balance in what is a financial availability check.
         """
-        body = await self._request("GET", "/user")
+        body, raw_text = await self._request("GET", "/user")
         user = body.get("user")
         wallet = user.get("wallet") if isinstance(user, dict) else None
         if not isinstance(wallet, int) or isinstance(wallet, bool):
-            raise WaxpeerError(f"/user response missing numeric user.wallet: {body!r}"[:500])
+            log.warning("waxpeer.missing_wallet", body=body)
+            raise WaxpeerError(
+                f"/user response missing numeric user.wallet: {body!r}"[:500], body=raw_text
+            )
         return wallet
 
 
