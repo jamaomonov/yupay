@@ -1,12 +1,9 @@
 """Recorded Waxpeer shapes — taken from https://api.waxpeer.com/docs/json.
 
-``get_balance_units`` is defensive about the ``GET /v1/user`` response shape:
-the real payload has never been observed against the live API (only the
-recorded docs shape below), so the client accepts a numeric balance under
-``user.wallet``, top-level ``wallet``, or top-level ``balance`` — whichever
-is present first — instead of committing to a single guessed shape. A later
-task should confirm the real shape against the live API and, if it differs
-from all three, extend the accepted shapes.
+``get_balance_units`` reads the balance from ``user.wallet`` only. This
+shape (``{"success": true, "user": {"wallet": <int>, ...}}``) has been
+confirmed against the live API with a real key — no fallback shapes are
+accepted; a response missing ``user.wallet`` raises ``WaxpeerError``.
 """
 
 from __future__ import annotations
@@ -17,13 +14,15 @@ import respx
 from yupay.modules.fulfillment.suppliers.waxpeer_client import (
     WaxpeerClient,
     WaxpeerError,
+    WaxpeerUnavailableError,
 )
 
 BASE = "https://api.waxpeer.test/v1"
+API_KEY = "k"
 
 
 def _client() -> WaxpeerClient:
-    return WaxpeerClient(api_key="k", base_url=BASE, timeout_seconds=5.0)
+    return WaxpeerClient(api_key=API_KEY, base_url=BASE, timeout_seconds=5.0)
 
 
 @respx.mock
@@ -88,6 +87,47 @@ async def test_create_topup_raises_on_api_level_failure() -> None:
 
 
 @respx.mock
+async def test_create_topup_failure_carries_raw_body() -> None:
+    # WaxpeerError.body must carry the raw payload — the fulfiller (a later
+    # task) needs to re-parse it, the same way G2bError.body is re-parsed by
+    # g2b_client._verdict_or_none.
+    respx.post(f"{BASE}/steam-topup").mock(
+        return_value=httpx.Response(200, json={"success": False, "msg": "not enough balance"})
+    )
+    with pytest.raises(WaxpeerError) as exc:
+        await _client().create_topup(steam_login="gaben", amount_units=5000, custom_id="c1")
+    assert exc.value.body != ""
+    assert "not enough balance" in exc.value.body
+
+
+@respx.mock
+async def test_request_sends_the_configured_api_key() -> None:
+    route = respx.get(f"{BASE}/steam-topup/validate").mock(
+        return_value=httpx.Response(200, json={"success": True, "valid": True})
+    )
+    await _client().validate_login("gaben")
+    assert route.calls.last.request.url.params["api"] == API_KEY
+
+
+@respx.mock
+async def test_request_raises_waxpeer_error_on_http_error_status() -> None:
+    respx.get(f"{BASE}/steam-topup/validate").mock(
+        return_value=httpx.Response(503, text="service unavailable")
+    )
+    with pytest.raises(WaxpeerError) as exc:
+        await _client().validate_login("gaben")
+    assert exc.value.status == 503
+    assert "service unavailable" in exc.value.body
+
+
+@respx.mock
+async def test_request_raises_waxpeer_unavailable_on_transport_failure() -> None:
+    respx.get(f"{BASE}/steam-topup/validate").mock(side_effect=httpx.ConnectError("boom"))
+    with pytest.raises(WaxpeerUnavailableError):
+        await _client().validate_login("gaben")
+
+
+@respx.mock
 async def test_get_topup_by_custom_id() -> None:
     route = respx.get(f"{BASE}/steam-topup").mock(
         return_value=httpx.Response(
@@ -111,6 +151,31 @@ async def test_get_topup_by_custom_id() -> None:
 
 
 @respx.mock
+async def test_get_topup_maps_unrecognised_status_to_unknown() -> None:
+    # A status Waxpeer might add later must never be silently read as an
+    # existing status: "completed" would mark undelivered goods delivered,
+    # "canceled" would trigger a refund that never happened.
+    respx.get(f"{BASE}/steam-topup").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "success": True,
+                "topup": {
+                    "id": 1,
+                    "custom_id": "c1",
+                    "status": "refunded",
+                    "amount": 1000,
+                    "give_amount": 1000,
+                    "steam_login": "gaben",
+                },
+            },
+        )
+    )
+    topup = await _client().get_topup(custom_id="c1")
+    assert topup.status == "unknown"
+
+
+@respx.mock
 async def test_get_balance_units_reads_user_wallet() -> None:
     respx.get(f"{BASE}/user").mock(
         return_value=httpx.Response(200, json={"success": True, "user": {"wallet": 123456}})
@@ -119,38 +184,9 @@ async def test_get_balance_units_reads_user_wallet() -> None:
 
 
 @respx.mock
-async def test_get_balance_units_reads_top_level_wallet() -> None:
-    # Guessed fallback shape — accepted in case the balance isn't nested
-    # under "user" the way the docs suggest.
+async def test_get_balance_units_raises_when_user_wallet_missing() -> None:
     respx.get(f"{BASE}/user").mock(
-        return_value=httpx.Response(200, json={"success": True, "wallet": 654321})
+        return_value=httpx.Response(200, json={"success": True, "user": {"id": 1}})
     )
-    assert await _client().get_balance_units() == 654321
-
-
-@respx.mock
-async def test_get_balance_units_reads_balance_key() -> None:
-    # Guessed fallback shape — accepted in case Waxpeer names the field
-    # "balance" instead of "wallet".
-    respx.get(f"{BASE}/user").mock(
-        return_value=httpx.Response(200, json={"success": True, "balance": 42})
-    )
-    assert await _client().get_balance_units() == 42
-
-
-@respx.mock
-async def test_get_balance_units_prefers_user_wallet_when_multiple_present() -> None:
-    respx.get(f"{BASE}/user").mock(
-        return_value=httpx.Response(
-            200,
-            json={"success": True, "user": {"wallet": 111}, "wallet": 222, "balance": 333},
-        )
-    )
-    assert await _client().get_balance_units() == 111
-
-
-@respx.mock
-async def test_get_balance_units_raises_when_no_known_shape_matches() -> None:
-    respx.get(f"{BASE}/user").mock(return_value=httpx.Response(200, json={"success": True}))
     with pytest.raises(WaxpeerError):
         await _client().get_balance_units()

@@ -49,11 +49,13 @@ policy live in the fulfiller (Task 6).
 
 - Consumes: nothing.
 - Produces:
-  - `WaxpeerError(status: int, body: str)`, `WaxpeerUnavailableError(message: str)`
+  - `WaxpeerError(message: str, *, status: int = 200, body: str = "")` — carries
+    `.status` and `.body` (raw response text, mirroring `G2bError.body`);
+    `WaxpeerUnavailableError(message: str)`
   - `WaxpeerTopup` frozen dataclass: `id: int`, `custom_id: str | None`,
     `status: WaxpeerStatus`, `amount_units: int`, `give_amount_units: int`,
     `steam_login: str`
-  - `WaxpeerStatus = Literal["created", "sending", "completed", "canceled", "error"]`
+  - `WaxpeerStatus = Literal["created", "sending", "completed", "canceled", "error", "unknown"]`
   - `WaxpeerClient(api_key, base_url, timeout_seconds, client=None)` with
     `async validate_login(steam_login) -> tuple[bool, str | None]`,
     `async create_topup(*, steam_login, amount_units, custom_id) -> WaxpeerTopup`,

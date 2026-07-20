@@ -12,10 +12,11 @@ Two things about this API drive the shape below:
   This layer keeps amounts as plain ``int`` units — no Decimal/dollar
   conversion happens here.
 
-``get_balance_units`` is defensive about the ``GET /v1/user`` response shape:
-we have only the recorded docs shape (``user.wallet``), never a live-API
-capture, so it also accepts a top-level ``wallet`` or ``balance`` key as
-fallbacks. See the module docstring in the contract test for the rationale.
+``get_balance_units`` reads ``GET /v1/user`` and pulls the balance from
+``user.wallet`` only — this shape has been verified against the live API
+with a real key. No fallback shapes are accepted; a response missing that
+field raises :class:`WaxpeerError` rather than risking a silently wrong
+balance in a financial availability check.
 """
 
 from __future__ import annotations
@@ -31,15 +32,22 @@ from yupay.core.logging import get_logger
 
 log = get_logger("yupay.fulfillment.waxpeer")
 
-WaxpeerStatus = Literal["created", "sending", "completed", "canceled", "error"]
+WaxpeerStatus = Literal["created", "sending", "completed", "canceled", "error", "unknown"]
 
 
 class WaxpeerError(Exception):
-    """Waxpeer refused the call (transport ok, business failure)."""
+    """Waxpeer refused the call (transport ok, business failure).
 
-    def __init__(self, message: str, *, status: int = 200) -> None:
+    ``body`` carries the raw response text, mirroring ``G2bError.body`` — the
+    fulfiller that wraps this client (a later task) needs the raw payload to
+    tell a real error apart from a legitimate verdict, the same way
+    ``g2b_client._verdict_or_none`` re-parses ``G2bError.body``.
+    """
+
+    def __init__(self, message: str, *, status: int = 200, body: str = "") -> None:
         super().__init__(message)
         self.status = status
+        self.body = body
 
 
 class WaxpeerUnavailableError(Exception):
@@ -114,10 +122,12 @@ class WaxpeerClient:
         log.info("waxpeer.request", method=method, path=path, status=resp.status_code)
 
         if resp.status_code >= 400:
-            raise WaxpeerError(resp.text[:500], status=resp.status_code)
+            raise WaxpeerError(resp.text[:500], status=resp.status_code, body=resp.text)
         body: dict[str, Any] = resp.json()
         if not body.get("success", False):
-            raise WaxpeerError(str(body.get("msg") or "waxpeer refused the request"))
+            raise WaxpeerError(
+                str(body.get("msg") or "waxpeer refused the request"), body=resp.text
+            )
         return body
 
     @staticmethod
@@ -126,7 +136,7 @@ class WaxpeerClient:
         return WaxpeerTopup(
             id=int(raw["id"]),
             custom_id=raw.get("custom_id"),
-            status=raw["status"],
+            status=_normalise_status(raw["status"]),
             amount_units=int(raw["amount"]),
             give_amount_units=int(raw.get("give_amount", raw["amount"])),
             steam_login=str(raw.get("steam_login", "")),
@@ -166,28 +176,39 @@ class WaxpeerClient:
     async def get_balance_units(self) -> int:
         """Return our Waxpeer wallet balance, in the same units as ``amount``.
 
-        The real ``GET /v1/user`` payload shape has never been observed
-        against the live API — only the recorded docs shape
-        (``{"user": {"wallet": ...}}``). To avoid silently misreading an
-        unrecognised shape as a zero balance, this checks, in order,
-        ``user.wallet``, top-level ``wallet``, then top-level ``balance``,
-        and raises :class:`WaxpeerError` if none of them is present and
-        numeric.
+        Reads ``user.wallet`` from the ``GET /v1/user`` response — this shape
+        (``{"success": true, "user": {"wallet": <int>, ...}}``) has been
+        verified against the live API. Raises :class:`WaxpeerError` if
+        ``user.wallet`` is missing or not an ``int``, rather than risking a
+        silently wrong balance in what is a financial availability check.
         """
         body = await self._request("GET", "/user")
         user = body.get("user")
-        candidates: tuple[Any, ...] = (
-            user.get("wallet") if isinstance(user, dict) else None,
-            body.get("wallet"),
-            body.get("balance"),
-        )
-        for candidate in candidates:
-            if isinstance(candidate, (int, float)) and not isinstance(candidate, bool):
-                return int(candidate)
-        raise WaxpeerError(
-            "unrecognised /user response shape: no numeric balance in "
-            "user.wallet, wallet, or balance"
-        )
+        wallet = user.get("wallet") if isinstance(user, dict) else None
+        if not isinstance(wallet, int) or isinstance(wallet, bool):
+            raise WaxpeerError(f"/user response missing numeric user.wallet: {body!r}"[:500])
+        return wallet
+
+
+def _normalise_status(raw: Any) -> WaxpeerStatus:
+    """Map a raw ``topup.status`` value to :data:`WaxpeerStatus`.
+
+    An unrecognised value must never be silently read as ``"completed"``
+    (would mark undelivered goods delivered) or ``"canceled"`` (would trigger
+    a refund we did not receive) — it maps to ``"unknown"`` instead, with a
+    warning logged so the drift gets noticed.
+    """
+    known: tuple[WaxpeerStatus, ...] = (
+        "created",
+        "sending",
+        "completed",
+        "canceled",
+        "error",
+    )
+    if raw in known:
+        return raw  # type: ignore[no-any-return]
+    log.warning("waxpeer.unknown_status", raw_status=raw)
+    return "unknown"
 
 
 __all__ = [
