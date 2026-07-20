@@ -23,6 +23,7 @@ from yupay.modules.fulfillment.suppliers.base import (
 from yupay.modules.fulfillment.suppliers.g2b import G2bFulfiller
 from yupay.modules.fulfillment.suppliers.manual import ManualFulfiller
 from yupay.modules.fulfillment.suppliers.mock import MockFulfiller
+from yupay.modules.fulfillment.suppliers.waxpeer import WaxpeerFulfiller
 
 REGISTRY: dict[str, Fulfiller] = {
     "mock": MockFulfiller(),
@@ -34,6 +35,9 @@ REGISTRY: dict[str, Fulfiller] = {
     # ``settings.g2b_api_key`` at request time, so a hot-reloaded key flips
     # the adapter on without a process restart.
     "g2b": G2bFulfiller(),
+    # Steam wallet top-ups. ``available`` reads ``settings.waxpeer_api_key``
+    # at request time, same hot-reload behaviour as g2b above.
+    "waxpeer": WaxpeerFulfiller(),
     "steam": StubFulfiller(
         supplier="steam",
         todo_message="Steam supplier not integrated yet; see ADR-0013.",
@@ -88,6 +92,7 @@ __all__ = [
     "ManualFulfiller",
     "MockFulfiller",
     "StubFulfiller",
+    "WaxpeerFulfiller",
     "available_suppliers",
     "get_fulfiller",
 ]
