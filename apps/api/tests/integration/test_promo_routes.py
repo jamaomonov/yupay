@@ -167,6 +167,8 @@ async def test_redeem_twice_conflicts_but_replays_with_same_key(
     # A NEW attempt is a genuine second redemption → refused.
     again = await _redeem(integration_client, token=token, code="ONCE5", key="pr-1006b-padpadpad")
     assert again.status_code == 409, again.text
+    # The client branches on ``code``, not on the English detail.
+    assert again.json()["code"] == "already_redeemed"
 
     # Balance credited exactly once.
     assert await _usd_balance(integration_client, token) == Decimal("5.00")
@@ -187,6 +189,7 @@ async def test_redeem_respects_global_cap(
         integration_client, token=second_user, code="CAP1", key="pr-1009-padpadpadpad"
     )
     assert r.status_code == 409, r.text
+    assert r.json()["code"] == "exhausted"
 
 
 async def test_redeem_expired_and_deactivated_conflict(
@@ -200,6 +203,7 @@ async def test_redeem_expired_and_deactivated_conflict(
     token = await _login_user(integration_client, tg_id=1011)
     r = await _redeem(integration_client, token=token, code="OLD5", key="pr-1011a-padpadpad")
     assert r.status_code == 409, r.text
+    assert r.json()["code"] == "expired"
 
     r = await integration_client.post(
         f"/api/v1/admin/promo/{created['id']}/deactivate",
@@ -208,6 +212,7 @@ async def test_redeem_expired_and_deactivated_conflict(
     assert r.status_code == 200, r.text
     r = await _redeem(integration_client, token=token, code="DEAD5", key="pr-1011b-padpadpad")
     assert r.status_code == 409, r.text
+    assert r.json()["code"] == "inactive"
 
 
 # ---------- the credited money is real: spend it ----------
@@ -333,3 +338,4 @@ async def test_admin_duplicate_code_conflicts(
         json={"code": "dup5", "amount": "1.00", "currency": "USD"},
     )
     assert r.status_code == 409, r.text
+    assert r.json()["code"] == "duplicate_code"

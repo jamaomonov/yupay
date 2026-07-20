@@ -13,10 +13,11 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 
 import { useToast } from "@/hooks/use-toast";
-import { ApiError, apiPost, newIdempotencyKey } from "@/lib/api";
+import { apiPost, newIdempotencyKey } from "@/lib/api";
 import { useMe } from "@/lib/auth";
 import { useDisplayCurrency } from "@/lib/currency";
 import { useT } from "@/lib/i18n";
+import { promoErrorKey } from "@/lib/promo";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import {
   type CurrencyBalance,
@@ -218,13 +219,7 @@ function PromoCodeCard() {
       void qc.invalidateQueries({ queryKey: ["wallet"] });
     },
     onError: (err) => {
-      const title =
-        err instanceof ApiError && err.status === 404
-          ? t("wallet.promoNotFound")
-          : err instanceof ApiError && err.status === 409
-            ? t("wallet.promoUsed")
-            : t("wallet.promoError");
-      toast({ title, variant: "destructive" });
+      toast({ title: t(promoErrorKey(err)), variant: "destructive" });
     },
   });
 

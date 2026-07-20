@@ -61,12 +61,12 @@ async def redeem(
     if existing is not None:
         if idempotency_key is not None and existing.idempotency_key == idempotency_key:
             return promo, existing  # timeout-retry replay
-        raise ConflictError("promo code already redeemed")
+        raise ConflictError("promo code already redeemed", code="already_redeemed")
 
     if not promo.active:
-        raise ConflictError("promo code is no longer active")
+        raise ConflictError("promo code is no longer active", code="inactive")
     if promo.expires_at is not None and now() > promo.expires_at:
-        raise ConflictError("promo code has expired")
+        raise ConflictError("promo code has expired", code="expired")
     if promo.max_redemptions is not None:
         used = (
             await db.execute(
@@ -76,7 +76,7 @@ async def redeem(
             )
         ).scalar_one()
         if used >= promo.max_redemptions:
-            raise ConflictError("promo code is fully redeemed")
+            raise ConflictError("promo code is fully redeemed", code="exhausted")
 
     user_wallet = await wallet_api.ensure_account(
         db, owner_type="user", owner_id=user_id, kind="user_wallet", currency=promo.currency
@@ -122,7 +122,7 @@ async def redeem(
             db.add(redemption)
             await db.flush()
     except IntegrityError as exc:
-        raise ConflictError("promo code already redeemed") from exc
+        raise ConflictError("promo code already redeemed", code="already_redeemed") from exc
 
     log.info("promo.redeemed", code=promo.code, amount=str(promo.amount))
     return promo, redemption
@@ -144,7 +144,9 @@ async def create_code(db: AsyncSession, *, body: PromoCreateIn, admin_id: str) -
             db.add(promo)
             await db.flush()
     except IntegrityError as exc:
-        raise ConflictError("a promo code with this value already exists") from exc
+        raise ConflictError(
+            "a promo code with this value already exists", code="duplicate_code"
+        ) from exc
     log.info("promo.created", code=promo.code, amount=str(promo.amount))
     return promo
 
