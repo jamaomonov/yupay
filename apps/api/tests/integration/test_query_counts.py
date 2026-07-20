@@ -17,10 +17,12 @@ from collections.abc import AsyncIterator
 from decimal import Decimal
 from urllib.parse import urlencode
 
+import fakeredis.aioredis
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import event, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from yupay.core.clock import now
 from yupay.core.ids import new_id
 from yupay.modules.catalog.models import (
     Brand,
@@ -31,6 +33,8 @@ from yupay.modules.catalog.models import (
     ProductTranslation,
     Sku,
 )
+from yupay.modules.fx.providers.base import FxProvider, Quote
+from yupay.modules.fx.service import FxService
 from yupay.modules.users.models import TelegramLink, User
 from yupay.modules.wallet import service as wallet_svc
 from yupay.modules.wallet.service import Leg
@@ -152,6 +156,97 @@ async def test_catalog_brands_listing_is_o1(
 
     with_five = await _measure_get(integration_client, sql_counter, "/api/v1/catalog/brands")
     assert with_five == with_one, f"brands list grew from {with_one} to {with_five} queries"
+
+
+class _StubProvider(FxProvider):
+    """Always answers with the fixed rate handed to it — no outbound HTTP.
+    Mirrors the stub in test_checkout_variable_amount.py."""
+
+    name = "stub"
+
+    def __init__(self, rates: dict[str, Decimal]) -> None:
+        self._rates = rates
+
+    def supports(self, base: str, quote: str) -> bool:
+        return base.upper() == "USD" and quote.upper() in self._rates
+
+    async def get_rate(self, base: str, quote: str) -> Quote:
+        return Quote(
+            base=base.upper(),
+            quote=quote.upper(),
+            rate=self._rates[quote.upper()],
+            fetched_at=now(),
+            source=self.name,
+        )
+
+
+def _stub_fx_service(rates: dict[str, Decimal]) -> FxService:
+    return FxService(
+        providers=[_StubProvider(rates)],
+        redis=fakeredis.aioredis.FakeRedis(decode_responses=True),
+    )
+
+
+def _seed_variable_sku(db: AsyncSession, *, product_id: str, n: int) -> None:
+    """Add one variable-amount SKU to an existing product."""
+    db.add(
+        Sku(
+            id=new_id(),
+            product_id=product_id,
+            sku_code=f"var-sku-{n}",
+            price_usd=Decimal("1"),
+            variable_amount=True,
+            min_amount_usd=Decimal("1.00"),
+            max_amount_usd=Decimal("300.00"),
+            rate_multiplier=Decimal("1.0800"),
+            sort_order=n,
+            active=True,
+        )
+    )
+
+
+async def test_catalog_product_detail_variable_skus_is_o1(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    sql_counter: dict[str, int],
+) -> None:
+    """A product page with several variable-amount SKUs must not re-derive
+    the guarded FX rate once per SKU (each check is several SQL statements) —
+    see the per-request ``rate_cache`` threaded through catalog.service's
+    _resolve_price / _resolve_variable_price."""
+    monkeypatch.setattr(
+        "yupay.modules.pricing.fx_guard.build_default_service",
+        lambda: _stub_fx_service({"UZS": Decimal("13000")}),
+    )
+    category = Category(id=new_id(), slug="wallets-qc", sort_order=1, active=True)
+    brand = Brand(id=new_id(), slug="steam-qc", category_id=category.id, sort_order=1, active=True)
+    product = Product(
+        id=new_id(),
+        slug="steam-wallet-qc",
+        brand_id=brand.id,
+        kind="top_up",
+        sort_order=1,
+        active=True,
+        required_fields=[],
+    )
+    db_session.add_all([category, brand, product])
+    _seed_variable_sku(db_session, product_id=product.id, n=1)
+    await db_session.commit()
+
+    url = f"/api/v1/catalog/products/{product.slug}?currency=UZS"
+    await integration_client.get(url)  # warm-up, untracked (creates the fx snapshot row)
+    with_one = await _measure_get(integration_client, sql_counter, url)
+
+    for n in range(2, 6):
+        _seed_variable_sku(db_session, product_id=product.id, n=n)
+    await db_session.commit()
+
+    with_five = await _measure_get(integration_client, sql_counter, url)
+    assert with_five == with_one, (
+        f"product detail with 5 variable SKUs grew from {with_one} to {with_five} queries "
+        "— guarded rate is being re-derived per SKU instead of memoized per request"
+    )
 
 
 async def test_catalog_categories_listing_is_o1(

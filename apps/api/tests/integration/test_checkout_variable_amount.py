@@ -234,6 +234,46 @@ async def test_amount_is_rejected_for_a_fixed_sku(
     assert r.status_code == 422, r.text
 
 
+async def test_qty_other_than_one_is_rejected_for_a_variable_sku(
+    integration_client: AsyncClient, _variable_sku: Sku
+) -> None:
+    """Quantity is meaningless for a customer-chosen amount — buying "more"
+    means entering a bigger amount, not qty=2. Fulfillment creates exactly
+    one FulfillmentTask per OrderItem and bills the supplier for
+    unit_price_usd with no × qty, so qty=2 would charge the customer twice
+    while topping up the Steam wallet only once. Must 422 before pricing or
+    fulfillment ever sees the line."""
+    token = await _login_user(integration_client, tg_id=110)
+    r = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "variable-qty2-aaaaaaaaaa",
+        },
+        json=_order_body(sku_id=_variable_sku.id, qty=2, amount_usd="10"),
+    )
+    assert r.status_code == 422, r.text
+
+
+async def test_usd_checkout_is_rejected_for_a_variable_sku(
+    integration_client: AsyncClient, _variable_sku: Sku
+) -> None:
+    """The pricing model for these SKUs is "USD amount × guarded local rate ×
+    margin multiplier" — there is no margin-bearing USD price. A USD
+    checkout would be face value at zero margin, so it must 422 instead of
+    silently selling at (or below) cost."""
+    token = await _login_user(integration_client, tg_id=111)
+    r = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "variable-usd-aaaaaaaaaaa",
+        },
+        json=_order_body(sku_id=_variable_sku.id, currency="USD", amount_usd="10"),
+    )
+    assert r.status_code == 422, r.text
+
+
 async def test_amount_outside_the_sku_bounds_is_rejected(
     integration_client: AsyncClient, _variable_sku: Sku
 ) -> None:
@@ -301,7 +341,13 @@ async def test_checkout_refused_when_supplier_balance_is_short(
     monkeypatch: pytest.MonkeyPatch,
     _variable_sku: Sku,
 ) -> None:
-    """Waxpeer balance below the gross needed => 502 and no order row."""
+    """Waxpeer balance below the gross needed => 502 and no order row.
+
+    Currency is UZS, not the ``_order_body`` default of USD: a variable-amount
+    line in USD is now rejected outright (422, see
+    ``test_usd_checkout_is_rejected_for_a_variable_sku``) before checkout ever
+    reaches the supplier-balance preflight this test exercises.
+    """
     db_session.add(
         SkuSupplierMapping(
             sku_id=_variable_sku.id,
@@ -321,7 +367,7 @@ async def test_checkout_refused_when_supplier_balance_is_short(
             "Authorization": f"Bearer {token}",
             "Idempotency-Key": "low-balance-aaaaaaaaaaa",
         },
-        json=_order_body(sku_id=_variable_sku.id, amount_usd="10"),
+        json=_order_body(sku_id=_variable_sku.id, currency="UZS", amount_usd="10"),
     )
     assert r.status_code == 502, r.text
     rows = (await db_session.execute(select(Order))).scalars().all()

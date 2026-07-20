@@ -157,7 +157,7 @@ async def _existing_idempotent_order(
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
-def _resolve_line_unit_price(sku: Sku, line: OrderItemIn) -> Decimal:
+def _resolve_line_unit_price(sku: Sku, line: OrderItemIn, currency: str) -> Decimal:
     """The USD amount one order line bills for.
 
     A variable-amount SKU (Steam wallet top-up) bills for the customer's
@@ -166,11 +166,38 @@ def _resolve_line_unit_price(sku: Sku, line: OrderItemIn) -> Decimal:
     all — either direction of mismatch is a 422, never a silently-ignored or
     silently-zeroed price.
 
+    Two more illegal combinations are refused here, before pricing or
+    fulfillment ever sees them:
+
+    * ``qty != 1`` on a variable-amount line. Fulfillment creates exactly one
+      ``FulfillmentTask`` per ``OrderItem`` and sends the supplier
+      ``unit_price_usd`` with no ``× qty`` — so "qty=2" would charge the
+      customer twice while topping up only once. Quantity is meaningless for
+      a customer-chosen amount anyway: buying more means entering a bigger
+      amount, not a higher qty.
+    * ``currency == "USD"`` on a variable-amount line. The whole pricing
+      model for these SKUs is "USD amount × guarded local-currency rate ×
+      margin multiplier" — there is no margin-bearing USD price, so a USD
+      sale would be face value at zero margin (or below cost, once a
+      supplier fee is configured).
+
     Raises:
         ValidationError: ``amount_usd`` is missing/out of bounds for a
-            variable SKU, or present for a fixed one.
+            variable SKU, present for a fixed one, or the line is a
+            variable-amount SKU with ``qty != 1`` or ``currency == "USD"``.
     """
     if sku.variable_amount:
+        if line.qty != 1:
+            raise ValidationError(
+                "this product is bought by amount, not quantity — set qty to 1 and "
+                "adjust amount_usd instead",
+                extra={"sku_id": sku.id, "qty": line.qty},
+            )
+        if currency == "USD":
+            raise ValidationError(
+                "this product cannot be purchased in USD — choose a local currency",
+                extra={"sku_id": sku.id, "currency": currency},
+            )
         if line.amount_usd is None:
             raise ValidationError("amount is required for this product", extra={"sku_id": sku.id})
         validate_amount(
@@ -238,6 +265,13 @@ async def _compute_total_charged(
     a live FX rate only when no override exists for the selected currency;
     variable-amount lines never use either path (see
     :func:`_variable_line_charge`).
+
+    The ``currency == "USD"`` short-circuit below is only safe because
+    ``_resolve_line_unit_price`` already refused any variable-amount line
+    paired with ``currency == "USD"`` — by the time an order reaches this
+    function, USD + variable-amount can no longer coexist, so face-value
+    ``total_usd`` is never mistaken for a margin-bearing price on one of
+    those lines.
 
     Returns:
         ``(total_charged, fx_snapshot_id)`` — ``fx_snapshot_id`` stays
@@ -346,6 +380,9 @@ async def create_order(
         raise ValidationError("unknown or inactive SKU", extra={"sku_ids": missing})
 
     # 2) Build order items with frozen price + validated fulfillment_data.
+    # Resolved once, up front, so the variable-amount×USD guard in
+    # _resolve_line_unit_price sees the real order currency for every line.
+    currency = body.currency.upper()
     order_id = new_id()
     items: list[OrderItem] = []
     total_usd = Decimal("0")
@@ -353,7 +390,7 @@ async def create_order(
         sku = skus[line.sku_id]
         product: Product = sku.product
         cleaned = validate_fulfillment_data(product=product, data=line.fulfillment_data)
-        unit_price_usd = _resolve_line_unit_price(sku, line)
+        unit_price_usd = _resolve_line_unit_price(sku, line, currency)
 
         await _preflight_variable_supplier_balance(
             db, sku=sku, unit_price_usd=unit_price_usd, qty=line.qty
@@ -372,7 +409,6 @@ async def create_order(
         total_usd += unit_price_usd * line.qty
 
     # 3) Per-currency total (see _compute_total_charged for the policy).
-    currency = body.currency.upper()
     total_charged, fx_snapshot_id = await _compute_total_charged(
         db,
         body=body,

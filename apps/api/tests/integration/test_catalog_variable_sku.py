@@ -178,6 +178,29 @@ async def test_variable_sku_reports_no_price_when_the_rate_is_rejected(
     assert r.json()["display_price"] is None
 
 
+async def test_variable_sku_reports_no_price_for_usd(
+    integration_client: AsyncClient, db_session: AsyncSession, _sku: Sku
+) -> None:
+    """A variable-amount SKU has no margin-bearing USD price — checkout
+    refuses to sell one in USD, so the catalog must not advertise a
+    face-value USD price either. Both the explicit ``currency=USD`` request
+    and the default/no-currency case must report display_price=None, the
+    same "not sold this way" signal as a rejected rate."""
+    _sku.variable_amount = True
+    _sku.min_amount_usd = Decimal("1.00")
+    _sku.max_amount_usd = Decimal("300.00")
+    _sku.rate_multiplier = Decimal("1.0800")
+    await db_session.commit()
+
+    r = await integration_client.get(f"/api/v1/catalog/skus/{_sku.id}?currency=USD")
+    assert r.status_code == 200, r.text
+    assert r.json()["display_price"] is None
+
+    r_default = await integration_client.get(f"/api/v1/catalog/skus/{_sku.id}")
+    assert r_default.status_code == 200, r_default.text
+    assert r_default.json()["display_price"] is None
+
+
 async def test_variable_sku_fields_surface_on_the_catalog_read_path(
     integration_client: AsyncClient, db_session: AsyncSession, _sku: Sku
 ) -> None:

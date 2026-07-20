@@ -106,16 +106,34 @@ def _brand_summary(brand: Brand, locale: str) -> BrandOut:
     )
 
 
-async def _resolve_variable_price(db: AsyncSession, sku: Sku, cu: str) -> PriceOut | None:
+async def _resolve_variable_price(
+    db: AsyncSession, sku: Sku, cu: str, *, rate_cache: dict[str, Decimal | None]
+) -> PriceOut | None:
     """Display price for a variable-amount SKU: the guarded rate times the
     SKU's own margin multiplier, applied to ``price_usd`` — the same
     computation checkout uses for that many dollars of the product. Returns
     ``None`` when the FX trust gate rejects the rate; never falls back to the
     raw market rate, since selling without margin is the loss the gate
-    exists to prevent."""
-    try:
-        market = await guarded_usd_rate(db, quote=cu)
-    except RateRejected:
+    exists to prevent.
+
+    ``rate_cache`` memoizes the guarded market rate per quote currency across
+    every SKU resolved within one catalog request (product detail, brand
+    detail, or listing) — mirroring the orders ``rate_cache`` in
+    ``orders.service._variable_line_charge``. Without it, a product or
+    listing page with several variable-amount SKUs would re-run the guarded
+    rate check (each a handful of SQL statements) once per SKU. Both hits and
+    rejections are cached: a currency present in the dict (even mapped to
+    ``None``) is never re-queried within the same request.
+    """
+    if cu in rate_cache:
+        market = rate_cache[cu]
+    else:
+        try:
+            market = await guarded_usd_rate(db, quote=cu)
+        except RateRejected:
+            market = None
+        rate_cache[cu] = market
+    if market is None:
         return None
     rate = display_rate(market, sku.rate_multiplier or Decimal("1"))
     return PriceOut(amount=price_in_quote(sku.price_usd, rate=rate), currency=cu, source="fx")
@@ -127,23 +145,39 @@ async def _resolve_price(
     *,
     currency: str | None,
     fx: FxService | None,
+    rate_cache: dict[str, Decimal | None],
 ) -> PriceOut | None:
     """Resolve the display price. Override → FX → ``None``. FX failures swallowed.
 
     Variable-amount SKUs (the customer picks the dollar amount at checkout —
     Steam wallet top-ups) go through :func:`_resolve_variable_price` instead:
     there's no SkuPrice override and no plain FX snapshot for them, only the
-    guarded rate times the margin multiplier.
+    guarded rate times the margin multiplier. They also have no margin-bearing
+    USD price at all — checkout refuses to sell one in USD (see
+    ``orders.service._resolve_line_unit_price``) — so USD (explicit or the
+    default/no-currency case) resolves to ``None`` here too, the same
+    "not sold this way" signal as a rejected rate, never face-value
+    ``price_usd``.
     """
     if not currency:
         return None
     cu = currency.upper()
+
+    if sku.variable_amount:
+        if cu == "USD":
+            return None
+        return await _resolve_variable_price(db, sku, cu, rate_cache=rate_cache)
+
     if cu == "USD":
         return PriceOut(amount=sku.price_usd, currency="USD", source="usd")
 
-    if sku.variable_amount:
-        return await _resolve_variable_price(db, sku, cu)
+    return await _resolve_fixed_price(sku, cu, fx)
 
+
+async def _resolve_fixed_price(sku: Sku, cu: str, fx: FxService | None) -> PriceOut | None:
+    """Override → FX → ``None``, for a fixed-price (non-variable-amount) SKU
+    once ``currency`` is known to be non-USD. Split out of :func:`_resolve_price`
+    to keep each branch's return-statement count small."""
     overrides = {o.currency.upper(): o for o in sku.price_overrides}
     explicit = overrides.get(cu)
     if explicit is not None:
@@ -266,6 +300,9 @@ async def get_brand_by_slug(
         if picked is not None:
             faqs_out.append(FaqOut(id=faq.id, question=picked[0], answer=picked[1]))
 
+    # Memoizes the guarded rate per currency across every product on this
+    # brand page — see _resolve_variable_price.
+    rate_cache: dict[str, Decimal | None] = {}
     products_out: list[ProductSummaryOut] = []
     for product in sorted((p for p in brand.products if p.active), key=lambda p: p.sort_order):
         active_skus = sorted(
@@ -275,7 +312,9 @@ async def get_brand_by_slug(
         if not active_skus:
             continue
         starting = active_skus[0]
-        display = await _resolve_price(db, starting, currency=currency, fx=fx)
+        display = await _resolve_price(
+            db, starting, currency=currency, fx=fx, rate_cache=rate_cache
+        )
         products_out.append(
             _build_product_summary(product, locale=locale, starting=starting, display=display)
         )
@@ -323,6 +362,9 @@ async def list_products(
 
     rows = (await db.execute(stmt)).scalars().all()
 
+    # Memoizes the guarded rate per currency across every product in this
+    # listing — see _resolve_variable_price.
+    rate_cache: dict[str, Decimal | None] = {}
     summaries: list[ProductSummaryOut] = []
     for product in rows:
         active_skus = sorted(
@@ -332,7 +374,9 @@ async def list_products(
         if not active_skus:
             continue
         starting = active_skus[0]
-        display = await _resolve_price(db, starting, currency=currency, fx=fx)
+        display = await _resolve_price(
+            db, starting, currency=currency, fx=fx, rate_cache=rate_cache
+        )
         summaries.append(
             _build_product_summary(product, locale=locale, starting=starting, display=display)
         )
@@ -361,9 +405,13 @@ async def get_product_by_slug(
         return None
 
     name, short_desc, description, _ = _pick_translation(product.translations, locale)
+    # Memoizes the guarded rate per currency across every SKU on this product
+    # page — see _resolve_variable_price. This is the case the N+1 bites
+    # hardest: a single product can list several variable-amount SKUs.
+    rate_cache: dict[str, Decimal | None] = {}
     skus_out: list[SkuOut] = []
     for sku in sorted((s for s in product.skus if s.active), key=lambda s: s.sort_order):
-        display = await _resolve_price(db, sku, currency=currency, fx=fx)
+        display = await _resolve_price(db, sku, currency=currency, fx=fx, rate_cache=rate_cache)
         skus_out.append(
             SkuOut(
                 id=sku.id,
@@ -410,7 +458,7 @@ async def get_sku_by_id(
     sku = (await db.execute(stmt)).scalar_one_or_none()
     if sku is None:
         return None
-    display = await _resolve_price(db, sku, currency=currency, fx=fx)
+    display = await _resolve_price(db, sku, currency=currency, fx=fx, rate_cache={})
     return SkuOut(
         id=sku.id,
         sku_code=sku.sku_code,
