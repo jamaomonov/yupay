@@ -82,6 +82,26 @@
 }
 
 :root {
+  /* Safe areas — everything that touches a screen edge reads these, never a
+     device-specific pixel guess.
+
+     `--app-inset-*` is written by `lib/telegram.ts` from the client's
+     safeAreaInset (notch / home indicator) PLUS contentSafeAreaInset (the
+     floating close/back chip in fullscreen). The env() fallbacks cover plain
+     browsers and Telegram clients older than Bot API 8.0, where the insets
+     don't exist at all.
+
+     The rest are layout constants, not device values: header content height,
+     and the bottom-nav pill with the gap it keeps from the safe edge. */
+  --app-inset-top: env(safe-area-inset-top, 0px);
+  --app-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --app-header-h: 64px;
+  --app-nav-h: 56px;
+  --app-nav-gap: 16px;
+  /* Derived: the full band each fixed bar occupies, inset included. */
+  --app-header-total: calc(var(--app-inset-top) + var(--app-header-h));
+  --app-nav-total: calc(var(--app-inset-bottom) + var(--app-nav-gap) + var(--app-nav-h));
+
   --button-outline: rgba(255, 255, 255, 0.1);
   --badge-outline: rgba(255, 255, 255, 0.05);
   --opaque-button-border-intensity: 9;

@@ -849,7 +849,7 @@ export default function TopUp() {
       </motion.div>
 
       {/* ── Fixed CTA ── */}
-      <div className="fixed bottom-[96px] left-1/2 z-40 w-full max-w-[430px] -translate-x-1/2 px-4">
+      <div className="fixed bottom-[calc(var(--app-nav-total)_+_8px)] left-1/2 z-40 w-full max-w-[430px] -translate-x-1/2 px-4">
         {/* Settlement disclaimer — only shown when the gateway will charge
             in a currency different from the displayed one. Keeps the CTA
             honest without forcing a live FX preview. */}

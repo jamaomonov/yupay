@@ -74,6 +74,11 @@ export interface TelegramWebApp {
   };
   openLink?: (url: string, options?: { try_instant_view?: boolean }) => void;
   openTelegramLink?: (url: string) => void;
+  // Bot API 6.1+. The events we care about are 8.0+ (`safeAreaChanged`,
+  // `contentSafeAreaChanged`, `fullscreenChanged`); subscribing on an older
+  // client is harmless, they simply never fire.
+  onEvent?: (event: string, handler: () => void) => void;
+  offEvent?: (event: string, handler: () => void) => void;
 }
 
 declare global {
@@ -123,15 +128,13 @@ export function readyTelegram(): void {
  * unaffected.
  */
 export function maximiseTelegramViewport(): void {
-  // Dev shortcut: when running outside Telegram, append
-  // ``?tg-fullscreen=1`` to the URL to simulate the safe-area offset
-  // locally (Chrome devtools mobile view, etc.). Skipped silently in
-  // SSR / no-window contexts.
+  // Dev shortcut: outside Telegram, append ``?tg-fullscreen=1`` to preview
+  // the fullscreen offsets locally (Chrome devtools mobile view, etc.).
   if (typeof window !== "undefined" && typeof document !== "undefined") {
     try {
       const url = new URL(window.location.href);
       if (url.searchParams.get("tg-fullscreen") === "1") {
-        document.documentElement.style.setProperty("--app-tg-fullscreen-top", "56px");
+        setInsetVars(FULLSCREEN_TOP_FALLBACK_PX, 0);
       }
     } catch {
       /* malformed URL — ignore */
@@ -193,15 +196,100 @@ export function maximiseTelegramViewport(): void {
       /* not supported */
     }
   }
-  // Telegram's own ``--tg-content-safe-area-inset-top`` is hydrated
-  // asynchronously and is empty on the first paint, so a ``max(var(),
-  // 0)`` resolves to 0 and the header sits *under* the floating
-  // close/back chip. Set our own var ourselves the moment we know
-  // we're in fullscreen — the value comes from observation (56 px is
-  // the close/back chip footprint on every Telegram client where
-  // requestFullscreen is supported, give or take a few pixels).
-  if (wentFullscreen && typeof document !== "undefined") {
-    document.documentElement.style.setProperty("--app-tg-fullscreen-top", "56px");
+  // Telegram hydrates its own inset vars asynchronously — they're empty on
+  // the first paint. Publish what the client already knows, then let the
+  // subscription below correct it as values land and as the user rotates,
+  // enters/leaves fullscreen, or the keyboard resizes the viewport.
+  syncTelegramInsets({ assumeFullscreen: wentFullscreen });
+  watchTelegramInsets();
+}
+
+/** Chip footprint to assume while the client hasn't reported insets yet. */
+const FULLSCREEN_TOP_FALLBACK_PX = 56;
+
+const INSET_EVENTS = [
+  "safeAreaChanged",
+  "contentSafeAreaChanged",
+  "fullscreenChanged",
+  "viewportChanged",
+] as const;
+
+function setInsetVars(top: number, bottom: number): void {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  root.style.setProperty("--app-inset-top", `${String(Math.max(0, Math.round(top)))}px`);
+  root.style.setProperty("--app-inset-bottom", `${String(Math.max(0, Math.round(bottom)))}px`);
+}
+
+export interface Inset {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+/**
+ * Sum the device and Telegram-chrome insets into the offsets our layout uses.
+ *
+ * ``null`` means "this client reports nothing" — the caller then leaves the
+ * CSS ``env()`` fallback in charge instead of writing a value.
+ */
+export function computeInsetPx(
+  safe: Inset | undefined,
+  content: Inset | undefined,
+  fullscreen: boolean,
+): { top: number; bottom: number } | null {
+  if (!safe && !content) {
+    // Pre-8.0 client. Only the chip needs guessing, and only in fullscreen —
+    // env() has no idea Telegram is overlaying the top edge.
+    return fullscreen ? { top: FULLSCREEN_TOP_FALLBACK_PX, bottom: 0 } : null;
+  }
+  const top = (safe?.top ?? 0) + (content?.top ?? 0);
+  const bottom = (safe?.bottom ?? 0) + (content?.bottom ?? 0);
+  return {
+    // A fullscreen client reporting 0 up top hasn't measured the chip yet —
+    // don't let the header slide under it in the meantime.
+    top: fullscreen && top === 0 ? FULLSCREEN_TOP_FALLBACK_PX : top,
+    bottom,
+  };
+}
+
+/**
+ * Publish the client's safe areas as ``--app-inset-top`` / ``--app-inset-bottom``.
+ *
+ * Two insets stack and both matter:
+ *   - ``safeAreaInset`` — the device: notch / dynamic island, home indicator.
+ *   - ``contentSafeAreaInset`` — Telegram's own chrome, i.e. the floating
+ *     close/back chip that overlays the WebView in fullscreen.
+ *
+ * Content laid out against a screen edge has to clear their sum. Clients older
+ * than Bot API 8.0 report neither; there we keep the CSS ``env()`` fallback and
+ * only assume the chip footprint when we know fullscreen was granted.
+ */
+export function syncTelegramInsets({ assumeFullscreen = false } = {}): void {
+  const wa = getWebApp();
+  if (!wa) return;
+  const next = computeInsetPx(
+    wa.safeAreaInset,
+    wa.contentSafeAreaInset,
+    assumeFullscreen || wa.isFullscreen === true,
+  );
+  if (next) setInsetVars(next.top, next.bottom);
+}
+
+/** Keep the inset vars in step with rotation / fullscreen / viewport changes. */
+export function watchTelegramInsets(): void {
+  const wa = getWebApp();
+  if (!wa || typeof wa.onEvent !== "function") return;
+  const handler = () => {
+    syncTelegramInsets();
+  };
+  for (const event of INSET_EVENTS) {
+    try {
+      wa.onEvent(event, handler);
+    } catch {
+      /* unknown event on this client — ignore */
+    }
   }
 }
 
