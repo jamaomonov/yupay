@@ -6,8 +6,9 @@ from yupay.modules.integrations import player_check as pc
 
 
 def test_product_is_checkable_true_when_field_has_g2b_check() -> None:
-    fields = [{"key": "player_id", "label": {"ru": "ID"}, "type": "text",
-               "check": {"provider": "g2b"}}]
+    fields = [
+        {"key": "player_id", "label": {"ru": "ID"}, "type": "text", "check": {"provider": "g2b"}}
+    ]
     assert pc.product_is_checkable(fields) is True
 
 
@@ -42,6 +43,4 @@ def test_cache_key_does_not_embed_raw_player_id() -> None:
 
 def test_cache_key_is_deterministic() -> None:
     assert pc._cache_key("pubgm", "51234567", None) == pc._cache_key("pubgm", "51234567", None)
-    assert pc._cache_key("pubgm", "51234567", "srv1") == pc._cache_key(
-        "pubgm", "51234567", "srv1"
-    )
+    assert pc._cache_key("pubgm", "51234567", "srv1") == pc._cache_key("pubgm", "51234567", "srv1")

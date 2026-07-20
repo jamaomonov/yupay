@@ -33,7 +33,8 @@ _CACHE_TTL_SECONDS = 300
 def product_is_checkable(required_fields: list[dict[str, Any]]) -> bool:
     """True when any form field opts into a g2b player check."""
     return any(
-        isinstance(f, dict) and isinstance(f.get("check"), dict)
+        isinstance(f, dict)
+        and isinstance(f.get("check"), dict)
         and f["check"].get("provider") == "g2b"
         for f in required_fields
     )
@@ -48,9 +49,7 @@ def _map_response(resp: dict[str, Any]) -> PlayerCheckOut:
     NOT ``"error"`` (which is reserved for our/supplier faults).
     """
     if str(resp.get("valid") or "").lower() == "valid":
-        return PlayerCheckOut(
-            status="valid", name=str(resp["name"]) if resp.get("name") else None
-        )
+        return PlayerCheckOut(status="valid", name=str(resp["name"]) if resp.get("name") else None)
     return PlayerCheckOut(status="invalid")
 
 
@@ -142,7 +141,9 @@ async def check_player_for_product(
     with contextlib.suppress(Exception):  # cache is best-effort
         await redis.set(key, out.model_dump_json(), ex=_CACHE_TTL_SECONDS)
     logger.info(
-        "player_check", game_code=game_code, player_id_hash=_hash_short(player_id),
+        "player_check",
+        game_code=game_code,
+        player_id_hash=_hash_short(player_id),
         status=out.status,
     )
     return out

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from decimal import Decimal
 
 import httpx
@@ -29,7 +30,7 @@ G2B_BASE = "https://g2b.test/v1"
 
 
 @pytest.fixture(autouse=True)
-def _g2b_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def _g2b_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Same wiring as ``test_integrations_g2b_game_endpoints.py``: the g2b
     fulfiller only reports ``available`` when ``G2B_API_KEY`` is set."""
     monkeypatch.setenv("G2B_API_KEY", "test-key")
