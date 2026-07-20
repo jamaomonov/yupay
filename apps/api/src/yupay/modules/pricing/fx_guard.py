@@ -85,11 +85,23 @@ def check_rate(
         raise RateRejected("out_of_band", f"rate={rate}")
 
 
-async def _previous_rate(db: AsyncSession, *, quote: str, exclude_id: str) -> Decimal | None:
-    """Most recent ``fx_rates`` row for USD→``quote`` other than ``exclude_id``."""
+async def _previous_rate(db: AsyncSession, *, quote: str) -> Decimal | None:
+    """Most recent ``fx_rates`` row for USD→``quote``.
+
+    ``fx_rates`` is the periodic-refresh history table: it is written only by
+    :meth:`~yupay.modules.fx.service.FxService.refresh_all`, the scheduler job that
+    runs every few minutes, and its rows never pass through :func:`check_rate`. So
+    the deviation check in :func:`check_rate` compares today's candidate rate
+    against the *last scheduled refresh*, not against a rate this gate has itself
+    already approved. Consequence: if a provider starts returning a consistently
+    wrong value across consecutive refreshes, this baseline is bad too, and the
+    deviation check compares bad against bad and passes — leaving the absolute
+    band (``pricing_fx_min_rate_uzs``/``pricing_fx_max_rate_uzs``) as the only
+    backstop in that scenario.
+    """
     stmt = (
         select(FxRate.rate)
-        .where(FxRate.base == "USD", FxRate.quote == quote, FxRate.id != exclude_id)
+        .where(FxRate.base == "USD", FxRate.quote == quote)
         .order_by(FxRate.fetched_at.desc())
         .limit(1)
     )
@@ -103,9 +115,12 @@ async def guarded_usd_rate(db: AsyncSession, *, quote: str) -> Decimal:
     try:
         snap = await fx.snapshot(db, base="USD", quote=quote)
     except FxUnavailableError as exc:
+        # Loud on purpose: the whole FX pipeline being down is the most
+        # operationally significant failure this gate can hit.
+        log.exception("pricing.rate_rejected", reason="unavailable", quote=quote, detail=str(exc))
         raise RateRejected("unavailable", str(exc)) from exc
 
-    previous = await _previous_rate(db, quote=quote, exclude_id=snap.id)
+    previous = await _previous_rate(db, quote=quote)
     try:
         check_rate(
             snap.rate,
