@@ -31,6 +31,7 @@ already knows it), but it is never written to a log line.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any
 
 from yupay.core.config import get_settings
@@ -55,6 +56,7 @@ from yupay.modules.pricing.variable import UNITS_PER_USD, to_units
 
 log = get_logger("yupay.fulfillment.waxpeer")
 
+_CENT = Decimal("0.01")
 _TERMINAL_OK: WaxpeerStatus = "completed"
 # "unknown" is in-flight, not terminal: see module docstring. It is the
 # client's mapping for any status Waxpeer might add later.
@@ -142,7 +144,7 @@ class WaxpeerFulfiller(Fulfiller):
                 custom_id=idempotency_key,
             )
         except WaxpeerError as exc:
-            raise FulfillerError(f"waxpeer top-up failed: HTTP {exc.status} {exc}") from exc
+            raise FulfillerError(f"waxpeer top-up failed: HTTP {exc.status}") from exc
         except WaxpeerUnavailableError as exc:
             raise FulfillerError(f"waxpeer unreachable: {exc}") from exc
 
@@ -180,7 +182,7 @@ class WaxpeerFulfiller(Fulfiller):
         try:
             topup = await self._client().get_topup(custom_id=task.external_order_id)
         except WaxpeerError as exc:
-            raise FulfillerError(f"waxpeer status check failed: HTTP {exc.status} {exc}") from exc
+            raise FulfillerError(f"waxpeer status check failed: HTTP {exc.status}") from exc
         except WaxpeerUnavailableError as exc:
             raise FulfillerError(f"waxpeer unreachable: {exc}") from exc
 
@@ -235,7 +237,16 @@ def _reconcile(*, item: OrderItem, topup: WaxpeerTopup) -> _Reconciled:
     """
     outcome = _status_to_outcome(topup.status)
 
-    promised_units = int(item.unit_price_usd * UNITS_PER_USD)
+    # `unit_price_usd` is only constrained to `> 0` at the DB layer
+    # (Numeric(20,6)) — nothing enforces the "at most two decimals" rule that
+    # `pricing.variable.validate_amount` checks at checkout time. This module
+    # exists to catch shortfalls, so it must not blindly trust that upstream
+    # invariant: quantize to cents before converting to units, so a stray
+    # sub-cent fraction gets rounded rather than silently truncated away
+    # (which would understate the promise and hide a real shortfall).
+    promised_units = int(
+        item.unit_price_usd.quantize(_CENT, rounding=ROUND_HALF_UP) * UNITS_PER_USD
+    )
     shortfall = promised_units - topup.give_amount_units
     extra: dict[str, Any] = {
         "waxpeer_status": topup.status,

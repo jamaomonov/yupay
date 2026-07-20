@@ -86,8 +86,11 @@ def _topup_json(
     }
 
 
-def _sent_body(route: respx.Route) -> dict[str, Any]:
-    content = route.calls.last.request.content
+def _sent_body(route: respx.Route, *, call_index: int = -1) -> dict[str, Any]:
+    """Decode the JSON body of a recorded call. Defaults to the most recent
+    call; pass ``call_index`` to inspect an earlier one (e.g. to verify both
+    calls in an idempotent-replay pair sent the same payload)."""
+    content = route.calls[call_index].request.content
     return cast(dict[str, Any], json.loads(content))
 
 
@@ -113,6 +116,32 @@ async def test_fulfill_sends_the_grossed_up_amount_and_the_order_key() -> None:
     assert body["amount"] == 10000
     assert body["custom_id"] == "ik-1"
     assert body["steam_login"] == "gaben"
+
+
+@respx.mock
+async def test_fulfill_grosses_up_the_amount_by_the_configured_fee_rate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The autouse fixture pins WAXPEER_FEE_RATE=0 for every other test, so
+    nothing else in this file proves the setting is actually wired through
+    ``to_units``. Override it here and check the *wire request*: $10 at a 5%
+    fee must gross up to 10527 units (10 / 0.95 * 1000, rounded up)."""
+    monkeypatch.setenv("WAXPEER_FEE_RATE", "0.05")
+    cfg.get_settings.cache_clear()
+    route = respx.post(f"{BASE}/steam-topup").mock(
+        return_value=httpx.Response(
+            200, json=_topup_json(custom_id="ik-1b", amount=10527, give_amount=10000)
+        )
+    )
+    gw = WaxpeerFulfiller()
+    await gw.fulfill(
+        db=cast(Any, None),
+        order=cast(Any, None),
+        item=_item(unit_price_usd=Decimal("10.00")),
+        idempotency_key="ik-1b",
+    )
+    body = _sent_body(route)
+    assert body["amount"] == 10527
 
 
 # ---------- fulfill: status mapping ----------
@@ -235,7 +264,15 @@ async def test_give_amount_meeting_the_promise_is_not_flagged() -> None:
 @respx.mock
 async def test_repeated_fulfill_reuses_the_existing_topup() -> None:
     """Same custom_id ⇒ Waxpeer returns the original; we must not treat the
-    replay as a second delivery."""
+    replay as a second delivery.
+
+    ``external_order_id`` on the result is set from the caller-supplied
+    ``idempotency_key``, not derived from the response, so asserting on it
+    alone would pass even if a regression started keying the *wire request*
+    off something else (e.g. ``topup.id``) on retry. The thing that actually
+    proves idempotent replay is that both HTTP calls sent the *same*
+    ``custom_id`` in the request body — assert that directly.
+    """
     route = respx.post(f"{BASE}/steam-topup").mock(
         return_value=httpx.Response(
             200,
@@ -261,6 +298,12 @@ async def test_repeated_fulfill_reuses_the_existing_topup() -> None:
     assert first.outcome == second.outcome == "succeeded"
     assert first.external_order_id == second.external_order_id == "ik-7"
     assert first.artifact == second.artifact  # ...but resolve to the same topup
+
+    # The actual idempotency guarantee: both wire requests carried the same
+    # custom_id, proving the retry didn't key off something else (e.g. a
+    # freshly-generated id or ``topup.id`` from the first response).
+    assert _sent_body(route, call_index=0)["custom_id"] == "ik-7"
+    assert _sent_body(route, call_index=1)["custom_id"] == "ik-7"
 
 
 # ---------- fulfill: guards ----------
@@ -458,9 +501,32 @@ async def test_has_balance_false_on_api_error() -> None:
 # ---------- injected client (constructor override) ----------
 
 
-async def test_constructor_accepts_an_injected_client() -> None:
+@respx.mock
+async def test_injected_client_is_the_one_that_receives_the_fulfill_call() -> None:
     """Mirrors G2bFulfiller's pattern: a client can be injected for tests
-    without touching global settings for the transport itself."""
-    client = WaxpeerClient(api_key=API_KEY, base_url=BASE, timeout_seconds=5.0)
+    without touching global settings for the transport itself.
+
+    Pointing the injected client at a base URL settings knows nothing about,
+    and mocking only that URL, proves ``fulfill()`` actually issues its
+    request through the injected instance rather than a fresh one rebuilt
+    from settings each call (which is the whole point of injection — a bare
+    ``gw._client() is client`` identity check would pass even if ``fulfill``
+    ignored the override and called ``self._client()`` fresh every time)."""
+    injected_base = "https://injected.waxpeer.test/v1"
+    route = respx.post(f"{injected_base}/steam-topup").mock(
+        return_value=httpx.Response(
+            200,
+            json=_topup_json(
+                custom_id="ik-19", status="completed", amount=10000, give_amount=10000
+            ),
+        )
+    )
+    client = WaxpeerClient(api_key=API_KEY, base_url=injected_base, timeout_seconds=5.0)
     gw = WaxpeerFulfiller(client=client)
     assert gw._client() is client
+
+    result = await gw.fulfill(
+        db=cast(Any, None), order=cast(Any, None), item=_item(), idempotency_key="ik-19"
+    )
+    assert route.called
+    assert result.outcome == "succeeded"
