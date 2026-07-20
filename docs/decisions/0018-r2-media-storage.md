@@ -67,7 +67,12 @@ require streaming files through the FastAPI process.
 - One more set of credentials to keep in `sops`-encrypted env
   (`R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`).
 - Custom domain setup is a one-time manual step in the Cloudflare
-  dashboard (Bucket → Settings → Connect Domain → `cdn.yupay.uz`).
+  dashboard (Bucket → Settings → Connect Domain → `cdn.yupay.uz`), and it
+  presupposes the zone is served by Cloudflare — which cost us a DNS
+  migration off `ahost.uz`. Done 2026-07-20; see
+  `docs/runbooks/media-cdn.md`. Until then the stack ran on the bucket's
+  `pub-*.r2.dev` endpoint, whose rate limiting showed up as images that
+  intermittently failed to load.
 - Existing third-party URLs already in DB stay as-is. We do not
   backfill — see "Migration".
 
