@@ -164,6 +164,16 @@ class Settings(BaseSettings):
     fx_provider_timeout_seconds: float = Field(default=1.5)
     fx_snapshot_max_age_seconds: int = Field(default=5 * 60)
 
+    # --- pricing (fx trust gate) ---
+    # Trust gate for rates that set a customer-facing price. A plausible but
+    # wrong rate is worse than no rate: we would apply the margin multiplier to
+    # it and keep selling. Failing closed costs a sale; failing open costs the
+    # difference on every order.
+    pricing_fx_max_age_seconds: int = Field(default=6 * 3600)
+    pricing_fx_max_deviation_pct: Decimal = Field(default=Decimal("15"))
+    pricing_fx_min_rate_uzs: Decimal = Field(default=Decimal("8000"))
+    pricing_fx_max_rate_uzs: Decimal = Field(default=Decimal("25000"))
+
     # --- observability ---
     sentry_dsn: str | None = Field(default=None)
     sentry_traces_sample_rate: float = Field(default=0.1)
