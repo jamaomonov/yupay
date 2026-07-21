@@ -145,10 +145,21 @@ async def _fetch_skus_with_product(db: AsyncSession, sku_ids: list[str]) -> dict
 
 def _sku_is_buyable(sku: Sku) -> bool:
     """A SKU is buyable only when it and its whole product → brand chain are
-    active. Requires ``sku.product`` and ``sku.product.brand`` eager-loaded."""
+    active AND the brand is not in maintenance. ``maintenance`` is the softer
+    "temporarily unavailable" state (the brand still lists, unlike
+    ``active=False``) that the model documents as blocking purchases — so it
+    gates checkout here but not catalog visibility. Requires ``sku.product``
+    and ``sku.product.brand`` eager-loaded."""
     product = sku.product
     brand = product.brand if product is not None else None
-    return bool(sku.active and product is not None and product.active and brand and brand.active)
+    return bool(
+        sku.active
+        and product is not None
+        and product.active
+        and brand
+        and brand.active
+        and not brand.maintenance
+    )
 
 
 async def _existing_idempotent_order(

@@ -254,6 +254,28 @@ async def test_checkout_rejects_a_sku_under_a_hidden_brand(
     assert r.status_code == 422, r.text
 
 
+async def test_checkout_rejects_a_sku_under_a_brand_in_maintenance(
+    integration_client: AsyncClient, _fixed_sku: Sku, db_session: AsyncSession
+) -> None:
+    """Maintenance is the softer 'temporarily unavailable' state — the brand
+    still lists, but the model documents it as blocking purchases, so checkout
+    must refuse an order for a SKU under a maintenance-mode brand."""
+    await db_session.execute(
+        update(Brand).where(Brand.slug == "pubg-mobile").values(maintenance=True)
+    )
+    await db_session.commit()
+    token = await _login_user(integration_client, tg_id=105)
+    r = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "maintenance-order-aaaa",
+        },
+        json=_order_body(sku_id=_fixed_sku.id),
+    )
+    assert r.status_code == 422, r.text
+
+
 async def test_qty_other_than_one_is_rejected_for_a_variable_sku(
     integration_client: AsyncClient, _variable_sku: Sku
 ) -> None:
