@@ -27,7 +27,7 @@ from yupay.modules.sourcing import models as _sourcing_models  # noqa: F401
 from yupay.modules.users import models as _users_models  # noqa: F401
 from yupay.modules.wallet import models as _wallet_models  # noqa: F401
 
-from yupay_scheduler.jobs import expire_orders, refresh_supplier_prices
+from yupay_scheduler.jobs import expire_orders, refresh_supplier_prices, waxpeer_reconcile
 
 configure_logging()
 log = get_logger("yupay.scheduler")
@@ -42,6 +42,7 @@ def build_scheduler() -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone="UTC")
     expire_orders.register(scheduler)
     refresh_supplier_prices.register(scheduler)
+    waxpeer_reconcile.register(scheduler)
     return scheduler
 
 
