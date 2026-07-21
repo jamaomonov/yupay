@@ -91,6 +91,13 @@ class RecipientOut(BaseModel):
         return str(value)
 
 
+class RecipientListOut(BaseModel):
+    """A page of :class:`RecipientOut` plus the total matching count."""
+
+    items: list[RecipientOut]
+    total: int
+
+
 class ScheduleIn(BaseModel):
     """Body of admin's ``POST /admin/broadcasts/{id}/schedule``."""
 
@@ -114,6 +121,7 @@ __all__ = [
     "BroadcastUpdateIn",
     "LocaleFilter",
     "MediaType",
+    "RecipientListOut",
     "RecipientOut",
     "RecipientStatus",
     "ScheduleIn",

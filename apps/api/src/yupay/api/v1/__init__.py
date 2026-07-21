@@ -11,6 +11,7 @@ from yupay.api.webhooks.g2b import router as g2b_webhook_router
 from yupay.modules.admin.api import admin_router as admin_admin_router
 from yupay.modules.audit.api import admin_router as audit_admin_router
 from yupay.modules.auth.api import router as auth_router
+from yupay.modules.broadcasts.api import admin_router as broadcasts_admin_router
 from yupay.modules.catalog.admin_routes import router as catalog_admin_router
 from yupay.modules.catalog.api import router as catalog_router
 from yupay.modules.fulfillment.api import admin_router as fulfillment_admin_router
@@ -40,6 +41,7 @@ router = APIRouter()
 router.include_router(auth_router)
 router.include_router(admin_admin_router)
 router.include_router(audit_admin_router)
+router.include_router(broadcasts_admin_router)
 router.include_router(catalog_router)
 router.include_router(catalog_admin_router)
 router.include_router(fulfillment_router)

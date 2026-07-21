@@ -656,6 +656,20 @@
         "title": "AttemptAdminOut",
         "type": "object"
       },
+      "AudienceCountOut": {
+        "description": "Response of the audience-size preview endpoint.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "title": "AudienceCountOut",
+        "type": "object"
+      },
       "AuditEventOut": {
         "additionalProperties": false,
         "description": "One row of the unified audit feed.",
@@ -1238,6 +1252,345 @@
           }
         },
         "title": "BrandUpdate",
+        "type": "object"
+      },
+      "BroadcastCreateIn": {
+        "additionalProperties": false,
+        "description": "Body of admin's ``POST /admin/broadcasts``.",
+        "properties": {
+          "body_html": {
+            "default": "",
+            "title": "Body Html",
+            "type": "string"
+          },
+          "disable_web_page_preview": {
+            "default": true,
+            "title": "Disable Web Page Preview",
+            "type": "boolean"
+          },
+          "locale_filter": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ru",
+                  "en",
+                  "uz"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale Filter"
+          },
+          "media_type": {
+            "default": "none",
+            "enum": [
+              "none",
+              "photo",
+              "video",
+              "animation",
+              "document"
+            ],
+            "title": "Media Type",
+            "type": "string"
+          },
+          "media_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Url"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "BroadcastCreateIn",
+        "type": "object"
+      },
+      "BroadcastListOut": {
+        "description": "A page of :class:`BroadcastOut` plus the total matching count.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BroadcastOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "BroadcastListOut",
+        "type": "object"
+      },
+      "BroadcastOut": {
+        "description": "Full admin view of a broadcast row: content + FSM state + delivery counters.",
+        "properties": {
+          "blocked_count": {
+            "title": "Blocked Count",
+            "type": "integer"
+          },
+          "body_html": {
+            "title": "Body Html",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "disable_web_page_preview": {
+            "title": "Disable Web Page Preview",
+            "type": "boolean"
+          },
+          "failed_count": {
+            "title": "Failed Count",
+            "type": "integer"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "locale_filter": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ru",
+                  "en",
+                  "uz"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale Filter"
+          },
+          "media_file_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media File Id"
+          },
+          "media_type": {
+            "enum": [
+              "none",
+              "photo",
+              "video",
+              "animation",
+              "document"
+            ],
+            "title": "Media Type",
+            "type": "string"
+          },
+          "media_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Url"
+          },
+          "scheduled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled At"
+          },
+          "sent_count": {
+            "title": "Sent Count",
+            "type": "integer"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "scheduled",
+              "sending",
+              "sent",
+              "failed",
+              "canceled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "total_recipients": {
+            "title": "Total Recipients",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "status",
+          "body_html",
+          "media_type",
+          "media_url",
+          "media_file_id",
+          "locale_filter",
+          "disable_web_page_preview",
+          "scheduled_at",
+          "total_recipients",
+          "sent_count",
+          "failed_count",
+          "blocked_count",
+          "started_at",
+          "finished_at",
+          "last_error",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "BroadcastOut",
+        "type": "object"
+      },
+      "BroadcastUpdateIn": {
+        "additionalProperties": false,
+        "description": "Body of admin's ``PUT /admin/broadcasts/{id}`` \u2014 same shape as create.\n\nEditing a draft resubmits the full form. If the target broadcast is currently\n``scheduled``, ``service.update_draft`` resets it to ``draft`` and clears\n``scheduled_at`` \u2014 an edited broadcast must be re-scheduled explicitly.",
+        "properties": {
+          "body_html": {
+            "default": "",
+            "title": "Body Html",
+            "type": "string"
+          },
+          "disable_web_page_preview": {
+            "default": true,
+            "title": "Disable Web Page Preview",
+            "type": "boolean"
+          },
+          "locale_filter": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ru",
+                  "en",
+                  "uz"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale Filter"
+          },
+          "media_type": {
+            "default": "none",
+            "enum": [
+              "none",
+              "photo",
+              "video",
+              "animation",
+              "document"
+            ],
+            "title": "Media Type",
+            "type": "string"
+          },
+          "media_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Url"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "BroadcastUpdateIn",
         "type": "object"
       },
       "BulkRetryIn": {
@@ -5148,12 +5501,13 @@
             "type": "string"
           },
           "kind": {
-            "description": "One of brand_logo, brand_hero, product_image, sku_image.",
+            "description": "One of brand_logo, brand_hero, product_image, sku_image, broadcast_media.",
             "enum": [
               "brand_logo",
               "brand_hero",
               "product_image",
-              "sku_image"
+              "sku_image",
+              "broadcast_media"
             ],
             "title": "Kind",
             "type": "string"
@@ -6086,6 +6440,83 @@
         "title": "RatesOut",
         "type": "object"
       },
+      "RecipientListOut": {
+        "description": "A page of :class:`RecipientOut` plus the total matching count.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RecipientOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "RecipientListOut",
+        "type": "object"
+      },
+      "RecipientOut": {
+        "description": "One targeted recipient row.\n\n``tg_chat_id`` is a Postgres ``bigint`` \u2014 serialized as a string (money-rule\nfor big ids) so it survives round-tripping through a JS ``number`` without\nprecision loss.",
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "sent",
+              "failed",
+              "blocked"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tg_chat_id": {
+            "title": "Tg Chat Id",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "tg_chat_id",
+          "status",
+          "error",
+          "sent_at"
+        ],
+        "title": "RecipientOut",
+        "type": "object"
+      },
       "RefreshIn": {
         "additionalProperties": false,
         "description": "Body of ``POST /auth/refresh``.",
@@ -6293,6 +6724,22 @@
           "created_at"
         ],
         "title": "SavedSegmentOut",
+        "type": "object"
+      },
+      "ScheduleIn": {
+        "additionalProperties": false,
+        "description": "Body of admin's ``POST /admin/broadcasts/{id}/schedule``.",
+        "properties": {
+          "scheduled_at": {
+            "format": "date-time",
+            "title": "Scheduled At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scheduled_at"
+        ],
+        "title": "ScheduleIn",
         "type": "object"
       },
       "SearchHit": {
@@ -8411,6 +8858,858 @@
         "summary": "Unified activity feed across orders / payments / fulfilment / wallet",
         "tags": [
           "admin:audit"
+        ]
+      }
+    },
+    "/api/v1/admin/broadcasts": {
+      "get": {
+        "operationId": "admin_list_broadcasts_api_v1_admin_broadcasts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status_filter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "draft",
+                    "scheduled",
+                    "sending",
+                    "sent",
+                    "failed",
+                    "canceled"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Filter"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BroadcastListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List broadcasts",
+        "tags": [
+          "admin:broadcasts"
+        ]
+      },
+      "post": {
+        "operationId": "admin_create_broadcast_api_v1_admin_broadcasts_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BroadcastCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BroadcastOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create a broadcast draft",
+        "tags": [
+          "admin:broadcasts"
+        ]
+      }
+    },
+    "/api/v1/admin/broadcasts/audience-count": {
+      "get": {
+        "operationId": "admin_audience_count_api_v1_admin_broadcasts_audience_count_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "locale",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "ru",
+                    "en",
+                    "uz"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Locale"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudienceCountOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview audience size",
+        "tags": [
+          "admin:broadcasts"
+        ]
+      }
+    },
+    "/api/v1/admin/broadcasts/{broadcast_id}": {
+      "delete": {
+        "operationId": "admin_delete_broadcast_api_v1_admin_broadcasts__broadcast_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "broadcast_id",
+            "required": true,
+            "schema": {
+              "title": "Broadcast Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete a draft",
+        "tags": [
+          "admin:broadcasts"
+        ]
+      },
+      "get": {
+        "operationId": "admin_get_broadcast_api_v1_admin_broadcasts__broadcast_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "broadcast_id",
+            "required": true,
+            "schema": {
+              "title": "Broadcast Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BroadcastOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get one broadcast",
+        "tags": [
+          "admin:broadcasts"
+        ]
+      },
+      "patch": {
+        "operationId": "admin_update_broadcast_api_v1_admin_broadcasts__broadcast_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "broadcast_id",
+            "required": true,
+            "schema": {
+              "title": "Broadcast Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BroadcastUpdateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BroadcastOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edit a draft",
+        "tags": [
+          "admin:broadcasts"
+        ]
+      }
+    },
+    "/api/v1/admin/broadcasts/{broadcast_id}/cancel": {
+      "post": {
+        "operationId": "admin_cancel_broadcast_api_v1_admin_broadcasts__broadcast_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "broadcast_id",
+            "required": true,
+            "schema": {
+              "title": "Broadcast Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BroadcastOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel a scheduled or in-flight broadcast",
+        "tags": [
+          "admin:broadcasts"
+        ]
+      }
+    },
+    "/api/v1/admin/broadcasts/{broadcast_id}/recipients": {
+      "get": {
+        "operationId": "admin_list_recipients_api_v1_admin_broadcasts__broadcast_id__recipients_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "broadcast_id",
+            "required": true,
+            "schema": {
+              "title": "Broadcast Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "pending",
+                    "sent",
+                    "failed",
+                    "blocked"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipientListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List a broadcast's targeted recipients",
+        "tags": [
+          "admin:broadcasts"
+        ]
+      }
+    },
+    "/api/v1/admin/broadcasts/{broadcast_id}/schedule": {
+      "post": {
+        "operationId": "admin_schedule_broadcast_api_v1_admin_broadcasts__broadcast_id__schedule_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "broadcast_id",
+            "required": true,
+            "schema": {
+              "title": "Broadcast Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BroadcastOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Queue a broadcast for future dispatch",
+        "tags": [
+          "admin:broadcasts"
+        ]
+      }
+    },
+    "/api/v1/admin/broadcasts/{broadcast_id}/send": {
+      "post": {
+        "operationId": "admin_send_broadcast_api_v1_admin_broadcasts__broadcast_id__send_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "broadcast_id",
+            "required": true,
+            "schema": {
+              "title": "Broadcast Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BroadcastOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Queue a broadcast for immediate dispatch",
+        "tags": [
+          "admin:broadcasts"
+        ]
+      }
+    },
+    "/api/v1/admin/broadcasts/{broadcast_id}/test": {
+      "post": {
+        "description": "Send the current draft content to the calling admin, without touching FSM state.",
+        "operationId": "admin_test_broadcast_api_v1_admin_broadcasts__broadcast_id__test_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "broadcast_id",
+            "required": true,
+            "schema": {
+              "title": "Broadcast Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Admin Test Broadcast Api V1 Admin Broadcasts  Broadcast Id  Test Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Send a test message to the calling admin's linked Telegram account",
+        "tags": [
+          "admin:broadcasts"
         ]
       }
     },
