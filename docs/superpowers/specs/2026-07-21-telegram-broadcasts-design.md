@@ -233,8 +233,11 @@ chunk and stops. Already-sent messages stay sent.
 
 All write endpoints accept **`Idempotency-Key`** (CLAUDE.md §9). `send` is additionally
 guarded by the FSM: a broadcast already `sending`/`sent` cannot be re-sent (double-click
-safe). Actions are written to the **`audit`** log. Bot token and `tg_chat_id` are never
-logged (PII rule).
+safe). **Audit trail:** the `broadcasts` row itself is the record — `created_by`, `status`
+transitions, `started_at`/`finished_at`, and the counters. The `audit` module is a
+read-only aggregator of existing event tables with no per-action write helper, so no
+separate audit-log write is added (consistent with other admin mutations, which don't
+write one either). Bot token and `tg_chat_id` are never logged (PII rule).
 
 ## 11. Error handling & edge cases
 
