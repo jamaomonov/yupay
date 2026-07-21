@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Iterator
 from datetime import timedelta
 
 import httpx
@@ -41,8 +42,16 @@ _FRESH = {"populate_existing": True}
 
 
 @pytest.fixture(autouse=True)
-def _bot_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def _bot_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    # Point the dispatch job at a known bot token, then clear the settings
+    # cache so ``get_settings()`` rebuilds with it. ``monkeypatch`` restores
+    # the env var at teardown, but the LRU-cached ``Settings`` object built
+    # here would otherwise leak this token into later tests (e.g. the
+    # telegram-auth flow verifies init_data against ``telegram_bot_token``),
+    # so clear the cache on BOTH sides — mirroring ``tests/conftest.py``.
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", BOT_TOKEN)
+    cfg.get_settings.cache_clear()
+    yield
     cfg.get_settings.cache_clear()
 
 
@@ -504,9 +513,7 @@ async def test_first_send_400_parse_error_aborts_the_broadcast(db_session: Async
     await db_session.commit()
 
     route = respx.post(_SEND_URL).mock(
-        side_effect=_desc_responder(
-            {810: (400, "Bad Request: can't parse entities: unclosed tag")}
-        )
+        side_effect=_desc_responder({810: (400, "Bad Request: can't parse entities: unclosed tag")})
     )
 
     await broadcast_dispatch.run_broadcast_dispatch()
