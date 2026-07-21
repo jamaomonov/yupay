@@ -73,7 +73,11 @@ def build_dispatcher(settings: Settings) -> Dispatcher:
 
         Also clears ``bot_blocked_at`` on the sender's ``telegram_links``
         row, if any — re-engaging via ``/start`` re-enables them as a
-        broadcast recipient. See :func:`_clear_bot_blocked`.
+        broadcast recipient. See :func:`_clear_bot_blocked`. This is
+        best-effort: the welcome is always sent first, and a DB failure
+        while clearing the flag is caught and logged (no PII) rather than
+        propagated — a transient DB hiccup on this brand-new dependency
+        must never break `/start` itself or swallow the ``bot.start`` log.
         """
         user = message.from_user
         locale = resolve_locale(user.language_code if user else None)
@@ -94,7 +98,10 @@ def build_dispatcher(settings: Settings) -> Dispatcher:
             reply_markup=keyboard,
         )
         if user is not None:
-            await _clear_bot_blocked(user.id)
+            try:
+                await _clear_bot_blocked(user.id)
+            except Exception as exc:  # noqa: BLE001 -- a DB hiccup must never break /start
+                log.warning("bot.clear_blocked_failed", error=str(exc))
         log.info(
             "bot.start",
             user_id=user.id if user else None,

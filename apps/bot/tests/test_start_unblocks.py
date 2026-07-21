@@ -64,3 +64,32 @@ async def test_start_without_from_user_skips_db_clear(monkeypatch: pytest.Monkey
     await handler(message)
 
     clear_mock.assert_not_awaited()
+
+
+async def test_start_survives_a_clear_bot_blocked_db_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A DB hiccup while clearing ``bot_blocked_at`` must never break ``/start``.
+
+    This is a brand-new hard DB dependency on a path that never touched the
+    database before — if ``DATABASE_URL`` is briefly unreachable or the pool
+    is exhausted, ``_clear_bot_blocked`` raises. The handler must still have
+    sent the welcome message (already happened before the clear attempt) and
+    must not let the exception escape (which would skip the ``bot.start``
+    structured log and get caught only by aiogram's raw logger, bypassing our
+    PII redactor).
+    """
+    clear_mock = AsyncMock(side_effect=RuntimeError("connection refused"))
+    monkeypatch.setattr(bot_main, "_clear_bot_blocked", clear_mock)
+
+    handler = _start_handler()
+    answer_mock = AsyncMock()
+    message = SimpleNamespace(
+        from_user=SimpleNamespace(id=987654321, language_code="ru", first_name="Жанна"),
+        answer=answer_mock,
+    )
+
+    await handler(message)  # must not raise
+
+    answer_mock.assert_awaited_once()
+    clear_mock.assert_awaited_once_with(987654321)
