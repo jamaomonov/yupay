@@ -25,7 +25,9 @@ export function StuckTab() {
   const query = useQuery<TaskListOut>({
     queryKey: [...qk.fulfillmentTasks({ status: "in_progress" }), "stuck"],
     queryFn: () =>
-      apiGet<TaskListOut>("/api/v1/admin/fulfillment/tasks?status_filter=in_progress&limit=200"),
+      apiGet<TaskListOut>(
+        "/api/v1/admin/fulfillment/tasks?status_filter=in_progress&order=oldest&limit=200",
+      ),
     refetchInterval: 30_000,
   });
 

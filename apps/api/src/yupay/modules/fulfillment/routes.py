@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
@@ -125,6 +125,7 @@ async def admin_list_tasks(
     order_id: str | None = None,
     supplier: str | None = None,
     status_filter: Annotated[str | None, "status"] = None,
+    order: Literal["newest", "oldest"] = "newest",
     limit: int = 50,
     offset: int = 0,
 ) -> FulfillmentTaskListOut:
@@ -133,6 +134,7 @@ async def admin_list_tasks(
         order_id=order_id,
         supplier=supplier,
         status_filter=status_filter,
+        order=order,
         limit=max(1, min(limit, 500)),
         offset=max(0, offset),
     )

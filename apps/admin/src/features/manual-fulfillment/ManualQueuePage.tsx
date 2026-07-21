@@ -37,7 +37,7 @@ export function ManualQueuePage() {
     queryKey: qk.manualQueue(),
     queryFn: () =>
       apiGet<FulfillmentTaskListOut>(
-        "/api/v1/admin/fulfillment/tasks?supplier=manual&status_filter=in_progress&limit=200",
+        "/api/v1/admin/fulfillment/tasks?supplier=manual&status_filter=in_progress&order=oldest&limit=200",
       ),
     refetchInterval: 15_000,
   });

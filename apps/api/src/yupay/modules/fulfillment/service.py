@@ -937,10 +937,27 @@ async def list_tasks_admin(
     order_id: str | None = None,
     supplier: str | None = None,
     status_filter: str | None = None,
+    order: str = "newest",
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[FulfillmentTask], int]:
-    """Paged admin listing. Returns ``(rows, total_matching_filter)``."""
+    """Paged admin listing. Returns ``(rows, total_matching_filter)``.
+
+    ``order`` picks the created-at direction: ``"newest"`` (default) for the
+    browse view, where recent activity belongs on page one; ``"oldest"`` for
+    the operator work queues (stuck / failed / manual retry), where the
+    longest-waiting task is the most urgent. The distinction matters under a
+    backlog larger than ``limit``: those queues fetch a capped window and sort
+    client-side, so a ``"newest"`` order would silently drop the oldest — and
+    most overdue — tasks off the end. ``created_at`` alone is not unique for
+    tasks created in the same bulk operation, so ``id`` is the deterministic
+    tiebreak in both directions (stable pagination, no row seen twice or
+    skipped across pages)."""
+    ascending = order == "oldest"
+    created_order = (
+        FulfillmentTask.created_at.asc() if ascending else FulfillmentTask.created_at.desc()
+    )
+    id_order = FulfillmentTask.id.asc() if ascending else FulfillmentTask.id.desc()
     base = select(FulfillmentTask).options(selectinload(FulfillmentTask.attempts))
     count_stmt = select(func.count()).select_from(FulfillmentTask)
     if order_id is not None:
@@ -953,11 +970,7 @@ async def list_tasks_admin(
         base = base.where(FulfillmentTask.status == status_filter)
         count_stmt = count_stmt.where(FulfillmentTask.status == status_filter)
     rows = list(
-        (
-            await db.execute(
-                base.order_by(FulfillmentTask.created_at.desc()).limit(limit).offset(offset)
-            )
-        )
+        (await db.execute(base.order_by(created_order, id_order).limit(limit).offset(offset)))
         .scalars()
         .all()
     )

@@ -173,6 +173,15 @@ the retry is a fresh top-up, not a stale replay. Because the customer stayed on
 «в обработке» the whole time, this is invisible to them as long as you top up
 before they give up.
 
+**Working a backlog:** the Fulfilment Inbox's operator tabs — "Failed",
+"Висяки" (stuck), and the manual queue — fetch tasks **oldest-first**
+(`GET /admin/fulfillment/tasks?…&order=oldest`) and cap the window at 200. So
+after a balance outage that parked many top-ups, the longest-waiting customer's
+task is at the top, and if more than 200 piled up, the newest fall off the end,
+never the most overdue. Clear from the top down. (The "Все" browse tab is the
+opposite — newest-first, `order=newest`, the default — because there you want
+recent activity on page one, not ancient history.)
+
 There is also no admin health/balance page for Waxpeer yet (G2B has
 `/admin/integrations/g2b/health`; Waxpeer doesn't). Check the balance
 directly:

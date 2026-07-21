@@ -38,7 +38,9 @@ export function FailedAutomaticTab() {
   const query = useQuery<TaskListOut>({
     queryKey: [...qk.fulfillmentTasks({ status: "failed" }), "no-manual"],
     queryFn: () =>
-      apiGet<TaskListOut>("/api/v1/admin/fulfillment/tasks?status_filter=failed&limit=200"),
+      apiGet<TaskListOut>(
+        "/api/v1/admin/fulfillment/tasks?status_filter=failed&order=oldest&limit=200",
+      ),
     refetchInterval: 30_000,
   });
 
