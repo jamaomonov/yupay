@@ -4,35 +4,14 @@ import { Plus } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { STATUS_LABEL, STATUS_TONE } from "./types";
+
 import type { BroadcastListOut, BroadcastOut, BroadcastStatus } from "./types";
 
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
-
-/** `BroadcastOut.status` → human label (ru), mirrors `promo`'s `StatusBadge` idiom. */
-const STATUS_LABEL: Record<BroadcastStatus, string> = {
-  draft: "Черновик",
-  scheduled: "Запланирована",
-  sending: "Отправляется",
-  sent: "Отправлено",
-  failed: "Ошибка",
-  canceled: "Отменена",
-};
-
-/** `BroadcastOut.status` → pill tone. Same semantic tokens as the orders list
- *  (`STATUS_TONE` in `features/orders/types.ts`) so colour meaning stays
- *  consistent across the admin: muted = at rest, warning = upcoming,
- *  accent = in progress, success = done, danger = failed. */
-const STATUS_TONE: Record<BroadcastStatus, string> = {
-  draft: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
-  scheduled: "bg-[var(--warning-soft)] text-[var(--warning-fg)]",
-  sending: "bg-[var(--bg-accent-soft)] text-[var(--accent-soft-fg)]",
-  sent: "bg-[var(--success-soft)] text-[var(--success-fg)]",
-  failed: "bg-[var(--danger-soft)] text-[var(--danger-fg)]",
-  canceled: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
-};
 
 const STATUS_FILTERS: { value: BroadcastStatus | ""; label: string }[] = [
   { value: "", label: "Все" },
@@ -174,6 +153,7 @@ export function BroadcastsListPage() {
         empty="Рассылок пока нет — создайте первую выше."
         ariaLabel="Рассылки"
         busy={listQuery.isFetching}
+        onRowClick={(b) => navigate(`/broadcasts/${b.id}`)}
       />
     </div>
   );

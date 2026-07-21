@@ -73,3 +73,28 @@ export interface RecipientListOut {
 export interface AudienceCountOut {
   count: number;
 }
+
+/** `BroadcastOut.status` → human label (ru), mirrors `promo`'s `StatusBadge` idiom.
+ *  Shared between `BroadcastsListPage` and `BroadcastDetailPage` so the six-state
+ *  vocabulary never drifts between the list and detail views. */
+export const STATUS_LABEL: Record<BroadcastStatus, string> = {
+  draft: "Черновик",
+  scheduled: "Запланирована",
+  sending: "Отправляется",
+  sent: "Отправлено",
+  failed: "Ошибка",
+  canceled: "Отменена",
+};
+
+/** `BroadcastOut.status` → pill tone. Same semantic tokens as the orders list
+ *  (`STATUS_TONE` in `features/orders/types.ts`) so colour meaning stays
+ *  consistent across the admin: muted = at rest, warning = upcoming,
+ *  accent = in progress, success = done, danger = failed. */
+export const STATUS_TONE: Record<BroadcastStatus, string> = {
+  draft: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
+  scheduled: "bg-[var(--warning-soft)] text-[var(--warning-fg)]",
+  sending: "bg-[var(--bg-accent-soft)] text-[var(--accent-soft-fg)]",
+  sent: "bg-[var(--success-soft)] text-[var(--success-fg)]",
+  failed: "bg-[var(--danger-soft)] text-[var(--danger-fg)]",
+  canceled: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
+};
