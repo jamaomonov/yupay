@@ -69,7 +69,7 @@ sequenceDiagram
         end
     end
 
-    loop while status in (sending, scheduled)
+    loop while status == sending (refetchInterval 3000ms; stops on sent/failed/canceled)
         A->>API: GET /admin/broadcasts/{id} (poll)
         API-->>A: {status, sent_count, failed_count, blocked_count, total_recipients}
     end

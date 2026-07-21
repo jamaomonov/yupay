@@ -25,7 +25,8 @@ first thing to check.
 2. **Тест себе** — `POST /admin/broadcasts/{id}/test` sends the current
    draft content immediately to the admin's own linked Telegram chat,
    without touching the FSM state. Requires the calling admin to have a
-   `TelegramLink` (400 "привяжите Telegram..." otherwise). Always sends by
+   `TelegramLink` (422 "привяжите Telegram..." otherwise — the same
+   `ValidationError` status the whitelist check uses). Always sends by
    URL, never by a captured `file_id` — a test send may be the very first
    send for this broadcast.
 3. **Отправить (send now)** — `POST /admin/broadcasts/{id}/send` flips
