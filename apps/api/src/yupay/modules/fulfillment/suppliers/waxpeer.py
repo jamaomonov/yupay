@@ -81,10 +81,11 @@ def _status_to_outcome(status: WaxpeerStatus) -> FulfillOutcome:
 @dataclass(frozen=True)
 class _Reconciled:
     """Shared result of interpreting one ``WaxpeerTopup`` — used by both
-    :meth:`WaxpeerFulfiller.fulfill` (which has an ``extra_metadata`` slot to
-    put it in) and :meth:`WaxpeerFulfiller.check_status` (whose
-    ``FulfillStatus`` does not — the notable flags are folded into ``error``
-    instead so they still reach ``task.last_error``)."""
+    :meth:`WaxpeerFulfiller.fulfill` and :meth:`WaxpeerFulfiller.check_status`.
+    Both carry ``extra_metadata`` onto the task (fulfill via ``FulfillResult``,
+    check_status via ``FulfillStatus``), so the reconciliation flags land on
+    ``task.extra_metadata`` as queryable fields — and, redundantly, in
+    ``error``/``last_error`` for a human reading the inbox."""
 
     outcome: FulfillOutcome
     artifact_kind: ArtifactKind | None
