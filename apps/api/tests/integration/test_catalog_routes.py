@@ -10,6 +10,7 @@ from decimal import Decimal
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.ids import new_id
 from yupay.modules.catalog.models import (
@@ -198,6 +199,18 @@ async def test_product_detail_unknown_returns_404(
     integration_client: AsyncClient, _seed_one
 ) -> None:
     r = await integration_client.get("/api/v1/catalog/products/nope-nope")
+    assert r.status_code == 404
+
+
+async def test_product_detail_404s_when_brand_inactive(
+    integration_client: AsyncClient, _seed_one, db_session: AsyncSession
+) -> None:
+    """An active product under a hidden brand must not leak by direct slug —
+    the listing already hides it, but the detail endpoint has to as well."""
+    # Product stays active; only the parent brand is hidden (staging pattern).
+    await db_session.execute(update(Brand).where(Brand.slug == "pubg-mobile").values(active=False))
+    await db_session.commit()
+    r = await integration_client.get("/api/v1/catalog/products/pubg-uc")
     assert r.status_code == 404
 
 

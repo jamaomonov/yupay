@@ -398,13 +398,18 @@ async def get_product_by_slug(
     fx: FxService | None = None,
 ) -> ProductDetailOut | None:
     """Return a product detail (brand + form schema + SKUs) or ``None``."""
+    # Join Brand and require it active too: a product under a hidden brand must
+    # 404, not leak by direct slug. Without this a staged/disabled brand's
+    # product is still reachable (and, for a variable-amount SKU, shows a price
+    # it can't actually be bought at).
     stmt = (
         select(Product)
+        .join(Brand, Brand.id == Product.brand_id)
         .options(
             selectinload(Product.skus).selectinload(Sku.price_overrides),
             selectinload(Product.translations),
         )
-        .where(Product.slug == slug, Product.active.is_(True))
+        .where(Product.slug == slug, Product.active.is_(True), Brand.active.is_(True))
     )
     product = (await db.execute(stmt)).scalar_one_or_none()
     if product is None:
