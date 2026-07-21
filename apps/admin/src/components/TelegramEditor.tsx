@@ -28,7 +28,13 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { previewHtml, serialize, visibleLength } from "@/features/broadcasts/telegramHtml";
+import {
+  type AllowedHtmlRenderers,
+  previewHtml,
+  sanitizeToAllowedHtml,
+  serialize,
+  visibleLength,
+} from "@/features/broadcasts/telegramHtml";
 
 interface TelegramEditorProps {
   value: string;
@@ -36,51 +42,20 @@ interface TelegramEditorProps {
   maxLength: number;
 }
 
-/** Tags this component ever creates in the editable DOM — mirrors `telegramHtml.ALLOWED_TAGS`. */
-const EDITABLE_ALLOWED_TAGS = new Set([
-  "b",
-  "i",
-  "u",
-  "s",
-  "a",
-  "code",
-  "pre",
-  "tg-spoiler",
-  "blockquote",
-]);
-const EDITABLE_HREF_SCHEMES = new Set(["http:", "https:", "tg:"]);
-
-function escapeEditableText(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function allowedHrefOrNull(href: string): string | null {
-  try {
-    return EDITABLE_HREF_SCHEMES.has(new URL(href).protocol) ? href : null;
-  } catch {
-    return null;
-  }
-}
-
-function editableNodeHtml(node: ChildNode): string {
-  if (node.nodeType === Node.TEXT_NODE) {
-    return escapeEditableText(node.textContent ?? "").replace(/\n/g, "<br>");
-  }
-  if (node.nodeType !== Node.ELEMENT_NODE) return "";
-  const el = node as HTMLElement;
-  const tag = el.tagName.toLowerCase();
-  const inner = Array.from(el.childNodes).map(editableNodeHtml).join("");
-  if (tag === "a") {
-    const href = allowedHrefOrNull(el.getAttribute("href") ?? "");
-    return href !== null ? `<a href="${href.replace(/"/g, "&quot;")}">${inner}</a>` : inner;
-  }
-  return EDITABLE_ALLOWED_TAGS.has(tag) ? `<${tag}>${inner}</${tag}>` : inner;
-}
+// Unlike the preview bubble, the editable DOM needs the literal `tg-spoiler` element (so a
+// further edit still round-trips through `serialize`) and a bare `href` (no target/rel — those
+// are display-only concerns). Everything else — the tag whitelist, the script/style drop, the
+// href scheme check, the "\n" → <br> translation — comes from the one shared walker in
+// telegramHtml.ts, so this can never drift from `previewHtml` the way a second hand-rolled copy
+// already had (it was missing the script/style drop entirely).
+const EDITABLE_RENDERERS: AllowedHtmlRenderers = {
+  renderSpoiler: (inner) => `<tg-spoiler>${inner}</tg-spoiler>`,
+  renderAnchor: (escapedHref, inner) => `<a href="${escapedHref}">${inner}</a>`,
+};
 
 /** Rebuild the contenteditable DOM's innerHTML from a stored Telegram-HTML body. */
 function toEditableHtml(telegramHtml: string): string {
-  const doc = new DOMParser().parseFromString(telegramHtml, "text/html");
-  return Array.from(doc.body.childNodes).map(editableNodeHtml).join("");
+  return sanitizeToAllowedHtml(telegramHtml, EDITABLE_RENDERERS);
 }
 
 function closestWithin(node: Node, tagName: string, editor: HTMLElement): HTMLElement | null {

@@ -2,12 +2,22 @@ import { describe, expect, test } from "vitest";
 
 import {
   ALLOWED_TAGS,
+  type AllowedHtmlRenderers,
   MAX_TEXT,
   MAX_WITH_MEDIA,
   previewHtml,
+  sanitizeToAllowedHtml,
   serialize,
   visibleLength,
 } from "./telegramHtml";
+
+/** Editor-style renderers (mirrors `TelegramEditor.tsx`'s `EDITABLE_RENDERERS`): the literal
+ * `tg-spoiler` element and a bare `href`, as opposed to `previewHtml`'s span/target/rel. Used
+ * to prove the shared sanitizer behind both call sites can't drift — see the "unify" fix. */
+const EDITOR_RENDERERS: AllowedHtmlRenderers = {
+  renderSpoiler: (inner) => `<tg-spoiler>${inner}</tg-spoiler>`,
+  renderAnchor: (href, inner) => `<a href="${href}">${inner}</a>`,
+};
 
 describe("constants", () => {
   test("length ceilings mirror Telegram's caption/message limits", () => {
@@ -73,6 +83,52 @@ describe("serialize", () => {
     const root = document.createElement("div");
     root.append("a", document.createElement("br"), "b");
     expect(serialize(root)).toBe("a\nb");
+  });
+
+  test("block followed by a bare inline text sibling still gets a boundary", () => {
+    // Regression: the boundary check only looked at the *upcoming* child being a block, so a
+    // block followed by a plain text node (no wrapping element) missed the boundary entirely
+    // and produced "ab".
+    const root = document.createElement("div");
+    const line = document.createElement("div");
+    line.textContent = "a";
+    root.append(line, "b");
+    expect(serialize(root)).toBe("a\nb");
+  });
+
+  test("bare inline text followed by a block gets a boundary", () => {
+    const root = document.createElement("div");
+    const line = document.createElement("div");
+    line.textContent = "b";
+    root.append("a", line);
+    expect(serialize(root)).toBe("a\nb");
+  });
+
+  test("an interior blank line (empty <div><br></div>) is preserved as one extra newline", () => {
+    const root = document.createElement("div");
+    const first = document.createElement("div");
+    first.textContent = "a";
+    const blank = document.createElement("div");
+    blank.appendChild(document.createElement("br"));
+    const last = document.createElement("div");
+    last.textContent = "b";
+    root.append(first, blank, last);
+    expect(serialize(root)).toBe("a\n\nb");
+  });
+
+  test("a trailing blank line (contenteditable's caret placeholder) is trimmed, not doubled", () => {
+    // The standard "pressed Enter at the end" DOM: two content lines, then an empty
+    // <div><br></div> marking where the caret currently sits on a blank final line. That
+    // trailing artifact should disappear entirely, not surface as an extra "\n\n".
+    const root = document.createElement("div");
+    const line1 = document.createElement("div");
+    line1.textContent = "line1";
+    const line2 = document.createElement("div");
+    line2.textContent = "line2";
+    const trailingBlank = document.createElement("div");
+    trailingBlank.appendChild(document.createElement("br"));
+    root.append(line1, line2, trailingBlank);
+    expect(serialize(root)).toBe("line1\nline2");
   });
 
   test("escapes <, >, and & in a bare text node", () => {
@@ -146,9 +202,23 @@ describe("previewHtml", () => {
     expect(previewHtml("<b>hi</b>")).toBe("<b>hi</b>");
   });
 
-  test("neutralizes a <script> injection attempt", () => {
-    const out = previewHtml("<script>alert(1)</script>");
+  test("neutralizes a <script> injection attempt mid-body", () => {
+    // A *lone* "<script>...</script>" with no surrounding text gets parsed into `doc.head` by
+    // the HTML parser (nothing yet forced "in body" insertion mode), so a test using only that
+    // string would pass even without the DROP_CONTENT_TAGS check — previewHtml only ever walks
+    // `doc.body`. Surrounding text forces the parser into body mode first, so the <script>
+    // actually lands where previewHtml has to deal with it.
+    const out = previewHtml("before <script>alert(1)</script> after");
     expect(out.toLowerCase()).not.toContain("<script");
+    expect(out).not.toContain("alert(1)");
+    expect(out).toContain("before");
+    expect(out).toContain("after");
+  });
+
+  test("strips an onclick attribute from an otherwise-allowed tag", () => {
+    const out = previewHtml('<b onclick="alert(1)">y</b>');
+    expect(out).toBe("<b>y</b>");
+    expect(out).not.toContain("onclick");
   });
 
   test("strips an event-handler attribute smuggled on an unknown tag", () => {
@@ -161,5 +231,27 @@ describe("previewHtml", () => {
     const out = previewHtml('<a href="javascript:alert(1)">click</a>');
     expect(out).not.toContain("javascript:");
     expect(out).toContain("click");
+  });
+});
+
+describe("sanitizeToAllowedHtml (shared by previewHtml and TelegramEditor's hydration)", () => {
+  test("editor-style renderers keep the literal tg-spoiler element", () => {
+    const out = sanitizeToAllowedHtml("<tg-spoiler>x</tg-spoiler>", EDITOR_RENDERERS);
+    expect(out).toBe("<tg-spoiler>x</tg-spoiler>");
+  });
+
+  test("editor-style renderers keep a bare href with no target/rel", () => {
+    const out = sanitizeToAllowedHtml('<a href="https://yupay.uz">link</a>', EDITOR_RENDERERS);
+    expect(out).toBe('<a href="https://yupay.uz">link</a>');
+  });
+
+  test("drops <script> content for the editor's hydration too, not just the preview bubble", () => {
+    // This is the exact regression the coordinator flagged: a second, hand-rolled whitelist
+    // walker in TelegramEditor.tsx had drifted and no longer dropped script/style content, so
+    // `toEditableHtml('hello <script>alert(1)</script> world')` used to leak "alert(1)" as
+    // literal visible editor text. Now both call sites share this one walker.
+    const out = sanitizeToAllowedHtml("hello <script>alert(1)</script> world", EDITOR_RENDERERS);
+    expect(out.toLowerCase()).not.toContain("<script");
+    expect(out).not.toContain("alert(1)");
   });
 });

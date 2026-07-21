@@ -106,6 +106,20 @@ function isElement(node: Node): node is HTMLElement {
   return node.nodeType === Node.ELEMENT_NODE;
 }
 
+/** True when `node` is a block element whose only content is a single `<br>` — the DOM shape
+ * browsers use for a blank line (e.g. after pressing Enter at the end of a composer). Its `<br>`
+ * already gets to *be* the newline via the block-boundary logic in `serializeChildren`; if we
+ * also serialized it as a child we'd double the newline (see `serializeChildren`'s docstring). */
+function isEmptyBlockLine(node: HTMLElement, tag: string): boolean {
+  return (
+    BLOCK_TAGS.has(tag) &&
+    node.childNodes.length === 1 &&
+    node.firstChild !== null &&
+    isElement(node.firstChild) &&
+    node.firstChild.tagName.toLowerCase() === "br"
+  );
+}
+
 function serializeNode(node: Node): string {
   if (node.nodeType === Node.TEXT_NODE) {
     return escapeText(node.textContent ?? "");
@@ -120,7 +134,7 @@ function serializeNode(node: Node): string {
     return "\n";
   }
 
-  const inner = serializeChildren(node);
+  const inner = isEmptyBlockLine(node, tag) ? "" : serializeChildren(node);
 
   if (tag === "a") {
     const href = node.getAttribute("href") ?? "";
@@ -144,13 +158,27 @@ function serializeNode(node: Node): string {
   return inner;
 }
 
+/**
+ * Join a node's children into one string, inserting a single ``"\n"`` at every block-level
+ * boundary.
+ *
+ * The boundary check is deliberately bidirectional — a boundary exists if *either* side of an
+ * adjacent pair is a block-level element, not just the upcoming child — otherwise a block
+ * followed by a bare inline/text sibling (e.g. ``<div>a</div>`` then a text node ``"b"``, which
+ * contenteditable produces plenty of) would serialize as ``"ab"`` instead of ``"a\nb"``: only
+ * checking the *next* child misses the boundary on the trailing side of the block that just
+ * ended.
+ */
 function serializeChildren(parent: Node): string {
   const parts: string[] = [];
+  let previousWasBlock = false;
   for (const child of Array.from(parent.childNodes)) {
-    if (isElement(child) && BLOCK_TAGS.has(child.tagName.toLowerCase()) && parts.length > 0) {
+    const isBlock = isElement(child) && BLOCK_TAGS.has(child.tagName.toLowerCase());
+    if (parts.length > 0 && (isBlock || previousWasBlock)) {
       parts.push("\n");
     }
     parts.push(serializeNode(child));
+    previousWasBlock = isBlock;
   }
   return parts.join("");
 }
@@ -162,9 +190,14 @@ function serializeChildren(parent: Node): string {
  * tag; a block-level boundary (``<div>``, ``<p>``, ...) between two pieces of content becomes a
  * single ``"\n"`` (Telegram HTML has no ``<br>``-equivalent block model); everything else is
  * unwrapped to its visible text, with ``<``, ``>``, ``&`` escaped.
+ *
+ * Trailing newlines are trimmed: contenteditable typically leaves a trailing
+ * ``<div><br></div>`` wherever the caret currently sits on a blank final line, which is a DOM
+ * artifact, not authored content — and Telegram trims trailing whitespace from a sent message
+ * anyway, so dropping it here is safe.
  */
 export function serialize(root: HTMLElement): string {
-  return serializeChildren(root);
+  return serializeChildren(root).replace(/\s+$/, "");
 }
 
 /**
@@ -182,10 +215,26 @@ export function visibleLength(telegramHtml: string): number {
   return doc.body.textContent.length;
 }
 
-function previewNode(node: Node): string {
+/**
+ * Per-caller output for the two tags {@link sanitizeToAllowedHtml} can't render generically:
+ * ``tg-spoiler`` and ``<a>`` each need a different concrete target tag depending on who's
+ * consuming the result (see {@link sanitizeToAllowedHtml}'s docstring).
+ */
+export interface AllowedHtmlRenderers {
+  /** Render a ``tg-spoiler`` element's already-sanitized inner HTML. */
+  renderSpoiler: (inner: string) => string;
+  /** Render an ``<a>`` whose ``href`` already passed the scheme whitelist and is attr-escaped. */
+  renderAnchor: (escapedHref: string, inner: string) => string;
+}
+
+function sanitizeNode(node: Node, renderers: AllowedHtmlRenderers): string {
   if (node.nodeType === Node.TEXT_NODE) {
-    // Telegram HTML has no <br>; a literal "\n" is the only line-break marker, so the preview
-    // bubble must translate it explicitly to actually wrap like Telegram's client would.
+    // Telegram HTML has no <br>; a literal "\n" is the only line-break marker. Both consumers
+    // of this walker need it turned into a real line break: the preview bubble because raw
+    // HTML collapses "\n" to a space, and the editor's hydration because a bare "\n" text
+    // character round-trips back out through `serialize` identically to a `<br>` anyway (see
+    // `serializeNode`), so giving the editor a real `<br>` element is both correct and simpler
+    // than teaching it to preserve a raw newline character in a text node.
     return escapeText(node.textContent ?? "").replace(/\n/g, "<br>");
   }
   if (!isElement(node)) {
@@ -199,19 +248,22 @@ function previewNode(node: Node): string {
     return "";
   }
 
-  const children = (): string => Array.from(node.childNodes).map(previewNode).join("");
+  const children = (): string =>
+    Array.from(node.childNodes)
+      .map((child) => sanitizeNode(child, renderers))
+      .join("");
 
   if (tag === "a") {
     const href = node.getAttribute("href") ?? "";
     const scheme = hrefScheme(href);
     if (scheme !== null && ALLOWED_HREF_SCHEMES.has(scheme)) {
-      return `<a href="${escapeAttr(href)}" target="_blank" rel="noopener noreferrer">${children()}</a>`;
+      return renderers.renderAnchor(escapeAttr(href), children());
     }
     return children();
   }
 
   if (tag === "tg-spoiler") {
-    return `<span class="spoiler">${children()}</span>`;
+    return renderers.renderSpoiler(children());
   }
 
   if (ALLOWED_TAGS.has(tag)) {
@@ -221,9 +273,40 @@ function previewNode(node: Node): string {
 
   // Any non-whitelisted tag — a stray <div>, an <img onerror=...>, an attacker's <svg>/<iframe>
   // — is unwrapped: keep its visible text, drop the tag and every attribute so nothing but the
-  // fixed set above can ever reach `dangerouslySetInnerHTML`.
+  // fixed set above can ever reach the sink this output feeds.
   return children();
 }
+
+/**
+ * Parse ``telegramHtml`` and rebuild it through {@link ALLOWED_TAGS} only — the single shared
+ * whitelist walker behind both {@link previewHtml} (a ``dangerouslySetInnerHTML`` target) and
+ * ``TelegramEditor``'s contenteditable hydration (an ``innerHTML =`` assignment) — two sinks
+ * exactly as sensitive as each other. Keeping one walker means the two call sites can't drift
+ * out of sync the way a second hand-rolled copy inevitably would (and did: an earlier duplicate
+ * in ``TelegramEditor.tsx`` forgot to drop ``<script>``/``<style>`` content).
+ *
+ * ``tg-spoiler`` and ``<a>`` are the only tags whose *output* differs by caller — the preview
+ * wants a ``<span class="spoiler">`` and a real, clickable, scheme-checked link; the editor
+ * wants the literal ``tg-spoiler`` element and a bare ``href`` so a further edit still
+ * round-trips through {@link serialize} — so callers supply `renderers` for exactly those two.
+ * Every other allowed tag, the ``<script>``/``<style>`` drop, and the attribute stripping are
+ * identical between callers by construction, not by convention.
+ */
+export function sanitizeToAllowedHtml(
+  telegramHtml: string,
+  renderers: AllowedHtmlRenderers,
+): string {
+  const doc = new DOMParser().parseFromString(telegramHtml, "text/html");
+  return Array.from(doc.body.childNodes)
+    .map((node) => sanitizeNode(node, renderers))
+    .join("");
+}
+
+const PREVIEW_RENDERERS: AllowedHtmlRenderers = {
+  renderSpoiler: (inner) => `<span class="spoiler">${inner}</span>`,
+  renderAnchor: (escapedHref, inner) =>
+    `<a href="${escapedHref}" target="_blank" rel="noopener noreferrer">${inner}</a>`,
+};
 
 /**
  * Turn a Telegram-HTML body into safe HTML for the admin's preview bubble.
@@ -236,6 +319,5 @@ function previewNode(node: Node): string {
  * admin page via this function's output.
  */
 export function previewHtml(telegramHtml: string): string {
-  const doc = new DOMParser().parseFromString(telegramHtml, "text/html");
-  return Array.from(doc.body.childNodes).map(previewNode).join("");
+  return sanitizeToAllowedHtml(telegramHtml, PREVIEW_RENDERERS);
 }
