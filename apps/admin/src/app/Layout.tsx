@@ -16,6 +16,7 @@ import {
   Gauge,
   LayoutGrid,
   LogOut,
+  Megaphone,
   Menu,
   Package,
   Plug,
@@ -56,7 +57,7 @@ interface NavGroup {
 }
 
 /**
- * Sidebar layout — 18 entries packed into 6 semantic groups so the operator
+ * Sidebar layout — 21 entries packed into 6 semantic groups so the operator
  * doesn't scan through a flat list. The "Главное" group at the top stays
  * unlabelled and houses the dashboard pin.
  */
@@ -86,6 +87,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/webhooks", label: "Webhooks", icon: Radio },
       { to: "/fulfillment", label: "Fulfilment Inbox", icon: Truck },
       { to: "/promo", label: "Промокоды", icon: Ticket },
+      { to: "/broadcasts", label: "Рассылки", icon: Megaphone },
     ],
   },
   {
@@ -155,7 +157,7 @@ export function Layout() {
   return (
     <div className="flex min-h-screen">
       {/* Skip-link — first focusable element on every page, lets keyboard users
-          jump past the 17-entry sidebar straight into the content area
+          jump past the 21-entry sidebar straight into the content area
           (a11y-audit #13, WCAG 2.4.1). */}
       <a
         href="#main-content"

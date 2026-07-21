@@ -8,6 +8,7 @@ import { AnalyticsPage } from "@/features/analytics/AnalyticsPage";
 import { AuditPage } from "@/features/audit/AuditPage";
 import { AuthGuard } from "@/features/auth/AuthGuard";
 import { LoginPage } from "@/features/auth/LoginPage";
+import { BroadcastsListPage } from "@/features/broadcasts/BroadcastsListPage";
 import { BrandEditPage } from "@/features/catalog/brands/BrandEditPage";
 import { BrandFaqsPage } from "@/features/catalog/brands/BrandFaqsPage";
 import { BrandsListPage } from "@/features/catalog/brands/BrandsListPage";
@@ -77,6 +78,7 @@ export const router = createBrowserRouter([
           { path: "/audit", element: <AuditPage /> },
           { path: "/fx", element: <FxPage /> },
           { path: "/promo", element: <PromoPage /> },
+          { path: "/broadcasts", element: <BroadcastsListPage /> },
           { path: "/users", element: <UsersListPage /> },
           { path: "/customers/:id", element: <CustomerPage /> },
           { path: "/integrations", element: <IntegrationsPage /> },
