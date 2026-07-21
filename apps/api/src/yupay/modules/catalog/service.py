@@ -259,15 +259,18 @@ async def list_brands(
     locale: str,
     category_slug: str | None = None,
 ) -> list[BrandOut]:
-    """Return active brands, optionally filtered by category slug."""
+    """Return active brands under active categories, optionally filtered by
+    category slug. A brand under a hidden category never lists — the same
+    cascade the brand's own ``active`` flag applies to its products."""
     stmt = (
         select(Brand)
+        .join(Brand.category)
         .options(selectinload(Brand.translations))
-        .where(Brand.active.is_(True))
+        .where(Brand.active.is_(True), Category.active.is_(True))
         .order_by(Brand.sort_order, Brand.slug)
     )
     if category_slug is not None:
-        stmt = stmt.join(Brand.category).where(Category.slug == category_slug)
+        stmt = stmt.where(Category.slug == category_slug)
 
     rows = (await db.execute(stmt)).scalars().all()
     return [_brand_summary(b, locale) for b in rows]
@@ -281,9 +284,12 @@ async def get_brand_by_slug(
     currency: str | None = None,
     fx: FxService | None = None,
 ) -> BrandDetailOut | None:
-    """Return brand metadata + summaries of its active products."""
+    """Return brand metadata + summaries of its active products. A brand under
+    a hidden category 404s just as a hidden brand does — visibility cascades
+    category → brand → product → sku."""
     stmt = (
         select(Brand)
+        .join(Brand.category)
         .options(
             selectinload(Brand.translations),
             selectinload(Brand.faqs).selectinload(BrandFaq.translations),
@@ -292,7 +298,7 @@ async def get_brand_by_slug(
             .selectinload(Product.skus)
             .selectinload(Sku.price_overrides),
         )
-        .where(Brand.slug == slug, Brand.active.is_(True))
+        .where(Brand.slug == slug, Brand.active.is_(True), Category.active.is_(True))
     )
     brand = (await db.execute(stmt)).scalar_one_or_none()
     if brand is None:
@@ -351,23 +357,25 @@ async def list_products(
     currency: str | None = None,
     fx: FxService | None = None,
 ) -> list[ProductSummaryOut]:
-    """List active products under active brands, optionally filtered by
-    category and/or brand slug. A product under a hidden brand never lists,
-    even when addressed by that brand's slug."""
+    """List active products under active brands and active categories,
+    optionally filtered by category and/or brand slug. A product under a hidden
+    brand or a hidden category never lists, even when addressed by that brand's
+    slug."""
     stmt = (
         select(Product)
         .join(Product.brand)
+        .join(Brand.category)
         .options(
             selectinload(Product.skus).selectinload(Sku.price_overrides),
             selectinload(Product.translations),
         )
-        .where(Product.active.is_(True), Brand.active.is_(True))
+        .where(Product.active.is_(True), Brand.active.is_(True), Category.active.is_(True))
         .order_by(Product.sort_order, Product.slug)
     )
     if brand_slug is not None:
         stmt = stmt.where(Brand.slug == brand_slug)
     elif category_slug is not None:
-        stmt = stmt.join(Brand.category).where(Category.slug == category_slug)
+        stmt = stmt.where(Category.slug == category_slug)
 
     rows = (await db.execute(stmt)).scalars().all()
 
@@ -401,18 +409,24 @@ async def get_product_by_slug(
     fx: FxService | None = None,
 ) -> ProductDetailOut | None:
     """Return a product detail (brand + form schema + SKUs) or ``None``."""
-    # Join Brand and require it active too: a product under a hidden brand must
-    # 404, not leak by direct slug. Without this a staged/disabled brand's
-    # product is still reachable (and, for a variable-amount SKU, shows a price
-    # it can't actually be bought at).
+    # Join Brand and Category and require both active too: a product under a
+    # hidden brand or a hidden category must 404, not leak by direct slug.
+    # Without this a staged/disabled brand's product is still reachable (and,
+    # for a variable-amount SKU, shows a price it can't actually be bought at).
     stmt = (
         select(Product)
         .join(Brand, Brand.id == Product.brand_id)
+        .join(Category, Category.id == Brand.category_id)
         .options(
             selectinload(Product.skus).selectinload(Sku.price_overrides),
             selectinload(Product.translations),
         )
-        .where(Product.slug == slug, Product.active.is_(True), Brand.active.is_(True))
+        .where(
+            Product.slug == slug,
+            Product.active.is_(True),
+            Brand.active.is_(True),
+            Category.active.is_(True),
+        )
     )
     product = (await db.execute(stmt)).scalar_one_or_none()
     if product is None:
@@ -463,18 +477,20 @@ async def get_sku_by_id(
     currency: str | None = None,
     fx: FxService | None = None,
 ) -> SkuOut | None:
-    """Look up a single active SKU under an active product + brand. A SKU
-    whose product or brand is hidden must not resolve by id."""
+    """Look up a single active SKU under an active product + brand + category.
+    A SKU whose product, brand, or category is hidden must not resolve by id."""
     stmt = (
         select(Sku)
         .join(Sku.product)
         .join(Product.brand)
+        .join(Brand.category)
         .options(selectinload(Sku.price_overrides))
         .where(
             Sku.id == sku_id,
             Sku.active.is_(True),
             Product.active.is_(True),
             Brand.active.is_(True),
+            Category.active.is_(True),
         )
     )
     sku = (await db.execute(stmt)).scalar_one_or_none()

@@ -171,6 +171,72 @@ async def _hide_brand(db_session: AsyncSession, slug: str) -> None:
     await db_session.commit()
 
 
+async def _hide_category(db_session: AsyncSession, slug: str) -> None:
+    await db_session.execute(update(Category).where(Category.slug == slug).values(active=False))
+    await db_session.commit()
+
+
+async def test_hidden_category_hides_its_brands(
+    integration_client: AsyncClient, _seed_one, db_session: AsyncSession
+) -> None:
+    """A brand under a hidden category disappears from the brand listing — both
+    the plain list and the ?category=<slug> query — even though the brand's own
+    ``active`` flag is still true."""
+    await _hide_category(db_session, "games")
+    for path in ("/api/v1/catalog/brands", "/api/v1/catalog/brands?category=games"):
+        r = await integration_client.get(path)
+        assert r.status_code == 200, r.text
+        assert r.json()["items"] == [], path
+
+
+async def test_hidden_category_hides_its_products(
+    integration_client: AsyncClient, _seed_one, db_session: AsyncSession
+) -> None:
+    """A product under a hidden category never lists — the plain list, its
+    category, and a direct ?brand=<slug> query all hide it."""
+    await _hide_category(db_session, "games")
+    for path in (
+        "/api/v1/catalog/products",
+        "/api/v1/catalog/products?category=games",
+        "/api/v1/catalog/products?brand=pubg-mobile",
+    ):
+        r = await integration_client.get(path)
+        assert r.status_code == 200, r.text
+        assert r.json()["items"] == [], path
+
+
+async def test_brand_detail_404s_when_category_inactive(
+    integration_client: AsyncClient, _seed_one, db_session: AsyncSession
+) -> None:
+    """Brand detail 404s under a hidden category — visibility cascades
+    category → brand, the same as brand → product."""
+    await _hide_category(db_session, "games")
+    r = await integration_client.get("/api/v1/catalog/brands/pubg-mobile")
+    assert r.status_code == 404
+
+
+async def test_product_detail_404s_when_category_inactive(
+    integration_client: AsyncClient, _seed_one, db_session: AsyncSession
+) -> None:
+    """An active product under a hidden category must not leak by direct slug."""
+    await _hide_category(db_session, "games")
+    r = await integration_client.get("/api/v1/catalog/products/pubg-uc")
+    assert r.status_code == 404
+
+
+async def test_sku_detail_404s_when_category_inactive(
+    integration_client: AsyncClient, _seed_one, db_session: AsyncSession
+) -> None:
+    """A SKU under a hidden category must not resolve by id — checkout verifies
+    the price through this endpoint, so a staged category can't be bought."""
+    sku_id = _seed_one.skus[0].id
+    ok = await integration_client.get(f"/api/v1/catalog/skus/{sku_id}")
+    assert ok.status_code == 200, ok.text
+    await _hide_category(db_session, "games")
+    r = await integration_client.get(f"/api/v1/catalog/skus/{sku_id}")
+    assert r.status_code == 404
+
+
 async def test_hidden_brands_products_do_not_list(
     integration_client: AsyncClient, _seed_one, db_session: AsyncSession
 ) -> None:
