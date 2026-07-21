@@ -13,7 +13,7 @@ are manual.
 | Checkout fails with "Цена временно недоступна" for the Steam product         | FX trust gate rejected the USD rate                                             | See "Price unavailable (FX trust gate)" below                                                       |
 | Task stuck `in_progress`, Waxpeer status `created`/`sending` for a long time | Waxpeer has no webhook — the sweep hasn't caught it yet                         | Wait up to 60s for the next sweep tick, or query Waxpeer directly (see "Inspecting a stuck top-up") |
 | Task `failed`, `last_error` mentions "refunded"                              | Waxpeer `canceled` the top-up                                                   | No action needed on the supplier side — the balance is already back on our Waxpeer wallet           |
-| Task `failed`, `extra_metadata.needs_reconciliation = true`                  | Waxpeer `error` — it did **not** refund us                                      | See "`needs_reconciliation` — the `error` case" below                                               |
+| Task `failed`, `last_error` mentions "needs manual reconciliation"           | Waxpeer `error` — it did **not** refund us                                      | See "The `error` case — manual reconciliation needed" below                                         |
 | `waxpeer.give_amount_short` in the logs                                      | Waxpeer started charging a fee we haven't configured                            | See "`give_amount` shortfall" below                                                                 |
 | `waxpeer_reconcile.page_limit_hit` in the scheduler logs                     | Backlog of in-flight top-ups larger than the sweep can page through in one tick | See "Reconciliation sweep" below                                                                    |
 
@@ -32,11 +32,17 @@ so the task id is always the key to query Waxpeer with.
    GET /api/v1/admin/fulfillment/tasks/{task_id}
    ```
 
-   The `status`, `last_error`, and `extra_metadata` (`waxpeer_status`,
+   `status` and `last_error` are always reliable — those fields get written
+   regardless of whether the task resolved inline (`fulfill()`) or through
+   the reconciliation sweep (`check_status()`, the common case — see
+   "Reconciliation sweep" below). `extra_metadata` (`waxpeer_status`,
    `amount_units`, `give_amount_units`, and — only when relevant —
    `supplier_refunded` / `needs_reconciliation` / `give_amount_shortfall_units`)
-   are all there. This is also the Fulfilment Inbox's data — the "Failed"
-   tab shows the same tasks once they leave `in_progress`.
+   is only populated when the task resolved inline through `fulfill()`; a
+   task the sweep resolves instead will not have these fields even though
+   the outcome they describe did happen. See "Known limitation" under "The
+   `error` case" below. This is also the Fulfilment Inbox's data — the
+   "Failed" tab shows the same tasks once they leave `in_progress`.
 
 2. Cross-check against Waxpeer directly. Our own `extra_metadata` does
    **not** carry Waxpeer's numeric top-up id (their "pay id") for a failed
@@ -62,13 +68,20 @@ so the task id is always the key to query Waxpeer with.
 | `error`                                | `failed`      | Waxpeer did **not** refund us. See below — needs manual reconciliation.                                                                                                                                                            |
 | `unknown` (unrecognised status string) | `in_progress` | Treated as still in flight on purpose — see the module docstring in `waxpeer.py`: reading an unrecognised value as success or failure risks marking undelivered goods delivered, or refunding money that later completes normally. |
 
-## `needs_reconciliation` — the `error` case
+## The `error` case — manual reconciliation needed
 
 Waxpeer's `error` status means the top-up failed in a way it does not
 auto-refund. This is the one supplier failure mode in this codebase where
 our money and the customer's order genuinely disagree until a human steps
 in — there is deliberately no auto-refund (see ADR-0032: refunds here are
 always whole-order, admin-triggered, same as every other supplier).
+
+**Where to find these tasks:** the task is `failed`, and its `last_error`
+reads "waxpeer reported an error on this top-up; it does not auto-refund
+this case — needs manual reconciliation". That text is what actually
+surfaces the task in the Fulfilment Inbox's "Failed" tab — filter/search on
+it (or on `supplier=waxpeer, status=failed` and eyeball it) to find every
+top-up that needs this treatment.
 
 1. **Refund the customer** the normal way, from the Fulfilment Inbox / the
    order: `POST /api/v1/admin/payments/{payment_id}/refund` with an
@@ -84,13 +97,31 @@ Do not retry an `error` task expecting a different outcome — Waxpeer already
 gave a terminal answer for that `custom_id`; a repeat `fulfill()` call
 returns the same top-up (idempotent replay) rather than trying again.
 
+**Known limitation — `extra_metadata` is not a reliable signal here.**
+`WaxpeerFulfiller` also builds an `extra_metadata.needs_reconciliation =
+true` flag (and, for the `canceled` case, `supplier_refunded = true`), but
+`FulfillStatus` (the return type of `Fulfiller.check_status`, in
+`fulfillment/suppliers/base.py`) has no `extra_metadata` field — only
+`FulfillResult` (the synchronous `fulfill()` return type) does. Both the
+reconciliation sweep and a real webhook go through
+`fulfillment.process_webhook_update`, which calls `check_status()` and
+never writes `task.extra_metadata`. Because Waxpeer has no webhook, nearly
+every top-up's terminal outcome is discovered through this path rather than
+`fulfill()`'s inline result, so these flags are not a queryable structured
+field in production — `last_error` (for `error`/`canceled`) and the
+`waxpeer.give_amount_short` log line (for a fee shortfall — see below) are
+the reliable signals. This is a known gap, not a design choice; giving
+`FulfillStatus` a metadata slot (and having `process_webhook_update`
+persist it) is a follow-up, not implemented here.
+
 ## Price unavailable (FX trust gate)
 
 Steam top-up pricing goes through `pricing.fx_guard` before it can be shown
-or charged (ADR-0032). If the USD→currency rate fails any of the gate's four
-checks (non-positive, older than `pricing_fx_max_age_seconds`, deviated more
-than `pricing_fx_max_deviation_pct` from the last known-good rate, or
-outside `pricing_fx_min_rate_uzs`…`pricing_fx_max_rate_uzs`), the SKU's
+or charged (ADR-0032). If `fx`'s entire provider chain is down, or the
+USD→currency rate fails any of the gate's four further checks (non-positive,
+older than `pricing_fx_max_age_seconds`, deviated more than
+`pricing_fx_max_deviation_pct` from the last known-good rate, or outside
+`pricing_fx_min_rate_uzs`…`pricing_fx_max_rate_uzs`), the SKU's
 storefront price disappears (falls back to no price shown, never the raw
 market rate) and checkout for it fails with 502
 `UpstreamUnavailableError` ("Цена временно недоступна. Попробуйте позже.").
@@ -98,19 +129,24 @@ This is not Waxpeer-specific — it would fire for any variable-amount SKU —
 but Steam top-up is the only one live today.
 
 1. Grep the logs for `pricing.rate_rejected` — it carries the `reason`
-   (`non_positive` / `stale` / `deviation` / `out_of_band`) and the quote
-   currency.
-2. If the reason is `stale`, check whether the `fx` module's provider chain
+   (`unavailable` / `non_positive` / `stale` / `deviation` / `out_of_band`)
+   and the quote currency.
+2. If the reason is `unavailable`, that's the direct signal: `fx`'s entire
+   provider chain returned nothing (`FxUnavailableError`) — a total FX
+   outage, not a bad-but-present rate. Don't wait for a `stale` log line to
+   notice this; `unavailable` fires immediately, before `check_rate` even
+   runs. Check the `fx` module's provider health directly.
+3. If the reason is `stale`, check whether the `fx` module's provider chain
    is actually failing (its own health, not this gate's) — the trust gate
    only judges the freshest rate `fx` handed it, it does not fetch rates
    itself.
-3. If the reason is `deviation` or `out_of_band` during a genuine, large,
+4. If the reason is `deviation` or `out_of_band` during a genuine, large,
    real-world FX move (not a bad provider read), the current
    `pricing_fx_max_deviation_pct` / `pricing_fx_min_rate_uzs` /
    `pricing_fx_max_rate_uzs` settings may need a deliberate one-off bump —
    treat that as a judgement call, not a routine fix, since these bounds
    exist specifically to stop a bad rate from reaching a customer.
-4. See `apps/api/src/yupay/modules/pricing/README.md` for the full
+5. See `apps/api/src/yupay/modules/pricing/README.md` for the full
    check order and current setting defaults.
 
 ## Low-balance preflight
@@ -168,9 +204,16 @@ the customer, it logs
 waxpeer.give_amount_short  order_item_id=... promised_units=... give_amount_units=...
 ```
 
-at error level and records `give_amount_shortfall_units` on the task's
-`extra_metadata` — the top-up is still marked delivered (the money already
-moved), the shortfall is just made visible instead of silently swallowed.
+at error level, unconditionally, from both code paths — **this log line is
+the reliable signal to grep for**, not a task field. `WaxpeerFulfiller` also
+builds a `give_amount_shortfall_units` entry for the task's
+`extra_metadata`, but that only reaches the DB when the task resolves
+inline through `fulfill()`; the far more common path — `check_status()`,
+driven by the reconciliation sweep, since Waxpeer has no webhook — returns
+a `FulfillStatus` with no metadata slot to carry it (see "Known limitation"
+under "The `error` case" above). The top-up is still marked delivered
+either way (the money already moved) — the shortfall is just made visible
+via the log line instead of silently swallowed.
 
 **If you see this log line, Waxpeer has started charging a fee.** Fix:
 

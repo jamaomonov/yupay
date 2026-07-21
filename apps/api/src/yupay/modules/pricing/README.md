@@ -22,7 +22,7 @@ from yupay.modules.pricing.fx_guard import (
     check_rate,          # pure decision function, no I/O
     guarded_usd_rate,     # fetches + checks in one call
     RateRejected,         # raised on any failed check
-    RejectReason,         # Literal of the four reasons
+    RejectReason,         # Literal of the five reasons
 )
 ```
 
@@ -35,15 +35,21 @@ margin multiplier to a bad rate and continuing to sell is how a pricing bug
 becomes a refund queue, so every variable-amount price — storefront display
 and checkout alike — goes through `guarded_usd_rate` first.
 
-`check_rate` runs four checks, in this order, and raises `RateRejected` on
-the first one that fails:
+Before `check_rate` even runs, `guarded_usd_rate` raises the fifth reason,
+`unavailable`, itself — whenever `fx`'s entire provider chain returns
+nothing (`FxUnavailableError`), meaning there is no rate at all to check,
+not merely a bad one. This is the most operationally severe reason: a total
+FX outage rather than a single wrong number. Once a rate is in hand,
+`check_rate` runs four further checks, in this order, and raises
+`RateRejected` on the first one that fails:
 
-| #   | Reason         | Condition                                                                                                        | Setting                                               | Default                        |
-| --- | -------------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ------------------------------ |
-| 1   | `non_positive` | `rate <= 0`                                                                                                      | —                                                     | —                              |
-| 2   | `stale`        | older than `pricing_fx_max_age_seconds`                                                                          | `pricing_fx_max_age_seconds`                          | `21600` (6 h)                  |
-| 3   | `deviation`    | more than `pricing_fx_max_deviation_pct`% from the last known-good rate (skipped when there is no previous rate) | `pricing_fx_max_deviation_pct`                        | `15` (%)                       |
-| 4   | `out_of_band`  | outside `[pricing_fx_min_rate_uzs, pricing_fx_max_rate_uzs]`                                                     | `pricing_fx_min_rate_uzs` / `pricing_fx_max_rate_uzs` | `8000` / `25000` (UZS per USD) |
+| #   | Reason         | Condition                                                                                                                 | Setting                                               | Default                        |
+| --- | -------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ------------------------------ |
+| —   | `unavailable`  | `fx`'s entire provider chain failed (`FxUnavailableError`); raised by `guarded_usd_rate` itself, before `check_rate` runs | —                                                     | —                              |
+| 1   | `non_positive` | `rate <= 0`                                                                                                               | —                                                     | —                              |
+| 2   | `stale`        | older than `pricing_fx_max_age_seconds`                                                                                   | `pricing_fx_max_age_seconds`                          | `21600` (6 h)                  |
+| 3   | `deviation`    | more than `pricing_fx_max_deviation_pct`% from the last known-good rate (skipped when there is no previous rate)          | `pricing_fx_max_deviation_pct`                        | `15` (%)                       |
+| 4   | `out_of_band`  | outside `[pricing_fx_min_rate_uzs, pricing_fx_max_rate_uzs]`                                                              | `pricing_fx_min_rate_uzs` / `pricing_fx_max_rate_uzs` | `8000` / `25000` (UZS per USD) |
 
 `non_positive` runs before `out_of_band` deliberately — a zero rate should
 report as "not a number", not the coincidentally-also-true "out of band".
@@ -143,10 +149,11 @@ maximum is accepted.
 
 - `apps/api/tests/unit/test_variable_pricing.py` — rounding, gross-up,
   bounds, exact-boundary acceptance.
-- `apps/api/tests/unit/test_fx_guard.py` — all four reject reasons and the
-  order they're checked in, as pure decision logic (no DB).
+- `apps/api/tests/unit/test_fx_guard.py` — `check_rate`'s four reject
+  reasons and the order they're checked in, as pure decision logic (no DB).
 - `apps/api/tests/integration/test_fx_guard_db.py` — `guarded_usd_rate`
-  against a real `fx_rates` table.
+  against a real `fx_rates` table, including the fifth reason,
+  `unavailable` (`FxUnavailableError` → `RateRejected("unavailable", ...)`).
 - Checkout-level coverage (amount outside bounds rejected, price never
   taken from the client, FX rejection blocks the order) lives in the
   `orders` integration suite.

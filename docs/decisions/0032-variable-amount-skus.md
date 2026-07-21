@@ -100,14 +100,18 @@ multiplier.
 ### The FX trust gate is fail-closed
 
 `pricing.fx_guard.guarded_usd_rate` sits between the `fx` module's rate
-lookup and every price a variable-amount SKU shows or charges. `fx` already
-retries providers, caches, and rejects non-positive numbers — what it
-cannot judge is a rate that parses fine but is simply wrong (half the real
-value, or six hours stale). `check_rate` runs four checks in this order —
-non-positive, stale (`pricing_fx_max_age_seconds`), deviation from the last
-known-good rate (`pricing_fx_max_deviation_pct`), and an absolute sanity
-band (`pricing_fx_min_rate_uzs`…`pricing_fx_max_rate_uzs`) — and **any**
-failure raises `RateRejected`. `catalog.service._resolve_variable_price`
+lookup and every price a variable-amount SKU shows or charges. If `fx`'s
+entire provider chain is down (`FxUnavailableError`), `guarded_usd_rate`
+raises `RateRejected("unavailable", ...)` itself, before a rate ever reaches
+`check_rate` — a total FX outage, and the most operationally severe of the
+five reject reasons. Otherwise `fx` already retries providers, caches, and
+rejects non-positive numbers — what it cannot judge is a rate that parses
+fine but is simply wrong (half the real value, or six hours stale).
+`check_rate` then runs four further checks in this order — non-positive,
+stale (`pricing_fx_max_age_seconds`), deviation from the last known-good
+rate (`pricing_fx_max_deviation_pct`), and an absolute sanity band
+(`pricing_fx_min_rate_uzs`…`pricing_fx_max_rate_uzs`) — and **any** failure
+(including `unavailable`) raises `RateRejected`. `catalog.service._resolve_variable_price`
 turns a rejection into a missing display price (never a fallback to the raw
 market rate); `orders.service._variable_line_charge` turns it into a 502
 (`UpstreamUnavailableError`) that blocks the order outright. Both call
@@ -120,15 +124,25 @@ noticed — the asymmetry is deliberate.
 
 When Waxpeer reports `status = "error"` on a top-up, it does **not** refund
 our supplier balance (unlike `canceled`, which does). `WaxpeerFulfiller`
-marks the task `failed` with `extra_metadata.needs_reconciliation = true`
-and it surfaces in the admin Fulfilment Inbox's "Failed" tab like any other
-automatic-supplier failure. There is no auto-refund of the order — refunding
-the customer is a manual admin action (`POST
-/admin/payments/{id}/refund`), the same path every other supplier failure
-already uses. An automatic per-line refund was considered and rejected: this
-codebase refunds whole orders, admin-triggered (see the wallet/payments
-refund flow), and a multi-item order with one bad top-up line would need
-either refunding the whole order for one line's failure or a partial-refund
+marks the task `failed` with a `last_error` that says so ("waxpeer reported
+an error on this top-up; it does not auto-refund this case — needs manual
+reconciliation"), and it surfaces in the admin Fulfilment Inbox's "Failed"
+tab like any other automatic-supplier failure — that `last_error` text is
+what an admin actually finds this task by. (`WaxpeerFulfiller` also builds
+an `extra_metadata.needs_reconciliation = true` flag, but almost every
+top-up's terminal outcome is discovered later by the reconciliation sweep
+via `check_status`, whose `FulfillStatus` return type has no
+`extra_metadata` field — and `fulfillment.process_webhook_update`, which the
+sweep calls, never writes `task.extra_metadata`. So this flag is not a
+reliable, queryable signal in production; `last_error` is. See the "Known
+limitation" note in `docs/runbooks/waxpeer-troubleshooting.md`.) There is no
+auto-refund of the order — refunding the customer is a manual admin action
+(`POST /api/v1/admin/payments/{id}/refund`), the same path every other
+supplier failure already uses. An automatic per-line refund was considered
+and rejected: this codebase refunds whole orders, admin-triggered (see the
+wallet/payments refund flow), and a multi-item order with one bad top-up
+line would need either refunding the whole order for one line's failure or
+a partial-refund
 currency conversion the Waxpeer adapter has no reason to own. Automating
 single-line refunds is a payments-module decision, not something to bolt
 onto one supplier adapter. The admin's other job in this case — separate
@@ -157,11 +171,20 @@ top-up's pay id to recover _our_ side of the money, since Waxpeer kept it.
   support ticket; there is no automated reconciliation of _our_ balance
   with Waxpeer, only of the _order's_ status (see the reconciliation sweep
   in `apps/scheduler`).
+- The structured reconciliation flags (`needs_reconciliation`,
+  `supplier_refunded`, `give_amount_shortfall_units`) only reach
+  `task.extra_metadata` for a task resolved inline through `fulfill()`.
+  Since Waxpeer has no webhook, almost every task is instead resolved by
+  the polling sweep's `check_status()`, whose `FulfillStatus` return type
+  has no `extra_metadata` field — a known limitation, not a design choice.
+  `last_error` and the `waxpeer.give_amount_short` log line are the
+  reliable signals until `FulfillStatus` gains a metadata slot (a
+  follow-up, not done here).
 
 ## Validation
 
 `apps/api/tests/unit/test_variable_pricing.py` (rounding, gross-up, bounds),
-`apps/api/tests/unit/test_fx_guard.py` + `test_fx_guard_db.py` (all four
+`apps/api/tests/unit/test_fx_guard.py` + `test_fx_guard_db.py` (all five
 reject reasons, decision ordering),
 `apps/api/tests/contract/test_waxpeer_fulfiller.py` (status mapping,
 idempotent replay, shortfall flagging),
