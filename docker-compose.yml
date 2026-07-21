@@ -38,6 +38,12 @@ x-app-env: &app-env
   G2B_WEBHOOK_SECRET: ${G2B_WEBHOOK_SECRET:-}
   G2B_CALLBACK_URL: ${G2B_CALLBACK_URL:-}
   G2B_REQUEST_TIMEOUT_SECONDS: ${G2B_REQUEST_TIMEOUT_SECONDS:-20}
+  # Waxpeer supplier (Steam wallet top-ups) — set in .env / prod secrets.
+  # Empty WAXPEER_API_KEY leaves the adapter as ``available=false``.
+  WAXPEER_API_KEY: ${WAXPEER_API_KEY:-}
+  WAXPEER_BASE_URL: ${WAXPEER_BASE_URL:-https://api.waxpeer.com/v1}
+  WAXPEER_REQUEST_TIMEOUT_SECONDS: ${WAXPEER_REQUEST_TIMEOUT_SECONDS:-20}
+  WAXPEER_FEE_RATE: ${WAXPEER_FEE_RATE:-0}
   # Octo card acquirer — set in .env (or /opt/yupay/secrets/api.env in prod).
   # Empty OCTO_SHOP_ID/OCTO_SECRET leaves the gateway ``available=false`` and the
   # miniapp "Карта" method stays disabled. BASE_URL must be publicly reachable
