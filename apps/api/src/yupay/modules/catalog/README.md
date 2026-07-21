@@ -27,10 +27,10 @@ Every level carries an `active` boolean, and visibility **cascades downward**:
 a row is served by the read API only when it and every ancestor are active.
 Hiding a `Category` hides all its brands, their products, and their SKUs;
 hiding a `Brand` hides its products and SKUs; and so on. This holds on **every**
-read path — the listings *and* the by-slug / by-id detail lookups — so a
+read path — the listings _and_ the by-slug / by-id detail lookups — so a
 staged-but-hidden ancestor can never leak a descendant by direct slug (nor let
 checkout price a SKU whose category or brand is turned off). `Brand.maintenance`
-is separate: it keeps the brand *visible* but blocks purchases (a "maintenance"
+is separate: it keeps the brand _visible_ but blocks purchases (a "maintenance"
 badge), whereas `active=False` removes it entirely. This is the staging pattern
 used to prepare a launch (e.g. Steam) before flipping it live.
 
