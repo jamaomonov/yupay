@@ -24,7 +24,10 @@ Likewise, an unterminated *ordinary* tag or attribute (e.g. ``<b class="`` with 
 incomplete construct and, on ``close()``, discards it with no callback at all, silently
 swallowing everything after it to EOF (counted as ~0 visible chars). ``_TelegramHtmlValidator``
 guards against this by checking its own ``rawdata`` buffer immediately after ``feed()`` —
-*before* calling ``close()``, which would otherwise erase the signal.
+*before* calling ``close()``, which would otherwise erase the signal — and specifically for a
+leftover ``<`` in that buffer, since a benign trailing character reference (e.g. a body ending
+in a bare ``&`` or an incomplete ``&amp`` with no terminator) is *also* held back in
+``rawdata`` until EOF but never contains a ``<``, and must be tolerated as plain text.
 """
 
 from __future__ import annotations
@@ -65,6 +68,11 @@ def visible_length(html: str) -> int:
     Strips every tag; HTML entities are decoded exactly once, by the underlying parser's
     ``convert_charrefs=True`` behavior — this is the count Telegram's caption/message length
     limits are enforced against, not the length of the raw markup.
+
+    Assumes structurally-valid input (balanced tags, no incomplete/unterminated markup) —
+    it is normally called only after :func:`validate_body`'s own parse has already gated on
+    that, so a direct caller bypassing that gate can get an undercount on malformed input
+    (an unterminated tag silently swallows the rest of the body as ~0 visible chars).
     """
     collector = _TextCollector()
     collector.feed(html)
@@ -139,11 +147,22 @@ class _TelegramHtmlValidator(HTMLParser):
         start-tag construct, resetting ``rawdata`` back to ``""`` with no callback at all —
         so the check must happen first, or the bypass is invisible.
 
+        The check is narrowed to leftovers that *contain* a ``<``: with
+        ``convert_charrefs=True``, ``HTMLParser`` also holds back a trailing, not-yet-
+        disambiguated character reference (e.g. a body ending in a bare ``&`` or an
+        incomplete named entity like ``&amp`` with no terminator) in ``rawdata`` until EOF,
+        purely because it *could* still turn into a longer entity if more input arrived.
+        That is benign, plain text — a literal ``&`` is meant to be tolerated (Telegram's
+        HTML mode doesn't require escaping it) — and must not be rejected. A genuine
+        incomplete tag/comment/PI leftover always starts at the unclosed ``<...`` construct,
+        so it always contains a ``<``; a benign trailing-entity leftover never does.
+
         Raises:
-            ValidationError: if the fed input ends with incomplete/unterminated markup, or
-                if any tag was left open (unbalanced markup).
+            ValidationError: if the fed input ends with an incomplete/unterminated tag,
+                comment, or processing instruction (a ``<`` left unconsumed in the
+                buffer), or if any tag was left open (unbalanced markup).
         """
-        if self.rawdata:
+        if "<" in self.rawdata:
             raise ValidationError("incomplete or unterminated markup at end of body")
         self.close()
         if self._stack:

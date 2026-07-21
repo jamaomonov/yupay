@@ -174,3 +174,27 @@ def test_unterminated_anchor_href_no_closing_bracket_rejected() -> None:
 
 def test_literal_greater_than_in_text_passes() -> None:
     validate_body("a > b", has_media=False)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "Buy 2 & get 1 free &",
+        "great deal &am",
+        "great deal &amp",
+    ],
+)
+def test_trailing_ampersand_or_entity_prefix_is_benign_plain_text(body: str) -> None:
+    # With convert_charrefs=True, HTMLParser holds a trailing, not-yet-disambiguated
+    # character reference in its buffer until EOF purely because it *could* still turn
+    # into a longer entity — this is ordinary plain text (a literal "&" needs no escaping
+    # in Telegram HTML) and must not be misread as unterminated markup.
+    validate_body(body, has_media=False)
+
+
+def test_stray_unescaped_angle_bracket_at_eof_rejected() -> None:
+    # A lone "<" left unconsumed at EOF is a genuine incomplete-tag-start leftover (as
+    # opposed to a benign trailing entity) — it must be escaped as "&lt;" in valid
+    # Telegram HTML, so this is correctly rejected, not tolerated like a bare "&".
+    with pytest.raises(ValidationError):
+        validate_body("weird<", has_media=False)
