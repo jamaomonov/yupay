@@ -61,6 +61,16 @@ def configure_logging() -> None:
 
     logging.basicConfig(format="%(message)s", stream=sys.stdout, level=level)
 
+    # Silence third-party request loggers that log the full URL at INFO. httpx
+    # in particular writes ``GET https://host/path?api=<key>`` — the Waxpeer
+    # supplier passes its API key as a query param, so its key would land in the
+    # logs (and Loki) verbatim. Our own structured ``*.request`` logs redact to
+    # path-only; the stdlib redactor (``_redact_pii``) only covers structlog
+    # events, not these. Cap them at WARNING so a real transport error still
+    # surfaces without leaking credentials on every call.
+    for noisy in ("httpx", "httpcore"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
     processors: list[structlog.types.Processor] = [
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
