@@ -34,29 +34,81 @@ const priceOverrideSchema = z.object({
   price: z.string().regex(/^\d+(\.\d{1,6})?$/, "число > 0"),
 });
 
-const skuSchema = z.object({
-  product_id: z.string().min(1, "Выбери продукт"),
-  sku_code: z
-    .string()
-    .min(1, "Обязательно")
-    .max(64)
-    .regex(/^[A-Za-z0-9._-]+$/, "только латиница, цифры, . _ -"),
-  denomination: z.string().max(64).optional().nullable(),
-  region: z.string().max(8).optional().nullable(),
-  price_usd: z.string().regex(/^\d+(\.\d{1,6})?$/, "число > 0"),
-  // Empty string is "no value" — we strip it before sending so the
-  // backend keeps cost_usdt as NULL for SKUs whose wholesale cost
-  // isn't known yet.
-  cost_usdt: z
-    .string()
-    .regex(/^(\d+(\.\d{1,6})?)?$/, "число > 0 либо пусто")
-    .optional()
-    .nullable(),
-  image_url: z.string().url().or(z.literal("")).optional().nullable(),
-  sort_order: z.coerce.number().int().default(0),
-  active: z.boolean().default(true),
-  price_overrides: z.array(priceOverrideSchema).default([]),
-});
+// Amount bounds share cost_usdt's 6-decimal pattern; the multiplier is
+// stored as Numeric(10, 4) so it gets its own, tighter pattern.
+const _amountPattern = /^(\d+(\.\d{1,6})?)?$/;
+const _multiplierPattern = /^(\d+(\.\d{1,4})?)?$/;
+
+const skuSchema = z
+  .object({
+    product_id: z.string().min(1, "Выбери продукт"),
+    sku_code: z
+      .string()
+      .min(1, "Обязательно")
+      .max(64)
+      .regex(/^[A-Za-z0-9._-]+$/, "только латиница, цифры, . _ -"),
+    denomination: z.string().max(64).optional().nullable(),
+    region: z.string().max(8).optional().nullable(),
+    price_usd: z.string().regex(/^\d+(\.\d{1,6})?$/, "число > 0"),
+    // Empty string is "no value" — we strip it before sending so the
+    // backend keeps cost_usdt as NULL for SKUs whose wholesale cost
+    // isn't known yet.
+    cost_usdt: z
+      .string()
+      .regex(/^(\d+(\.\d{1,6})?)?$/, "число > 0 либо пусто")
+      .optional()
+      .nullable(),
+    // Steam-wallet-style SKUs: the customer picks the amount at checkout.
+    // When off, these three stay hidden and are always sent as null —
+    // see the mutationFn below, which ignores whatever is left in these
+    // fields once the toggle is off.
+    variable_amount: z.boolean().default(false),
+    min_amount_usd: z.string().regex(_amountPattern, "число > 0 либо пусто").optional().nullable(),
+    max_amount_usd: z.string().regex(_amountPattern, "число > 0 либо пусто").optional().nullable(),
+    rate_multiplier: z
+      .string()
+      .regex(_multiplierPattern, "число > 0 либо пусто")
+      .optional()
+      .nullable(),
+    image_url: z.string().url().or(z.literal("")).optional().nullable(),
+    sort_order: z.coerce.number().int().default(0),
+    active: z.boolean().default(true),
+    price_overrides: z.array(priceOverrideSchema).default([]),
+  })
+  .superRefine((val, ctx) => {
+    if (!val.variable_amount) return;
+    const min = Number.parseFloat(val.min_amount_usd ?? "");
+    const max = Number.parseFloat(val.max_amount_usd ?? "");
+    const multiplier = Number.parseFloat(val.rate_multiplier ?? "");
+    if (!val.min_amount_usd || Number.isNaN(min) || min <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["min_amount_usd"],
+        message: "Обязательно для плавающей суммы",
+      });
+    }
+    if (!val.max_amount_usd || Number.isNaN(max) || max <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["max_amount_usd"],
+        message: "Обязательно для плавающей суммы",
+      });
+    }
+    if (!val.rate_multiplier || Number.isNaN(multiplier) || multiplier <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["rate_multiplier"],
+        message: "Обязательно для плавающей суммы",
+      });
+    }
+    if (!Number.isNaN(min) && !Number.isNaN(max) && max < min) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["max_amount_usd"],
+        message: "Должно быть ≥ минимума",
+      });
+    }
+  });
 
 type FormValues = z.infer<typeof skuSchema>;
 
@@ -67,6 +119,10 @@ const EMPTY: FormValues = {
   region: "GLOBAL",
   price_usd: "1.00",
   cost_usdt: "",
+  variable_amount: false,
+  min_amount_usd: "",
+  max_amount_usd: "",
+  rate_multiplier: "",
   image_url: "",
   sort_order: 0,
   active: true,
@@ -80,6 +136,10 @@ interface SkuCreateBody {
   region: string | null;
   price_usd: string;
   cost_usdt: string | null;
+  variable_amount: boolean;
+  min_amount_usd: string | null;
+  max_amount_usd: string | null;
+  rate_multiplier: string | null;
   image_url: string | null;
   sort_order: number;
   active: boolean;
@@ -92,10 +152,27 @@ interface SkuPatchBody {
   region: string | null;
   price_usd: string;
   cost_usdt: string | null;
+  variable_amount: boolean;
+  min_amount_usd: string | null;
+  max_amount_usd: string | null;
+  rate_multiplier: string | null;
   image_url: string | null;
   sort_order: number;
   active: boolean;
   price_overrides: { currency: string; price: string }[];
+}
+
+interface FxRateOut {
+  base: string;
+  quote: string;
+  rate: string;
+  fetched_at: string;
+  source: string;
+}
+
+interface FxRatesOut {
+  base: string;
+  rates: FxRateOut[];
 }
 
 export function SkuEditPage() {
@@ -120,6 +197,17 @@ export function SkuEditPage() {
     queryFn: () => apiGet<Sku[]>("/api/v1/admin/catalog/skus"),
   });
   const existing = isNew ? null : skusQuery.data?.find((s) => s.id === params.id);
+
+  // Reused from FxPage: the USD→UZS market rate, so the operator sees what
+  // the customer will actually pay per dollar under a given multiplier,
+  // not just a bare number like "1.08".
+  const ratesQuery = useQuery<FxRatesOut>({
+    queryKey: qk.fxRates(),
+    queryFn: () => apiGet<FxRatesOut>("/api/v1/admin/fx/rates"),
+  });
+  const usdToUzsRate = ratesQuery.data?.rates.find(
+    (r) => r.base === "USD" && r.quote === "UZS",
+  )?.rate;
 
   const form = useForm<FormValues>({
     resolver: zodResolver(skuSchema),
@@ -153,6 +241,10 @@ export function SkuEditPage() {
       region: existing.region ?? "GLOBAL",
       price_usd: existing.price_usd,
       cost_usdt: existing.cost_usdt ?? "",
+      variable_amount: existing.variable_amount,
+      min_amount_usd: existing.min_amount_usd ?? "",
+      max_amount_usd: existing.max_amount_usd ?? "",
+      rate_multiplier: existing.rate_multiplier ?? "",
       image_url: existing.image_url ?? "",
       sort_order: existing.sort_order,
       active: existing.active,
@@ -179,6 +271,21 @@ export function SkuEditPage() {
   const watchedRegion = form.watch("region");
   const watchedPriceUsd = form.watch("price_usd");
   const watchedSkuCode = form.watch("sku_code");
+  const watchedVariableAmount = form.watch("variable_amount");
+  const watchedRateMultiplier = form.watch("rate_multiplier");
+
+  // "≈ 14 040 сум за $1" — the resulting customer-facing rate, so the
+  // operator sees what their margin actually means in money, not a bare
+  // multiplier. Omitted (not a broken "NaN за $1") whenever the FX query
+  // has no USD→UZS rate yet, or the multiplier isn't a valid number.
+  const effectiveRateHint = useMemo(() => {
+    if (!usdToUzsRate) return null;
+    const multiplier = Number.parseFloat(watchedRateMultiplier ?? "");
+    const market = Number.parseFloat(usdToUzsRate);
+    if (Number.isNaN(multiplier) || multiplier <= 0 || Number.isNaN(market)) return null;
+    const effective = market * multiplier;
+    return `≈ ${effective.toLocaleString("ru-RU", { maximumFractionDigits: 0 })} сум за $1`;
+  }, [usdToUzsRate, watchedRateMultiplier]);
 
   const selectedProduct = watchedProductId ? productById.get(watchedProductId) : undefined;
   const selectedBrand = selectedProduct ? brandById.get(selectedProduct.brand_id) : undefined;
@@ -208,14 +315,32 @@ export function SkuEditPage() {
   const save = useMutation<Sku, ApiError, FormValues>({
     mutationFn: async (values) => {
       const costNorm = values.cost_usdt?.trim() || null;
+      // price_usd is meaningless for a variable-amount SKU — the real price
+      // is computed at checkout from the customer's chosen amount, the FX
+      // rate, and rate_multiplier. The field is hidden in that case, so
+      // whatever is left in form state is stale; send the backend's
+      // required-positive placeholder instead of trusting it.
+      const priceUsd = values.variable_amount ? "1" : values.price_usd;
+      // Mirrors the backend: these three are only meaningful together with
+      // variable_amount, and turning the toggle off must actually clear
+      // them rather than leave stale values behind.
+      const minAmountNorm = values.variable_amount ? values.min_amount_usd?.trim() || null : null;
+      const maxAmountNorm = values.variable_amount ? values.max_amount_usd?.trim() || null : null;
+      const rateMultiplierNorm = values.variable_amount
+        ? values.rate_multiplier?.trim() || null
+        : null;
       if (isNew) {
         const body: SkuCreateBody = {
           product_id: values.product_id,
           sku_code: values.sku_code,
           denomination: values.denomination?.trim() || null,
           region: values.region?.trim() || null,
-          price_usd: values.price_usd,
+          price_usd: priceUsd,
           cost_usdt: costNorm,
+          variable_amount: values.variable_amount,
+          min_amount_usd: minAmountNorm,
+          max_amount_usd: maxAmountNorm,
+          rate_multiplier: rateMultiplierNorm,
           image_url: values.image_url?.trim() || null,
           sort_order: values.sort_order,
           active: values.active,
@@ -230,8 +355,12 @@ export function SkuEditPage() {
         sku_code: values.sku_code,
         denomination: values.denomination?.trim() || null,
         region: values.region?.trim() || null,
-        price_usd: values.price_usd,
+        price_usd: priceUsd,
         cost_usdt: costNorm,
+        variable_amount: values.variable_amount,
+        min_amount_usd: minAmountNorm,
+        max_amount_usd: maxAmountNorm,
+        rate_multiplier: rateMultiplierNorm,
         image_url: values.image_url?.trim() || null,
         sort_order: values.sort_order,
         active: values.active,
@@ -378,21 +507,23 @@ export function SkuEditPage() {
           </Field>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Field
-              label="Цена USD (retail)"
-              error={form.formState.errors.price_usd?.message}
-              help="Каноническая цена для юзера. Конвертируется по FX, если нет override."
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-[var(--text-secondary)]">$</span>
-                <Input
-                  {...form.register("price_usd")}
-                  inputMode="decimal"
-                  placeholder="0.85"
-                  className="font-mono"
-                />
-              </div>
-            </Field>
+            {!watchedVariableAmount && (
+              <Field
+                label="Цена USD (retail)"
+                error={form.formState.errors.price_usd?.message}
+                help="Каноническая цена для юзера. Конвертируется по FX, если нет override."
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-[var(--text-secondary)]">$</span>
+                  <Input
+                    {...form.register("price_usd")}
+                    inputMode="decimal"
+                    placeholder="0.85"
+                    className="font-mono"
+                  />
+                </div>
+              </Field>
+            )}
             <Field
               label="Cost USDT (поставщику)"
               error={form.formState.errors.cost_usdt?.message}
@@ -409,6 +540,57 @@ export function SkuEditPage() {
               </div>
             </Field>
           </div>
+
+          <div className="rounded-md border border-[var(--border-default)] bg-[var(--bg-muted)] p-3">
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input type="checkbox" {...form.register("variable_amount")} className="size-4" />
+              Плавающая сумма
+            </label>
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">
+              Покупатель сам указывает сумму при оформлении заказа (например, пополнение
+              Steam-кошелька). Цена USD выше не используется — реальная цена считается из введённой
+              суммы, курса и множителя.
+            </p>
+
+            {watchedVariableAmount && (
+              <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-3">
+                <Field label="Мин. сумма, $" error={form.formState.errors.min_amount_usd?.message}>
+                  <Input
+                    {...form.register("min_amount_usd")}
+                    inputMode="decimal"
+                    placeholder="1.00"
+                    className="font-mono"
+                  />
+                </Field>
+                <Field label="Макс. сумма, $" error={form.formState.errors.max_amount_usd?.message}>
+                  <Input
+                    {...form.register("max_amount_usd")}
+                    inputMode="decimal"
+                    placeholder="300.00"
+                    className="font-mono"
+                  />
+                </Field>
+                <Field
+                  label="Множитель курса"
+                  error={form.formState.errors.rate_multiplier?.message}
+                  help="Курс для покупателя = рыночный курс × множитель."
+                >
+                  <Input
+                    {...form.register("rate_multiplier")}
+                    inputMode="decimal"
+                    placeholder="1.08"
+                    className="font-mono"
+                  />
+                  {effectiveRateHint && (
+                    <p className="mt-1 text-xs font-medium text-[var(--accent)]">
+                      {effectiveRateHint}
+                    </p>
+                  )}
+                </Field>
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Field label="Сортировка">
               <Input type="number" {...form.register("sort_order")} />
@@ -445,6 +627,7 @@ export function SkuEditPage() {
             priceUsd={watchedPriceUsd}
             overrides={form.watch("price_overrides")}
             skuCode={watchedSkuCode}
+            variableAmount={watchedVariableAmount}
           />
 
           {!isNew && params.id && <SkuPriceHistoryCard skuId={params.id} />}
@@ -534,6 +717,7 @@ function PricePreview({
   priceUsd,
   overrides,
   skuCode,
+  variableAmount,
 }: {
   productName: string;
   denom: string;
@@ -541,14 +725,17 @@ function PricePreview({
   priceUsd: string;
   overrides: { currency: string; price: string }[];
   skuCode: string;
+  variableAmount: boolean;
 }) {
   const usdNum = Number.parseFloat(priceUsd);
-  const hasUsd = !Number.isNaN(usdNum) && usdNum > 0;
+  // price_usd is a placeholder for variable-amount SKUs — never show it as
+  // if it were a real price, the same reasoning that hides the field itself.
+  const hasUsd = !variableAmount && !Number.isNaN(usdNum) && usdNum > 0;
   const validOverrides = overrides.filter((o) => {
     const n = Number.parseFloat(o.price);
     return !Number.isNaN(n) && n > 0 && o.currency.length >= 3;
   });
-  const showLine = denom || region || hasUsd;
+  const showLine = denom || region || hasUsd || variableAmount;
   return (
     <section className="rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
       <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-secondary)]">
@@ -571,6 +758,7 @@ function PricePreview({
             </div>
           </div>
           <div className="flex flex-wrap gap-1.5">
+            {variableAmount && <PriceChip currency="СУММА" value="плавающая" tone="override" />}
             {hasUsd && <PriceChip currency="USD" value={usdNum.toFixed(2)} tone="primary" />}
             {validOverrides.map((o, i) => (
               <PriceChip

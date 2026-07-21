@@ -447,6 +447,30 @@
             ],
             "title": "Image Url"
           },
+          "max_amount_usd": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Amount Usd"
+          },
+          "min_amount_usd": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Amount Usd"
+          },
           "price_overrides": {
             "items": {
               "$ref": "#/components/schemas/SkuPriceOverrideIn-Output"
@@ -462,6 +486,18 @@
           "product_id": {
             "title": "Product Id",
             "type": "string"
+          },
+          "rate_multiplier": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Multiplier"
           },
           "region": {
             "anyOf": [
@@ -481,6 +517,10 @@
           "sort_order": {
             "title": "Sort Order",
             "type": "integer"
+          },
+          "variable_amount": {
+            "title": "Variable Amount",
+            "type": "boolean"
           }
         },
         "required": [
@@ -491,6 +531,10 @@
           "region",
           "price_usd",
           "cost_usdt",
+          "variable_amount",
+          "min_amount_usd",
+          "max_amount_usd",
+          "rate_multiplier",
           "image_url",
           "sort_order",
           "active",
@@ -6432,6 +6476,38 @@
             ],
             "title": "Image Url"
           },
+          "max_amount_usd": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Amount Usd"
+          },
+          "min_amount_usd": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Amount Usd"
+          },
           "price_overrides": {
             "items": {
               "$ref": "#/components/schemas/SkuPriceOverrideIn-Input"
@@ -6456,6 +6532,22 @@
             "title": "Product Id",
             "type": "string"
           },
+          "rate_multiplier": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Multiplier"
+          },
           "region": {
             "anyOf": [
               {
@@ -6478,6 +6570,11 @@
             "default": 0,
             "title": "Sort Order",
             "type": "integer"
+          },
+          "variable_amount": {
+            "default": false,
+            "title": "Variable Amount",
+            "type": "boolean"
           }
         },
         "required": [
@@ -6756,7 +6853,7 @@
       },
       "SkuUpdate": {
         "additionalProperties": false,
-        "description": "Body of ``PATCH /admin/catalog/skus/{id}``.",
+        "description": "Body of ``PATCH /admin/catalog/skus/{id}``.\n\nMost fields follow a \"None means don't touch\" convention. The\nvariable-amount block is the exception: ``variable_amount``,\n``min_amount_usd``, ``max_amount_usd`` and ``rate_multiplier`` are\ntreated as one unit in :func:`admin_service.update_sku` \u2014 whenever\n``variable_amount`` is explicitly sent (not ``None``), all four are\nwritten together, including nulling the bounds/multiplier when the\nadmin turns the toggle off. This lets the SKU edit form send\n``variable_amount: false`` with the three fields as ``null`` and have\nthem actually clear, instead of silently no-op'ing like a bare\n``None`` would elsewhere in this schema.",
         "properties": {
           "active": {
             "anyOf": [
@@ -6807,6 +6904,38 @@
             ],
             "title": "Image Url"
           },
+          "max_amount_usd": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Amount Usd"
+          },
+          "min_amount_usd": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Amount Usd"
+          },
           "price_overrides": {
             "anyOf": [
               {
@@ -6836,6 +6965,22 @@
               }
             ],
             "title": "Price Usd"
+          },
+          "rate_multiplier": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Multiplier"
           },
           "region": {
             "anyOf": [
@@ -6871,6 +7016,17 @@
               }
             ],
             "title": "Sort Order"
+          },
+          "variable_amount": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variable Amount"
           }
         },
         "title": "SkuUpdate",

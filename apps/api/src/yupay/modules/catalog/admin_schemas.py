@@ -10,12 +10,44 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from yupay.modules.catalog.schemas import FormField
 
 # Allow letters, digits, dashes; max 64 — matches column lengths and SEO conventions.
 _SLUG_PATTERN = r"^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$"
+
+
+def _require_variable_amount_fields(
+    *,
+    min_amount_usd: Decimal | None,
+    max_amount_usd: Decimal | None,
+    rate_multiplier: Decimal | None,
+) -> None:
+    """Mirror the ``ck_skus_variable_amount_complete`` DB CHECK in Pydantic.
+
+    Raises a readable ``ValueError`` (surfaced as a 422) instead of letting an
+    incomplete variable-amount SKU reach the DB and blow up as an opaque
+    ``IntegrityError``. ``min_amount_usd > 0`` and ``rate_multiplier > 0`` are
+    already enforced field-by-field via ``Field(gt=0)``; this only checks
+    presence and the min/max ordering, which need all three values at once.
+    """
+    missing = [
+        name
+        for name, value in (
+            ("min_amount_usd", min_amount_usd),
+            ("max_amount_usd", max_amount_usd),
+            ("rate_multiplier", rate_multiplier),
+        )
+        if value is None
+    ]
+    if missing:
+        raise ValueError("variable_amount SKUs require " + ", ".join(missing) + " to be set")
+    # mypy: narrowed to non-None by the `missing` check above.
+    assert min_amount_usd is not None
+    assert max_amount_usd is not None
+    if max_amount_usd < min_amount_usd:
+        raise ValueError("max_amount_usd must be >= min_amount_usd")
 
 
 # ---------- translations (shared shape) ----------
@@ -219,14 +251,43 @@ class SkuCreate(BaseModel):
     # Supplier wholesale cost in USDT (we pay vendors in USDT). Optional
     # so legacy SKUs can be edited before this field is filled in.
     cost_usdt: Decimal | None = Field(default=None, gt=0)
+    # Variable-amount (Steam wallet-style) SKUs: the customer picks the
+    # amount at checkout, so price_usd is a placeholder and these three
+    # drive the actual price. See ``ck_skus_variable_amount_complete``.
+    variable_amount: bool = False
+    min_amount_usd: Decimal | None = Field(default=None, gt=0)
+    max_amount_usd: Decimal | None = Field(default=None, gt=0)
+    rate_multiplier: Decimal | None = Field(default=None, gt=0)
     image_url: str | None = Field(default=None, max_length=1024)
     sort_order: int = 0
     active: bool = True
     price_overrides: list[SkuPriceOverrideIn] = Field(default_factory=list)
 
+    @model_validator(mode="after")
+    def _validate_variable_amount(self) -> SkuCreate:
+        if self.variable_amount:
+            _require_variable_amount_fields(
+                min_amount_usd=self.min_amount_usd,
+                max_amount_usd=self.max_amount_usd,
+                rate_multiplier=self.rate_multiplier,
+            )
+        return self
+
 
 class SkuUpdate(BaseModel):
-    """Body of ``PATCH /admin/catalog/skus/{id}``."""
+    """Body of ``PATCH /admin/catalog/skus/{id}``.
+
+    Most fields follow a "None means don't touch" convention. The
+    variable-amount block is the exception: ``variable_amount``,
+    ``min_amount_usd``, ``max_amount_usd`` and ``rate_multiplier`` are
+    treated as one unit in :func:`admin_service.update_sku` — whenever
+    ``variable_amount`` is explicitly sent (not ``None``), all four are
+    written together, including nulling the bounds/multiplier when the
+    admin turns the toggle off. This lets the SKU edit form send
+    ``variable_amount: false`` with the three fields as ``null`` and have
+    them actually clear, instead of silently no-op'ing like a bare
+    ``None`` would elsewhere in this schema.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -235,10 +296,24 @@ class SkuUpdate(BaseModel):
     region: str | None = Field(default=None, max_length=8)
     price_usd: Decimal | None = Field(default=None, gt=0)
     cost_usdt: Decimal | None = Field(default=None, gt=0)
+    variable_amount: bool | None = None
+    min_amount_usd: Decimal | None = Field(default=None, gt=0)
+    max_amount_usd: Decimal | None = Field(default=None, gt=0)
+    rate_multiplier: Decimal | None = Field(default=None, gt=0)
     image_url: str | None = None
     sort_order: int | None = None
     active: bool | None = None
     price_overrides: list[SkuPriceOverrideIn] | None = None
+
+    @model_validator(mode="after")
+    def _validate_variable_amount(self) -> SkuUpdate:
+        if self.variable_amount:
+            _require_variable_amount_fields(
+                min_amount_usd=self.min_amount_usd,
+                max_amount_usd=self.max_amount_usd,
+                rate_multiplier=self.rate_multiplier,
+            )
+        return self
 
 
 # ---------- admin read DTOs ----------
@@ -303,6 +378,12 @@ class AdminSkuOut(BaseModel):
     region: str | None
     price_usd: Decimal
     cost_usdt: Decimal | None
+    # Admin-only: never add these to the public SkuOut in schemas.py.
+    # rate_multiplier especially — it's the margin.
+    variable_amount: bool
+    min_amount_usd: Decimal | None
+    max_amount_usd: Decimal | None
+    rate_multiplier: Decimal | None
     image_url: str | None
     sort_order: int
     active: bool

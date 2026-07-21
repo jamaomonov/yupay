@@ -104,6 +104,13 @@ export interface Sku {
    *  UZS-price calculation and per-SKU margin reporting. Nullable for
    *  legacy SKUs created before the field existed. */
   cost_usdt: string | null;
+  /** Steam-wallet-style SKUs: the customer picks the amount at checkout, so
+   *  `price_usd` is a placeholder and these four drive the real price. */
+  variable_amount: boolean;
+  min_amount_usd: string | null;
+  max_amount_usd: string | null;
+  /** Admin-only: the margin. Never sent to public endpoints. */
+  rate_multiplier: string | null;
   image_url: string | null;
   sort_order: number;
   active: boolean;

@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import json
 import time
+from decimal import Decimal
 from urllib.parse import urlencode
 
 import pytest
@@ -341,3 +342,161 @@ async def test_invalid_slug_returns_422(
         },
     )
     assert r.status_code == 422
+
+
+# ---------- variable-amount SKUs ----------
+
+
+async def _create_product_for_sku(
+    integration_client: AsyncClient, admin_headers: dict[str, str], *, suffix: str
+) -> str:
+    """Category → brand → product boilerplate, returning the product id."""
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/categories",
+        headers=admin_headers,
+        json={
+            "slug": f"var-cat-{suffix}",
+            "translations": [{"locale": "ru", "name": "Категория"}],
+        },
+    )
+    assert r.status_code == 201, r.text
+    category_id = r.json()["id"]
+
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/brands",
+        headers=admin_headers,
+        json={
+            "slug": f"var-brand-{suffix}",
+            "category_id": category_id,
+            "translations": [{"locale": "ru", "name": "Бренд"}],
+        },
+    )
+    assert r.status_code == 201, r.text
+    brand_id = r.json()["id"]
+
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/products",
+        headers=admin_headers,
+        json={
+            "slug": f"var-product-{suffix}",
+            "brand_id": brand_id,
+            "kind": "top_up",
+            "translations": [{"locale": "ru", "name": "Продукт"}],
+        },
+    )
+    assert r.status_code == 201, r.text
+    product_id: str = r.json()["id"]
+    return product_id
+
+
+async def test_create_variable_amount_sku_missing_bounds_returns_422(
+    integration_client: AsyncClient, _admin_headers: dict[str, str]
+) -> None:
+    """Turning variable_amount on without min/max/multiplier must fail
+    validation before it ever reaches the DB CHECK — a readable 422, not
+    an IntegrityError."""
+    product_id = await _create_product_for_sku(integration_client, _admin_headers, suffix="missing")
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/skus",
+        headers=_admin_headers,
+        json={
+            "product_id": product_id,
+            "sku_code": "steam-wallet-missing",
+            "price_usd": "1",
+            "variable_amount": True,
+            # min_amount_usd, max_amount_usd, rate_multiplier all omitted.
+        },
+    )
+    assert r.status_code == 422, r.text
+    assert "variable_amount SKUs require" in r.text
+
+
+async def test_create_and_update_variable_amount_sku_round_trip(
+    integration_client: AsyncClient, _admin_headers: dict[str, str]
+) -> None:
+    """A complete variable-amount SKU round-trips through create, is visible
+    on the admin response including rate_multiplier, is absent from the
+    public SkuOut, and can have its variable-amount block toggled off via
+    PATCH (which must actually clear the three companion fields)."""
+    product_id = await _create_product_for_sku(
+        integration_client, _admin_headers, suffix="roundtrip"
+    )
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/skus",
+        headers=_admin_headers,
+        json={
+            "product_id": product_id,
+            "sku_code": "steam-wallet-roundtrip",
+            "price_usd": "1",
+            "variable_amount": True,
+            "min_amount_usd": "1",
+            "max_amount_usd": "500",
+            "rate_multiplier": "1.08",
+        },
+    )
+    assert r.status_code == 201, r.text
+    sku = r.json()
+    sku_id = sku["id"]
+    assert sku["variable_amount"] is True
+    assert sku["min_amount_usd"] == "1"
+    assert sku["max_amount_usd"] == "500"
+    assert sku["rate_multiplier"] == "1.08"
+
+    # The public SkuOut must never expose rate_multiplier — that's the margin.
+    r = await integration_client.get(f"/api/v1/catalog/skus/{sku_id}")
+    assert r.status_code == 200, r.text
+    public_sku = r.json()
+    assert "rate_multiplier" not in public_sku
+    assert public_sku["variable_amount"] is True
+    # Fetched fresh from the DB this time, so Numeric(20, 6) round-trips
+    # with trailing zeros — compare numerically, not as literal strings.
+    assert Decimal(public_sku["min_amount_usd"]) == Decimal("1")
+    assert Decimal(public_sku["max_amount_usd"]) == Decimal("500")
+
+    # Toggling variable_amount off must actually null the three fields, not
+    # just leave them stale (the admin form always sends the full block).
+    r = await integration_client.patch(
+        f"/api/v1/admin/catalog/skus/{sku_id}",
+        headers=_admin_headers,
+        json={
+            "variable_amount": False,
+            "min_amount_usd": None,
+            "max_amount_usd": None,
+            "rate_multiplier": None,
+        },
+    )
+    assert r.status_code == 200, r.text
+    patched = r.json()
+    assert patched["variable_amount"] is False
+    assert patched["min_amount_usd"] is None
+    assert patched["max_amount_usd"] is None
+    assert patched["rate_multiplier"] is None
+
+
+async def test_update_variable_amount_sku_missing_bounds_returns_422(
+    integration_client: AsyncClient, _admin_headers: dict[str, str]
+) -> None:
+    """PATCHing variable_amount=true without the companion fields must be
+    rejected exactly like create — the same DB CHECK applies either way."""
+    product_id = await _create_product_for_sku(
+        integration_client, _admin_headers, suffix="patch-missing"
+    )
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/skus",
+        headers=_admin_headers,
+        json={
+            "product_id": product_id,
+            "sku_code": "steam-wallet-patch-missing",
+            "price_usd": "1",
+        },
+    )
+    assert r.status_code == 201, r.text
+    sku_id = r.json()["id"]
+
+    r = await integration_client.patch(
+        f"/api/v1/admin/catalog/skus/{sku_id}",
+        headers=_admin_headers,
+        json={"variable_amount": True},
+    )
+    assert r.status_code == 422, r.text
+    assert "variable_amount SKUs require" in r.text

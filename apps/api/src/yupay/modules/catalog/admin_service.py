@@ -475,6 +475,10 @@ async def create_sku(db: AsyncSession, body: SkuCreate) -> Sku:
         region=body.region,
         price_usd=body.price_usd,
         cost_usdt=body.cost_usdt,
+        variable_amount=body.variable_amount,
+        min_amount_usd=body.min_amount_usd,
+        max_amount_usd=body.max_amount_usd,
+        rate_multiplier=body.rate_multiplier,
         image_url=body.image_url,
         sort_order=body.sort_order,
         active=body.active,
@@ -505,6 +509,17 @@ async def update_sku(db: AsyncSession, sku_id: str, body: SkuUpdate) -> Sku:
         value = getattr(body, attr)
         if value is not None:
             setattr(row, attr, value)
+    # The variable-amount block is written as a unit rather than field-by-field:
+    # once the admin explicitly touches ``variable_amount`` (true or false), all
+    # three companion fields are overwritten together — including nulling them
+    # out when the toggle goes off. Elsewhere in this function ``None`` means
+    # "don't touch"; here it can legitimately mean "clear it", which the usual
+    # per-field skip would silently ignore. See the SkuUpdate docstring.
+    if body.variable_amount is not None:
+        row.variable_amount = body.variable_amount
+        row.min_amount_usd = body.min_amount_usd
+        row.max_amount_usd = body.max_amount_usd
+        row.rate_multiplier = body.rate_multiplier
     if body.price_overrides is not None:
         row.price_overrides = [
             SkuPrice(currency=o.currency, price=o.price) for o in body.price_overrides
