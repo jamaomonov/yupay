@@ -5,9 +5,11 @@ Public surface: [`storage.api`](api.py).
 ## Responsibility
 
 Issue short-lived presigned PUT URLs so the admin SPA can upload images
-directly to a Cloudflare R2 bucket. Returns the public URL the admin
-should persist into the relevant DB column (`brands.logo_url`,
-`brands.hero_image_url`, `products.image_url`, `skus.image_url`).
+(and, for broadcasts, one video/GIF/document) directly to a Cloudflare
+R2 bucket. Returns the public URL the admin should persist into the
+relevant DB column (`brands.logo_url`, `brands.hero_image_url`,
+`products.image_url`, `skus.image_url`, or the broadcast's media
+column).
 
 This module **does not** stream bytes — uploads bypass FastAPI entirely.
 See [ADR-0018](../../../../../../docs/decisions/0018-r2-media-storage.md).
@@ -31,8 +33,26 @@ Reads from :class:`yupay.core.config.Settings`:
 - `R2_BUCKET_MEDIA` — bucket name (default `yupay-media`).
 - `R2_PUBLIC_BASE_URL` — public read prefix (default `https://cdn.yupay.uz`).
 - `R2_PRESIGN_TTL_SECONDS` — how long the PUT URL stays valid (default 300).
-- `MEDIA_MAX_UPLOAD_BYTES` — per-upload size cap (default 5 MiB).
-- `MEDIA_ALLOWED_MIME` — allowlist (default png/jpeg/webp/svg+xml).
+- `MEDIA_MAX_UPLOAD_BYTES` — per-upload size cap for image kinds (default 5 MiB).
+- `MEDIA_ALLOWED_MIME` — global MIME superset (default
+  png/jpeg/webp/svg+xml/gif/mp4/pdf). This is **not** the whole story —
+  see "Media kinds" below for what each `kind` actually accepts.
+- `BROADCAST_MEDIA_MAX_UPLOAD_BYTES` — per-upload size cap for
+  `kind="broadcast_media"` (default 20 MiB).
+
+## Media kinds
+
+`presign_upload` validates `content_type` against a **per-kind**
+allowlist (`_KIND_ALLOWED_MIME` in `service.py`), not the global
+`MEDIA_ALLOWED_MIME` list — the global list only controls which MIME
+types have a known file extension. This is deliberate: `MEDIA_ALLOWED_MIME`
+had to grow to cover broadcast attachments, but image kinds must not
+silently start accepting a video just because the global list did.
+
+| `kind`                                             | Allowed Content-Types                                                                  | Size cap |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------- | -------- |
+| `brand_logo`, `brand_hero`, `product_image`, `sku_image` | `image/png`, `image/jpeg`, `image/webp`, `image/svg+xml`                              | 5 MB (`MEDIA_MAX_UPLOAD_BYTES`) |
+| `broadcast_media`                                    | the four image types above, plus `image/gif`, `video/mp4`, `application/pdf`            | 20 MB (`BROADCAST_MEDIA_MAX_UPLOAD_BYTES`) |
 
 ## Upload workflow
 

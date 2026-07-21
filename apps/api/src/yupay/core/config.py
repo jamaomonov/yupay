@@ -206,8 +206,15 @@ class Settings(BaseSettings):
             "image/jpeg",
             "image/webp",
             "image/svg+xml",
+            "image/gif",
+            "video/mp4",
+            "application/pdf",
         ]
     )
+    # Broadcasts attach one video/GIF/document alongside the photo case
+    # above; those files run much larger than a product thumbnail, hence
+    # the separate, higher cap instead of raising the shared image cap.
+    broadcast_media_max_upload_bytes: int = Field(default=20 * 1024 * 1024)  # 20 MB
 
     # --- inventory ---
     inventory_enc_key: str = Field(

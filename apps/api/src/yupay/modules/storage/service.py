@@ -31,7 +31,9 @@ from yupay.core.errors import ValidationError
 from yupay.core.ids import new_id
 from yupay.modules.storage.client import get_s3_client
 
-MediaKind = Literal["brand_logo", "brand_hero", "product_image", "sku_image"]
+MediaKind = Literal[
+    "brand_logo", "brand_hero", "product_image", "sku_image", "broadcast_media"
+]
 MEDIA_KINDS: tuple[MediaKind, ...] = get_args(MediaKind)
 
 _MIME_TO_EXT: dict[str, str] = {
@@ -39,6 +41,25 @@ _MIME_TO_EXT: dict[str, str] = {
     "image/jpeg": "jpg",
     "image/webp": "webp",
     "image/svg+xml": "svg",
+    "image/gif": "gif",
+    "video/mp4": "mp4",
+    "application/pdf": "pdf",
+}
+
+_IMAGE_MIME: frozenset[str] = frozenset(
+    {"image/png", "image/jpeg", "image/webp", "image/svg+xml"}
+)
+
+# Per-kind MIME allowlist. Broadcasts attach video/GIF/document in
+# addition to a plain photo; the four image-only kinds must NOT widen
+# just because those types exist in ``settings.media_allowed_mime`` now
+# — an admin picking a brand logo should still be refused an .mp4.
+_KIND_ALLOWED_MIME: dict[str, set[str]] = {
+    "brand_logo": set(_IMAGE_MIME),
+    "brand_hero": set(_IMAGE_MIME),
+    "product_image": set(_IMAGE_MIME),
+    "sku_image": set(_IMAGE_MIME),
+    "broadcast_media": set(_IMAGE_MIME) | {"image/gif", "video/mp4", "application/pdf"},
 }
 
 
@@ -98,14 +119,20 @@ def presign_upload(
 
     Args:
         kind: Which surface the image will be used on. Determines the key
-            prefix and is reflected back to the caller as an audit trail.
+            prefix, the per-kind MIME allowlist (``_KIND_ALLOWED_MIME``),
+            and is reflected back to the caller as an audit trail.
         content_type: The browser's reported MIME. Pinned into the
             presigned URL — if the actual PUT sends a different
-            Content-Type, R2 rejects the request.
-        size_bytes: Caller-provided size hint. Validated up front
-            (``settings.media_max_upload_bytes``) so the SPA can fail
-            loudly before opening a 5 GB file. R2 itself caps the PUT
-            via the ``Content-Length`` header the browser includes.
+            Content-Type, R2 rejects the request. Validated against the
+            allowlist for ``kind``, not the global
+            ``settings.media_allowed_mime``, so image kinds can't upload
+            a video just because broadcasts widened the global list.
+        size_bytes: Caller-provided size hint. Validated up front against
+            ``settings.broadcast_media_max_upload_bytes`` (20 MB) for
+            ``kind="broadcast_media"`` or ``settings.media_max_upload_bytes``
+            (5 MB) for every other kind, so the SPA can fail loudly before
+            opening an oversized file. R2 itself caps the PUT via the
+            ``Content-Length`` header the browser includes.
 
     Returns:
         :class:`PresignResult`. ``upload_url`` is single-use — issue a
@@ -118,19 +145,27 @@ def presign_upload(
     if kind not in MEDIA_KINDS:
         raise ValidationError(f"Unknown media kind {kind!r}.")
 
+    if content_type not in _KIND_ALLOWED_MIME[kind]:
+        raise ValidationError(
+            f"Content-Type {content_type!r} is not allowed for kind {kind!r}.",
+        )
+
     settings = get_settings()
     if size_bytes <= 0:
         raise ValidationError("Upload size must be positive.")
-    if size_bytes > settings.media_max_upload_bytes:
-        raise ValidationError(
-            f"Upload exceeds the {settings.media_max_upload_bytes} byte limit.",
-        )
+    cap = (
+        settings.broadcast_media_max_upload_bytes
+        if kind == "broadcast_media"
+        else settings.media_max_upload_bytes
+    )
+    if size_bytes > cap:
+        raise ValidationError(f"Upload exceeds the {cap} byte limit.")
 
     key = _build_key(kind, content_type)
     s3 = get_s3_client()
     try:
         # ``put_object`` so the browser uses a vanilla PUT; multipart
-        # presign would add complexity for files this small (≤5 MB).
+        # presign would add complexity for files this small (≤20 MB).
         upload_url = s3.generate_presigned_url(
             ClientMethod="put_object",
             Params={
@@ -152,7 +187,7 @@ def presign_upload(
         key=key,
         content_type=content_type,
         expires_in=settings.r2_presign_ttl_seconds,
-        max_bytes=settings.media_max_upload_bytes,
+        max_bytes=cap,
     )
 
 
