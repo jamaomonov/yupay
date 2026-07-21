@@ -258,6 +258,15 @@ export default function TopUp() {
     // Wallet eligibility is computed below from the user's balance — the
     // payment-provider list on the server does not know about it.
     if (methodId === WALLET_METHOD_ID) return true;
+    // Variable-amount SKUs (Steam wallet top-up) are priced in UZS only —
+    // see catalog.service._resolve_variable_price. A non-UZS acquirer would
+    // set an order currency the display price was never computed for, so it
+    // must never be offered here, independent of the live-providers check
+    // below (checked first so it applies even before that query resolves).
+    if (isVariableProduct) {
+      const method = PAYMENT_METHODS.find((m) => m.id === methodId);
+      if (method && method.currency !== "UZS") return false;
+    }
     if (liveProviderSet === null) return true;
     const provider = PROVIDER_BY_METHOD[methodId];
     return provider !== undefined && liveProviderSet.has(provider);
@@ -291,8 +300,10 @@ export default function TopUp() {
   const [paymentMethod, setPaymentMethod] = useState(DEFAULT_PAYMENT_METHOD);
 
   // If the user has a stale selection (e.g. "card" preserved across a session
-  // where the live list now only has "mock"), bounce them to the first live
-  // method instead of letting them tap a button that will refuse.
+  // where the live list now only has "mock", or a non-UZS method carried over
+  // from a fixed-price product into a variable-amount one), bounce them to
+  // the first live method instead of letting them tap a button that will
+  // refuse.
   useEffect(() => {
     if (liveProviderSet === null) return;
     if (paymentMethod === "" || isMethodAvailable(paymentMethod)) return;
@@ -301,7 +312,7 @@ export default function TopUp() {
     const fallback = PAYMENT_METHODS.find((m) => isMethodAvailable(m.id));
     setPaymentMethod(fallback ? fallback.id : "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveProviderSet, paymentMethod]);
+  }, [liveProviderSet, paymentMethod, isVariableProduct]);
 
   // Don't pre-select a package — the customer chooses. A variable-amount
   // product is the exception: there's nothing to pick (one SKU, no
