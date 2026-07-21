@@ -36,6 +36,7 @@ import { getRecentFulfillment, rememberFulfillment } from "@/lib/recent-checkout
 import { isInsideTelegram, setClosingConfirmation } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { cn } from "@/lib/utils";
+import { amountError, parseAmount } from "@/lib/variable-amount";
 import { formatBalance, groupBalancesByCurrency, useWallet } from "@/lib/wallet";
 import { ensureBotCanWrite } from "@/lib/write-access";
 
@@ -49,6 +50,15 @@ interface Package {
   priceCode: string;
   imageUrl: string | null;
   badge?: { label: string; color: string };
+  // Variable-amount SKU (Steam wallet top-up): the customer types a dollar
+  // amount instead of picking this card. ``price``/``priceCode`` above are
+  // meaningless for these — see ``ratePerDollar``.
+  variableAmount: boolean;
+  minAmountUsd: number | null;
+  maxAmountUsd: number | null;
+  /** Localised price of one dollar. `null` means the FX trust gate rejected
+   *  the live rate — not sellable right now, never a price of zero. */
+  ratePerDollar: { amount: number; currency: string } | null;
 }
 
 function adaptPackage(api: ApiPackage): Package {
@@ -59,6 +69,10 @@ function adaptPackage(api: ApiPackage): Package {
     price: api.displayPrice?.amount ?? api.priceUsd,
     priceCode: api.displayPrice?.currency ?? "USD",
     imageUrl: api.imageUrl,
+    variableAmount: api.variableAmount,
+    minAmountUsd: api.minAmountUsd,
+    maxAmountUsd: api.maxAmountUsd,
+    ratePerDollar: api.ratePerDollar,
   };
 }
 
@@ -221,6 +235,12 @@ export default function TopUp() {
     () => (productQuery.data?.packages ?? []).map(adaptPackage),
     [productQuery.data],
   );
+  // The Steam wallet top-up is the only variable-amount product today and it
+  // has exactly one SKU (a fixed denomination doesn't apply — the customer
+  // types the amount). Detected as "every SKU on this product is
+  // variable-amount" rather than a product-level flag, since the flag lives
+  // on the SKU.
+  const isVariableProduct = packages.length > 0 && packages.every((p) => p.variableAmount);
 
   const me = useMe();
   const checkout = useCheckout();
@@ -265,6 +285,9 @@ export default function TopUp() {
   // so we don't carry a stale player_id into a fresh order by surprise.
   const [suggestions, setSuggestions] = useState<Record<string, string>>({});
   const [selectedPkg, setSelectedPkg] = useState<string>("");
+  // The dollar amount typed for a variable-amount product. Raw string, not a
+  // number — see ``@/lib/variable-amount`` for parsing/validation.
+  const [amountInput, setAmountInput] = useState<string>("");
   const [paymentMethod, setPaymentMethod] = useState(DEFAULT_PAYMENT_METHOD);
 
   // If the user has a stale selection (e.g. "card" preserved across a session
@@ -280,14 +303,28 @@ export default function TopUp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveProviderSet, paymentMethod]);
 
-  // Don't pre-select a package — the customer chooses. On a product switch we
-  // only clear a now-stale selection so the previous SKU doesn't stick around.
+  // Don't pre-select a package — the customer chooses. A variable-amount
+  // product is the exception: there's nothing to pick (one SKU, no
+  // denominations), so it self-selects and the amount panel renders right
+  // away instead of a one-card grid. On a product switch we otherwise only
+  // clear a now-stale selection so the previous SKU doesn't stick around.
   useEffect(() => {
+    if (isVariableProduct) {
+      const only = packages[0];
+      if (only && selectedPkg !== only.id) setSelectedPkg(only.id);
+      return;
+    }
     if (!selectedPkg) return;
     if (!packages.some((p) => p.id === selectedPkg)) {
       setSelectedPkg("");
     }
-  }, [packages, selectedPkg]);
+  }, [packages, selectedPkg, isVariableProduct]);
+
+  // Typed amount is per-product — clear it on a product switch so a leftover
+  // "10" from a previous variable-amount product never bleeds into the next.
+  useEffect(() => {
+    setAmountInput("");
+  }, [selectedProductSlug]);
 
   // On every brand switch: start the form empty and load the last checkout's
   // fields as *suggestions* only. Clearing inputs here prevents PUBG's
@@ -351,8 +388,45 @@ export default function TopUp() {
   }
 
   const activePkg = packages.find((p) => p.id === selectedPkg);
-  const priceCode = activePkg?.priceCode ?? currency;
-  const finalPrice = activePkg?.price ?? 0;
+  const isVariableSelected = activePkg?.variableAmount ?? false;
+  // Parsed only for a variable-amount SKU — a fixed package has nothing to
+  // parse. ``null`` covers both "nothing typed yet" and "unparseable".
+  const parsedAmount = isVariableSelected ? parseAmount(amountInput) : null;
+  const variableAmountErr =
+    isVariableSelected && parsedAmount !== null
+      ? amountError(parsedAmount, activePkg?.minAmountUsd ?? 0, activePkg?.maxAmountUsd ?? 0)
+      : null;
+  // Client-side total for display only — the server recomputes the
+  // authoritative price from ``amount_usd`` at checkout.
+  const variableTotal =
+    isVariableSelected && parsedAmount !== null && activePkg?.ratePerDollar
+      ? parsedAmount * activePkg.ratePerDollar.amount
+      : null;
+  const priceCode = isVariableSelected
+    ? (activePkg?.ratePerDollar?.currency ?? currency)
+    : (activePkg?.priceCode ?? currency);
+  const finalPrice = isVariableSelected ? (variableTotal ?? 0) : (activePkg?.price ?? 0);
+  // Gates the CTA for a variable-amount SKU: a live rate (the FX trust gate
+  // didn't reject it) and a parsed, in-bounds, two-decimals-or-fewer amount.
+  const variableAmountReady =
+    !isVariableSelected ||
+    (activePkg?.ratePerDollar !== null && parsedAmount !== null && variableAmountErr === null);
+  // Human-readable reason the CTA is disabled — reused for both the toast
+  // (belt-and-suspenders guard in handlePayment) and the button label itself,
+  // so the customer sees *why* right on the button, same as the existing
+  // "availableInTg" swap below.
+  const variableAmountReason: string | null =
+    isVariableSelected && !variableAmountReady && activePkg
+      ? activePkg.ratePerDollar === null
+        ? t("topup.priceUnavailable")
+        : variableAmountErr === "below"
+          ? t("topup.amountBelow", { min: formatMoney(activePkg.minAmountUsd ?? 0, "USD") })
+          : variableAmountErr === "above"
+            ? t("topup.amountAbove", { max: formatMoney(activePkg.maxAmountUsd ?? 0, "USD") })
+            : variableAmountErr === "precision"
+              ? t("topup.amountPrecision")
+              : t("topup.amountRequired")
+      : null;
 
   // Wallet sufficiency check + nicely-formatted shortfall message for the
   // disabled-state copy. ``walletBalance === null`` means we don't have
@@ -382,6 +456,16 @@ export default function TopUp() {
       toast({
         title: t("topup.pickPackageTitle"),
         description: t("topup.pickPackageBody"),
+        variant: "destructive",
+      });
+      return;
+    }
+    // The pay button is already disabled while the amount is invalid — this
+    // is a belt-and-suspenders guard against a stray Enter-key submit.
+    if (!variableAmountReady) {
+      toast({
+        title: t("topup.pickPackageTitle"),
+        description: variableAmountReason ?? t("topup.amountRequired"),
         variant: "destructive",
       });
       return;
@@ -446,6 +530,12 @@ export default function TopUp() {
         fulfillmentData,
         currency,
         provider: PROVIDER_BY_METHOD_FULL[paymentMethod] ?? "inpay",
+        // Sent as a fixed-2-decimal string so the server never has to
+        // round-trip a client float — the server re-validates and re-prices
+        // from it regardless.
+        ...(isVariableSelected && parsedAmount !== null
+          ? { amountUsd: parsedAmount.toFixed(2) }
+          : {}),
       });
       // Remember the fulfilment payload only after the order was accepted by
       // the API — no point caching a half-typed player_id that came back
@@ -708,7 +798,16 @@ export default function TopUp() {
                 {t("topup.noPositions")}
               </p>
             )}
-            {packages.length > 0 && (
+            {!productQuery.isLoading && isVariableProduct && activePkg && (
+              <VariableAmountPanel
+                pkg={activePkg}
+                value={amountInput}
+                onChange={setAmountInput}
+                total={variableTotal}
+                error={variableAmountErr}
+              />
+            )}
+            {!isVariableProduct && packages.length > 0 && (
               <div className="grid grid-cols-2 gap-2.5">
                 {packages.map((pkg) => (
                   <PackageCard
@@ -854,7 +953,11 @@ export default function TopUp() {
                 </p>
               </div>
               <p className="flex-shrink-0 text-sm font-bold text-white">
-                {formatMoney(activePkg.price, activePkg.priceCode)}
+                {isVariableSelected
+                  ? variableTotal !== null
+                    ? formatMoney(variableTotal, priceCode)
+                    : "—"
+                  : formatMoney(activePkg.price, activePkg.priceCode)}
               </p>
             </motion.div>
           )}
@@ -897,29 +1000,31 @@ export default function TopUp() {
           <motion.button
             whileTap={{ scale: 0.97 }}
             onClick={handlePayment}
-            disabled={isProcessing || !insideTelegram}
+            disabled={isProcessing || !insideTelegram || !variableAmountReady}
             className="flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-base font-bold tracking-wide transition-all"
             style={{
               background:
-                isProcessing || !insideTelegram
+                isProcessing || !insideTelegram || !variableAmountReady
                   ? "hsl(var(--primary) / 0.45)"
                   : "hsl(var(--primary))",
               color: "#000",
               boxShadow:
-                isProcessing || !insideTelegram ? "none" : "0 0 16px hsl(var(--primary) / 0.25)",
+                isProcessing || !insideTelegram || !variableAmountReady
+                  ? "none"
+                  : "0 0 16px hsl(var(--primary) / 0.25)",
             }}
             data-testid="btn-pay"
           >
-            {isProcessing ? (
-              t("topup.processingBtn")
-            ) : !insideTelegram ? (
-              t("topup.availableInTg")
-            ) : (
-              <>
-                {t("topup.pay")}
-                <ChevronRight size={18} strokeWidth={2.5} />
-              </>
-            )}
+            {isProcessing
+              ? t("topup.processingBtn")
+              : !insideTelegram
+                ? t("topup.availableInTg")
+                : (variableAmountReason ?? (
+                    <>
+                      {t("topup.pay")}
+                      <ChevronRight size={18} strokeWidth={2.5} />
+                    </>
+                  ))}
           </motion.button>
         ) : null}
       </div>
@@ -1003,6 +1108,104 @@ function PackageThumb({ pkg, fallback }: { pkg: Package; fallback: string | null
       style={{ background: "hsl(var(--primary))" }}
     >
       {tag.slice(0, 4).toUpperCase()}
+    </div>
+  );
+}
+
+// ─── Variable-amount panel (Steam wallet top-up) ──────────────────────────────
+/**
+ * Replaces the package grid for a variable-amount SKU: the customer types a
+ * dollar amount instead of picking a denomination. `pkg.ratePerDollar` is the
+ * localised price of ONE dollar (the SKU's `price_usd` is a `1`-placeholder) —
+ * `null` means the FX trust gate rejected the live rate, so the product isn't
+ * sellable right now and we render that instead of a price of zero.
+ */
+function VariableAmountPanel({
+  pkg,
+  value,
+  onChange,
+  total,
+  error,
+}: {
+  pkg: Package;
+  value: string;
+  onChange: (v: string) => void;
+  total: number | null;
+  error: "below" | "above" | "precision" | null;
+}) {
+  const { t } = useT();
+  const rate = pkg.ratePerDollar;
+
+  if (!rate) {
+    return (
+      <p className="rounded-2xl border border-dashed border-white/10 p-6 text-center text-sm text-white/40">
+        {t("topup.priceUnavailable")}
+      </p>
+    );
+  }
+
+  const errorMessage =
+    error === "below"
+      ? t("topup.amountBelow", { min: formatMoney(pkg.minAmountUsd ?? 0, "USD") })
+      : error === "above"
+        ? t("topup.amountAbove", { max: formatMoney(pkg.maxAmountUsd ?? 0, "USD") })
+        : error === "precision"
+          ? t("topup.amountPrecision")
+          : null;
+
+  return (
+    <div
+      className="rounded-2xl p-4"
+      style={{ background: "hsl(var(--surface-2))", border: "1px solid hsl(var(--border))" }}
+    >
+      <label className="block">
+        <span className="mb-1.5 block text-xs font-semibold text-white/50">
+          {t("topup.amountLabel")}
+        </span>
+        <div className="relative">
+          <span
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-base font-bold text-white/40"
+            aria-hidden="true"
+          >
+            $
+          </span>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={value}
+            onChange={(e) => {
+              onChange(e.target.value);
+            }}
+            placeholder={t("topup.amountPlaceholder")}
+            className="h-12 w-full rounded-xl border border-white/10 bg-black/20 pl-7 pr-3 text-lg font-bold text-white outline-none transition focus:border-white/25"
+            data-testid="input-amount"
+          />
+        </div>
+        {errorMessage && (
+          <p className="mt-1.5 text-xs font-medium" style={{ color: "rgb(252, 165, 165)" }}>
+            {errorMessage}
+          </p>
+        )}
+      </label>
+
+      <div className="mt-3 flex items-center justify-between rounded-xl bg-black/15 px-3 py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-xs text-white/50">
+            {t("topup.ratePerDollar", { rate: formatMoney(rate.amount, rate.currency) })}
+          </span>
+          <span
+            className="flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold"
+            style={{ background: "hsl(var(--primary) / 0.15)", color: "hsl(var(--primary))" }}
+          >
+            {t("topup.zeroFee")}
+          </span>
+        </div>
+        {total !== null && (
+          <span className="flex-shrink-0 text-sm font-bold text-white">
+            {formatMoney(total, rate.currency)}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

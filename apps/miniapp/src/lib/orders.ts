@@ -123,6 +123,12 @@ export interface CreateOrderInput {
   /** Order currency. The backend snapshots the FX rate at order time for any
    *  non-USD value so the total stays frozen even if the rate moves later. */
   currency?: string;
+  /** Set only for a variable-amount SKU (Steam wallet top-up): the dollar
+   *  amount the customer typed, already validated client-side against the
+   *  SKU's bounds. Sent as a decimal string to avoid float round-trip —
+   *  the server re-validates and re-prices from it; the client never sends
+   *  a computed price. */
+  amountUsd?: string;
 }
 
 export interface CheckoutResult {
@@ -143,7 +149,13 @@ export interface CheckoutResult {
 export function useCheckout() {
   const qc = useQueryClient();
   return useMutation<CheckoutResult, ApiError, CreateOrderInput & { provider?: string }>({
-    mutationFn: async ({ skuId, fulfillmentData, currency = "USD", provider = "mock" }) => {
+    mutationFn: async ({
+      skuId,
+      fulfillmentData,
+      currency = "USD",
+      provider = "mock",
+      amountUsd,
+    }) => {
       const live = await qc.fetchQuery<string[]>({
         queryKey: ["payments", "providers"],
         queryFn: async () => {
@@ -166,6 +178,7 @@ export function useCheckout() {
               sku_id: skuId,
               qty: 1,
               fulfillment_data: fulfillmentData,
+              ...(amountUsd !== undefined ? { amount_usd: amountUsd } : {}),
             },
           ],
         },

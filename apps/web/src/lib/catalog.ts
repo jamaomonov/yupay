@@ -63,6 +63,11 @@ export interface SkuOut {
   region: string | null;
   image_url: string | null;
   price_usd: string;
+  // Optional: an older deployed API (or a build prerendering against one, see
+  // web-ssg-prerenders-against-deployed-api) may not send these yet.
+  variable_amount?: boolean;
+  min_amount_usd?: string | null;
+  max_amount_usd?: string | null;
   display_price: PriceOut | null;
 }
 

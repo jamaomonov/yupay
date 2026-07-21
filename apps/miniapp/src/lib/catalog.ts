@@ -50,6 +50,12 @@ interface SkuApi {
   region: string | null;
   image_url: string | null;
   price_usd: string;
+  // Optional: an older deployed API may not send these yet — see
+  // web-ssg-prerenders-against-deployed-api (the same risk applies to any
+  // build/runtime hitting a stale API before this field shipped).
+  variable_amount?: boolean;
+  min_amount_usd?: string | null;
+  max_amount_usd?: string | null;
   display_price: PriceOut | null;
 }
 
@@ -170,6 +176,19 @@ export interface Package {
   priceUsd: number;
   displayPrice: { amount: number; currency: string } | null;
   imageUrl: string | null;
+  // Variable-amount SKUs (Steam wallet top-up): the customer types a dollar
+  // amount instead of picking a fixed denomination. ``priceUsd``/
+  // ``displayPrice`` above are meaningless for these (the SKU's
+  // ``price_usd`` is a ``1``-dollar placeholder) — use ``ratePerDollar``
+  // instead, which is the localised price of ONE dollar.
+  variableAmount: boolean;
+  minAmountUsd: number | null;
+  maxAmountUsd: number | null;
+  /** Localised price of one dollar for a variable-amount SKU. `null` means
+   *  the FX trust gate rejected the live rate — not sellable right now,
+   *  never fall back to a price of zero/one. Always `null` for a
+   *  fixed-price SKU. */
+  ratePerDollar: { amount: number; currency: string } | null;
 }
 
 function skuToPackage(sku: SkuApi): Package {
@@ -181,6 +200,7 @@ function skuToPackage(sku: SkuApi): Package {
         currency: sku.display_price.currency,
       }
     : null;
+  const variableAmount = sku.variable_amount ?? false;
   return {
     id: sku.id,
     sku_code: sku.sku_code,
@@ -189,6 +209,10 @@ function skuToPackage(sku: SkuApi): Package {
     priceUsd,
     displayPrice,
     imageUrl: sku.image_url,
+    variableAmount,
+    minAmountUsd: sku.min_amount_usd != null ? Number.parseFloat(sku.min_amount_usd) : null,
+    maxAmountUsd: sku.max_amount_usd != null ? Number.parseFloat(sku.max_amount_usd) : null,
+    ratePerDollar: variableAmount ? displayPrice : null,
   };
 }
 

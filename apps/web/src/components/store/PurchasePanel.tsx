@@ -14,6 +14,7 @@ import { buttonStyles } from "@/lib/button";
 import { getAccessToken } from "@/lib/client";
 import { canCheck, IDLE, runPlayerCheck, type CheckState } from "@/lib/player-check-state";
 import { formatUzs } from "@/lib/seo";
+import { amountError, parseAmount } from "@/lib/variable-amount";
 
 const API = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
 
@@ -36,6 +37,9 @@ const METHODS: Method[] = [
   { id: "usdt", name: "USDT", provider: "crypto", icon: "/payment/usdt.png", w: 2000, h: 2000 },
 ];
 
+/** A fixed-price SKU's display price. Never call this for a variable-amount
+ *  SKU — its `display_price` is the rate for ONE dollar, not a total, and
+ *  its `price_usd` is a `1`-placeholder; use `selectedPriceLabel` instead. */
 function skuPrice(locale: string, sku: SkuOut): string {
   if (sku.display_price) return formatUzs(locale, Math.round(Number(sku.display_price.amount)));
   return formatMoney(sku.price_usd, "USD", locale);
@@ -214,6 +218,97 @@ function FieldLabel({ label, required }: { label: string; required: boolean }) {
   );
 }
 
+/**
+ * Replaces the SKU grid for a variable-amount product (Steam wallet top-up):
+ * the customer types a dollar amount instead of picking a denomination.
+ * `sku.display_price` is the localised price of ONE dollar (its `price_usd`
+ * is a `1`-placeholder) — `null` means the FX trust gate rejected the live
+ * rate, so the product isn't sellable right now and we render that instead
+ * of a price of zero.
+ */
+function VariableAmountCard({
+  sku,
+  value,
+  onChange,
+  onFocus,
+  locale,
+  t,
+}: {
+  sku: SkuOut;
+  value: string;
+  onChange: (v: string) => void;
+  onFocus: () => void;
+  locale: string;
+  t: (key: string, values?: Record<string, string>) => string;
+}) {
+  const rate = sku.display_price;
+  if (!rate) {
+    return (
+      <div className="border-border bg-card text-tx-mute rounded-[14px] border border-dashed p-6 text-center text-sm">
+        {t("priceUnavailable")}
+      </div>
+    );
+  }
+  const min = sku.min_amount_usd != null ? Number.parseFloat(sku.min_amount_usd) : 0;
+  const max = sku.max_amount_usd != null ? Number.parseFloat(sku.max_amount_usd) : 0;
+  const parsed = parseAmount(value);
+  const error = parsed !== null ? amountError(parsed, min, max) : null;
+  const total = parsed !== null ? parsed * Number(rate.amount) : null;
+  const errorMessage =
+    error === "below"
+      ? t("amountBelow", { min: formatMoney(min.toFixed(2), "USD", locale) })
+      : error === "above"
+        ? t("amountAbove", { max: formatMoney(max.toFixed(2), "USD", locale) })
+        : error === "precision"
+          ? t("amountPrecision")
+          : null;
+
+  return (
+    <div className="border-border bg-card rounded-[14px] border p-4">
+      <label className="block">
+        <span className="text-tx-mute mb-1.5 block text-[13px] font-semibold">
+          {t("amountLabel")}
+        </span>
+        <div className="relative">
+          <span
+            className="text-tx-dim pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[15px] font-bold"
+            aria-hidden="true"
+          >
+            $
+          </span>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={value}
+            onFocus={onFocus}
+            onChange={(e) => {
+              onChange(e.target.value);
+            }}
+            placeholder={t("amountPlaceholder")}
+            className="border-border bg-bg focus:border-primary h-[46px] w-full rounded-[12px] border pl-7 pr-3.5 text-[15px] font-semibold outline-none transition"
+          />
+        </div>
+        {errorMessage && <p className="mt-1.5 text-[12px] text-[#FF6B6B]">{errorMessage}</p>}
+      </label>
+      <div className="border-border/70 mt-3 flex items-center justify-between rounded-[10px] border bg-[hsl(var(--bg))] px-3 py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="text-tx-mute truncate text-[12px]">
+            {t("ratePerDollar", { rate: formatUzs(locale, Math.round(Number(rate.amount))) })}
+          </span>
+          <span className="bg-primary/15 text-primary flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold">
+            {t("zeroFee")}
+          </span>
+        </div>
+        {total !== null && (
+          <span className="flex-shrink-0 text-[14px] font-bold">
+            {formatUzs(locale, Math.round(total))}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function PurchasePanel({ products, locale }: { products: ProductDetail[]; locale: string }) {
   const t = useTranslations("web.store");
   const { user } = useAuth();
@@ -221,6 +316,9 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
   const [skuId, setSkuId] = useState<string | undefined>(firstSku);
   const [form, setForm] = useState<Record<string, string>>({});
   const [email, setEmail] = useState("");
+  // The dollar amount typed for a variable-amount SKU. Raw string, not a
+  // number — see `@/lib/variable-amount` for parsing/validation.
+  const [amountInput, setAmountInput] = useState("");
   const [methodId, setMethodId] = useState<string>(METHODS[0]?.id ?? "click");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -246,20 +344,75 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
   const label = (m: Record<string, string> | null | undefined): string =>
     (m && (m[locale] ?? m.ru ?? Object.values(m)[0])) ?? "";
 
+  // Typed amount is per-SKU — clear it on a selection switch so a leftover
+  // "10" from a previous variable-amount SKU never bleeds into the next.
+  useEffect(() => {
+    setAmountInput("");
+  }, [skuId]);
+
+  const selSkuVariable = selSku?.variable_amount ?? false;
+  const variableRate = selSkuVariable ? (selSku?.display_price ?? null) : null;
+  const parsedAmount = selSkuVariable ? parseAmount(amountInput) : null;
+  const minUsd = selSku?.min_amount_usd != null ? Number.parseFloat(selSku.min_amount_usd) : 0;
+  const maxUsd = selSku?.max_amount_usd != null ? Number.parseFloat(selSku.max_amount_usd) : 0;
+  const variableAmountErr =
+    selSkuVariable && parsedAmount !== null ? amountError(parsedAmount, minUsd, maxUsd) : null;
+  // Client-side total for display only — the server recomputes the
+  // authoritative price from `amount_usd` at checkout.
+  const variableTotal =
+    selSkuVariable && parsedAmount !== null && variableRate
+      ? parsedAmount * Number(variableRate.amount)
+      : null;
+  // Gates the CTA for a variable-amount SKU: a live rate (the FX trust gate
+  // didn't reject it) and a parsed, in-bounds, two-decimals-or-fewer amount.
+  const variableAmountOk =
+    !selSkuVariable ||
+    (variableRate !== null && parsedAmount !== null && variableAmountErr === null);
+
   const emailOk = EMAIL_RE.test(email);
   const fieldsOk = fields.every((f) => !f.required || (form[f.key]?.trim() ?? "") !== "");
   // Logged-in users don't need to supply an email — the account email is used server-side.
   const canPay =
-    Boolean(selSku) && (user !== null || emailOk) && fieldsOk && Boolean(methodId) && !loading;
+    Boolean(selSku) &&
+    (user !== null || emailOk) &&
+    fieldsOk &&
+    Boolean(methodId) &&
+    variableAmountOk &&
+    !loading;
   // Tell the user *why* the pay button is inactive instead of leaving a dimmed
   // button with no explanation.
   const payHint = !selSku
     ? t("selectPack")
-    : !user && !emailOk
-      ? t("payHintEmail")
-      : !fieldsOk
-        ? t("payHintFields")
-        : null;
+    : selSkuVariable && variableRate === null
+      ? t("priceUnavailable")
+      : selSkuVariable && parsedAmount === null
+        ? t("amountRequired")
+        : selSkuVariable && variableAmountErr === "below"
+          ? t("amountBelow", { min: formatMoney(minUsd.toFixed(2), "USD", locale) })
+          : selSkuVariable && variableAmountErr === "above"
+            ? t("amountAbove", { max: formatMoney(maxUsd.toFixed(2), "USD", locale) })
+            : selSkuVariable && variableAmountErr === "precision"
+              ? t("amountPrecision")
+              : !user && !emailOk
+                ? t("payHintEmail")
+                : !fieldsOk
+                  ? t("payHintFields")
+                  : null;
+
+  // The price shown in the summary header, the pay button, and the mobile
+  // sticky bar. A variable-amount SKU has no fixed `skuPrice` — its total
+  // depends on the customer's typed amount, so it's computed from
+  // `variableTotal` instead, with the "not for sale" / "not typed yet"
+  // states handled explicitly rather than falling back to a placeholder.
+  const selectedPriceLabel = !selSku
+    ? ""
+    : !selSkuVariable
+      ? skuPrice(locale, selSku)
+      : variableRate === null
+        ? t("priceUnavailable")
+        : variableTotal !== null
+          ? formatUzs(locale, Math.round(variableTotal))
+          : "—";
 
   async function pay() {
     if (!selSku || !canPay) return;
@@ -299,13 +452,18 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
         emailSuffix = `?email=${encodeURIComponent(email)}`;
       }
 
+      // Sent as a fixed-2-decimal string so the server never has to round-trip
+      // a client float — the server re-validates and re-prices from it
+      // regardless (see `pricing.variable.validate_amount`).
+      const orderItem = {
+        sku_id: selSku.id,
+        qty: 1,
+        fulfillment_data: form,
+        ...(selSkuVariable && parsedAmount !== null ? { amount_usd: parsedAmount.toFixed(2) } : {}),
+      };
       const orderBody = isLoggedIn
-        ? { currency: "UZS", items: [{ sku_id: selSku.id, qty: 1, fulfillment_data: form }] }
-        : {
-            currency: "UZS",
-            guest_email: email,
-            items: [{ sku_id: selSku.id, qty: 1, fulfillment_data: form }],
-          };
+        ? { currency: "UZS", items: [orderItem] }
+        : { currency: "UZS", guest_email: email, items: [orderItem] };
 
       const ord = await fetch(`${API}/api/v1/orders`, {
         method: "POST",
@@ -396,53 +554,74 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
         {/* selection + fields */}
         <div>
           <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t("packsTitle")}</h2>
-          {products.map((product) => (
-            <div key={product.id} className="mt-5">
-              {products.length > 1 && (
-                <div className="text-tx-mute mb-3 text-sm font-semibold">{product.name}</div>
-              )}
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {product.skus.map((sku) => {
-                  const active = sku.id === skuId;
-                  const img = sku.image_url ?? product.image_url;
-                  return (
-                    <button
-                      key={sku.id}
-                      type="button"
-                      aria-pressed={active}
-                      onClick={() => {
-                        setSkuId(sku.id);
-                      }}
-                      className={`focus-visible:ring-primary focus-visible:ring-offset-bg flex flex-col items-start gap-2 rounded-[14px] border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
-                        active
-                          ? "border-primary bg-primary/10"
-                          : "border-border bg-card hover:border-border-2"
-                      }`}
-                    >
-                      <span className="relative h-12 w-12 overflow-hidden rounded-[10px]">
-                        {img && (
-                          <Image
-                            src={img}
-                            alt=""
-                            fill
-                            unoptimized
-                            sizes="48px"
-                            className="object-contain"
-                          />
-                        )}
-                      </span>
-                      <span className="font-display text-[15px] font-bold leading-tight tracking-[-0.01em]">
-                        {sku.denomination ?? sku.sku_code}
-                      </span>
-                      <span className="text-tx-mute font-mono text-[12px]">
-                        {skuPrice(locale, sku)}
-                      </span>
-                    </button>
-                  );
-                })}
+          {products.map((product) => {
+            // A variable-amount product (Steam wallet top-up) has exactly one
+            // SKU with nothing to pick — the customer types the amount, so
+            // the denomination grid is replaced with the amount card.
+            const isVariableProduct =
+              product.skus.length > 0 && product.skus.every((s) => s.variable_amount ?? false);
+            const variableSku = isVariableProduct ? product.skus[0] : undefined;
+            return (
+              <div key={product.id} className="mt-5">
+                {products.length > 1 && (
+                  <div className="text-tx-mute mb-3 text-sm font-semibold">{product.name}</div>
+                )}
+                {variableSku ? (
+                  <VariableAmountCard
+                    sku={variableSku}
+                    value={skuId === variableSku.id ? amountInput : ""}
+                    onChange={setAmountInput}
+                    onFocus={() => {
+                      setSkuId(variableSku.id);
+                    }}
+                    locale={locale}
+                    t={t}
+                  />
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {product.skus.map((sku) => {
+                      const active = sku.id === skuId;
+                      const img = sku.image_url ?? product.image_url;
+                      return (
+                        <button
+                          key={sku.id}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => {
+                            setSkuId(sku.id);
+                          }}
+                          className={`focus-visible:ring-primary focus-visible:ring-offset-bg flex flex-col items-start gap-2 rounded-[14px] border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                            active
+                              ? "border-primary bg-primary/10"
+                              : "border-border bg-card hover:border-border-2"
+                          }`}
+                        >
+                          <span className="relative h-12 w-12 overflow-hidden rounded-[10px]">
+                            {img && (
+                              <Image
+                                src={img}
+                                alt=""
+                                fill
+                                unoptimized
+                                sizes="48px"
+                                className="object-contain"
+                              />
+                            )}
+                          </span>
+                          <span className="font-display text-[15px] font-bold leading-tight tracking-[-0.01em]">
+                            {sku.denomination ?? sku.sku_code}
+                          </span>
+                          <span className="text-tx-mute font-mono text-[12px]">
+                            {skuPrice(locale, sku)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* summary + payment + pay */}
@@ -458,7 +637,7 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
                   <span className="text-[15px] font-semibold">
                     {selSku.denomination ?? selSku.sku_code}
                   </span>
-                  <span className="font-display text-lg font-bold">{skuPrice(locale, selSku)}</span>
+                  <span className="font-display text-lg font-bold">{selectedPriceLabel}</span>
                 </>
               ) : (
                 <span className="text-tx-mute text-sm">{t("selectPack")}</span>
@@ -597,7 +776,10 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
               ) : (
                 <>
                   {t("pay")}
-                  {selSku && ` · ${skuPrice(locale, selSku)}`}
+                  {selSku &&
+                    selectedPriceLabel &&
+                    selectedPriceLabel !== "—" &&
+                    ` · ${selectedPriceLabel}`}
                 </>
               )}
             </button>
@@ -624,7 +806,7 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
             <div className="min-w-0">
               <div className="text-tx-mute text-[11px] font-semibold">{t("summaryTitle")}</div>
               <div className="font-display truncate text-lg font-bold leading-tight">
-                {skuPrice(locale, selSku)}
+                {selectedPriceLabel}
               </div>
             </div>
             <button

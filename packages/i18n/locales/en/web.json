@@ -196,7 +196,16 @@
     "checkEdit": "Edit",
     "checkRetry": "Retry",
     "playerIdPlaceholder": "Enter player ID",
-    "whereToFind": "Where to find the ID"
+    "whereToFind": "Where to find the ID",
+    "amountLabel": "Amount in dollars",
+    "amountPlaceholder": "e.g. 10",
+    "amountRequired": "Enter an amount",
+    "amountBelow": "Minimum {min}",
+    "amountAbove": "Maximum {max}",
+    "amountPrecision": "At most two decimal places",
+    "ratePerDollar": "$1 = {rate}",
+    "zeroFee": "0% fee",
+    "priceUnavailable": "Price is temporarily unavailable. Please check back soon."
   },
   "how": {
     "eyebrow": "Flow",

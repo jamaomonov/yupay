@@ -196,7 +196,16 @@
     "checkEdit": "Tahrirlash",
     "checkRetry": "Qayta urinish",
     "playerIdPlaceholder": "Oʻyinchi ID kiriting",
-    "whereToFind": "ID qayerdan olinadi"
+    "whereToFind": "ID qayerdan olinadi",
+    "amountLabel": "Dollardagi summa",
+    "amountPlaceholder": "Masalan, 10",
+    "amountRequired": "Summani kiriting",
+    "amountBelow": "Kamida {min}",
+    "amountAbove": "Ko'pi bilan {max}",
+    "amountPrecision": "Nuqtadan keyin ikkitagacha raqam",
+    "ratePerDollar": "1 $ = {rate}",
+    "zeroFee": "Komissiya 0%",
+    "priceUnavailable": "Narx vaqtincha mavjud emas. Birozdan so'ng qayta urinib ko'ring."
   },
   "how": {
     "eyebrow": "Flow",

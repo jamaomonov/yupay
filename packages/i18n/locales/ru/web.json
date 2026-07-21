@@ -196,7 +196,16 @@
     "checkEdit": "Изменить",
     "checkRetry": "Повторить",
     "playerIdPlaceholder": "Введите ID игрока",
-    "whereToFind": "Где найти ID"
+    "whereToFind": "Где найти ID",
+    "amountLabel": "Сумма в долларах",
+    "amountPlaceholder": "Например, 10",
+    "amountRequired": "Введите сумму",
+    "amountBelow": "Минимум {min}",
+    "amountAbove": "Максимум {max}",
+    "amountPrecision": "Не более двух знаков после запятой",
+    "ratePerDollar": "1 $ = {rate}",
+    "zeroFee": "Комиссия 0%",
+    "priceUnavailable": "Цена временно недоступна. Загляните чуть позже."
   },
   "how": {
     "eyebrow": "Flow",
