@@ -110,8 +110,14 @@ async def _resolve_variable_price(
     db: AsyncSession, sku: Sku, cu: str, *, rate_cache: dict[str, Decimal | None]
 ) -> PriceOut | None:
     """Display price for a variable-amount SKU: the guarded rate times the
-    SKU's own margin multiplier, applied to ``price_usd`` — the same
-    computation checkout uses for that many dollars of the product. Returns
+    SKU's own margin multiplier, applied to one dollar — deliberately the
+    per-dollar rate the storefront multiplies by the amount the customer
+    enters, not ``price_usd``. ``price_usd`` on a variable SKU is only a
+    positive placeholder required by the DB constraint; pricing (both this
+    display price and checkout's :func:`orders.service._variable_line_charge`)
+    never reads it for the amount charged, so it must not be read here
+    either — otherwise an admin changing that placeholder would silently
+    desync the displayed rate from what checkout actually charges. Returns
     ``None`` when the FX trust gate rejects the rate; never falls back to the
     raw market rate, since selling without margin is the loss the gate
     exists to prevent.
@@ -136,7 +142,7 @@ async def _resolve_variable_price(
     if market is None:
         return None
     rate = display_rate(market, sku.rate_multiplier or Decimal("1"))
-    return PriceOut(amount=price_in_quote(sku.price_usd, rate=rate), currency=cu, source="fx")
+    return PriceOut(amount=price_in_quote(Decimal("1"), rate=rate), currency=cu, source="fx")
 
 
 async def _resolve_price(
