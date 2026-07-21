@@ -90,6 +90,10 @@ class TelegramLink(Base):
         nullable=False,
         server_default=text("CURRENT_TIMESTAMP"),
     )
+    # Set when a Telegram delivery (bot message or broadcast) comes back as
+    # "bot was blocked by the user"; cleared implicitly by re-linking. Lets the
+    # broadcasts module skip known-blocked recipients without a live send attempt.
+    bot_blocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped[User] = relationship(back_populates="telegram_link", lazy="joined")
 

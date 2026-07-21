@@ -16,6 +16,7 @@ from yupay.core.logging import configure_logging, get_logger
 # ``orders.user_id → users.id``) raise ``NoReferencedTableError`` because
 # the dependent ``users.models`` module never got imported.
 from yupay.modules.auth import models as _auth_models  # noqa: F401
+from yupay.modules.broadcasts import models as _broadcasts_models  # noqa: F401
 from yupay.modules.catalog import models as _catalog_models  # noqa: F401
 from yupay.modules.fulfillment import models as _fulfillment_models  # noqa: F401
 from yupay.modules.fx import models as _fx_models  # noqa: F401
