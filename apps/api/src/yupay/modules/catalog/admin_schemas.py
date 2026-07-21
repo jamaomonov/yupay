@@ -18,20 +18,41 @@ from yupay.modules.catalog.schemas import FormField
 _SLUG_PATTERN = r"^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$"
 
 
-def _require_variable_amount_fields(
+def require_variable_amount_fields(
     *,
+    variable_amount: bool,
     min_amount_usd: Decimal | None,
     max_amount_usd: Decimal | None,
     rate_multiplier: Decimal | None,
 ) -> None:
-    """Mirror the ``ck_skus_variable_amount_complete`` DB CHECK in Pydantic.
+    """Mirror the ``ck_skus_variable_amount_complete`` DB CHECK.
 
-    Raises a readable ``ValueError`` (surfaced as a 422) instead of letting an
-    incomplete variable-amount SKU reach the DB and blow up as an opaque
+    The single source of truth for the invariant: when ``variable_amount`` is
+    true, ``min_amount_usd``/``max_amount_usd``/``rate_multiplier`` must all be
+    set with ``max_amount_usd >= min_amount_usd``. No-ops when
+    ``variable_amount`` is false — callers decide separately whether to null
+    the companions in that case.
+
+    Raises a readable ``ValueError`` instead of letting an incomplete
+    variable-amount SKU reach the DB and blow up as an opaque
     ``IntegrityError``. ``min_amount_usd > 0`` and ``rate_multiplier > 0`` are
-    already enforced field-by-field via ``Field(gt=0)``; this only checks
-    presence and the min/max ordering, which need all three values at once.
+    already enforced field-by-field via ``Field(gt=0)`` on the Pydantic
+    models; this only checks presence and the min/max ordering, which need
+    all three values at once.
+
+    Called from two places against two different kinds of tuple:
+
+    - The ``SkuCreate``/``SkuUpdate`` Pydantic ``model_validator``s, which can
+      only see the request body — a ``ValueError`` here becomes part of
+      Pydantic's own body-validation 422.
+    - ``admin_service.update_sku``, against the row *after* merging a partial
+      PATCH onto the existing SKU — the request body alone can't tell whether
+      a partial edit (e.g. only ``max_amount_usd``) leaves an already-variable
+      SKU complete or not, only the resolved row can. There the caller wraps
+      the ``ValueError`` into ``core.errors.ValidationError``.
     """
+    if not variable_amount:
+        return
     missing = [
         name
         for name, value in (
@@ -265,12 +286,12 @@ class SkuCreate(BaseModel):
 
     @model_validator(mode="after")
     def _validate_variable_amount(self) -> SkuCreate:
-        if self.variable_amount:
-            _require_variable_amount_fields(
-                min_amount_usd=self.min_amount_usd,
-                max_amount_usd=self.max_amount_usd,
-                rate_multiplier=self.rate_multiplier,
-            )
+        require_variable_amount_fields(
+            variable_amount=self.variable_amount,
+            min_amount_usd=self.min_amount_usd,
+            max_amount_usd=self.max_amount_usd,
+            rate_multiplier=self.rate_multiplier,
+        )
         return self
 
 
@@ -279,14 +300,18 @@ class SkuUpdate(BaseModel):
 
     Most fields follow a "None means don't touch" convention. The
     variable-amount block is the exception: ``variable_amount``,
-    ``min_amount_usd``, ``max_amount_usd`` and ``rate_multiplier`` are
-    treated as one unit in :func:`admin_service.update_sku` — whenever
-    ``variable_amount`` is explicitly sent (not ``None``), all four are
-    written together, including nulling the bounds/multiplier when the
-    admin turns the toggle off. This lets the SKU edit form send
-    ``variable_amount: false`` with the three fields as ``null`` and have
-    them actually clear, instead of silently no-op'ing like a bare
-    ``None`` would elsewhere in this schema.
+    ``min_amount_usd``, ``max_amount_usd`` and ``rate_multiplier`` are each
+    applied independently in :func:`admin_service.update_sku` based on
+    whether the caller actually sent them (``model_fields_set``), not on
+    whether the value is ``None`` — sending one of the three amount fields
+    as JSON ``null`` clears it, same as omitting it would leave it alone.
+    This lets a partial edit like ``{"max_amount_usd": "1000"}`` against an
+    already-variable SKU apply on its own, and lets the SKU edit form send
+    ``variable_amount: false`` with the three fields as ``null`` to clear
+    them. After merging, the *resulting* row is re-validated against
+    ``ck_skus_variable_amount_complete`` (see
+    :func:`require_variable_amount_fields`) — the request body alone can't
+    tell whether a partial edit leaves an already-variable SKU complete.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -307,12 +332,18 @@ class SkuUpdate(BaseModel):
 
     @model_validator(mode="after")
     def _validate_variable_amount(self) -> SkuUpdate:
-        if self.variable_amount:
-            _require_variable_amount_fields(
-                min_amount_usd=self.min_amount_usd,
-                max_amount_usd=self.max_amount_usd,
-                rate_multiplier=self.rate_multiplier,
-            )
+        # `self.variable_amount` is `bool | None` here — `None` (not sent)
+        # must skip the check, same as `False`, since a PATCH that never
+        # mentions variable_amount isn't claiming to be a variable SKU.
+        # This is a body-only check; the merged-row invariant for a partial
+        # edit against an already-variable SKU is enforced in
+        # admin_service.update_sku, which is the authority for that case.
+        require_variable_amount_fields(
+            variable_amount=bool(self.variable_amount),
+            min_amount_usd=self.min_amount_usd,
+            max_amount_usd=self.max_amount_usd,
+            rate_multiplier=self.rate_multiplier,
+        )
         return self
 
 
@@ -445,4 +476,5 @@ __all__ = [
     "SkuPriceOverrideIn",
     "SkuUpdate",
     "TranslationIn",
+    "require_variable_amount_fields",
 ]

@@ -500,3 +500,89 @@ async def test_update_variable_amount_sku_missing_bounds_returns_422(
     )
     assert r.status_code == 422, r.text
     assert "variable_amount SKUs require" in r.text
+
+
+async def test_update_partial_max_amount_alone_persists_on_variable_sku(
+    integration_client: AsyncClient, _admin_headers: dict[str, str]
+) -> None:
+    """A PATCH that only sends max_amount_usd against an already-variable SKU
+    must actually persist the new ceiling, not silently no-op. Regression
+    test: min/max/multiplier used to be written only inside the
+    ``variable_amount is not None`` branch, so a partial edit that never
+    touched ``variable_amount`` was dropped without an error."""
+    product_id = await _create_product_for_sku(
+        integration_client, _admin_headers, suffix="partial-max"
+    )
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/skus",
+        headers=_admin_headers,
+        json={
+            "product_id": product_id,
+            "sku_code": "steam-wallet-partial-max",
+            "price_usd": "1",
+            "variable_amount": True,
+            "min_amount_usd": "1",
+            "max_amount_usd": "500",
+            "rate_multiplier": "1.08",
+        },
+    )
+    assert r.status_code == 201, r.text
+    sku_id = r.json()["id"]
+
+    r = await integration_client.patch(
+        f"/api/v1/admin/catalog/skus/{sku_id}",
+        headers=_admin_headers,
+        json={"max_amount_usd": "1000"},
+    )
+    assert r.status_code == 200, r.text
+    patched = r.json()
+    assert patched["max_amount_usd"] == "1000"
+    # The fields this request didn't touch must survive untouched.
+    assert Decimal(patched["min_amount_usd"]) == Decimal("1")
+    assert Decimal(patched["rate_multiplier"]) == Decimal("1.08")
+    assert patched["variable_amount"] is True
+
+
+async def test_update_partial_min_amount_above_max_rejected(
+    integration_client: AsyncClient, _admin_headers: dict[str, str]
+) -> None:
+    """A partial PATCH of min_amount_usd alone that would push min above the
+    SKU's existing max must be rejected 422 — proves the merged-row
+    invariant is (re-)validated on partial edits, not just full ones."""
+    product_id = await _create_product_for_sku(
+        integration_client, _admin_headers, suffix="partial-min"
+    )
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/skus",
+        headers=_admin_headers,
+        json={
+            "product_id": product_id,
+            "sku_code": "steam-wallet-partial-min",
+            "price_usd": "1",
+            "variable_amount": True,
+            "min_amount_usd": "1",
+            "max_amount_usd": "500",
+            "rate_multiplier": "1.08",
+        },
+    )
+    assert r.status_code == 201, r.text
+    sku_id = r.json()["id"]
+
+    r = await integration_client.patch(
+        f"/api/v1/admin/catalog/skus/{sku_id}",
+        headers=_admin_headers,
+        json={"min_amount_usd": "600"},
+    )
+    assert r.status_code == 422, r.text
+    assert "max_amount_usd must be >= min_amount_usd" in r.text
+
+    # And the original row must be untouched — the failed PATCH didn't
+    # partially apply.
+    r = await integration_client.get(
+        "/api/v1/admin/catalog/skus",
+        headers=_admin_headers,
+        params={"product_id": product_id},
+    )
+    assert r.status_code == 200, r.text
+    sku = next(s for s in r.json() if s["id"] == sku_id)
+    assert Decimal(sku["min_amount_usd"]) == Decimal("1")

@@ -49,7 +49,18 @@ const skuSchema = z
       .regex(/^[A-Za-z0-9._-]+$/, "только латиница, цифры, . _ -"),
     denomination: z.string().max(64).optional().nullable(),
     region: z.string().max(8).optional().nullable(),
-    price_usd: z.string().regex(/^\d+(\.\d{1,6})?$/, "число > 0"),
+    // price_usd is only meaningful — and only rendered as a <Field> — when
+    // variable_amount is off, so it can't be a bare required field here: a
+    // stale blank/invalid value left in form state from before the toggle
+    // was turned on would then block submit with no visible error (its
+    // error span lives on the unrendered Field). It's validated
+    // conditionally in superRefine below instead, gated on variable_amount
+    // exactly like the three variable-amount fields are.
+    price_usd: z
+      .string()
+      .regex(_amountPattern, "число > 0 либо пусто")
+      .optional()
+      .nullable(),
     // Empty string is "no value" — we strip it before sending so the
     // backend keeps cost_usdt as NULL for SKUs whose wholesale cost
     // isn't known yet.
@@ -76,36 +87,50 @@ const skuSchema = z
     price_overrides: z.array(priceOverrideSchema).default([]),
   })
   .superRefine((val, ctx) => {
-    if (!val.variable_amount) return;
-    const min = Number.parseFloat(val.min_amount_usd ?? "");
-    const max = Number.parseFloat(val.max_amount_usd ?? "");
-    const multiplier = Number.parseFloat(val.rate_multiplier ?? "");
-    if (!val.min_amount_usd || Number.isNaN(min) || min <= 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["min_amount_usd"],
-        message: "Обязательно для плавающей суммы",
-      });
+    if (val.variable_amount) {
+      const min = Number.parseFloat(val.min_amount_usd ?? "");
+      const max = Number.parseFloat(val.max_amount_usd ?? "");
+      const multiplier = Number.parseFloat(val.rate_multiplier ?? "");
+      if (!val.min_amount_usd || Number.isNaN(min) || min <= 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["min_amount_usd"],
+          message: "Обязательно для плавающей суммы",
+        });
+      }
+      if (!val.max_amount_usd || Number.isNaN(max) || max <= 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["max_amount_usd"],
+          message: "Обязательно для плавающей суммы",
+        });
+      }
+      if (!val.rate_multiplier || Number.isNaN(multiplier) || multiplier <= 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["rate_multiplier"],
+          message: "Обязательно для плавающей суммы",
+        });
+      }
+      if (!Number.isNaN(min) && !Number.isNaN(max) && max < min) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["max_amount_usd"],
+          message: "Должно быть ≥ минимума",
+        });
+      }
+      return;
     }
-    if (!val.max_amount_usd || Number.isNaN(max) || max <= 0) {
+    // Non-variable SKUs: price_usd is the real, required retail price.
+    // Gated here instead of being a bare required field on the object so a
+    // stale value from before variable_amount was toggled on can never
+    // block submit while its <Field> is hidden.
+    const price = Number.parseFloat(val.price_usd ?? "");
+    if (!val.price_usd || Number.isNaN(price) || price <= 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["max_amount_usd"],
-        message: "Обязательно для плавающей суммы",
-      });
-    }
-    if (!val.rate_multiplier || Number.isNaN(multiplier) || multiplier <= 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["rate_multiplier"],
-        message: "Обязательно для плавающей суммы",
-      });
-    }
-    if (!Number.isNaN(min) && !Number.isNaN(max) && max < min) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["max_amount_usd"],
-        message: "Должно быть ≥ минимума",
+        path: ["price_usd"],
+        message: "число > 0",
       });
     }
   });
@@ -317,10 +342,14 @@ export function SkuEditPage() {
       const costNorm = values.cost_usdt?.trim() || null;
       // price_usd is meaningless for a variable-amount SKU — the real price
       // is computed at checkout from the customer's chosen amount, the FX
-      // rate, and rate_multiplier. The field is hidden in that case, so
-      // whatever is left in form state is stale; send the backend's
-      // required-positive placeholder instead of trusting it.
-      const priceUsd = values.variable_amount ? "1" : values.price_usd;
+      // rate, and rate_multiplier. The field is hidden in that case (and
+      // isn't required by the schema — see superRefine above), so whatever
+      // is left in form state is stale; send the backend's
+      // required-positive placeholder instead of trusting it. The `?? ""`
+      // only satisfies the type when variable_amount is on — schema
+      // validation already guarantees a valid, non-empty value when it's
+      // off, since that branch is required to reach this point.
+      const priceUsd = values.variable_amount ? "1" : (values.price_usd ?? "");
       // Mirrors the backend: these three are only meaningful together with
       // variable_amount, and turning the toggle off must actually clear
       // them rather than leave stale values behind.
@@ -624,7 +653,7 @@ export function SkuEditPage() {
             productName={productName}
             denom={watchedDenom ?? ""}
             region={watchedRegion ?? ""}
-            priceUsd={watchedPriceUsd}
+            priceUsd={watchedPriceUsd ?? ""}
             overrides={form.watch("price_overrides")}
             skuCode={watchedSkuCode}
             variableAmount={watchedVariableAmount}

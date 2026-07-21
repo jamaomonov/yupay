@@ -15,8 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from yupay.core.clock import now
-from yupay.core.errors import ConflictError, NotFoundError
+from yupay.core.errors import ConflictError, NotFoundError, ValidationError
 from yupay.core.ids import new_id
+from yupay.modules.catalog.admin_schemas import require_variable_amount_fields
 from yupay.modules.catalog.models import (
     Brand,
     BrandFaq,
@@ -509,17 +510,44 @@ async def update_sku(db: AsyncSession, sku_id: str, body: SkuUpdate) -> Sku:
         value = getattr(body, attr)
         if value is not None:
             setattr(row, attr, value)
-    # The variable-amount block is written as a unit rather than field-by-field:
-    # once the admin explicitly touches ``variable_amount`` (true or false), all
-    # three companion fields are overwritten together — including nulling them
-    # out when the toggle goes off. Elsewhere in this function ``None`` means
-    # "don't touch"; here it can legitimately mean "clear it", which the usual
-    # per-field skip would silently ignore. See the SkuUpdate docstring.
-    if body.variable_amount is not None:
+    # The variable-amount block can't use the "None means don't touch"
+    # convention above: min_amount_usd/max_amount_usd/rate_multiplier are
+    # legitimately cleared by sending them as JSON `null` (e.g. when the
+    # admin turns variable_amount off), which is indistinguishable from "not
+    # sent" via a plain `is not None` check — both come through as `None`.
+    # `model_fields_set` tells them apart, so a partial edit against an
+    # already-variable SKU (e.g. only `{"max_amount_usd": "1000"}`) actually
+    # applies instead of silently no-op'ing.
+    sent = body.model_fields_set
+    if "variable_amount" in sent and body.variable_amount is not None:
         row.variable_amount = body.variable_amount
+    if "min_amount_usd" in sent:
         row.min_amount_usd = body.min_amount_usd
+    if "max_amount_usd" in sent:
         row.max_amount_usd = body.max_amount_usd
+    if "rate_multiplier" in sent:
         row.rate_multiplier = body.rate_multiplier
+
+    # Validate the RESULTING row, not just the fields this request touched.
+    # The request body alone can't tell whether a partial edit leaves an
+    # already-variable SKU complete — only the merged row can. Mirrors
+    # ck_skus_variable_amount_complete; see SkuCreate for the same rule
+    # applied to a freshly-created row (there the full body is always
+    # available up front, so the Pydantic model_validator is authoritative).
+    try:
+        require_variable_amount_fields(
+            variable_amount=row.variable_amount,
+            min_amount_usd=row.min_amount_usd,
+            max_amount_usd=row.max_amount_usd,
+            rate_multiplier=row.rate_multiplier,
+        )
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
+    if not row.variable_amount:
+        row.min_amount_usd = None
+        row.max_amount_usd = None
+        row.rate_multiplier = None
+
     if body.price_overrides is not None:
         row.price_overrides = [
             SkuPrice(currency=o.currency, price=o.price) for o in body.price_overrides
