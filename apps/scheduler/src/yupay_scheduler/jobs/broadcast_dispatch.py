@@ -6,19 +6,25 @@ it: every 5 seconds it promotes any due scheduled broadcast, snapshots each
 sending broadcast's audience into ``broadcast_recipients`` rows, then delivers
 them in paced, resumable chunks.
 
-**Resumable + idempotent.** One tick sends at most :data:`CHUNK` recipients per
-broadcast; the next tick picks up whatever is still ``pending``. The per-row
-status transition (``pending`` -> ``sent``/``failed``/``blocked``) is the
-idempotency guard -- a re-run only ever touches rows that are still ``pending``,
-and the chunk claim uses ``FOR UPDATE SKIP LOCKED`` so overlapping work can
-never grab the same row twice. A terminal broadcast (``sent``/``failed``/
-``canceled``) drops out of the ``sending`` listing and is a pure no-op.
+**Resumable, at-least-once.** One tick sends at most :data:`CHUNK` recipients
+per broadcast; the next tick picks up whatever is still ``pending``. Each
+recipient is claimed and delivered in its **own** short transaction that commits
+the ``pending`` -> ``sent``/``failed``/``blocked`` transition *before* the next
+send, so a crash/deploy (SIGTERM) mid-chunk re-sends at most ~1 message rather
+than the whole in-flight chunk. Delivery is therefore genuine at-least-once with
+a one-recipient duplicate window on an ill-timed crash -- not exactly-once. Each
+per-row claim uses ``FOR UPDATE SKIP LOCKED`` so overlapping work never grabs
+the same row twice. A terminal broadcast (``sent``/``failed``/``canceled``)
+drops out of the ``sending`` listing and is a pure no-op.
 
-**Abort semantics.** The status is re-checked from a fresh read immediately
-before the chunk claim, so an admin ``cancel`` that lands mid-flight stops
-delivery. And the *first* send of a broadcast returning HTTP 400 (a malformed
-body/media that would fail for everyone) aborts the whole broadcast to
-``failed`` rather than burning the entire audience on a broken message.
+**Abort semantics.** The broadcast status is re-read before each recipient's
+send, so an admin ``cancel`` that lands mid-flight stops delivery promptly. And
+a send returning HTTP 400 while the broadcast has **zero successful sends so
+far** (``sent_count == 0``) aborts the whole broadcast to ``failed`` -- a 400 is
+a malformed body/media that would fail for everyone, so it must not be burned
+across the entire audience one ``failed`` row at a time. Keying the abort on
+"no success yet" rather than "first recipient" means a prior transient failure
+on recipient #1 no longer disables the guard.
 
 Each phase runs in its own committed transaction and failures are isolated per
 broadcast (logged with the broadcast id only -- never body or chat id, which is
@@ -31,6 +37,7 @@ import asyncio
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import func, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.config import get_settings
 from yupay.core.db import get_session_factory
@@ -166,28 +173,32 @@ async def _send_once(
     )
 
 
-def _classify(outcome: SendOutcome, *, is_first_send: bool) -> str | None:
-    """Map an outcome to a terminal result, or ``None`` if it warrants a retry."""
+def _classify(outcome: SendOutcome) -> str | None:
+    """Map an outcome to a terminal result, or ``None`` if it warrants a retry.
+
+    A 400 is terminal (``bad_request``) -- never retried -- because it means the
+    request itself is malformed; the caller decides whether it aborts the whole
+    broadcast (no success yet) or is just this recipient's failure.
+    """
     if outcome.ok:
         return "sent"
     if outcome.status == 403:
         return "blocked"
-    if outcome.status == 400 and is_first_send:
-        return "abort"
+    if outcome.status == 400:
+        return "bad_request"
     return None
 
 
 async def _deliver(
-    broadcast: Broadcast, chat_id: int, media_ref: str | None, *, is_first_send: bool
+    broadcast: Broadcast, chat_id: int, media_ref: str | None
 ) -> tuple[str, SendOutcome]:
-    """Send to one recipient, applying the retry/abort policy.
+    """Send to one recipient, applying the retry policy.
 
     Returns ``(result, outcome)`` where ``result`` is one of ``sent``,
-    ``blocked``, ``failed`` or ``abort`` (only when the first send of the whole
-    broadcast is rejected 400).
+    ``blocked``, ``bad_request`` or ``failed``.
     """
     outcome = await _send_once(broadcast, chat_id, media_ref)
-    result = _classify(outcome, is_first_send=is_first_send)
+    result = _classify(outcome)
     if result is not None:
         return result, outcome
 
@@ -201,21 +212,32 @@ async def _deliver(
 
     for _ in range(retries):
         outcome = await _send_once(broadcast, chat_id, media_ref)
-        # A 400 mid-retry is no longer the broadcast's first send -> never aborts.
-        result = _classify(outcome, is_first_send=False)
+        result = _classify(outcome)
         if result is not None:
             return result, outcome
     return "failed", outcome
 
 
-async def _process_chunk(broadcast_id: str) -> None:
-    """Claim and deliver one chunk of pending recipients for a broadcast.
+_COUNTER_COLUMN = {"sent": "sent_count", "failed": "failed_count", "blocked": "blocked_count"}
 
-    Own transaction. Re-reads the broadcast first: an admin ``cancel`` (or any
-    non-``sending`` state) landing since the snapshot stops delivery. Claims up
-    to :data:`CHUNK` pending rows with ``FOR UPDATE SKIP LOCKED``, delivers each
-    at :data:`RATE`/s, rolls the outcomes into the broadcast counters, and
-    finalizes to ``sent`` once no ``pending`` rows remain.
+
+async def _deliver_one(
+    broadcast_id: str, recipient_id: str, media_ref: str | None
+) -> tuple[str | None, str]:
+    """Deliver to a single recipient in its **own** committed transaction.
+
+    Returns ``(media_ref, control)`` where ``media_ref`` is the (possibly newly
+    captured) media reference to carry forward and ``control`` is:
+      * ``"done"`` -- the row settled (sent/failed/blocked) and committed; pace,
+        then continue.
+      * ``"skip"`` -- the row was already handled or is locked by an overlapping
+        worker; continue without pacing (no send happened).
+      * ``"stop"`` -- a mid-flight cancel (broadcast no longer ``sending``) or a
+        400 abort; break out of the chunk.
+
+    The send happens *inside* the row transaction, but the caller's pacing sleep
+    is not -- a delivered row is committed ``sent`` before the next send, so a
+    crash re-sends at most this one recipient (at-least-once).
     """
     factory = get_session_factory()
     async with factory() as session, session.begin():
@@ -223,108 +245,157 @@ async def _process_chunk(broadcast_id: str) -> None:
             await session.execute(select(Broadcast).where(Broadcast.id == broadcast_id))
         ).scalar_one_or_none()
         if broadcast is None or broadcast.status != "sending":
-            return
+            return media_ref, "stop"  # canceled / terminal since the chunk was read
 
-        claimed = list(
+        recipient = (
+            await session.execute(
+                select(BroadcastRecipient)
+                .where(
+                    BroadcastRecipient.id == recipient_id,
+                    BroadcastRecipient.status == "pending",
+                )
+                .with_for_update(skip_locked=True)
+            )
+        ).scalar_one_or_none()
+        if recipient is None:
+            return media_ref, "skip"  # already delivered, or claimed by an overlap
+
+        result, outcome = await _deliver(broadcast, recipient.tg_chat_id, media_ref)
+
+        if result == "bad_request":
+            recipient.status = "failed"
+            recipient.error = outcome.description
+            await _bump_counter(session, broadcast_id, "failed")
+            # A 400 with no success yet == the message itself is broken -> abort
+            # the whole broadcast rather than burn the audience one row at a time.
+            if broadcast.sent_count == 0:
+                broadcast.status = "failed"
+                broadcast.last_error = outcome.description
+                broadcast.finished_at = now()
+                return media_ref, "stop"
+            return media_ref, "done"
+
+        if result == "sent":
+            recipient.status = "sent"
+            recipient.sent_at = now()
+            await _bump_counter(session, broadcast_id, "sent")
+            # Capture Telegram's file_id on the first successful media send so the
+            # rest of the broadcast resends by file_id (no re-upload).
+            if (
+                broadcast.media_type != "none"
+                and broadcast.media_file_id is None
+                and outcome.file_id
+            ):
+                broadcast.media_file_id = outcome.file_id
+                media_ref = outcome.file_id
+        elif result == "blocked":
+            recipient.status = "blocked"
+            await _bump_counter(session, broadcast_id, "blocked")
+            await session.execute(
+                text(
+                    "UPDATE telegram_links SET bot_blocked_at = now() WHERE tg_user_id = :chat"
+                ),
+                {"chat": recipient.tg_chat_id},
+            )
+        else:  # failed
+            recipient.status = "failed"
+            recipient.error = outcome.description
+            await _bump_counter(session, broadcast_id, "failed")
+
+    return media_ref, "done"
+
+
+async def _bump_counter(session: AsyncSession, broadcast_id: str, kind: str) -> None:
+    """Atomically increment one broadcast counter (avoids read-modify-write races)."""
+    column = _COUNTER_COLUMN[kind]  # fixed lookup -> no SQL injection surface
+    await session.execute(
+        text(f"UPDATE broadcasts SET {column} = {column} + 1 WHERE id = :id"),
+        {"id": broadcast_id},
+    )
+
+
+async def _finalize_if_done(broadcast_id: str) -> None:
+    """Finalize a still-``sending`` broadcast to ``sent`` once nothing is pending."""
+    factory = get_session_factory()
+    async with factory() as session, session.begin():
+        broadcast = (
+            await session.execute(select(Broadcast).where(Broadcast.id == broadcast_id))
+        ).scalar_one_or_none()
+        if broadcast is None or broadcast.status != "sending":
+            return
+        remaining = (
+            await session.execute(
+                select(func.count())
+                .select_from(BroadcastRecipient)
+                .where(
+                    BroadcastRecipient.broadcast_id == broadcast_id,
+                    BroadcastRecipient.status == "pending",
+                )
+            )
+        ).scalar_one()
+        if remaining == 0:
+            broadcast.status = "sent"
+            broadcast.finished_at = now()
+
+
+async def _process_chunk(broadcast_id: str) -> None:
+    """Deliver one chunk of pending recipients, each in its own committed txn.
+
+    Reads the chunk's recipient ids with a plain (unlocked) query so no lock is
+    held across the paced loop, then delivers each id via :func:`_deliver_one`
+    (which re-claims the row ``FOR UPDATE SKIP LOCKED``, sends, and commits). The
+    pacing sleep sits between committed rows. Finalizes to ``sent`` once nothing
+    remains pending.
+    """
+    factory = get_session_factory()
+    async with factory() as session:
+        broadcast = (
+            await session.execute(select(Broadcast).where(Broadcast.id == broadcast_id))
+        ).scalar_one_or_none()
+        if broadcast is None or broadcast.status != "sending":
+            return
+        media_ref = broadcast.media_file_id or broadcast.media_url
+        chunk_ids = list(
             (
                 await session.execute(
-                    select(BroadcastRecipient)
+                    select(BroadcastRecipient.id)
                     .where(
                         BroadcastRecipient.broadcast_id == broadcast_id,
                         BroadcastRecipient.status == "pending",
                     )
                     .order_by(BroadcastRecipient.id.asc())
-                    .with_for_update(skip_locked=True)
                     .limit(CHUNK)
                 )
             )
             .scalars()
             .all()
         )
-        if not claimed:
-            broadcast.status = "sent"
-            broadcast.finished_at = now()
-            return
 
-        # "First send of the whole broadcast" == no recipient has settled yet.
-        no_prior_progress = (
-            broadcast.sent_count == 0
-            and broadcast.failed_count == 0
-            and broadcast.blocked_count == 0
-        )
-        media_ref = broadcast.media_file_id or broadcast.media_url
+    if not chunk_ids:
+        await _finalize_if_done(broadcast_id)
+        return
 
-        sent = failed = blocked = 0
-        aborted = False
-        for index, recipient in enumerate(claimed):
-            await asyncio.sleep(1 / RATE)
-            is_first_send = no_prior_progress and index == 0
-            result, outcome = await _deliver(
-                broadcast, recipient.tg_chat_id, media_ref, is_first_send=is_first_send
-            )
+    stopped = False
+    delivered = 0
+    for recipient_id in chunk_ids:
+        media_ref, control = await _deliver_one(broadcast_id, recipient_id, media_ref)
+        if control == "stop":
+            stopped = True
+            break
+        if control == "skip":
+            continue
+        delivered += 1
+        await asyncio.sleep(1 / RATE)  # pace OUTSIDE any transaction
 
-            if result == "abort":
-                broadcast.status = "failed"
-                broadcast.last_error = outcome.description
-                broadcast.finished_at = now()
-                aborted = True
-                break
+    if not stopped:
+        await _finalize_if_done(broadcast_id)
 
-            if result == "sent":
-                recipient.status = "sent"
-                recipient.sent_at = now()
-                sent += 1
-                # Capture Telegram's file_id on the first successful media send
-                # so the rest of the broadcast resends by file_id (no re-upload).
-                if (
-                    broadcast.media_type != "none"
-                    and broadcast.media_file_id is None
-                    and outcome.file_id
-                ):
-                    broadcast.media_file_id = outcome.file_id
-                    media_ref = outcome.file_id
-            elif result == "blocked":
-                recipient.status = "blocked"
-                blocked += 1
-                await session.execute(
-                    text(
-                        "UPDATE telegram_links SET bot_blocked_at = now() "
-                        "WHERE tg_user_id = :chat"
-                    ),
-                    {"chat": recipient.tg_chat_id},
-                )
-            else:  # failed
-                recipient.status = "failed"
-                recipient.error = outcome.description
-                failed += 1
-
-        broadcast.sent_count += sent
-        broadcast.failed_count += failed
-        broadcast.blocked_count += blocked
-
-        if not aborted:
-            remaining = (
-                await session.execute(
-                    select(func.count())
-                    .select_from(BroadcastRecipient)
-                    .where(
-                        BroadcastRecipient.broadcast_id == broadcast_id,
-                        BroadcastRecipient.status == "pending",
-                    )
-                )
-            ).scalar_one()
-            if remaining == 0:
-                broadcast.status = "sent"
-                broadcast.finished_at = now()
-
-        log.info(
-            "broadcasts.dispatch.chunk",
-            broadcast_id=broadcast_id,
-            sent=sent,
-            failed=failed,
-            blocked=blocked,
-            aborted=aborted,
-        )
+    log.info(
+        "broadcasts.dispatch.chunk",
+        broadcast_id=broadcast_id,
+        delivered=delivered,
+        stopped=stopped,
+    )
 
 
 async def run_broadcast_dispatch() -> None:

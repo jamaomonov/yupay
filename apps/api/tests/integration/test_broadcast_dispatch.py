@@ -14,6 +14,7 @@ per-recipient waiting.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import timedelta
 
@@ -86,13 +87,16 @@ async def _seed_broadcast(
     body_html: str = "<b>hi</b>",
     scheduled_at: object | None = None,
     total_recipients: int = 0,
+    media_type: str = "none",
+    media_url: str | None = None,
 ) -> Broadcast:
     broadcast = Broadcast(
         id=new_id(),
         title="t",
         status=status,
         body_html=body_html,
-        media_type="none",
+        media_type=media_type,
+        media_url=media_url,
         created_by=creator_id,
         scheduled_at=scheduled_at,
         total_recipients=total_recipients,
@@ -272,10 +276,14 @@ async def test_first_send_400_aborts_the_whole_broadcast(db_session: AsyncSessio
     assert updated.status == "failed"
     assert updated.last_error is not None
     assert updated.sent_count == 0
+    assert updated.failed_count == 1  # the aborting recipient is recorded failed
     assert route.call_count == 1  # aborted after the first send, no retries
 
+    # The recipient that hit the 400 is marked failed; the rest stay pending
+    # (the broadcast is terminal 'failed', so they are never attempted).
     recips = await _recipients(db_session, broadcast.id)
-    assert all(r.status == "pending" for r in recips)
+    statuses = sorted(r.status for r in recips)
+    assert statuses == ["failed", "pending"]
 
 
 @respx.mock
@@ -315,3 +323,91 @@ async def test_cancel_between_snapshot_and_chunk_stops_the_job(
     assert route.call_count == 0
     recips = await _recipients(db_session, broadcast.id)
     assert all(r.status == "pending" for r in recips)
+
+
+@respx.mock
+async def test_429_retries_once_and_then_succeeds(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A 429 for a recipient triggers a single back-off retry; the retry's 200
+    settles the recipient 'sent'. The back-off sleep is pinned so the test does
+    not actually wait ``retry_after`` seconds."""
+    # Pin every asyncio.sleep in the job (pace + 429 back-off) to an instant no-op.
+    # The job references this same module-level ``asyncio.sleep``.
+    async def _no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(asyncio, "sleep", _no_sleep)
+
+    admin = await _seed_user_with_tg(db_session, tg_id=601)
+    await db_session.commit()
+    broadcast = await _seed_broadcast(db_session, creator_id=admin.id)
+
+    responses = [
+        httpx.Response(
+            429,
+            json={
+                "ok": False,
+                "error_code": 429,
+                "description": "Too Many Requests",
+                "parameters": {"retry_after": 3},
+            },
+        ),
+        _ok_response(),
+    ]
+    route = respx.post(_SEND_URL).mock(side_effect=responses)
+
+    await broadcast_dispatch.run_broadcast_dispatch()
+
+    assert route.call_count == 2  # first 429, then the single retry
+
+    updated = await _reload_broadcast(db_session, broadcast.id)
+    assert updated.status == "sent"
+    assert updated.sent_count == 1
+    assert updated.failed_count == 0
+    recips = await _recipients(db_session, broadcast.id)
+    assert [r.status for r in recips] == ["sent"]
+
+
+@respx.mock
+async def test_media_first_send_captures_file_id_then_reuses_it(db_session: AsyncSession) -> None:
+    """A photo broadcast uploads by URL on the first send, captures the returned
+    file_id onto the broadcast, and sends every subsequent recipient by that
+    file_id (no re-upload)."""
+    photo_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
+    media_url = "https://cdn.example.test/pic.jpg"
+    captured_file_id = "FILEID123"
+
+    admin = await _seed_user_with_tg(db_session, tg_id=701)
+    await _seed_user_with_tg(db_session, tg_id=702)
+    await db_session.commit()
+    broadcast = await _seed_broadcast(
+        db_session,
+        creator_id=admin.id,
+        body_html="caption",
+        media_type="photo",
+        media_url=media_url,
+    )
+
+    sent_photo_fields: list[str] = []
+
+    def _photo_responder(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        sent_photo_fields.append(payload["photo"])
+        return httpx.Response(
+            200, json={"ok": True, "result": {"photo": [{"file_id": captured_file_id}]}}
+        )
+
+    route = respx.post(photo_url).mock(side_effect=_photo_responder)
+
+    await broadcast_dispatch.run_broadcast_dispatch()
+
+    assert route.call_count == 2
+    # First send uploads by URL; the second reuses the captured file_id.
+    assert sent_photo_fields[0] == media_url
+    assert sent_photo_fields[1] == captured_file_id
+
+    updated = await _reload_broadcast(db_session, broadcast.id)
+    assert updated.status == "sent"
+    assert updated.media_file_id == captured_file_id
+    assert updated.sent_count == 2
