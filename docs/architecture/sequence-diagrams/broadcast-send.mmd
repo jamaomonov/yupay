@@ -1,0 +1,75 @@
+sequenceDiagram
+    autonumber
+    title YuPay — Telegram broadcast send (scheduler-driven fan-out)
+
+    participant A as Admin SPA
+    participant API as FastAPI /admin/broadcasts
+    participant SVC as broadcasts.service
+    participant DB as Postgres
+    participant SCH as Scheduler (broadcast_dispatch, every ~5s)
+    participant TG as Telegram Bot API
+
+    Note over A,DB: Compose + send now (schedule is the same, plus a promote step)
+
+    A->>API: POST /admin/broadcasts {title, body_html, media...} (Idempotency-Key)
+    API->>SVC: create_draft(...)
+    SVC->>DB: INSERT broadcasts (status='draft')
+    A->>API: POST /admin/broadcasts/{id}/test (Idempotency-Key)
+    API->>TG: sendMessage/sendPhoto to admin's own chat
+    TG-->>API: 200
+    A->>API: POST /admin/broadcasts/{id}/send (Idempotency-Key)
+    API->>SVC: mark_send_now(id)
+    SVC->>SVC: sanitize.validate_body(body_html) — re-validate stored body
+    SVC->>DB: UPDATE broadcasts SET status='sending'
+    API-->>A: 200 {status: sending}
+    Note over API,SCH: status flip only — no queue, no message sent yet
+
+    loop every ~5s tick
+        SCH->>DB: UPDATE scheduled → sending WHERE scheduled_at <= now()
+        SCH->>DB: SELECT id FROM broadcasts WHERE status='sending' ORDER BY started_at LIMIT 5
+
+        alt first tick for this broadcast
+            SCH->>DB: INSERT broadcast_recipients (snapshot)<br/>FROM telegram_links JOIN users<br/>WHERE bot_blocked_at IS NULL [AND locale=:f]<br/>ON CONFLICT DO NOTHING
+            SCH->>DB: UPDATE broadcasts SET total_recipients=count, started_at=now()
+        end
+
+        SCH->>DB: SELECT id FROM broadcast_recipients<br/>WHERE status='pending' LIMIT 250 (chunk)
+
+        loop each recipient in chunk, paced ~25/s
+            SCH->>DB: SELECT ... FOR UPDATE SKIP LOCKED (claim one row)
+            SCH->>TG: sendMessage/sendPhoto/sendVideo/sendAnimation/sendDocument
+            alt 200 OK
+                TG-->>SCH: 200 {file_id?}
+                SCH->>DB: UPDATE recipient SET status='sent', sent_at=now()<br/>(+ UPDATE broadcasts.media_file_id on first media send)
+                SCH->>DB: UPDATE broadcasts SET sent_count = sent_count + 1
+            else 403 blocked/deactivated
+                TG-->>SCH: 403
+                SCH->>DB: UPDATE recipient SET status='blocked'
+                SCH->>DB: UPDATE telegram_links SET bot_blocked_at=now()
+                SCH->>DB: UPDATE broadcasts SET blocked_count = blocked_count + 1
+            else 429 rate limited
+                TG-->>SCH: 429 {retry_after}
+                SCH->>SCH: sleep(retry_after), retry same recipient once
+            else 400 bad request, sent_count == 0
+                TG-->>SCH: 400
+                SCH->>DB: UPDATE recipient SET status='failed', error=...
+                SCH->>DB: UPDATE broadcasts SET status='failed', last_error=..., finished_at=now()
+                Note over SCH: abort whole broadcast — stop claiming further recipients
+            else 5xx / network, or 400 after a prior success
+                TG-->>SCH: 5xx / error
+                SCH->>SCH: retry up to 2x, then give up
+                SCH->>DB: UPDATE recipient SET status='failed', error=...
+                SCH->>DB: UPDATE broadcasts SET failed_count = failed_count + 1
+            end
+            Note over SCH,DB: row transition commits before the next send<br/>(crash window <= 1 recipient, at-least-once)
+        end
+
+        alt no pending rows remain
+            SCH->>DB: UPDATE broadcasts SET status='sent', finished_at=now()
+        end
+    end
+
+    loop while status in (sending, scheduled)
+        A->>API: GET /admin/broadcasts/{id} (poll)
+        API-->>A: {status, sent_count, failed_count, blocked_count, total_recipients}
+    end
