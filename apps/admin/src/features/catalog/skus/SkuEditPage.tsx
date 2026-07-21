@@ -56,11 +56,7 @@ const skuSchema = z
     // error span lives on the unrendered Field). It's validated
     // conditionally in superRefine below instead, gated on variable_amount
     // exactly like the three variable-amount fields are.
-    price_usd: z
-      .string()
-      .regex(_amountPattern, "число > 0 либо пусто")
-      .optional()
-      .nullable(),
+    price_usd: z.string().regex(_amountPattern, "число > 0 либо пусто").optional().nullable(),
     // Empty string is "no value" — we strip it before sending so the
     // backend keeps cost_usdt as NULL for SKUs whose wholesale cost
     // isn't known yet.
