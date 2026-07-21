@@ -351,20 +351,23 @@ async def list_products(
     currency: str | None = None,
     fx: FxService | None = None,
 ) -> list[ProductSummaryOut]:
-    """List active products, optionally filtered by category and/or brand slug."""
+    """List active products under active brands, optionally filtered by
+    category and/or brand slug. A product under a hidden brand never lists,
+    even when addressed by that brand's slug."""
     stmt = (
         select(Product)
+        .join(Product.brand)
         .options(
             selectinload(Product.skus).selectinload(Sku.price_overrides),
             selectinload(Product.translations),
         )
-        .where(Product.active.is_(True))
+        .where(Product.active.is_(True), Brand.active.is_(True))
         .order_by(Product.sort_order, Product.slug)
     )
     if brand_slug is not None:
-        stmt = stmt.join(Product.brand).where(Brand.slug == brand_slug)
+        stmt = stmt.where(Brand.slug == brand_slug)
     elif category_slug is not None:
-        stmt = stmt.join(Product.brand).join(Brand.category).where(Category.slug == category_slug)
+        stmt = stmt.join(Brand.category).where(Category.slug == category_slug)
 
     rows = (await db.execute(stmt)).scalars().all()
 
@@ -460,11 +463,19 @@ async def get_sku_by_id(
     currency: str | None = None,
     fx: FxService | None = None,
 ) -> SkuOut | None:
-    """Look up a single SKU. Used by checkout to verify the price."""
+    """Look up a single active SKU under an active product + brand. A SKU
+    whose product or brand is hidden must not resolve by id."""
     stmt = (
         select(Sku)
+        .join(Sku.product)
+        .join(Product.brand)
         .options(selectinload(Sku.price_overrides))
-        .where(Sku.id == sku_id, Sku.active.is_(True))
+        .where(
+            Sku.id == sku_id,
+            Sku.active.is_(True),
+            Product.active.is_(True),
+            Brand.active.is_(True),
+        )
     )
     sku = (await db.execute(stmt)).scalar_one_or_none()
     if sku is None:

@@ -23,7 +23,7 @@ from urllib.parse import urlencode
 import fakeredis.aioredis
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.ids import new_id
@@ -230,6 +230,26 @@ async def test_amount_is_rejected_for_a_fixed_sku(
             "Idempotency-Key": "fixed-with-amount-aaaaaa",
         },
         json=_order_body(sku_id=_fixed_sku.id, amount_usd="5"),
+    )
+    assert r.status_code == 422, r.text
+
+
+async def test_checkout_rejects_a_sku_under_a_hidden_brand(
+    integration_client: AsyncClient, _fixed_sku: Sku, db_session: AsyncSession
+) -> None:
+    """Deactivating a brand doesn't cascade to its SKUs, so checkout must reject
+    an order for a still-active SKU whose brand an admin has hidden — otherwise
+    a customer could pay for a product pulled from sale."""
+    await db_session.execute(update(Brand).where(Brand.slug == "pubg-mobile").values(active=False))
+    await db_session.commit()
+    token = await _login_user(integration_client, tg_id=104)
+    r = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "hidden-brand-order-aaaa",
+        },
+        json=_order_body(sku_id=_fixed_sku.id),
     )
     assert r.status_code == 422, r.text
 

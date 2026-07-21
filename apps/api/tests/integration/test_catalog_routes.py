@@ -166,6 +166,27 @@ async def test_products_filtered_by_category(integration_client: AsyncClient, _s
     assert items[0]["category_slug"] == "games"
 
 
+async def _hide_brand(db_session: AsyncSession, slug: str) -> None:
+    await db_session.execute(update(Brand).where(Brand.slug == slug).values(active=False))
+    await db_session.commit()
+
+
+async def test_hidden_brands_products_do_not_list(
+    integration_client: AsyncClient, _seed_one, db_session: AsyncSession
+) -> None:
+    """A product under a hidden brand disappears from every listing — the plain
+    list, its category, and even a direct ?brand=<slug> query."""
+    await _hide_brand(db_session, "pubg-mobile")
+    for path in (
+        "/api/v1/catalog/products",
+        "/api/v1/catalog/products?category=games",
+        "/api/v1/catalog/products?brand=pubg-mobile",
+    ):
+        r = await integration_client.get(path)
+        assert r.status_code == 200, r.text
+        assert r.json()["items"] == [], path
+
+
 async def test_product_detail_carries_brand_and_form(
     integration_client: AsyncClient, _seed_one
 ) -> None:
@@ -211,6 +232,20 @@ async def test_product_detail_404s_when_brand_inactive(
     await db_session.execute(update(Brand).where(Brand.slug == "pubg-mobile").values(active=False))
     await db_session.commit()
     r = await integration_client.get("/api/v1/catalog/products/pubg-uc")
+    assert r.status_code == 404
+
+
+async def test_sku_detail_404s_when_brand_inactive(
+    integration_client: AsyncClient, _seed_one, db_session: AsyncSession
+) -> None:
+    """A SKU under a hidden brand must not resolve by id either — checkout
+    verifies the price through this endpoint."""
+    sku_id = _seed_one.skus[0].id
+    ok = await integration_client.get(f"/api/v1/catalog/skus/{sku_id}")
+    assert ok.status_code == 200, ok.text
+    await db_session.execute(update(Brand).where(Brand.slug == "pubg-mobile").values(active=False))
+    await db_session.commit()
+    r = await integration_client.get(f"/api/v1/catalog/skus/{sku_id}")
     assert r.status_code == 404
 
 

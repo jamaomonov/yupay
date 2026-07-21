@@ -125,21 +125,30 @@ def _record_event(
 
 
 async def _fetch_skus_with_product(db: AsyncSession, sku_ids: list[str]) -> dict[str, Sku]:
-    """Load all referenced SKUs along with their product (for required_fields)
-    and per-currency price overrides (so checkout honours the same native
-    price the catalogue showed the customer)."""
+    """Load all referenced SKUs along with their product + brand (for
+    required_fields and the active-chain check) and per-currency price
+    overrides (so checkout honours the same native price the catalogue
+    showed the customer)."""
     if not sku_ids:
         return {}
     stmt = (
         select(Sku)
         .options(
-            selectinload(Sku.product),
+            selectinload(Sku.product).selectinload(Product.brand),
             selectinload(Sku.price_overrides),
         )
         .where(Sku.id.in_(sku_ids))
     )
     rows = (await db.execute(stmt)).scalars().all()
     return {s.id: s for s in rows}
+
+
+def _sku_is_buyable(sku: Sku) -> bool:
+    """A SKU is buyable only when it and its whole product → brand chain are
+    active. Requires ``sku.product`` and ``sku.product.brand`` eager-loaded."""
+    product = sku.product
+    brand = product.brand if product is not None else None
+    return bool(sku.active and product is not None and product.active and brand and brand.active)
 
 
 async def _existing_idempotent_order(
@@ -372,10 +381,13 @@ async def create_order(
     if existing is not None:
         return existing
 
-    # 1) Load SKUs once.
+    # 1) Load SKUs once. A line is buyable only if the whole SKU → product →
+    # brand chain is active — deactivating a brand doesn't cascade to its
+    # SKUs, so checking only ``sku.active`` would let a hidden brand's product
+    # still be paid for.
     sku_ids = [item.sku_id for item in body.items]
     skus = await _fetch_skus_with_product(db, sku_ids)
-    missing = [sid for sid in sku_ids if sid not in skus or not skus[sid].active]
+    missing = [sid for sid in sku_ids if sid not in skus or not _sku_is_buyable(skus[sid])]
     if missing:
         raise ValidationError("unknown or inactive SKU", extra={"sku_ids": missing})
 
