@@ -8,6 +8,7 @@ import { AnalyticsPage } from "@/features/analytics/AnalyticsPage";
 import { AuditPage } from "@/features/audit/AuditPage";
 import { AuthGuard } from "@/features/auth/AuthGuard";
 import { LoginPage } from "@/features/auth/LoginPage";
+import { BroadcastComposerPage } from "@/features/broadcasts/BroadcastComposerPage";
 import { BroadcastsListPage } from "@/features/broadcasts/BroadcastsListPage";
 import { BrandEditPage } from "@/features/catalog/brands/BrandEditPage";
 import { BrandFaqsPage } from "@/features/catalog/brands/BrandFaqsPage";
@@ -79,6 +80,8 @@ export const router = createBrowserRouter([
           { path: "/fx", element: <FxPage /> },
           { path: "/promo", element: <PromoPage /> },
           { path: "/broadcasts", element: <BroadcastsListPage /> },
+          { path: "/broadcasts/new", element: <BroadcastComposerPage /> },
+          { path: "/broadcasts/:id/edit", element: <BroadcastComposerPage /> },
           { path: "/users", element: <UsersListPage /> },
           { path: "/customers/:id", element: <CustomerPage /> },
           { path: "/integrations", element: <IntegrationsPage /> },

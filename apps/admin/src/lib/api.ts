@@ -173,6 +173,10 @@ export const apiPost = <T>(path: string, body: unknown, headers?: HeadersInit) =
     body: JSON.stringify(body),
     ...(headers ? { headers } : {}),
   });
-export const apiPatch = <T>(path: string, body: unknown) =>
-  api<T>(path, { method: "PATCH", body: JSON.stringify(body) });
+export const apiPatch = <T>(path: string, body: unknown, headers?: HeadersInit) =>
+  api<T>(path, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+    ...(headers ? { headers } : {}),
+  });
 export const apiDelete = (path: string) => api<void>(path, { method: "DELETE" });
