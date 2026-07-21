@@ -112,3 +112,42 @@ def test_4097_visible_chars_without_media_rejected() -> None:
 
 def test_visible_length_strips_tags_and_decodes_entities() -> None:
     assert visible_length("<b>ab</b>&amp;c") == 4
+
+
+def test_visible_length_decodes_entity_exactly_once() -> None:
+    # "&amp;amp;" is the entity "&amp;" (-> "&") followed by literal text "amp;" — a single
+    # decode pass, not two. Double-decoding this would collapse it to "&" (length 1) instead
+    # of the true visible text "&amp;" (length 5), defeating the length ceiling below.
+    assert visible_length("&amp;amp;") == 5
+
+
+def test_nested_entity_body_over_ceiling_rejected() -> None:
+    # 2000 repetitions of "&amp;amp;" is 18000 raw chars but only 10000 visible chars once
+    # decoded a single time — still well over the 4096 ceiling, so this must be rejected.
+    # (A double-decode bug would instead collapse it to 2000 visible chars and let it pass.)
+    body = "&amp;amp;" * 2000
+    with pytest.raises(ValidationError):
+        validate_body(body, has_media=False)
+
+
+def test_terminated_comment_hiding_script_rejected() -> None:
+    with pytest.raises(ValidationError):
+        validate_body("hello <!-- <script>alert(1)</script> --> world", has_media=False)
+
+
+def test_unterminated_comment_rejected() -> None:
+    # An unterminated comment swallows everything to EOF in a naive HTMLParser-based
+    # validator (the disallowed <script> and <i> tags inside never reach
+    # handle_starttag/handle_endtag at all) — must still be rejected.
+    with pytest.raises(ValidationError):
+        validate_body("a <!-- <script>x</script> <i> b", has_media=False)
+
+
+def test_processing_instruction_rejected() -> None:
+    with pytest.raises(ValidationError):
+        validate_body("<?pi?>", has_media=False)
+
+
+def test_declaration_rejected() -> None:
+    with pytest.raises(ValidationError):
+        validate_body("<!decl>", has_media=False)

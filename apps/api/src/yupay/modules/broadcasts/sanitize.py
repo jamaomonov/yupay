@@ -5,11 +5,23 @@ passes :func:`validate_body` is guaranteed safe to send to Telegram's HTML parse
 malformed body never reaches the fan-out job. Built on the stdlib ``html.parser.HTMLParser``
 (no new dependency); tag/attribute names it reports are already lower-cased, including the
 custom tag name ``tg-spoiler``.
+
+``HTMLParser`` is constructed with ``convert_charrefs=True`` (the default), which decodes
+character references (``&amp;`` etc.) exactly once before handing text to ``handle_data`` —
+callers must not run ``html.unescape`` again on that output, or entities get double-decoded
+and the visible-length ceiling can be defeated by nesting entities (e.g. ``&amp;amp;``).
+
+``HTMLParser`` also silently no-ops comments (``<!-- ... -->``), processing instructions
+(``<?...?>``), and declarations (``<!...>``) by default — none of them reach
+``handle_starttag``/``handle_endtag``, and an *unterminated* comment swallows everything to
+EOF, including any disallowed markup inside it. ``_TelegramHtmlValidator`` overrides those
+handlers to reject explicitly, and ``validate_body`` additionally rejects up front on a raw
+``<!`` or ``<?`` substring so an unterminated comment/PI (which never reaches the handler) is
+still caught — valid Telegram HTML never contains a literal ``<!`` or ``<?``.
 """
 
 from __future__ import annotations
 
-from html import unescape
 from html.parser import HTMLParser
 from urllib.parse import urlsplit
 
@@ -43,14 +55,14 @@ class _TextCollector(HTMLParser):
 def visible_length(html: str) -> int:
     """Return the length of ``html`` as the recipient will actually see it.
 
-    Strips every tag and decodes HTML entities (via :func:`html.unescape`) — this is the
-    count Telegram's caption/message length limits are enforced against, not the length of
-    the raw markup.
+    Strips every tag; HTML entities are decoded exactly once, by the underlying parser's
+    ``convert_charrefs=True`` behavior — this is the count Telegram's caption/message length
+    limits are enforced against, not the length of the raw markup.
     """
     collector = _TextCollector()
     collector.feed(html)
     collector.close()
-    return len(unescape(collector.text))
+    return len(collector.text)
 
 
 class _TelegramHtmlValidator(HTMLParser):
@@ -58,14 +70,16 @@ class _TelegramHtmlValidator(HTMLParser):
 
     Tracks an open-tag stack: every start tag must be allowed, ``a`` must carry exactly an
     ``href`` attribute whose scheme is in ``{http, https, tg}``, every other allowed tag must
-    carry no attributes at all, and every end tag must close the innermost open tag — anything
-    else raises :class:`ValidationError` immediately, from inside the parser callback.
+    carry no attributes at all, and every end tag must close the innermost open tag. Comments,
+    processing instructions, and declarations are rejected outright — none of them are part of
+    Telegram's HTML subset, and ``HTMLParser`` would otherwise no-op them by default (silently
+    hiding whatever markup they contain). Anything disallowed raises :class:`ValidationError`
+    immediately, from inside the parser callback.
     """
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self._stack: list[str] = []
-        self._parts: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag not in ALLOWED_TAGS:
@@ -90,11 +104,22 @@ class _TelegramHtmlValidator(HTMLParser):
             raise ValidationError(f"unbalanced or mis-nested tag: </{tag}>")
         self._stack.pop()
 
-    def handle_data(self, data: str) -> None:
-        self._parts.append(data)
+    def handle_comment(self, data: str) -> None:  # noqa: ARG002 -- override, content irrelevant
+        raise ValidationError("HTML comments are not allowed in a broadcast body")
 
-    def finish(self) -> str:
-        """Close the parser and return the accumulated text.
+    def handle_pi(self, data: str) -> None:  # noqa: ARG002 -- override, content irrelevant
+        raise ValidationError(
+            "processing instructions are not allowed in a broadcast body"
+        )
+
+    def handle_decl(self, decl: str) -> None:  # noqa: ARG002 -- override, content irrelevant
+        raise ValidationError("HTML declarations are not allowed in a broadcast body")
+
+    def unknown_decl(self, data: str) -> None:  # noqa: ARG002 -- override, content irrelevant
+        raise ValidationError("unknown declarations are not allowed in a broadcast body")
+
+    def finish(self) -> None:
+        """Close the parser.
 
         Raises:
             ValidationError: if any tag was left open (unbalanced markup).
@@ -102,7 +127,6 @@ class _TelegramHtmlValidator(HTMLParser):
         self.close()
         if self._stack:
             raise ValidationError(f"unclosed tag: <{self._stack[-1]}>")
-        return "".join(self._parts)
 
 
 def validate_body(html: str, *, has_media: bool) -> None:
@@ -119,13 +143,22 @@ def validate_body(html: str, *, has_media: bool) -> None:
 
     Raises:
         ValidationError: on a disallowed tag or attribute, a disallowed ``a`` href scheme,
-            unbalanced or mis-nested tags, or a visible length over the applicable ceiling.
+            unbalanced or mis-nested tags, a comment/declaration/processing instruction, or a
+            visible length over the applicable ceiling.
     """
+    # Belt-and-suspenders for CRITICAL-1: a *terminated* comment/PI/decl is caught by the
+    # parser callbacks below, but an *unterminated* one (e.g. an unclosed `<!--`) swallows
+    # everything to EOF and never reaches those callbacks at all. Valid Telegram HTML never
+    # contains a literal `<!` or `<?`, so reject on the raw substring up front too.
+    if "<!" in html or "<?" in html:
+        raise ValidationError(
+            "HTML comments, declarations, and processing instructions are not allowed"
+        )
     validator = _TelegramHtmlValidator()
     validator.feed(html)
-    text = validator.finish()
+    validator.finish()
     limit = _CAPTION_LIMIT if has_media else _MESSAGE_LIMIT
-    length = len(unescape(text))
+    length = visible_length(html)
     if length > limit:
         kind = "caption" if has_media else "message"
         raise ValidationError(
