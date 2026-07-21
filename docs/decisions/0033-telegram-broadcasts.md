@@ -95,14 +95,20 @@ a promotional broadcast, one recipient occasionally seeing a duplicate
 message after an operator-triggered crash is an acceptable cost next to the
 complexity a stronger guarantee would add.
 
-**First-send abort.** A send returning Telegram HTTP 400 ("can't parse
-entities" being the typical case a whitelist gap could still let through)
-while the broadcast has **zero successful sends so far** aborts the _whole_
-broadcast to `failed` immediately, instead of letting the dispatch job grind
-through the same 400 for every remaining recipient one `failed` row at a
-time. The guard keys on "no success yet" rather than "this is recipient #1"
-specifically so a transient failure on the very first recipient doesn't
-permanently disable the safety net for the rest of the send.
+**First-send abort.** A send returning a Telegram HTTP 400 that identifies a
+**broken message body** ("can't parse entities" / "can't parse message" /
+"message text is empty" — a whitelist gap that would fail identically for
+everyone) while the broadcast has **zero successful sends so far** aborts the
+_whole_ broadcast to `failed` immediately, instead of letting the dispatch
+job grind through the same 400 for every remaining recipient one `failed`
+row at a time. Crucially, the abort is scoped to **body** 400s only: a
+per-recipient addressing 400 such as "chat not found" (a stale/deleted
+account) is _not_ body-broken, so it fails just that one recipient and
+delivery continues — a live test caught an over-broad early version that
+aborted a whole broadcast on the first stale chat_id. The guard keys on "no
+success yet" rather than "this is recipient #1" so a transient failure on the
+very first recipient doesn't permanently disable the safety net for the rest
+of the send.
 
 **`file_id` reuse.** The first successful media send for a broadcast goes
 by the CDN URL (from the `storage` presign upload); Telegram's response

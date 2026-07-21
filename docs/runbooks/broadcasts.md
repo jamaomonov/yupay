@@ -53,11 +53,14 @@ first thing to check.
 
 **On the broadcast (`status`):**
 
-- `failed` — the _whole_ broadcast aborted. This only happens when a send
-  to the very first recipient (or the first recipient after any prior
-  attempt with **zero successes so far**) comes back Telegram HTTP 400
-  ("can't parse entities" is the common case) — see "First-send abort"
-  below. Check `last_error` on the broadcast row for Telegram's message.
+- `failed` — the _whole_ broadcast aborted. This only happens when, with
+  **zero successes so far**, a send comes back Telegram HTTP 400 that
+  signals a **broken message body** — "can't parse entities", "can't parse
+  message text", or "message text is empty" — i.e. a failure that would
+  repeat for every recipient. A per-recipient addressing 400 (e.g. "chat
+  not found") does **not** abort; it fails just that one recipient and
+  delivery continues. See "First-send abort" below. Check `last_error` on
+  the broadcast row for Telegram's message.
 - `blocked` is not a broadcast status — only a per-recipient one.
 
 **On a recipient row (`broadcast_recipients.status`):**
@@ -80,13 +83,17 @@ GET /api/v1/admin/broadcasts/{id}/recipients?status=blocked
 
 ## First-send abort behavior
 
-If the send to a recipient returns HTTP 400 **and** the broadcast's
-`sent_count` is still `0`, the dispatch job aborts the entire broadcast:
-status → `failed`, `last_error` set to Telegram's description,
-`finished_at` set. The remaining `pending` recipients are left untouched
-(not marked `failed` one by one) — the guard exists specifically to avoid
-grinding through the whole audience with a message that's malformed for
-everyone.
+If a send returns an HTTP 400 that identifies a **broken message body**
+(the description contains "parse", "entit", or "message text is empty")
+**and** the broadcast's `sent_count` is still `0`, the dispatch job aborts
+the entire broadcast: status → `failed`, `last_error` set to Telegram's
+description, `finished_at` set. The remaining `pending` recipients are left
+untouched (not marked `failed` one by one) — the guard exists specifically
+to avoid grinding through the whole audience with a message that's
+malformed for everyone. A 400 that is **not** a body error — the classic
+being "chat not found" for a stale/deleted account — is treated as a
+per-recipient failure instead: that one row is marked `failed` and delivery
+continues to the rest.
 
 **Why this can still happen** despite the save-time whitelist
 (`broadcasts/sanitize.py`): the whitelist is Telegram-shaped but not a
