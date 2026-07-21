@@ -158,6 +158,7 @@
   "topup.amountBelow": "Kamida {min}",
   "topup.amountAbove": "Ko'pi bilan {max}",
   "topup.amountPrecision": "Nuqtadan keyin ikkitagacha raqam",
+  "topup.amountInvalidTitle": "Miqdorni tekshiring",
   "topup.ratePerDollar": "1 $ = {rate}",
   "topup.zeroFee": "Komissiya 0%",
   "topup.priceUnavailable": "Narx vaqtincha mavjud emas. Birozdan so'ng qayta urinib ko'ring.",

@@ -158,6 +158,7 @@
   "topup.amountBelow": "Минимум {min}",
   "topup.amountAbove": "Максимум {max}",
   "topup.amountPrecision": "Не более двух знаков после запятой",
+  "topup.amountInvalidTitle": "Проверьте сумму",
   "topup.ratePerDollar": "1 $ = {rate}",
   "topup.zeroFee": "Комиссия 0%",
   "topup.priceUnavailable": "Цена временно недоступна. Загляните чуть позже.",

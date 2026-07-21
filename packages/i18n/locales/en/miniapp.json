@@ -158,6 +158,7 @@
   "topup.amountBelow": "Minimum {min}",
   "topup.amountAbove": "Maximum {max}",
   "topup.amountPrecision": "At most two decimal places",
+  "topup.amountInvalidTitle": "Check the amount",
   "topup.ratePerDollar": "$1 = {rate}",
   "topup.zeroFee": "0% fee",
   "topup.priceUnavailable": "Price is temporarily unavailable. Please check back soon.",

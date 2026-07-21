@@ -413,6 +413,10 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
         : variableTotal !== null
           ? formatUzs(locale, Math.round(variableTotal))
           : "—";
+  // `selectedPriceLabel` holds the full "temporarily unavailable" sentence
+  // when the FX trust gate rejected the rate — that sentence belongs on the
+  // card/hint, never glued onto "Оплатить" or the mobile summary line.
+  const priceUnavailable = selSkuVariable && variableRate === null;
 
   async function pay() {
     if (!selSku || !canPay) return;
@@ -779,6 +783,7 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
                   {selSku &&
                     selectedPriceLabel &&
                     selectedPriceLabel !== "—" &&
+                    !priceUnavailable &&
                     ` · ${selectedPriceLabel}`}
                 </>
               )}
@@ -806,7 +811,7 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
             <div className="min-w-0">
               <div className="text-tx-mute text-[11px] font-semibold">{t("summaryTitle")}</div>
               <div className="font-display truncate text-lg font-bold leading-tight">
-                {selectedPriceLabel}
+                {priceUnavailable ? "—" : selectedPriceLabel}
               </div>
             </div>
             <button

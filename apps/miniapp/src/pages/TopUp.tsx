@@ -464,7 +464,7 @@ export default function TopUp() {
     // is a belt-and-suspenders guard against a stray Enter-key submit.
     if (!variableAmountReady) {
       toast({
-        title: t("topup.pickPackageTitle"),
+        title: t("topup.amountInvalidTitle"),
         description: variableAmountReason ?? t("topup.amountRequired"),
         variant: "destructive",
       });
