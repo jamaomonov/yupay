@@ -297,6 +297,10 @@ async def test_sweep_flags_an_errored_topup_for_reconciliation(db_session: Async
     assert updated.status == "failed"
     assert updated.last_error is not None
     assert "reconcil" in updated.last_error.lower()
+    # The flag must be a queryable field, not only buried in last_error, so the
+    # admin inbox can filter on it — the sweep is the only path that reaches it
+    # for Waxpeer (no webhook).
+    assert updated.extra_metadata.get("needs_reconciliation") is True
 
     item = await _reload_item(db_session, task.order_item_id)
     assert item.fulfillment_state == "failed"

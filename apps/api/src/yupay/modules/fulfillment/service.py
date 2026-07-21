@@ -642,6 +642,13 @@ async def process_webhook_update(
         error=status.error,
     )
 
+    # Persist any structured flags the supplier reported (needs_reconciliation,
+    # supplier_refunded, give_amount_shortfall_units) so the admin inbox can
+    # filter on them, not just grep last_error. Same merge the fulfill() path
+    # does with FulfillResult.extra_metadata.
+    if status.extra_metadata:
+        task.extra_metadata = {**(task.extra_metadata or {}), **status.extra_metadata}
+
     if status.outcome == "succeeded":
         task.status = "succeeded"
         task.succeeded_at = now()

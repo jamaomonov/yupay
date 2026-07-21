@@ -192,6 +192,10 @@ class WaxpeerFulfiller(Fulfiller):
             artifact_kind=reconciled.artifact_kind,
             artifact=reconciled.artifact,
             error=reconciled.error,
+            # Carry the reconciliation flags (needs_reconciliation / supplier_refunded
+            # / give_amount_shortfall_units) so the sweep persists them as queryable
+            # fields — without this they'd exist only in the error string.
+            extra_metadata=reconciled.extra_metadata,
         )
 
     async def cancel(

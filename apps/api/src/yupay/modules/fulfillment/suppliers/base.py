@@ -7,7 +7,7 @@ otherwise supplier-agnostic.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -49,6 +49,12 @@ class FulfillStatus:
     artifact_kind: ArtifactKind | None
     artifact: dict[str, Any] | None
     error: str | None
+    # Structured flags the reconciler merges onto ``task.extra_metadata`` — e.g.
+    # ``needs_reconciliation`` / ``supplier_refunded`` / ``give_amount_shortfall_units``.
+    # Mirrors ``FulfillResult.extra_metadata`` so a status discovered by the
+    # webhook/poll path (the only path Waxpeer has) surfaces the same queryable
+    # flags as one discovered synchronously, instead of only in ``last_error``.
+    extra_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @runtime_checkable
