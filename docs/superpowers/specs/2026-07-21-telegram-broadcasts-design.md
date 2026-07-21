@@ -15,24 +15,24 @@ Give admins a screen to compose and send a **broadcast message to users through 
 Telegram bot** — formatted text plus one optional media attachment — targeting the
 whole bot audience (optionally filtered by language), safely and at scale.
 
-One sentence: *an admin writes one message, optionally attaches a photo/video/GIF/
+One sentence: _an admin writes one message, optionally attaches a photo/video/GIF/
 document, previews it exactly as it will arrive, sends a test to themselves, then
 fans it out to every user who has started the bot — in the background, throttled,
-resumable, with live delivery counters.*
+resumable, with live delivery counters._
 
 ## 2. Decisions locked during brainstorming
 
-| Question | Decision |
-| --- | --- |
-| **Channel** | Telegram bot DM **only** (users with a `TelegramLink`). No email/web in v1. |
-| **Audience** | All Telegram-linked users; **optional locale filter** (all / ru / en / uz). Users who blocked the bot are excluded. |
-| **Localization of the message** | **One message to everyone** (single body + single media). Not per-locale variants. |
-| **Text formatting** | **WYSIWYG toolbar → Telegram HTML** (contenteditable editor); server validates against a whitelist. |
-| **Media** | **One** attachment per broadcast: photo / video / GIF / document, **≤ 20 MB**. Or text-only. |
-| **Scheduling** | Draft + **send now** + **scheduled** (send at a chosen time). |
-| **Safety** | **Test-send to self** + **confirmation dialog** showing the recipient count. |
-| **Delivery progress** | **Polling** in the admin (WS is a later option). |
-| **Admin language** | Admin UI is **RU-only** (like every other admin page); no i18n keys. The broadcast *content* is authored by the admin, not translated. |
+| Question                        | Decision                                                                                                                               |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **Channel**                     | Telegram bot DM **only** (users with a `TelegramLink`). No email/web in v1.                                                            |
+| **Audience**                    | All Telegram-linked users; **optional locale filter** (all / ru / en / uz). Users who blocked the bot are excluded.                    |
+| **Localization of the message** | **One message to everyone** (single body + single media). Not per-locale variants.                                                     |
+| **Text formatting**             | **WYSIWYG toolbar → Telegram HTML** (contenteditable editor); server validates against a whitelist.                                    |
+| **Media**                       | **One** attachment per broadcast: photo / video / GIF / document, **≤ 20 MB**. Or text-only.                                           |
+| **Scheduling**                  | Draft + **send now** + **scheduled** (send at a chosen time).                                                                          |
+| **Safety**                      | **Test-send to self** + **confirmation dialog** showing the recipient count.                                                           |
+| **Delivery progress**           | **Polling** in the admin (WS is a later option).                                                                                       |
+| **Admin language**              | Admin UI is **RU-only** (like every other admin page); no i18n keys. The broadcast _content_ is authored by the admin, not translated. |
 
 ## 3. Architecture overview
 
@@ -70,26 +70,28 @@ Admin detail page polls GET /admin/broadcasts/{id} for live counters.
 New tables (one Alembic migration), plus one column on `telegram_links`.
 
 ### `broadcasts`
-| Column | Type | Notes |
-| --- | --- | --- |
-| `id` | uuid PK | |
-| `title` | text | Internal admin label only; never sent. |
-| `status` | text | `draft` / `scheduled` / `sending` / `sent` / `failed` / `canceled`. CHECK-constrained. |
-| `body_html` | text | Telegram-HTML caption/text (whitelist-validated). May be empty only if media present. |
-| `media_type` | text | `none` / `photo` / `video` / `animation` / `document`. |
-| `media_url` | text nullable | CDN URL of the uploaded file (from `storage` presign). |
-| `media_file_id` | text nullable | Telegram `file_id` captured on the first successful media send; reused for the rest. |
-| `locale_filter` | text nullable | `null` = all languages; else `ru`/`en`/`uz`. |
-| `disable_web_page_preview` | bool | Default `true`. |
-| `scheduled_at` | timestamptz nullable | Set when `status = scheduled`. Stored UTC. |
-| `total_recipients` | int | Snapshot size (0 until send starts). |
-| `sent_count` / `failed_count` / `blocked_count` | int | Live counters, updated per chunk. |
-| `started_at` / `finished_at` | timestamptz nullable | |
-| `last_error` | text nullable | Set on abort/catastrophic failure (e.g. first-send entity error). |
-| `created_by` | uuid | Admin user id (FK users). |
-| `created_at` / `updated_at` | timestamptz | |
+
+| Column                                          | Type                 | Notes                                                                                  |
+| ----------------------------------------------- | -------------------- | -------------------------------------------------------------------------------------- |
+| `id`                                            | uuid PK              |                                                                                        |
+| `title`                                         | text                 | Internal admin label only; never sent.                                                 |
+| `status`                                        | text                 | `draft` / `scheduled` / `sending` / `sent` / `failed` / `canceled`. CHECK-constrained. |
+| `body_html`                                     | text                 | Telegram-HTML caption/text (whitelist-validated). May be empty only if media present.  |
+| `media_type`                                    | text                 | `none` / `photo` / `video` / `animation` / `document`.                                 |
+| `media_url`                                     | text nullable        | CDN URL of the uploaded file (from `storage` presign).                                 |
+| `media_file_id`                                 | text nullable        | Telegram `file_id` captured on the first successful media send; reused for the rest.   |
+| `locale_filter`                                 | text nullable        | `null` = all languages; else `ru`/`en`/`uz`.                                           |
+| `disable_web_page_preview`                      | bool                 | Default `true`.                                                                        |
+| `scheduled_at`                                  | timestamptz nullable | Set when `status = scheduled`. Stored UTC.                                             |
+| `total_recipients`                              | int                  | Snapshot size (0 until send starts).                                                   |
+| `sent_count` / `failed_count` / `blocked_count` | int                  | Live counters, updated per chunk.                                                      |
+| `started_at` / `finished_at`                    | timestamptz nullable |                                                                                        |
+| `last_error`                                    | text nullable        | Set on abort/catastrophic failure (e.g. first-send entity error).                      |
+| `created_by`                                    | uuid                 | Admin user id (FK users).                                                              |
+| `created_at` / `updated_at`                     | timestamptz          |                                                                                        |
 
 ### `broadcast_recipients`
+
 The resumable work list — **snapshotted at send-start**.
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -103,6 +105,7 @@ The resumable work list — **snapshotted at send-start**.
 | — | | `UNIQUE(broadcast_id, user_id)` → snapshot + re-delivery are idempotent. Index on `(broadcast_id, status)` for the chunk query. |
 
 ### `telegram_links.bot_blocked_at` (new column, nullable timestamptz)
+
 Set when any send returns 403 "bot was blocked / user deactivated". **Cleared on `/start`**
 (one-line addition to the bot's existing `/start` handler). Excluded from audience counts
 and snapshots so repeat broadcasts don't keep hammering users who left.
@@ -110,6 +113,7 @@ and snapshots so repeat broadcasts don't keep hammering users who left.
 ## 5. Body formatting — Telegram HTML
 
 ### Allowed tags (whitelist)
+
 The editor emits and the server accepts **only** the tags Telegram's HTML parse mode
 understands:
 
@@ -122,8 +126,10 @@ field error the composer surfaces), so a malformed body can never reach the fan-
 fail on every recipient.
 
 ### Validator (`broadcasts/sanitize.py`)
+
 A strict allowlist validator built on the **stdlib `html.parser.HTMLParser`** — no new
 dependency. It:
+
 - rejects any tag / attribute outside the whitelist,
 - verifies tags are balanced and properly nested,
 - validates `a[href]` scheme,
@@ -133,6 +139,7 @@ dependency. It:
   text-only.
 
 ### Editor (`components/TelegramEditor.tsx`) — see ADR
+
 A focused **contenteditable** WYSIWYG with a toolbar (B / I / U / S / spoiler / link /
 code) and a DOM→Telegram-HTML serializer. No heavy rich-text dependency. This is a new
 UI pattern → **ADR-0033** records the choice and the fallback (toolbar-wrapped textarea +
@@ -166,7 +173,7 @@ the SKIP-LOCKED claim below guards the rest). Each tick:
 2. For each `sending` broadcast (oldest `started_at` first), bounded to a per-tick global
    cap so one tick can't run away:
    - **Snapshot recipients** if not yet present: `INSERT … ON CONFLICT (broadcast_id,
-     user_id) DO NOTHING` from `TelegramLink ⨝ User` where `bot_blocked_at IS NULL` and
+user_id) DO NOTHING` from `TelegramLink ⨝ User` where `bot_blocked_at IS NULL` and
      (locale filter). Set `total_recipients`, `started_at`.
    - If status is now `canceled` → skip. Otherwise **claim a CHUNK** (≈ 250, sized so a
      tick stays bounded at ~25 msg/s) of `pending` recipients with
@@ -200,7 +207,7 @@ chunk and stops. Already-sent messages stay sent.
 
 - **`BroadcastsListPage`** — DataTable: title, status badge (Отправлено / Отправляется +
   progress / Запланирована / Черновик / Ошибка / Отменена), audience, `sent / failed /
-  blocked`, when, author. "Новая рассылка" button. New nav entry.
+blocked`, when, author. "Новая рассылка" button. New nav entry.
 - **`BroadcastComposerPage`** — create / edit a **draft** (editing only allowed in
   `draft`; a `scheduled` one can be moved back to draft to edit). Left: title,
   `TelegramEditor` + toolbar, `BroadcastMediaUploader` (one file), locale chips, "Сейчас /
@@ -216,20 +223,20 @@ chunk and stops. Already-sent messages stay sent.
 
 ## 10. API surface (`/api/v1/admin/broadcasts`, `require_admin`)
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/admin/broadcasts` | Paged list (+ status filter). |
-| `POST` | `/admin/broadcasts` | Create draft. |
-| `GET` | `/admin/broadcasts/{id}` | Detail + live counters. |
-| `PATCH` | `/admin/broadcasts/{id}` | Edit draft (409 if not draft/scheduled). |
-| `DELETE` | `/admin/broadcasts/{id}` | Delete draft. |
-| `POST` | `/admin/broadcasts/{id}/test` | Send to the caller's own Telegram chat. |
-| `POST` | `/admin/broadcasts/{id}/send` | Send now (FSM → sending; the dispatch job picks it up). |
-| `POST` | `/admin/broadcasts/{id}/schedule` | Set `scheduled_at` (FSM → scheduled). |
-| `POST` | `/admin/broadcasts/{id}/cancel` | Cancel scheduled/sending. |
-| `GET` | `/admin/broadcasts/{id}/recipients?status=failed` | Problem-recipients list. |
-| `GET` | `/admin/broadcasts/audience-count?locale=` | Live eligible-recipient estimate for the composer. |
-| `POST` | `/admin/media/presign-upload` | Existing; extended for `broadcast_media`. |
+| Method   | Path                                              | Purpose                                                 |
+| -------- | ------------------------------------------------- | ------------------------------------------------------- |
+| `GET`    | `/admin/broadcasts`                               | Paged list (+ status filter).                           |
+| `POST`   | `/admin/broadcasts`                               | Create draft.                                           |
+| `GET`    | `/admin/broadcasts/{id}`                          | Detail + live counters.                                 |
+| `PATCH`  | `/admin/broadcasts/{id}`                          | Edit draft (409 if not draft/scheduled).                |
+| `DELETE` | `/admin/broadcasts/{id}`                          | Delete draft.                                           |
+| `POST`   | `/admin/broadcasts/{id}/test`                     | Send to the caller's own Telegram chat.                 |
+| `POST`   | `/admin/broadcasts/{id}/send`                     | Send now (FSM → sending; the dispatch job picks it up). |
+| `POST`   | `/admin/broadcasts/{id}/schedule`                 | Set `scheduled_at` (FSM → scheduled).                   |
+| `POST`   | `/admin/broadcasts/{id}/cancel`                   | Cancel scheduled/sending.                               |
+| `GET`    | `/admin/broadcasts/{id}/recipients?status=failed` | Problem-recipients list.                                |
+| `GET`    | `/admin/broadcasts/audience-count?locale=`        | Live eligible-recipient estimate for the composer.      |
+| `POST`   | `/admin/media/presign-upload`                     | Existing; extended for `broadcast_media`.               |
 
 All write endpoints accept **`Idempotency-Key`** (CLAUDE.md §9). `send` is additionally
 guarded by the FSM: a broadcast already `sending`/`sent` cannot be re-sent (double-click
@@ -248,7 +255,7 @@ write one either). Bot token and `tg_chat_id` are never logged (PII rule).
   sent to the base at a bad file.
 - Scheduled time in the past (or under a small skew margin) → **422** "время в прошлом".
 - Overlapping / repeated dispatch ticks → idempotent via recipient `UNIQUE` + `FOR UPDATE
-  SKIP LOCKED` claim + terminal-status guard; no double sends.
+SKIP LOCKED` claim + terminal-status guard; no double sends.
 - Per-language preview: **not needed** — single message, so the one preview is exact.
 
 ## 12. Testing

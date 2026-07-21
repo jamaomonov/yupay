@@ -111,9 +111,7 @@ def _ok_response() -> httpx.Response:
 
 
 def _err_response(code: int) -> httpx.Response:
-    return httpx.Response(
-        code, json={"ok": False, "error_code": code, "description": f"err{code}"}
-    )
+    return httpx.Response(code, json={"ok": False, "error_code": code, "description": f"err{code}"})
 
 
 def _responder(by_chat: dict[int, int]):
@@ -152,9 +150,7 @@ async def _recipients(db: AsyncSession, broadcast_id: str) -> list[BroadcastReci
 async def _link_for(db: AsyncSession, tg_id: int) -> TelegramLink:
     return (
         await db.execute(
-            select(TelegramLink)
-            .where(TelegramLink.tg_user_id == tg_id)
-            .execution_options(**_FRESH)
+            select(TelegramLink).where(TelegramLink.tg_user_id == tg_id).execution_options(**_FRESH)
         )
     ).scalar_one()
 
@@ -332,6 +328,7 @@ async def test_429_retries_once_and_then_succeeds(
     """A 429 for a recipient triggers a single back-off retry; the retry's 200
     settles the recipient 'sent'. The back-off sleep is pinned so the test does
     not actually wait ``retry_after`` seconds."""
+
     # Pin every asyncio.sleep in the job (pace + 429 back-off) to an instant no-op.
     # The job references this same module-level ``asyncio.sleep``.
     async def _no_sleep(_seconds: float) -> None:

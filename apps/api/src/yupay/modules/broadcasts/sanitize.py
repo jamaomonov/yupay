@@ -123,9 +123,7 @@ class _TelegramHtmlValidator(HTMLParser):
         raise ValidationError("HTML comments are not allowed in a broadcast body")
 
     def handle_pi(self, data: str) -> None:  # noqa: ARG002 -- override, content irrelevant
-        raise ValidationError(
-            "processing instructions are not allowed in a broadcast body"
-        )
+        raise ValidationError("processing instructions are not allowed in a broadcast body")
 
     def handle_decl(self, decl: str) -> None:  # noqa: ARG002 -- override, content irrelevant
         raise ValidationError("HTML declarations are not allowed in a broadcast body")

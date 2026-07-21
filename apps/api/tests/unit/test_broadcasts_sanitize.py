@@ -18,9 +18,10 @@ from yupay.modules.broadcasts.sanitize import ALLOWED_TAGS, validate_body, visib
 
 
 def test_allowed_tags_frozenset_matches_telegram_html_whitelist() -> None:
-    assert frozenset(
-        {"b", "i", "u", "s", "a", "code", "pre", "tg-spoiler", "blockquote"}
-    ) == ALLOWED_TAGS
+    assert (
+        frozenset({"b", "i", "u", "s", "a", "code", "pre", "tg-spoiler", "blockquote"})
+        == ALLOWED_TAGS
+    )
 
 
 def test_plain_text_passes() -> None:

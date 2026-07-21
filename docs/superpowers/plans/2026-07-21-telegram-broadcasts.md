@@ -13,14 +13,14 @@
 ## Global Constraints
 
 - **Telegram HTML whitelist** — the ONLY allowed tags: `b`, `i`, `u`, `s`, `a` (href, scheme `http`/`https`/`tg` only), `code`, `pre`, `tg-spoiler`, `blockquote`. Line breaks are `\n` (no `<br>`). Anything else → reject on save (HTTP 422).
-- **Length limits** (measured on *visible text*, tags stripped): **≤ 1024** chars with media (caption), **≤ 4096** text-only.
+- **Length limits** (measured on _visible text_, tags stripped): **≤ 1024** chars with media (caption), **≤ 4096** text-only.
 - **Media:** exactly one attachment or none. `media_type ∈ {none, photo, video, animation, document}`. Cap **20 MB**. MIME→method: `image/jpeg|png|webp`→sendPhoto, `image/gif`→sendAnimation, `video/mp4`→sendVideo, documents→sendDocument.
 - **Statuses (FSM):** `draft`, `scheduled`, `sending`, `sent`, `failed`, `canceled`. Editable only in `draft`. `scheduled`→back to `draft` allowed. `scheduled`/`sending`→`canceled` allowed. `sent`/`failed`/`canceled` terminal.
 - **Delivery:** pacing **~25 msg/s** (`asyncio.sleep(1/25)`), chunk **250**, dispatch interval **~5 s**, `max_instances=1`, `coalesce=True`. Claim pending with `FOR UPDATE SKIP LOCKED`.
 - **Per-recipient outcomes:** 200→`sent` (capture `file_id` on first media send); 403→`blocked` + set `telegram_links.bot_blocked_at`; 429→sleep `retry_after`, retry same; 5xx/network→retry twice then `failed`; **first-send 400 "can't parse entities"→abort broadcast to `failed`**.
 - **Audience:** `TelegramLink ⨝ User` where `telegram_links.bot_blocked_at IS NULL`, optional `users.locale` filter (`ru`/`en`/`uz`; `null`=all).
 - **Auth/idempotency:** all write endpoints under `require_admin` and accept `Idempotency-Key` (`>= MIN_IDEMPOTENCY_KEY_LENGTH`). `send` also FSM-guarded (a non-draft can't be sent again).
-- **Admin UI is RU-only** — hardcoded Russian strings, **no** i18n locale files. Broadcast *content* is admin-authored (not translated).
+- **Admin UI is RU-only** — hardcoded Russian strings, **no** i18n locale files. Broadcast _content_ is admin-authored (not translated).
 - **PII:** never log bot token, `tg_chat_id`, `tg_user_id`, or the message body. Broadcast id / counts are OK.
 - **Times:** stored/compared **UTC**; API sends/receives ISO-8601 UTC instants.
 - **No new backend dependency** for HTML validation (stdlib `html.parser.HTMLParser`).
@@ -31,6 +31,7 @@
 ## File Structure
 
 **Backend (`apps/api/src/yupay/modules/broadcasts/`)**
+
 - `models.py` — `Broadcast`, `BroadcastRecipient` ORM.
 - `sanitize.py` — Telegram-HTML whitelist validator + visible-length counter. Pure, no I/O.
 - `schemas.py` — Pydantic DTOs.
@@ -41,6 +42,7 @@
 - `tests/` under `apps/api/tests/{unit,integration}/`.
 
 **Backend edits**
+
 - `apps/api/src/yupay/modules/notifications/channels/telegram.py` — add media senders returning `file_id`.
 - `apps/api/src/yupay/modules/storage/service.py` — `broadcast_media` kind, MIME map, per-kind cap.
 - `apps/api/src/yupay/core/config.py` — `broadcast_media_max_upload_bytes`, extend allowlists.
@@ -48,19 +50,23 @@
 - `apps/api/migrations/versions/NNNN_broadcasts.py` — tables + `telegram_links.bot_blocked_at`.
 
 **Scheduler**
+
 - `apps/scheduler/src/yupay_scheduler/jobs/broadcast_dispatch.py` — the dispatch job.
 - `apps/scheduler/src/yupay_scheduler/main.py` — register it + import broadcasts models.
 
 **Bot**
+
 - `apps/bot/src/yupay_bot/main.py` — `/start` clears `bot_blocked_at`.
 
 **Admin SPA (`apps/admin/src/`)**
+
 - `components/TelegramEditor.tsx` — contenteditable WYSIWYG → Telegram HTML.
 - `features/broadcasts/BroadcastMediaUploader.tsx` — one-file uploader (photo/video/gif/doc).
 - `features/broadcasts/BroadcastsListPage.tsx`, `BroadcastComposerPage.tsx`, `BroadcastDetailPage.tsx`, `types.ts`, `telegramHtml.ts` (shared serialize/validate/preview helpers).
 - `lib/queryKeys.ts`, `lib/api.ts` (additions), router + nav registration.
 
 **Docs**
+
 - `docs/decisions/0033-telegram-broadcasts.md`, `docs/architecture/module-map.md`, `docs/architecture/sequence-diagrams/broadcast-send.mmd`, `docs/runbooks/broadcasts.md`, `apps/api/src/yupay/modules/storage/README.md`.
 
 ---
@@ -68,12 +74,14 @@
 ## Task 1: Data model + migration
 
 **Files:**
+
 - Create: `apps/api/src/yupay/modules/broadcasts/__init__.py` (empty), `apps/api/src/yupay/modules/broadcasts/models.py`
 - Create: `apps/api/migrations/versions/NNNN_broadcasts.py` (via `make migration name=broadcasts`)
 - Modify: `apps/api/src/yupay/modules/users/models.py` (add `bot_blocked_at` to `TelegramLink`)
 - Test: `apps/api/tests/integration/test_broadcasts_models.py`
 
 **Interfaces:**
+
 - Produces: `Broadcast`, `BroadcastRecipient` ORM (see columns below); `TelegramLink.bot_blocked_at: Mapped[datetime | None]`.
 
 **Column reference (mirror `fulfillment/models.py` style — `UUID(as_uuid=False)`, `server_default=text(...)`):**
@@ -87,19 +95,20 @@
 - [ ] **Step 1: Write the model file** `models.py` with both classes (mirror `FulfillmentTask` column idioms), plus a `relationship` from `Broadcast.recipients` (`cascade="all, delete-orphan"`, `lazy="selectin"`). Add `bot_blocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)` to `TelegramLink`.
 
 - [ ] **Step 2: Generate + fill the migration**
-Run: `make migration name=broadcasts`
-Then hand-write `upgrade()` / `downgrade()` with `op.create_table` for both tables (columns + CHECKs + unique + index above) and `op.add_column("telegram_links", sa.Column("bot_blocked_at", sa.DateTime(timezone=True), nullable=True))`. `downgrade()` drops the column then both tables.
+      Run: `make migration name=broadcasts`
+      Then hand-write `upgrade()` / `downgrade()` with `op.create_table` for both tables (columns + CHECKs + unique + index above) and `op.add_column("telegram_links", sa.Column("bot_blocked_at", sa.DateTime(timezone=True), nullable=True))`. `downgrade()` drops the column then both tables.
 
 - [ ] **Step 3: Register models in the metadata-touch lists**
-Modify `apps/scheduler/src/yupay_scheduler/main.py` — add `from yupay.modules.broadcasts import models as _broadcasts_models  # noqa: F401`. (The API loads models via its own module import graph once the router is mounted in Task 6; the scheduler needs the explicit touch because it imports the dispatch job, which imports these models — add it now so Task 7's migration/tests resolve FKs.)
+      Modify `apps/scheduler/src/yupay_scheduler/main.py` — add `from yupay.modules.broadcasts import models as _broadcasts_models  # noqa: F401`. (The API loads models via its own module import graph once the router is mounted in Task 6; the scheduler needs the explicit touch because it imports the dispatch job, which imports these models — add it now so Task 7's migration/tests resolve FKs.)
 
 - [ ] **Step 4: Write the failing integration test** `test_broadcasts_models.py`: insert a `Broadcast` + two `BroadcastRecipient` rows against the testcontainers Postgres, assert the `UNIQUE(broadcast_id, user_id)` raises on a dup, and that `bot_blocked_at` defaults to `NULL` on a fresh `TelegramLink`.
 
 - [ ] **Step 5: Run migration + test**
-Run: `make migrate` then `cd apps/api && uv run pytest tests/integration/test_broadcasts_models.py -v`
-Expected: PASS. Then `uv run mypy src/yupay/modules/broadcasts/models.py` → clean.
+      Run: `make migrate` then `cd apps/api && uv run pytest tests/integration/test_broadcasts_models.py -v`
+      Expected: PASS. Then `uv run mypy src/yupay/modules/broadcasts/models.py` → clean.
 
 - [ ] **Step 6: Commit**
+
 ```bash
 git add apps/api/src/yupay/modules/broadcasts apps/api/migrations/versions apps/api/src/yupay/modules/users/models.py apps/scheduler/src/yupay_scheduler/main.py apps/api/tests/integration/test_broadcasts_models.py
 git commit -m "feat(broadcasts): data model + migration (broadcasts, recipients, bot_blocked_at)"
@@ -110,10 +119,12 @@ git commit -m "feat(broadcasts): data model + migration (broadcasts, recipients,
 ## Task 2: Telegram-HTML validator (`sanitize.py`)
 
 **Files:**
+
 - Create: `apps/api/src/yupay/modules/broadcasts/sanitize.py`
 - Test: `apps/api/tests/unit/test_broadcasts_sanitize.py`
 
 **Interfaces:**
+
 - Produces:
   - `ALLOWED_TAGS: frozenset[str]` = `{"b","i","u","s","a","code","pre","tg-spoiler","blockquote"}`
   - `visible_length(html: str) -> int` — length of the text with tags removed and HTML entities decoded.
@@ -136,12 +147,14 @@ git commit -m "feat(broadcasts): data model + migration (broadcasts, recipients,
 ## Task 3: Storage — broadcast media kind, MIME, 20 MB cap
 
 **Files:**
+
 - Modify: `apps/api/src/yupay/core/config.py` (add setting + MIME)
 - Modify: `apps/api/src/yupay/modules/storage/service.py` (kind, MIME map, per-kind cap)
 - Modify: `apps/api/src/yupay/modules/storage/README.md`
 - Test: `apps/api/tests/unit/test_storage_broadcast_media.py`
 
 **Interfaces:**
+
 - `MediaKind` gains `"broadcast_media"`.
 - `presign_upload(*, kind, content_type, size_bytes)` now caps broadcast kinds at `settings.broadcast_media_max_upload_bytes` (20 MB) and validates `content_type` **per kind**: image kinds keep the image-only set; `broadcast_media` also allows `video/mp4`, `image/gif`, `application/pdf`.
 
@@ -162,11 +175,14 @@ git commit -m "feat(broadcasts): data model + migration (broadcasts, recipients,
 ## Task 4: Telegram channel — media senders returning `file_id`
 
 **Files:**
+
 - Modify: `apps/api/src/yupay/modules/notifications/channels/telegram.py`
 - Test: `apps/api/tests/contract/test_telegram_channel_media.py` (respx)
 
 **Interfaces:**
+
 - Produces a single entry point used by both the dispatch job and test-send:
+
 ```python
 @dataclass(frozen=True, slots=True)
 class SendOutcome:
@@ -183,6 +199,7 @@ async def send_broadcast_message(
     disable_web_page_preview: bool = True,
 ) -> SendOutcome: ...
 ```
+
 Method + payload field by `media_type`: `none`→`sendMessage` (`text`, `parse_mode=HTML`); `photo`→`sendPhoto` (`photo`, `caption`); `video`→`sendVideo` (`video`, `caption`); `animation`→`sendAnimation` (`animation`, `caption`); `document`→`sendDocument` (`document`, `caption`). Capture `file_id` from the 200 response: photo→`result.photo[-1].file_id`, video→`result.video.file_id`, animation→`result.animation.file_id`, document→`result.document.file_id`. On 429 read `parameters.retry_after`. Reuse the existing `_get_client()` (proxy-aware). Never raise — return `SendOutcome(ok=False, …)`; never log the body/chat_id (mirror the existing redaction).
 
 - [ ] **Step 1: Failing contract tests** with respx stubbing `api.telegram.org`: `sendMessage` 200→`ok, file_id None`; `sendPhoto` 200 with `result.photo:[{file_id:"F"}]`→`ok, file_id="F"`; 403 `{"description":"Forbidden: bot was blocked by the user"}`→`ok=False, status=403`; 429 `{"parameters":{"retry_after":7}}`→`retry_after==7`; 400 `{"description":"can't parse entities…"}`→`ok=False, status=400`. Assert the correct method URL + payload field per media type.
@@ -200,10 +217,12 @@ Method + payload field by `media_type`: `none`→`sendMessage` (`text`, `parse_m
 ## Task 5: Broadcasts service + schemas (create / edit / FSM / audience / snapshot)
 
 **Files:**
+
 - Create: `apps/api/src/yupay/modules/broadcasts/schemas.py`, `apps/api/src/yupay/modules/broadcasts/service.py`
 - Test: `apps/api/tests/integration/test_broadcasts_service.py`
 
 **Interfaces (service — all `async def`, `db: AsyncSession` first):**
+
 - `create_draft(db, *, actor_id, data: BroadcastCreateIn) -> Broadcast`
 - `update_draft(db, *, broadcast_id, data: BroadcastUpdateIn) -> Broadcast` — 409 (`ConflictError`) if status ∉ {draft, scheduled}; a `scheduled` edit resets to `draft` and clears `scheduled_at`.
 - `delete_draft(db, *, broadcast_id) -> None` — 409 unless draft.
@@ -236,6 +255,7 @@ Method + payload field by `media_type`: `none`→`sendMessage` (`text`, `parse_m
 ## Task 6: Admin routes + api surface + mount + OpenAPI/client regen
 
 **Files:**
+
 - Create: `apps/api/src/yupay/modules/broadcasts/routes.py`, `apps/api/src/yupay/modules/broadcasts/api.py`
 - Modify: `apps/api/src/yupay/api/v1/__init__.py` (import + `include_router`)
 - Test: `apps/api/tests/integration/test_broadcasts_routes.py`
@@ -255,8 +275,8 @@ Method + payload field by `media_type`: `none`→`sendMessage` (`text`, `parse_m
 - [ ] **Step 4: Run** → PASS.
 
 - [ ] **Step 5: Regenerate API artifacts**
-Run: `cd apps/api && uv run python -m yupay.scripts.export_openapi ../../docs/api/openapi.json && cd ../.. && pnpm --filter @yupay/api-client gen:api`
-Expected: `docs/api/openapi.json` gains the `/admin/broadcasts*` paths; `git status` shows the openapi change (client may or may not change).
+      Run: `cd apps/api && uv run python -m yupay.scripts.export_openapi ../../docs/api/openapi.json && cd ../.. && pnpm --filter @yupay/api-client gen:api`
+      Expected: `docs/api/openapi.json` gains the `/admin/broadcasts*` paths; `git status` shows the openapi change (client may or may not change).
 
 - [ ] **Step 6: Commit** `feat(broadcasts): admin routes + mount + OpenAPI` (include regenerated files).
 
@@ -265,16 +285,19 @@ Expected: `docs/api/openapi.json` gains the `/admin/broadcasts*` paths; `git sta
 ## Task 7: Scheduler dispatch job
 
 **Files:**
+
 - Create: `apps/scheduler/src/yupay_scheduler/jobs/broadcast_dispatch.py`
 - Modify: `apps/scheduler/src/yupay_scheduler/main.py` (register)
 - Test: `apps/api/tests/integration/test_broadcast_dispatch.py`
 
 **Interfaces:**
+
 - `register(scheduler: AsyncIOScheduler) -> None` — `add_job(run_broadcast_dispatch, trigger="interval", seconds=5, id="broadcasts.dispatch", replace_existing=True, max_instances=1, coalesce=True)`.
 - `run_broadcast_dispatch() -> None` — one tick.
 - Import `service` **directly** (`from yupay.modules.broadcasts.service import …`) not `.api`, to avoid the `api`→`routes`→`api/v1` circular import (see the identical note in `waxpeer_reconcile.py`).
 
 **Tick algorithm (each phase in its own committed transaction; failures isolated per broadcast, logged with id only — never body/chat_id):**
+
 1. `promote_due(db)` — `UPDATE broadcasts SET status='sending', started_at=COALESCE(started_at, now()) WHERE status='scheduled' AND scheduled_at <= now()`.
 2. Load ids of `status='sending'` broadcasts (oldest `started_at` first).
 3. For each id, in its own session: reload; if `canceled`/terminal → skip. Snapshot recipients if `total_recipients == 0` and none exist: `INSERT INTO broadcast_recipients (…) SELECT … FROM telegram_links JOIN users … WHERE bot_blocked_at IS NULL [AND users.locale = :loc] ON CONFLICT DO NOTHING`; set `total_recipients`. If the snapshot is empty → finalize `sent`, `finished_at=now()`, continue.
@@ -301,6 +324,7 @@ Per-tick global cap: process at most **one chunk per broadcast per tick** (alrea
 ## Task 8: Bot `/start` clears `bot_blocked_at`
 
 **Files:**
+
 - Modify: `apps/bot/src/yupay_bot/main.py` (in the `/start` handler, after resolving/creating the user)
 - Test: `apps/bot/tests/test_start_unblocks.py` (or extend existing bot tests)
 
@@ -317,11 +341,13 @@ Per-tick global cap: process at most **one chunk per broadcast per tick** (alrea
 ## Task 9: `TelegramEditor` component (contenteditable → Telegram HTML)
 
 **Files:**
+
 - Create: `apps/admin/src/features/broadcasts/telegramHtml.ts` (pure serialize/validate/preview)
 - Create: `apps/admin/src/components/TelegramEditor.tsx`
 - Test: `apps/admin/src/features/broadcasts/telegramHtml.test.ts`
 
 **Interfaces (`telegramHtml.ts`):**
+
 - `serialize(root: HTMLElement): string` — walk the contenteditable DOM → Telegram HTML string (marks → `b/i/u/s/code/tg-spoiler/a`; block boundaries → `\n`; escape `<`,`>`,`&` in text).
 - `previewHtml(telegramHtml: string): string` — Telegram HTML → safe HTML for the preview bubble (`\n`→`<br>`, `tg-spoiler`→`<span class="spoiler">`), whitelist-guarded.
 - `visibleLength(telegramHtml: string): number` — mirrors the server counter.
@@ -344,11 +370,13 @@ Per-tick global cap: process at most **one chunk per broadcast per tick** (alrea
 ## Task 10: Admin API/query keys/types + `BroadcastMediaUploader`
 
 **Files:**
+
 - Modify: `apps/admin/src/lib/queryKeys.ts` (add `broadcasts`, `broadcast`, `broadcastRecipients`, `broadcastAudience`)
 - Create: `apps/admin/src/features/broadcasts/types.ts`
 - Create: `apps/admin/src/features/broadcasts/BroadcastMediaUploader.tsx`
 
 **Interfaces:**
+
 - `qk.broadcasts(filters?: { status?: string | null })`, `qk.broadcast(id)`, `qk.broadcastRecipients(id, status)`, `qk.broadcastAudience(locale)`.
 - `types.ts` — mirror the OpenAPI DTOs: `BroadcastOut`, `BroadcastListOut`, `RecipientOut`, `MediaType`, `BroadcastStatus`, `LocaleFilter`.
 - `BroadcastMediaUploader` — mirror `components/ImageUploader.tsx` but `kind="broadcast_media"`, `ACCEPT_LIST = ["image/png","image/jpeg","image/webp","image/gif","video/mp4","application/pdf"]`, `MAX_BYTES = 20*1024*1024`, and `onChange(url, mediaType)` where `mediaType` is derived from the file MIME (gif→animation, mp4→video, pdf→document, else photo). Shows a filename/size/type chip; supports "Заменить"/"Убрать".
@@ -363,6 +391,7 @@ Per-tick global cap: process at most **one chunk per broadcast per tick** (alrea
 ## Task 11: Broadcasts list page + nav + route
 
 **Files:**
+
 - Create: `apps/admin/src/features/broadcasts/BroadcastsListPage.tsx`
 - Modify: the admin router + sidebar nav (mirror where `promo` / `users` register their route + nav entry — grep `features/promo` in the router and nav files).
 - Test: `apps/admin/src/features/broadcasts/BroadcastsListPage.test.tsx` (Testing Library — render with a mocked query client, assert rows + status badges).
@@ -380,6 +409,7 @@ Per-tick global cap: process at most **one chunk per broadcast per tick** (alrea
 ## Task 12: Composer page (compose / edit / preview / test / send / schedule)
 
 **Files:**
+
 - Create: `apps/admin/src/features/broadcasts/BroadcastComposerPage.tsx`
 - Create: `apps/admin/src/features/broadcasts/BroadcastPreview.tsx` (the phone bubble)
 - Modify: admin router (routes `/broadcasts/new` and `/broadcasts/:id/edit`)
@@ -398,6 +428,7 @@ Per-tick global cap: process at most **one chunk per broadcast per tick** (alrea
 ## Task 13: Detail page (live counters / cancel / problem recipients)
 
 **Files:**
+
 - Create: `apps/admin/src/features/broadcasts/BroadcastDetailPage.tsx`
 - Modify: admin router (route `/broadcasts/:id`)
 - Test: `apps/admin/src/features/broadcasts/BroadcastDetailPage.test.tsx`
@@ -415,6 +446,7 @@ Per-tick global cap: process at most **one chunk per broadcast per tick** (alrea
 ## Task 14: Documentation
 
 **Files:**
+
 - Create: `docs/decisions/0033-telegram-broadcasts.md` (MADR template)
 - Create: `apps/api/src/yupay/modules/broadcasts/README.md`
 - Create: `docs/runbooks/broadcasts.md`
@@ -422,7 +454,8 @@ Per-tick global cap: process at most **one chunk per broadcast per tick** (alrea
 - Modify: `docs/architecture/module-map.md`
 
 **Content requirements:**
-- **ADR-0033** — records: the new `broadcasts` module; **scheduler-driven fan-out** and *why not* the outbox/broker (outbox is a stub, API has no broker — see spec §3); the **contenteditable WYSIWYG** editor choice + the textarea+preview fallback; the `file_id`-reuse optimization; the first-send-abort safety.
+
+- **ADR-0033** — records: the new `broadcasts` module; **scheduler-driven fan-out** and _why not_ the outbox/broker (outbox is a stub, API has no broker — see spec §3); the **contenteditable WYSIWYG** editor choice + the textarea+preview fallback; the `file_id`-reuse optimization; the first-send-abort safety.
 - **module README** — responsibilities, tables, FSM diagram, HTTP surface, the Telegram-HTML whitelist, the dispatch job, `bot_blocked_at` lifecycle.
 - **runbook** — how to compose/test/send/schedule/cancel; what `failed`/`blocked` mean; how a stuck `sending` resumes (the dispatch job just keeps draining `pending`); Telegram rate limits; the first-send-abort behavior; how to check the audience query.
 - **sequence diagram** — admin → API (send) → status flip → scheduler tick → Telegram → counters, Mermaid.

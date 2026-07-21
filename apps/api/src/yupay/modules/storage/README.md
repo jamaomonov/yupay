@@ -49,10 +49,10 @@ types have a known file extension. This is deliberate: `MEDIA_ALLOWED_MIME`
 had to grow to cover broadcast attachments, but image kinds must not
 silently start accepting a video just because the global list did.
 
-| `kind`                                             | Allowed Content-Types                                                                  | Size cap |
-| --------------------------------------------------- | --------------------------------------------------------------------------------------- | -------- |
-| `brand_logo`, `brand_hero`, `product_image`, `sku_image` | `image/png`, `image/jpeg`, `image/webp`, `image/svg+xml`                              | 5 MB (`MEDIA_MAX_UPLOAD_BYTES`) |
-| `broadcast_media`                                    | the four image types above, plus `image/gif`, `video/mp4`, `application/pdf`            | 20 MB (`BROADCAST_MEDIA_MAX_UPLOAD_BYTES`) |
+| `kind`                                                   | Allowed Content-Types                                                        | Size cap                                   |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------ |
+| `brand_logo`, `brand_hero`, `product_image`, `sku_image` | `image/png`, `image/jpeg`, `image/webp`, `image/svg+xml`                     | 5 MB (`MEDIA_MAX_UPLOAD_BYTES`)            |
+| `broadcast_media`                                        | the four image types above, plus `image/gif`, `video/mp4`, `application/pdf` | 20 MB (`BROADCAST_MEDIA_MAX_UPLOAD_BYTES`) |
 
 ## Upload workflow
 

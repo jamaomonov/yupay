@@ -31,9 +31,7 @@ from yupay.core.errors import ValidationError
 from yupay.core.ids import new_id
 from yupay.modules.storage.client import get_s3_client
 
-MediaKind = Literal[
-    "brand_logo", "brand_hero", "product_image", "sku_image", "broadcast_media"
-]
+MediaKind = Literal["brand_logo", "brand_hero", "product_image", "sku_image", "broadcast_media"]
 MEDIA_KINDS: tuple[MediaKind, ...] = get_args(MediaKind)
 
 _MIME_TO_EXT: dict[str, str] = {
@@ -46,9 +44,7 @@ _MIME_TO_EXT: dict[str, str] = {
     "application/pdf": "pdf",
 }
 
-_IMAGE_MIME: frozenset[str] = frozenset(
-    {"image/png", "image/jpeg", "image/webp", "image/svg+xml"}
-)
+_IMAGE_MIME: frozenset[str] = frozenset({"image/png", "image/jpeg", "image/webp", "image/svg+xml"})
 
 # Per-kind MIME allowlist. Broadcasts attach video/GIF/document in
 # addition to a plain photo; the four image-only kinds must NOT widen

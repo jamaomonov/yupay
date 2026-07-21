@@ -160,9 +160,7 @@ async def _snapshot_and_size(broadcast_id: str) -> int:
         return count
 
 
-async def _send_once(
-    broadcast: Broadcast, chat_id: int, media_ref: str | None
-) -> SendOutcome:
+async def _send_once(broadcast: Broadcast, chat_id: int, media_ref: str | None) -> SendOutcome:
     return await send_broadcast_message(
         bot_token=get_settings().telegram_bot_token,
         chat_id=chat_id,
@@ -292,9 +290,7 @@ async def _deliver_one(
             recipient.status = "blocked"
             await _bump_counter(session, broadcast_id, "blocked")
             await session.execute(
-                text(
-                    "UPDATE telegram_links SET bot_blocked_at = now() WHERE tg_user_id = :chat"
-                ),
+                text("UPDATE telegram_links SET bot_blocked_at = now() WHERE tg_user_id = :chat"),
                 {"chat": recipient.tg_chat_id},
             )
         else:  # failed
