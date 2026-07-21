@@ -257,14 +257,17 @@ async def test_second_tick_over_sent_broadcast_is_idempotent(db_session: AsyncSe
 
 @respx.mock
 async def test_first_send_400_aborts_the_whole_broadcast(db_session: AsyncSession) -> None:
-    """The very first send returning 400 (malformed body/media) fails the whole
-    broadcast and stops -- no further recipients are attempted."""
+    """The very first send returning a body/parse 400 fails the whole broadcast
+    and stops -- no further recipients are attempted."""
     admin = await _seed_user_with_tg(db_session, tg_id=1000)
     await _seed_user_with_tg(db_session, tg_id=401)
     await db_session.commit()
     broadcast = await _seed_broadcast(db_session, creator_id=admin.id)
 
-    route = respx.post(_SEND_URL).mock(side_effect=_responder({1000: 400, 401: 400}))
+    parse_error = (400, "Bad Request: can't parse entities")
+    route = respx.post(_SEND_URL).mock(
+        side_effect=_desc_responder({1000: parse_error, 401: parse_error})
+    )
 
     await broadcast_dispatch.run_broadcast_dispatch()
 
@@ -408,3 +411,114 @@ async def test_media_first_send_captures_file_id_then_reuses_it(db_session: Asyn
     assert updated.status == "sent"
     assert updated.media_file_id == captured_file_id
     assert updated.sent_count == 2
+
+
+async def _seed_recipient(
+    db: AsyncSession, *, rid: str, broadcast_id: str, user_id: str, tg_chat_id: int
+) -> None:
+    """Insert a pending recipient row directly, with a chosen id so ORDER BY id
+    makes claim order deterministic in a test."""
+    db.add(
+        BroadcastRecipient(
+            id=rid,
+            broadcast_id=broadcast_id,
+            user_id=user_id,
+            tg_chat_id=tg_chat_id,
+            status="pending",
+        )
+    )
+    await db.flush()
+
+
+def _desc_responder(by_chat: dict[int, tuple[int, str]]):
+    """respx side_effect mapping chat_id -> (status, description); default 200."""
+
+    def _respond(request: httpx.Request) -> httpx.Response:
+        chat = int(json.loads(request.content)["chat_id"])
+        if chat not in by_chat:
+            return _ok_response()
+        status, description = by_chat[chat]
+        return httpx.Response(
+            status, json={"ok": False, "error_code": status, "description": description}
+        )
+
+    return _respond
+
+
+# Deterministic recipient ids: ``_LOW`` sorts before ``_HIGH`` under ORDER BY id,
+# so the ``_LOW`` recipient is always the first one claimed in the chunk.
+_LOW_RID = "00000000-0000-0000-0000-000000000001"
+_HIGH_RID = "00000000-0000-0000-0000-000000000002"
+
+
+@respx.mock
+async def test_per_recipient_400_chat_not_found_does_not_abort(db_session: AsyncSession) -> None:
+    """The live-test scenario: the FIRST claimed recipient has a stale chat_id
+    (Telegram 400 'chat not found') -- that recipient fails, but the broadcast is
+    NOT aborted and a valid recipient later in the queue still gets the message."""
+    creator = await _seed_user_with_tg(db_session, tg_id=800)
+    other = await _seed_user_with_tg(db_session, tg_id=801)
+    await db_session.commit()
+    broadcast = await _seed_broadcast(db_session, creator_id=creator.id, total_recipients=2)
+    await _seed_recipient(
+        db_session, rid=_LOW_RID, broadcast_id=broadcast.id, user_id=creator.id, tg_chat_id=800
+    )
+    await _seed_recipient(
+        db_session, rid=_HIGH_RID, broadcast_id=broadcast.id, user_id=other.id, tg_chat_id=801
+    )
+    await db_session.commit()
+
+    route = respx.post(_SEND_URL).mock(
+        side_effect=_desc_responder({800: (400, "Bad Request: chat not found")})
+    )
+
+    await broadcast_dispatch.run_broadcast_dispatch()
+
+    updated = await _reload_broadcast(db_session, broadcast.id)
+    assert updated.status == "sent"  # NOT aborted
+    assert updated.sent_count == 1
+    assert updated.failed_count == 1
+    assert route.call_count == 2  # the bad chat and the good chat were both attempted
+
+    recips = {r.tg_chat_id: r for r in await _recipients(db_session, broadcast.id)}
+    assert recips[800].status == "failed"
+    assert recips[800].error is not None
+    assert "chat not found" in recips[800].error
+    assert recips[801].status == "sent"
+
+
+@respx.mock
+async def test_first_send_400_parse_error_aborts_the_broadcast(db_session: AsyncSession) -> None:
+    """A body/parse 400 ('can't parse entities') on the first send DOES abort the
+    whole broadcast -- the malformed message would fail for everyone."""
+    creator = await _seed_user_with_tg(db_session, tg_id=810)
+    other = await _seed_user_with_tg(db_session, tg_id=811)
+    await db_session.commit()
+    broadcast = await _seed_broadcast(db_session, creator_id=creator.id, total_recipients=2)
+    await _seed_recipient(
+        db_session, rid=_LOW_RID, broadcast_id=broadcast.id, user_id=creator.id, tg_chat_id=810
+    )
+    await _seed_recipient(
+        db_session, rid=_HIGH_RID, broadcast_id=broadcast.id, user_id=other.id, tg_chat_id=811
+    )
+    await db_session.commit()
+
+    route = respx.post(_SEND_URL).mock(
+        side_effect=_desc_responder(
+            {810: (400, "Bad Request: can't parse entities: unclosed tag")}
+        )
+    )
+
+    await broadcast_dispatch.run_broadcast_dispatch()
+
+    updated = await _reload_broadcast(db_session, broadcast.id)
+    assert updated.status == "failed"
+    assert updated.last_error is not None
+    assert "parse" in updated.last_error.lower()
+    assert updated.sent_count == 0
+    assert updated.failed_count == 1
+    assert route.call_count == 1  # aborted after the first send
+
+    recips = {r.tg_chat_id: r for r in await _recipients(db_session, broadcast.id)}
+    assert recips[810].status == "failed"
+    assert recips[811].status == "pending"  # never attempted

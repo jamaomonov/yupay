@@ -18,13 +18,16 @@ the same row twice. A terminal broadcast (``sent``/``failed``/``canceled``)
 drops out of the ``sending`` listing and is a pure no-op.
 
 **Abort semantics.** The broadcast status is re-read before each recipient's
-send, so an admin ``cancel`` that lands mid-flight stops delivery promptly. And
-a send returning HTTP 400 while the broadcast has **zero successful sends so
-far** (``sent_count == 0``) aborts the whole broadcast to ``failed`` -- a 400 is
-a malformed body/media that would fail for everyone, so it must not be burned
-across the entire audience one ``failed`` row at a time. Keying the abort on
-"no success yet" rather than "first recipient" means a prior transient failure
-on recipient #1 no longer disables the guard.
+send, so an admin ``cancel`` that lands mid-flight stops delivery promptly. The
+whole broadcast aborts to ``failed`` only on a **body/parse 400** (``can't parse
+entities`` / ``can't parse message`` / ``message text is empty``) while it has
+**zero successful sends so far** (``sent_count == 0``) -- that kind of 400
+repeats for every recipient, so it must not be burned across the whole audience
+one ``failed`` row at a time. A per-recipient addressing 400 (``chat not
+found``, ``PEER_ID_INVALID``, ``chat_id is empty``) fails only *that* recipient
+and delivery continues to the rest -- one dead chat_id never dooms the broadcast.
+Keying the abort on "no success yet" rather than "first recipient" means a prior
+transient failure on recipient #1 does not disable the guard.
 
 Each phase runs in its own committed transaction and failures are isolated per
 broadcast (logged with the broadcast id only -- never body or chat id, which is
@@ -218,6 +221,20 @@ async def _deliver(
 
 _COUNTER_COLUMN = {"sent": "sent_count", "failed": "failed_count", "blocked": "blocked_count"}
 
+# Substrings that identify a Telegram 400 as a BODY/PARSE error -- a malformed
+# message that will fail identically for every recipient (e.g. "can't parse
+# entities", "can't parse message text", "message text is empty"). These are the
+# only 400s that justify aborting the whole broadcast. A 400 that lacks all of
+# these is a per-recipient addressing problem ("chat not found", "PEER_ID_INVALID",
+# "chat_id is empty") and must fail only that one recipient.
+_BODY_ERROR_MARKERS = ("parse", "entit", "message text is empty")
+
+
+def _is_body_error(description: str) -> bool:
+    """Return True if a 400 description signals a broken body (repeats for all)."""
+    lowered = description.lower()
+    return any(marker in lowered for marker in _BODY_ERROR_MARKERS)
+
 
 async def _deliver_one(
     broadcast_id: str, recipient_id: str, media_ref: str | None
@@ -264,9 +281,12 @@ async def _deliver_one(
             recipient.status = "failed"
             recipient.error = outcome.description
             await _bump_counter(session, broadcast_id, "failed")
-            # A 400 with no success yet == the message itself is broken -> abort
-            # the whole broadcast rather than burn the audience one row at a time.
-            if broadcast.sent_count == 0:
+            # Abort the whole broadcast ONLY on a body/parse 400 with no success
+            # yet -- a malformed message repeats for everyone, so it must not burn
+            # the audience one row at a time. A per-recipient addressing 400
+            # ("chat not found", "PEER_ID_INVALID", ...) fails just this recipient
+            # and delivery continues to the rest.
+            if broadcast.sent_count == 0 and _is_body_error(outcome.description):
                 broadcast.status = "failed"
                 broadcast.last_error = outcome.description
                 broadcast.finished_at = now()
