@@ -151,4 +151,13 @@ export const qk = {
 
   // promo
   promoCodes: () => ["admin", "promo"] as const,
+
+  // broadcasts
+  broadcasts: (filters?: { status?: string | null }) =>
+    ["admin", "broadcasts", filters?.status ?? null] as const,
+  broadcast: (id: string) => ["admin", "broadcasts", id] as const,
+  broadcastRecipients: (id: string, status?: string | null) =>
+    ["admin", "broadcasts", id, "recipients", status ?? null] as const,
+  broadcastAudience: (locale?: string | null) =>
+    ["admin", "broadcasts", "audience", locale ?? null] as const,
 };
