@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from yupay.core.clock import now
-from yupay.core.config import Settings, get_settings
+from yupay.core.config import Settings
 from yupay.core.errors import (
     ConflictError,
     NotFoundError,
@@ -23,7 +23,6 @@ from yupay.core.errors import (
 )
 from yupay.core.ids import new_id
 from yupay.modules.catalog.models import Brand, Product, Sku
-from yupay.modules.fulfillment.suppliers import WaxpeerFulfiller, get_fulfiller
 from yupay.modules.fx.factory import build_default_service
 from yupay.modules.fx.service import FxUnavailableError
 from yupay.modules.orders.models import Order, OrderEvent, OrderItem
@@ -31,8 +30,7 @@ from yupay.modules.orders.schemas import OrderCreate, OrderItemDisplay, OrderIte
 from yupay.modules.orders.validation import validate_fulfillment_data
 from yupay.modules.payments.models import Payment, PaymentAttempt
 from yupay.modules.pricing.fx_guard import RateRejected, guarded_usd_rate
-from yupay.modules.pricing.variable import display_rate, price_in_quote, to_units, validate_amount
-from yupay.modules.sourcing.service import resolve_for_sku
+from yupay.modules.pricing.variable import display_rate, price_in_quote, validate_amount
 
 
 def _order_load_options() -> tuple[Any, ...]:
@@ -344,35 +342,6 @@ async def _compute_total_charged(
     return total_charged, fx_snapshot_id
 
 
-async def _preflight_variable_supplier_balance(
-    db: AsyncSession, *, sku: Sku, unit_price_usd: Decimal, qty: int
-) -> None:
-    """Refuse a variable-amount line before we take the customer's money if
-    the supplier we'd route it to cannot actually fund it.
-
-    Only Waxpeer (Steam wallet top-ups) is preflighted today — a no-op for
-    fixed SKUs and for anything else ``sourcing.resolve_for_sku`` decides on,
-    same as :meth:`G2bFulfiller._check_balance_or_none` does inside its own
-    adapter for G2B. We must not accept payment for a top-up we cannot
-    deliver; catching this at checkout is cheaper than a stuck fulfilment
-    task and a refund.
-    """
-    if not sku.variable_amount:
-        return
-    decision = await resolve_for_sku(db, sku.id)
-    if decision.primary != "supplier:waxpeer":
-        return
-    fulfiller = get_fulfiller("waxpeer")
-    if not isinstance(fulfiller, WaxpeerFulfiller):
-        return
-    needed = to_units(unit_price_usd, fee_rate=get_settings().waxpeer_fee_rate)
-    if not await fulfiller.has_balance(needed * qty):
-        raise UpstreamUnavailableError(
-            "Пополнение временно недоступно. Попробуйте позже.",
-            supplier="waxpeer",
-        )
-
-
 async def create_order(
     db: AsyncSession,
     body: OrderCreate,
@@ -415,9 +384,11 @@ async def create_order(
         cleaned = validate_fulfillment_data(product=product, data=line.fulfillment_data)
         unit_price_usd = _resolve_line_unit_price(sku, line, currency)
 
-        await _preflight_variable_supplier_balance(
-            db, sku=sku, unit_price_usd=unit_price_usd, qty=line.qty
-        )
+        # No supplier-balance preflight: a paid order is never refused for the
+        # supplier being short. If Waxpeer can't fund the top-up at fulfilment
+        # time, the fulfiller returns a soft low-balance failure — the customer
+        # keeps seeing "processing", ops gets alerted, and an admin tops up and
+        # retries (mirrors the G2B low-balance path).
 
         items.append(
             OrderItem(

@@ -9,7 +9,7 @@ are manual.
 
 | Symptom (admin sees)                                                         | Likely cause                                                                    | First action                                                                                        |
 | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Checkout fails with "Пополнение временно недоступно" for every Steam top-up  | `WAXPEER_API_KEY` empty or our Waxpeer balance too low                          | See "Low-balance preflight" below                                                                   |
+| Steam orders stuck `in_progress` + «Низкий баланс поставщика» ops alert      | Our Waxpeer wallet is too low to fund the top-ups                               | See "Low balance (soft failure at fulfilment)" below — top up + Retry                               |
 | Checkout fails with "Цена временно недоступна" for the Steam product         | FX trust gate rejected the USD rate                                             | See "Price unavailable (FX trust gate)" below                                                       |
 | Task stuck `in_progress`, Waxpeer status `created`/`sending` for a long time | Waxpeer has no webhook — the sweep hasn't caught it yet                         | Wait up to 60s for the next sweep tick, or query Waxpeer directly (see "Inspecting a stuck top-up") |
 | Task `failed`, `last_error` mentions "refunded"                              | Waxpeer `canceled` the top-up                                                   | No action needed on the supplier side — the balance is already back on our Waxpeer wallet           |
@@ -149,28 +149,29 @@ but Steam top-up is the only one live today.
 5. See `apps/api/src/yupay/modules/pricing/README.md` for the full
    check order and current setting defaults.
 
-## Low-balance preflight
+## Low balance (soft failure at fulfilment)
 
-Unlike G2B, a low Waxpeer balance is caught **before** the order is created,
-not after. `orders.service._preflight_variable_supplier_balance` calls
-`WaxpeerFulfiller.has_balance()` (`GET /v1/user`, comparing `user.wallet`
-against the grossed-up amount) while building the order; if it's short, the
-whole checkout fails with a generic "Пополнение временно недоступно.
-Попробуйте позже." (`UpstreamUnavailableError`, HTTP 502) and **no order is
-created**. There is no `supplier_low_balance` fulfilment task to retry for
-this supplier the way there is for G2B — nothing lands in the Fulfilment
-Inbox, because nothing was ever charged.
+A low Waxpeer balance never blocks checkout — the same as G2B. The order is
+accepted and paid; if our Waxpeer wallet can't fund the top-up, Waxpeer refuses
+the `POST /steam-topup` with "not enough balance", and `WaxpeerFulfiller.fulfill`
+returns the soft `supplier_low_balance` sentinel instead of a hard error. The
+saga (`fulfillment.service.process_task`) then:
 
-**Edge case:** the preflight and the actual `fulfill()` call are two
-separate Waxpeer requests, so a balance drained in between (e.g. two orders
-racing the same low balance) can still make `POST /steam-topup` itself
-refuse for lack of funds. That refusal is **not** recognised as the
-`supplier_low_balance` sentinel G2B uses — it surfaces as a generic failed
-task (`last_error` like `"waxpeer top-up failed: HTTP 200"`) and the order
-item flips straight to `failed` instead of the softer "stays in_progress,
-alert admin" handling G2B gets. Treat any Waxpeer task failing right after a
-`GET /v1/user` shows a healthy balance as this race, not a real bug, and
-retry once the balance is topped up.
+- marks the fulfilment **task** `failed` (it lands in the Fulfilment Inbox), but
+- keeps the order **item** `in_progress`, so the customer keeps seeing
+  «в обработке» rather than an error, and
+- fires an ops Telegram alert («⚠️ Низкий баланс поставщика», deduped per
+  supplier in Redis for a window) carrying the amount required and the current
+  balance.
+
+**Recovery:** top up the Waxpeer wallet through Waxpeer's own dashboard/support
+(no automated top-up — see the design spec's "Out of scope"), then hit **Retry**
+on the task in the Fulfilment Inbox (`POST /admin/fulfillment/tasks/{id}/retry`),
+or fulfil the order manually. A retry re-runs `fulfill` with the same
+`custom_id`; because the low-balance refusal created nothing on Waxpeer's side,
+the retry is a fresh top-up, not a stale replay. Because the customer stayed on
+«в обработке» the whole time, this is invisible to them as long as you top up
+before they give up.
 
 There is also no admin health/balance page for Waxpeer yet (G2B has
 `/admin/integrations/g2b/health`; Waxpeer doesn't). Check the balance

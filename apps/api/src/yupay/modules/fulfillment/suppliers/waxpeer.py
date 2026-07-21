@@ -57,6 +57,17 @@ from yupay.modules.pricing.variable import UNITS_PER_USD, to_units
 log = get_logger("yupay.fulfillment.waxpeer")
 
 _CENT = Decimal("0.01")
+
+# Soft-failure sentinel: a paid order the supplier can't fund right now. MUST
+# equal ``fulfillment.service._LOW_BALANCE_ERROR`` — the saga keys on this exact
+# string to keep the customer on "processing", park the task in the admin inbox,
+# and alert ops instead of surfacing a hard error. A guard test locks the match.
+LOW_BALANCE_ERROR = "supplier_low_balance"
+# Substrings that mark a Waxpeer refusal as "top up your balance", not a real
+# failure. Waxpeer has no dedicated code, so we sniff the message — a false
+# positive only demotes a hard failure to a retryable one, the safer mistake.
+_LOW_BALANCE_HINTS = ("not enough balance", "insufficient balance", "insufficient funds")
+
 _TERMINAL_OK: WaxpeerStatus = "completed"
 # "unknown" is in-flight, not terminal: see module docstring. It is the
 # client's mapping for any status Waxpeer might add later.
@@ -76,6 +87,36 @@ def _status_to_outcome(status: WaxpeerStatus) -> FulfillOutcome:
     if status in _IN_FLIGHT:
         return "in_progress"
     return "failed"
+
+
+def _looks_like_low_balance(exc: WaxpeerError) -> bool:
+    """Whether a Waxpeer refusal is a "top up your balance" one."""
+    text = f"{exc} {exc.body}".lower()
+    return any(hint in text for hint in _LOW_BALANCE_HINTS)
+
+
+def _low_balance_result(*, balance_units: int | None, required_units: int) -> FulfillResult:
+    """A soft low-balance failure the saga parks in the inbox + alerts on.
+
+    Dollars in ``extra_metadata`` (the alert renders ``$balance / $required``);
+    ``current_balance`` is left off when we couldn't read it. ``external_product_id``
+    labels the alert since Waxpeer is a single product.
+    """
+    extra: dict[str, Any] = {
+        "supplier": "waxpeer",
+        "required": f"{Decimal(required_units) / UNITS_PER_USD:.2f}",
+        "external_product_id": "steam-topup",
+    }
+    if balance_units is not None:
+        extra["current_balance"] = f"{Decimal(balance_units) / UNITS_PER_USD:.2f}"
+    return FulfillResult(
+        outcome="failed",
+        external_order_id=None,
+        artifact_kind=None,
+        artifact=None,
+        error=LOW_BALANCE_ERROR,
+        extra_metadata=extra,
+    )
 
 
 @dataclass(frozen=True)
@@ -145,6 +186,14 @@ class WaxpeerFulfiller(Fulfiller):
                 custom_id=idempotency_key,
             )
         except WaxpeerError as exc:
+            # Low balance is a SOFT failure, never a raise: the order is already
+            # paid. Waxpeer is the authority — it refuses the create with
+            # "not enough balance" — so we react to that rather than pre-probing
+            # every fulfil. The saga keeps the customer on "processing" and
+            # alerts ops (service.process_task); an admin tops up and retries.
+            if _looks_like_low_balance(exc):
+                balance_units = await self._balance_units_or_none()
+                return _low_balance_result(balance_units=balance_units, required_units=amount_units)
             raise FulfillerError(f"waxpeer top-up failed: HTTP {exc.status}") from exc
         except WaxpeerUnavailableError as exc:
             raise FulfillerError(f"waxpeer unreachable: {exc}") from exc
@@ -212,18 +261,23 @@ class WaxpeerFulfiller(Fulfiller):
 
     # ---------- balance probe ----------
 
-    async def has_balance(self, units: int) -> bool:
-        """Whether we can currently fund ``units`` on our Waxpeer wallet.
-
-        Answers ``False`` rather than raising: an unreachable supplier is not
-        a sellable one, and the caller's job (the checkout preflight) is to
-        stop the sale either way.
-        """
+    async def _balance_units_or_none(self) -> int | None:
+        """Our Waxpeer wallet balance in supplier units, or ``None`` if it
+        can't be read. ``None`` (not 0) so a probe failure doesn't masquerade
+        as a real low balance — ``fulfill`` then falls through to the create
+        call and lets Waxpeer be the authority."""
         try:
-            return await self._client().get_balance_units() >= units
+            return await self._client().get_balance_units()
         except (WaxpeerError, WaxpeerUnavailableError):
             log.warning("waxpeer.balance_probe_failed")
-            return False
+            return None
+
+    async def has_balance(self, units: int) -> bool:
+        """Whether we can currently fund ``units``. ``False`` on an unreadable
+        balance (not a raise), so a caller treating the supplier as unsellable
+        fails safe."""
+        balance = await self._balance_units_or_none()
+        return balance is not None and balance >= units
 
 
 # ---------- reconciliation ----------

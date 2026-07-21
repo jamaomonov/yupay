@@ -18,7 +18,7 @@ import pytest
 import respx
 from yupay.core import config as cfg
 from yupay.modules.fulfillment.suppliers.base import FulfillerError, FulfillerNotIntegratedError
-from yupay.modules.fulfillment.suppliers.waxpeer import WaxpeerFulfiller
+from yupay.modules.fulfillment.suppliers.waxpeer import LOW_BALANCE_ERROR, WaxpeerFulfiller
 from yupay.modules.fulfillment.suppliers.waxpeer_client import WaxpeerClient
 
 BASE = "https://api.waxpeer.test/v1"
@@ -336,15 +336,53 @@ async def test_fulfill_requires_steam_login() -> None:
 
 
 @respx.mock
-async def test_fulfill_wraps_a_waxpeer_refusal() -> None:
+async def test_fulfill_wraps_a_hard_waxpeer_refusal() -> None:
+    # A refusal that is NOT low-balance stays a hard failure (raise).
     respx.post(f"{BASE}/steam-topup").mock(
-        return_value=httpx.Response(200, json={"success": False, "msg": "insufficient balance"})
+        return_value=httpx.Response(200, json={"success": False, "msg": "invalid steam login"})
     )
     gw = WaxpeerFulfiller()
     with pytest.raises(FulfillerError, match="waxpeer"):
         await gw.fulfill(
             db=cast(Any, None), order=cast(Any, None), item=_item(), idempotency_key="ik-10"
         )
+
+
+@respx.mock
+async def test_fulfill_low_balance_is_a_soft_failure_not_a_raise() -> None:
+    """Waxpeer refusing for lack of funds must NOT raise — the order is paid.
+    It returns a soft low-balance result the saga parks in the inbox + alerts
+    on, carrying the amount required (and the current balance, fetched for the
+    alert) rather than an exception."""
+    respx.post(f"{BASE}/steam-topup").mock(
+        return_value=httpx.Response(200, json={"success": False, "msg": "not enough balance"})
+    )
+    # The low-balance path fetches the balance for the alert.
+    respx.get(f"{BASE}/user").mock(
+        return_value=httpx.Response(200, json={"success": True, "user": {"wallet": 200}})
+    )
+    gw = WaxpeerFulfiller()
+    result = await gw.fulfill(
+        db=cast(Any, None),
+        order=cast(Any, None),
+        item=_item(unit_price_usd=Decimal("10.00")),
+        idempotency_key="ik-lowbal",
+    )
+    assert result.outcome == "failed"
+    assert result.error == LOW_BALANCE_ERROR
+    assert result.external_order_id is None
+    assert result.extra_metadata["supplier"] == "waxpeer"
+    assert result.extra_metadata["required"] == "10.00"
+    assert result.extra_metadata["current_balance"] == "0.20"
+
+
+async def test_low_balance_sentinel_matches_the_saga() -> None:
+    """The fulfiller's sentinel MUST equal the string the saga keys on, or a
+    low-balance failure would be treated as a hard one (customer sees an error,
+    no alert)."""
+    from yupay.modules.fulfillment import service as fsvc
+
+    assert LOW_BALANCE_ERROR == fsvc._LOW_BALANCE_ERROR
 
 
 @respx.mock

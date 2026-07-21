@@ -1,7 +1,8 @@
 """Checkout accepts a customer-chosen amount for variable-amount SKUs (Steam
-wallet top-ups): the amount is priced server-side against a guarded FX rate,
-the supplier balance is preflighted before the order is persisted, and a
-client can never smuggle its own price into the order.
+wallet top-ups): the amount is priced server-side against a guarded FX rate and
+a client can never smuggle its own price into the order. A paid order is never
+refused for the supplier being short on balance — that surfaces as a soft
+low-balance failure at fulfilment, not a checkout rejection.
 
 Following the pattern in ``test_orders_routes.py``: log in via the Telegram
 webapp auth flow, POST ``/api/v1/orders``, assert on the response and the
@@ -17,7 +18,6 @@ import json
 import time
 from decimal import Decimal
 from typing import Any
-from unittest.mock import AsyncMock
 from urllib.parse import urlencode
 
 import fakeredis.aioredis
@@ -28,10 +28,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.ids import new_id
 from yupay.modules.catalog.models import Brand, Category, Product, Sku
-from yupay.modules.fulfillment.suppliers import REGISTRY
 from yupay.modules.fx.providers.base import FxProvider, FxProviderError, Quote
 from yupay.modules.fx.service import FxService
-from yupay.modules.integrations.models import SkuSupplierMapping
 from yupay.modules.orders.models import Order
 
 pytestmark = pytest.mark.asyncio
@@ -377,31 +375,24 @@ async def test_rejected_rate_makes_checkout_fail_closed(
     assert rows == []
 
 
-async def test_checkout_refused_when_supplier_balance_is_short(
+async def test_checkout_accepts_order_even_when_supplier_balance_is_short(
     integration_client: AsyncClient,
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
     _variable_sku: Sku,
 ) -> None:
-    """Waxpeer balance below the gross needed => 502 and no order row.
-
-    Currency is UZS, not the ``_order_body`` default of USD: a variable-amount
-    line in USD is now rejected outright (422, see
-    ``test_usd_checkout_is_rejected_for_a_variable_sku``) before checkout ever
-    reaches the supplier-balance preflight this test exercises.
+    """A paid order is never refused for the supplier being short: checkout no
+    longer preflights the Waxpeer balance. A short balance surfaces later as a
+    soft low-balance failure at fulfilment (customer stays on "processing", ops
+    alerted, admin tops up + retries) — see the fulfiller tests. Here we only
+    prove checkout accepts and persists the order.
     """
-    db_session.add(
-        SkuSupplierMapping(
-            sku_id=_variable_sku.id,
-            supplier_slug="waxpeer",
-            kind="game",
-            external_product_id="steam-wallet",
-            is_active=True,
-        )
+    monkeypatch.setattr(
+        "yupay.modules.pricing.fx_guard.build_default_service",
+        lambda: _stub_fx_service({"UZS": Decimal("13000")}),
     )
-    await db_session.commit()
-    monkeypatch.setattr(REGISTRY["waxpeer"], "has_balance", AsyncMock(return_value=False))
-
+    # Checkout no longer touches the supplier balance at all — no stub needed;
+    # the order goes through regardless of what Waxpeer's wallet holds.
     token = await _login_user(integration_client, tg_id=107)
     r = await integration_client.post(
         "/api/v1/orders",
@@ -411,6 +402,6 @@ async def test_checkout_refused_when_supplier_balance_is_short(
         },
         json=_order_body(sku_id=_variable_sku.id, currency="UZS", amount_usd="10"),
     )
-    assert r.status_code == 502, r.text
+    assert r.status_code == 201, r.text
     rows = (await db_session.execute(select(Order))).scalars().all()
-    assert rows == []
+    assert len(rows) == 1

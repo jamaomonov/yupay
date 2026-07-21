@@ -133,11 +133,11 @@ maximum is accepted.
 
 ## Callers
 
-- `orders.service._resolve_line_unit_price` / `_variable_line_charge` /
-  `_preflight_variable_supplier_balance` — checkout: validates the
-  customer's amount, prices the line, and refuses the order if the routed
-  supplier can't fund it. The client-sent price is never trusted; the
-  server always recomputes.
+- `orders.service._resolve_line_unit_price` / `_variable_line_charge` —
+  checkout: validates the customer's amount and prices the line. The
+  client-sent price is never trusted; the server always recomputes. Checkout
+  does **not** preflight the supplier balance — a short Waxpeer wallet is a
+  soft failure at fulfilment, not a checkout refusal.
 - `catalog.service._resolve_variable_price` — storefront display price for
   a variable-amount SKU, same computation as checkout, minus the actual
   charge.

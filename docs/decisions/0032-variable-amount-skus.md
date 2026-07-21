@@ -226,8 +226,10 @@ not a separate module" above.
 - `apps/api/src/yupay/modules/pricing/` — `variable.py`, `fx_guard.py`
   (README in the same directory)
 - `apps/api/src/yupay/modules/orders/service.py` —
-  `_resolve_line_unit_price`, `_variable_line_charge`,
-  `_preflight_variable_supplier_balance`
+  `_resolve_line_unit_price`, `_variable_line_charge` (checkout does **not**
+  preflight the supplier balance — a paid order is never refused for the
+  supplier being short; low balance is a soft failure at fulfilment, mirroring
+  G2B)
 - `apps/api/src/yupay/modules/fulfillment/suppliers/waxpeer.py`,
   `waxpeer_client.py`
 - `apps/scheduler/src/yupay_scheduler/jobs/waxpeer_reconcile.py`
