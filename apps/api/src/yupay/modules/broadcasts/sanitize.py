@@ -18,6 +18,13 @@ EOF, including any disallowed markup inside it. ``_TelegramHtmlValidator`` overr
 handlers to reject explicitly, and ``validate_body`` additionally rejects up front on a raw
 ``<!`` or ``<?`` substring so an unterminated comment/PI (which never reaches the handler) is
 still caught — valid Telegram HTML never contains a literal ``<!`` or ``<?``.
+
+Likewise, an unterminated *ordinary* tag or attribute (e.g. ``<b class="`` with no closing
+``"`` or ``>``) never reaches ``handle_starttag`` either — ``HTMLParser`` buffers it as an
+incomplete construct and, on ``close()``, discards it with no callback at all, silently
+swallowing everything after it to EOF (counted as ~0 visible chars). ``_TelegramHtmlValidator``
+guards against this by checking its own ``rawdata`` buffer immediately after ``feed()`` —
+*before* calling ``close()``, which would otherwise erase the signal.
 """
 
 from __future__ import annotations
@@ -119,11 +126,25 @@ class _TelegramHtmlValidator(HTMLParser):
         raise ValidationError("unknown declarations are not allowed in a broadcast body")
 
     def finish(self) -> None:
-        """Close the parser.
+        """Finalize parsing after ``feed()``.
+
+        Checks ``self.rawdata`` *before* calling ``close()``: an incomplete construct at
+        the end of the fed input (an unterminated tag, e.g. ``<b`` or an unclosed
+        attribute-quote, e.g. ``<b class="...`` with no closing ``"`` or ``>``) is left
+        unconsumed in ``rawdata`` by ``feed()``, without ever reaching
+        ``handle_starttag``/``handle_data`` — so it would otherwise swallow the rest of the
+        body silently (counted as ~0 visible chars) and evade both the tag stack and the
+        length ceiling. Calling ``close()`` first would erase this signal: ``HTMLParser``
+        forces end-of-stream parsing there and *silently discards* an unterminated
+        start-tag construct, resetting ``rawdata`` back to ``""`` with no callback at all —
+        so the check must happen first, or the bypass is invisible.
 
         Raises:
-            ValidationError: if any tag was left open (unbalanced markup).
+            ValidationError: if the fed input ends with incomplete/unterminated markup, or
+                if any tag was left open (unbalanced markup).
         """
+        if self.rawdata:
+            raise ValidationError("incomplete or unterminated markup at end of body")
         self.close()
         if self._stack:
             raise ValidationError(f"unclosed tag: <{self._stack[-1]}>")

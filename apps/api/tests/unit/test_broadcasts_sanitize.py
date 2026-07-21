@@ -151,3 +151,26 @@ def test_processing_instruction_rejected() -> None:
 def test_declaration_rejected() -> None:
     with pytest.raises(ValidationError):
         validate_body("<!decl>", has_media=False)
+
+
+def test_unterminated_attribute_quote_rejected() -> None:
+    # An unclosed `class="` attribute-quote construct is buffered by HTMLParser as
+    # incomplete and never reaches handle_starttag/handle_data at all — it must not be
+    # able to swallow the rest of the body (here ~3500 hidden chars) uncounted.
+    payload = 'short visible <b class="' + ("HIDDEN_" * 500) + " no closing quote or bracket"
+    with pytest.raises(ValidationError):
+        validate_body(payload, has_media=True)
+
+
+def test_bare_unterminated_tag_at_eof_rejected() -> None:
+    with pytest.raises(ValidationError):
+        validate_body("<b", has_media=False)
+
+
+def test_unterminated_anchor_href_no_closing_bracket_rejected() -> None:
+    with pytest.raises(ValidationError):
+        validate_body('<a href="x"', has_media=False)
+
+
+def test_literal_greater_than_in_text_passes() -> None:
+    validate_body("a > b", has_media=False)
