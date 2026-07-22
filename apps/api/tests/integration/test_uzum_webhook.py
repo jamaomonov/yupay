@@ -175,6 +175,19 @@ async def test_missing_amount_on_create_is_10005(
     assert body["errorCode"] == 10005
 
 
+@pytest.mark.parametrize("url", [CHECK_URL, CREATE_URL, CONFIRM_URL, REVERSE_URL, STATUS_URL])
+async def test_non_post_get_is_10003(integration_client: AsyncClient, url: str) -> None:
+    r = await integration_client.get(url)
+    assert r.status_code == 200
+    assert r.json() == {"status": "FAILED", "errorCode": 10003}
+
+
+async def test_non_post_put_is_10003(integration_client: AsyncClient) -> None:
+    r = await integration_client.put(CHECK_URL)
+    assert r.status_code == 200
+    assert r.json() == {"status": "FAILED", "errorCode": 10003}
+
+
 # --------------------------------------------------------------------------- #
 # Happy path across all five endpoints                                        #
 # --------------------------------------------------------------------------- #

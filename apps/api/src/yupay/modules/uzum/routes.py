@@ -37,6 +37,7 @@ from yupay.modules.uzum.errors import (
     access_denied,
     bad_json,
     internal_error,
+    invalid_operation,
     invalid_service_id,
     missing_params,
 )
@@ -388,3 +389,22 @@ async def uzum_status(request: Request, db: DbSession) -> dict[str, Any]:
         return internal_error().to_response(**_echo(body))
 
     return {"serviceId": body.get("serviceId"), **result}
+
+
+def _reject_non_post() -> dict[str, Any]:
+    """Answer a stray non-POST request with ``10003`` (HTTP 200, never a 405).
+
+    Uzum's spec (§6) mandates HTTP 200 with ``errorCode: 10003`` for any
+    method other than ``POST`` — FastAPI's default 405 would be a transport
+    failure by this module's own always-200 contract.
+    """
+    return invalid_operation().to_response()
+
+
+for _path in ("/check", "/create", "/confirm", "/reverse", "/status"):
+    router.add_api_route(
+        _path,
+        _reject_non_post,
+        methods=["GET", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
+        include_in_schema=False,
+    )
