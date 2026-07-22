@@ -16310,6 +16310,30 @@
         ]
       }
     },
+    "/api/v1/payments/payme/merchant": {
+      "post": {
+        "description": "Handle one Payme Merchant API JSON-RPC call.\n\nAlways returns HTTP 200 with a JSON-RPC ``result`` or ``error`` body; the\ntop-level request ``id`` is echoed verbatim (or ``null`` when absent /\nunparseable).\n\nArgs:\n    request: The inbound merchant request (raw body read here, not via a\n        request model, so a malformed body is ``-32700`` \u2014 never a 422).\n    db: Active session; this route owns the commit/rollback.\n\nReturns:\n    The JSON-RPC response body dict.",
+        "operationId": "payme_merchant_api_v1_payments_payme_merchant_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Payme Merchant Api V1 Payments Payme Merchant Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Payme Merchant API (JSON-RPC 2.0)",
+        "tags": [
+          "payme"
+        ]
+      }
+    },
     "/api/v1/payments/providers": {
       "get": {
         "operationId": "list_providers_api_v1_payments_providers_get",

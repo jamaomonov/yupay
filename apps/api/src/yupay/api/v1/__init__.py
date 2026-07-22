@@ -23,6 +23,7 @@ from yupay.modules.integrations.api import router as integrations_router
 from yupay.modules.inventory.api import admin_router as inventory_admin_router
 from yupay.modules.orders.api import admin_router as orders_admin_router
 from yupay.modules.orders.api import router as orders_router
+from yupay.modules.payme.api import router as payme_router
 from yupay.modules.payments.api import admin_router as payments_admin_router
 from yupay.modules.payments.api import admin_webhook_router as payments_admin_webhook_router
 from yupay.modules.payments.api import router as payments_router
@@ -54,6 +55,7 @@ router.include_router(payments_router)
 router.include_router(payments_admin_router)
 router.include_router(payments_admin_webhook_router)
 router.include_router(payments_webhook_router)
+router.include_router(payme_router)
 router.include_router(g2b_webhook_router)
 router.include_router(integrations_admin_router)
 router.include_router(integrations_router)
