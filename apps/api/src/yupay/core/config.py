@@ -285,6 +285,13 @@ class Settings(BaseSettings):
     octo_test_mode: bool = Field(default=False)
     octo_request_timeout_seconds: float = Field(default=20.0)
 
+    # --- acquirer: Payme (Paycom) Merchant API ---
+    payme_merchant_id: str = Field(default="")
+    payme_key: str = Field(default="")  # production/cabinet key
+    payme_test_key: str = Field(default="")  # sandbox key
+    payme_login: str = Field(default="Paycom")  # Basic-auth username (convention)
+    payme_checkout_url: str = Field(default="https://checkout.paycom.uz")
+
     # --- admin alerts (separate Telegram bot — NOT the customer bot) ---
     # Dedicated bot so an outage of one channel doesn't drag the other
     # down, and so the customer bot's token doesn't carry admin-chat

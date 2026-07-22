@@ -55,6 +55,16 @@ x-app-env: &app-env
   OCTO_BASE_URL: ${OCTO_BASE_URL:-https://secure.octo.uz}
   OCTO_TEST_MODE: ${OCTO_TEST_MODE:-false}
   OCTO_REQUEST_TIMEOUT_SECONDS: ${OCTO_REQUEST_TIMEOUT_SECONDS:-20}
+  # Payme (Paycom) Merchant API — set in .env (or /opt/yupay/secrets/api.env in
+  # prod). Empty PAYME_MERCHANT_ID leaves the gateway ``available=false``.
+  # PAYME_TEST_KEY (sandbox, checkout.test.paycom.uz) and PAYME_KEY (prod,
+  # checkout.paycom.uz) are mutually exclusive per environment — the endpoint
+  # accepts either.
+  PAYME_MERCHANT_ID: ${PAYME_MERCHANT_ID:-}
+  PAYME_KEY: ${PAYME_KEY:-}
+  PAYME_TEST_KEY: ${PAYME_TEST_KEY:-}
+  PAYME_LOGIN: ${PAYME_LOGIN:-Paycom}
+  PAYME_CHECKOUT_URL: ${PAYME_CHECKOUT_URL:-https://checkout.paycom.uz}
   # Admin alert bot (separate from the customer-facing bot). Empty values
   # no-op the alerts module — useful in dev before the bot is provisioned.
   TG_ALERT_BOT_TOKEN: ${TG_ALERT_BOT_TOKEN:-}
