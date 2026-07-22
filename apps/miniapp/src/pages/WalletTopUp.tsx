@@ -25,7 +25,7 @@ const QUICK_AMOUNTS: Record<string, number[]> = {
 
 /** Default method — kicks in on first mount so the input has an
  *  unambiguous currency before the user has touched the list. */
-const DEFAULT_METHOD_ID = PAYMENT_METHODS[0]?.id ?? "inpay";
+const DEFAULT_METHOD_ID = PAYMENT_METHODS[0]?.id ?? "click";
 
 export default function WalletTopUp() {
   const { t, locale } = useT();

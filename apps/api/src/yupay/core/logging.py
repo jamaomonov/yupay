@@ -35,7 +35,6 @@ REDACTED_KEYS = frozenset(
         "stripe-signature",
         "octo_secret",
         "octo_signature_key",
-        "inpay_merchant_token",
         "bearer_token",
         "merchant_token",
     },

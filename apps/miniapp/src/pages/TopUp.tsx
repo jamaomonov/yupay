@@ -76,7 +76,7 @@ function adaptPackage(api: ApiPackage): Package {
   };
 }
 
-const DEFAULT_PAYMENT_METHOD = PAYMENT_METHODS[0]?.id ?? "inpay";
+const DEFAULT_PAYMENT_METHOD = PAYMENT_METHODS[0]?.id ?? "click";
 
 // When the user opens the miniapp in a plain browser we can't take payment
 // (auth is bound to Telegram initData). Deep-link them back into the bot
@@ -540,7 +540,7 @@ export default function TopUp() {
         skuId: activePkg.id,
         fulfillmentData,
         currency,
-        provider: PROVIDER_BY_METHOD_FULL[paymentMethod] ?? "inpay",
+        provider: PROVIDER_BY_METHOD_FULL[paymentMethod] ?? "click",
         // Sent as a fixed-2-decimal string so the server never has to
         // round-trip a client float — the server re-validates and re-prices
         // from it regardless.

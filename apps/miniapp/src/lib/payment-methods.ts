@@ -14,7 +14,6 @@
 import type { MessageKey } from "@/lib/i18n";
 
 import clickIcon from "@/assets/payments/click.png";
-import inpayIcon from "@/assets/payments/inpay.png";
 import paymeIcon from "@/assets/payments/payme.png";
 import usdtIcon from "@/assets/payments/usdt.png";
 import uzumIcon from "@/assets/payments/uzum.png";
@@ -35,14 +34,6 @@ export interface PaymentMethod {
 }
 
 export const PAYMENT_METHODS: PaymentMethod[] = [
-  {
-    id: "inpay",
-    name: "InPay",
-    subKey: "payment.inpay.sub",
-    provider: "inpay",
-    currency: "UZS",
-    icon: inpayIcon,
-  },
   {
     id: "click",
     name: "Click",

@@ -1,6 +1,6 @@
 """``to_wire_amount`` — lossless Decimal → JSON-number conversion.
 
-Octo / InPay take amounts as JSON numbers. ``json.dumps`` renders a float via
+Octo takes amounts as JSON numbers. ``json.dumps`` renders a float via
 ``repr`` (shortest round-trip), so the wire text is exact only when
 ``Decimal(repr(float(amount))) == amount``. Anything else must raise instead of
 silently charging a different amount (AGENTS.md §9: money is never floats —

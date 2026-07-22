@@ -18,7 +18,6 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from yupay.core import config as cfg
 from yupay.core.ids import new_id
 from yupay.modules.catalog.models import (
     Brand,
@@ -29,12 +28,25 @@ from yupay.modules.catalog.models import (
     ProductTranslation,
     Sku,
 )
+from yupay.modules.payments.gateways import REGISTRY, StubGateway
 from yupay.modules.payments.models import Payment, PaymentAttempt
 from yupay.modules.users.models import TelegramLink, User
 
 pytestmark = pytest.mark.asyncio
 
 BOT_TOKEN = "123456:TEST"
+
+
+class _AvailableNoRefundGateway(StubGateway):
+    """An *available* acquirer whose ``refund`` still isn't implemented — the
+    exact shape the refund-rejection path guards against (a live gateway that
+    can't settle a refund). ``StubGateway.refund`` already raises
+    ``PaymentNotIntegratedError``; we only flip ``available`` to ``True`` so the
+    service actually calls it instead of taking the dry-run stub path."""
+
+    @property
+    def available(self) -> bool:
+        return True
 
 
 def _sign_init_data(fields: dict[str, str]) -> str:
@@ -343,54 +355,53 @@ async def test_refund_rejected_by_gateway(
     _seed_sku: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """InPay is configured but has no refund API — the gateway raises and the
+    """An available acquirer with no refund API — the gateway raises and the
     service answers 409 with an error attempt recorded, leaving the payment
     refundable."""
-    monkeypatch.setenv("INPAY_MERCHANT_ID", "22715")
-    monkeypatch.setenv("INPAY_MERCHANT_TOKEN", "tok-32")
-    cfg.get_settings.cache_clear()
-    try:
-        token = await _login_user(integration_client, tg_id=806)
-        await _grant_admin(db_session, tg_id=806)
-        order_id, _, _ = await _order_with_intent(
-            integration_client, token=token, sku_id=_seed_sku, tag="806"
-        )
-        payment = Payment(
-            id=new_id(),
-            order_id=order_id,
-            provider="inpay",
-            status="succeeded",
-            amount=Decimal("1.50"),
-            currency="USD",
-            external_id=f"inpay_{new_id()}",
-            extra_metadata={},
-        )
-        db_session.add(payment)
-        await db_session.commit()
+    monkeypatch.setitem(
+        REGISTRY,
+        "norefund",
+        _AvailableNoRefundGateway(provider="norefund", todo_message="no refund API"),
+    )
+    token = await _login_user(integration_client, tg_id=806)
+    await _grant_admin(db_session, tg_id=806)
+    order_id, _, _ = await _order_with_intent(
+        integration_client, token=token, sku_id=_seed_sku, tag="806"
+    )
+    payment = Payment(
+        id=new_id(),
+        order_id=order_id,
+        provider="norefund",
+        status="succeeded",
+        amount=Decimal("1.50"),
+        currency="USD",
+        external_id=f"norefund_{new_id()}",
+        extra_metadata={},
+    )
+    db_session.add(payment)
+    await db_session.commit()
 
-        r = await integration_client.post(
-            f"/api/v1/admin/payments/{payment.id}/refund",
-            headers={"Authorization": f"Bearer {token}", "Idempotency-Key": "ep-refund-806-padpad"},
-            json={},
-        )
-        assert r.status_code == 409, r.text
+    r = await integration_client.post(
+        f"/api/v1/admin/payments/{payment.id}/refund",
+        headers={"Authorization": f"Bearer {token}", "Idempotency-Key": "ep-refund-806-padpad"},
+        json={},
+    )
+    assert r.status_code == 409, r.text
 
-        attempts = (
-            (
-                await db_session.execute(
-                    select(PaymentAttempt).where(
-                        PaymentAttempt.payment_id == payment.id,
-                        PaymentAttempt.kind == "refund",
-                        PaymentAttempt.status == "error",
-                    )
+    attempts = (
+        (
+            await db_session.execute(
+                select(PaymentAttempt).where(
+                    PaymentAttempt.payment_id == payment.id,
+                    PaymentAttempt.kind == "refund",
+                    PaymentAttempt.status == "error",
                 )
             )
-            .scalars()
-            .all()
         )
-        assert len(attempts) == 1
-    finally:
-        cfg.get_settings.cache_clear()
+        .scalars()
+        .all()
+    )
+    assert len(attempts) == 1
 
 
 # ---------- admin list filters ----------

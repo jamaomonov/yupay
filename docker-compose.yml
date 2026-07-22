@@ -55,13 +55,6 @@ x-app-env: &app-env
   OCTO_BASE_URL: ${OCTO_BASE_URL:-https://secure.octo.uz}
   OCTO_TEST_MODE: ${OCTO_TEST_MODE:-false}
   OCTO_REQUEST_TIMEOUT_SECONDS: ${OCTO_REQUEST_TIMEOUT_SECONDS:-20}
-  # InPay card acquirer (UZS). Empty merchant id/token → available=false. InPay
-  # callbacks are unsigned; we re-verify via /transactions, so BASE_URL only needs
-  # to be reachable for the callback to arrive (a tunnel in dev).
-  INPAY_MERCHANT_ID: ${INPAY_MERCHANT_ID:-}
-  INPAY_MERCHANT_TOKEN: ${INPAY_MERCHANT_TOKEN:-}
-  INPAY_BASE_URL: ${INPAY_BASE_URL:-https://inpay.uz/api/v1}
-  INPAY_REQUEST_TIMEOUT_SECONDS: ${INPAY_REQUEST_TIMEOUT_SECONDS:-20}
   # Admin alert bot (separate from the customer-facing bot). Empty values
   # no-op the alerts module — useful in dev before the bot is provisioned.
   TG_ALERT_BOT_TOKEN: ${TG_ALERT_BOT_TOKEN:-}
