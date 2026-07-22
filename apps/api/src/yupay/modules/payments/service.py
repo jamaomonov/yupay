@@ -463,7 +463,7 @@ async def _book_refund_ledger(
     refund_amount: Decimal,
     reason: str | None,
     is_full: bool,
-    admin_id: str,
+    actor: str,
 ) -> None:
     """Book the refund on the ledger. A wallet-funded payment is reversed
     straight back to the customer's balance (the exact inverse of the original
@@ -509,7 +509,7 @@ async def _book_refund_ledger(
             ],
             idempotency_key=f"refund:{payment.id}",
             reference=wallet_api.Reference(type="payment", id=payment.id),
-            actor=f"admin:{admin_id}",
+            actor=actor,
             metadata={"reason": reason or "", "full": is_full, "credited_account": user_wallet.id},
         )
     else:
@@ -546,8 +546,86 @@ async def _book_refund_ledger(
             ],
             idempotency_key=f"refund:{payment.id}",
             reference=wallet_api.Reference(type="payment", id=payment.id),
-            actor=f"admin:{admin_id}",
+            actor=actor,
             metadata={"reason": reason or "", "full": is_full},
+        )
+
+
+async def _apply_refund_reversal(
+    db: AsyncSession,
+    *,
+    payment: Payment,
+    amount: Decimal,
+    actor: str,
+    external_ref: str | None,
+) -> None:
+    """Shared refund core — the single place a refund touches the FSM and ledger.
+
+    Flips the payment to ``refunded`` / ``partially_refunded``, walks the order to
+    ``refunded`` (full refunds only), posts the double-entry reversal via
+    :func:`_book_refund_ledger`, and cancels any still-open fulfilment. Both the
+    admin refund (:func:`refund_admin`) and the provider-driven reversal
+    (:func:`reverse_provider_payment`, Payme ``CancelTransaction`` on a performed
+    tx) funnel through here so the ledger posting lives in exactly one place.
+
+    Args:
+        db: Active session; the caller flushes/commits.
+        payment: The payment being reversed (already validated by the caller).
+        amount: Refund amount; ``== payment.amount`` means a full refund.
+        actor: Audit actor for the order event and ledger posting
+            (``admin:<id>`` for admin refunds, the provider slug otherwise).
+        external_ref: Free-text reason (admin) or provider event id (provider),
+            recorded on the order event and the ledger metadata.
+    """
+    moment = now()
+    is_full = amount == payment.amount
+    payment.status = "refunded" if is_full else "partially_refunded"
+    payment.updated_at = moment
+
+    # Order: mark refunded only for a full refund. Partial refunds keep the
+    # original status — they're an accounting concern, not an FSM concern.
+    order = (await db.execute(select(Order).where(Order.id == payment.order_id))).scalar_one()
+    if is_full and order.status != "refunded":
+        order.status = "refunded"
+        order.updated_at = moment
+    db.add(
+        OrderEvent(
+            id=new_id(),
+            order_id=order.id,
+            kind="payment.refunded",
+            payload={
+                "payment_id": payment.id,
+                "provider": payment.provider,
+                "amount": str(amount),
+                "full": is_full,
+                "reason": external_ref or "",
+            },
+            actor=actor,
+        )
+    )
+
+    await _book_refund_ledger(
+        db,
+        payment=payment,
+        order=order,
+        refund_amount=amount,
+        reason=external_ref,
+        is_full=is_full,
+        actor=actor,
+    )
+
+    # A full refund walks the order to ``refunded`` — cancel any still-open
+    # fulfilment task so the saga stops trying to deliver (or stops sitting in
+    # a stuck ``failed`` state) for an order the customer no longer owns.
+    # Already-``succeeded`` tasks are left alone: a money refund does not
+    # retract a code the customer already received. Partial refunds keep the
+    # order delivered, so they don't touch fulfilment. Lazy import dodges the
+    # payments.service ↔ fulfillment.service ↔ api.v1 import cycle.
+    if is_full:
+        from yupay.modules.fulfillment import service as fulfillment_svc
+
+        await fulfillment_svc.cancel_open_tasks_for_order(
+            db, order_id=order.id, reason=f"refund:{payment.id}"
         )
 
 
@@ -621,7 +699,6 @@ async def refund_admin(
         )
 
     gw = get_gateway(payment.provider)
-    moment = now()
     refund_metadata: dict[str, Any] = {
         "refund_amount": str(refund_amount),
         "reason": reason or "",
@@ -656,8 +733,6 @@ async def refund_admin(
         refund_metadata["dry_run"] = True
 
     is_full = refund_amount == payment.amount
-    payment.status = "refunded" if is_full else "partially_refunded"
-    payment.updated_at = moment
     payment.extra_metadata = {**payment.extra_metadata, "last_refund": refund_metadata}
 
     _record_attempt(
@@ -668,51 +743,17 @@ async def refund_admin(
         payload=refund_metadata,
     )
 
-    # Order: mark refunded only for a full refund. Partial refunds keep the
-    # original status — they're an accounting concern, not an FSM concern.
-    order = (await db.execute(select(Order).where(Order.id == payment.order_id))).scalar_one()
-    if is_full and order.status != "refunded":
-        order.status = "refunded"
-        order.updated_at = moment
-    db.add(
-        OrderEvent(
-            id=new_id(),
-            order_id=order.id,
-            kind="payment.refunded",
-            payload={
-                "payment_id": payment.id,
-                "provider": payment.provider,
-                "amount": str(refund_amount),
-                "full": is_full,
-                "reason": reason or "",
-            },
-            actor=f"admin:{admin_id}",
-        )
-    )
-
-    await _book_refund_ledger(
+    # Shared refund core (also used by the provider-driven reversal): flips the
+    # payment, walks the order to ``refunded``, posts the ledger reversal, and
+    # cancels open fulfilment. ``external_ref`` carries the admin's free-text
+    # reason here.
+    await _apply_refund_reversal(
         db,
         payment=payment,
-        order=order,
-        refund_amount=refund_amount,
-        reason=reason,
-        is_full=is_full,
-        admin_id=admin_id,
+        amount=refund_amount,
+        actor=f"admin:{admin_id}",
+        external_ref=reason,
     )
-
-    # A full refund walks the order to ``refunded`` — cancel any still-open
-    # fulfilment task so the saga stops trying to deliver (or stops sitting in
-    # a stuck ``failed`` state) for an order the customer no longer owns.
-    # Already-``succeeded`` tasks are left alone: a money refund does not
-    # retract a code the customer already received. Partial refunds keep the
-    # order delivered, so they don't touch fulfilment. Lazy import dodges the
-    # payments.service ↔ fulfillment.service ↔ api.v1 import cycle.
-    if is_full:
-        from yupay.modules.fulfillment import service as fulfillment_svc
-
-        await fulfillment_svc.cancel_open_tasks_for_order(
-            db, order_id=order.id, reason=f"refund:{payment.id}"
-        )
 
     await db.flush()
     log.info(
@@ -723,6 +764,91 @@ async def refund_admin(
         full=is_full,
     )
     return payment
+
+
+async def settle_provider_payment(
+    db: AsyncSession, *, payment: Payment, external_event_id: str
+) -> None:
+    """Provider-driven success (e.g. Payme ``PerformTransaction``).
+
+    Builds a synthetic :class:`WebhookEvent` and funnels through the single
+    :func:`_mark_payment_succeeded` chokepoint — payment → succeeded, order →
+    paid, fulfilment saga kicked off — so a provider callback never becomes a
+    second code path that flips order status. Idempotent: a no-op when the
+    payment already reached ``succeeded`` (e.g. a retried callback).
+
+    Args:
+        db: Active session; the caller commits.
+        payment: The pending payment the provider just confirmed.
+        external_event_id: The provider's event/transaction id, recorded on the
+            resulting ``order.paid`` event for audit.
+    """
+    if payment.status == "succeeded":
+        return
+    event = WebhookEvent(
+        external_event_id=external_event_id,
+        external_payment_id=payment.external_id,
+        outcome="succeeded",
+        raw={},
+    )
+    await _mark_payment_succeeded(db, payment=payment, event=event)
+    await db.flush()
+
+
+async def reverse_provider_payment(
+    db: AsyncSession, *, payment: Payment, external_event_id: str, actor: str = "payme"
+) -> None:
+    """Provider-driven refund of a SUCCEEDED payment (e.g. Payme
+    ``CancelTransaction`` on a performed tx, state 2 → -2).
+
+    Runs the SAME ledger reversal + order → ``refunded`` as an admin refund via
+    the shared :func:`_apply_refund_reversal` core (always a full reversal for a
+    provider cancel). Idempotent: a no-op when the payment is already
+    ``refunded``.
+
+    Args:
+        db: Active session; the caller commits.
+        payment: The succeeded payment the provider is reversing.
+        external_event_id: The provider's cancel event id, recorded for audit.
+        actor: Audit actor for the order event and ledger posting.
+    """
+    if payment.status == "refunded":
+        return
+    await _apply_refund_reversal(
+        db,
+        payment=payment,
+        amount=payment.amount,
+        actor=actor,
+        external_ref=external_event_id,
+    )
+    await db.flush()
+
+
+async def cancel_pending_provider_payment(
+    db: AsyncSession, *, payment: Payment, actor: str = "payme"
+) -> None:
+    """Provider-driven cancel of a PENDING payment (e.g. Payme
+    ``CancelTransaction`` on an unperformed tx, state 1 → -1).
+
+    Marks the payment ``cancelled`` through the single :func:`_mark_payment_terminal`
+    chokepoint — no ledger, no fulfilment, the order stays ``pending_payment``.
+    Idempotent: a no-op when the payment is already ``cancelled``.
+
+    Args:
+        db: Active session; the caller commits.
+        payment: The pending payment the provider is cancelling.
+        actor: Audit actor threaded onto the synthetic event's ``raw``.
+    """
+    if payment.status == "cancelled":
+        return
+    event = WebhookEvent(
+        external_event_id=f"provider-cancel:{payment.id}",
+        external_payment_id=payment.external_id,
+        outcome="cancelled",
+        raw={"actor": actor},
+    )
+    await _mark_payment_terminal(db, payment=payment, event=event, new_status="cancelled")
+    await db.flush()
 
 
 async def list_webhooks_admin(
@@ -818,6 +944,7 @@ async def list_payments_admin(
 
 
 __all__ = [
+    "cancel_pending_provider_payment",
     "create_intent",
     "get_active_payment",
     "get_payment",
@@ -826,6 +953,8 @@ __all__ = [
     "list_webhooks_admin",
     "mark_webhook_resolved",
     "refund_admin",
+    "reverse_provider_payment",
+    "settle_provider_payment",
     "simulate_webhook",
 ]
 
