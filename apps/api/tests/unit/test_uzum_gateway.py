@@ -63,6 +63,22 @@ def test_available_true_with_service_id_and_test_creds(_uzum_env: None) -> None:
     assert UzumGateway().available is True
 
 
+def test_available_true_with_prod_creds(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Covers the OR-branch of ``available`` left untested by ``_uzum_env``:
+    real (production/cabinet) credentials alone, with the sandbox test creds
+    blank, are also sufficient to be considered available."""
+    monkeypatch.setenv("UZUM_SERVICE_ID", "101202")
+    monkeypatch.setenv("UZUM_LOGIN", "uzum-prod")
+    monkeypatch.setenv("UZUM_PASSWORD", "prod-secret")
+    monkeypatch.setenv("UZUM_TEST_LOGIN", "")
+    monkeypatch.setenv("UZUM_TEST_PASSWORD", "")
+    cfg.get_settings.cache_clear()
+    try:
+        assert UzumGateway().available is True
+    finally:
+        cfg.get_settings.cache_clear()
+
+
 async def test_create_intent_builds_exact_checkout_url(_uzum_env: None) -> None:
     gw = UzumGateway()
     order = SimpleNamespace(id="order-123", currency="UZS", total_charged=Decimal("130000.00"))
