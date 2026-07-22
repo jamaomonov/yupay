@@ -26,6 +26,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.clock import now
@@ -260,7 +261,9 @@ async def create(
         ``{"transId", "status": "CREATED", "transTime", "data", "amount"}``.
 
     Raises:
-        UzumError: ``10010`` if ``trans_id`` was already created; ``10007``/
+        UzumError: ``10010`` if ``trans_id`` was already created (either the
+            pre-check finds it, or a concurrent ``/create`` wins the race and
+            the insert collides on the unique ``trans_id``); ``10007``/
             ``10008``/``10009`` from the order-state check; ``10011`` if
             ``amount`` does not match the order's price.
     """
@@ -285,8 +288,19 @@ async def create(
         service_id=service_id,
         create_time=create_time,
     )
-    db.add(txn)
-    await db.flush()
+    # SAVEPOINT: the pre-check above is not a lock (a FOR UPDATE against a
+    # not-yet-existing row locks nothing), so two concurrent first-time
+    # ``/create`` calls for the same trans_id can both pass it and both reach
+    # this insert. The loser's flush raises IntegrityError on the unique
+    # trans_id; catch it here so only this insert rolls back (not the whole
+    # request), and report it the way Uzum's spec mandates for a duplicate
+    # trans_id (10010) instead of letting it surface as an uncaught 99999.
+    try:
+        async with db.begin_nested():
+            db.add(txn)
+            await db.flush()
+    except IntegrityError:
+        raise transaction_already_created() from None
     return {
         "transId": trans_id,
         "status": "CREATED",

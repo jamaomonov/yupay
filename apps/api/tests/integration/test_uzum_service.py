@@ -15,7 +15,8 @@ idempotency guarantees Uzum's sandbox verifies — mirrors
 - ``check`` — OK / 10007 unknown order / 10008 already paid / 10009
   cancelled-or-expired.
 - ``create`` — CREATED (row inserted, pending payment reused/created) / 10010
-  replay / 10011 wrong amount / 10007 unknown order.
+  replay / 10010 concurrent INSERT race (IntegrityError recovery) / 10011
+  wrong amount / 10007 unknown order.
 - ``confirm`` — CONFIRMED + settles payment (order paid) / 10014 unknown /
   10015 on a reversed tx / 10016 already-confirmed replay.
 - ``reverse`` — from CREATED (cancel pending, no ledger) / from CONFIRMED
@@ -305,6 +306,63 @@ async def test_create_replay_same_trans_id_is_10010(db_session: AsyncSession) ->
             select(func.count())
             .select_from(UzumTransaction)
             .where(UzumTransaction.trans_id == "uz-replay")
+        )
+    ).scalar_one()
+    assert count == 1
+
+
+async def test_create_concurrent_insert_race_recovers_as_10010(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A concurrent /create that wins the INSERT race surfaces as 10010.
+
+    The pre-check's ``FOR UPDATE`` locks nothing against a not-yet-existing
+    row, so two concurrent first-time ``/create`` calls for the same
+    ``trans_id`` can both pass it and both reach the INSERT. This simulates
+    that: a competing ``UzumTransaction`` for the same ``trans_id`` is
+    already flushed in-transaction (as if another request won the race right
+    after our pre-check ran), and ``_load_tx`` is monkeypatched to return
+    ``None`` — the honest answer the pre-check would have given at that
+    instant — so ``create()`` proceeds into the INSERT. There the real
+    ``UNIQUE(trans_id)`` constraint collides, driving the actual
+    ``IntegrityError`` → 10010 recovery branch (not a mocked-away one). On
+    unfixed code this raises an uncaught ``IntegrityError`` instead.
+    """
+    order_id = await _seed_order(db_session)
+    db_session.add(
+        UzumTransaction(
+            id=new_id(),
+            trans_id="uz-race",
+            order_id=order_id,
+            payment_id=None,
+            amount_tiyin=EXPECTED_TIYIN,
+            status="CREATED",
+            service_id=SERVICE_ID,
+            create_time=uzum_svc.now_ms(),
+        )
+    )
+    await db_session.flush()
+
+    async def _fake_load_tx(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(uzum_svc, "_load_tx", _fake_load_tx)
+
+    with pytest.raises(UzumError) as exc:
+        await uzum_svc.create(
+            db_session,
+            service_id=SERVICE_ID,
+            trans_id="uz-race",
+            params={"order_id": order_id},
+            amount=EXPECTED_TIYIN,
+        )
+    assert exc.value.code == 10010
+
+    count = (
+        await db_session.execute(
+            select(func.count())
+            .select_from(UzumTransaction)
+            .where(UzumTransaction.trans_id == "uz-race")
         )
     ).scalar_one()
     assert count == 1
