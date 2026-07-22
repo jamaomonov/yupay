@@ -125,6 +125,26 @@ http://api.yupay.uz {
 	}
 	respond @paymeMerchantBlocked 403
 
+	# Uzum Bank Merchant API webhook allowlist — DEFERRED, NOT ACTIVE.
+	# Unlike Payme, Uzum has not yet documented their webhook source IPs.
+	# Design spec §16 gap #6: "Uzum's webhook source IPs for a Caddy
+	# allowlist (added later, like Payme; app-layer 10001 auth is the
+	# real gate meanwhile)." Until Uzum confirms a range, the app-layer
+	# Basic Auth check (errorCode 10001 in yupay.modules.uzum.routes) is
+	# the only gate on this path — that check is sufficient on its own.
+	#
+	# Do NOT uncomment this with a guessed CIDR: a wrong range would
+	# 403 genuine Uzum callbacks, and an active matcher left with an
+	# empty/placeholder client_ip list would 403 all traffic on this
+	# path. Once Uzum confirms their source IPs, fill in <UZUM_IPS>,
+	# uncomment, and validate with `caddy validate` before reloading.
+	#
+	# @uzumMerchantBlocked {
+	# 	path /api/v1/payments/uzum/*
+	# 	not client_ip <UZUM_IPS>
+	# }
+	# respond @uzumMerchantBlocked 403
+
 	# WebSocket upgrade has to come first — Caddy stops on the first
 	# matching reverse_proxy directive.
 	@websocket {
