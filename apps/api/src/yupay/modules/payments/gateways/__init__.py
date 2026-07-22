@@ -5,8 +5,8 @@ Add a new provider:
   2. Drop the implementation into a new file under this package.
   3. Register it in :data:`REGISTRY` below.
 
-Stubs (``click``, ``payme``, ``uzum``, ``yookassa``, ``tinkoff``, ``crypto``) keep
-their slugs reserved so the routes / webhooks / admin UI don't shift when the real
+Stubs (``click``, ``yookassa``, ``tinkoff``, ``crypto``) keep their slugs
+reserved so the routes / webhooks / admin UI don't shift when the real
 implementation arrives.
 """
 
@@ -25,6 +25,7 @@ from yupay.modules.payments.gateways.base import (
 from yupay.modules.payments.gateways.mock import MockGateway
 from yupay.modules.payments.gateways.octo import OctoGateway
 from yupay.modules.payments.gateways.payme import PaymeGateway
+from yupay.modules.payments.gateways.uzum import UzumGateway
 from yupay.modules.payments.gateways.wallet import WalletGateway
 
 REGISTRY: dict[str, PaymentGateway] = {
@@ -43,10 +44,11 @@ REGISTRY: dict[str, PaymentGateway] = {
     # money movement happens via the Merchant JSON-RPC callback, not through
     # this registry's generic webhook route. See yupay.modules.payme.service.
     "payme": PaymeGateway(),
-    "uzum": StubGateway(
-        provider="uzum",
-        todo_message="Uzum acquirer not integrated yet; see ADR-0012.",
-    ),
+    # Uzum Bank Merchant API — third Uzbek acquirer. Hosted checkout only; the
+    # actual money movement happens via Uzum's own inverted webhooks, not
+    # through this registry's generic webhook route. See
+    # yupay.modules.uzum.service.
+    "uzum": UzumGateway(),
     # --- Russian acquirers ---
     "yookassa": StubGateway(
         provider="yookassa",
@@ -88,6 +90,7 @@ __all__ = [
     "PaymentNotIntegratedError",
     "RefundResult",
     "StubGateway",
+    "UzumGateway",
     "WalletGateway",
     "WebhookEvent",
     "available_providers",
