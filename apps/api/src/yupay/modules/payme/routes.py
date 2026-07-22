@@ -200,16 +200,24 @@ async def payme_merchant(request: Request, db: DbSession) -> dict[str, Any]:
 
     try:
         result = await _dispatch(db, method, params)
+        # The commit is INSIDE the guard on purpose: a commit-time failure (e.g.
+        # the connection drops between the handler's flush and here) must still
+        # be rendered as ``-32400`` at HTTP 200, never escape as a 500 — Payme
+        # reads any non-200 as a transport error.
+        await db.commit()
     except PaymeError as exc:
         # A failed validation must not half-commit — roll back before echoing.
         await db.rollback()
         return {"error": exc.to_rpc_error(), "id": req_id}
     except Exception:
-        await db.rollback()
+        # Best-effort rollback; the session may already be unusable.
+        try:
+            await db.rollback()
+        except Exception:
+            log.exception("payme.merchant.rollback_failed", method=method)
         log.exception("payme.merchant.internal_error", method=method)
         return {"error": internal_error().to_rpc_error(), "id": req_id}
 
-    await db.commit()
     return {"result": result, "id": req_id}
 
 

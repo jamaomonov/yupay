@@ -365,3 +365,51 @@ async def test_replay_create_perform_cancel_is_idempotent(
 
     # Still exactly one row after all the replays.
     assert await _count_txns(db_session, "replay-tx") == 1
+
+
+async def test_commit_failure_is_32400_not_500(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A commit-time infra failure must render as -32400 at HTTP 200, not a 500.
+
+    Payme reads any non-200 as a transport error, so even a broken commit (e.g.
+    the connection dropping after the handler's flush) has to come back as a
+    JSON-RPC error body — never escape the route as an HTTP 500.
+    """
+    order_id = await _seed_order(db_session)
+
+    # Force the FIRST commit to blow up — that is the route's own
+    # ``await db.commit()``. Later commits (the ``get_session`` dependency's
+    # trailing commit during teardown) delegate to the real implementation, so
+    # the failure we're testing is strictly the route's, not an artefact of the
+    # session-dependency layer.
+    from sqlalchemy.ext.asyncio import AsyncSession as _AsyncSession
+
+    real_commit = _AsyncSession.commit
+    calls = {"n": 0}
+
+    async def _flaky_commit(self: _AsyncSession) -> None:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("connection reset during commit")
+        await real_commit(self)
+
+    monkeypatch.setattr(_AsyncSession, "commit", _flaky_commit, raising=True)
+
+    r = await integration_client.post(
+        MERCHANT_URL,
+        headers=_auth(),
+        json=_rpc(
+            "CreateTransaction",
+            {
+                "id": "commit-fail-tx",
+                "time": 1_700_000_000_000,
+                "amount": EXPECTED_TIYIN,
+                "account": {"order_id": order_id},
+            },
+        ),
+    )
+    assert r.status_code == 200
+    assert r.json()["error"]["code"] == -32400
