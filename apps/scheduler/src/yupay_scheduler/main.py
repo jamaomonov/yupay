@@ -27,6 +27,7 @@ from yupay.modules.payme import models as _payme_models  # noqa: F401
 from yupay.modules.payments import models as _payments_models  # noqa: F401
 from yupay.modules.sourcing import models as _sourcing_models  # noqa: F401
 from yupay.modules.users import models as _users_models  # noqa: F401
+from yupay.modules.uzum import models as _uzum_models  # noqa: F401
 from yupay.modules.wallet import models as _wallet_models  # noqa: F401
 
 from yupay_scheduler.jobs import (
@@ -34,6 +35,7 @@ from yupay_scheduler.jobs import (
     expire_orders,
     payme_timeout,
     refresh_supplier_prices,
+    uzum_timeout,
     waxpeer_reconcile,
 )
 
@@ -52,6 +54,7 @@ def build_scheduler() -> AsyncIOScheduler:
     expire_orders.register(scheduler)
     payme_timeout.register(scheduler)
     refresh_supplier_prices.register(scheduler)
+    uzum_timeout.register(scheduler)
     waxpeer_reconcile.register(scheduler)
     return scheduler
 
