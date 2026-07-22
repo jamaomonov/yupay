@@ -300,6 +300,25 @@ class Settings(BaseSettings):
     uzum_test_password: str = Field(default="")  # sandbox password
     uzum_open_service_url: str = Field(default="https://www.uzumbank.uz/open-service")
 
+    @field_validator("uzum_service_id", mode="before")
+    @classmethod
+    def _blank_uzum_service_id_to_none(cls, v: object) -> object:
+        """Treat an empty/whitespace-only ``UZUM_SERVICE_ID`` as "not set".
+
+        ``uzum_service_id`` is ``int | None`` — the first ``int``-typed acquirer
+        env field in this file (Payme's equivalents are all ``str``). Pydantic
+        has no built-in "" -> None coercion for numeric fields, so the
+        documented "leave empty to disable" convention (see the acquirer's
+        ``.env`` comment) would otherwise raise a ``ValidationError`` at
+        startup. ``v`` is typed ``object`` (not ``Any``) since a "before"
+        validator receives the raw, not-yet-coerced input. Real integers,
+        numeric strings, and ``None`` pass through untouched so pydantic can
+        still coerce them normally.
+        """
+        if isinstance(v, str) and v.strip() == "":
+            return None
+        return v
+
     # --- admin alerts (separate Telegram bot — NOT the customer bot) ---
     # Dedicated bot so an outage of one channel doesn't drag the other
     # down, and so the customer bot's token doesn't carry admin-chat

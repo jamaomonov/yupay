@@ -55,3 +55,36 @@ def test_uzum_service_id_parses_from_env_as_int(
     settings = cfg.get_settings()
     assert settings.uzum_service_id == 123456
     assert isinstance(settings.uzum_service_id, int)
+
+
+def test_uzum_service_id_empty_string_becomes_none(
+    monkeypatch: pytest.MonkeyPatch,
+    _clear_settings_cache: None,
+) -> None:
+    """Copying the ``UZUM_SERVICE_ID=`` template line must not crash startup.
+
+    Regression test for the reviewer-reported defect: an ``int | None`` field
+    fed an empty string used to raise a pydantic ``ValidationError`` instead
+    of being treated as "disabled", contradicting the ``.env`` comment that
+    documents empty as the disabled state.
+    """
+    monkeypatch.setenv("UZUM_SERVICE_ID", "")
+    settings = cfg.get_settings()
+    assert settings.uzum_service_id is None
+
+
+def test_uzum_service_id_unset_defaults_to_none(
+    monkeypatch: pytest.MonkeyPatch,
+    _clear_settings_cache: None,
+) -> None:
+    monkeypatch.delenv("UZUM_SERVICE_ID", raising=False)
+    assert cfg.get_settings().uzum_service_id is None
+
+
+def test_uzum_service_id_real_numeric_value_is_unaffected(
+    monkeypatch: pytest.MonkeyPatch,
+    _clear_settings_cache: None,
+) -> None:
+    """A real numeric id must still coerce to ``int``, not be swallowed by the fix."""
+    monkeypatch.setenv("UZUM_SERVICE_ID", "101202")
+    assert cfg.get_settings().uzum_service_id == 101202
