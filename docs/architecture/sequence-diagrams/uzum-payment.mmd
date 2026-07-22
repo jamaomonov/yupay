@@ -1,0 +1,90 @@
+sequenceDiagram
+    autonumber
+    title YuPay — Uzum Bank Merchant API payment
+
+    participant U as User (miniapp)
+    participant API as FastAPI
+    participant PAY as payments.service
+    participant UG as UzumGateway
+    participant DB as Postgres
+    participant UZ as Uzum (app / open-service)
+    participant USVC as uzum.service
+    participant FUL as fulfillment.service
+
+    Note over U,UZ: pending_payment order, currency == UZS
+
+    U->>API: POST /payments/intents {order_id, provider: uzum}
+    API->>PAY: create_intent(order_id, "uzum")
+    PAY->>DB: SELECT order FOR UPDATE (status == pending_payment)
+    PAY->>UG: create_intent(db, order, return_url)
+    UG->>USVC: build_checkout_url(order_id, amount_tiyin, return_url)
+    USVC-->>UG: intent_url = open-service?serviceId=..&order_id=..&amount=..&redirectUrl=..
+    UG-->>PAY: PaymentIntent(external_id="uzum:<order_id>", intent_url, status=pending)
+    PAY->>DB: INSERT payments(provider=uzum, status=pending, external_id)
+    PAY-->>U: 201 {intent_url}
+    U->>UZ: openLink(intent_url) -- deep-links into Uzum app / hosted page
+
+    Note over UZ,API: Uzum is now the webhook CLIENT — it drives our<br/>/payments/uzum/* endpoints (Basic auth + serviceId)
+
+    UZ->>API: POST /payments/uzum/check {serviceId, timestamp, params: {order_id}}
+    API->>USVC: check(service_id, params)
+    USVC->>DB: SELECT order (validate payable: not paid, not cancelled/expired)
+    USVC-->>API: {status: OK, data: {}}
+    API-->>UZ: 200 {serviceId, timestamp, status: OK, data: {}}
+
+    UZ->>API: POST /payments/uzum/create {serviceId, timestamp, transId, params, amount}
+    API->>USVC: create(service_id, trans_id, params, amount)
+    USVC->>DB: SELECT UzumTransaction WHERE trans_id (pre-check) -- exists? 10010
+    USVC->>DB: SELECT order FOR UPDATE; validate amount == total_charged*100 (else 10011)
+    USVC->>DB: INSERT uzum_transactions (status=CREATED, UNIQUE trans_id)
+    USVC-->>API: {transId, status: CREATED, transTime, data: {}, amount}
+    API-->>UZ: 200 {serviceId, ...}
+
+    alt buyer completes payment in Uzum app
+        UZ->>API: POST /payments/uzum/confirm {serviceId, timestamp, transId, paymentSource, ...}
+        API->>USVC: confirm(trans_id, payment_source)
+        USVC->>DB: SELECT UzumTransaction FOR UPDATE (10014 unknown / 10016 already CONFIRMED / 10015 REVERSED-FAILED)
+        USVC->>DB: UPDATE uzum_transactions SET status=CONFIRMED, confirm_time, payment_source
+        USVC->>PAY: settle_provider_payment(payment, external_event_id=trans_id)
+        PAY->>DB: payment.status=succeeded, order.status=paid
+        PAY->>FUL: start_for_order(order_id)
+        USVC-->>API: {transId, status: CONFIRMED, confirmTime, data: {}, amount}
+        API-->>UZ: 200 {serviceId, ...}
+
+        opt Uzum-initiated reverse (refund) after confirm
+            UZ->>API: POST /payments/uzum/reverse {serviceId, timestamp, transId}
+            API->>USVC: reverse(trans_id)
+            USVC->>DB: SELECT UzumTransaction FOR UPDATE (10014 unknown / 10018 already REVERSED)
+            USVC->>DB: any FulfillmentTask succeeded, or order fulfilled/delivered?
+            alt goods already delivered
+                USVC-->>API: UzumError 10017 (cannot cancel/refund delivered order)
+                API-->>UZ: 200 {status: FAILED, errorCode: 10017, serviceId, transId}
+            else safe to reverse
+                USVC->>DB: UPDATE uzum_transactions SET status=REVERSED, reverse_time
+                USVC->>PAY: reverse_provider_payment(payment, external_event_id=trans_id, actor=uzum)
+                PAY->>DB: _apply_refund_reversal: payment=refunded, order=refunded, ledger reversal
+                USVC-->>API: {transId, status: REVERSED, reverseTime, data: {}, amount}
+                API-->>UZ: 200 {serviceId, ...}
+            end
+        end
+
+        opt reconciliation after a lost/failed /confirm response
+            UZ->>API: POST /payments/uzum/status {serviceId, timestamp, transId}  (retried up to 10x)
+            API->>USVC: status(trans_id)
+            USVC->>DB: SELECT UzumTransaction (read-only)
+            USVC-->>API: {transId, status, transTime, confirmTime, reverseTime, data: {}, amount}
+            API-->>UZ: 200 {serviceId, ...}
+        end
+    else buyer abandons checkout, or Uzum reverses before confirming
+        UZ->>API: POST /payments/uzum/reverse {serviceId, timestamp, transId}
+        API->>USVC: reverse(trans_id)
+        USVC->>DB: UPDATE uzum_transactions SET status=REVERSED, reverse_time
+        USVC->>PAY: cancel_pending_provider_payment(payment, actor=uzum)
+        PAY->>DB: payment.status=cancelled (order stays pending_payment)
+        USVC-->>API: {transId, status: REVERSED, reverseTime, data: {}, amount}
+        API-->>UZ: 200 {serviceId, ...}
+    end
+
+    Note over API,UZ: Every response is HTTP 200 — success or error alike.<br/>A replay is refused with a dedicated code (10010/10016/10018), never echoed.
+
+    Note over USVC,DB: apps/scheduler uzum_timeout job: CREATED transactions<br/>older than 30 min auto-fail to FAILED via cancel_pending_provider_payment<br/>(a subsequent /reverse on a FAILED tx is an idempotent no-op cancel)
