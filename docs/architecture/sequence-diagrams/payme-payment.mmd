@@ -1,0 +1,78 @@
+sequenceDiagram
+    autonumber
+    title YuPay — Payme (Paycom) Merchant API payment
+
+    participant U as User (miniapp)
+    participant API as FastAPI
+    participant PAY as payments.service
+    participant PG as PaymeGateway
+    participant DB as Postgres
+    participant PM as Payme (checkout.paycom.uz)
+    participant PSVC as payme.service
+    participant FUL as fulfillment.service
+
+    Note over U,PM: pending_payment order, currency == UZS
+
+    U->>API: POST /payments/intents {order_id, provider: payme}
+    API->>PAY: create_intent(order_id, "payme")
+    PAY->>DB: SELECT order FOR UPDATE (status == pending_payment)
+    PAY->>PG: create_intent(db, order, return_url)
+    PG->>PSVC: build_checkout_url(order_id, amount_tiyin, return_url)
+    PSVC-->>PG: intent_url = checkout_url + "/" + base64(m=..,ac.order_id=..,a=..,c=..,l=..)
+    PG-->>PAY: PaymentIntent(external_id="payme:<order_id>", intent_url, status=pending)
+    PAY->>DB: INSERT payments(provider=payme, status=pending, external_id)
+    PAY-->>U: 201 {intent_url}
+    U->>PM: open intent_url, pay with card
+
+    Note over PM,API: Payme is now the JSON-RPC CLIENT — it drives our<br/>/payments/payme/merchant endpoint (Basic auth Paycom:<key>)
+
+    PM->>API: POST /payments/payme/merchant {method: CheckPerformTransaction, params: {amount, account}}
+    API->>PSVC: check_perform_transaction(amount, account)
+    PSVC->>DB: SELECT order (validate pending_payment + amount == total_charged*100)
+    PSVC-->>API: {allow: true}
+    API-->>PM: 200 {result: {allow: true}}
+
+    PM->>API: POST /merchant {method: CreateTransaction, params: {id, time, amount, account}}
+    API->>PSVC: create_transaction(payme_id, time, amount, account)
+    PSVC->>DB: INSERT payme_transactions (state=1, UNIQUE payme_id)
+    PSVC-->>API: {create_time, transaction, state: 1}
+    API-->>PM: 200 {result: {...}}
+
+    alt buyer completes payment
+        PM->>API: POST /merchant {method: PerformTransaction, params: {id}}
+        API->>PSVC: perform_transaction(payme_id)
+        PSVC->>DB: UPDATE payme_transactions SET state=2, perform_time
+        PSVC->>PAY: settle_provider_payment(payment, external_event_id=payme_id)
+        PAY->>DB: payment.status=succeeded, order.status=paid (_mark_payment_succeeded)
+        PAY->>FUL: start_for_order(order_id)
+        PSVC-->>API: {transaction, perform_time, state: 2}
+        API-->>PM: 200 {result: {...}}
+
+        opt Payme cabinet-initiated refund
+            PM->>API: POST /merchant {method: CancelTransaction, params: {id, reason}}
+            API->>PSVC: cancel_transaction(payme_id, reason)
+            PSVC->>DB: any FulfillmentTask succeeded, or order fulfilled/delivered?
+            alt goods already delivered
+                PSVC-->>API: PaymeError -31007 (cannot cancel delivered)
+                API-->>PM: 200 {error: {code: -31007, ...}}
+            else safe to reverse
+                PSVC->>DB: UPDATE payme_transactions SET state=-2, cancel_time, reason
+                PSVC->>PAY: reverse_provider_payment(payment, external_event_id=payme_id)
+                PAY->>DB: _apply_refund_reversal: payment=refunded, order=refunded, ledger reversal
+                PSVC-->>API: {transaction, cancel_time, state: -2}
+                API-->>PM: 200 {result: {...}}
+            end
+        end
+    else buyer abandons checkout, or Payme cancels before performing
+        PM->>API: POST /merchant {method: CancelTransaction, params: {id, reason}}
+        API->>PSVC: cancel_transaction(payme_id, reason)
+        PSVC->>DB: UPDATE payme_transactions SET state=-1, cancel_time, reason
+        PSVC->>PAY: cancel_pending_provider_payment(payment)
+        PAY->>DB: payment.status=cancelled (order stays pending_payment)
+        PSVC-->>API: {transaction, cancel_time, state: -1}
+        API-->>PM: 200 {result: {...}}
+    end
+
+    Note over API,PM: Every response is HTTP 200 — success or error alike.<br/>A replay of any method on the same "id" echoes the stored result (idempotent).
+
+    Note over PSVC,DB: apps/scheduler payme_timeout job: state-1 transactions<br/>older than 12h auto-cancel to -1, reason 4 (Payme never followed up)
