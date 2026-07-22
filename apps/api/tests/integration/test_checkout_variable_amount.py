@@ -200,6 +200,39 @@ async def test_variable_sku_prices_from_the_amount(
     assert Decimal(body["items"][0]["unit_price_usd"]) == Decimal("10")
 
 
+async def test_uzs_total_is_rounded_to_whole_sum(
+    integration_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    _variable_sku: Sku,
+) -> None:
+    """A fractional FX-derived UZS total is rounded to whole so'm, so the stored
+    ``total_charged`` is always an exact tiyin amount every acquirer can charge.
+
+    $10 × 12765.7325 × 1.08 = 137869.911 — six-decimal intermediate precision.
+    Pre-rounding this is unpayable via Payme/Octo (137869.911 × 100 = 13786991.1,
+    not an integer number of tiyin); rounded to whole so'm it is 137870.
+    """
+    monkeypatch.setattr(
+        "yupay.modules.pricing.fx_guard.build_default_service",
+        lambda: _stub_fx_service({"UZS": Decimal("12765.7325")}),
+    )
+    token = await _login_user(integration_client, tg_id=120)
+    r = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "uzs-rounding-aaaaaaaaaaa",
+        },
+        json=_order_body(sku_id=_variable_sku.id, currency="UZS", amount_usd="10"),
+    )
+    assert r.status_code == 201, r.text
+    total = Decimal(r.json()["total_charged"])
+    assert total == Decimal("137870")
+    # Whole so'm ⇒ exact tiyin: no acquirer can reject it for a sub-unit remainder.
+    assert total == total.to_integral_value()
+    assert (total * 100) == (total * 100).to_integral_value()
+
+
 async def test_amount_is_required_for_a_variable_sku(
     integration_client: AsyncClient, _variable_sku: Sku
 ) -> None:

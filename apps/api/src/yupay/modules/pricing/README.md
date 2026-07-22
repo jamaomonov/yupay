@@ -117,9 +117,12 @@ not in settings, so a new variable-amount product gets its own margin,
 adjustable from the admin UI without a deploy.
 
 `price_in_quote` returns six decimal places for intermediate precision;
-rounding to the currency's real minor units (UZS/RUB both use two decimals)
-happens once, when the full order total is assembled at checkout — not
-here, to avoid compounding rounding error across multiple lines.
+rounding to the currency's smallest **chargeable** unit happens once, when
+the full order total is assembled at checkout (`orders.service._round_to_payable`)
+— not here, to avoid compounding rounding error across multiple lines. That
+unit is whole so'm for UZS (tiyin coins are defunct, and acquirers reject a
+sub-so'm remainder) and kopecks (two decimals) for RUB, so `total_charged` is
+always an amount Payme/Octo can actually charge in minor units.
 
 ## Amount validation (`validate_amount`)
 

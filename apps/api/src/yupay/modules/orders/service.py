@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
@@ -31,6 +31,29 @@ from yupay.modules.orders.validation import validate_fulfillment_data
 from yupay.modules.payments.models import Payment, PaymentAttempt
 from yupay.modules.pricing.fx_guard import RateRejected, guarded_usd_rate
 from yupay.modules.pricing.variable import display_rate, price_in_quote, validate_amount
+
+# Smallest unit an acquirer will actually charge, per quote currency. UZS is
+# whole so'm (tiyin coins are defunct; the catalog also prices UZS SKUs to whole
+# so'm), RUB is kopecks. The full order total is rounded to this before it is
+# stored so ``total_charged`` is always an exact, payable amount — Payme and Octo
+# both charge in minor units and reject a sub-unit remainder.
+_CURRENCY_QUANTUM: dict[str, Decimal] = {"UZS": Decimal("1")}
+_DEFAULT_QUANTUM = Decimal("0.01")
+
+
+def _round_to_payable(total: Decimal, currency: str) -> Decimal:
+    """Round an order total to the quote currency's smallest chargeable unit.
+
+    Args:
+        total: The assembled order total, at intermediate (6 dp) precision.
+        currency: The quote currency (e.g. ``"UZS"``, ``"RUB"``).
+
+    Returns:
+        ``total`` rounded half-up to the currency's payable granularity
+        (whole so'm for UZS, kopecks for everything else).
+    """
+    quantum = _CURRENCY_QUANTUM.get(currency, _DEFAULT_QUANTUM)
+    return total.quantize(quantum, rounding=ROUND_HALF_UP)
 
 
 def _order_load_options() -> tuple[Any, ...]:
@@ -339,7 +362,11 @@ async def _compute_total_charged(
             fx_snapshot_id = fx_snap.id
         total_charged += (sku.price_usd * line.qty * fx_snap.rate).quantize(Decimal("1.000000"))
 
-    return total_charged, fx_snapshot_id
+    # Line prices carry 6 dp for intermediate precision (see
+    # ``pricing.variable.price_in_quote``); the assembled total is rounded to
+    # the currency's smallest chargeable unit here so ``total_charged`` is an
+    # exact, payable amount — a sub-unit remainder is unpayable via Payme/Octo.
+    return _round_to_payable(total_charged, currency), fx_snapshot_id
 
 
 async def create_order(
