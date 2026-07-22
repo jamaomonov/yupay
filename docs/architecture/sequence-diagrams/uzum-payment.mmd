@@ -35,7 +35,7 @@ sequenceDiagram
     UZ->>API: POST /payments/uzum/create {serviceId, timestamp, transId, params, amount}
     API->>USVC: create(service_id, trans_id, params, amount)
     USVC->>DB: SELECT UzumTransaction WHERE trans_id (pre-check) -- exists? 10010
-    USVC->>DB: SELECT order FOR UPDATE; validate amount == total_charged*100 (else 10011)
+    USVC->>DB: SELECT order FOR UPDATE, validate amount == total_charged*100 (else 10011)
     USVC->>DB: INSERT uzum_transactions (status=CREATED, UNIQUE trans_id)
     USVC-->>API: {transId, status: CREATED, transTime, data: {}, amount}
     API-->>UZ: 200 {serviceId, ...}
