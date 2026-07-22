@@ -1,0 +1,169 @@
+{
+  "info": {
+    "name": "YuPay — Uzum Merchant API",
+    "description": "Manual sandbox requests for the five Uzum Bank merchant webhooks (check, create, confirm, reverse, status) that YuPay exposes at /api/v1/payments/uzum. Hand this to Uzum's integration engineer for sandbox testing.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "basic",
+    "basic": [
+      {
+        "key": "username",
+        "value": "{{login}}",
+        "type": "string"
+      },
+      {
+        "key": "password",
+        "value": "{{password}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base",
+      "value": "https://api.yupay.uz/api/v1/payments/uzum"
+    },
+    {
+      "key": "login",
+      "value": ""
+    },
+    {
+      "key": "password",
+      "value": ""
+    },
+    {
+      "key": "serviceId",
+      "value": "101202"
+    },
+    {
+      "key": "order_id",
+      "value": ""
+    },
+    {
+      "key": "transId",
+      "value": "5c398d7e-76b6-11ee-96da-f3a095c6289d"
+    },
+    {
+      "key": "amount",
+      "value": "2500000"
+    }
+  ],
+  "item": [
+    {
+      "name": "check",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"serviceId\": {{serviceId}},\n  \"timestamp\": 1698361456728,\n  \"params\": {\n    \"order_id\": \"{{order_id}}\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{base}}/check",
+          "host": ["{{base}}"],
+          "path": ["check"]
+        },
+        "description": "Verify payment possibility for an order. Expected success status: OK."
+      },
+      "response": []
+    },
+    {
+      "name": "create",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"serviceId\": {{serviceId}},\n  \"timestamp\": 1698361456728,\n  \"transId\": \"{{transId}}\",\n  \"params\": {\n    \"order_id\": \"{{order_id}}\"\n  },\n  \"amount\": {{amount}}\n}"
+        },
+        "url": {
+          "raw": "{{base}}/create",
+          "host": ["{{base}}"],
+          "path": ["create"]
+        },
+        "description": "Create the transaction for an order. Expected success status: CREATED."
+      },
+      "response": []
+    },
+    {
+      "name": "confirm",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"serviceId\": {{serviceId}},\n  \"timestamp\": 1698361456728,\n  \"transId\": \"{{transId}}\",\n  \"paymentSource\": \"INSTALLMENT\",\n  \"tariff\": \"003\",\n  \"processingReferenceNumber\": \"000\",\n  \"phone\": \"998901234567\",\n  \"cardType\": 2\n}"
+        },
+        "url": {
+          "raw": "{{base}}/confirm",
+          "host": ["{{base}}"],
+          "path": ["confirm"]
+        },
+        "description": "Deliver the goods and settle the payment. Expected success status: CONFIRMED."
+      },
+      "response": []
+    },
+    {
+      "name": "reverse",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"serviceId\": {{serviceId}},\n  \"timestamp\": 1698361456728,\n  \"transId\": \"{{transId}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base}}/reverse",
+          "host": ["{{base}}"],
+          "path": ["reverse"]
+        },
+        "description": "Cancel or refund the transaction. Expected success status: REVERSED."
+      },
+      "response": []
+    },
+    {
+      "name": "status",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"serviceId\": {{serviceId}},\n  \"timestamp\": 1698361456728,\n  \"transId\": \"{{transId}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base}}/status",
+          "host": ["{{base}}"],
+          "path": ["status"]
+        },
+        "description": "Report the current transaction state. Expected success status: CONFIRMED (reflects whatever the transaction's current status actually is)."
+      },
+      "response": []
+    }
+  ]
+}
