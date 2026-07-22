@@ -23,16 +23,23 @@ mirrors ``payme_timeout.py``'s own-session-per-item isolation: one bad row (a
 transient DB hiccup, an unexpected status) can never abort the batch and
 leave the rest of the backlog stuck too.
 
-**Money-safety invariant**: this job must ONLY ever fail a ``CREATED``
-transaction, whose backing payment is still ``pending``.
+**Money-safety invariant**: this job must ONLY ever cancel a payment that is
+still ``pending`` when it fails a ``CREATED`` transaction.
 ``cancel_pending_provider_payment`` cancels a pending payment with no ledger
 reversal — correct for an unconfirmed transaction, wrong for a settled one. A
 ``CONFIRMED`` transaction (payment already ``succeeded``) is never in scope
 of the listing query below, and the per-row status re-check guards against a
-race that would otherwise let a just-confirmed row slip through. This is the
-same invariant ``uzum.service.reverse`` leans on when it routes a ``FAILED``
-transaction into its own cancel-pending branch: that is only safe because a
-``FAILED`` transaction never has a *succeeded* payment behind it.
+race that would otherwise let a just-confirmed row slip through -- BUT the
+transaction being CREATED does *not* guarantee its *payment* is still
+pending: ``uzum.service._ensure_payment`` reuses one order's pending ``uzum``
+payment across every ``/create`` call for that order (a customer retrying
+checkout), so a sibling transaction sharing this same payment may already
+have confirmed it (-> succeeded, order -> paid) while this row is still
+``CREATED``. So ``_fail_one`` re-checks the *payment's* status too and only
+cancels it while still ``pending``, always failing the transaction either
+way. ``uzum.service.reverse`` applies the identical guard when it routes a
+CREATED/FAILED transaction into its own cancel-pending branch: a shared
+payment a sibling has already settled is left untouched there as well.
 
 Importing ``uzum.models``/``payments.service`` directly (never
 ``uzum.api``/``uzum.routes``) avoids the api -> routes -> api/v1 circular
@@ -126,7 +133,19 @@ async def _fail_one(transaction_id: str) -> None:
             payment = (
                 await session.execute(select(Payment).where(Payment.id == txn.payment_id))
             ).scalar_one()
-            await pay_svc.cancel_pending_provider_payment(session, payment=payment, actor="uzum")
+            # ``uzum.service._ensure_payment`` reuses one order's pending
+            # ``uzum`` payment across every ``/create`` call for that order,
+            # so a sibling transaction may already have confirmed this SAME
+            # payment (-> succeeded, order -> paid) while this stale row still
+            # sits CREATED. Only cancel while the payment is still pending —
+            # cancelling an already-succeeded payment would corrupt a paid
+            # (possibly delivered) order and brick ``refund_admin``. If a
+            # sibling owns the payment's terminal state, leave it untouched;
+            # this transaction still fails either way.
+            if payment.status == "pending":
+                await pay_svc.cancel_pending_provider_payment(
+                    session, payment=payment, actor="uzum"
+                )
 
 
 async def run_uzum_timeout() -> None:

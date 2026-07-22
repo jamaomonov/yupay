@@ -21,7 +21,9 @@ idempotency guarantees Uzum's sandbox verifies — mirrors
   10015 on a reversed tx / 10016 already-confirmed replay.
 - ``reverse`` — from CREATED (cancel pending, no ledger) / from CONFIRMED
   (ledger reversal) / 10017 when delivered (whole-order and partial-delivery)
-  / 10018 replay / 10014 unknown.
+  / 10018 replay / 10014 unknown / a CREATED transaction sharing an
+  already-``succeeded`` payment with a confirmed sibling leaves that payment
+  and the paid order untouched.
 - ``status`` — the seven-field shape for CREATED / CONFIRMED / REVERSED.
 - ``build_checkout_url`` — the exact open-service URL for a known input.
 """
@@ -800,6 +802,68 @@ async def test_reverse_partial_delivery_is_10017(db_session: AsyncSession) -> No
     assert payment.status == "succeeded"
     order = (await db_session.execute(select(Order).where(Order.id == order_id))).scalar_one()
     assert order.status == "fulfilling"
+
+
+async def test_reverse_created_with_shared_succeeded_payment_leaves_payment_alone(
+    db_session: AsyncSession,
+) -> None:
+    """Money-safety regression: ``_ensure_payment`` reuses one order's pending
+    ``uzum`` payment across every ``/create`` call for that order (a customer
+    retrying checkout). If a sibling transaction confirms that shared payment
+    (-> succeeded, order -> paid) while THIS transaction is still CREATED, a
+    ``/reverse`` on this one must NOT cancel the now-succeeded payment out
+    from under the paid order — only this transaction moves to REVERSED."""
+    order_id = await _seed_order(db_session)
+    await uzum_svc.create(
+        db_session,
+        service_id=SERVICE_ID,
+        trans_id="uz-shared-a",
+        params={"order_id": order_id},
+        amount=EXPECTED_TIYIN,
+    )
+    await uzum_svc.create(
+        db_session,
+        service_id=SERVICE_ID,
+        trans_id="uz-shared-b",
+        params={"order_id": order_id},
+        amount=EXPECTED_TIYIN,
+    )
+    txn_a = (
+        await db_session.execute(
+            select(UzumTransaction).where(UzumTransaction.trans_id == "uz-shared-a")
+        )
+    ).scalar_one()
+    txn_b = (
+        await db_session.execute(
+            select(UzumTransaction).where(UzumTransaction.trans_id == "uz-shared-b")
+        )
+    ).scalar_one()
+    assert txn_a.payment_id == txn_b.payment_id  # sharing the same pending payment
+
+    await uzum_svc.confirm(db_session, trans_id="uz-shared-b", payment_source={})
+
+    result = await uzum_svc.reverse(db_session, trans_id="uz-shared-a")
+    assert result["status"] == "REVERSED"
+
+    reloaded_a = (
+        await db_session.execute(
+            select(UzumTransaction).where(UzumTransaction.trans_id == "uz-shared-a")
+        )
+    ).scalar_one()
+    assert reloaded_a.status == "REVERSED"
+
+    payment = (
+        await db_session.execute(select(Payment).where(Payment.id == txn_a.payment_id))
+    ).scalar_one()
+    assert payment.status == "succeeded"  # NOT cancelled -- a sibling owns it
+
+    order = (await db_session.execute(select(Order).where(Order.id == order_id))).scalar_one()
+    # The order-less-items fixture progresses straight through the
+    # in-process fulfilment saga (paid -> fulfilling, same as
+    # ``test_confirm_settles_payment``) -- the money-safety property under
+    # test is that it stays PAID, never reverted to unpaid/cancelled/refunded.
+    assert order.status not in {"pending_payment", "cancelled", "expired", "refunded"}
+    assert order.paid_at is not None
 
 
 async def test_reverse_replay_is_10018(db_session: AsyncSession) -> None:

@@ -206,3 +206,42 @@ async def test_no_stale_transactions_is_a_silent_no_op(db_session: AsyncSession)
     """An empty sweep must not raise -- covers the early-return path when the
     listing query finds nothing."""
     await uzum_timeout.run_uzum_timeout()
+
+
+async def test_stale_created_transaction_with_shared_succeeded_payment_leaves_payment_alone(
+    db_session: AsyncSession,
+) -> None:
+    """Money-safety regression: ``uzum.service._ensure_payment`` reuses one
+    order's pending payment across every ``/create`` call for that order (a
+    customer retrying checkout). If a sibling transaction already confirmed
+    that shared payment (-> succeeded, order -> paid), a stale CREATED
+    transaction still pointing at it must be failed WITHOUT cancelling the
+    now-succeeded payment out from under the paid order."""
+    order_id = await _seed_order(db_session)
+    payment_id = await _seed_payment(db_session, order_id=order_id, status="succeeded")
+    order = (await db_session.execute(select(Order).where(Order.id == order_id))).scalar_one()
+    order.status = "paid"
+    await db_session.commit()
+    old_create_time = uzum_timeout.now_ms() - 31 * _MINUTE_MS
+    txn_id = await _seed_transaction(
+        db_session,
+        order_id=order_id,
+        payment_id=payment_id,
+        status="CREATED",
+        create_time=old_create_time,
+    )
+
+    await uzum_timeout.run_uzum_timeout()
+
+    txn = await _reload_txn(db_session, txn_id)
+    assert txn.status == "FAILED"
+
+    payment = await _reload_payment(db_session, payment_id)
+    assert payment.status == "succeeded"  # NOT cancelled -- a sibling owns it
+
+    order = (
+        await db_session.execute(
+            select(Order).where(Order.id == order_id).execution_options(**_FRESH)
+        )
+    ).scalar_one()
+    assert order.status == "paid"  # NOT reverted

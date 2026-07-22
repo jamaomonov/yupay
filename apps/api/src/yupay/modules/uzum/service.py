@@ -362,7 +362,15 @@ async def reverse(db: AsyncSession, *, trans_id: str) -> dict[str, Any]:
     Money-safety hinges on the state routing:
 
     * **CREATED** (and **FAILED**, e.g. from the 30-min timeout sweep) → the
-      pending payment is cancelled, no ledger, no refund.
+      backing payment is cancelled, no ledger, no refund — but ONLY while that
+      payment is still ``pending``. ``_ensure_payment`` reuses one order's
+      pending ``uzum`` payment across every ``/create`` call for that order,
+      so a sibling transaction may have already confirmed it (payment ->
+      ``succeeded``, order -> paid) while this one sits CREATED. Cancelling a
+      ``succeeded`` payment here would corrupt a paid (possibly delivered)
+      order and brick ``refund_admin``, so a payment that is no longer
+      pending is left untouched — only the transaction itself moves to
+      REVERSED.
     * **CONFIRMED** → the succeeded payment is *reversed* (ledger refund). If
       the order's goods are already delivered, the reverse is refused with
       ``10017`` — a refund must never silently claw back money for a code the
@@ -400,11 +408,17 @@ async def reverse(db: AsyncSession, *, trans_id: str) -> dict[str, Any]:
         await pay_svc.reverse_provider_payment(
             db, payment=payment, external_event_id=trans_id, actor="uzum"
         )
-    else:
+    elif payment.status == "pending":
         # CREATED, or FAILED (the 30-min timeout sweep already marks the
         # backing payment cancelled — this is an idempotent no-op then): no
-        # successful charge was ever settled, so there is nothing to reverse
-        # on the ledger, only the pending payment to cancel.
+        # successful charge was ever settled on THIS transaction, so there is
+        # nothing to reverse on the ledger, only the pending payment to
+        # cancel. Guarded on the PAYMENT's own status (not just the
+        # transaction's) because the backing payment may be SHARED with a
+        # sibling transaction on the same order (see ``_ensure_payment``)
+        # that has since been confirmed — a payment a sibling already settled
+        # is left untouched here (that sibling owns its terminal state); the
+        # transaction below still moves to REVERSED either way.
         await pay_svc.cancel_pending_provider_payment(db, payment=payment, actor="uzum")
 
     reverse_time = now_ms()
