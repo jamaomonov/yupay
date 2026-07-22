@@ -82,6 +82,7 @@ async def db_engine():
                     "inventory_codes, inventory_uploads, sku_sourcing_rules, "
                     "sku_supplier_mapping, supplier_catalog_cache, supplier_price_history, "
                     "deliveries, fulfillment_attempts, fulfillment_tasks, "
+                    "payme_transactions, "
                     "payment_webhooks, payment_attempts, payments, "
                     "order_events, order_items, orders, "
                     "sku_prices, skus, product_translations, products, "
