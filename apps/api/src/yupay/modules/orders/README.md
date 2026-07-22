@@ -14,11 +14,11 @@ See [ADR-0011](../../../../../docs/decisions/0011-order-fsm-and-snapshots.md).
 
 ## Tables
 
-| Table          | Notes                                                                                                                                                              |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Table          | Notes                                                                                                                                                                                                                                                                                                               |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `orders`       | Either `user_id` or `guest_email` is set (CHECK enforced). Per-actor partial UNIQUE on `idempotency_key`. `total_charged = total_usd × fx_snapshot.rate` (frozen), rounded to the currency's smallest chargeable unit (whole so'm for UZS, kopecks for RUB) so it is always an exact tiyin amount acquirers accept. |
-| `order_items`  | `unit_price_usd` frozen, `fulfillment_data` validated. `fulfillment_state` runs its own micro-FSM (`pending → reserved → in_progress → delivered`).                |
-| `order_events` | Append-only audit. Outbox reads from here when `payments` + `fulfillment` land.                                                                                    |
+| `order_items`  | `unit_price_usd` frozen, `fulfillment_data` validated. `fulfillment_state` runs its own micro-FSM (`pending → reserved → in_progress → delivered`).                                                                                                                                                                 |
+| `order_events` | Append-only audit. Outbox reads from here when `payments` + `fulfillment` land.                                                                                                                                                                                                                                     |
 
 ## Public interface
 

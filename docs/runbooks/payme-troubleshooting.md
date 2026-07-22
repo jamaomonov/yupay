@@ -142,22 +142,22 @@ dev/staging tunnels are not behind it.
 
 ## Error codes — what they mean to an operator
 
-| Code     | Operator-facing meaning                                                                                         | Action                                                                                    |
-| -------- | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `-31001` | Amount Payme sent doesn't match the order's price                                                               | Usually a stale checkout link (order price changed); ask the customer to restart checkout |
-| `-31003` | Payme referenced a transaction id we don't have                                                                 | Check reachability — did an earlier `CreateTransaction` actually land?                    |
-| `-31007` | Cancel/refund refused — order already (partially) delivered                                                     | See "refund-via-cabinet" above — needs manual reconciliation                              |
-| `-31008` | Operation not valid for the transaction's current state (e.g. Perform on a cancelled tx)                        | Usually a client-side retry race; check `CheckTransaction` for the real state             |
-| `-31050` | `account.order_id` doesn't match any order                                                                      | Checkout link/account was malformed or the order was deleted                              |
-| `-31051` | Order isn't payable (already paid, or not in `pending_payment`)                                                 | Customer double-paid or reused a stale link; verify the order's actual status             |
-| `-31099` | Order already has a different in-progress transaction (a second `CreateTransaction` with a new id)              | Payme mandates this account-range code for a busy order; check `CheckTransaction`/`GetStatement` for the live tx |
-| `-32001` | `SetFiscalData` referenced an unknown transaction                                                               | Same as `-31003` — check reachability of the earlier calls                                |
-| `-32300` | Payme sent something other than POST                                                                            | Should never happen from Payme itself; check for a stray health-checker                   |
-| `-32400` | Unexpected internal error inside our handler                                                                    | Check API logs for `payme.merchant.internal_error` with a stack trace                     |
-| `-32504` | Basic-auth credentials didn't match                                                                             | Confirm `PAYME_LOGIN`/`PAYME_KEY`/`PAYME_TEST_KEY` match what's registered in the cabinet |
-| `-32600` | Malformed JSON-RPC envelope (missing/mistyped field)                                                            | Payme-side bug or a manual test request; check the raw body in the access log             |
-| `-32601` | Unknown method name                                                                                             | Payme called a method we don't implement (see ADR-0034 "out of scope")                    |
-| `-32700` | Request body wasn't valid JSON                                                                                  | Check for a proxy/tunnel mangling the body                                                |
+| Code     | Operator-facing meaning                                                                            | Action                                                                                                           |
+| -------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `-31001` | Amount Payme sent doesn't match the order's price                                                  | Usually a stale checkout link (order price changed); ask the customer to restart checkout                        |
+| `-31003` | Payme referenced a transaction id we don't have                                                    | Check reachability — did an earlier `CreateTransaction` actually land?                                           |
+| `-31007` | Cancel/refund refused — order already (partially) delivered                                        | See "refund-via-cabinet" above — needs manual reconciliation                                                     |
+| `-31008` | Operation not valid for the transaction's current state (e.g. Perform on a cancelled tx)           | Usually a client-side retry race; check `CheckTransaction` for the real state                                    |
+| `-31050` | `account.order_id` doesn't match any order                                                         | Checkout link/account was malformed or the order was deleted                                                     |
+| `-31051` | Order isn't payable (already paid, or not in `pending_payment`)                                    | Customer double-paid or reused a stale link; verify the order's actual status                                    |
+| `-31099` | Order already has a different in-progress transaction (a second `CreateTransaction` with a new id) | Payme mandates this account-range code for a busy order; check `CheckTransaction`/`GetStatement` for the live tx |
+| `-32001` | `SetFiscalData` referenced an unknown transaction                                                  | Same as `-31003` — check reachability of the earlier calls                                                       |
+| `-32300` | Payme sent something other than POST                                                               | Should never happen from Payme itself; check for a stray health-checker                                          |
+| `-32400` | Unexpected internal error inside our handler                                                       | Check API logs for `payme.merchant.internal_error` with a stack trace                                            |
+| `-32504` | Basic-auth credentials didn't match                                                                | Confirm `PAYME_LOGIN`/`PAYME_KEY`/`PAYME_TEST_KEY` match what's registered in the cabinet                        |
+| `-32600` | Malformed JSON-RPC envelope (missing/mistyped field)                                               | Payme-side bug or a manual test request; check the raw body in the access log                                    |
+| `-32601` | Unknown method name                                                                                | Payme called a method we don't implement (see ADR-0034 "out of scope")                                           |
+| `-32700` | Request body wasn't valid JSON                                                                     | Check for a proxy/tunnel mangling the body                                                                       |
 
 ## Fiscal data
 
