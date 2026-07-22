@@ -24,6 +24,7 @@ from yupay.modules.payments.gateways.base import (
 )
 from yupay.modules.payments.gateways.mock import MockGateway
 from yupay.modules.payments.gateways.octo import OctoGateway
+from yupay.modules.payments.gateways.payme import PaymeGateway
 from yupay.modules.payments.gateways.wallet import WalletGateway
 
 REGISTRY: dict[str, PaymentGateway] = {
@@ -38,10 +39,10 @@ REGISTRY: dict[str, PaymentGateway] = {
         provider="click",
         todo_message="Click acquirer not integrated yet; see ADR-0012.",
     ),
-    "payme": StubGateway(
-        provider="payme",
-        todo_message="Payme acquirer not integrated yet; see ADR-0012.",
-    ),
+    # Payme (Paycom) — second Uzbek acquirer. Hosted checkout only; the actual
+    # money movement happens via the Merchant JSON-RPC callback, not through
+    # this registry's generic webhook route. See yupay.modules.payme.service.
+    "payme": PaymeGateway(),
     "uzum": StubGateway(
         provider="uzum",
         todo_message="Uzum acquirer not integrated yet; see ADR-0012.",
@@ -80,6 +81,7 @@ __all__ = [
     "REGISTRY",
     "MockGateway",
     "OctoGateway",
+    "PaymeGateway",
     "PaymentGateway",
     "PaymentGatewayError",
     "PaymentIntent",
