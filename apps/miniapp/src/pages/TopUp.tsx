@@ -33,7 +33,7 @@ import { SafeImage } from "@/components/ui/safe-image";
 import { useAvailableProviders, useCheckout } from "@/lib/orders";
 import { ACQUIRER_BY_METHOD, PAYMENT_METHODS, PROVIDER_BY_METHOD } from "@/lib/payment-methods";
 import { getRecentFulfillment, rememberFulfillment } from "@/lib/recent-checkout";
-import { isInsideTelegram, setClosingConfirmation } from "@/lib/telegram";
+import { isInsideTelegram, openExternalLink, setClosingConfirmation } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { cn } from "@/lib/utils";
 import { amountError, parseAmount } from "@/lib/variable-amount";
@@ -557,7 +557,13 @@ export default function TopUp() {
           title: t("topup.redirecting"),
           description: result.payment.provider,
         });
-        window.location.href = result.payment.intent_url;
+        // Hand the acquirer URL to Telegram so it opens in the device browser
+        // instead of replacing the Mini App's own WebView. The app itself then
+        // moves to the order's status page, so when the customer finishes paying
+        // and swipes back to Telegram they land on live order status (which
+        // polls for the payment callback), not back on the checkout form.
+        openExternalLink(result.payment.intent_url);
+        setLocation(`/order/${result.order.id}`);
         return;
       }
       // Wallet ⇒ the gateway already debited and the saga already

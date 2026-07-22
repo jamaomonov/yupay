@@ -134,6 +134,33 @@ export function isInsideTelegram(): boolean {
   return Boolean(wa && wa.initData && wa.initData.length > 0);
 }
 
+/**
+ * Open an external URL — an acquirer's checkout / pay page — in a browser,
+ * leaving the Mini App (and its BackButton route stack) alive underneath.
+ *
+ * Inside Telegram, ``openLink`` is a native bridge call that hands the URL to
+ * the client to open in the system browser (or Telegram's in-app overlay,
+ * depending on the client and the user's "in-app browser" setting). That is
+ * deliberately different from ``window.location.href`` / ``<a target="_blank">``,
+ * which the WebView treats as in-place navigation — the acquirer page *replaces*
+ * the Mini App in the same WebView, losing the app and breaking the back arrow.
+ * ``window.open`` is the dev / desktop fallback when there is no Telegram bridge.
+ */
+export function openExternalLink(url: string): void {
+  const wa = getWebApp();
+  if (wa && typeof wa.openLink === "function") {
+    try {
+      wa.openLink(url);
+      return;
+    } catch {
+      /* fall through to the plain-browser fallback */
+    }
+  }
+  if (typeof window !== "undefined") {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+}
+
 /** Tell the Telegram client we're ready — hides the splash. */
 export function readyTelegram(): void {
   const wa = getWebApp();

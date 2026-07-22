@@ -47,7 +47,7 @@ import {
   addToHomeScreen,
   canShareToStory,
   getHomeScreenStatus,
-  getWebApp,
+  openExternalLink,
   shareToStory,
 } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -328,20 +328,11 @@ export default function OrderSuccess() {
             icon={<CreditCard size={15} />}
             label={t("success.payNow")}
             variant="primary"
+            // Opens in the device browser (or Telegram's in-app overlay), not
+            // in place of the mini app — keeping the app and its back arrow
+            // intact. See ``openExternalLink``.
             onClick={() => {
-              // ``<a target="_blank">`` is ignored inside the Telegram WebView —
-              // the acquirer page replaces the mini app in the same WebView and
-              // ``Telegram.WebApp.BackButton`` (wired in use-telegram-back-button)
-              // loses track of the route stack, so the back arrow breaks.
-              // ``openLink`` opens the URL in the system browser (or Telegram's
-              // in-app overlay) keeping the mini app — and the back button —
-              // intact. ``window.open`` is the dev/desktop fallback.
-              const wa = getWebApp();
-              if (wa?.openLink) {
-                wa.openLink(payUrl);
-              } else {
-                window.open(payUrl, "_blank", "noopener,noreferrer");
-              }
+              openExternalLink(payUrl);
             }}
           />
         )}

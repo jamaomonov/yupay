@@ -1,8 +1,44 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { computeInsetPx, computeKeyboardOpen, type Inset } from "./telegram";
+import { computeInsetPx, computeKeyboardOpen, type Inset, openExternalLink } from "./telegram";
 
 const inset = (top: number, bottom: number): Inset => ({ top, right: 0, bottom, left: 0 });
+
+describe("openExternalLink", () => {
+  const url = "https://checkout.paycom.uz/abc";
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  test("hands the URL to Telegram's openLink, never replacing the WebView", () => {
+    // The whole point: inside Telegram the acquirer page must open in a browser
+    // via the bridge, not by navigating the mini app's own WebView away.
+    const openLink = vi.fn();
+    const open = vi.fn();
+    vi.stubGlobal("window", { Telegram: { WebApp: { initData: "x", openLink } }, open });
+    openExternalLink(url);
+    expect(openLink).toHaveBeenCalledWith(url);
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  test("falls back to a new browser tab when the bridge call throws", () => {
+    const openLink = vi.fn(() => {
+      throw new Error("unsupported on this client");
+    });
+    const open = vi.fn();
+    vi.stubGlobal("window", { Telegram: { WebApp: { initData: "x", openLink } }, open });
+    openExternalLink(url);
+    expect(open).toHaveBeenCalledWith(url, "_blank", "noopener,noreferrer");
+  });
+
+  test("opens a new browser tab outside Telegram (dev / desktop)", () => {
+    const open = vi.fn();
+    vi.stubGlobal("window", { open });
+    openExternalLink(url);
+    expect(open).toHaveBeenCalledWith(url, "_blank", "noopener,noreferrer");
+  });
+});
 
 describe("computeInsetPx", () => {
   test("stacks the device inset and Telegram's chrome inset", () => {
