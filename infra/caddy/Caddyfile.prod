@@ -102,6 +102,29 @@ http://api.yupay.uz {
 	@metrics path /metrics /metrics/*
 	respond @metrics 404
 
+	# Payme's Merchant API (JSON-RPC) accepts calls only from Payme's
+	# documented source range 185.234.113.1-185.234.113.15 (the /28 CIDR
+	# below covers .0-.15). This is defense-in-depth alongside the
+	# app-layer Basic Auth check (-32504 in yupay.modules.payme.routes) —
+	# it does not replace it.
+	#
+	# yupay-caddy never sees Payme's real socket peer: the shared edge
+	# proxy (infra/edge/Caddyfile) sits in front of every YuPay hostname
+	# and forwards here over the ``yupay-edge`` network. That edge is NOT
+	# Cloudflare for YuPay — "Clients reach these hostnames directly" per
+	# infra/edge/Caddyfile — and it overwrites X-Forwarded-For with the
+	# real peer address before forwarding. Combined with the
+	# ``trusted_proxies static private_ranges`` global option above,
+	# ``client_ip`` resolves to that real address; ``remote_ip`` would only
+	# ever see the edge container's own private IP and would 403 every
+	# genuine Payme call. Use ``client_ip`` (Caddy >= 2.7), not
+	# ``remote_ip``, for this allowlist.
+	@paymeMerchantBlocked {
+		path /api/v1/payments/payme/merchant
+		not client_ip 185.234.113.0/28
+	}
+	respond @paymeMerchantBlocked 403
+
 	# WebSocket upgrade has to come first — Caddy stops on the first
 	# matching reverse_proxy directive.
 	@websocket {
