@@ -35,6 +35,7 @@ from yupay.modules.stats.api import admin_router as stats_admin_router
 from yupay.modules.storage.api import admin_router as storage_admin_router
 from yupay.modules.users.api import admin_router as users_admin_router
 from yupay.modules.users.api import router as users_router
+from yupay.modules.uzum.api import router as uzum_router
 from yupay.modules.wallet.api import admin_router as wallet_admin_router
 from yupay.modules.wallet.api import router as wallet_router
 
@@ -56,6 +57,7 @@ router.include_router(payments_admin_router)
 router.include_router(payments_admin_webhook_router)
 router.include_router(payments_webhook_router)
 router.include_router(payme_router)
+router.include_router(uzum_router)
 router.include_router(g2b_webhook_router)
 router.include_router(integrations_admin_router)
 router.include_router(integrations_router)
