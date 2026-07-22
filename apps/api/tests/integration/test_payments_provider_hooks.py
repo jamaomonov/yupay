@@ -149,9 +149,7 @@ async def _seed_voucher_sku(db_session: AsyncSession) -> str:
     await db_session.commit()
     from yupay.modules.inventory import service as inv_svc
 
-    await inv_svc.bulk_upload(
-        db_session, sku_id=sku.id, codes=["PH-A", "PH-B"], uploaded_by="test"
-    )
+    await inv_svc.bulk_upload(db_session, sku_id=sku.id, codes=["PH-A", "PH-B"], uploaded_by="test")
     await db_session.commit()
     return sku.id
 
@@ -179,9 +177,7 @@ async def _mock_intent(client: AsyncClient, *, token: str, order_id: str, tag: s
 
 
 async def _load_payment(db: AsyncSession, payment_id: str) -> Payment:
-    return (
-        await db.execute(select(Payment).where(Payment.id == payment_id))
-    ).scalar_one()
+    return (await db.execute(select(Payment).where(Payment.id == payment_id))).scalar_one()
 
 
 # ---------- settle_provider_payment ----------

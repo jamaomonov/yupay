@@ -65,9 +65,7 @@ async def test_create_intent_builds_exact_checkout_url(_payme_env: None) -> None
         db=cast(Any, None), order=order, return_url="https://return.example"
     )
 
-    expected_params = (
-        "m=merchant-1;ac.order_id=order-123;a=1500000;c=https://return.example;l=ru"
-    )
+    expected_params = "m=merchant-1;ac.order_id=order-123;a=1500000;c=https://return.example;l=ru"
     expected_b64 = base64.b64encode(expected_params.encode()).decode()
     assert intent.intent_url == f"https://checkout.paycom.uz/{expected_b64}"
     assert intent.external_id == "payme:order-123"

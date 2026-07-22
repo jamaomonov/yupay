@@ -126,9 +126,7 @@ _HANDLERS: dict[str, _Handler] = {
     "CancelTransaction": lambda db, p: payme_svc.cancel_transaction(
         db, payme_id=_req_str(p, "id"), reason=_req_int(p, "reason")
     ),
-    "CheckTransaction": lambda db, p: payme_svc.check_transaction(
-        db, payme_id=_req_str(p, "id")
-    ),
+    "CheckTransaction": lambda db, p: payme_svc.check_transaction(db, payme_id=_req_str(p, "id")),
     "GetStatement": lambda db, p: payme_svc.get_statement(
         db, from_ms=_req_int(p, "from"), to_ms=_req_int(p, "to")
     ),

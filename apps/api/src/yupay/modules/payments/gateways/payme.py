@@ -67,9 +67,7 @@ class PaymeGateway(PaymentGateway):
             raise PaymentGatewayError("order total_charged is non-positive")
         raw = amount * Decimal(100)
         if raw != raw.to_integral_value():
-            raise PaymentGatewayError(
-                f"order total_charged {amount} is not an exact tiyin amount"
-            )
+            raise PaymentGatewayError(f"order total_charged {amount} is not an exact tiyin amount")
         amount_tiyin = int(raw)
         intent_url = payme_svc.build_checkout_url(
             order_id=order.id,

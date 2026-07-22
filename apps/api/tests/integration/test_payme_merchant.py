@@ -178,9 +178,7 @@ async def test_sandbox_sequence_unconfirmed(
     assert cancelled["transaction"] == created["transaction"]
 
     # DB reflects the pending-cancel (payment cancelled, order still payable).
-    order = (
-        await db_session.execute(select(Order).where(Order.id == order_id))
-    ).scalar_one()
+    order = (await db_session.execute(select(Order).where(Order.id == order_id))).scalar_one()
     assert order.status == "pending_payment"
 
 
@@ -234,9 +232,7 @@ async def test_sandbox_sequence_confirmed(
     assert performed["state"] == 2
     assert performed["perform_time"] > 0
 
-    order = (
-        await db_session.execute(select(Order).where(Order.id == order_id))
-    ).scalar_one()
+    order = (await db_session.execute(select(Order).where(Order.id == order_id))).scalar_one()
     assert order.status != "pending_payment"
     assert order.paid_at is not None
     payment = (
@@ -261,9 +257,7 @@ async def test_sandbox_sequence_confirmed(
         await db_session.execute(select(Payment).where(Payment.id == payment_id))
     ).scalar_one()
     assert payment.status == "refunded"
-    order = (
-        await db_session.execute(select(Order).where(Order.id == order_id))
-    ).scalar_one()
+    order = (await db_session.execute(select(Order).where(Order.id == order_id))).scalar_one()
     assert order.status == "refunded"
 
 
