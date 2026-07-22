@@ -125,6 +125,25 @@ def order_not_payable() -> PaymeError:
     )
 
 
+def order_has_pending_transaction() -> PaymeError:
+    """-31099: the order already has an unfinished transaction in progress.
+
+    Payme requires an *account*-range error (``-31050..-31099``) — not the
+    generic ``-31008`` — when a second, *different* transaction tries to register
+    against an order that already holds an active (created/performed) one. The
+    sandbox's "CreateTransaction с новой транзакцией" case asserts this range.
+    """
+    return PaymeError(
+        code=-31099,
+        message={
+            "ru": "Заказ уже обрабатывается другой транзакцией",
+            "uz": "Buyurtma boshqa tranzaksiya tomonidan qayta ishlanmoqda",
+            "en": "Order is already being processed by another transaction",
+        },
+        data="order_id",
+    )
+
+
 def unauthorized() -> PaymeError:
     """-32504: the request's Basic Auth credentials failed Payme's merchant check."""
     return PaymeError(
@@ -220,6 +239,7 @@ __all__ = [
     "method_not_found",
     "method_not_post",
     "operation_not_permitted",
+    "order_has_pending_transaction",
     "order_not_found",
     "order_not_payable",
     "transaction_not_found",

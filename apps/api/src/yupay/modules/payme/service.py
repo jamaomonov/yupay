@@ -35,6 +35,7 @@ from yupay.modules.payme.errors import (
     fiscal_receipt_not_found,
     invalid_amount,
     operation_not_permitted,
+    order_has_pending_transaction,
     order_not_found,
     order_not_payable,
     transaction_not_found,
@@ -237,7 +238,8 @@ async def create_transaction(
 
     Idempotent against replays: a second call with the same ``payme_id`` returns
     the stored result without creating a duplicate row. A second *different*
-    active transaction on the same order is refused with ``-31008``.
+    active transaction on the same order is refused with ``-31099`` (an
+    account-range error Payme mandates for a busy order).
 
     Args:
         db: Active session.
@@ -251,7 +253,7 @@ async def create_transaction(
 
     Raises:
         PaymeError: ``-31050``/``-31051``/``-31001`` from validation,
-            ``-31008`` if the order already has a different active transaction.
+            ``-31099`` if the order already has a different active transaction.
     """
     existing = await _load_transaction(db, payme_id, for_update=True)
     if existing is not None:
@@ -279,7 +281,7 @@ async def create_transaction(
         )
     ).scalar_one_or_none()
     if other_active is not None:
-        raise operation_not_permitted()
+        raise order_has_pending_transaction()
 
     payment = await _ensure_payment(db, order)
     txn = PaymeTransaction(

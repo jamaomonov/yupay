@@ -57,9 +57,10 @@ errors are raised as `PaymeError` and rendered via `to_rpc_error()`.
 - **Result:** `{"create_time", "transaction", "state": 1}`.
 - **Idempotent** on `id`: a replay re-validates the amount and echoes the
   stored row rather than creating a duplicate. A **different** active
-  transaction already open on the same order → `-31008`.
+  transaction already open on the same order → `-31099` (Payme mandates an
+  account-range code, not `-31008`, for a busy order — the sandbox asserts this).
 - **Errors:** `-31050`/`-31051`/`-31001` (same validation as
-  `CheckPerformTransaction`), `-31008` (another active transaction exists for
+  `CheckPerformTransaction`), `-31099` (another active transaction exists for
   this order).
 
 ### `PerformTransaction`
@@ -160,6 +161,7 @@ offending field where Payme's spec calls for it.
 | `-31008` | Operation not permitted for the transaction's state    |
 | `-31050` | Order not found (`account.order_id`)                   |
 | `-31051` | Order not payable, or already paid                     |
+| `-31099` | Order already has a different in-progress transaction  |
 | `-32001` | `SetFiscalData`: no matching fiscal receipt            |
 | `-32300` | Request was not an HTTP POST                           |
 | `-32400` | Internal error (unexpected exception; always HTTP 200) |

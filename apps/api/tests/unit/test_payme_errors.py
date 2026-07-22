@@ -20,6 +20,7 @@ from yupay.modules.payme.errors import (
     method_not_found,
     method_not_post,
     operation_not_permitted,
+    order_has_pending_transaction,
     order_not_found,
     order_not_payable,
     transaction_not_found,
@@ -58,6 +59,15 @@ def test_operation_not_permitted_code() -> None:
 def test_order_not_found_code_and_data() -> None:
     err = order_not_found()
     assert err.code == -31050
+    assert err.data == "order_id"
+    _assert_localized_message(err.message)
+
+
+def test_order_has_pending_transaction_code_and_data() -> None:
+    err = order_has_pending_transaction()
+    # Must fall in Payme's account-error range so the sandbox's "new
+    # transaction on a busy order" case passes.
+    assert -31099 <= err.code <= -31050
     assert err.data == "order_id"
     _assert_localized_message(err.message)
 

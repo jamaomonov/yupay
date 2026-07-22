@@ -6,7 +6,7 @@ idempotency guarantees Payme's sandbox verifies:
 
 - ``check_perform_transaction`` — allow / -31050 / -31051 / -31001.
 - ``create_transaction`` — creates state 1, is idempotent on replay (one row),
-  and refuses a second active transaction on the same order (-31008).
+  and refuses a second active transaction on the same order (-31099).
 - ``perform_transaction`` — walks to state 2 + settles the payment (order paid),
   idempotent replay.
 - ``cancel_transaction`` — state 1 → -1 (pending cancel), state 2 → -2 (refund
@@ -213,7 +213,7 @@ async def test_create_transaction_wrong_amount_is_31001(db_session: AsyncSession
     assert exc.value.code == -31001
 
 
-async def test_create_second_active_tx_same_order_is_31008(
+async def test_create_second_active_tx_same_order_is_31099(
     db_session: AsyncSession,
 ) -> None:
     order_id = await _seed_order(db_session)
@@ -232,7 +232,9 @@ async def test_create_second_active_tx_same_order_is_31008(
             amount=EXPECTED_TIYIN,
             account={"order_id": order_id},
         )
-    assert exc.value.code == -31008
+    # Payme mandates an account-range error (-31050..-31099) for a busy order,
+    # not the generic -31008 — the sandbox's "new transaction" case asserts this.
+    assert -31099 <= exc.value.code <= -31050
 
 
 async def test_create_transaction_reuses_pending_payme_payment(
