@@ -37,6 +37,8 @@ REDACTED_KEYS = frozenset(
         "octo_signature_key",
         "payme_key",
         "payme_test_key",
+        "uzum_password",
+        "uzum_test_password",
         "bearer_token",
         "merchant_token",
     },

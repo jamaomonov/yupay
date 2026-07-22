@@ -292,6 +292,14 @@ class Settings(BaseSettings):
     payme_login: str = Field(default="Paycom")  # Basic-auth username (convention)
     payme_checkout_url: str = Field(default="https://checkout.paycom.uz")
 
+    # --- acquirer: Uzum (Merchant API) ---
+    uzum_service_id: int | None = Field(default=None)
+    uzum_login: str = Field(default="")  # production/cabinet login
+    uzum_password: str = Field(default="")  # production/cabinet password
+    uzum_test_login: str = Field(default="")  # sandbox login
+    uzum_test_password: str = Field(default="")  # sandbox password
+    uzum_open_service_url: str = Field(default="https://www.uzumbank.uz/open-service")
+
     # --- admin alerts (separate Telegram bot — NOT the customer bot) ---
     # Dedicated bot so an outage of one channel doesn't drag the other
     # down, and so the customer bot's token doesn't carry admin-chat
