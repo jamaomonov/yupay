@@ -33,7 +33,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # service ← api.v1 ← wallet.routes import cycle; loading the router package first
 # resolves it the same way ``bootstrap.create_app`` does.
 import yupay.api.v1  # noqa: F401  isort: skip
-from yupay.modules.orders.models import Order
+from yupay.core.ids import new_id
+from yupay.modules.catalog.models import (
+    Brand,
+    BrandTranslation,
+    Category,
+    CategoryTranslation,
+    Product,
+    ProductTranslation,
+    Sku,
+)
+from yupay.modules.fulfillment.models import Delivery, FulfillmentTask
+from yupay.modules.orders.models import Order, OrderItem
 from yupay.modules.payme import service as payme_svc
 from yupay.modules.payme.errors import PaymeError
 from yupay.modules.payme.models import PaymeTransaction
@@ -488,6 +499,160 @@ async def test_cancel_state_2_delivered_is_31007(db_session: AsyncSession) -> No
         await db_session.execute(select(Payment).where(Payment.id == payment_id))
     ).scalar_one()
     assert payment.status == "succeeded"
+
+
+async def _seed_sku(db: AsyncSession) -> str:
+    """Seed a minimal catalog and return a usable ``sku_id``."""
+    category = Category(
+        id=new_id(),
+        slug="games-ps",
+        sort_order=10,
+        active=True,
+        translations=[CategoryTranslation(locale="ru", name="Игры")],
+    )
+    brand = Brand(
+        id=new_id(),
+        slug="steam-ps",
+        category_id=category.id,
+        sort_order=10,
+        active=True,
+        translations=[BrandTranslation(locale="ru", name="Steam")],
+    )
+    product = Product(
+        id=new_id(),
+        slug="steam-wallet-ps",
+        brand_id=brand.id,
+        kind="top_up",
+        sort_order=10,
+        active=True,
+        required_fields=[],
+        translations=[ProductTranslation(locale="ru", name="Steam Wallet")],
+    )
+    sku = Sku(
+        id=new_id(),
+        product_id=product.id,
+        sku_code="steam-ps-10",
+        denomination="10",
+        region="GLOBAL",
+        price_usd=Decimal("5.00"),
+        sort_order=10,
+        active=True,
+    )
+    db.add_all([category, brand, product, sku])
+    await db.flush()
+    return sku.id
+
+
+async def _add_item(db: AsyncSession, *, order_id: str, sku_id: str, state: str) -> str:
+    item_id = str(uuid.uuid4())
+    db.add(
+        OrderItem(
+            id=item_id,
+            order_id=order_id,
+            sku_id=sku_id,
+            qty=1,
+            unit_price_usd=Decimal("5.00"),
+            fulfillment_state=state,
+        )
+    )
+    await db.flush()
+    return item_id
+
+
+async def test_cancel_state_2_partial_delivery_is_31007(
+    db_session: AsyncSession,
+) -> None:
+    """A multi-item paid order where ONE item is already delivered (the other
+    still in progress, so ``order.status == 'fulfilling'``) must refuse the
+    state-2 auto-refund with -31007 — otherwise a full reverse would claw back
+    money for a code the customer already holds."""
+    user_id = await _make_user(db_session)
+    # Order rests at ``fulfilling``: not all tasks done, so the coarse
+    # {"fulfilled","delivered"} status guard would MISS this.
+    order_id = await _make_order(db_session, user_id=user_id, status="fulfilling")
+    sku_id = await _seed_sku(db_session)
+    delivered_item = await _add_item(
+        db_session, order_id=order_id, sku_id=sku_id, state="delivered"
+    )
+    pending_item = await _add_item(
+        db_session, order_id=order_id, sku_id=sku_id, state="in_progress"
+    )
+
+    # One task succeeded (goods shipped) + its Delivery row; one still open.
+    db_session.add_all(
+        [
+            FulfillmentTask(
+                id=str(uuid.uuid4()),
+                order_id=order_id,
+                order_item_id=delivered_item,
+                supplier="mock",
+                status="succeeded",
+            ),
+            FulfillmentTask(
+                id=str(uuid.uuid4()),
+                order_id=order_id,
+                order_item_id=pending_item,
+                supplier="mock",
+                status="in_progress",
+            ),
+        ]
+    )
+    await db_session.flush()
+    db_session.add(
+        Delivery(
+            id=str(uuid.uuid4()),
+            order_item_id=delivered_item,
+            channel="in_app",
+            artifact_kind="code",
+            artifact={"code": "SEEN"},
+        )
+    )
+    await db_session.flush()
+
+    payment_id = str(uuid.uuid4())
+    db_session.add(
+        Payment(
+            id=payment_id,
+            order_id=order_id,
+            provider="payme",
+            status="succeeded",
+            amount=Decimal("130000.00"),
+            currency="UZS",
+        )
+    )
+    await db_session.flush()
+    db_session.add(
+        PaymeTransaction(
+            id=str(uuid.uuid4()),
+            payme_id="pt-cancel-partial",
+            order_id=order_id,
+            payment_id=payment_id,
+            amount_tiyin=EXPECTED_TIYIN,
+            state=2,
+            create_time=1_700_000_000_000,
+            perform_time=1_700_000_100_000,
+        )
+    )
+    await db_session.flush()
+
+    with pytest.raises(PaymeError) as exc:
+        await payme_svc.cancel_transaction(db_session, payme_id="pt-cancel-partial", reason=5)
+    assert exc.value.code == -31007
+
+    # No refund happened: the reverse hook was never reached.
+    payment = (
+        await db_session.execute(select(Payment).where(Payment.id == payment_id))
+    ).scalar_one()
+    assert payment.status == "succeeded"
+    order = (await db_session.execute(select(Order).where(Order.id == order_id))).scalar_one()
+    assert order.status == "fulfilling"
+    # The Payme transaction itself was NOT walked to -2.
+    txn = (
+        await db_session.execute(
+            select(PaymeTransaction).where(PaymeTransaction.payme_id == "pt-cancel-partial")
+        )
+    ).scalar_one()
+    assert txn.state == 2
 
 
 async def test_cancel_unknown_is_31003(db_session: AsyncSession) -> None:

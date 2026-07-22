@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.config import get_settings
 from yupay.core.ids import new_id
+from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.orders.models import Order
 from yupay.modules.payme.errors import (
     cannot_cancel_delivered,
@@ -48,9 +49,10 @@ _STATE_PERFORMED = 2
 _STATE_CANCELLED_PENDING = -1
 _STATE_CANCELLED_PERFORMED = -2
 
-# Order statuses that mean the customer already has the goods — a state-2
-# cancel on such an order is refused with -31007 (a money refund does not
-# retract a delivered code; that is a support decision, not an API one).
+# Order statuses that mean EVERY item is done — a state-2 cancel on such an
+# order is refused with -31007. This is a coarse guard; the fine-grained one
+# (:func:`_any_goods_delivered`) also refuses a still-``fulfilling`` order once
+# any single item has shipped.
 _DELIVERED_STATUSES = frozenset({"fulfilled", "delivered"})
 
 
@@ -172,6 +174,38 @@ async def _ensure_payment(db: AsyncSession, order: Order) -> Payment:
     db.add(payment)
     await db.flush()
     return payment
+
+
+async def _any_goods_delivered(db: AsyncSession, order_id: str) -> bool:
+    """Return ``True`` if ANY item on the order has already been delivered.
+
+    A ``FulfillmentTask`` reaches ``succeeded`` atomically with the creation of
+    its ``Delivery`` on every delivery path (supplier auto, inventory issue,
+    manual completion), so a single succeeded task is proof the customer already
+    holds at least one code. A multi-item order can rest at ``fulfilling`` (some
+    tasks still open) while others are already delivered — the coarse
+    order-status guard misses that, but this catches it. Used to refuse a
+    state-2 auto-refund that would otherwise claw back money for goods already
+    handed over.
+
+    Args:
+        db: Active session.
+        order_id: The order to inspect.
+
+    Returns:
+        ``True`` if at least one fulfilment task for the order is ``succeeded``.
+    """
+    row = (
+        await db.execute(
+            select(FulfillmentTask.id)
+            .where(
+                FulfillmentTask.order_id == order_id,
+                FulfillmentTask.status == "succeeded",
+            )
+            .limit(1)
+        )
+    ).first()
+    return row is not None
 
 
 async def check_perform_transaction(
@@ -351,7 +385,12 @@ async def cancel_transaction(db: AsyncSession, *, payme_id: str, reason: int) ->
         await pay_svc.cancel_pending_provider_payment(db, payment=payment, actor="payme")
     else:  # _STATE_PERFORMED
         order = (await db.execute(select(Order).where(Order.id == txn.order_id))).scalar_one()
-        if order.status in _DELIVERED_STATUSES:
+        # Refuse the auto-refund once ANY goods have shipped — not only when the
+        # WHOLE order reached fulfilled/delivered. A multi-item order can rest at
+        # ``fulfilling`` with one item already delivered; a full reverse here
+        # would refund money for a code the customer keeps. Such a case must be
+        # settled manually (Payme cabinet + admin), never auto-full-refunded.
+        if order.status in _DELIVERED_STATUSES or await _any_goods_delivered(db, txn.order_id):
             raise cannot_cancel_delivered()
         txn.state = _STATE_CANCELLED_PERFORMED
         txn.cancel_time = now_ms()
