@@ -5,7 +5,7 @@ Covers:
 - The webhook receiver flips the order ``pending_payment → paid``
 - Replaying the same webhook is idempotent (200, no state change)
 - Bad signature/shape returns 4xx and persists the rejected attempt
-- A stub provider (Click) refuses with 409 until it's integrated
+- A stub provider (YooKassa) refuses with 409 until it's integrated
 - Admin can list payments and simulate the mock webhook
 - Owner-only read on GET /payments/{id}
 """
@@ -277,7 +277,7 @@ async def test_stub_provider_refuses(integration_client: AsyncClient, _seed_sku:
             "Authorization": f"Bearer {token}",
             "Idempotency-Key": "ik-payments-routes-06-padpadpad",
         },
-        json={"order_id": order_id, "provider": "click"},
+        json={"order_id": order_id, "provider": "yookassa"},
     )
     assert r.status_code == 409
     assert "not available" in r.text.lower()
