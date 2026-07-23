@@ -38,7 +38,9 @@ export const PAYMENT_METHODS: PaymentMethod[] = [
     id: "click",
     name: "Click",
     subKey: "payment.click.sub",
-    provider: "click",
+    // Mini app is the bot surface → Click's bot service 108150; the web
+    // storefront uses its own `click`/108149.
+    provider: "click_miniapp",
     currency: "UZS",
     icon: clickIcon,
   },

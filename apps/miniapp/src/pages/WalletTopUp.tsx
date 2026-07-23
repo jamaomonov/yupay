@@ -56,7 +56,9 @@ export default function WalletTopUp() {
 
   const onSubmit = () => {
     // Wallet funding has no backend yet — order checkout already pays via these
-    // acquirers, but crediting the wallet balance is a separate flow.
+    // acquirers, but crediting the wallet balance is a separate flow. When this
+    // is wired, resolve providers via PROVIDER_BY_METHOD from payment-methods.ts
+    // (Click already maps to "click_miniapp" there — no override needed).
     toast.toast({
       title: t("walletTopUp.soonTitle"),
       description: t("walletTopUp.soonBody"),

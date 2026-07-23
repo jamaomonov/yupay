@@ -90,15 +90,13 @@ const TELEGRAM_DEEP_LINK = BOT_USERNAME ? `https://t.me/${BOT_USERNAME}` : null;
  *  of the shared acquirer grid. The backend provider slug is ``wallet``. */
 const WALLET_METHOD_ID = "wallet";
 
-// The shared acquirer list carries the external providers; the wallet option is
-// checkout-only, so we extend the provider map locally for resolution/availability.
-// Click also needs a per-surface override here: the shared list (also used by
-// the web app) maps "click" → the web merchant service (108149), but this Mini
-// App must pay through the bot's own Click service (108150) — see spec §16 #1.
+// The shared acquirer list carries the external providers (Click already
+// resolves to the Mini App's own "click_miniapp" service — see
+// payment-methods.ts); the wallet option is checkout-only, so we extend the
+// provider map locally for resolution/availability.
 const PROVIDER_BY_METHOD_FULL: Record<string, string> = {
   ...PROVIDER_BY_METHOD,
   [WALLET_METHOD_ID]: "wallet",
-  click: "click_miniapp",
 };
 
 function formatMoney(value: number, code: string): string {
@@ -273,8 +271,8 @@ export default function TopUp() {
     }
     if (liveProviderSet === null) return true;
     // Resolve through the FULL map (not the shared base map) so the
-    // availability check agrees with what checkout actually sends — Click
-    // resolves to "click_miniapp" here, not the web's "click".
+    // availability check agrees with what checkout actually sends —
+    // including the wallet sentinel, which only the FULL map carries.
     const provider = PROVIDER_BY_METHOD_FULL[methodId];
     return provider !== undefined && liveProviderSet.has(provider);
   };
