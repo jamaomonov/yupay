@@ -406,6 +406,43 @@ async def test_prepare_unknown_order_is_minus5(db_session: AsyncSession, _click_
     assert exc.value.code == -5
 
 
+async def test_prepare_blank_merchant_trans_id_is_minus5(
+    db_session: AsyncSession, _click_env: None
+) -> None:
+    with pytest.raises(ClickError) as exc:
+        await click_svc.prepare(
+            db_session,
+            click_trans_id=1005,
+            service_id=SERVICE_ID,
+            click_paydoc_id=5005,
+            merchant_trans_id="",
+            amount=AMOUNT_STR,
+            sign_time="2026-07-23 10:00:00",
+        )
+    assert exc.value.code == -5
+
+
+async def test_prepare_unknown_service_id_is_minus1(
+    db_session: AsyncSession, _click_env: None
+) -> None:
+    """``_provider_for_service`` is a defensive fallback: in practice the route
+    layer already rejects an unknown ``service_id`` while verifying the
+    signature, but a service_id that matches neither configured service must
+    still fail closed here rather than silently pick a provider."""
+    order_id = await _seed_order(db_session, total_charged=TOTAL_CHARGED)
+    with pytest.raises(ClickError) as exc:
+        await click_svc.prepare(
+            db_session,
+            click_trans_id=1099,
+            service_id=999_999,
+            click_paydoc_id=5099,
+            merchant_trans_id=order_id,
+            amount=AMOUNT_STR,
+            sign_time="2026-07-23 10:00:00",
+        )
+    assert exc.value.code == -1
+
+
 async def test_prepare_already_paid_order_is_minus4(
     db_session: AsyncSession, _click_env: None
 ) -> None:
