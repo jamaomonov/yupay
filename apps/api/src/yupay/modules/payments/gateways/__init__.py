@@ -5,9 +5,9 @@ Add a new provider:
   2. Drop the implementation into a new file under this package.
   3. Register it in :data:`REGISTRY` below.
 
-Stubs (``click``, ``yookassa``, ``tinkoff``, ``crypto``) keep their slugs
-reserved so the routes / webhooks / admin UI don't shift when the real
-implementation arrives.
+Stubs (``yookassa``, ``tinkoff``, ``crypto``) keep their slugs reserved so
+the routes / webhooks / admin UI don't shift when the real implementation
+arrives.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from yupay.modules.payments.gateways.base import (
     RefundResult,
     WebhookEvent,
 )
+from yupay.modules.payments.gateways.click import ClickGateway
 from yupay.modules.payments.gateways.mock import MockGateway
 from yupay.modules.payments.gateways.octo import OctoGateway
 from yupay.modules.payments.gateways.payme import PaymeGateway
@@ -36,10 +37,13 @@ REGISTRY: dict[str, PaymentGateway] = {
     # --- Uzbek acquirers ---
     # Octo (octo.uz) — first real card acquirer (Uzcard/Humo/Visa). See ADR-0020.
     "octo": OctoGateway(),
-    "click": StubGateway(
-        provider="click",
-        todo_message="Click acquirer not integrated yet; see ADR-0012.",
-    ),
+    # Click Shop API — fourth Uzbek acquirer. Hosted checkout only; the
+    # actual money movement happens via Click's own inverted webhooks
+    # (/prepare, /complete), not through this registry's generic webhook
+    # route. Two surfaces share one merchant — see
+    # yupay.modules.payments.gateways.click and yupay.modules.click.service.
+    "click": ClickGateway(provider="click"),
+    "click_miniapp": ClickGateway(provider="click_miniapp"),
     # Payme (Paycom) — second Uzbek acquirer. Hosted checkout only; the actual
     # money movement happens via the Merchant JSON-RPC callback, not through
     # this registry's generic webhook route. See yupay.modules.payme.service.
@@ -81,6 +85,7 @@ def available_providers() -> list[str]:
 
 __all__ = [
     "REGISTRY",
+    "ClickGateway",
     "MockGateway",
     "OctoGateway",
     "PaymeGateway",
