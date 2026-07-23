@@ -1,0 +1,110 @@
+sequenceDiagram
+    autonumber
+    title YuPay - Click Shop API payment
+
+    participant U as Customer (web or miniapp)
+    participant API as FastAPI
+    participant PAY as payments.service
+    participant CG as ClickGateway
+    participant DB as Postgres
+    participant CL as Click (Click Up / my.click.uz)
+    participant CSVC as click.service
+    participant FUL as fulfillment.service
+
+    Note over U,CL: pending_payment order, currency == UZS
+
+    U->>API: POST /payments/intents order_id, provider click or click_miniapp
+    API->>PAY: create_intent(order_id, provider)
+    PAY->>DB: SELECT order FOR UPDATE, status == pending_payment
+    PAY->>CG: create_intent(db, order, return_url)
+    CG->>CSVC: build_checkout_url(provider, order_id, amount_soums, return_url)
+    CSVC-->>CG: intent_url = my.click.uz/services/pay?service_id=..&merchant_id=..&amount=..&transaction_param=..&return_url=..
+    CG-->>PAY: PaymentIntent external_id, intent_url, status pending
+    PAY->>DB: INSERT payments provider, status pending, external_id
+    PAY-->>U: 201 intent_url
+    U->>CL: open pay link (web link or miniapp openExternalLink)
+
+    Note over CL,API: Click is now the webhook CLIENT - it drives our<br/>POST /payments/click/prepare and /complete (form-encoded, MD5 sign_string)
+
+    CL->>API: POST /payments/click/prepare click_trans_id, service_id, merchant_trans_id, amount, action 0, error, sign_time, sign_string
+
+    API->>API: read raw form fields (never a request model - missing field -8)
+    API->>CSVC: secret_for_service(service_id)
+    alt unknown service_id or blank secret
+        API-->>CL: 200 error -1 SIGN CHECK FAILED
+    else secret resolved
+        API->>API: verify MD5 sign_string over raw wire strings
+        alt signature mismatch
+            API-->>CL: 200 error -1 SIGN CHECK FAILED
+        else signature ok
+            API->>API: action must equal 0
+            alt action not 0
+                API-->>CL: 200 error -3 Action not found
+            else action ok
+                alt inbound error is negative (Click aborted)
+                    API->>CSVC: cancel by click_trans_id, service_id
+                    CSVC->>DB: PREPARED row (if any) to CANCELLED, cancel pending payment only if still pending
+                    API-->>CL: 200 error -9 Transaction cancelled
+                else inbound error is zero or positive
+                    API->>CSVC: prepare(click_trans_id, service_id, merchant_trans_id, amount)
+                    CSVC->>DB: existing txn for click_trans_id, service_id?
+                    alt replay of an existing PREPARED row
+                        CSVC-->>API: same merchant_prepare_id (idempotent)
+                    else first time
+                        CSVC->>DB: SELECT order FOR UPDATE by merchant_trans_id
+                        alt order missing
+                            CSVC-->>API: -5 User does not exist
+                        else order already paid
+                            CSVC-->>API: -4 Already paid
+                        else order not pending_payment
+                            CSVC-->>API: -9 Transaction cancelled
+                        else Decimal(amount) mismatch
+                            CSVC-->>API: -2 Incorrect parameter amount
+                        else amount ok
+                            CSVC->>DB: INSERT click_transactions status PREPARED, ensure pending payment for provider
+                            CSVC-->>API: click_trans_id, merchant_trans_id, merchant_prepare_id, error 0 Success
+                        end
+                    end
+                    API-->>CL: 200 JSON result above
+                end
+            end
+        end
+    end
+
+    opt buyer completes payment, Click debits the customer
+        CL->>API: POST /payments/click/complete click_trans_id, service_id, merchant_trans_id, merchant_prepare_id, amount, action 1, error, sign_time, sign_string
+
+        API->>CSVC: secret_for_service(service_id) then verify MD5 sign_string
+        alt unauthorized or bad signature
+            API-->>CL: 200 error -1 SIGN CHECK FAILED
+        else signature ok and action equals 1
+            alt inbound error is negative
+                API->>CSVC: cancel by merchant_prepare_id
+                CSVC->>DB: PREPARED row (if any) to CANCELLED, cancel pending payment only if still pending
+                API-->>CL: 200 error -9 Transaction cancelled
+            else inbound error is zero or positive
+                API->>CSVC: complete(click_trans_id, service_id, merchant_trans_id, merchant_prepare_id, amount)
+                CSVC->>DB: SELECT click_transactions FOR UPDATE by merchant_prepare_id
+                alt not found or click_trans_id, service_id, order_id mismatch
+                    CSVC-->>API: -6 Transaction does not exist
+                else already CONFIRMED
+                    CSVC-->>API: -4 Already paid (replay)
+                else already CANCELLED
+                    CSVC-->>API: -9 Transaction cancelled
+                else Decimal(amount) mismatch against txn.amount
+                    CSVC-->>API: -2 Incorrect parameter amount
+                else amount ok
+                    CSVC->>PAY: settle_provider_payment(payment, external_event_id click_trans_id)
+                    PAY->>DB: payment.status succeeded, order.status paid
+                    PAY->>FUL: start_for_order(order_id)
+                    CSVC->>DB: UPDATE click_transactions SET status CONFIRMED, complete_time
+                    CSVC-->>API: click_trans_id, merchant_trans_id, merchant_confirm_id, error 0 Success
+                end
+                API-->>CL: 200 JSON result above
+            end
+        end
+    end
+
+    Note over API,CL: Every response is HTTP 200 - success or error alike.<br/>A stray non-POST request on either path answers -8, never a 405.
+
+    Note over CSVC,DB: apps/scheduler click_timeout job: PREPARED transactions<br/>with no /complete after 30 minutes are cancelled via the same<br/>cancel() helper, guarded to only touch a still-pending payment.
