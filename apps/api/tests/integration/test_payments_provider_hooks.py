@@ -340,3 +340,66 @@ async def test_cancel_pending_provider_payment_no_ledger_no_fulfilment(
     await payments_svc.cancel_pending_provider_payment(db_session, payment=payment)
     await db_session.commit()
     assert payment.status == "cancelled"
+
+
+async def test_cancel_pending_provider_payment_noop_on_succeeded(
+    integration_client: AsyncClient, db_session: AsyncSession, _seed_sku: str
+) -> None:
+    """Money-safety (TOCTOU guard): a provider cancel that reaches an ALREADY
+    ``succeeded`` payment must be a no-op.
+
+    The backing payment can be SHARED across sibling transactions on a
+    retried checkout (``_ensure_payment``). If a sibling's ``/complete``
+    settles the payment and the stale-timeout sweep's cancel arrive close
+    together, both could read ``pending`` before either commits; the old
+    ``if payment.status == "cancelled": return`` guard would let the cancel
+    through and flip an already-succeeded (order paid + delivered) payment
+    back to ``cancelled`` with NO ledger reversal — stranding money, since
+    ``refund_admin`` then rejects a non-``succeeded`` payment. The
+    strengthened ``!= "pending"`` guard (plus the ``FOR UPDATE`` row lock)
+    makes cancel a no-op on ANY non-pending status, not just ``cancelled``.
+    """
+    from yupay.modules.orders.models import OrderEvent
+    from yupay.modules.payments import service as payments_svc
+
+    token, _ = await _login_user(integration_client, tg_id=924)
+    order_id = await _create_order(integration_client, token=token, sku_id=_seed_sku, tag="924")
+    payment_id = await _mock_intent(integration_client, token=token, order_id=order_id, tag="924")
+
+    payment = await _load_payment(db_session, payment_id)
+    await payments_svc.settle_provider_payment(
+        db_session, payment=payment, external_event_id="perform:924"
+    )
+    await db_session.commit()
+    assert payment.status == "succeeded"
+
+    cancelled_events_before = (
+        await db_session.execute(
+            select(func.count())
+            .select_from(OrderEvent)
+            .where(OrderEvent.order_id == order_id, OrderEvent.kind == "payment.cancelled")
+        )
+    ).scalar_one()
+
+    # A sibling stale-sweep/cancel callback arrives AFTER a sibling transaction
+    # already settled this SHARED payment — must be a no-op, not a claw-back.
+    await payments_svc.cancel_pending_provider_payment(db_session, payment=payment)
+    await db_session.commit()
+
+    assert payment.status == "succeeded"
+
+    cancelled_events_after = (
+        await db_session.execute(
+            select(func.count())
+            .select_from(OrderEvent)
+            .where(OrderEvent.order_id == order_id, OrderEvent.kind == "payment.cancelled")
+        )
+    ).scalar_one()
+    assert cancelled_events_after == cancelled_events_before
+
+    # The order — already paid and delivered off the successful settle — is
+    # untouched by the stray cancel.
+    detail = await integration_client.get(
+        f"/api/v1/orders/{order_id}", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert detail.json()["status"] == "delivered"

@@ -777,12 +777,20 @@ async def settle_provider_payment(
     second code path that flips order status. Idempotent: a no-op when the
     payment already reached ``succeeded`` (e.g. a retried callback).
 
+    Locks the payment row (``SELECT ... FOR UPDATE``) before the status guard
+    so this check-then-write is atomic against a concurrent
+    ``cancel_pending_provider_payment``/``reverse_provider_payment`` on the
+    SAME payment (it can be shared across sibling transactions on retried
+    checkouts — see ``_ensure_payment``).
+
     Args:
         db: Active session; the caller commits.
-        payment: The pending payment the provider just confirmed.
+        payment: The pending payment the provider just confirmed. Must be a
+            persistent, session-attached row (the caller's job to load it).
         external_event_id: The provider's event/transaction id, recorded on the
             resulting ``order.paid`` event for audit.
     """
+    await db.refresh(payment, with_for_update=True)
     if payment.status == "succeeded":
         return
     event = WebhookEvent(
@@ -806,12 +814,20 @@ async def reverse_provider_payment(
     provider cancel). Idempotent: a no-op when the payment is already
     ``refunded``.
 
+    Locks the payment row (``SELECT ... FOR UPDATE``) before the status guard
+    so this check-then-write is atomic against a concurrent
+    ``settle_provider_payment``/``cancel_pending_provider_payment`` on the
+    SAME payment (it can be shared across sibling transactions on retried
+    checkouts — see ``_ensure_payment``).
+
     Args:
         db: Active session; the caller commits.
-        payment: The succeeded payment the provider is reversing.
+        payment: The succeeded payment the provider is reversing. Must be a
+            persistent, session-attached row (the caller's job to load it).
         external_event_id: The provider's cancel event id, recorded for audit.
         actor: Audit actor for the order event and ledger posting.
     """
+    await db.refresh(payment, with_for_update=True)
     if payment.status == "refunded":
         return
     await _apply_refund_reversal(
@@ -832,14 +848,28 @@ async def cancel_pending_provider_payment(
 
     Marks the payment ``cancelled`` through the single :func:`_mark_payment_terminal`
     chokepoint — no ledger, no fulfilment, the order stays ``pending_payment``.
-    Idempotent: a no-op when the payment is already ``cancelled``.
+    Cancels IFF still pending (under a row lock); a no-op on any already-
+    terminal/succeeded status.
+
+    Locks the payment row (``SELECT ... FOR UPDATE``) before the status guard
+    so this check-then-write is atomic against a concurrent
+    ``settle_provider_payment``/``reverse_provider_payment`` on the SAME
+    payment — it can be shared across sibling transactions on retried
+    checkouts (see ``_ensure_payment``), so a sibling settling the payment and
+    a stale-timeout sweep cancelling it can otherwise both read ``pending``
+    before either commits. Guarding on ``!= "pending"`` (rather than
+    ``== "cancelled"``) means a payment a sibling already settled to
+    ``succeeded`` is NEVER clawed back to ``cancelled`` with no ledger
+    reversal.
 
     Args:
         db: Active session; the caller commits.
-        payment: The pending payment the provider is cancelling.
+        payment: The pending payment the provider is cancelling. Must be a
+            persistent, session-attached row (the caller's job to load it).
         actor: Audit actor threaded onto the synthetic event's ``raw``.
     """
-    if payment.status == "cancelled":
+    await db.refresh(payment, with_for_update=True)
+    if payment.status != "pending":
         return
     event = WebhookEvent(
         external_event_id=f"provider-cancel:{payment.id}",
