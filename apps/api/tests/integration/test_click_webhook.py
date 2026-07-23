@@ -321,6 +321,91 @@ async def test_prepare_unknown_service_id_is_minus1(
     assert resp["error_note"] == "SIGN CHECK FAILED!"
 
 
+async def test_complete_tampered_sign_string_is_minus1(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    order_id = await _seed_order(db_session)
+    click_trans_id = "9020"
+    prepared = (
+        await integration_client.post(
+            PREPARE_URL,
+            data=_prepare_body(click_trans_id=click_trans_id, merchant_trans_id=order_id),
+        )
+    ).json()
+
+    body = _complete_body(
+        click_trans_id=click_trans_id,
+        merchant_trans_id=order_id,
+        merchant_prepare_id=str(prepared["merchant_prepare_id"]),
+    )
+    body["sign_string"] = "0" * 32 if body["sign_string"] != "0" * 32 else "1" * 32
+
+    r = await integration_client.post(COMPLETE_URL, data=body)
+    assert r.status_code == 200
+    resp = r.json()
+    assert resp["error"] == -1
+    assert resp["error_note"] == "SIGN CHECK FAILED!"
+
+
+async def test_complete_unknown_service_id_is_minus1(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    order_id = await _seed_order(db_session)
+    click_trans_id = "9021"
+    prepared = (
+        await integration_client.post(
+            PREPARE_URL,
+            data=_prepare_body(click_trans_id=click_trans_id, merchant_trans_id=order_id),
+        )
+    ).json()
+
+    body = _complete_body(
+        click_trans_id=click_trans_id,
+        merchant_trans_id=order_id,
+        merchant_prepare_id=str(prepared["merchant_prepare_id"]),
+        service_id="999999",
+        secret="whatever",
+    )
+
+    r = await integration_client.post(COMPLETE_URL, data=body)
+    assert r.status_code == 200
+    resp = r.json()
+    assert resp["error"] == -1
+    assert resp["error_note"] == "SIGN CHECK FAILED!"
+
+
+async def test_complete_service_error_is_echoed(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A wrong ``amount``, correctly signed for itself, passes the route's
+    signature guard but fails ``service.complete()``'s amount check against
+    the amount recorded at Prepare time -- the route's ``except ClickError``
+    handler (routes.py:274-275) must render the resulting ``-2`` at HTTP 200,
+    never let it escape uncaught."""
+    order_id = await _seed_order(db_session)
+    click_trans_id = "9022"
+    prepared = (
+        await integration_client.post(
+            PREPARE_URL,
+            data=_prepare_body(click_trans_id=click_trans_id, merchant_trans_id=order_id),
+        )
+    ).json()
+
+    wrong_amount = str(TOTAL_CHARGED - Decimal("1.00"))
+    body = _complete_body(
+        click_trans_id=click_trans_id,
+        merchant_trans_id=order_id,
+        merchant_prepare_id=str(prepared["merchant_prepare_id"]),
+        amount=wrong_amount,
+    )
+
+    r = await integration_client.post(COMPLETE_URL, data=body)
+    assert r.status_code == 200
+    resp = r.json()
+    assert resp["error"] == -2
+    assert resp["error_note"] == "Incorrect parameter amount"
+
+
 # --------------------------------------------------------------------------- #
 # action guard                                                                #
 # --------------------------------------------------------------------------- #
@@ -600,6 +685,31 @@ async def test_complete_missing_merchant_prepare_id_is_minus8(
     resp = r.json()
     assert resp["error"] == -8
     assert resp["error_note"] == "Error in request from click"
+
+
+# --------------------------------------------------------------------------- #
+# Malformed body (never a 500, even before signature verification runs)      #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("url", [PREPARE_URL, COMPLETE_URL])
+async def test_malformed_multipart_body_is_minus8(
+    integration_client: AsyncClient, url: str
+) -> None:
+    """A malformed ``multipart/form-data`` body must never escape
+    ``request.form()`` as an uncaught ``MultipartParseError`` -- Click has no
+    IP allowlist (the signature is the gate), so any unauthenticated request
+    with an unparseable body must fail closed to ``-8`` at HTTP 200 BEFORE
+    signature verification even runs. Regression test for the critical
+    form-parse-escapes-the-always-HTTP-200-contract fix; fails with a 500
+    pre-fix."""
+    r = await integration_client.post(
+        url,
+        headers={"content-type": "multipart/form-data; boundary=X"},
+        content=b"not a valid multipart body at all",
+    )
+    assert r.status_code == 200
+    assert r.json() == {"error": -8, "error_note": "Error in request from click"}
 
 
 # --------------------------------------------------------------------------- #

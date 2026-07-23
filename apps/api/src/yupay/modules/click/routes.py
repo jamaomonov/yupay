@@ -135,7 +135,10 @@ async def click_prepare(request: Request, db: DbSession) -> dict[str, Any]:
     Returns:
         The response body dict — always HTTP 200 (see module docstring).
     """
-    form = await request.form()
+    try:
+        form = await request.form()
+    except Exception:  # noqa: BLE001 -- any unparseable body is -8, never a 500
+        return bad_request().to_response()
 
     try:
         click_trans_id_raw = _req_str(form, "click_trans_id")
@@ -213,7 +216,10 @@ async def click_complete(request: Request, db: DbSession) -> dict[str, Any]:
     Returns:
         The response body dict — always HTTP 200.
     """
-    form = await request.form()
+    try:
+        form = await request.form()
+    except Exception:  # noqa: BLE001 -- any unparseable body is -8, never a 500
+        return bad_request().to_response()
 
     try:
         click_trans_id_raw = _req_str(form, "click_trans_id")
