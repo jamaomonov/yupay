@@ -318,8 +318,8 @@ async def test_refund_validation_errors(
 async def test_refund_dry_run_for_stub_provider(
     integration_client: AsyncClient, db_session: AsyncSession, _seed_sku: str
 ) -> None:
-    """A succeeded payment on a not-yet-integrated provider (click) refunds in
-    dry-run mode: state flips, ledger books, no network call is attempted."""
+    """A succeeded payment on a not-yet-integrated provider (yookassa) refunds
+    in dry-run mode: state flips, ledger books, no network call is attempted."""
     token = await _login_user(integration_client, tg_id=805)
     await _grant_admin(db_session, tg_id=805)
     order_id, _, _ = await _order_with_intent(
@@ -328,11 +328,11 @@ async def test_refund_dry_run_for_stub_provider(
     stub = Payment(
         id=new_id(),
         order_id=order_id,
-        provider="click",
+        provider="yookassa",
         status="succeeded",
         amount=Decimal("1.50"),
         currency="USD",
-        external_id=f"click_{new_id()}",
+        external_id=f"yookassa_{new_id()}",
         extra_metadata={},
     )
     db_session.add(stub)

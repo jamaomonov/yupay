@@ -210,8 +210,12 @@ described above applies here too.
 
 **Log lines to watch:**
 
-- `click_timeout.tick` — one per scheduler run, with `checked` / `cancelled`
-  / `errored` counts. `checked: 0` most ticks is normal (no stale backlog); a
+- `click_timeout.tick` — logged only when the sweep actually found and
+  processed at least one stale `PREPARED` row, with `checked` / `cancelled`
+  / `errored` counts (`checked` is always >= 1 here). The job returns before
+  this log call whenever there's no stale backlog, so **its absence during a
+  quiet period is normal** — there is no `checked: 0` heartbeat every tick,
+  and not seeing this line does not mean the scheduler is down. A
   persistently large `checked` count with a growing `errored` count means
   something is wrong with the sweep itself (DB connectivity, a bad row
   shape) and needs investigation.
