@@ -16251,6 +16251,54 @@
         ]
       }
     },
+    "/api/v1/payments/click/complete": {
+      "post": {
+        "description": "Handle Click's ``/complete``: Click debited the customer; settle the payment.\n\nArgs:\n    request: The inbound webhook request.\n    db: Active session; this route owns the commit/rollback.\n\nReturns:\n    The response body dict \u2014 always HTTP 200.",
+        "operationId": "click_complete_api_v1_payments_click_complete_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Click Complete Api V1 Payments Click Complete Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Click Shop API: /complete",
+        "tags": [
+          "click"
+        ]
+      }
+    },
+    "/api/v1/payments/click/prepare": {
+      "post": {
+        "description": "Handle Click's ``/prepare``: validate the order, allocate a transaction.\n\nArgs:\n    request: The inbound webhook request (form fields read here, not via\n        a request model, so a missing/malformed field is ``-8`` \u2014 never\n        a 422).\n    db: Active session; this route owns the commit/rollback.\n\nReturns:\n    The response body dict \u2014 always HTTP 200 (see module docstring).",
+        "operationId": "click_prepare_api_v1_payments_click_prepare_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Click Prepare Api V1 Payments Click Prepare Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Click Shop API: /prepare",
+        "tags": [
+          "click"
+        ]
+      }
+    },
     "/api/v1/payments/intents": {
       "post": {
         "operationId": "create_intent_route_api_v1_payments_intents_post",
