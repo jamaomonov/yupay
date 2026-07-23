@@ -168,6 +168,17 @@ def test_verify_false_for_tampered_hex() -> None:
     assert signature.verify(digest, tampered) is False
 
 
+def test_verify_false_for_non_ascii_received_without_raising() -> None:
+    """A malformed/hostile ``sign_string`` with non-ASCII bytes must fail
+    closed, not raise. ``hmac.compare_digest`` raises ``TypeError`` on
+    non-ASCII strings, and ``received`` is untrusted wire input from the
+    webhook — an uncaught ``TypeError`` here would break every Click
+    request instead of just this bad one."""
+    digest = hashlib.md5(b"hello").hexdigest()
+    assert len(digest) == 32
+    assert signature.verify(digest, "héllo" + digest[5:]) is False
+
+
 # --- secret_for_service ---
 
 

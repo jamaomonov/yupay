@@ -150,9 +150,19 @@ def verify(expected_hex: str, received: str) -> bool:
 
     Returns:
         ``True`` if the two digests match, ignoring case and surrounding
-        whitespace on ``received``; ``False`` otherwise.
+        whitespace on ``received``; ``False`` otherwise. Fails closed
+        (returns ``False``) rather than raising when ``received`` is
+        malformed, e.g. non-ASCII bytes — see the ``except`` below.
     """
-    return hmac.compare_digest(expected_hex.lower(), received.strip().lower())
+    try:
+        return hmac.compare_digest(expected_hex.lower(), received.strip().lower())
+    except TypeError:
+        # hmac.compare_digest raises TypeError when either string contains
+        # non-ASCII characters. `received` is untrusted wire input from the
+        # webhook, so a non-ASCII sign_string is just a malformed/hostile
+        # request — fail closed instead of letting the error propagate and
+        # break the "always 200 with a JSON error body" webhook contract.
+        return False
 
 
 __all__ = [
