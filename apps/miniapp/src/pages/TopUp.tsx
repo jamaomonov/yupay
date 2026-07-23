@@ -92,9 +92,13 @@ const WALLET_METHOD_ID = "wallet";
 
 // The shared acquirer list carries the external providers; the wallet option is
 // checkout-only, so we extend the provider map locally for resolution/availability.
+// Click also needs a per-surface override here: the shared list (also used by
+// the web app) maps "click" → the web merchant service (108149), but this Mini
+// App must pay through the bot's own Click service (108150) — see spec §16 #1.
 const PROVIDER_BY_METHOD_FULL: Record<string, string> = {
   ...PROVIDER_BY_METHOD,
   [WALLET_METHOD_ID]: "wallet",
+  click: "click_miniapp",
 };
 
 function formatMoney(value: number, code: string): string {
@@ -268,7 +272,10 @@ export default function TopUp() {
       if (method && method.currency !== "UZS") return false;
     }
     if (liveProviderSet === null) return true;
-    const provider = PROVIDER_BY_METHOD[methodId];
+    // Resolve through the FULL map (not the shared base map) so the
+    // availability check agrees with what checkout actually sends — Click
+    // resolves to "click_miniapp" here, not the web's "click".
+    const provider = PROVIDER_BY_METHOD_FULL[methodId];
     return provider !== undefined && liveProviderSet.has(provider);
   };
 
@@ -540,7 +547,7 @@ export default function TopUp() {
         skuId: activePkg.id,
         fulfillmentData,
         currency,
-        provider: PROVIDER_BY_METHOD_FULL[paymentMethod] ?? "click",
+        provider: PROVIDER_BY_METHOD_FULL[paymentMethod] ?? "click_miniapp",
         // Sent as a fixed-2-decimal string so the server never has to
         // round-trip a client float — the server re-validates and re-prices
         // from it regardless.
