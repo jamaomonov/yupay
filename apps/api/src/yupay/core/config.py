@@ -319,6 +319,43 @@ class Settings(BaseSettings):
             return None
         return v
 
+    # --- acquirer: Click (Shop API: Prepare/Complete) ---
+    # Two Click services share one merchant: web (yupay.uz) and bot (Telegram
+    # mini app). Each service has its own SECRET_KEY; Click signs every
+    # Prepare/Complete webhook with an MD5 sign_string keyed on that secret, so
+    # the incoming ``service_id`` selects which secret verifies the request.
+    # ``amount`` is in soums (major units, float), not tiyin.
+    click_merchant_id: int | None = Field(default=None)  # shared across both services
+    click_service_id_web: int | None = Field(default=None)  # yupay.uz service
+    click_service_id_bot: int | None = Field(default=None)  # Telegram mini-app service
+    click_secret_key_web: str = Field(default="")  # SECRET_KEY for the web service
+    click_secret_key_bot: str = Field(default="")  # SECRET_KEY for the bot service
+    click_merchant_user_id_web: int | None = Field(default=None)
+    click_merchant_user_id_bot: int | None = Field(default=None)
+    click_pay_url: str = Field(default="https://my.click.uz/services/pay")
+
+    @field_validator(
+        "click_merchant_id",
+        "click_service_id_web",
+        "click_service_id_bot",
+        "click_merchant_user_id_web",
+        "click_merchant_user_id_bot",
+        mode="before",
+    )
+    @classmethod
+    def _blank_click_int_to_none(cls, v: object) -> object:
+        """Treat an empty/whitespace-only Click numeric env var as "not set".
+
+        Same ``"" -> None`` coercion as :meth:`_blank_uzum_service_id_to_none`,
+        applied to every ``int | None`` Click field so the documented "leave
+        empty to disable" convention doesn't raise a ``ValidationError`` at
+        startup. ``v`` is ``object`` (raw pre-coercion input); real integers,
+        numeric strings, and ``None`` pass through untouched.
+        """
+        if isinstance(v, str) and v.strip() == "":
+            return None
+        return v
+
     # --- admin alerts (separate Telegram bot — NOT the customer bot) ---
     # Dedicated bot so an outage of one channel doesn't drag the other
     # down, and so the customer bot's token doesn't carry admin-chat

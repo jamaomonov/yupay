@@ -39,6 +39,8 @@ REDACTED_KEYS = frozenset(
         "payme_test_key",
         "uzum_password",
         "uzum_test_password",
+        "click_secret_key_web",
+        "click_secret_key_bot",
         "bearer_token",
         "merchant_token",
     },
