@@ -33,6 +33,7 @@ from yupay.modules.wallet import models as _wallet_models  # noqa: F401
 
 from yupay_scheduler.jobs import (
     broadcast_dispatch,
+    click_timeout,
     expire_orders,
     payme_timeout,
     refresh_supplier_prices,
@@ -52,6 +53,7 @@ def build_scheduler() -> AsyncIOScheduler:
     """
     scheduler = AsyncIOScheduler(timezone="UTC")
     broadcast_dispatch.register(scheduler)
+    click_timeout.register(scheduler)
     expire_orders.register(scheduler)
     payme_timeout.register(scheduler)
     refresh_supplier_prices.register(scheduler)
