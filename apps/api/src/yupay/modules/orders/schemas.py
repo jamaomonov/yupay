@@ -124,7 +124,13 @@ class OrderAdminOut(OrderOut):
     """Same as :class:`OrderOut` but exposes actor identifiers + audit trail."""
 
     user_id: str | None
-    guest_email: EmailStr | None
+    # Plain ``str`` (not ``EmailStr``) on purpose: this is a read-only view of an
+    # already-stored address, and re-validating it on output makes the whole
+    # admin list 500 on a single odd row. Addresses that are legal to store but
+    # rejected by strict RFC email validation — e.g. reserved-TLD test addresses
+    # like ``uzum-test@test.local`` seeded during sandbox payment testing — must
+    # still render. Email format is enforced at write time (``OrderCreate``).
+    guest_email: str | None
     events: list[OrderEventOut]
 
 

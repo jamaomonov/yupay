@@ -14,7 +14,7 @@ import hashlib
 import hmac
 import json
 import time
-from datetime import UTC
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from urllib.parse import urlencode
 
@@ -33,6 +33,7 @@ from yupay.modules.catalog.models import (
     Sku,
     SkuPrice,
 )
+from yupay.modules.orders.models import Order, OrderItem
 from yupay.modules.users.models import TelegramLink, User
 
 pytestmark = pytest.mark.asyncio
@@ -463,6 +464,49 @@ async def test_admin_can_list_and_cancel(
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert repeat.status_code == 409
+
+
+async def test_admin_list_renders_order_with_reserved_tld_guest_email(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_pubg: dict[str, str],
+) -> None:
+    """A guest email that is legal to store but fails strict RFC validation
+    (reserved ``.local`` TLD, as seeded during Uzum sandbox payment testing)
+    must render in the admin list rather than 500-ing the whole page. The
+    admin output DTO carries ``guest_email`` as a plain ``str``, not
+    ``EmailStr``, so it is not re-validated on the way out."""
+    order = Order(
+        id=new_id(),
+        guest_email="uzum-test@test.local",
+        status="pending_payment",
+        currency="UZS",
+        total_usd=Decimal("1.00"),
+        total_charged=Decimal("130000"),
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+        items=[
+            OrderItem(
+                id=new_id(),
+                sku_id=_seed_pubg["sku_id"],
+                qty=1,
+                unit_price_usd=Decimal("0.85"),
+                fulfillment_data={"player_id": "555555", "server": "as"},
+            )
+        ],
+    )
+    db_session.add(order)
+    await db_session.commit()
+
+    admin_token = await _login_user(integration_client, tg_id=43)
+    await _grant_admin(db_session, tg_id=43)
+
+    listing = await integration_client.get(
+        "/api/v1/admin/orders", headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert listing.status_code == 200, listing.text
+    match = [o for o in listing.json()["items"] if o["id"] == order.id]
+    assert match, "seeded order missing from admin listing"
+    assert match[0]["guest_email"] == "uzum-test@test.local"
 
 
 # ---------- expiry ----------

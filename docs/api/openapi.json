@@ -4393,7 +4393,6 @@
           "guest_email": {
             "anyOf": [
               {
-                "format": "email",
                 "type": "string"
               },
               {
