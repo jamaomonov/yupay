@@ -109,8 +109,8 @@ async def _seed_order(
     return await _make_order(db, user_id=user_id, status=status, total_charged=total_charged)
 
 
-# expected tiyin for the default order: 130000.00 UZS * 100 = 13_000_000
-EXPECTED_TIYIN = 13_000_000
+# expected amount for the default order: 130000.00 UZS = 130_000 sums
+EXPECTED_SUM = 130_000
 
 
 async def test_uzum_transaction_round_trips(db_session: AsyncSession) -> None:
@@ -121,7 +121,7 @@ async def test_uzum_transaction_round_trips(db_session: AsyncSession) -> None:
         id=new_id(),
         trans_id="686cbf0f0a6e2d3d5c0e1234",
         order_id=order_id,
-        amount_tiyin=1_300_000,
+        amount_sum=1_300_000,
         status="CREATED",
         create_time=1_700_000_000_000,
     )
@@ -134,7 +134,7 @@ async def test_uzum_transaction_round_trips(db_session: AsyncSession) -> None:
     assert fetched.trans_id == "686cbf0f0a6e2d3d5c0e1234"
     assert fetched.order_id == order_id
     assert fetched.payment_id is None
-    assert fetched.amount_tiyin == 1_300_000
+    assert fetched.amount_sum == 1_300_000
     assert fetched.status == "CREATED"
     assert fetched.service_id is None
     assert fetched.create_time == 1_700_000_000_000
@@ -155,7 +155,7 @@ async def test_uzum_transaction_rejects_duplicate_trans_id(db_session: AsyncSess
             id=new_id(),
             trans_id="dup-trans-id",
             order_id=order_a,
-            amount_tiyin=1_000_000,
+            amount_sum=1_000_000,
             status="CREATED",
         )
     )
@@ -166,7 +166,7 @@ async def test_uzum_transaction_rejects_duplicate_trans_id(db_session: AsyncSess
             id=new_id(),
             trans_id="dup-trans-id",
             order_id=order_b,
-            amount_tiyin=2_000_000,
+            amount_sum=2_000_000,
             status="CREATED",
         )
     )
@@ -188,7 +188,7 @@ async def test_uzum_transaction_status_check_rejects_invalid_value(
             id=new_id(),
             trans_id="bad-status-id",
             order_id=order_id,
-            amount_tiyin=1_000_000,
+            amount_sum=1_000_000,
             status="BOGUS",
         )
     )
@@ -269,11 +269,11 @@ async def test_create_creates_created(db_session: AsyncSession) -> None:
         service_id=SERVICE_ID,
         trans_id="uz-create-1",
         params={"order_id": order_id},
-        amount=EXPECTED_TIYIN,
+        amount=EXPECTED_SUM,
     )
     assert result["transId"] == "uz-create-1"
     assert result["status"] == "CREATED"
-    assert result["amount"] == EXPECTED_TIYIN
+    assert result["amount"] == EXPECTED_SUM
     # data is only returned by /check and /status, not /create.
     assert "data" not in result
     assert result["transTime"] > 0
@@ -286,7 +286,7 @@ async def test_create_creates_created(db_session: AsyncSession) -> None:
     assert row.status == "CREATED"
     assert row.create_time == result["transTime"]
     assert row.service_id == SERVICE_ID
-    assert row.amount_tiyin == EXPECTED_TIYIN
+    assert row.amount_sum == EXPECTED_SUM
     assert row.payment_id is not None
 
     payment = (
@@ -304,7 +304,7 @@ async def test_create_replay_same_trans_id_is_10010(db_session: AsyncSession) ->
         service_id=SERVICE_ID,
         trans_id="uz-replay",
         params={"order_id": order_id},
-        amount=EXPECTED_TIYIN,
+        amount=EXPECTED_SUM,
     )
     with pytest.raises(UzumError) as exc:
         await uzum_svc.create(
@@ -312,7 +312,7 @@ async def test_create_replay_same_trans_id_is_10010(db_session: AsyncSession) ->
             service_id=SERVICE_ID,
             trans_id="uz-replay",
             params={"order_id": order_id},
-            amount=EXPECTED_TIYIN,
+            amount=EXPECTED_SUM,
         )
     assert exc.value.code == 10010
     count = (
@@ -349,7 +349,7 @@ async def test_create_concurrent_insert_race_recovers_as_10010(
             trans_id="uz-race",
             order_id=order_id,
             payment_id=None,
-            amount_tiyin=EXPECTED_TIYIN,
+            amount_sum=EXPECTED_SUM,
             status="CREATED",
             service_id=SERVICE_ID,
             create_time=uzum_svc.now_ms(),
@@ -368,7 +368,7 @@ async def test_create_concurrent_insert_race_recovers_as_10010(
             service_id=SERVICE_ID,
             trans_id="uz-race",
             params={"order_id": order_id},
-            amount=EXPECTED_TIYIN,
+            amount=EXPECTED_SUM,
         )
     assert exc.value.code == 10010
 
@@ -390,22 +390,24 @@ async def test_create_wrong_amount_is_10011(db_session: AsyncSession) -> None:
             service_id=SERVICE_ID,
             trans_id="uz-badamt",
             params={"order_id": order_id},
-            amount=EXPECTED_TIYIN - 5,
+            amount=EXPECTED_SUM - 5,
         )
     assert exc.value.code == 10011
 
 
 async def test_create_non_integral_charge_is_10011(db_session: AsyncSession) -> None:
-    # A sub-tiyin charge cannot be expressed as an integer amount — corrupt
-    # order data is surfaced as 10011, never silently truncated.
-    order_id = await _seed_order(db_session, total_charged=Decimal("130000.005"))
+    # A fractional-sum charge cannot be expressed as an integer sum amount —
+    # corrupt order data is surfaced as 10011, never silently rounded. (Real
+    # UZS orders are rounded to whole sums at creation, so this can't happen
+    # via the normal checkout path.)
+    order_id = await _seed_order(db_session, total_charged=Decimal("130000.50"))
     with pytest.raises(UzumError) as exc:
         await uzum_svc.create(
             db_session,
             service_id=SERVICE_ID,
             trans_id="uz-nonintegral",
             params={"order_id": order_id},
-            amount=13_000_000,
+            amount=130_000,
         )
     assert exc.value.code == 10011
 
@@ -417,7 +419,7 @@ async def test_create_unknown_order_is_10007(db_session: AsyncSession) -> None:
             service_id=SERVICE_ID,
             trans_id="uz-noorder",
             params={"order_id": str(uuid.uuid4())},
-            amount=EXPECTED_TIYIN,
+            amount=EXPECTED_SUM,
         )
     assert exc.value.code == 10007
 
@@ -430,7 +432,7 @@ async def test_create_paid_order_is_10008(db_session: AsyncSession) -> None:
             service_id=SERVICE_ID,
             trans_id="uz-create-paid",
             params={"order_id": order_id},
-            amount=EXPECTED_TIYIN,
+            amount=EXPECTED_SUM,
         )
     assert exc.value.code == 10008
 
@@ -456,7 +458,7 @@ async def test_create_reuses_pending_uzum_payment(db_session: AsyncSession) -> N
         service_id=SERVICE_ID,
         trans_id="uz-reuse",
         params={"order_id": order_id},
-        amount=EXPECTED_TIYIN,
+        amount=EXPECTED_SUM,
     )
     row = (
         await db_session.execute(
@@ -482,14 +484,14 @@ async def test_confirm_settles_payment(db_session: AsyncSession) -> None:
         service_id=SERVICE_ID,
         trans_id="uz-confirm-1",
         params={"order_id": order_id},
-        amount=EXPECTED_TIYIN,
+        amount=EXPECTED_SUM,
     )
     result = await uzum_svc.confirm(
         db_session, trans_id="uz-confirm-1", payment_source={"paymentSource": "CARD"}
     )
     assert result["transId"] == "uz-confirm-1"
     assert result["status"] == "CONFIRMED"
-    assert result["amount"] == EXPECTED_TIYIN
+    assert result["amount"] == EXPECTED_SUM
     # data is only returned by /check and /status, not /confirm.
     assert "data" not in result
     assert result["confirmTime"] > 0
@@ -526,7 +528,7 @@ async def test_confirm_already_confirmed_is_10016(db_session: AsyncSession) -> N
         service_id=SERVICE_ID,
         trans_id="uz-confirm-2",
         params={"order_id": order_id},
-        amount=EXPECTED_TIYIN,
+        amount=EXPECTED_SUM,
     )
     await uzum_svc.confirm(db_session, trans_id="uz-confirm-2", payment_source={})
     with pytest.raises(UzumError) as exc:
@@ -541,7 +543,7 @@ async def test_confirm_on_reversed_is_10015(db_session: AsyncSession) -> None:
         service_id=SERVICE_ID,
         trans_id="uz-confirm-3",
         params={"order_id": order_id},
-        amount=EXPECTED_TIYIN,
+        amount=EXPECTED_SUM,
     )
     await uzum_svc.reverse(db_session, trans_id="uz-confirm-3")
     with pytest.raises(UzumError) as exc:
@@ -559,12 +561,12 @@ async def test_reverse_from_created_cancels_pending(db_session: AsyncSession) ->
         service_id=SERVICE_ID,
         trans_id="uz-rev-1",
         params={"order_id": order_id},
-        amount=EXPECTED_TIYIN,
+        amount=EXPECTED_SUM,
     )
     result = await uzum_svc.reverse(db_session, trans_id="uz-rev-1")
     assert result["transId"] == "uz-rev-1"
     assert result["status"] == "REVERSED"
-    assert result["amount"] == EXPECTED_TIYIN
+    assert result["amount"] == EXPECTED_SUM
     # data is only returned by /check and /status, not /reverse.
     assert "data" not in result
     assert result["reverseTime"] > 0
@@ -611,7 +613,7 @@ async def test_reverse_from_confirmed_reverses_ledger(db_session: AsyncSession) 
             trans_id="uz-rev-2",
             order_id=order_id,
             payment_id=payment_id,
-            amount_tiyin=EXPECTED_TIYIN,
+            amount_sum=EXPECTED_SUM,
             status="CONFIRMED",
             create_time=1_700_000_000_000,
             confirm_time=1_700_000_100_000,
@@ -652,7 +654,7 @@ async def test_reverse_when_delivered_is_10017(db_session: AsyncSession) -> None
             trans_id="uz-rev-3",
             order_id=order_id,
             payment_id=payment_id,
-            amount_tiyin=EXPECTED_TIYIN,
+            amount_sum=EXPECTED_SUM,
             status="CONFIRMED",
             create_time=1_700_000_000_000,
             confirm_time=1_700_000_100_000,
@@ -799,7 +801,7 @@ async def test_reverse_partial_delivery_is_10017(db_session: AsyncSession) -> No
             trans_id="uz-rev-partial",
             order_id=order_id,
             payment_id=payment_id,
-            amount_tiyin=EXPECTED_TIYIN,
+            amount_sum=EXPECTED_SUM,
             status="CONFIRMED",
             create_time=1_700_000_000_000,
             confirm_time=1_700_000_100_000,
@@ -834,14 +836,14 @@ async def test_reverse_created_with_shared_succeeded_payment_leaves_payment_alon
         service_id=SERVICE_ID,
         trans_id="uz-shared-a",
         params={"order_id": order_id},
-        amount=EXPECTED_TIYIN,
+        amount=EXPECTED_SUM,
     )
     await uzum_svc.create(
         db_session,
         service_id=SERVICE_ID,
         trans_id="uz-shared-b",
         params={"order_id": order_id},
-        amount=EXPECTED_TIYIN,
+        amount=EXPECTED_SUM,
     )
     txn_a = (
         await db_session.execute(
@@ -888,7 +890,7 @@ async def test_reverse_replay_is_10018(db_session: AsyncSession) -> None:
         service_id=SERVICE_ID,
         trans_id="uz-rev-4",
         params={"order_id": order_id},
-        amount=EXPECTED_TIYIN,
+        amount=EXPECTED_SUM,
     )
     await uzum_svc.reverse(db_session, trans_id="uz-rev-4")
     with pytest.raises(UzumError) as exc:
@@ -912,7 +914,7 @@ async def test_status_shape_created(db_session: AsyncSession) -> None:
         service_id=SERVICE_ID,
         trans_id="uz-status-1",
         params={"order_id": order_id},
-        amount=EXPECTED_TIYIN,
+        amount=EXPECTED_SUM,
     )
     result = await uzum_svc.status(db_session, trans_id="uz-status-1")
     assert result == {
@@ -922,7 +924,7 @@ async def test_status_shape_created(db_session: AsyncSession) -> None:
         "confirmTime": None,
         "reverseTime": None,
         "data": {},
-        "amount": EXPECTED_TIYIN,
+        "amount": EXPECTED_SUM,
     }
 
 
@@ -933,7 +935,7 @@ async def test_status_shape_confirmed(db_session: AsyncSession) -> None:
         service_id=SERVICE_ID,
         trans_id="uz-status-2",
         params={"order_id": order_id},
-        amount=EXPECTED_TIYIN,
+        amount=EXPECTED_SUM,
     )
     confirmed = await uzum_svc.confirm(db_session, trans_id="uz-status-2", payment_source={})
     result = await uzum_svc.status(db_session, trans_id="uz-status-2")
@@ -944,7 +946,7 @@ async def test_status_shape_confirmed(db_session: AsyncSession) -> None:
         "confirmTime": confirmed["confirmTime"],
         "reverseTime": None,
         "data": {},
-        "amount": EXPECTED_TIYIN,
+        "amount": EXPECTED_SUM,
     }
 
 
@@ -955,7 +957,7 @@ async def test_status_shape_reversed(db_session: AsyncSession) -> None:
         service_id=SERVICE_ID,
         trans_id="uz-status-3",
         params={"order_id": order_id},
-        amount=EXPECTED_TIYIN,
+        amount=EXPECTED_SUM,
     )
     reversed_result = await uzum_svc.reverse(db_session, trans_id="uz-status-3")
     result = await uzum_svc.status(db_session, trans_id="uz-status-3")
@@ -966,7 +968,7 @@ async def test_status_shape_reversed(db_session: AsyncSession) -> None:
         "confirmTime": None,
         "reverseTime": reversed_result["reverseTime"],
         "data": {},
-        "amount": EXPECTED_TIYIN,
+        "amount": EXPECTED_SUM,
     }
 
 
@@ -989,10 +991,10 @@ def _fake_settings() -> SimpleNamespace:
 async def test_build_checkout_url_no_return(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(uzum_svc, "get_settings", _fake_settings)
     url = uzum_svc.build_checkout_url(
-        order_id="ORDER-1", amount_tiyin=EXPECTED_TIYIN, return_url=None
+        order_id="ORDER-1", amount_sum=EXPECTED_SUM, return_url=None
     )
     expected = "https://www.uzumbank.uz/open-service?" + urlencode(
-        {"serviceId": SERVICE_ID, "order_id": "ORDER-1", "amount": EXPECTED_TIYIN}
+        {"serviceId": SERVICE_ID, "order_id": "ORDER-1", "amount": EXPECTED_SUM}
     )
     assert url == expected
 
@@ -1001,14 +1003,14 @@ async def test_build_checkout_url_with_return(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(uzum_svc, "get_settings", _fake_settings)
     url = uzum_svc.build_checkout_url(
         order_id="ORDER-1",
-        amount_tiyin=EXPECTED_TIYIN,
+        amount_sum=EXPECTED_SUM,
         return_url="https://yupay.uz/return",
     )
     expected = "https://www.uzumbank.uz/open-service?" + urlencode(
         {
             "serviceId": SERVICE_ID,
             "order_id": "ORDER-1",
-            "amount": EXPECTED_TIYIN,
+            "amount": EXPECTED_SUM,
             "redirectUrl": "https://yupay.uz/return",
         }
     )

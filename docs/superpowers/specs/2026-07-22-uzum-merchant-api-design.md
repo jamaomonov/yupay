@@ -67,10 +67,12 @@ becomes a second code path that flips order status or posts the ledger.
    our team" for production; the chat with their engineer says we define them for
    testing. We make all three env-configurable so either model works, and confirm
    the production source with Uzum (§16).
-6. **Amount is exact tiyin.** `amount` is `int64` tiyin. Expected value is
-   `int(order.total_charged * 100)`; a non-integral product is corrupt data →
-   `10011` (invalid amount). Order totals are already rounded to whole so'm at
-   checkout (`orders.service._round_to_payable`), so every tiyin value is exact.
+6. **Amount is in sums, not tiyin.** `amount` is `int64` sums (major UZS
+   units). Expected value is `int(order.total_charged)`; a non-integral value
+   is corrupt data → `10011` (invalid amount). Order totals are already rounded
+   to whole so'm at checkout (`orders.service._round_to_payable` uses a
+   `Decimal("1")` quantum for UZS — tiyin coins are defunct), so every sum
+   value is a whole integer.
 
 ---
 
@@ -115,7 +117,7 @@ Uzum deep-link/checkout URL. `verify_webhook` raises `PaymentNotIntegratedError`
 | `trans_id`                | str UNIQUE                 | Uzum's `transId` (UUID string) — the idempotency key            |
 | `order_id`                | str FK→orders              | from `params.order_id`                                          |
 | `payment_id`              | str FK→payments (SET NULL) | the backing `payments` row                                      |
-| `amount_tiyin`            | bigint                     | `amount` from `/create`                                         |
+| `amount_sum`              | bigint                     | `amount` (sums) from `/create`                                 |
 | `status`                  | str CHECK                  | `CREATED` / `CONFIRMED` / `REVERSED` / `FAILED`                 |
 | `service_id`              | bigint                     | echoed `serviceId` (audit)                                      |
 | `create_time`             | bigint                     | our `transTime` (epoch ms)                                      |
@@ -163,7 +165,8 @@ display info (customer/order label); we return `{}` unless a field is useful.
 value. `data.amount.value` is the order's charge in **sums** (major UZS units,
 string; fractional sums keep decimals) so Uzum's app prefills the amount when
 the buyer opens checkout — built by `service._amount_value` from
-`order.total_charged` (contrast `/create`'s `amount`, which is tiyin).
+`order.total_charged`. (`/create`'s `amount` is likewise in sums — the whole
+integration is sum-denominated.)
 
 **Logic:** resolve the order by `params.order_id`. Order missing → `10007`
 (additional payment attribute not found). Order already paid → `10008` (payment
@@ -264,14 +267,14 @@ the three timestamps (`transTime` = `create_time`; `confirmTime`/`reverseTime`
 `UzumGateway.create_intent(order, return_url)`:
 
 - Guard `order.currency == "UZS"` (Uzum is UZS-only), `total_charged > 0`,
-  `amount = int(total_charged * 100)` exact-tiyin.
+  `amount = int(total_charged)` (whole sums).
 - Build the Uzum deep-link/checkout URL that launches the Uzum app / hosted page:
-  `https://www.uzumbank.uz/open-service?serviceId=<id>&order_id=<order.id>&amount=<tiyin>&redirectUrl=<return_url>`
+  `https://www.uzumbank.uz/open-service?serviceId=<id>&order_id=<order.id>&amount=<sums>&redirectUrl=<return_url>`
   (exact host/params confirmed with Uzum — see §16). On mobile this deep-links
   into the Uzum app; the miniapp now opens it via `openLink` (external browser /
   app), so app-switch works.
 - Return `PaymentIntent(external_id="uzum:<order.id>", intent_url=<url>,
-status="pending", extra_metadata={"amount_tiyin": amount})`.
+status="pending", extra_metadata={"amount_sum": amount})`.
 
 No prepare-payment call at intent time — money moves later via the webhooks.
 
@@ -360,7 +363,7 @@ Coverage gate for `payments`-adjacent code is **≥ 95 %**. Integration tests
 - Auth: `10001` no/blocked auth, `10006` bad serviceId, `10003` non-POST,
   `10002` bad JSON.
 - Gateway unit tests: `available` gating, `create_intent` builds the exact
-  open-service URL, tiyin exactness.
+  open-service URL, whole-sum exactness.
 - Scheduler: 30-min timeout sweep `CREATED` → `FAILED`.
 
 Assert `refund_admin` and the shared payments hooks are byte-for-byte unchanged

@@ -53,7 +53,7 @@ class UzumTransaction(Base):
         ForeignKey("payments.id", ondelete="SET NULL"),
         nullable=True,
     )
-    amount_tiyin: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    amount_sum: Mapped[int] = mapped_column(BigInteger, nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     service_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     create_time: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text("0"))

@@ -21,7 +21,6 @@ echoed result (see ``docs/superpowers/specs/
 
 from __future__ import annotations
 
-from decimal import Decimal
 from typing import Any
 from urllib.parse import urlencode
 
@@ -62,27 +61,30 @@ def now_ms() -> int:
     return int(now().timestamp() * 1000)
 
 
-def _expected_tiyin(order: Order) -> int:
-    """Return the order's charge in tiyin (minor units), asserting exactness.
+def _expected_amount(order: Order) -> int:
+    """Return the order's charge in sums (whole UZS major units).
 
-    ``total_charged`` is a major-unit UZS ``Decimal``; UZS has no minor unit in
-    practice but the column keeps 6 dp, so ``* 100`` must land on an integer.
-    A non-integral result means corrupt order data, which we surface as
-    ``invalid_amount`` rather than silently truncating money.
+    Uzum charges in **sums** (major units), not tiyin — its ``amount`` field is
+    an ``int64`` count of sums. ``total_charged`` is already a major-unit UZS
+    ``Decimal`` and is rounded to whole sums at order creation
+    (``orders.service._round_to_payable`` uses a ``Decimal("1")`` quantum for
+    UZS — tiyin coins are defunct), so it is always integral for a real UZS
+    order. A non-integral value therefore means corrupt order data, which we
+    surface as ``invalid_amount`` rather than silently rounding money.
 
     Args:
         order: The order whose expected Uzum amount to compute.
 
     Returns:
-        The exact amount Uzum must send, in tiyin.
+        The exact amount Uzum must send, in sums.
 
     Raises:
-        UzumError: ``10011`` if ``total_charged * 100`` is not integral.
+        UzumError: ``10011`` if ``total_charged`` is not a whole number of sums.
     """
-    raw = order.total_charged * Decimal(100)
-    if raw != raw.to_integral_value():
+    amount = order.total_charged
+    if amount != amount.to_integral_value():
         raise invalid_amount()
-    return int(raw)
+    return int(amount)
 
 
 def _amount_value(order: Order) -> str:
@@ -91,11 +93,10 @@ def _amount_value(order: Order) -> str:
     Uzum's app prefills the payment amount from ``/check``'s
     ``data.amount.value`` when the buyer opens checkout, and expects it in
     **sums** (major units), not tiyin. ``total_charged`` is already a
-    major-unit UZS ``Decimal``; UZS has no sub-sum denomination in practice, so
-    a whole-sum charge renders as a bare integer string (``"130000"``). A
-    charge that carries fractional sums (allowed as long as ``* 100`` is
-    integral — see :func:`_expected_tiyin`) keeps its decimal places rather
-    than being silently rounded.
+    major-unit UZS ``Decimal``; UZS has no sub-sum denomination in practice
+    (see :func:`_expected_amount`), so a whole-sum charge renders as a bare
+    integer string (``"130000"``). A charge that somehow carries fractional
+    sums keeps its decimal places rather than being silently rounded.
 
     Args:
         order: The order whose charge to render for Uzum's app.
@@ -286,7 +287,7 @@ async def create(
         service_id: Uzum's ``serviceId``, stored on the row for audit.
         trans_id: Uzum's own transaction id (unique) — the idempotency key.
         params: Uzum's ``params`` object carrying ``order_id``.
-        amount: The charge amount in tiyin.
+        amount: The charge amount in sums (major UZS units).
 
     Returns:
         ``{"transId", "status": "CREATED", "transTime", "amount"}``. ``data``
@@ -305,7 +306,7 @@ async def create(
 
     order = await _resolve_order(db, params.get("order_id"), for_update=True)
     _check_order_state(order)
-    if amount != _expected_tiyin(order):
+    if amount != _expected_amount(order):
         raise invalid_amount()
 
     payment = await _ensure_payment(db, order)
@@ -315,7 +316,7 @@ async def create(
         trans_id=trans_id,
         order_id=order.id,
         payment_id=payment.id,
-        amount_tiyin=amount,
+        amount_sum=amount,
         status="CREATED",
         service_id=service_id,
         create_time=create_time,
@@ -383,7 +384,7 @@ async def confirm(
         "transId": trans_id,
         "status": "CONFIRMED",
         "confirmTime": confirm_time,
-        "amount": txn.amount_tiyin,
+        "amount": txn.amount_sum,
     }
 
 
@@ -461,7 +462,7 @@ async def reverse(db: AsyncSession, *, trans_id: str) -> dict[str, Any]:
         "transId": trans_id,
         "status": "REVERSED",
         "reverseTime": reverse_time,
-        "amount": txn.amount_tiyin,
+        "amount": txn.amount_sum,
     }
 
 
@@ -493,28 +494,28 @@ async def status(db: AsyncSession, *, trans_id: str) -> dict[str, Any]:
         "confirmTime": txn.confirm_time,
         "reverseTime": txn.reverse_time,
         "data": {},
-        "amount": txn.amount_tiyin,
+        "amount": txn.amount_sum,
     }
 
 
-def build_checkout_url(*, order_id: str, amount_tiyin: int, return_url: str | None) -> str:
+def build_checkout_url(*, order_id: str, amount_sum: int, return_url: str | None) -> str:
     """Build the Uzum open-service checkout URL that launches a payment.
 
     Args:
         order_id: The order the payment is for (Uzum ``params.order_id``).
-        amount_tiyin: The charge amount in tiyin.
+        amount_sum: The charge amount in sums (major UZS units).
         return_url: Where Uzum returns the customer afterwards, or ``None``
             to omit ``redirectUrl`` entirely.
 
     Returns:
         The absolute checkout URL, e.g. ``https://www.uzumbank.uz/open-service
-        ?serviceId=<id>&order_id=<order_id>&amount=<tiyin>&redirectUrl=<url>``.
+        ?serviceId=<id>&order_id=<order_id>&amount=<sums>&redirectUrl=<url>``.
     """
     settings = get_settings()
     query: dict[str, Any] = {
         "serviceId": settings.uzum_service_id,
         "order_id": order_id,
-        "amount": amount_tiyin,
+        "amount": amount_sum,
     }
     if return_url:
         query["redirectUrl"] = return_url

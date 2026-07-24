@@ -2,6 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Post-implementation correction (2026-07-24):** this plan was written assuming
+> Uzum's `amount` is in **tiyin**, but Uzum actually charges in **sums** (major
+> UZS units). The shipped code uses sums: `amount = int(order.total_charged)`,
+> the column is `amount_sum` (migration `0030`), `build_checkout_url`'s param is
+> `amount_sum`, and the gateway metadata key is `amount_sum`. Read every "tiyin"
+> / `amount_tiyin` / `total_charged * 100` mention below as its sum equivalent.
+
 **Goal:** Accept UZS payments via the Uzum Bank Merchant API — expose five HTTPS webhook endpoints (`/check /create /confirm /reverse /status`) Uzum drives through the transaction lifecycle, build the Uzum deep-link checkout, reconcile confirm/reverse through the shared payments hooks, and be sandbox-ready for Uzum's manual test.
 
 **Architecture:** Uzum is the inverted-webhook twin of the already-shipped Payme module. Build `modules/uzum/` mirroring `modules/payme/`, reuse the existing `payments` provider-lifecycle hooks (`settle_provider_payment` / `reverse_provider_payment` / `cancel_pending_provider_payment`) and the refund-guard money-safety rule. **Do not rebuild the payments hooks — they already exist and are proven.**
