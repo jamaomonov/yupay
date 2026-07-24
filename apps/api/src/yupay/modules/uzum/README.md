@@ -75,7 +75,7 @@ back `serviceId` (and `transId` when the request carried one).
 ### `POST /create`
 
 - **Request:** `{"serviceId", "timestamp", "transId", "params": {"order_id"}, "amount"}`.
-- **Success:** `{"serviceId", "transId", "status": "CREATED", "transTime", "data": {}, "amount"}`.
+- **Success:** `{"serviceId", "transId", "status": "CREATED", "transTime", "amount"}`. No `data` — it is only returned by `/check` and `/status` (optional elsewhere).
 - **Idempotency:** a `transId` that already has a `UzumTransaction` row is
   refused outright with **`10010`** — Uzum's own replay signal, not an echo
   (contrast Payme, which re-returns the stored result on a `CreateTransaction`
@@ -91,7 +91,7 @@ back `serviceId` (and `transId` when the request carried one).
 ### `POST /confirm`
 
 - **Request:** `{"serviceId", "timestamp", "transId", "paymentSource", "tariff", "processingReferenceNumber", "phone", "cardType", ...}`.
-- **Success:** `{"serviceId", "transId", "status": "CONFIRMED", "confirmTime", "data": {}, "amount"}`.
+- **Success:** `{"serviceId", "transId", "status": "CONFIRMED", "confirmTime", "amount"}`. No `data` — only `/check` and `/status` return it.
 - **Effect:** stores the payment-source block verbatim on the transaction row
   (audit only — no pricing branches on it), settles the backing payment
   through `payments.service.settle_provider_payment` — the same chokepoint
@@ -103,7 +103,7 @@ back `serviceId` (and `transId` when the request carried one).
 ### `POST /reverse`
 
 - **Request:** `{"serviceId", "timestamp", "transId"}`.
-- **Success:** `{"serviceId", "transId", "status": "REVERSED", "reverseTime", "data": {}, "amount"}`.
+- **Success:** `{"serviceId", "transId", "status": "REVERSED", "reverseTime", "amount"}`. No `data` — only `/check` and `/status` return it.
 - **Routes strictly by the transaction's current status** — this is where
   money-safety lives:
   - **`CREATED`** (never confirmed), or **`FAILED`** (already timed out by

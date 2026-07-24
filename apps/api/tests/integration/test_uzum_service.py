@@ -274,7 +274,8 @@ async def test_create_creates_created(db_session: AsyncSession) -> None:
     assert result["transId"] == "uz-create-1"
     assert result["status"] == "CREATED"
     assert result["amount"] == EXPECTED_TIYIN
-    assert result["data"] == {}
+    # data is only returned by /check and /status, not /create.
+    assert "data" not in result
     assert result["transTime"] > 0
 
     row = (
@@ -489,7 +490,8 @@ async def test_confirm_settles_payment(db_session: AsyncSession) -> None:
     assert result["transId"] == "uz-confirm-1"
     assert result["status"] == "CONFIRMED"
     assert result["amount"] == EXPECTED_TIYIN
-    assert result["data"] == {}
+    # data is only returned by /check and /status, not /confirm.
+    assert "data" not in result
     assert result["confirmTime"] > 0
 
     row = (
@@ -563,6 +565,8 @@ async def test_reverse_from_created_cancels_pending(db_session: AsyncSession) ->
     assert result["transId"] == "uz-rev-1"
     assert result["status"] == "REVERSED"
     assert result["amount"] == EXPECTED_TIYIN
+    # data is only returned by /check and /status, not /reverse.
+    assert "data" not in result
     assert result["reverseTime"] > 0
 
     row = (

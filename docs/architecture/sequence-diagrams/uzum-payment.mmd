@@ -37,7 +37,7 @@ sequenceDiagram
     USVC->>DB: SELECT UzumTransaction WHERE trans_id (pre-check) -- exists? 10010
     USVC->>DB: SELECT order FOR UPDATE, validate amount == total_charged*100 (else 10011)
     USVC->>DB: INSERT uzum_transactions (status=CREATED, UNIQUE trans_id)
-    USVC-->>API: {transId, status: CREATED, transTime, data: {}, amount}
+    USVC-->>API: {transId, status: CREATED, transTime, amount}
     API-->>UZ: 200 {serviceId, ...}
 
     alt buyer completes payment in Uzum app
@@ -48,7 +48,7 @@ sequenceDiagram
         USVC->>PAY: settle_provider_payment(payment, external_event_id=trans_id)
         PAY->>DB: payment.status=succeeded, order.status=paid
         PAY->>FUL: start_for_order(order_id)
-        USVC-->>API: {transId, status: CONFIRMED, confirmTime, data: {}, amount}
+        USVC-->>API: {transId, status: CONFIRMED, confirmTime, amount}
         API-->>UZ: 200 {serviceId, ...}
 
         opt Uzum-initiated reverse (refund) after confirm
@@ -63,7 +63,7 @@ sequenceDiagram
                 USVC->>DB: UPDATE uzum_transactions SET status=REVERSED, reverse_time
                 USVC->>PAY: reverse_provider_payment(payment, external_event_id=trans_id, actor=uzum)
                 PAY->>DB: _apply_refund_reversal: payment=refunded, order=refunded, ledger reversal
-                USVC-->>API: {transId, status: REVERSED, reverseTime, data: {}, amount}
+                USVC-->>API: {transId, status: REVERSED, reverseTime, amount}
                 API-->>UZ: 200 {serviceId, ...}
             end
         end
@@ -81,7 +81,7 @@ sequenceDiagram
         USVC->>DB: UPDATE uzum_transactions SET status=REVERSED, reverse_time
         USVC->>PAY: cancel_pending_provider_payment(payment, actor=uzum)
         PAY->>DB: payment.status=cancelled (order stays pending_payment)
-        USVC-->>API: {transId, status: REVERSED, reverseTime, data: {}, amount}
+        USVC-->>API: {transId, status: REVERSED, reverseTime, amount}
         API-->>UZ: 200 {serviceId, ...}
     end
 

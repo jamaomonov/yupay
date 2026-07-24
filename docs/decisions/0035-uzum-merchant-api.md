@@ -258,6 +258,11 @@ Mirroring how ADR-0034 flagged Payme's unstated conventions, the design spec
   so it does not warrant a superseding ADR — see
   `apps/api/src/yupay/modules/uzum/README.md` (`POST /check`) and design spec
   §11.
+- **2026-07-24 — `data` returned only by `/check` and `/status`** (requested by
+  Uzum's integration engineer). The `data` object is optional on the other
+  methods, so `/create`, `/confirm` and `/reverse` no longer return it (they
+  previously returned `data: {}`). `/status` still returns `data: {}`. Response
+  fields dropped only; no behavioural change.
 
 ## Alternatives considered (detail)
 

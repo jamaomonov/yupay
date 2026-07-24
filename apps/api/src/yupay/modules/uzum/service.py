@@ -289,7 +289,8 @@ async def create(
         amount: The charge amount in tiyin.
 
     Returns:
-        ``{"transId", "status": "CREATED", "transTime", "data", "amount"}``.
+        ``{"transId", "status": "CREATED", "transTime", "amount"}``. ``data``
+        is only returned by ``/check`` and ``/status`` (optional elsewhere).
 
     Raises:
         UzumError: ``10010`` if ``trans_id`` was already created (either the
@@ -336,7 +337,6 @@ async def create(
         "transId": trans_id,
         "status": "CREATED",
         "transTime": create_time,
-        "data": {},
         "amount": amount,
     }
 
@@ -357,7 +357,8 @@ async def confirm(
             block Uzum sends, stored verbatim for audit.
 
     Returns:
-        ``{"transId", "status": "CONFIRMED", "confirmTime", "data", "amount"}``.
+        ``{"transId", "status": "CONFIRMED", "confirmTime", "amount"}``.
+        ``data`` is only returned by ``/check`` and ``/status``.
 
     Raises:
         UzumError: ``10014`` unknown transaction, ``10016`` if already
@@ -382,7 +383,6 @@ async def confirm(
         "transId": trans_id,
         "status": "CONFIRMED",
         "confirmTime": confirm_time,
-        "data": {},
         "amount": txn.amount_tiyin,
     }
 
@@ -412,7 +412,8 @@ async def reverse(db: AsyncSession, *, trans_id: str) -> dict[str, Any]:
         trans_id: Uzum's transaction id.
 
     Returns:
-        ``{"transId", "status": "REVERSED", "reverseTime", "data", "amount"}``.
+        ``{"transId", "status": "REVERSED", "reverseTime", "amount"}``.
+        ``data`` is only returned by ``/check`` and ``/status``.
 
     Raises:
         UzumError: ``10014`` unknown transaction, ``10018`` if already
@@ -460,7 +461,6 @@ async def reverse(db: AsyncSession, *, trans_id: str) -> dict[str, Any]:
         "transId": trans_id,
         "status": "REVERSED",
         "reverseTime": reverse_time,
-        "data": {},
         "amount": txn.amount_tiyin,
     }
 

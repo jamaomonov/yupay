@@ -175,7 +175,7 @@ check here — we only report the order's amount back in `data`.)
 
 **Request:** `{ "serviceId": 101202, "timestamp": <ms>, "transId": "5c398d7e-…", "params": { "order_id": "<uuid>" }, "amount": 2500000 }`
 
-**Success (`200`):** `{ "serviceId": 101202, "transId": "5c398d7e-…", "status": "CREATED", "transTime": <ms>, "data": {}, "amount": 2500000 }`
+**Success (`200`):** `{ "serviceId": 101202, "transId": "5c398d7e-…", "status": "CREATED", "transTime": <ms>, "amount": 2500000 }` (no `data` — only `/check` and `/status` return it)
 
 **Logic:**
 
@@ -194,7 +194,7 @@ check here — we only report the order's amount back in `data`.)
 
 **Request:** `{ "serviceId": 101202, "timestamp": <ms>, "transId": "5c398d7e-…", "paymentSource": "INSTALLMENT", "tariff": "003", "processingReferenceNumber": "000", "phone": "998901234567", "cardType": 2 }`
 
-**Success (`200`):** `{ "serviceId": 101202, "transId": "5c398d7e-…", "status": "CONFIRMED", "confirmTime": <ms>, "data": {}, "amount": 2500000 }`
+**Success (`200`):** `{ "serviceId": 101202, "transId": "5c398d7e-…", "status": "CONFIRMED", "confirmTime": <ms>, "amount": 2500000 }` (no `data` — only `/check` and `/status` return it)
 
 **Logic:** load tx by `transId`; missing → `10014`. If already `CONFIRMED` →
 `10016`. If `REVERSED`/`FAILED` → `10015` (cancelled, cannot confirm). Otherwise:
@@ -206,7 +206,7 @@ started), set status `CONFIRMED` + `confirm_time`, return `CONFIRMED`.
 
 **Request:** `{ "serviceId": 101202, "timestamp": <ms>, "transId": "5c398d7e-…" }`
 
-**Success (`200`):** `{ "serviceId": 101202, "transId": "5c398d7e-…", "status": "REVERSED", "reverseTime": <ms>, "data": {}, "amount": 2500000 }`
+**Success (`200`):** `{ "serviceId": 101202, "transId": "5c398d7e-…", "status": "REVERSED", "reverseTime": <ms>, "amount": 2500000 }` (no `data` — only `/check` and `/status` return it)
 
 **Logic:** load tx by `transId`; missing → `10014`. If already `REVERSED` →
 `10018`. Route by current status:
@@ -333,10 +333,11 @@ with a filled-out comment block (like the Payme block).
   at `fulfilling` with one code already shipped is refused (`10017`), never
   auto-refunded.
 - **`data`/`params` envelopes:** `params` carries only `order_id` for us (other
-  account attributes are service-config). On `/check` we return
-  `data.amount.value` = the order's charge in sums (major UZS units, string) so
-  Uzum's app prefills the amount; the other four responses return `data` as
-  `{}`.
+  account attributes are service-config). `data` is returned only by `/check`
+  and `/status` (optional elsewhere, so `/create`/`/confirm`/`/reverse` omit
+  it): on `/check` `data.amount.value` = the order's charge in sums (major UZS
+  units, string) so Uzum's app prefills the amount; `/status` returns
+  `data: {}`.
 
 ---
 
