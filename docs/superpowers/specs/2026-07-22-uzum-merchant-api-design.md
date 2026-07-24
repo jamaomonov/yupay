@@ -117,7 +117,7 @@ Uzum deep-link/checkout URL. `verify_webhook` raises `PaymentNotIntegratedError`
 | `trans_id`                | str UNIQUE                 | Uzum's `transId` (UUID string) — the idempotency key            |
 | `order_id`                | str FK→orders              | from `params.order_id`                                          |
 | `payment_id`              | str FK→payments (SET NULL) | the backing `payments` row                                      |
-| `amount_sum`              | bigint                     | `amount` (sums) from `/create`                                 |
+| `amount_sum`              | bigint                     | `amount` (sums) from `/create`                                  |
 | `status`                  | str CHECK                  | `CREATED` / `CONFIRMED` / `REVERSED` / `FAILED`                 |
 | `service_id`              | bigint                     | echoed `serviceId` (audit)                                      |
 | `create_time`             | bigint                     | our `transTime` (epoch ms)                                      |
@@ -171,7 +171,7 @@ integration is sum-denominated.)
 **Logic:** resolve the order by `params.order_id`. Order missing → `10007`
 (additional payment attribute not found). Order already paid → `10008` (payment
 already made). Order cancelled/expired → `10009` (payment cancelled). Otherwise
-`status: OK`. (No amount is sent *by Uzum* on `/check`, so there is no amount
+`status: OK`. (No amount is sent _by Uzum_ on `/check`, so there is no amount
 check here — we only report the order's amount back in `data`.)
 
 ### `POST /create` — create the transaction

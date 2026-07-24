@@ -990,9 +990,7 @@ def _fake_settings() -> SimpleNamespace:
 
 async def test_build_checkout_url_no_return(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(uzum_svc, "get_settings", _fake_settings)
-    url = uzum_svc.build_checkout_url(
-        order_id="ORDER-1", amount_sum=EXPECTED_SUM, return_url=None
-    )
+    url = uzum_svc.build_checkout_url(order_id="ORDER-1", amount_sum=EXPECTED_SUM, return_url=None)
     expected = "https://www.uzumbank.uz/open-service?" + urlencode(
         {"serviceId": SERVICE_ID, "order_id": "ORDER-1", "amount": EXPECTED_SUM}
     )

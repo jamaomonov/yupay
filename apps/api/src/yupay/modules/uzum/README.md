@@ -63,7 +63,7 @@ back `serviceId` (and `transId` when the request carried one).
 
 - **Request:** `{"serviceId", "timestamp", "params": {"order_id"}}`.
 - **Success:** `{"serviceId", "timestamp", "status": "OK", "data": {"amount": {"value": "<sums>"}}}`.
-  - **`timestamp`** is our **response** time (epoch ms), *not* the request's
+  - **`timestamp`** is our **response** time (epoch ms), _not_ the request's
     echoed value — Uzum wants the moment we answered.
   - **`data.amount.value`** carries the order's charge in **sums** (major UZS
     units, as a string — e.g. `"130000"`; fractional sums keep their decimals)
@@ -72,8 +72,8 @@ back `serviceId` (and `transId` when the request carried one).
     `/create` is likewise in **sums** — the whole integration is
     sum-denominated.)
 - **Errors:** `10007` (unknown order), `10008` (already paid), `10009`
-  (cancelled/expired/refunded/otherwise not payable). No amount is sent *by
-  Uzum* on `/check`, so there is no amount check here — we only *report* the
+  (cancelled/expired/refunded/otherwise not payable). No amount is sent _by
+  Uzum_ on `/check`, so there is no amount check here — we only _report_ the
   order's amount back in `data`.
 
 ### `POST /create`
