@@ -68,22 +68,20 @@ class UzumGateway(PaymentGateway):
         amount: Decimal = order.total_charged
         if amount is None or amount <= 0:
             raise PaymentGatewayError("order total_charged is non-positive")
-        # Uzum charges in sums (major UZS units), not tiyin. UZS totals are
-        # rounded to whole sums at order creation, so a non-integral value here
-        # is corrupt data — surface it rather than silently rounding money.
-        if amount != amount.to_integral_value():
-            raise PaymentGatewayError(f"order total_charged {amount} is not a whole number of sums")
-        amount_sum = int(amount)
+        raw = amount * Decimal(100)
+        if raw != raw.to_integral_value():
+            raise PaymentGatewayError(f"order total_charged {amount} is not an exact tiyin amount")
+        amount_tiyin = int(raw)
         intent_url = uzum_svc.build_checkout_url(
             order_id=order.id,
-            amount_sum=amount_sum,
+            amount_tiyin=amount_tiyin,
             return_url=return_url,
         )
         return PaymentIntent(
             external_id=f"uzum:{order.id}",
             intent_url=intent_url,
             status="pending",
-            extra_metadata={"amount_sum": amount_sum},
+            extra_metadata={"amount_tiyin": amount_tiyin},
         )
 
     async def verify_webhook(

@@ -42,8 +42,8 @@ UZUM_LOGIN = "uzum-merchant"
 UZUM_PASSWORD = "prod-secret"
 TEST_LOGIN = "uzum-sandbox"
 TEST_PASSWORD = "sandbox-secret"
-# 130000.00 UZS = 130_000 sums
-EXPECTED_SUM = 130_000
+# 130000.00 UZS * 100 = 13_000_000 tiyin
+EXPECTED_TIYIN = 13_000_000
 
 
 @pytest.fixture(autouse=True)
@@ -119,7 +119,7 @@ async def _seed_confirmed_transaction(
             trans_id=trans_id,
             order_id=order_id,
             payment_id=payment_id,
-            amount_sum=EXPECTED_SUM,
+            amount_tiyin=EXPECTED_TIYIN,
             status="CONFIRMED",
             create_time=1_700_000_000_000,
             confirm_time=1_700_000_100_000,
@@ -447,7 +447,7 @@ async def test_create_internal_error_is_99999(
             "timestamp": 1,
             "transId": str(uuid.uuid4()),
             "params": {"order_id": order_id},
-            "amount": EXPECTED_SUM,
+            "amount": EXPECTED_TIYIN,
         },
     )
     assert r.status_code == 200
@@ -471,7 +471,7 @@ async def test_confirm_internal_error_is_99999(
             "timestamp": 1,
             "transId": trans_id,
             "params": {"order_id": order_id},
-            "amount": EXPECTED_SUM,
+            "amount": EXPECTED_TIYIN,
         },
     )
     assert r.json()["status"] == "CREATED"
@@ -503,7 +503,7 @@ async def test_reverse_internal_error_is_99999(
             "timestamp": 1,
             "transId": trans_id,
             "params": {"order_id": order_id},
-            "amount": EXPECTED_SUM,
+            "amount": EXPECTED_TIYIN,
         },
     )
     assert r.json()["status"] == "CREATED"
@@ -535,7 +535,7 @@ async def test_status_internal_error_is_99999(
             "timestamp": 1,
             "transId": trans_id,
             "params": {"order_id": order_id},
-            "amount": EXPECTED_SUM,
+            "amount": EXPECTED_TIYIN,
         },
     )
     assert r.json()["status"] == "CREATED"
@@ -569,7 +569,7 @@ async def test_create_wrong_amount_is_10011(
             "timestamp": 1,
             "transId": str(uuid.uuid4()),
             "params": {"order_id": order_id},
-            "amount": EXPECTED_SUM - 5,
+            "amount": EXPECTED_TIYIN - 5,
         },
     )
     assert r.status_code == 200
@@ -591,7 +591,7 @@ async def test_create_already_paid_order_is_10008(
             "timestamp": 1,
             "transId": str(uuid.uuid4()),
             "params": {"order_id": order_id},
-            "amount": EXPECTED_SUM,
+            "amount": EXPECTED_TIYIN,
         },
     )
     assert r.status_code == 200
@@ -612,7 +612,7 @@ async def test_create_cancelled_order_is_10009(
             "timestamp": 1,
             "transId": str(uuid.uuid4()),
             "params": {"order_id": order_id},
-            "amount": EXPECTED_SUM,
+            "amount": EXPECTED_TIYIN,
         },
     )
     assert r.status_code == 200
@@ -631,7 +631,7 @@ async def test_create_duplicate_trans_id_is_10010(
         "timestamp": 1,
         "transId": trans_id,
         "params": {"order_id": order_id},
-        "amount": EXPECTED_SUM,
+        "amount": EXPECTED_TIYIN,
     }
     first = await integration_client.post(CREATE_URL, headers=_auth(), json=create_req)
     assert first.json()["status"] == "CREATED"
@@ -675,7 +675,7 @@ async def test_confirm_already_confirmed_is_10016(
             "timestamp": 1,
             "transId": trans_id,
             "params": {"order_id": order_id},
-            "amount": EXPECTED_SUM,
+            "amount": EXPECTED_TIYIN,
         },
     )
     confirm_req = {"serviceId": SERVICE_ID, "timestamp": 2, "transId": trans_id}
@@ -703,7 +703,7 @@ async def test_confirm_on_reversed_is_10015(
             "timestamp": 1,
             "transId": trans_id,
             "params": {"order_id": order_id},
-            "amount": EXPECTED_SUM,
+            "amount": EXPECTED_TIYIN,
         },
     )
     reverse_r = await integration_client.post(
@@ -756,7 +756,7 @@ async def test_reverse_already_reversed_is_10018(
             "timestamp": 1,
             "transId": trans_id,
             "params": {"order_id": order_id},
-            "amount": EXPECTED_SUM,
+            "amount": EXPECTED_TIYIN,
         },
     )
     reverse_req = {"serviceId": SERVICE_ID, "timestamp": 2, "transId": trans_id}
@@ -857,7 +857,7 @@ async def test_status_full_envelope_created(
                 "timestamp": 1,
                 "transId": trans_id,
                 "params": {"order_id": order_id},
-                "amount": EXPECTED_SUM,
+                "amount": EXPECTED_TIYIN,
             },
         )
     ).json()
@@ -876,7 +876,7 @@ async def test_status_full_envelope_created(
         "confirmTime": None,
         "reverseTime": None,
         "data": {},
-        "amount": EXPECTED_SUM,
+        "amount": EXPECTED_TIYIN,
     }
 
 
@@ -894,7 +894,7 @@ async def test_status_full_envelope_confirmed(
                 "timestamp": 1,
                 "transId": trans_id,
                 "params": {"order_id": order_id},
-                "amount": EXPECTED_SUM,
+                "amount": EXPECTED_TIYIN,
             },
         )
     ).json()
@@ -920,7 +920,7 @@ async def test_status_full_envelope_confirmed(
         "confirmTime": confirmed["confirmTime"],
         "reverseTime": None,
         "data": {},
-        "amount": EXPECTED_SUM,
+        "amount": EXPECTED_TIYIN,
     }
 
 
@@ -938,7 +938,7 @@ async def test_status_full_envelope_reversed(
                 "timestamp": 1,
                 "transId": trans_id,
                 "params": {"order_id": order_id},
-                "amount": EXPECTED_SUM,
+                "amount": EXPECTED_TIYIN,
             },
         )
     ).json()
@@ -964,7 +964,7 @@ async def test_status_full_envelope_reversed(
         "confirmTime": None,
         "reverseTime": reversed_body["reverseTime"],
         "data": {},
-        "amount": EXPECTED_SUM,
+        "amount": EXPECTED_TIYIN,
     }
 
 
@@ -1027,14 +1027,14 @@ async def test_happy_path_check_create_confirm_status(
             "timestamp": 1_700_000_000_000,
             "transId": trans_id,
             "params": {"order_id": order_id},
-            "amount": EXPECTED_SUM,
+            "amount": EXPECTED_TIYIN,
         },
     )
     assert r.status_code == 200
     created = r.json()
     assert created["status"] == "CREATED"
     assert created["transId"] == trans_id
-    assert created["amount"] == EXPECTED_SUM
+    assert created["amount"] == EXPECTED_TIYIN
 
     # /confirm -> CONFIRMED; order becomes paid.
     r = await integration_client.post(
@@ -1095,7 +1095,7 @@ async def test_reverse_fresh_non_delivered_order(
             "timestamp": 1_700_000_000_000,
             "transId": trans_id,
             "params": {"order_id": order_id},
-            "amount": EXPECTED_SUM,
+            "amount": EXPECTED_TIYIN,
         },
     )
     assert r.status_code == 200

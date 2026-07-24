@@ -17,7 +17,7 @@ sequenceDiagram
     API->>PAY: create_intent(order_id, "uzum")
     PAY->>DB: SELECT order FOR UPDATE (status == pending_payment)
     PAY->>UG: create_intent(db, order, return_url)
-    UG->>USVC: build_checkout_url(order_id, amount_sum, return_url)
+    UG->>USVC: build_checkout_url(order_id, amount_tiyin, return_url)
     USVC-->>UG: intent_url = open-service?serviceId=..&order_id=..&amount=..&redirectUrl=..
     UG-->>PAY: PaymentIntent(external_id="uzum:<order_id>", intent_url, status=pending)
     PAY->>DB: INSERT payments(provider=uzum, status=pending, external_id)
@@ -35,7 +35,7 @@ sequenceDiagram
     UZ->>API: POST /payments/uzum/create {serviceId, timestamp, transId, params, amount}
     API->>USVC: create(service_id, trans_id, params, amount)
     USVC->>DB: SELECT UzumTransaction WHERE trans_id (pre-check) -- exists? 10010
-    USVC->>DB: SELECT order FOR UPDATE, validate amount == int(total_charged) sums (else 10011)
+    USVC->>DB: SELECT order FOR UPDATE, validate amount == total_charged*100 (else 10011)
     USVC->>DB: INSERT uzum_transactions (status=CREATED, UNIQUE trans_id)
     USVC-->>API: {transId, status: CREATED, transTime, amount}
     API-->>UZ: 200 {serviceId, ...}

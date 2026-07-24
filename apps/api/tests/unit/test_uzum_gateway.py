@@ -90,14 +90,14 @@ async def test_create_intent_builds_exact_checkout_url(_uzum_env: None) -> None:
         {
             "serviceId": 101202,
             "order_id": "order-123",
-            "amount": 130_000,
+            "amount": 13_000_000,
             "redirectUrl": "https://return.example",
         }
     )
     assert intent.intent_url == f"https://www.uzumbank.uz/open-service?{expected_query}"
     assert intent.external_id == "uzum:order-123"
     assert intent.status == "pending"
-    assert intent.extra_metadata == {"amount_sum": 130_000}
+    assert intent.extra_metadata == {"amount_tiyin": 13_000_000}
 
 
 async def test_create_intent_rejects_non_uzs(_uzum_env: None) -> None:
@@ -114,10 +114,10 @@ async def test_create_intent_rejects_non_positive_amount(_uzum_env: None) -> Non
         await gw.create_intent(db=cast(Any, None), order=order, return_url="")
 
 
-async def test_create_intent_rejects_non_integral_sum(_uzum_env: None) -> None:
+async def test_create_intent_rejects_non_integral_tiyin(_uzum_env: None) -> None:
     gw = UzumGateway()
-    order = SimpleNamespace(id="o1", currency="UZS", total_charged=Decimal("10.5"))
-    with pytest.raises(PaymentGatewayError, match="whole number of sums"):
+    order = SimpleNamespace(id="o1", currency="UZS", total_charged=Decimal("10.005"))
+    with pytest.raises(PaymentGatewayError, match="exact tiyin"):
         await gw.create_intent(db=cast(Any, None), order=order, return_url="")
 
 

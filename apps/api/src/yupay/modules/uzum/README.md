@@ -43,13 +43,14 @@ POST /api/v1/payments/uzum/status
 
 ## Amounts and account
 
-- Amounts are **sums** (integer major UZS units), **not tiyin** — Uzum's
-  `amount` is an `int64` count of sums. Our `order.total_charged` is a
-  `Decimal` in major UZS units, already rounded to whole sums at order
-  creation (`orders.service._round_to_payable` uses a `Decimal("1")` quantum
-  for UZS — tiyin coins are defunct), so the expected amount is
-  `int(total_charged)`, required to be a **whole** number of sums — any
-  fractional-sum mismatch is `10011`, never silently rounded.
+- Amounts are **tiyin** (integer minor units) **everywhere except the `data`
+  object**: the `amount` field on `/create` / `/confirm` / `/reverse` /
+  `/status` and the checkout-URL `amount` are all tiyin. The **only** sum
+  (major-unit) value is `/check`'s `data.amount.value` (see below) — Uzum's
+  engineer confirmed this split, so do not "unify" the units. Our
+  `order.total_charged` is a `Decimal` in major UZS units; the expected wire
+  amount is `int(total_charged * 100)`, required to be an **exact** integer —
+  any fractional-tiyin mismatch is `10011`, never silently rounded.
 - `params.order_id` = our `order.id`. No other `params`/account fields are
   interpreted.
 
@@ -68,9 +69,8 @@ back `serviceId` (and `transId` when the request carried one).
   - **`data.amount.value`** carries the order's charge in **sums** (major UZS
     units, as a string — e.g. `"130000"`; fractional sums keep their decimals)
     so Uzum's app prefills the amount when the buyer opens checkout. Built by
-    `service._amount_value` from `order.total_charged`. (The `amount` field on
-    `/create` is likewise in **sums** — the whole integration is
-    sum-denominated.)
+    `service._amount_value` from `order.total_charged` (contrast the `amount`
+    field on `/create`, which is **tiyin**).
 - **Errors:** `10007` (unknown order), `10008` (already paid), `10009`
   (cancelled/expired/refunded/otherwise not payable). No amount is sent _by
   Uzum_ on `/check`, so there is no amount check here — we only _report_ the
@@ -204,12 +204,12 @@ Uzum API — like Payme, the checkout link is an **open-service deep link**
 built entirely client-side:
 
 ```
-https://www.uzumbank.uz/open-service?serviceId=<uzum_service_id>&order_id=<order.id>&amount=<amount_sum>[&redirectUrl=<return_url>]
+https://www.uzumbank.uz/open-service?serviceId=<uzum_service_id>&order_id=<order.id>&amount=<amount_tiyin>[&redirectUrl=<return_url>]
 ```
 
 `redirectUrl` is omitted entirely when no `return_url` is given. The gateway
 validates `order.currency == "UZS"`, `total_charged > 0`, and that
-`total_charged` is a whole number of sums before building the URL (Uzum is
+`total_charged * 100` is an exact integer before building the URL (Uzum is
 offered only for UZS orders). `verify_webhook` on this gateway always raises
 `PaymentNotIntegratedError` (Uzum never calls the generic
 `/webhooks/payments/{provider}` route), and `refund()` always raises
@@ -243,7 +243,7 @@ therefore always raises `PaymentGatewayError`. See
 
 ```
 apps/api/src/yupay/modules/uzum/
-  models.py    -- UzumTransaction (migration 0028; amount_sum rename 0030)
+  models.py    -- UzumTransaction (migration 0028)
   errors.py    -- the error catalogue above (pure, no I/O)
   service.py   -- the 5 webhook handlers + build_checkout_url
   routes.py    -- POST /check /create /confirm /reverse /status, Basic auth, always-200

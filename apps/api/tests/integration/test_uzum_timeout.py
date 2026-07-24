@@ -102,7 +102,7 @@ async def _seed_transaction(
             trans_id=f"uzum-{txn_id}",
             order_id=order_id,
             payment_id=payment_id,
-            amount_sum=130_000,
+            amount_tiyin=13_000_000,
             status=status,
             create_time=create_time,
         )

@@ -46,7 +46,7 @@
     },
     {
       "key": "amount",
-      "value": "25000"
+      "value": "2500000"
     }
   ],
   "item": [
@@ -92,7 +92,7 @@
           "host": ["{{base}}"],
           "path": ["create"]
         },
-        "description": "Create the transaction for an order. amount is in sums (major UZS units), not tiyin. Expected success status: CREATED."
+        "description": "Create the transaction for an order. Expected success status: CREATED."
       },
       "response": []
     },

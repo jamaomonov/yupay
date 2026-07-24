@@ -263,18 +263,15 @@ Mirroring how ADR-0034 flagged Payme's unstated conventions, the design spec
   methods, so `/create`, `/confirm` and `/reverse` no longer return it (they
   previously returned `data: {}`). `/status` still returns `data: {}`. Response
   fields dropped only; no behavioural change.
-- **2026-07-24 — amounts are in sums, not tiyin** (corrected with Uzum's
-  integration engineer). Uzum's Merchant API charges in **sums** (major UZS
-  units), not tiyin: `/create`'s `amount` is an `int64` count of sums, the
-  checkout-URL `amount` is sums, and the expected value is
-  `int(order.total_charged)` (UZS orders are already rounded to whole sums at
-  creation — see `orders.service._round_to_payable`). The
-  `uzum_transactions.amount_tiyin` column is renamed to `amount_sum` (migration
-  `0030`); `build_checkout_url`'s param and the gateway's `extra_metadata` key
-  become `amount_sum`. This corrects the original design (§6, which assumed
-  tiyin); had it shipped live, the checkout URL would have overcharged buyers
-  100× and every `/create` would have failed `10011`. Uzum is still
-  sandbox-only, so no live data was affected.
+- **2026-07-24 — units confirmed: tiyin on the wire, sums only in `data`.** A
+  brief attempt to redenominate the whole integration in sums was reverted
+  after Uzum's engineer clarified the split: the `amount` field on `/create` /
+  `/confirm` / `/reverse` / `/status` and the checkout-URL `amount` are all
+  **tiyin** (minor units); the **only** major-unit (sum) value is `/check`'s
+  `data.amount.value`, which Uzum's app uses to prefill checkout. Validation
+  stays `int(order.total_charged * 100)`, the column stays `amount_tiyin`, and
+  the checkout URL stays tiyin. Do not unify the units — the asymmetry is
+  Uzum's contract.
 
 ## Alternatives considered (detail)
 
