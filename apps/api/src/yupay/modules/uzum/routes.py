@@ -229,7 +229,9 @@ async def uzum_check(request: Request, db: DbSession) -> dict[str, Any]:
         await _rollback_after_internal_error(db, endpoint="check")
         return internal_error().to_response(**_echo(body))
 
-    return {"serviceId": body.get("serviceId"), "timestamp": body.get("timestamp"), **result}
+    # ``timestamp`` is our RESPONSE time (epoch ms), not the request's echoed
+    # value — Uzum wants the moment we answered, not the moment it asked.
+    return {"serviceId": body.get("serviceId"), "timestamp": uzum_svc.now_ms(), **result}
 
 
 @router.post("/create", summary="Uzum Merchant API: /create")

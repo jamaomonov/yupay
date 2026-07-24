@@ -203,7 +203,18 @@ async def test_uzum_transaction_status_check_rejects_invalid_value(
 async def test_check_ok(db_session: AsyncSession) -> None:
     order_id = await _seed_order(db_session)
     result = await uzum_svc.check(db_session, service_id=SERVICE_ID, params={"order_id": order_id})
-    assert result == {"status": "OK", "data": {}}
+    # data.amount.value carries the charge in SUMS (major units, string) so
+    # Uzum's app prefills the amount: 130000.00 UZS -> "130000".
+    assert result == {"status": "OK", "data": {"amount": {"value": "130000"}}}
+
+
+async def test_check_ok_fractional_sum_keeps_decimals(db_session: AsyncSession) -> None:
+    # A charge with fractional sums (still an integral tiyin amount) keeps its
+    # decimal places in data.amount.value rather than being rounded.
+    order_id = await _seed_order(db_session, total_charged=Decimal("130000.50"))
+    result = await uzum_svc.check(db_session, service_id=SERVICE_ID, params={"order_id": order_id})
+    # The 6-dp column reads back 130000.500000; trailing zeros are stripped.
+    assert result == {"status": "OK", "data": {"amount": {"value": "130000.5"}}}
 
 
 async def test_check_unknown_order_is_10007(db_session: AsyncSession) -> None:

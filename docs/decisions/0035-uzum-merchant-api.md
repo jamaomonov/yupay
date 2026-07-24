@@ -246,6 +246,19 @@ Mirroring how ADR-0034 flagged Payme's unstated conventions, the design spec
   spec §18) and confirm their manual test suite passes before flipping to
   production credentials.
 
+## Amendments
+
+- **2026-07-24 — `/check` response carries the amount and a response-time
+  `timestamp`** (requested by Uzum's integration engineer). `/check` now
+  returns `data.amount.value` = the order's charge in **sums** (major UZS
+  units, string) so Uzum's app prefills the amount when the buyer opens
+  checkout, and its `timestamp` is now our **response** time (epoch ms) rather
+  than the request's echoed value. This is additive to the wire contract (the
+  other four responses are unchanged; no state-machine or money-path change),
+  so it does not warrant a superseding ADR — see
+  `apps/api/src/yupay/modules/uzum/README.md` (`POST /check`) and design spec
+  §11.
+
 ## Alternatives considered (detail)
 
 ### Option 2 — model Uzum as a webhook

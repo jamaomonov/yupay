@@ -29,8 +29,8 @@ sequenceDiagram
     UZ->>API: POST /payments/uzum/check {serviceId, timestamp, params: {order_id}}
     API->>USVC: check(service_id, params)
     USVC->>DB: SELECT order (validate payable: not paid, not cancelled/expired)
-    USVC-->>API: {status: OK, data: {}}
-    API-->>UZ: 200 {serviceId, timestamp, status: OK, data: {}}
+    USVC-->>API: {status: OK, data: {amount: {value: sums}}}
+    API-->>UZ: 200 {serviceId, timestamp: now (response time), status: OK, data: {amount: {value: sums}}}
 
     UZ->>API: POST /payments/uzum/create {serviceId, timestamp, transId, params, amount}
     API->>USVC: create(service_id, trans_id, params, amount)

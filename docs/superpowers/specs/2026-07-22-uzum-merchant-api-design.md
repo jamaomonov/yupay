@@ -157,12 +157,19 @@ display info (customer/order label); we return `{}` unless a field is useful.
 
 **Request:** `{ "serviceId": 101202, "timestamp": 1698361456728, "params": { "order_id": "<uuid>" } }`
 
-**Success (`200`):** `{ "serviceId": 101202, "timestamp": <ms>, "status": "OK", "data": {} }`
+**Success (`200`):** `{ "serviceId": 101202, "timestamp": <response ms>, "status": "OK", "data": { "amount": { "value": "130000" } } }`
+
+`timestamp` is our **response** time (epoch ms), not the request's echoed
+value. `data.amount.value` is the order's charge in **sums** (major UZS units,
+string; fractional sums keep decimals) so Uzum's app prefills the amount when
+the buyer opens checkout — built by `service._amount_value` from
+`order.total_charged` (contrast `/create`'s `amount`, which is tiyin).
 
 **Logic:** resolve the order by `params.order_id`. Order missing → `10007`
 (additional payment attribute not found). Order already paid → `10008` (payment
 already made). Order cancelled/expired → `10009` (payment cancelled). Otherwise
-`status: OK`. (Amount is not sent on `/check`, so no amount check here.)
+`status: OK`. (No amount is sent *by Uzum* on `/check`, so there is no amount
+check here — we only report the order's amount back in `data`.)
 
 ### `POST /create` — create the transaction
 
@@ -326,8 +333,10 @@ with a filled-out comment block (like the Payme block).
   at `fulfilling` with one code already shipped is refused (`10017`), never
   auto-refunded.
 - **`data`/`params` envelopes:** `params` carries only `order_id` for us (other
-  account attributes are service-config); `data` we return as `{}` unless a
-  display label is worth sending.
+  account attributes are service-config). On `/check` we return
+  `data.amount.value` = the order's charge in sums (major UZS units, string) so
+  Uzum's app prefills the amount; the other four responses return `data` as
+  `{}`.
 
 ---
 

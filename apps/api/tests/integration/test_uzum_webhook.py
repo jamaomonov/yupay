@@ -969,6 +969,34 @@ async def test_status_full_envelope_reversed(
 
 
 # --------------------------------------------------------------------------- #
+# /check response envelope: amount in data + response-time timestamp          #
+# --------------------------------------------------------------------------- #
+
+
+async def test_check_returns_amount_and_response_timestamp(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """``/check`` echoes ``serviceId`` but returns its OWN response-time
+    ``timestamp`` (never the request's), and carries the order's charge in
+    ``data.amount.value`` (sums) so Uzum's app prefills the amount."""
+    order_id = await _seed_order(db_session)  # total_charged 130000.00
+    request_ts = 1_700_000_000_000  # a fixed past timestamp (2023-11-14)
+    r = await integration_client.post(
+        CHECK_URL,
+        headers=_auth(),
+        json={"serviceId": SERVICE_ID, "timestamp": request_ts, "params": {"order_id": order_id}},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "OK"
+    assert body["serviceId"] == SERVICE_ID
+    assert body["data"] == {"amount": {"value": "130000"}}
+    # timestamp is our response time, NOT the echoed request value.
+    assert body["timestamp"] != request_ts
+    assert body["timestamp"] > request_ts
+
+
+# --------------------------------------------------------------------------- #
 # Happy path across all five endpoints                                        #
 # --------------------------------------------------------------------------- #
 
@@ -988,6 +1016,7 @@ async def test_happy_path_check_create_confirm_status(
     assert r.status_code == 200
     assert r.json()["status"] == "OK"
     assert r.json()["serviceId"] == SERVICE_ID
+    assert r.json()["data"] == {"amount": {"value": "130000"}}
 
     # /create -> CREATED
     r = await integration_client.post(

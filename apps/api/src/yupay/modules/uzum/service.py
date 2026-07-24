@@ -85,6 +85,35 @@ def _expected_tiyin(order: Order) -> int:
     return int(raw)
 
 
+def _amount_value(order: Order) -> str:
+    """Return the order's charge as a plain major-unit UZS (sum) string.
+
+    Uzum's app prefills the payment amount from ``/check``'s
+    ``data.amount.value`` when the buyer opens checkout, and expects it in
+    **sums** (major units), not tiyin. ``total_charged`` is already a
+    major-unit UZS ``Decimal``; UZS has no sub-sum denomination in practice, so
+    a whole-sum charge renders as a bare integer string (``"130000"``). A
+    charge that carries fractional sums (allowed as long as ``* 100`` is
+    integral — see :func:`_expected_tiyin`) keeps its decimal places rather
+    than being silently rounded.
+
+    Args:
+        order: The order whose charge to render for Uzum's app.
+
+    Returns:
+        The charge in sums as a string, e.g. ``"130000"``.
+    """
+    amount = order.total_charged
+    if amount == amount.to_integral_value():
+        return str(int(amount))
+    # The column keeps 6 dp, so a fractional charge reads back with trailing
+    # zeros (130000.50 -> 130000.500000); strip them. ``normalize`` is safe
+    # here because only genuinely-fractional values reach this branch — a
+    # whole-sum charge (which ``normalize`` would render in exponent form,
+    # e.g. 1.3E+5) is handled by the integer branch above.
+    return format(amount.normalize(), "f")
+
+
 async def _resolve_order(
     db: AsyncSession, order_id: str | None, *, for_update: bool = False
 ) -> Order:
@@ -225,7 +254,9 @@ async def check(db: AsyncSession, *, service_id: int, params: dict[str, Any]) ->
         params: Uzum's ``params`` object carrying ``order_id``.
 
     Returns:
-        ``{"status": "OK", "data": {}}`` when the order is payable.
+        ``{"status": "OK", "data": {"amount": {"value": <sums>}}}`` when the
+        order is payable — ``data.amount.value`` carries the charge in sums so
+        Uzum's app prefills the amount when the buyer opens checkout.
 
     Raises:
         UzumError: ``10007`` unknown order, ``10008`` already paid, ``10009``
@@ -234,7 +265,7 @@ async def check(db: AsyncSession, *, service_id: int, params: dict[str, Any]) ->
     del service_id  # signature parity only; see docstring.
     order = await _resolve_order(db, params.get("order_id"))
     _check_order_state(order)
-    return {"status": "OK", "data": {}}
+    return {"status": "OK", "data": {"amount": {"value": _amount_value(order)}}}
 
 
 async def create(

@@ -59,10 +59,18 @@ back `serviceId` (and `transId` when the request carried one).
 ### `POST /check`
 
 - **Request:** `{"serviceId", "timestamp", "params": {"order_id"}}`.
-- **Success:** `{"serviceId", "timestamp", "status": "OK", "data": {}}`.
+- **Success:** `{"serviceId", "timestamp", "status": "OK", "data": {"amount": {"value": "<sums>"}}}`.
+  - **`timestamp`** is our **response** time (epoch ms), *not* the request's
+    echoed value — Uzum wants the moment we answered.
+  - **`data.amount.value`** carries the order's charge in **sums** (major UZS
+    units, as a string — e.g. `"130000"`; fractional sums keep their decimals)
+    so Uzum's app prefills the amount when the buyer opens checkout. Built by
+    `service._amount_value` from `order.total_charged` (contrast the `amount`
+    field on `/create`, which is **tiyin**).
 - **Errors:** `10007` (unknown order), `10008` (already paid), `10009`
-  (cancelled/expired/refunded/otherwise not payable). No amount is sent on
-  `/check`, so there is no amount check here.
+  (cancelled/expired/refunded/otherwise not payable). No amount is sent *by
+  Uzum* on `/check`, so there is no amount check here — we only *report* the
+  order's amount back in `data`.
 
 ### `POST /create`
 
