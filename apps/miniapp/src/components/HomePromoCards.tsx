@@ -77,7 +77,9 @@ export function HomePromoCards() {
               <p className="text-[12px] font-bold leading-snug tracking-tight text-white">
                 {t(card.titleKey)}
               </p>
-              <p className="text-body-muted mt-0.5 text-[9.5px] leading-snug">{t(card.subtitleKey)}</p>
+              <p className="text-body-muted mt-0.5 text-[9.5px] leading-snug">
+                {t(card.subtitleKey)}
+              </p>
             </div>
 
             <img
