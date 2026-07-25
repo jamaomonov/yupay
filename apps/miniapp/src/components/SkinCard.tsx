@@ -33,19 +33,6 @@ export default function SkinCard({
   onBuy,
   onAddToCart,
 }: SkinCardProps) {
-  const borderColorMap: Record<string, string> = {
-    "from-pink-500": "border-pink-500",
-    "from-yellow-500": "border-yellow-500",
-    "from-purple-500": "border-purple-500",
-    "from-lime-500": "border-lime-500",
-    "from-blue-500": "border-blue-500",
-    "from-rose-500": "border-rose-500",
-    "from-green-500": "border-green-500",
-    "from-indigo-500": "border-indigo-500",
-  };
-
-  const borderClass = borderColorMap[skin.borderColor] || "border-lime-500";
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -53,14 +40,14 @@ export default function SkinCard({
       exit={{ opacity: 0, y: 20 }}
       transition={{ type: "spring", stiffness: 300, damping: 30 }}
       whileHover={{ scale: 1.02 }}
-      className="relative flex flex-col rounded-lg border-2 overflow-hidden bg-surface transition-all duration-300"
+      className="relative flex flex-col rounded-lg border-2 overflow-hidden bg-surface-1 transition-all duration-300"
       style={{
         borderColor: getBorderColor(skin.borderColor),
         boxShadow: `0 0 20px ${getBorderColor(skin.borderColor)}40`,
       }}
     >
       {/* Price Badge */}
-      <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5 bg-surface-variant/90 backdrop-blur-sm px-3 py-1.5 rounded-md border border-surface-bright/30">
+      <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5 bg-surface-2/90 backdrop-blur-sm px-3 py-1.5 rounded-md border border-white/30">
         <svg
           className="w-4 h-4"
           viewBox="0 0 24 24"
@@ -82,7 +69,7 @@ export default function SkinCard({
       )}
 
       {/* Weapon Image Container */}
-      <div className="relative w-full aspect-square bg-surface-variant/50 flex items-center justify-center overflow-hidden border-b border-surface-bright/10">
+      <div className="relative w-full aspect-square bg-surface-2/50 flex items-center justify-center overflow-hidden border-b border-white/10">
         <div
           className="absolute inset-0 opacity-10"
           style={{
@@ -91,7 +78,7 @@ export default function SkinCard({
           }}
         />
         <div
-          className="absolute inset-0 flex items-center justify-center text-6xl font-bold text-surface-bright/5"
+          className="absolute inset-0 flex items-center justify-center text-6xl font-bold text-white/5"
         >
           🔫
         </div>
@@ -114,7 +101,7 @@ export default function SkinCard({
           {Array.from({ length: skin.stickers }).map((_, i) => (
             <div
               key={i}
-              className="w-6 h-6 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-xs font-bold text-amber-950"
+              className="w-6 h-6 rounded-full bg-linear-to-br from-amber-400 to-amber-600 flex items-center justify-center text-xs font-bold text-amber-950"
             >
               ★
             </div>
@@ -133,16 +120,16 @@ export default function SkinCard({
 
         {/* Condition and Float */}
         <div className="flex justify-between items-center text-xs mb-3">
-          <span className="text-surface-bright">
+          <span className="text-white">
             <strong>{skin.condition}</strong>
           </span>
-          <span className="text-surface-bright/70">
+          <span className="text-white/70">
             {skin.floatValue.toFixed(7)}
           </span>
         </div>
 
         {/* Price */}
-        <div className="mb-3 pb-3 border-b border-surface-bright/10">
+        <div className="mb-3 pb-3 border-b border-white/10">
           <div className="text-lg font-bold text-foreground">
             ${skin.price.toLocaleString("en-US", { maximumFractionDigits: 2 })}
           </div>
@@ -154,7 +141,7 @@ export default function SkinCard({
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => onAddToCart(skin.id)}
-            className="flex-shrink-0 w-10 h-10 rounded-md bg-surface-variant hover:bg-surface-bright/20 flex items-center justify-center text-primary transition-colors"
+            className="shrink-0 w-10 h-10 rounded-md bg-surface-2 hover:bg-white/20 flex items-center justify-center text-primary transition-colors"
           >
             <ShoppingCart size={18} />
           </motion.button>
@@ -162,7 +149,7 @@ export default function SkinCard({
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => onBuy(skin.id)}
-            className="flex-1 py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold rounded-md transition-all shadow-lg hover:shadow-xl"
+            className="flex-1 py-2 bg-linear-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold rounded-md transition-all shadow-lg hover:shadow-xl"
           >
             Buy now
           </motion.button>

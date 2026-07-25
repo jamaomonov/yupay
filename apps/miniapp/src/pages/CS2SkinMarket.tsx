@@ -163,23 +163,19 @@ export default function CS2SkinMarket() {
   }, [filters]);
 
   const handleBuy = (skinId: string) => {
-    const skin = MOCK_SKINS.find((s) => s.id === skinId);
-    if (skin) {
-      console.log("[v0] Buying skin:", skin.name, "Price:", skin.price);
-      // In real app, navigate to checkout or open payment modal
-    }
+    // Demo stub: real checkout/payment wiring lands with the CS2 market API.
+    void MOCK_SKINS.find((s) => s.id === skinId);
   };
 
   const handleAddToCart = (skinId: string) => {
-    setCartItems((prev) => [...prev, skinId]);
-    console.log("[v0] Added to cart:", skinId);
+    setCartItems((prev) => (prev.includes(skinId) ? prev : [...prev, skinId]));
   };
 
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-2xl mx-auto">
         {/* Header */}
-        <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-surface-bright/10 px-4 py-4">
+        <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-white/10 px-4 py-4">
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold text-foreground">
               CS2 Skins Market
@@ -216,7 +212,7 @@ export default function CS2SkinMarket() {
               <h2 className="text-xl font-bold text-foreground mb-2">
                 No skins found
               </h2>
-              <p className="text-surface-bright/60">
+              <p className="text-white/60">
                 Try adjusting your filters or search terms
               </p>
               <motion.button

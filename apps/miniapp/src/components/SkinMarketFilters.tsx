@@ -48,19 +48,19 @@ export default function SkinMarketFilters({
   const conditions = ["FN", "MW", "FT", "WW", "BS"] as const;
 
   return (
-    <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm border-b border-surface-bright/10 pb-4">
+    <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm border-b border-white/10 pb-4">
       {/* Search and Control Buttons */}
       <div className="px-4 pt-4 mb-4">
         <div className="flex gap-2">
           {/* Search Input */}
           <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-surface-bright/50 w-4 h-4" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/50 w-4 h-4" />
             <input
               type="text"
               placeholder="Search skins..."
               value={filters.search}
               onChange={(e) => handleSearch(e.target.value)}
-              className="w-full bg-surface border border-surface-bright/20 rounded-md py-2.5 pl-10 pr-4 text-foreground placeholder-surface-bright/40 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors"
+              className="w-full bg-surface-1 border border-white/20 rounded-md py-2.5 pl-10 pr-4 text-foreground placeholder-white/40 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors"
             />
           </div>
 
@@ -68,7 +68,7 @@ export default function SkinMarketFilters({
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            className="p-2.5 bg-surface border border-surface-bright/20 rounded-md hover:border-surface-bright/40 transition-colors flex items-center justify-center text-surface-bright/60 hover:text-surface-bright"
+            className="p-2.5 bg-surface-1 border border-white/20 rounded-md hover:border-white/40 transition-colors flex items-center justify-center text-white/60 hover:text-white"
             title="Layers"
           >
             <Layers size={18} />
@@ -77,7 +77,7 @@ export default function SkinMarketFilters({
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            className="p-2.5 bg-surface border border-surface-bright/20 rounded-md hover:border-surface-bright/40 transition-colors flex items-center justify-center text-surface-bright/60 hover:text-surface-bright"
+            className="p-2.5 bg-surface-1 border border-white/20 rounded-md hover:border-white/40 transition-colors flex items-center justify-center text-white/60 hover:text-white"
             title="Info"
           >
             <Info size={18} />
@@ -87,10 +87,10 @@ export default function SkinMarketFilters({
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => setShowFilters(!showFilters)}
-            className={`p-2.5 bg-surface border rounded-md flex items-center justify-center transition-colors ${
+            className={`p-2.5 bg-surface-1 border rounded-md flex items-center justify-center transition-colors ${
               showFilters
                 ? "border-primary bg-primary/10 text-primary"
-                : "border-surface-bright/20 text-surface-bright/60 hover:text-surface-bright hover:border-surface-bright/40"
+                : "border-white/20 text-white/60 hover:text-white hover:border-white/40"
             }`}
             title="Filter"
           >
@@ -100,7 +100,7 @@ export default function SkinMarketFilters({
       </div>
 
       {/* Results Count */}
-      <div className="px-4 text-xs text-surface-bright/60 mb-3">
+      <div className="px-4 text-xs text-white/60 mb-3">
         {resultCount} {resultCount === 1 ? "skin" : "skins"} found
       </div>
 
@@ -112,12 +112,12 @@ export default function SkinMarketFilters({
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.2 }}
-            className="overflow-hidden border-t border-surface-bright/10 pt-4"
+            className="overflow-hidden border-t border-white/10 pt-4"
           >
             <div className="px-4 space-y-4">
               {/* Sort Options */}
               <div>
-                <label className="text-xs font-semibold text-surface-bright/80 uppercase tracking-wide mb-2 block">
+                <label className="text-xs font-semibold text-white/80 uppercase tracking-wide mb-2 block">
                   Sort By
                 </label>
                 <div className="grid grid-cols-2 gap-2">
@@ -136,7 +136,7 @@ export default function SkinMarketFilters({
                       className={`py-2 px-3 rounded-md text-sm font-medium transition-all ${
                         filters.sortBy === option.value
                           ? "bg-primary text-background"
-                          : "bg-surface border border-surface-bright/20 text-foreground hover:border-surface-bright/40"
+                          : "bg-surface-1 border border-white/20 text-foreground hover:border-white/40"
                       }`}
                     >
                       {option.label}
@@ -147,7 +147,7 @@ export default function SkinMarketFilters({
 
               {/* Condition Filter */}
               <div>
-                <label className="text-xs font-semibold text-surface-bright/80 uppercase tracking-wide mb-2 block">
+                <label className="text-xs font-semibold text-white/80 uppercase tracking-wide mb-2 block">
                   Condition
                 </label>
                 <div className="flex flex-wrap gap-2">
@@ -160,7 +160,7 @@ export default function SkinMarketFilters({
                       className={`py-2 px-4 rounded-md text-sm font-semibold transition-all ${
                         filters.conditions.includes(condition)
                           ? "bg-primary text-background"
-                          : "bg-surface border border-surface-bright/20 text-foreground hover:border-surface-bright/40"
+                          : "bg-surface-1 border border-white/20 text-foreground hover:border-white/40"
                       }`}
                     >
                       {condition}
@@ -174,7 +174,7 @@ export default function SkinMarketFilters({
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={handleReset}
-                className="w-full py-2 px-4 bg-surface-variant/50 border border-surface-bright/20 rounded-md text-foreground text-sm font-medium hover:border-surface-bright/40 transition-colors flex items-center justify-center gap-2"
+                className="w-full py-2 px-4 bg-surface-2/50 border border-white/20 rounded-md text-foreground text-sm font-medium hover:border-white/40 transition-colors flex items-center justify-center gap-2"
               >
                 <X size={16} />
                 Reset Filters
