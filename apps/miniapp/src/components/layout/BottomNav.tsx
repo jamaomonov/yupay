@@ -1,4 +1,4 @@
-import { Home, Clock, Settings, ShoppingCart } from "lucide-react";
+import { Home, Clock, Settings } from "lucide-react";
 import { Link, useLocation } from "wouter";
 
 import { useT } from "@/lib/i18n";
@@ -12,7 +12,6 @@ export function BottomNav() {
 
   const navItems = [
     { href: "/", label: t("nav.home"), icon: Home },
-    { href: "/cs2-market", label: "Market", icon: ShoppingCart },
     { href: "/history", label: t("nav.history"), icon: Clock },
     { href: "/settings", label: t("nav.settings"), icon: Settings },
   ];

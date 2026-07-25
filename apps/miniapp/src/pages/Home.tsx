@@ -1,98 +1,18 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, X, TrendingUp, ArrowLeft, RotateCcw, Settings } from "lucide-react";
+import { Search, X, ArrowLeft, RotateCcw, Settings } from "lucide-react";
 import { useState, useMemo, useRef } from "react";
 import { Link } from "wouter";
 
 import type { Game } from "@/lib/constants-types";
 
-import { HeroCarousel } from "@/components/HeroCarousel";
+import { HomePromoCards } from "@/components/HomePromoCards";
 import { SafeImage } from "@/components/ui/safe-image";
 import { useCategoriesList, useGames } from "@/lib/catalog";
 import { CATEGORY_LABELS } from "@/lib/constants";
-import { useT, type MessageKey } from "@/lib/i18n";
+import { useT } from "@/lib/i18n";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
 const ALL_KEY = "__all__";
-
-const FEATURED_IDS = ["pubg", "telegram", "delta-force", "steam", "valorant"];
-
-const PROMO_BADGES: Record<string, { labelKey: MessageKey; color: string }> = {
-  pubg: { labelKey: "home.badge.top", color: "hsl(var(--primary))" },
-  telegram: { labelKey: "home.badge.promo", color: "#ff6b35" },
-  "delta-force": { labelKey: "home.badge.new", color: "#a855f7" },
-};
-
-// ─── Promo strip ──────────────────────────────────────────────────────────────
-function PromoStrip({ games }: { games: Game[] }) {
-  const { t, tn } = useT();
-  const featured = games.filter((g) => FEATURED_IDS.includes(g.id));
-  if (featured.length === 0) return null;
-
-  return (
-    <div>
-      <div className="mb-3 flex items-center justify-between px-4">
-        <div className="flex items-center gap-2">
-          <TrendingUp size={14} className="text-primary" />
-          <span className="text-sm font-semibold text-white">{t("home.popular")}</span>
-        </div>
-        <span className="text-body-faint text-xs">{tn("home.servicesCount", featured.length)}</span>
-      </div>
-      <div className="no-scrollbar flex gap-3 overflow-x-auto px-4 pb-1">
-        {featured.map((game, i) => {
-          const badge = PROMO_BADGES[game.id];
-          const promoSrc = game.bgUrl || game.appIcon;
-          return (
-            <Link key={game.id} href={`/topup/${game.id}`}>
-              <motion.div
-                whileTap={{ scale: 0.94 }}
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.06 }}
-                className="relative h-[108px] w-[148px] flex-shrink-0 cursor-pointer overflow-hidden rounded-2xl"
-              >
-                {promoSrc ? (
-                  <SafeImage
-                    src={promoSrc}
-                    className="absolute inset-0 h-full w-full object-cover"
-                    fallback={
-                      <div
-                        className={`absolute inset-0 bg-gradient-to-br ${game.gradient || "from-card to-background"}`}
-                      />
-                    }
-                  />
-                ) : (
-                  <div
-                    className={`absolute inset-0 bg-gradient-to-br ${game.gradient || "from-card to-background"}`}
-                  />
-                )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
-
-                {badge && (
-                  <div
-                    className="absolute left-2 top-2 rounded-md px-1.5 py-0.5 text-[10px] font-bold tracking-wider"
-                    style={{
-                      background: badge.color,
-                      color: badge.color === "hsl(var(--primary))" ? "#000" : "#fff",
-                    }}
-                  >
-                    {t(badge.labelKey)}
-                  </div>
-                )}
-
-                <div className="absolute bottom-0 left-0 right-0 p-3">
-                  <p className="line-clamp-1 text-xs font-semibold leading-tight text-white">
-                    {game.name}
-                  </p>
-                  <p className="text-body-muted mt-0.5 text-[10px]">{game.publisher}</p>
-                </div>
-              </motion.div>
-            </Link>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 // ─── Game card (icon grid) ────────────────────────────────────────────────────
 function GameCardThumb({ game }: { game: Game }) {
@@ -293,8 +213,7 @@ export default function Home() {
             transition={{ duration: 0.18 }}
             className="space-y-3.5"
           >
-            <HeroCarousel />
-            <PromoStrip games={games} />
+            <HomePromoCards />
           </motion.div>
         )}
       </AnimatePresence>
