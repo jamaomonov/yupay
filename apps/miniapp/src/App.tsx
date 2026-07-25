@@ -11,6 +11,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { I18nProvider, useT } from "@/lib/i18n";
 import { showSettingsButton, watchTelegramActivity } from "@/lib/telegram";
 import { useTelegramBackButton } from "@/lib/use-telegram-back-button";
+import CS2SkinMarket from "@/pages/CS2SkinMarket";
 import History from "@/pages/History";
 import Home from "@/pages/Home";
 import OrderSuccess from "@/pages/OrderSuccess";
@@ -60,6 +61,7 @@ function Router() {
     <Shell>
       <Switch>
         <Route path="/" component={Home} />
+        <Route path="/cs2-market" component={CS2SkinMarket} />
         <Route path="/topup/:gameId" component={TopUp} />
         <Route path="/order/:id" component={OrderSuccess} />
         <Route path="/wallet" component={Wallet} />
