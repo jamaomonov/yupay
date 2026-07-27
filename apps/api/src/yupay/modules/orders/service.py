@@ -128,7 +128,19 @@ def _record_event(
     actor: Actor,
     payload: dict[str, object] | None = None,
 ) -> None:
-    actor_label = f"user:{actor.user_id}" if actor.user_id else f"guest:{actor.email}"
+    if actor.user_id:
+        actor_label = f"user:{actor.user_id}"
+    else:
+        # Store a (truncated) hash of the guest's email — not the raw address — in
+        # the audit actor, keeping the plaintext email out of the admin audit feed
+        # while still allowing per-guest correlation. Truncated to fit the
+        # varchar(64) actor column ("guest:" + 40 hex = 46 chars); a per-email
+        # deterministic pseudonym, non-reversible.
+        from yupay.core.config import get_settings
+        from yupay.modules.auth.security import email_hash
+
+        _eh = email_hash(actor.email or "", get_settings().auth_email_pepper)
+        actor_label = f"guest:{_eh[:40]}"
     db.add(
         OrderEvent(
             id=new_id(),

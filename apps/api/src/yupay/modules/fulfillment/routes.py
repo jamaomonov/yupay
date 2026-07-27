@@ -328,7 +328,14 @@ async def admin_force_complete_task(
     body: ManualCompleteIn,
     db: Annotated[AsyncSession, Depends(db_session)],
     admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
 ) -> FulfillmentTaskOut:
+    key = normalize_idempotency_key(idempotency_key)
+    scope = "fulfillment.force_complete_task"
+    if key is not None:
+        cached = await load_replay(db, scope=scope, idempotency_key=key)
+        if cached is not None:
+            return FulfillmentTaskOut.model_validate(cached.body)
     task = await svc.complete_manual_task(
         db,
         task_id=task_id,
@@ -340,7 +347,10 @@ async def admin_force_complete_task(
         proof_url=body.proof_url,
         force=True,
     )
-    return FulfillmentTaskOut.model_validate(task)
+    out = FulfillmentTaskOut.model_validate(task)
+    if key is not None:
+        await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
+    return out
 
 
 @admin_router.post(
