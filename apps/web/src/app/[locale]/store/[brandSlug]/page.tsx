@@ -210,8 +210,15 @@ export default async function BrandPage({
                   {t("from")} {startingChip}
                 </Chip>
               )}
-              <Chip icon={<Clock size={13} />}>{t("etaChip", { eta: "1–3" })}</Chip>
-              <Chip icon={<ShieldCheck size={13} />}>{t("securityChip")}</Chip>
+              {/* Generic eta/security chips only when the brand has no
+                  highlights — otherwise the highlights (e.g. "1–3 минуты",
+                  "Без пароля") would duplicate them. */}
+              {highlights.length === 0 && (
+                <>
+                  <Chip icon={<Clock size={13} />}>{t("etaChip", { eta: "1–3" })}</Chip>
+                  <Chip icon={<ShieldCheck size={13} />}>{t("securityChip")}</Chip>
+                </>
+              )}
               <HighlightChips items={highlights} />
               {brand.maintenance && <Chip>{t("maintenance")}</Chip>}
             </div>

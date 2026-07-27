@@ -13,7 +13,7 @@ export function HighlightChips({ items }: { items: string[] }) {
       {items.map((h) => (
         <span
           key={h}
-          className="border-primary/40 bg-primary/10 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold text-white backdrop-blur"
+          className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/40 px-3 py-1.5 text-[12px] font-semibold text-white backdrop-blur"
         >
           <Check size={13} className="text-primary shrink-0" />
           {h}
