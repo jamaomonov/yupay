@@ -935,6 +935,13 @@
             ],
             "title": "Hero Image Url"
           },
+          "highlights": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Highlights",
+            "type": "array"
+          },
           "id": {
             "title": "Id",
             "type": "string"

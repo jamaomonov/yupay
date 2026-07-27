@@ -7,6 +7,7 @@ into the testcontainers Postgres, then exercises the HTTP layer.
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any
 
 import pytest
 from httpx import AsyncClient
@@ -23,6 +24,7 @@ from yupay.modules.catalog.models import (
     Sku,
     SkuPrice,
 )
+from yupay.modules.catalog.service import get_brand_by_slug
 
 pytestmark = pytest.mark.asyncio
 
@@ -146,6 +148,73 @@ async def test_brand_detail_returns_products(integration_client: AsyncClient, _s
 async def test_brand_detail_unknown_returns_404(integration_client: AsyncClient, _seed_one) -> None:
     r = await integration_client.get("/api/v1/catalog/brands/no-such-brand")
     assert r.status_code == 404
+
+
+async def _seed_brand_with_translations(
+    db_session: AsyncSession,
+    slug: str,
+    translations: dict[str, dict[str, Any]],
+) -> Brand:
+    """Insert a Category → Brand chain, one ``BrandTranslation`` per locale
+    keyed by ``translations`` (locale -> kwargs for ``BrandTranslation``).
+    Mirrors ``_seed_one`` above but parameterized for translation-focused tests."""
+    category = Category(
+        id=new_id(),
+        slug=f"{slug}-cat",
+        sort_order=10,
+        active=True,
+        translations=[CategoryTranslation(locale="ru", name="Кат")],
+    )
+    brand = Brand(
+        id=new_id(),
+        slug=slug,
+        category_id=category.id,
+        sort_order=10,
+        active=True,
+        translations=[
+            BrandTranslation(locale=locale, **kwargs) for locale, kwargs in translations.items()
+        ],
+    )
+    db_session.add(category)
+    db_session.add(brand)
+    await db_session.commit()
+    return brand
+
+
+async def test_brand_detail_returns_localized_highlights(db_session: AsyncSession) -> None:
+    await _seed_brand_with_translations(
+        db_session,
+        slug="steamtest",
+        translations={
+            "ru": {"name": "Steam", "highlights": ["0% комиссии", "Оплата в сумах"]},
+            "en": {"name": "Steam", "highlights": None},
+        },
+    )
+    ru = await get_brand_by_slug(db_session, "steamtest", locale="ru")
+    assert ru is not None
+    assert ru.highlights == ["0% комиссии", "Оплата в сумах"]
+
+    # en row exists but its highlights is NULL -> [] (row-level fallback only,
+    # no bleeding the ru chips onto a locale that has its own row)
+    en = await get_brand_by_slug(db_session, "steamtest", locale="en")
+    assert en is not None
+    assert en.highlights == []
+
+    # uz has no translation row at all -> falls back to DEFAULT_LOCALE (ru) row
+    uz = await get_brand_by_slug(db_session, "steamtest", locale="uz")
+    assert uz is not None
+    assert uz.highlights == ["0% комиссии", "Оплата в сумах"]
+
+
+async def test_brand_detail_highlights_default_empty(db_session: AsyncSession) -> None:
+    await _seed_brand_with_translations(
+        db_session,
+        slug="plainbrand",
+        translations={"ru": {"name": "Plain", "highlights": None}},
+    )
+    got = await get_brand_by_slug(db_session, "plainbrand", locale="ru")
+    assert got is not None
+    assert got.highlights == []
 
 
 async def test_products_filtered_by_brand(integration_client: AsyncClient, _seed_one) -> None:

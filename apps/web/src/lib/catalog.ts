@@ -97,6 +97,9 @@ export interface BrandDetail extends BrandSummary {
   instructions?: string | null;
   products?: ProductSummary[];
   faqs?: Faq[];
+  // Optional: an older deployed API (or a build prerendering against one) may
+  // omit this, so consumers must tolerate `undefined` and default to `[]`.
+  highlights?: string[];
 }
 
 export interface ProductDetail extends ProductSummary {

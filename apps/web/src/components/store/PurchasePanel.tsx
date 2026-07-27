@@ -27,14 +27,13 @@ interface Method {
   h: number;
 }
 
-/** In-scope acquirers (UZ rails + USDT). Real gateways are still stubs in dev,
+/** In-scope acquirers (UZ rails). Real gateways are still stubs in dev,
  * so checkout falls back to the live `mock` provider when the chosen one isn't
  * available yet — the UI stays honest while the flow works end-to-end. */
 const METHODS: Method[] = [
   { id: "click", name: "Click", provider: "click", icon: "/payment/click.svg", w: 157, h: 40 },
   { id: "payme", name: "Payme", provider: "payme", icon: "/payment/payme.png", w: 454, h: 179 },
   { id: "uzum", name: "Uzum", provider: "uzum", icon: "/payment/uzum.png", w: 506, h: 148 },
-  { id: "usdt", name: "USDT", provider: "crypto", icon: "/payment/usdt.png", w: 2000, h: 2000 },
 ];
 
 /** A fixed-price SKU's display price. Never call this for a variable-amount

@@ -25,6 +25,19 @@ apps/api  ──▶  FastAPI.openapi()  ──▶  docs/api/openapi.json
   **missing/short key → 422**; a repeated key replays the original result.
 - Money is `{ "amount": "12345.678", "currency": "USD" }` — strings to preserve precision.
 
+## Content-managed brand SEO copy
+
+Brand marketing copy — `brand_translations.highlights` (the value-prop chips), plus
+`short_description` / `description` / `instructions`, and the `brand_faqs` — is **content,
+not fixtures**. It is not populated by `scripts/seed.py` and not shipped as an Alembic data
+migration. It lives in idempotent seed SQL under `scripts/seed/` and is applied by an operator
+(psql), gated by the standing deploy rule.
+
+The `steam` brand's pack is `scripts/seed/steam_seo.sql` (ru/en/uz): it `UPDATE`s the three
+`brand_translations` rows in place and rebuilds the FAQs via delete-then-insert, all inside a
+single transaction. Re-running yields identical content. It depends on migration
+`0032_brand_highlights` (adds the `highlights` column) being applied first.
+
 ## Auth
 
 | Surface                     | Header                                                          |

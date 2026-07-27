@@ -61,6 +61,33 @@ def _pick_translation(
     )
 
 
+def _pick_highlights(
+    translations: list[Any],
+    locale: str,
+    *,
+    fallback: str = DEFAULT_LOCALE,
+) -> list[str]:
+    """Return the localized ``highlights`` list for the brand, or ``[]``.
+
+    Row-level fallback, same as :func:`_pick_translation`: falls back to the
+    ``fallback`` locale's row only when the requested locale has no
+    translation row at all. If the requested locale's row exists but its
+    ``highlights`` is NULL, this returns ``[]`` rather than bleeding in the
+    fallback locale's chips — showing no chips is safer than showing chips in
+    the wrong language. Only brand translations carry ``highlights``; read
+    defensively via ``getattr``.
+    """
+    by_locale = {t.locale: t for t in translations}
+    chosen = (
+        by_locale.get(locale)
+        or by_locale.get(fallback)
+        or (translations[0] if translations else None)
+    )
+    if chosen is None:
+        return []
+    return list(getattr(chosen, "highlights", None) or [])
+
+
 def _pick_faq(
     translations: list[Any],
     locale: str,
@@ -305,6 +332,7 @@ async def get_brand_by_slug(
         return None
 
     name, short_desc, description, instructions = _pick_translation(brand.translations, locale)
+    highlights = _pick_highlights(brand.translations, locale)
 
     faqs_out: list[FaqOut] = []
     for faq in sorted((f for f in brand.faqs if f.active), key=lambda f: f.sort_order):
@@ -345,6 +373,7 @@ async def get_brand_by_slug(
         maintenance=brand.maintenance,
         products=products_out,
         faqs=faqs_out,
+        highlights=highlights,
     )
 
 

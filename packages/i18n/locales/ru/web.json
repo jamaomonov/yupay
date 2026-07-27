@@ -11,7 +11,7 @@
   },
   "meta": {
     "homeTitle": "yupay — моментальное пополнение игр и подписок",
-    "homeDescription": "Steam, PUBG Mobile, Telegram Premium, Genshin, Valorant и другие игры. Без передачи паролей, зачисление за 2 минуты, оплата картой / СБП / USDT."
+    "homeDescription": "Steam, PUBG Mobile, Telegram Premium, Genshin, Valorant и другие игры. Без передачи паролей, зачисление за 2 минуты, оплата картой."
   },
   "nav": {
     "store": "Каталог",
@@ -52,7 +52,7 @@
         "name": "Steam\nКошелёк",
         "eyebrow": "Valve · СНГ / KZ / TR",
         "tag": "ХИТ",
-        "statCommission": "от 4%",
+        "statCommission": "0%",
         "statSpeed": "2 мин",
         "statRating": "★ 5.0"
       },
@@ -96,6 +96,20 @@
       "sub": "Поможем на любом этапе"
     }
   },
+  "steamZero": {
+    "eyebrow": "Steam · Узбекистан",
+    "title": "0% комиссии на пополнение Steam",
+    "subtitle": "Оплата в сумах через Click, Payme и Uzum. Сколько платите — столько заходит на баланс Steam. Без скрытых сборов.",
+    "payLabel": "Оплата в сумах",
+    "chipSpeed": "1–3 минуты",
+    "chipNoPassword": "Без пароля",
+    "chipGuarantee": "Гарантия возврата",
+    "statSpeedLabel": "Скорость",
+    "statAccessLabel": "Доступ",
+    "statRiskLabel": "Риск",
+    "cta": "Пополнить Steam",
+    "logoAlt": "Steam"
+  },
   "auth": {
     "email": "Электронная почта",
     "password": "Пароль",
@@ -126,11 +140,11 @@
   "store": {
     "meta": {
       "title": "Каталог пополнений игр и подписок в Узбекистане",
-      "description": "Пополняй Steam, PUBG Mobile, Telegram Premium, Delta Force и Arena Breakout по UID. Оплата Click, Payme, Uzum и USDT, цены в сумах, зачисление за пару минут, без передачи пароля — yupay."
+      "description": "Пополняй Steam, PUBG Mobile, Telegram Premium, Delta Force и Arena Breakout по UID. Оплата Click, Payme и Uzum, цены в сумах, зачисление за пару минут, без передачи пароля — yupay."
     },
     "eyebrow": "Каталог",
     "title": "Пополнение игр и подписок в Узбекистане",
-    "subtitle": "Выбери сервис, введи UID — и получи зачисление за пару минут. Оплата Click, Payme, Uzum или USDT, цены в сумах. Без передачи пароля.",
+    "subtitle": "Выбери сервис, введи UID — и получи зачисление за пару минут. Оплата Click, Payme или Uzum, цены в сумах. Без передачи пароля.",
     "payWith": "Оплата",
     "maintenance": "Тех. работы",
     "empty": "Скоро здесь появятся игры.",
@@ -149,7 +163,7 @@
     "instructionsTitle": "Как пополнить",
     "packsTitle": "Выберите пакет",
     "payTitle": "Оплата и зачисление",
-    "ctaNote": "Оформление в Telegram-боте — без регистрации, оплата Click, Payme, Uzum или USDT. Зачисление автоматическое.",
+    "ctaNote": "Оформление в Telegram-боте — без регистрации, оплата Click, Payme или Uzum. Зачисление автоматическое.",
     "securityNote": "Зачисление по публичному UID — пароль от аккаунта вводить не нужно.",
     "detailsTitle": "Куда зачислить",
     "summaryTitle": "Ваш заказ",
@@ -175,13 +189,13 @@
     "etaChip": "Зачисление {eta} мин",
     "securityChip": "Без пароля",
     "brandMetaTitle": "{name} — пополнение в Узбекистане | yupay",
-    "brandMetaDescription": "Пополнение {name} по UID за пару минут. Цены в сумах, оплата Click, Payme, Uzum или USDT. Без передачи пароля — yupay.",
+    "brandMetaDescription": "Пополнение {name} по UID за пару минут. Цены в сумах, оплата Click, Payme или Uzum. Без передачи пароля — yupay.",
     "brands": {
       "steam": {
         "about": "Пополнение кошелька Steam для аккаунтов СНГ, Казахстана и Турции. Деньги падают на баланс за пару минут — без передачи логина и пароля, оплата в сумах."
       },
       "pubg-mobile": {
-        "about": "UC для PUBG Mobile по ID игрока. Зачисление за пару минут без входа в аккаунт — нужен только публичный UID. Оплата Click, Payme, Uzum или USDT."
+        "about": "UC для PUBG Mobile по ID игрока. Зачисление за пару минут без входа в аккаунт — нужен только публичный UID. Оплата Click, Payme или Uzum."
       },
       "telegram-premium": {
         "about": "Telegram Premium на 1–12 месяцев по @username. Активация за пару минут, оплата в сумах — без передачи пароля."
@@ -190,7 +204,7 @@
         "about": "Внутриигровая валюта Delta Force по ID игрока. Быстрое зачисление в сумах, без передачи пароля."
       },
       "arena-breakout": {
-        "about": "Bonds для Arena Breakout по ID игрока. Зачисление за пару минут, оплата Click, Payme, Uzum или USDT."
+        "about": "Bonds для Arena Breakout по ID игрока. Зачисление за пару минут, оплата Click, Payme или Uzum."
       }
     },
     "checkEdit": "Изменить",
@@ -218,7 +232,7 @@
     "step2Title": "Введите UID и сумму",
     "step2Sub": "Без пароля, только публичный ID профиля. Выберите пакет — покажем, что придёт на счёт.",
     "step3Title": "Оплатите — и всё",
-    "step3Sub": "Карта, СБП или крипта. Зачисление автоматическое, чек на email, поддержка в любой момент."
+    "step3Sub": "Карта. Зачисление автоматическое, чек на email, поддержка в любой момент."
   },
   "metrics": {
     "eyebrow": "Numbers",
@@ -248,7 +262,7 @@
       "meta": "Genshin Impact"
     },
     "vova": {
-      "quote": "Был вопрос по оплате криптой, саппорт ответил за 30 секунд. Респект.",
+      "quote": "Был вопрос по оплате, саппорт ответил за 30 секунд. Респект.",
       "name": "Vova_CS2",
       "meta": "Valorant · Steam"
     },
@@ -319,7 +333,7 @@
         },
         {
           "h": "Заказ и оплата",
-          "p": "Заказ оформляется без регистрации. Оплата — картой, Click, Payme, Uzum или USDT. Цена фиксируется в момент оплаты; итоговую сумму к зачислению вы видите до оплаты."
+          "p": "Заказ оформляется без регистрации. Оплата — картой, Click, Payme или Uzum. Цена фиксируется в момент оплаты; итоговую сумму к зачислению вы видите до оплаты."
         },
         {
           "h": "Исполнение",
