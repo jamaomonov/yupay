@@ -104,6 +104,9 @@
     "chipSpeed": "1–3 daqiqa",
     "chipNoPassword": "Parolsiz",
     "chipGuarantee": "Pul qaytarish kafolati",
+    "statSpeedLabel": "Tezlik",
+    "statAccessLabel": "Kirish",
+    "statRiskLabel": "Xavf",
     "cta": "Steamni toʻldirish",
     "logoAlt": "Steam"
   },

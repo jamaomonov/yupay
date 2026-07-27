@@ -104,6 +104,9 @@
     "chipSpeed": "1–3 minutes",
     "chipNoPassword": "No password",
     "chipGuarantee": "Money-back guarantee",
+    "statSpeedLabel": "Speed",
+    "statAccessLabel": "Access",
+    "statRiskLabel": "Risk",
     "cta": "Top up Steam",
     "logoAlt": "Steam"
   },

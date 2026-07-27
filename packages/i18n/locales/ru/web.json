@@ -104,6 +104,9 @@
     "chipSpeed": "1–3 минуты",
     "chipNoPassword": "Без пароля",
     "chipGuarantee": "Гарантия возврата",
+    "statSpeedLabel": "Скорость",
+    "statAccessLabel": "Доступ",
+    "statRiskLabel": "Риск",
     "cta": "Пополнить Steam",
     "logoAlt": "Steam"
   },
