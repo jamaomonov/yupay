@@ -182,7 +182,7 @@ export default async function BrandPage({
           <div className="relative z-10 flex min-h-[300px] flex-col justify-end p-6 sm:min-h-[360px] sm:p-9">
             <div className="flex items-center gap-3">
               {brand.logo_url && (
-                <span className="relative h-14 w-14 shrink-0 overflow-hidden rounded-[14px] border border-white/15 bg-black/40 backdrop-blur">
+                <span className="relative h-14 w-14 shrink-0 overflow-hidden rounded-[14px] bg-black/40 backdrop-blur">
                   <Image
                     src={brand.logo_url}
                     alt=""
@@ -193,15 +193,17 @@ export default async function BrandPage({
                   />
                 </span>
               )}
-              {brand.short_description && (
-                <div className="text-[12px] font-bold uppercase tracking-[0.12em] text-white/70">
-                  {brand.short_description}
-                </div>
-              )}
+              {/* Name next to the logo — big and white (the H1). */}
+              <h1 className="font-display text-[clamp(2rem,5vw,3.2rem)] font-extrabold leading-[0.98] tracking-[-0.03em] text-white">
+                {brand.name}
+              </h1>
             </div>
-            <h1 className="font-display mt-3 text-[clamp(2rem,5vw,3.2rem)] font-extrabold leading-[0.98] tracking-[-0.03em] text-white">
-              {brand.name}
-            </h1>
+            {/* Short description below the name — smaller and muted. */}
+            {brand.short_description && (
+              <p className="mt-3 text-[12px] font-bold uppercase leading-relaxed tracking-[0.12em] text-white/70">
+                {brand.short_description}
+              </p>
+            )}
             <div className="mt-4 flex flex-wrap items-center gap-2.5">
               {startingChip && (
                 <Chip>
