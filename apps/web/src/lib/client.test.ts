@@ -34,7 +34,7 @@ afterEach(() => {
 
 describe("apiFetch", () => {
   it("attaches the stored access token as a Bearer header", async () => {
-    setTokens("acc-1", "ref-1");
+    setTokens("acc-1");
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { ok: true }));
 
     await apiFetch("/orders");
@@ -42,13 +42,15 @@ describe("apiFetch", () => {
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toContain("/api/v1/orders");
     expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer acc-1");
+    // The auth cookie must travel so the server can rotate/clear the refresh token.
+    expect(init?.credentials).toBe("include");
   });
 
   it("refreshes once on 401 and retries with the new token", async () => {
-    setTokens("stale", "ref-1");
+    setTokens("stale");
     fetchMock
       .mockResolvedValueOnce(jsonResponse(401, {})) // original request
-      .mockResolvedValueOnce(jsonResponse(200, { access_token: "fresh", refresh_token: "ref-2" }))
+      .mockResolvedValueOnce(jsonResponse(200, { access_token: "fresh" }))
       .mockResolvedValueOnce(jsonResponse(200, { id: "o1" })); // retry
 
     const out = await apiFetch<{ id: string }>("/orders/o1");
@@ -57,15 +59,17 @@ describe("apiFetch", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
     const refreshCall = fetchMock.mock.calls[1]!;
     expect(refreshCall[0]).toContain("/api/v1/auth/refresh");
-    // client.ts always sends the refresh body as a JSON string.
-    expect(JSON.parse(refreshCall[1]?.body as string)).toEqual({ refresh_token: "ref-1" });
+    // The refresh token rides the HttpOnly cookie, so the call carries no body and
+    // must include credentials for the cookie to be sent and the rotated one stored.
+    expect(refreshCall[1]?.body).toBeUndefined();
+    expect(refreshCall[1]?.credentials).toBe("include");
     const retryCall = fetchMock.mock.calls[2]!;
     expect(new Headers(retryCall[1]?.headers).get("Authorization")).toBe("Bearer fresh");
     expect(getAccessToken()).toBe("fresh");
   });
 
   it("clears tokens and throws when the refresh itself fails", async () => {
-    setTokens("stale", "ref-dead");
+    setTokens("stale");
     fetchMock
       .mockResolvedValueOnce(jsonResponse(401, {}))
       .mockResolvedValueOnce(jsonResponse(401, {})); // refresh rejected
@@ -75,7 +79,7 @@ describe("apiFetch", () => {
   });
 
   it("does not loop when the retried request 401s again", async () => {
-    setTokens("stale", "ref-1");
+    setTokens("stale");
     fetchMock
       .mockResolvedValueOnce(jsonResponse(401, {}))
       .mockResolvedValueOnce(jsonResponse(200, { access_token: "fresh" }))
@@ -86,7 +90,7 @@ describe("apiFetch", () => {
   });
 
   it("never sends Authorization for anonymous calls", async () => {
-    setTokens("acc-1", "ref-1");
+    setTokens("acc-1");
     fetchMock.mockResolvedValueOnce(jsonResponse(200, {}));
 
     await apiFetch("/catalog/brands", { anonymous: true });

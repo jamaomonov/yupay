@@ -2,18 +2,20 @@
 
 /**
  * Browser-side API client for authenticated calls. Mirrors apps/miniapp:
- * access + refresh tokens in localStorage with a single auto-refresh on 401.
- * Server Components must keep using `lib/api.ts` instead.
+ * the short-lived access token lives in localStorage; the 30-day refresh token
+ * rides an HttpOnly cookie the browser sends automatically (never JS-readable),
+ * with a single auto-refresh on 401. Server Components use `lib/api.ts` instead.
  */
 
 const BASE = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
 
 const ACCESS_KEY = "yupay.web.access_token";
-const REFRESH_KEY = "yupay.web.refresh_token";
+// Legacy key: the refresh token used to be stored here. Purged on clearTokens so
+// a pre-cookie session can't leave a readable 30-day token behind.
+const LEGACY_REFRESH_KEY = "yupay.web.refresh_token";
 
 export interface Tokens {
   access_token: string;
-  refresh_token?: string | null;
 }
 
 export function getAccessToken(): string | null {
@@ -25,19 +27,9 @@ export function getAccessToken(): string | null {
   }
 }
 
-function getRefreshToken(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage.getItem(REFRESH_KEY);
-  } catch {
-    return null;
-  }
-}
-
-export function setTokens(access: string, refresh?: string | null): void {
+export function setTokens(access: string): void {
   try {
     window.localStorage.setItem(ACCESS_KEY, access);
-    if (refresh) window.localStorage.setItem(REFRESH_KEY, refresh);
   } catch {
     /* storage blocked — ignore */
   }
@@ -46,7 +38,7 @@ export function setTokens(access: string, refresh?: string | null): void {
 export function clearTokens(): void {
   try {
     window.localStorage.removeItem(ACCESS_KEY);
-    window.localStorage.removeItem(REFRESH_KEY);
+    window.localStorage.removeItem(LEGACY_REFRESH_KEY);
   } catch {
     /* ignore */
   }
@@ -63,19 +55,18 @@ export class ApiError extends Error {
 }
 
 async function refreshAccess(): Promise<string | null> {
-  const refresh = getRefreshToken();
-  if (!refresh) return null;
+  // The refresh token rides an HttpOnly cookie — `credentials: "include"` makes the
+  // browser send it (and store the rotated one). No token in the request body.
   const res = await fetch(`${BASE}/api/v1/auth/refresh`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refresh_token: refresh }),
+    credentials: "include",
   });
   if (!res.ok) {
     clearTokens();
     return null;
   }
   const tokens = (await res.json()) as Tokens;
-  setTokens(tokens.access_token, tokens.refresh_token ?? null);
+  setTokens(tokens.access_token);
   return tokens.access_token;
 }
 
@@ -96,6 +87,9 @@ export async function apiFetch<T>(path: string, opts: ReqOpts = {}): Promise<T> 
   const res = await fetch(`${BASE}/api/v1${path}`, {
     method: opts.method ?? "GET",
     headers,
+    // Send the auth cookie so login/refresh can set/rotate the HttpOnly refresh
+    // token and logout can clear it. Harmless on other calls (server ignores it).
+    credentials: "include",
     // exactOptionalPropertyTypes: `body` must be BodyInit | null, not undefined
     ...(opts.body !== undefined && { body: JSON.stringify(opts.body) }),
   });

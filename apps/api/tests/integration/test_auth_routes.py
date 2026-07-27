@@ -10,13 +10,21 @@ from typing import Any
 from urllib.parse import urlencode
 
 import pytest
-from httpx import AsyncClient
+from httpx import AsyncClient, Response
 from yupay.core.config import get_settings
 
 pytestmark = pytest.mark.asyncio
 
 
 BOT_TOKEN = "123456:TEST"  # matches the conftest-managed TELEGRAM_BOT_TOKEN
+
+
+def _refresh_set_cookie(resp: Response) -> str:
+    """Return the raw ``Set-Cookie`` header line for the refresh cookie."""
+    for header in resp.headers.get_list("set-cookie"):
+        if header.startswith("refresh_token="):
+            return header
+    raise AssertionError("no refresh_token Set-Cookie header on response")
 
 
 def _sign_init_data(fields: dict[str, str]) -> str:
@@ -45,7 +53,7 @@ def fixed_now():
     return int(time.time())
 
 
-async def _login_via_webapp(client: AsyncClient, fixed_now: int) -> dict[str, Any]:
+async def _login_via_webapp(client: AsyncClient, fixed_now: int) -> Response:
     user_json = json.dumps(
         {"id": 777, "first_name": "Yu", "username": "yu_user", "language_code": "ru"},
         separators=(",", ":"),
@@ -53,25 +61,32 @@ async def _login_via_webapp(client: AsyncClient, fixed_now: int) -> dict[str, An
     init_data = _sign_init_data({"user": user_json, "auth_date": str(fixed_now), "query_id": "q1"})
     r = await client.post("/api/v1/auth/telegram/webapp", json={"init_data": init_data})
     assert r.status_code == 200, r.text
-    body: dict[str, Any] = r.json()
-    return body
+    return r
 
 
 async def test_telegram_webapp_login_creates_user_and_session(
     integration_client: AsyncClient, fixed_now: int
 ) -> None:
-    body = await _login_via_webapp(integration_client, fixed_now)
+    resp = await _login_via_webapp(integration_client, fixed_now)
+    body: dict[str, Any] = resp.json()
     assert body["access_token"]
-    assert body["refresh_token"]
+    # Refresh token is delivered as an HttpOnly cookie, never in the JSON body.
+    assert "refresh_token" not in body
     assert body["token_type"] == "Bearer"
     assert body["expires_in"] == get_settings().jwt_access_ttl_seconds
+    # The refresh cookie is present, HttpOnly, and scoped to the whole site.
+    set_cookie = _refresh_set_cookie(resp)
+    assert "httponly" in set_cookie.lower()
+    assert "path=/" in set_cookie.lower()
+    assert "samesite=lax" in set_cookie.lower()
+    assert resp.cookies.get("refresh_token")
 
 
 async def test_telegram_webapp_returns_same_user_on_repeat_login(
     integration_client: AsyncClient, fixed_now: int
 ) -> None:
-    first = await _login_via_webapp(integration_client, fixed_now)
-    second = await _login_via_webapp(integration_client, fixed_now)
+    first = (await _login_via_webapp(integration_client, fixed_now)).json()
+    second = (await _login_via_webapp(integration_client, fixed_now)).json()
     # Both sessions exist but they belong to the same user.
     me1 = await integration_client.get(
         "/api/v1/auth/me",
@@ -128,39 +143,57 @@ async def test_guest_checkout_returns_token(integration_client: AsyncClient) -> 
     assert body["access_token"]
 
 
-async def test_refresh_rotates_token(integration_client: AsyncClient, fixed_now: int) -> None:
-    first = await _login_via_webapp(integration_client, fixed_now)
-    r = await integration_client.post(
-        "/api/v1/auth/refresh", json={"refresh_token": first["refresh_token"]}
-    )
+async def test_refresh_reads_cookie_and_rotates(
+    integration_client: AsyncClient, fixed_now: int
+) -> None:
+    login = await _login_via_webapp(integration_client, fixed_now)
+    old_cookie = login.cookies["refresh_token"]
+
+    # No body: the refresh token rides the cookie jar (as the browser would send it).
+    r = await integration_client.post("/api/v1/auth/refresh")
     assert r.status_code == 200
     body = r.json()
-    # New refresh token issued; old one must now be revoked.
-    assert body["refresh_token"] != first["refresh_token"]
+    assert body["access_token"]
+    # The refresh token is never echoed into the body...
+    assert "refresh_token" not in body
+    # ...but a fresh, different one is set as a cookie (rotation).
+    new_cookie = r.cookies["refresh_token"]
+    assert new_cookie != old_cookie
 
-    # Re-using the old refresh triggers the trip-wire.
+    # Re-using the old refresh triggers the reuse trip-wire.
+    integration_client.cookies.clear()
     replay = await integration_client.post(
-        "/api/v1/auth/refresh", json={"refresh_token": first["refresh_token"]}
+        "/api/v1/auth/refresh", cookies={"refresh_token": old_cookie}
     )
     assert replay.status_code == 401
 
 
-async def test_logout_is_idempotent(integration_client: AsyncClient, fixed_now: int) -> None:
-    tokens = await _login_via_webapp(integration_client, fixed_now)
-    r1 = await integration_client.post(
-        "/api/v1/auth/logout", json={"refresh_token": tokens["refresh_token"]}
-    )
-    r2 = await integration_client.post(
-        "/api/v1/auth/logout", json={"refresh_token": tokens["refresh_token"]}
-    )
+async def test_refresh_without_cookie_is_unauthorized(integration_client: AsyncClient) -> None:
+    integration_client.cookies.clear()
+    r = await integration_client.post("/api/v1/auth/refresh")
+    assert r.status_code == 401
+
+
+async def test_logout_is_idempotent_and_clears_cookie(
+    integration_client: AsyncClient, fixed_now: int
+) -> None:
+    await _login_via_webapp(integration_client, fixed_now)
+    r1 = await integration_client.post("/api/v1/auth/logout")
     assert r1.status_code == 204
+    # The cookie is expired on the way out (Max-Age=0).
+    cleared = _refresh_set_cookie(r1)
+    assert "max-age=0" in cleared.lower() or "expires=" in cleared.lower()
+    # The client jar no longer carries a usable refresh cookie.
+    assert not integration_client.cookies.get("refresh_token")
+    # Idempotent: a second logout with no cookie still succeeds.
+    r2 = await integration_client.post("/api/v1/auth/logout")
     assert r2.status_code == 204
 
 
 async def test_logout_blocklists_presented_access_token(
     integration_client: AsyncClient, fixed_now: int
 ) -> None:
-    tokens = await _login_via_webapp(integration_client, fixed_now)
+    tokens = (await _login_via_webapp(integration_client, fixed_now)).json()
     access = tokens["access_token"]
     headers = {"Authorization": f"Bearer {access}"}
 
@@ -168,12 +201,9 @@ async def test_logout_blocklists_presented_access_token(
     before = await integration_client.get("/api/v1/auth/me", headers=headers)
     assert before.status_code == 200
 
-    # Logout while presenting the access token → its jti lands on the blocklist.
-    out = await integration_client.post(
-        "/api/v1/auth/logout",
-        json={"refresh_token": tokens["refresh_token"]},
-        headers=headers,
-    )
+    # Logout while presenting the access token (refresh cookie carried by the jar)
+    # → its jti lands on the blocklist.
+    out = await integration_client.post("/api/v1/auth/logout", headers=headers)
     assert out.status_code == 204
 
     # The still-unexpired access token is now rejected on the very next request.
@@ -204,7 +234,7 @@ async def test_me_requires_bearer_token(integration_client: AsyncClient) -> None
 
 
 async def test_me_returns_current_user(integration_client: AsyncClient, fixed_now: int) -> None:
-    tokens = await _login_via_webapp(integration_client, fixed_now)
+    tokens = (await _login_via_webapp(integration_client, fixed_now)).json()
     r = await integration_client.get(
         "/api/v1/auth/me",
         headers={"Authorization": f"Bearer {tokens['access_token']}"},

@@ -8,7 +8,10 @@
 import { getActiveLocale } from "./i18n/core";
 
 const TOKEN_KEY = "yupay.miniapp.access_token";
-const REFRESH_KEY = "yupay.miniapp.refresh_token";
+// Legacy key: the refresh token used to be stored here. Purged on clearTokens so
+// a pre-cookie session can't leave a JS-readable 30-day token behind. The refresh
+// token now rides an HttpOnly cookie the browser sends automatically.
+const LEGACY_REFRESH_KEY = "yupay.miniapp.refresh_token";
 
 export const apiBase =
   (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ?? "";
@@ -41,27 +44,18 @@ export function getAccessToken(): string | null {
   }
 }
 
-export function setTokens(access: string, refresh?: string | null): void {
+export function setTokens(access: string): void {
   try {
     localStorage.setItem(TOKEN_KEY, access);
-    if (refresh) localStorage.setItem(REFRESH_KEY, refresh);
   } catch {
     // localStorage may be blocked in some Telegram clients; ignore.
-  }
-}
-
-export function getRefreshToken(): string | null {
-  try {
-    return localStorage.getItem(REFRESH_KEY);
-  } catch {
-    return null;
   }
 }
 
 export function clearTokens(): void {
   try {
     localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(REFRESH_KEY);
+    localStorage.removeItem(LEGACY_REFRESH_KEY);
   } catch {
     // ignored
   }
@@ -76,22 +70,21 @@ export interface RequestOptions extends RequestInit {
 
 interface RawTokensOut {
   access_token: string;
-  refresh_token?: string | null;
 }
 
 let refreshInFlight: Promise<string | null> | null = null;
 
 async function tryRefreshOnce(): Promise<string | null> {
   if (refreshInFlight) return refreshInFlight;
-  const refresh = getRefreshToken();
-  if (!refresh) return null;
   refreshInFlight = (async () => {
     try {
       const url = `${apiBase}/api/v1/auth/refresh`;
+      // The refresh token rides an HttpOnly cookie; `credentials: "include"` sends
+      // it and stores the rotated one. No token in the request body.
       const resp = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ refresh_token: refresh }),
+        credentials: "include",
+        headers: { Accept: "application/json" },
       });
       if (!resp.ok) {
         // Refresh itself failed — wipe so the user can re-auth via initData.
@@ -99,7 +92,7 @@ async function tryRefreshOnce(): Promise<string | null> {
         return null;
       }
       const tokens = (await resp.json()) as RawTokensOut;
-      setTokens(tokens.access_token, tokens.refresh_token ?? null);
+      setTokens(tokens.access_token);
       return tokens.access_token;
     } catch {
       return null;
@@ -124,7 +117,9 @@ export async function api<T = unknown>(path: string, options: RequestOptions = {
     }
     if (!anonymous && token) h.set("Authorization", `Bearer ${token}`);
     if (idempotencyKey) h.set("Idempotency-Key", idempotencyKey);
-    return fetch(url, { ...init, headers: h });
+    // Send the auth cookie so telegram-login/refresh can set/rotate the HttpOnly
+    // refresh token and logout can clear it. Harmless on other calls.
+    return fetch(url, { ...init, headers: h, credentials: "include" });
   };
 
   let response = await send(anonymous ? null : getAccessToken());

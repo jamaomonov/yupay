@@ -56,7 +56,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const afterTokens = useCallback(
     async (tokens: Tokens) => {
-      setTokens(tokens.access_token, tokens.refresh_token ?? null);
+      // Only the access token is in the body now; the refresh token arrived as an
+      // HttpOnly cookie (set by the browser from the login/register response).
+      setTokens(tokens.access_token);
       // Fetch /auth/me imperatively and seed the cache. `invalidateQueries`
       // would no-op here because the `me` query is still `enabled: false` (its
       // gate was evaluated before the token landed in localStorage); fetchQuery
@@ -104,6 +106,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(() => {
+    // Best-effort: ask the server to revoke the session and clear the HttpOnly
+    // refresh cookie (JS can't delete it itself). Don't block the UI on it.
+    void apiFetch("/auth/logout", { method: "POST" }).catch(() => {});
     clearTokens();
     qc.setQueryData(["me"], null);
     void qc.invalidateQueries({ queryKey: ["me"] });

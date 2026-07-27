@@ -41,14 +41,6 @@ class GuestIn(BaseModel):
     email: EmailStr
 
 
-class RefreshIn(BaseModel):
-    """Body of ``POST /auth/refresh``."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    refresh_token: str = Field(min_length=20, max_length=200)
-
-
 class AdminDevLoginIn(BaseModel):
     """Body of ``POST /auth/admin-dev`` (dev-only login/password)."""
 
@@ -56,14 +48,6 @@ class AdminDevLoginIn(BaseModel):
 
     login: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=256)
-
-
-class LogoutIn(BaseModel):
-    """Body of ``POST /auth/logout``."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    refresh_token: str = Field(min_length=20, max_length=200)
 
 
 class RegisterIn(BaseModel):
@@ -103,13 +87,17 @@ class ResetPasswordIn(BaseModel):
 
 
 class TokensOut(BaseModel):
-    """Response for any endpoint that mints a user session."""
+    """Response for any endpoint that mints a user session.
+
+    The refresh token is intentionally absent: it is delivered as an ``HttpOnly``
+    cookie (see :mod:`yupay.modules.auth.cookies`) so JS cannot read it. Only the
+    short-lived access token — which the browser needs to attach as a Bearer header
+    — is returned in the body.
+    """
 
     access_token: str
     token_type: str = "Bearer"  # noqa: S105 -- OAuth token-type literal, not a credential
     expires_in: int
-    refresh_token: str | None = None
-    refresh_expires_in: int | None = None
 
 
 class GuestTokenOut(BaseModel):
@@ -141,9 +129,7 @@ __all__ = [
     "GuestIn",
     "GuestTokenOut",
     "LoginIn",
-    "LogoutIn",
     "MeOut",
-    "RefreshIn",
     "RegisterIn",
     "ResetPasswordIn",
     "TelegramInitDataIn",
