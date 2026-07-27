@@ -12,15 +12,13 @@ const SOCIALS = [
   { href: "https://t.me/yupay_channel", label: "Telegram", src: "/social/telegram.svg" },
 ];
 
-/** Real acquirer marks, rendered bare (no chip) on the dark footer. Intrinsic
- * px dimensions are passed through so next/image keeps the true aspect ratio
- * while we render every mark at a uniform height. */
+/** Real acquirer marks, each in a small white chip (same treatment as
+ * SteamZeroCommission.tsx, scaled down for the footer's bottom bar) so every
+ * mark reads on the dark footer regardless of its native background. */
 const PAY_METHODS: { src: string; name: string; w: number; h: number }[] = [
-  { src: "/payment/click.svg", name: "Click", w: 157, h: 40 },
+  { src: "/payment/click-dark.svg", name: "Click", w: 157, h: 40 },
   { src: "/payment/payme.png", name: "Payme", w: 454, h: 179 },
   { src: "/payment/uzum.png", name: "Uzum", w: 506, h: 148 },
-  { src: "/payment/sbp.png", name: "СБП", w: 220, h: 120 },
-  { src: "/payment/usdt.png", name: "USDT", w: 2000, h: 2000 },
 ];
 
 export async function Footer({ locale }: { locale: string }) {
@@ -98,19 +96,23 @@ export async function Footer({ locale }: { locale: string }) {
             {t("copyright", { year })} · <span className="text-tx-mute/70">{t("disclaimer")}</span>
           </span>
           <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2.5">
               {PAY_METHODS.map((p) => (
-                <Image
+                <span
                   key={p.name}
-                  src={p.src}
-                  alt={p.name}
-                  title={p.name}
-                  width={p.w}
-                  height={p.h}
-                  unoptimized
-                  style={{ width: "auto", height: 20 }}
-                  className="object-contain"
-                />
+                  className="flex h-11 w-16 items-center justify-center rounded-lg bg-white p-1.5"
+                >
+                  <Image
+                    src={p.src}
+                    alt={p.name}
+                    title={p.name}
+                    width={p.w}
+                    height={p.h}
+                    unoptimized
+                    style={{ maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto" }}
+                    className="object-contain"
+                  />
+                </span>
               ))}
             </div>
             <span className="text-tx-mute font-mono text-[12px]">

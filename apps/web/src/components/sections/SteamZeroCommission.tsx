@@ -20,12 +20,11 @@ import { buttonStyles } from "@/lib/button";
 const PAYMENTS = [
   { src: "/payment/uzcard.png", alt: "Uzcard", w: 461, h: 676 },
   { src: "/payment/humo.png", alt: "Humo", w: 600, h: 359 },
-  // Icon-only mark, not the click.svg wordmark used elsewhere (Footer.tsx /
-  // PurchasePanel.tsx): that SVG's "click" wordmark is baked white-on-
-  // transparent for the dark grounds it was designed for, so it vanishes on
-  // this white chip. We don't recolor a partner's logo file — its squircle
-  // icon alone is a highly recognized standalone mark in this market.
-  { src: "/payment/click.png", alt: "Click", w: 225, h: 225 },
+  // Dark wordmark, purpose-built for light/white grounds — unlike click.svg
+  // (Footer.tsx / PurchasePanel.tsx), which is baked white-on-transparent for
+  // the dark grounds those components render on and would vanish on this
+  // white chip.
+  { src: "/payment/click-dark.svg", alt: "Click", w: 157, h: 40 },
   { src: "/payment/payme.png", alt: "Payme", w: 454, h: 179 },
   { src: "/payment/uzum.png", alt: "Uzum", w: 506, h: 148 },
 ] as const;

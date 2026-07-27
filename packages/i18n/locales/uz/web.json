@@ -11,7 +11,7 @@
   },
   "meta": {
     "homeTitle": "yupay — oʻyinlar va obunalarni bir lahzada toʻldirish",
-    "homeDescription": "Steam, PUBG Mobile, Telegram Premium, Genshin, Valorant va boshqa oʻyinlar. Parol kerak emas — UID orqali 2 daqiqada toʻldiriladi. Karta, SBP yoki USDT bilan toʻlang."
+    "homeDescription": "Steam, PUBG Mobile, Telegram Premium, Genshin, Valorant va boshqa oʻyinlar. Parol kerak emas — UID orqali 2 daqiqada toʻldiriladi. Karta bilan toʻlang."
   },
   "nav": {
     "store": "Katalog",
@@ -137,11 +137,11 @@
   "store": {
     "meta": {
       "title": "Oʻzbekistonda oʻyin va obunalarni toʻldirish",
-      "description": "Steam, PUBG Mobile, Telegram Premium, Delta Force va Arena Breakout ni UID orqali toʻldiring. Click, Payme, Uzum yoki USDT bilan toʻlang, narxlar soʻmda, bir necha daqiqada tushadi, parolsiz — yupay."
+      "description": "Steam, PUBG Mobile, Telegram Premium, Delta Force va Arena Breakout ni UID orqali toʻldiring. Click, Payme yoki Uzum bilan toʻlang, narxlar soʻmda, bir necha daqiqada tushadi, parolsiz — yupay."
     },
     "eyebrow": "Katalog",
     "title": "Oʻzbekistonda oʻyin va obunalarni toʻldirish",
-    "subtitle": "Xizmatni tanlang, UID kiriting — va bir necha daqiqada hisobingizga tushadi. Click, Payme, Uzum yoki USDT bilan toʻlang, narxlar soʻmda. Parolsiz.",
+    "subtitle": "Xizmatni tanlang, UID kiriting — va bir necha daqiqada hisobingizga tushadi. Click, Payme yoki Uzum bilan toʻlang, narxlar soʻmda. Parolsiz.",
     "payWith": "Toʻlov",
     "maintenance": "Texnik ishlar",
     "empty": "Tez orada bu yerda oʻyinlar paydo boʻladi.",
@@ -160,7 +160,7 @@
     "instructionsTitle": "Qanday toʻldirish",
     "packsTitle": "Paketni tanlang",
     "payTitle": "Toʻlov va yetkazib berish",
-    "ctaNote": "Rasmiylashtirish Telegram-botda — roʻyxatdan oʻtmasdan, Click, Payme, Uzum yoki USDT bilan toʻlang. Avtomatik tushadi.",
+    "ctaNote": "Rasmiylashtirish Telegram-botda — roʻyxatdan oʻtmasdan, Click, Payme yoki Uzum bilan toʻlang. Avtomatik tushadi.",
     "securityNote": "Ommaviy UID orqali tushadi — akkaunt paroli kerak emas.",
     "detailsTitle": "Qayerga tushirish",
     "summaryTitle": "Sizning buyurtmangiz",
@@ -186,13 +186,13 @@
     "etaChip": "{eta} daqiqada",
     "securityChip": "Parolsiz",
     "brandMetaTitle": "{name} — Oʻzbekistonda toʻldirish | yupay",
-    "brandMetaDescription": "{name} ni UID orqali bir necha daqiqada toʻldiring. Narxlar soʻmda, Click, Payme, Uzum yoki USDT bilan toʻlang. Parolsiz — yupay.",
+    "brandMetaDescription": "{name} ni UID orqali bir necha daqiqada toʻldiring. Narxlar soʻmda, Click, Payme yoki Uzum bilan toʻlang. Parolsiz — yupay.",
     "brands": {
       "steam": {
         "about": "MDH, Qozogʻiston va Turkiya akkauntlari uchun Steam hamyonini toʻldirish. Pul bir necha daqiqada balansga tushadi — login va parolsiz, soʻmda toʻlov."
       },
       "pubg-mobile": {
-        "about": "PUBG Mobile uchun UC oʻyinchi IDsi orqali. Akkauntga kirmasdan bir necha daqiqada tushadi — faqat ommaviy UID. Click, Payme, Uzum yoki USDT bilan toʻlang."
+        "about": "PUBG Mobile uchun UC oʻyinchi IDsi orqali. Akkauntga kirmasdan bir necha daqiqada tushadi — faqat ommaviy UID. Click, Payme yoki Uzum bilan toʻlang."
       },
       "telegram-premium": {
         "about": "Telegram Premium 1–12 oyga @username orqali. Bir necha daqiqada faollashadi, soʻmda toʻlov — parolsiz."
@@ -201,7 +201,7 @@
         "about": "Delta Force ichki oʻyin valyutasi oʻyinchi IDsi orqali. Soʻmda tez tushadi, parolsiz."
       },
       "arena-breakout": {
-        "about": "Arena Breakout uchun Bonds oʻyinchi IDsi orqali. Bir necha daqiqada tushadi, Click, Payme, Uzum yoki USDT bilan toʻlang."
+        "about": "Arena Breakout uchun Bonds oʻyinchi IDsi orqali. Bir necha daqiqada tushadi, Click, Payme yoki Uzum bilan toʻlang."
       }
     },
     "checkEdit": "Tahrirlash",
@@ -229,7 +229,7 @@
     "step2Title": "UID va summani kiriting",
     "step2Sub": "Parolsiz — faqat profilning ochiq IDsi. Paketni tanlang, hisobingizga nima tushishini koʻrsatamiz.",
     "step3Title": "Toʻlov va tayyor",
-    "step3Sub": "Karta, SBP yoki kripto. Avtomatik tushadi, chek emailga, yordam — istalgan paytda."
+    "step3Sub": "Karta. Avtomatik tushadi, chek emailga, yordam — istalgan paytda."
   },
   "metrics": {
     "eyebrow": "Numbers",
@@ -259,7 +259,7 @@
       "meta": "Genshin Impact"
     },
     "vova": {
-      "quote": "Kripto toʻlov haqida savol bor edi — yordam 30 soniyada javob berdi. Respect.",
+      "quote": "Toʻlov haqida savol bor edi — yordam 30 soniyada javob berdi. Respect.",
       "name": "Vova_CS2",
       "meta": "Valorant · Steam"
     },
@@ -330,7 +330,7 @@
         },
         {
           "h": "Buyurtma va toʻlov",
-          "p": "Buyurtma roʻyxatdan oʻtmasdan rasmiylashtiriladi. Toʻlov — karta, Click, Payme, Uzum yoki USDT. Narx toʻlov paytida qatʼiylanadi; tushadigan yakuniy summani toʻlovdan oldin koʻrasiz."
+          "p": "Buyurtma roʻyxatdan oʻtmasdan rasmiylashtiriladi. Toʻlov — karta, Click, Payme yoki Uzum. Narx toʻlov paytida qatʼiylanadi; tushadigan yakuniy summani toʻlovdan oldin koʻrasiz."
         },
         {
           "h": "Bajarilishi",
