@@ -49,7 +49,9 @@ export function clearTokens(): void {
   void fetch(`${apiBase}/api/v1/auth/logout`, {
     method: "POST",
     credentials: "include",
-  }).catch(() => {});
+  }).catch(() => {
+    /* fire-and-forget logout — ignore network/revocation errors */
+  });
 }
 
 export interface RequestOptions extends RequestInit {

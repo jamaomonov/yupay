@@ -108,7 +108,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     // Best-effort: ask the server to revoke the session and clear the HttpOnly
     // refresh cookie (JS can't delete it itself). Don't block the UI on it.
-    void apiFetch("/auth/logout", { method: "POST" }).catch(() => {});
+    void apiFetch("/auth/logout", { method: "POST" }).catch(() => {
+      /* best-effort logout — ignore network/revocation errors */
+    });
     clearTokens();
     qc.setQueryData(["me"], null);
     void qc.invalidateQueries({ queryKey: ["me"] });
