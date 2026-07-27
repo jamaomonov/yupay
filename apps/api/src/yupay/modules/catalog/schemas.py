@@ -2,17 +2,70 @@
 
 Storefront-facing — every payload is read-only, localised, and shaped to minimise
 client round-trips. See ADR-0009 for the data model.
+
+``FormField`` doubles as the *write*-time shape too: ``catalog/admin_schemas.py``
+imports it directly for product create/update payloads, so validators declared
+here (e.g. :func:`_assert_pattern_is_safe`) run for admin writes as well as for
+serialising stored data back out.
 """
 
 from __future__ import annotations
 
+import re
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 LocaleMap = dict[str, str]
 """Map of locale → translated string. Keys are locales we support (``ru``/``en``/``uz``)."""
+
+# ``FormField.pattern`` is admin-authored and later run inline, synchronously,
+# against untrusted customer input via ``re.fullmatch`` in
+# ``yupay.modules.orders.validation`` — with no timeout. A pathological pattern
+# (catastrophic backtracking) would block the whole event loop. This is a
+# pragmatic — not exhaustive — guard applied at write time: a length cap, a
+# ceiling on bounded repetitions, and a heuristic for the classic
+# nested-quantifier shapes (``(a+)+``, ``(a*)*``, ``(a+)*``, ...). It does not
+# catch every ReDoS-prone construct (e.g. alternation-based blowups like
+# ``(a|a)+``); the checkout side additionally caps the input length before
+# matching (see ``orders/validation.py``) as defense in depth.
+_PATTERN_MAX_LENGTH = 200
+_PATTERN_MAX_QUANTIFIERS = 20
+_PATTERN_MAX_BOUNDED_REPEAT = 1000
+
+_QUANTIFIER = r"(?:[*+]|\{\d+,?\d*\})"
+_NESTED_QUANTIFIER_RE = re.compile(r"\([^()]*" + _QUANTIFIER + r"[^()]*\)" + _QUANTIFIER)
+_QUANTIFIER_RE = re.compile(_QUANTIFIER)
+_BOUNDED_REPEAT_RE = re.compile(r"\{(\d+)(?:,(\d+))?\}")
+
+
+def _assert_pattern_is_safe(pattern: str) -> None:
+    """Raise ``ValueError`` if ``pattern`` looks ReDoS-prone.
+
+    Called from :class:`FormField`'s validator, so it runs for every
+    admin-submitted ``pattern`` (product create/update) as well as when
+    re-hydrating stored patterns.
+    """
+    if len(pattern) > _PATTERN_MAX_LENGTH:
+        raise ValueError(f"pattern is too long (max {_PATTERN_MAX_LENGTH} chars)")
+    try:
+        re.compile(pattern)
+    except re.error as exc:
+        raise ValueError(f"pattern is not a valid regular expression: {exc}") from exc
+    if _NESTED_QUANTIFIER_RE.search(pattern):
+        raise ValueError(
+            "pattern contains a nested quantifier (e.g. '(a+)+'), which risks "
+            "catastrophic backtracking"
+        )
+    for match in _BOUNDED_REPEAT_RE.finditer(pattern):
+        for bound in match.groups():
+            if bound and int(bound) > _PATTERN_MAX_BOUNDED_REPEAT:
+                raise ValueError(
+                    f"pattern has a bounded repetition above {_PATTERN_MAX_BOUNDED_REPEAT}"
+                )
+    if len(_QUANTIFIER_RE.findall(pattern)) > _PATTERN_MAX_QUANTIFIERS:
+        raise ValueError(f"pattern has more than {_PATTERN_MAX_QUANTIFIERS} quantifiers")
 
 
 class FormOption(BaseModel):
@@ -52,6 +105,13 @@ class FormField(BaseModel):
     pattern: str | None = None
     options: list[FormOption] | None = None
     check: FieldCheck | None = None
+
+    @field_validator("pattern")
+    @classmethod
+    def _pattern_is_safe(cls, v: str | None) -> str | None:
+        if v is not None:
+            _assert_pattern_is_safe(v)
+        return v
 
 
 class PriceOut(BaseModel):
