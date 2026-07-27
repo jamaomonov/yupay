@@ -5,11 +5,27 @@ import { getTranslations } from "next-intl/server";
 
 import { buttonStyles } from "@/lib/button";
 
-/** Real acquirer marks. Intrinsic px dimensions match the source files (see
- * Footer.tsx / PurchasePanel.tsx, the sitewide precedent for this exact
- * asset set) so `w-auto` scaling never distorts a logo's aspect ratio. */
+/** Card networks (Uzcard, Humo) + the acquirer wordmarks customers actually
+ * tap (Click, Payme, Uzum) — order matches the subtitle's "Click, Payme и
+ * Uzum" flow with the two card brands leading. Uzcard's source is a portrait
+ * icon-over-wordmark lockup and Humo's is full card art, wildly different
+ * shapes from the flat Click/Payme/Uzum marks, so a bare `height: 22` render
+ * (this component's old treatment) shrinks Uzcard to an illegible sliver and
+ * leaves both colored marks with no ground to read against. Every mark now
+ * sits in a uniform white chip instead — see the fixed-size box in the JSX
+ * below, which lets `object-contain` letterbox each aspect ratio on its own
+ * terms (portrait Uzcard fills the box height, wide Humo fills the box
+ * width) while the row itself stays visually uniform. Intrinsic px
+ * dimensions match the source files so aspect ratios never distort. */
 const PAYMENTS = [
-  { src: "/payment/click.svg", alt: "Click", w: 157, h: 40 },
+  { src: "/payment/uzcard.png", alt: "Uzcard", w: 461, h: 676 },
+  { src: "/payment/humo.png", alt: "Humo", w: 600, h: 359 },
+  // Icon-only mark, not the click.svg wordmark used elsewhere (Footer.tsx /
+  // PurchasePanel.tsx): that SVG's "click" wordmark is baked white-on-
+  // transparent for the dark grounds it was designed for, so it vanishes on
+  // this white chip. We don't recolor a partner's logo file — its squircle
+  // icon alone is a highly recognized standalone mark in this market.
+  { src: "/payment/click.png", alt: "Click", w: 225, h: 225 },
   { src: "/payment/payme.png", alt: "Payme", w: 454, h: 179 },
   { src: "/payment/uzum.png", alt: "Uzum", w: 506, h: 148 },
 ] as const;
@@ -99,19 +115,23 @@ export async function SteamZeroCommission({ locale }: { locale: string }) {
             <span className="text-tx-dim font-mono text-[11px] uppercase tracking-[0.12em]">
               {t("payLabel")}
             </span>
-            <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+            <div className="flex flex-wrap items-center justify-center gap-3">
               {PAYMENTS.map((p) => (
-                <Image
+                <span
                   key={p.alt}
-                  src={p.src}
-                  alt={p.alt}
-                  title={p.alt}
-                  width={p.w}
-                  height={p.h}
-                  unoptimized
-                  style={{ width: "auto", height: 22 }}
-                  className="object-contain opacity-90"
-                />
+                  className="flex h-[72px] w-24 items-center justify-center rounded-btn bg-white p-2.5 shadow-[0_10px_24px_-10px_rgba(0,0,0,0.55)]"
+                >
+                  <Image
+                    src={p.src}
+                    alt={p.alt}
+                    title={p.alt}
+                    width={p.w}
+                    height={p.h}
+                    unoptimized
+                    style={{ maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto" }}
+                    className="object-contain"
+                  />
+                </span>
               ))}
             </div>
           </div>

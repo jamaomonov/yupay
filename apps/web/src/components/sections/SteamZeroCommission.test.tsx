@@ -14,7 +14,7 @@ test("renders heading, CTA to /store/steam and payment icons", async () => {
   expect(screen.getByRole("heading", { name: /steamZero\.title/ })).toBeInTheDocument();
   const cta = screen.getByRole("link", { name: /steamZero\.cta/ });
   expect(cta).toHaveAttribute("href", "/ru/store/steam");
-  for (const p of ["Click", "Payme", "Uzum"]) {
+  for (const p of ["Uzcard", "Humo", "Click", "Payme", "Uzum"]) {
     expect(screen.getByAltText(p)).toBeInTheDocument();
   }
   expect(screen.queryByAltText("USDT")).not.toBeInTheDocument();
