@@ -52,7 +52,7 @@
         "name": "Steam\nWallet",
         "eyebrow": "Valve · CIS / KZ / TR",
         "tag": "HOT",
-        "statCommission": "from 4%",
+        "statCommission": "0%",
         "statSpeed": "2 min",
         "statRating": "★ 5.0"
       },
@@ -95,6 +95,17 @@
       "title": "Telegram support",
       "sub": "We help at any step"
     }
+  },
+  "steamZero": {
+    "eyebrow": "Steam · Uzbekistan",
+    "title": "0% fee on Steam top-ups",
+    "subtitle": "Pay in so‘m via Click, Payme and Uzum. What you pay is what lands on your Steam balance — no hidden fees.",
+    "payLabel": "Pay in so‘m",
+    "chipSpeed": "1–3 minutes",
+    "chipNoPassword": "No password",
+    "chipGuarantee": "Money-back guarantee",
+    "cta": "Top up Steam",
+    "logoAlt": "Steam"
   },
   "auth": {
     "email": "Email",

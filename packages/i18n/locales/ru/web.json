@@ -52,7 +52,7 @@
         "name": "Steam\nКошелёк",
         "eyebrow": "Valve · СНГ / KZ / TR",
         "tag": "ХИТ",
-        "statCommission": "от 4%",
+        "statCommission": "0%",
         "statSpeed": "2 мин",
         "statRating": "★ 5.0"
       },
@@ -95,6 +95,17 @@
       "title": "Поддержка в Telegram",
       "sub": "Поможем на любом этапе"
     }
+  },
+  "steamZero": {
+    "eyebrow": "Steam · Узбекистан",
+    "title": "0% комиссии на пополнение Steam",
+    "subtitle": "Оплата в сумах через Click, Payme и Uzum. Сколько платите — столько заходит на баланс Steam. Без скрытых сборов.",
+    "payLabel": "Оплата в сумах",
+    "chipSpeed": "1–3 минуты",
+    "chipNoPassword": "Без пароля",
+    "chipGuarantee": "Гарантия возврата",
+    "cta": "Пополнить Steam",
+    "logoAlt": "Steam"
   },
   "auth": {
     "email": "Электронная почта",

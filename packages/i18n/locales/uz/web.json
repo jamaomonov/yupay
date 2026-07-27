@@ -52,7 +52,7 @@
         "name": "Steam\nHamyon",
         "eyebrow": "Valve · MDH / KZ / TR",
         "tag": "HIT",
-        "statCommission": "4% dan",
+        "statCommission": "0%",
         "statSpeed": "2 daq",
         "statRating": "★ 5.0"
       },
@@ -95,6 +95,17 @@
       "title": "Telegram qoʻllab-quvvatlash",
       "sub": "Har bosqichda yordam beramiz"
     }
+  },
+  "steamZero": {
+    "eyebrow": "Steam · Oʻzbekiston",
+    "title": "Steam hisobini 0% komissiya bilan toʻldiring",
+    "subtitle": "Click, Payme va Uzum orqali soʻmda toʻlang. Qancha toʻlasangiz, Steam hisobiga shuncha tushadi — yashirin toʻlovlarsiz.",
+    "payLabel": "Soʻmda toʻlov",
+    "chipSpeed": "1–3 daqiqa",
+    "chipNoPassword": "Parolsiz",
+    "chipGuarantee": "Pul qaytarish kafolati",
+    "cta": "Steamni toʻldirish",
+    "logoAlt": "Steam"
   },
   "auth": {
     "email": "Elektron pochta",
