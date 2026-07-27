@@ -9,6 +9,7 @@ import type { Metadata } from "next";
 
 import { LoginModal } from "@/components/auth/LoginModal";
 import { Footer } from "@/components/Footer";
+import { GoogleTag } from "@/components/GoogleTag";
 import { Header } from "@/components/Header";
 import { SupportFab } from "@/components/SupportFab";
 import { YandexMetrika } from "@/components/YandexMetrika";
@@ -90,6 +91,7 @@ export default async function LocaleLayout({
   return (
     <html lang={locale} className={`${sans.variable} ${display.variable} ${mono.variable}`}>
       <body className="bg-bg text-foreground min-h-screen font-sans antialiased">
+        <GoogleTag />
         <YandexMetrika />
         <NextIntlClientProvider locale={locale} messages={messages}>
           <Providers>
