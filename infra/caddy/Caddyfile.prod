@@ -54,7 +54,11 @@ http://yupay.uz, http://www.yupay.uz {
 		# (connect-src needs both the https:// and wss:// origins — a https
 		# source does not cover the ws scheme), and webvisor's frame
 		# (frame-src); its tracking pixels ride the existing ``img-src https:``.
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://telegram.org https://*.telegram.org https://mc.yandex.ru; style-src 'self' 'unsafe-inline' https://telegram.org https://*.telegram.org; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://api.yupay.uz wss://api.yupay.uz https://mc.yandex.ru wss://mc.yandex.ru; frame-src https://telegram.org https://*.telegram.org https://mc.yandex.ru; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		# www.googletagmanager.com is Google tag / GA4: gtag.js (script-src) and
+		# some config fetches (connect-src); *.google-analytics.com /
+		# *.analytics.google.com receive the GA4 collect hits (connect-src);
+		# its pixels ride ``img-src https:``.
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://telegram.org https://*.telegram.org https://mc.yandex.ru https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://telegram.org https://*.telegram.org; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://api.yupay.uz wss://api.yupay.uz https://mc.yandex.ru wss://mc.yandex.ru https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com; frame-src https://telegram.org https://*.telegram.org https://mc.yandex.ru; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 	}
 	# Force the canonical apex so SEO does not split between yupay.uz / www.
 	@redirectWww host www.yupay.uz
