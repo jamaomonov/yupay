@@ -136,6 +136,7 @@ API /catalog/brands/{slug} ─ BrandDetailOut.highlights (Слой B)
 ## Execution model
 
 Subagent-Driven Development. Профильные субагенты:
+
 - **SEO-агент:** ключевая стратегия + копирайт `highlights`/description/instructions/FAQ в
   3 локали + проверка schema.org.
 - **UI-агент:** визуал секции `SteamZeroCommission` в рамках дизайн-системы.

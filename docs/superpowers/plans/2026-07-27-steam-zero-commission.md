@@ -44,6 +44,7 @@
 **Agent:** standard model (integration/schema judgment). Docs sub-steps included.
 
 **Files:**
+
 - Modify: `apps/api/src/yupay/modules/catalog/models.py` (imports + `BrandTranslation`)
 - Create: `apps/api/migrations/versions/0032_brand_highlights.py`
 - Modify: `apps/api/src/yupay/modules/catalog/schemas.py:156-173` (`BrandDetailOut`)
@@ -52,6 +53,7 @@
 - Docs: `docs/decisions/0037-brand-highlights.md`, `docs/architecture/module-map.md`
 
 **Interfaces:**
+
 - Produces: `BrandDetailOut.highlights: list[str]` (default `[]`), localized like `description` with `DEFAULT_LOCALE` fallback. Consumed by Task 2 (frontend) and Task 4 (seed data).
 
 - [ ] **Step 1: Write the failing test**
@@ -219,12 +221,14 @@ git commit -m "feat(api/catalog): localized brand highlights chips on brand deta
 **Agent:** standard model.
 
 **Files:**
+
 - Regenerate: `docs/api/openapi.json`, `packages/api-client/` (`make gen-api`)
 - Modify: `apps/web/src/lib/catalog.ts:93-100` (`BrandDetail`)
 - Modify: `apps/web/src/app/[locale]/store/[brandSlug]/page.tsx` (hero chip row + `Chip` accent variant)
 - Test: `apps/web/src/app/[locale]/store/[brandSlug]/` — brand-page render test (or a focused `Chip`-row unit test)
 
 **Interfaces:**
+
 - Consumes: `BrandDetailOut.highlights` (Task 1).
 - Produces: highlight chips visible in the brand hero when non-empty.
 
@@ -280,7 +284,7 @@ export function HighlightChips({ items }: { items: string[] }) {
       {items.map((h) => (
         <span
           key={h}
-          className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 py-1.5 text-[12px] font-semibold text-white backdrop-blur"
+          className="border-primary/40 bg-primary/10 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold text-white backdrop-blur"
         >
           <Check size={13} className="text-primary shrink-0" />
           {h}
@@ -294,7 +298,7 @@ export function HighlightChips({ items }: { items: string[] }) {
 In `BrandPage`, compute `const highlights = brand.highlights ?? [];` and render inside the existing chip row (after the `securityChip`, before `maintenance`):
 
 ```tsx
-              <HighlightChips items={highlights} />
+<HighlightChips items={highlights} />
 ```
 
 - [ ] **Step 6: Run the test + typecheck**
@@ -316,12 +320,14 @@ git commit -m "feat(web/store): render localized brand highlight chips on brand 
 **Agent:** UI-agent (ui-design:ui-designer) for the visual; standard reviewer. Design-system tokens only.
 
 **Files:**
+
 - Create: `apps/web/src/components/sections/SteamZeroCommission.tsx`
 - Create: `apps/web/src/components/sections/SteamZeroCommission.test.tsx`
 - Modify: `apps/web/src/app/[locale]/page.tsx` (import + mount after `TrustBand`)
 - Modify: `packages/i18n/locales/{ru,en,uz}/web.json` (`steamZero` namespace + `catalog.cards.steam.statCommission`)
 
 **Interfaces:**
+
 - Consumes: static i18n `web.steamZero.*`; asset `public/brands/steam-mono.png`, `steam-bg.jpg`, `public/payment/{click,payme,uzum,usdt}.png`. No API dependency (independent of Tasks 1–2).
 
 - [ ] **Step 1: Add i18n keys (all three locales)**
@@ -447,7 +453,16 @@ export async function SteamZeroCommission({ locale }: { locale: string }) {
           className="object-cover object-center opacity-40"
         />
         <div className="absolute inset-0 bg-[radial-gradient(120%_120%_at_50%_0%,rgba(10,13,26,0.75)_0%,rgba(10,13,26,0.94)_60%,#0A0D1A_100%)]" />
-        <div className="glow-lime absolute" style={{ width: 560, height: 560, left: "50%", top: "10%", transform: "translate(-50%,-50%)" }} />
+        <div
+          className="glow-lime absolute"
+          style={{
+            width: 560,
+            height: 560,
+            left: "50%",
+            top: "10%",
+            transform: "translate(-50%,-50%)",
+          }}
+        />
       </div>
 
       <div className="mx-auto max-w-[1100px] px-6 py-20 sm:px-10 sm:py-28">
@@ -494,7 +509,13 @@ export async function SteamZeroCommission({ locale }: { locale: string }) {
                   key={p.alt}
                   className="grid h-10 w-14 place-items-center rounded-lg border border-white/10 bg-white/95 px-2"
                 >
-                  <Image src={p.src} alt={p.alt} width={40} height={20} className="h-5 w-auto object-contain" />
+                  <Image
+                    src={p.src}
+                    alt={p.alt}
+                    width={40}
+                    height={20}
+                    className="h-5 w-auto object-contain"
+                  />
                 </span>
               ))}
             </div>
@@ -548,15 +569,18 @@ git commit -m "feat(web/home): Steam 0%-commission section + fix mock commission
 **Agent:** SEO-agent (copywriting) for the localized copy; standard reviewer for SQL correctness. **No app code.**
 
 **Files:**
+
 - Create: `scripts/seed/steam_seo.sql` — idempotent UPDATE/UPSERT of `brand_translations` (`highlights`, `short_description`, `description`, `instructions`) + `brand_faqs`(+translations) for brand `steam`, all three locales.
 - Modify: `docs/api/README.md` — note that `highlights` is content-managed (SQL/seed), not seeded by fixtures.
 
 **Interfaces:**
+
 - Consumes: `highlights` column (Task 1). Applied to prod by the user via `!`/psql — **not** an Alembic data migration.
 
 - [ ] **Step 1: Draft the localized copy (SEO agent)**
 
 Produce, per locale (ru/en/uz), grounded strictly in the 0%-truth (no "official Steam rate", no invented commission):
+
 - `highlights` (3–4 short chips): RU `["0% комиссии", "Оплата в сумах", "1–3 минуты", "Без пароля"]` (+ en/uz equivalents).
 - `short_description` (≤512 chars), `description` (long, keyword «пополнение Steam Узбекистан за сумы 0%» naturally, no stuffing), `instructions` (how-to + supported regions + where to find your ID).
 - 4 FAQ Q/A: комиссия? / оплата в сумах? / за сколько зачислится? / нужен ли пароль?

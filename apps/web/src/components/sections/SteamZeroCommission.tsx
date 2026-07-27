@@ -90,7 +90,7 @@ export async function SteamZeroCommission({ locale }: { locale: string }) {
           alt=""
           width={720}
           height={720}
-          className="invert absolute right-[6%] top-1/2 hidden -translate-y-1/2 opacity-[0.06] sm:block"
+          className="absolute right-[6%] top-1/2 hidden -translate-y-1/2 opacity-[0.06] invert sm:block"
         />
         <div
           className="font-display absolute bottom-[-8%] right-[-1%] hidden select-none text-[clamp(9rem,24vw,20rem)] font-extrabold leading-none opacity-[0.14] md:block"
@@ -100,7 +100,13 @@ export async function SteamZeroCommission({ locale }: { locale: string }) {
         </div>
         <div
           className="glow-lime absolute"
-          style={{ width: 560, height: 560, left: "8%", top: "24%", transform: "translate(-50%,-50%)" }}
+          style={{
+            width: 560,
+            height: 560,
+            left: "8%",
+            top: "24%",
+            transform: "translate(-50%,-50%)",
+          }}
         />
       </div>
 
@@ -113,7 +119,7 @@ export async function SteamZeroCommission({ locale }: { locale: string }) {
               alt=""
               width={14}
               height={14}
-              className="invert shrink-0"
+              className="shrink-0 invert"
             />
             {t("eyebrow")}
           </span>
@@ -121,7 +127,7 @@ export async function SteamZeroCommission({ locale }: { locale: string }) {
 
         {/* Headline + subcopy — left-aligned, giant, "0%" accented in lime. */}
         <div className="mt-8 max-w-[960px] sm:mt-10">
-          <h2 className="font-display text-balance text-[clamp(2.25rem,5.6vw,4.25rem)] font-extrabold leading-[0.96] tracking-[-0.035em] text-foreground">
+          <h2 className="font-display text-foreground text-balance text-[clamp(2.25rem,5.6vw,4.25rem)] font-extrabold leading-[0.96] tracking-[-0.035em]">
             {accentZero(t("title"))}
           </h2>
           <p className="text-tx-mute mt-5 max-w-[54ch] text-[15px] leading-relaxed sm:text-base">
@@ -149,7 +155,7 @@ export async function SteamZeroCommission({ locale }: { locale: string }) {
                   <div className="text-tx-dim font-mono text-[10px] font-semibold uppercase tracking-[0.14em]">
                     {s.label}
                   </div>
-                  <div className="mt-1 text-[15px] font-bold text-foreground">{s.value}</div>
+                  <div className="text-foreground mt-1 text-[15px] font-bold">{s.value}</div>
                 </div>
               </div>
             ))}
@@ -172,7 +178,7 @@ export async function SteamZeroCommission({ locale }: { locale: string }) {
               {PAYMENTS.map((p) => (
                 <span
                   key={p.alt}
-                  className="flex h-[52px] w-[74px] items-center justify-center rounded-btn bg-white p-2 shadow-[0_8px_18px_-8px_rgba(0,0,0,0.5)]"
+                  className="rounded-btn flex h-[52px] w-[74px] items-center justify-center bg-white p-2 shadow-[0_8px_18px_-8px_rgba(0,0,0,0.5)]"
                 >
                   <Image
                     src={p.src}
