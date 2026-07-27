@@ -50,13 +50,16 @@ async def _resolve_actor(request: Request, db: AsyncSession) -> Actor:
         return Actor(user_id=user.id, email=None)
     if scheme == "Guest":
         claims = authjwt.verify(token, expected_kind="guest")
-        email = request.query_params.get("email")
+        # Header, not query param: a query param lands in Caddy / proxy
+        # access logs and browser history, a header doesn't.
+        email = request.headers.get("X-Guest-Email")
         if not email:
-            raise ValidationError("email query param required for guest access")
-        expected = email_hash(email.strip().lower(), get_settings().auth_email_pepper)
+            raise ValidationError("X-Guest-Email header required for guest access")
+        normalised = email.strip().lower()
+        expected = email_hash(normalised, get_settings().auth_email_pepper)
         if claims.email_hash != expected:
             raise UnauthorizedError("guest token / email mismatch")
-        return Actor(user_id=None, email=email.strip().lower())
+        return Actor(user_id=None, email=normalised)
     raise UnauthorizedError("authorization required")
 
 

@@ -25,11 +25,14 @@ interface DeliveryListOut {
 
 export function OrderStatus({ orderId, email }: { orderId: string; email?: string }) {
   const t = useTranslations("web.orders");
-  const suffix = email ? `?email=${encodeURIComponent(email)}` : "";
+  // Guest identification travels as a header, never a query param — a query
+  // param lands in Caddy / proxy access logs and browser history, a header
+  // doesn't. Trimmed + lowercased to match what the backend expects.
+  const guestHeaders = email ? { "X-Guest-Email": email.trim().toLowerCase() } : {};
 
   const order = useQuery({
     queryKey: ["order", orderId],
-    queryFn: () => apiFetch<OrderOut>(`/orders/${orderId}${suffix}`),
+    queryFn: () => apiFetch<OrderOut>(`/orders/${orderId}`, { headers: guestHeaders }),
     refetchInterval: (q) => (q.state.data && IN_MOTION.has(q.state.data.status) ? 4000 : false),
   });
 
@@ -38,7 +41,8 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
   const deliveries = useQuery({
     queryKey: ["deliveries", orderId],
     enabled: status === "delivered",
-    queryFn: () => apiFetch<DeliveryListOut>(`/orders/${orderId}/deliveries${suffix}`),
+    queryFn: () =>
+      apiFetch<DeliveryListOut>(`/orders/${orderId}/deliveries`, { headers: guestHeaders }),
   });
 
   if (order.isLoading) return <p className="text-tx-mute">{t("loading")}</p>;
