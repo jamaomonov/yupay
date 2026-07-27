@@ -37,7 +37,7 @@ jobs:
           fi
 
       - name: SSH deploy
-        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17  # v1.2.0
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
         env:
           IMAGE_TAG_INPUT: ${{ inputs.image_tag }}
         with:
