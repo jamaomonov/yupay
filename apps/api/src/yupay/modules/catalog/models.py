@@ -11,6 +11,7 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -138,6 +139,9 @@ class BrandTranslation(Base):
     # Longform "how to top up / supported regions / where to find your ID" guide,
     # rendered as an indexable prose section on the brand page.
     instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Short localized value-prop chips shown on the brand hero (e.g. Steam's
+    # "0% комиссии", "Оплата в сумах"). NULL/absent -> no chips rendered.
+    highlights: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
 
     __table_args__ = (PrimaryKeyConstraint("brand_id", "locale", name="pk_brand_translations"),)
 

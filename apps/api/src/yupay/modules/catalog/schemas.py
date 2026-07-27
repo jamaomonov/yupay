@@ -171,6 +171,7 @@ class BrandDetailOut(BaseModel):
     maintenance: bool = False
     products: list[ProductSummaryOut]
     faqs: list[FaqOut] = Field(default_factory=list)
+    highlights: list[str] = Field(default_factory=list)
 
 
 class CategoryListOut(BaseModel):
