@@ -49,8 +49,10 @@ http://yupay.uz, http://www.yupay.uz {
 		# resource class is locked down so an injected payload can't load
 		# plugins, retarget <base>, post forms elsewhere, or exfiltrate to an
 		# arbitrary origin. Telegram hosts serve the Login Widget (script +
-		# oauth iframe).
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://telegram.org https://*.telegram.org; style-src 'self' 'unsafe-inline' https://telegram.org https://*.telegram.org; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://api.yupay.uz wss://api.yupay.uz; frame-src https://telegram.org https://*.telegram.org; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		# oauth iframe). mc.yandex.ru is Yandex.Metrika: tag.js (script-src),
+		# hit/webvisor uploads (connect-src) and webvisor's frame (frame-src);
+		# its tracking pixels ride the existing ``img-src https:``.
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://telegram.org https://*.telegram.org https://mc.yandex.ru; style-src 'self' 'unsafe-inline' https://telegram.org https://*.telegram.org; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://api.yupay.uz wss://api.yupay.uz https://mc.yandex.ru; frame-src https://telegram.org https://*.telegram.org https://mc.yandex.ru; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 	}
 	# Force the canonical apex so SEO does not split between yupay.uz / www.
 	@redirectWww host www.yupay.uz
