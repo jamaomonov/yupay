@@ -5,6 +5,8 @@ import { notFound } from "next/navigation";
 import { hasLocale } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
+import { HighlightChips } from "./HighlightChips";
+
 import type { Metadata } from "next";
 
 import { JsonLd } from "@/components/JsonLd";
@@ -71,6 +73,7 @@ export default async function BrandPage({
 
   const about = brand.description ?? brand.short_description ?? "";
   const heroImg = brand.hero_image_url ?? brand.logo_url;
+  const highlights = brand.highlights ?? [];
 
   // Starting price chip + JSON-LD offers from real SKU prices.
   const skus = products.flatMap((p) => p.skus);
@@ -207,6 +210,7 @@ export default async function BrandPage({
               )}
               <Chip icon={<Clock size={13} />}>{t("etaChip", { eta: "1–3" })}</Chip>
               <Chip icon={<ShieldCheck size={13} />}>{t("securityChip")}</Chip>
+              <HighlightChips items={highlights} />
               {brand.maintenance && <Chip>{t("maintenance")}</Chip>}
             </div>
           </div>
