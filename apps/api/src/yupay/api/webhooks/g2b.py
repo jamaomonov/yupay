@@ -10,6 +10,7 @@ Mounted under ``/api/v1/webhooks/g2b/{secret}``. A wrong secret returns
 
 from __future__ import annotations
 
+import hmac
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -37,7 +38,18 @@ async def receive_g2b_webhook(
     db: Annotated[AsyncSession, Depends(db_session)],
 ) -> dict[str, Any]:
     expected = get_settings().g2b_webhook_secret
-    if not expected or secret != expected:
+    # Note: the secret lives in the URL path segment (G2B doesn't support a
+    # header-based alternative today), which can leak via proxy/access logs —
+    # moving it to a header would need a supplier-side config change and is
+    # out of scope here. At least keep the comparison itself constant-time.
+    try:
+        secret_ok = bool(expected) and hmac.compare_digest(secret, expected)
+    except TypeError:
+        # ``secret`` is untrusted wire input and may contain non-ASCII
+        # characters, which ``hmac.compare_digest`` rejects on ``str``
+        # operands — fail closed instead of propagating.
+        secret_ok = False
+    if not secret_ok:
         # 404 — don't acknowledge existence to the wrong sender.
         raise HTTPException(status_code=404)
 

@@ -228,6 +228,37 @@ async def test_rejected_webhook_audit_row_survives_the_4xx(
     assert len(rejected) == 1
 
 
+async def test_rejected_webhook_audit_body_is_capped(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A signature/shape rejection must not let an attacker amplify storage
+    by flooding the endpoint with oversized bodies — the persisted audit row
+    truncates the body instead of storing it verbatim."""
+    from yupay.modules.payments.models import PaymentWebhook
+
+    raw_body = json.dumps({"bad": "x" * 10_000})
+    r = await integration_client.post(
+        "/api/v1/webhooks/payments/mock",
+        content=raw_body,
+        headers={"content-type": "application/json"},
+    )
+    assert r.status_code == 422, r.text
+    assert len(raw_body) > 4096
+
+    rejected = (
+        (
+            await db_session.execute(
+                select(PaymentWebhook).where(PaymentWebhook.signature_ok.is_(False))
+            )
+        )
+        .scalars()
+        .one()
+    )
+    stored_body = rejected.payload["body"]
+    assert len(stored_body) == 4096
+    assert stored_body == raw_body[:4096]
+
+
 # ---------- simulate-webhook guards ----------
 
 

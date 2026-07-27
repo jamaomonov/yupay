@@ -32,6 +32,12 @@ from yupay.modules.wallet import api as wallet_api
 
 log = get_logger("yupay.payments.service")
 
+# Cap on the raw body we persist for a rejected (signature/parse-failed)
+# webhook. This route is reachable pre-auth, so an attacker could otherwise
+# flood the audit table with arbitrarily large rows just by POSTing huge
+# bodies that fail verification.
+_REJECTED_WEBHOOK_BODY_CAP = 4096
+
 
 def _record_attempt(
     db: AsyncSession,
@@ -320,13 +326,17 @@ async def handle_webhook(
     try:
         event = await gw.verify_webhook(headers=headers, body=body)
     except (PaymentGatewayError, PaymentNotIntegratedError) as exc:
-        # Persist the rejection so we can audit signature-mismatch attacks later.
+        # Persist the rejection so we can audit signature-mismatch attacks
+        # later. The body is untrusted and pre-auth, so cap what we store —
+        # otherwise a flood of oversized bodies amplifies into unbounded
+        # storage even though every one of them gets rejected.
+        truncated_body = body.decode("utf-8", errors="replace")[:_REJECTED_WEBHOOK_BODY_CAP]
         db.add(
             PaymentWebhook(
                 id=new_id(),
                 provider=gw.provider,
                 external_event_id=f"rejected:{new_id()}",
-                payload={"body": body.decode("utf-8", errors="replace")},
+                payload={"body": truncated_body},
                 signature_ok=False,
             )
         )

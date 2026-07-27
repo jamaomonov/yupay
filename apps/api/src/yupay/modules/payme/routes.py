@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hmac
 import json
 from collections.abc import Awaitable, Callable
 from typing import Annotated, Any
@@ -72,8 +73,20 @@ def _is_authorized(request: Request) -> bool:
     login, sep, key = decoded.partition(":")
     if not sep or login != settings.payme_login:
         return False
-    valid_keys = {k for k in (settings.payme_key, settings.payme_test_key) if k}
-    return key in valid_keys
+    valid_keys = [k for k in (settings.payme_key, settings.payme_test_key) if k]
+    # Accumulate across every configured key rather than short-circuiting on
+    # the first match, so response timing doesn't leak which key (if any)
+    # matched. An empty ``valid_keys`` (unconfigured acquirer) always fails.
+    key_ok = False
+    try:
+        for valid_key in valid_keys:
+            key_ok |= hmac.compare_digest(key, valid_key)
+    except TypeError:
+        # ``key`` is untrusted wire input and may contain non-ASCII bytes,
+        # which ``hmac.compare_digest`` rejects on ``str`` operands — fail
+        # closed instead of propagating, mirroring click/signature.py.
+        return False
+    return key_ok
 
 
 def _req_str(params: dict[str, Any], key: str) -> str:
