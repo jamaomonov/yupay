@@ -23,8 +23,6 @@ interface TokensOut {
   access_token: string;
   token_type: "Bearer";
   expires_in: number;
-  refresh_token?: string | null;
-  refresh_expires_in?: number | null;
 }
 
 export interface Me {
@@ -45,7 +43,9 @@ export async function loginWithTelegramInitData(initData: string): Promise<Token
     { init_data: initData },
     { anonymous: true },
   );
-  setTokens(tokens.access_token, tokens.refresh_token ?? null);
+  // Only the access token is in the body; the refresh token arrived as an HttpOnly
+  // cookie set by the browser from this response.
+  setTokens(tokens.access_token);
   return tokens;
 }
 
@@ -117,7 +117,9 @@ export function useLogout() {
   const qc = useQueryClient();
   return useMutation<void, ApiError>({
     mutationFn: async () => {
-      // Best-effort: backend revokes the refresh token, but we don't block the UI on it.
+      // Best-effort: ask the backend to revoke the session and clear the HttpOnly
+      // refresh cookie (JS can't delete it). Don't block the UI on it.
+      await apiPost("/api/v1/auth/logout", {}).catch(() => undefined);
       clearTokens();
     },
     onSuccess: () => {

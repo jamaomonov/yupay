@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.clock import now
 from yupay.core.errors import NotFoundError, ValidationError
+from yupay.modules.catalog.image_url_safety import validate_optional_public_image_url
 from yupay.modules.integrations.models import SkuSupplierMapping, SupplierCatalogCache
 
 if TYPE_CHECKING:
@@ -142,6 +143,25 @@ async def upsert_mapping(db: AsyncSession, payload: MappingUpsert) -> SkuSupplie
     return row
 
 
+def _sanitize_image_url(url: str | None) -> str | None:
+    """Blank out a supplier-provided image URL that fails the SSRF host
+    check instead of aborting the whole import.
+
+    ``BrandCreate``/``ProductCreate`` (see ``catalog.admin_schemas``) already
+    run the same check via
+    ``yupay.modules.catalog.image_url_safety.validate_optional_public_image_url``
+    on construction and would raise — which is exactly right for an admin
+    typing a URL by hand, but too disruptive here: one bad image field from
+    the G2B catalog shouldn't sink an otherwise-valid import of a game and
+    all its denominations. So the G2B path pre-filters instead of letting
+    the schema raise: an invalid host just means "no image", not "abort".
+    """
+    try:
+        return validate_optional_public_image_url(url)
+    except ValueError:
+        return None
+
+
 def _sell_price(cost_usdt: Decimal, margin_percent: Decimal) -> Decimal:
     """price = cost * (1 + margin/100), rounded to cents (half-up)."""
     return (cost_usdt * (Decimal(1) + margin_percent / Decimal(100))).quantize(
@@ -225,8 +245,8 @@ async def import_game(
             catalog_schemas.BrandCreate(
                 slug=nb.slug,
                 category_id=nb.category_id,
-                logo_url=nb.logo_url,
-                hero_image_url=nb.hero_image_url,
+                logo_url=_sanitize_image_url(nb.logo_url),
+                hero_image_url=_sanitize_image_url(nb.hero_image_url),
                 accent_color=nb.accent_color,
                 translations=[
                     catalog_schemas.TranslationIn(locale=loc, name=nb.name) for loc in _LOCALES
@@ -247,7 +267,7 @@ async def import_game(
             brand_id=brand_id,
             kind="top_up",
             supplier_hint="g2b",
-            image_url=payload.product.image_url,
+            image_url=_sanitize_image_url(payload.product.image_url),
             required_fields=payload.product.required_fields,
             translations=[
                 catalog_schemas.TranslationIn(locale=loc, name=payload.product.name)

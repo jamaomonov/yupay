@@ -4,10 +4,16 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Header, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
+from yupay.core.idempotency import (
+    IDEMPOTENCY_HEADER,
+    load_replay,
+    normalize_idempotency_key,
+    save_replay,
+)
 from yupay.modules.admin.api import require_admin
 from yupay.modules.inventory import service as inv_svc
 from yupay.modules.sourcing import service as svc
@@ -66,7 +72,14 @@ async def upsert_rule(
     body: SourcingRuleIn,
     db: Annotated[AsyncSession, Depends(db_session)],
     admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
 ) -> SourcingRuleOut:
+    key = normalize_idempotency_key(idempotency_key)
+    scope = "sourcing.upsert_rule"
+    if key is not None:
+        cached = await load_replay(db, scope=scope, idempotency_key=key)
+        if cached is not None:
+            return SourcingRuleOut.model_validate(cached.body)
     await inv_svc.get_sku_or_404(db, sku_id)
     rule = await svc.set_rule(
         db,
@@ -75,7 +88,10 @@ async def upsert_rule(
         supplier_slug=body.supplier_slug,
         admin_id=admin.id,
     )
-    return SourcingRuleOut.model_validate(rule)
+    out = SourcingRuleOut.model_validate(rule)
+    if key is not None:
+        await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
+    return out
 
 
 @admin_router.delete(
@@ -87,5 +103,15 @@ async def delete_rule(
     sku_id: str,
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
 ) -> None:
+    key = normalize_idempotency_key(idempotency_key)
+    scope = "sourcing.delete_rule"
+    if key is not None:
+        cached = await load_replay(db, scope=scope, idempotency_key=key)
+        if cached is not None:
+            return
     await svc.delete_rule(db, sku_id)
+    if key is not None:
+        await save_replay(db, scope=scope, idempotency_key=key, body=None)
+    return

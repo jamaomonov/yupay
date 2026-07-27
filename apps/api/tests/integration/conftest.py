@@ -76,6 +76,7 @@ async def db_engine():
             await conn.execute(
                 text(
                     "TRUNCATE TABLE "
+                    "idempotent_responses, "
                     "broadcast_recipients, broadcasts, "
                     "promo_redemptions, promo_codes, "
                     "wallet_postings, wallet_transactions, wallet_accounts, "

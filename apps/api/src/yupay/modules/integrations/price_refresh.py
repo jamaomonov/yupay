@@ -14,6 +14,7 @@ separate admin bot (``notifications.send_admin_alert``).
 
 from __future__ import annotations
 
+import html
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -174,9 +175,11 @@ def _format_alert(*, mapping: object, outcome: object) -> str:
     Telegram renders large blocks poorly on mobile.
     """
     sku_id = getattr(mapping, "sku_id", "?")
-    supplier = getattr(mapping, "supplier_slug", "?")
+    # supplier/ext_id/variant are supplier- or admin-entered free text (mapping
+    # fields) — escape before splicing into a parse_mode:HTML message.
+    supplier = html.escape(str(getattr(mapping, "supplier_slug", "?")))
     kind = getattr(mapping, "kind", "?")
-    ext_id = getattr(mapping, "external_product_id", "?")
+    ext_id = html.escape(str(getattr(mapping, "external_product_id", "?")))
     variant = getattr(mapping, "external_variant_id", None)
     old = getattr(outcome, "old_cost", None)
     new = getattr(outcome, "new_cost", None)
@@ -187,7 +190,7 @@ def _format_alert(*, mapping: object, outcome: object) -> str:
         sign = "+" if delta >= 0 else ""
         delta_line = f"\n<i>Изменение: {sign}{delta:.2f}%</i>"
 
-    variant_line = f" · <code>{variant}</code>" if variant else ""
+    variant_line = f" · <code>{html.escape(str(variant))}</code>" if variant else ""
     old_str = f"${old}" if old is not None else "—"
     return (
         f"<b>💰 Цена поставщика изменилась</b>\n"

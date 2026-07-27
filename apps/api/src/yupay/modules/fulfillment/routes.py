@@ -4,13 +4,19 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
 from yupay.core.config import get_settings
 from yupay.core.errors import UnauthorizedError, ValidationError
+from yupay.core.idempotency import (
+    IDEMPOTENCY_HEADER,
+    load_replay,
+    normalize_idempotency_key,
+    save_replay,
+)
 from yupay.modules.admin.api import require_admin
 from yupay.modules.auth import jwt as authjwt
 from yupay.modules.auth.security import email_hash
@@ -50,13 +56,16 @@ async def _resolve_actor(request: Request, db: AsyncSession) -> Actor:
         return Actor(user_id=user.id, email=None)
     if scheme == "Guest":
         claims = authjwt.verify(token, expected_kind="guest")
-        email = request.query_params.get("email")
+        # Header, not query param: a query param lands in Caddy / proxy
+        # access logs and browser history, a header doesn't.
+        email = request.headers.get("X-Guest-Email")
         if not email:
-            raise ValidationError("email query param required for guest access")
-        expected = email_hash(email.strip().lower(), get_settings().auth_email_pepper)
+            raise ValidationError("X-Guest-Email header required for guest access")
+        normalised = email.strip().lower()
+        expected = email_hash(normalised, get_settings().auth_email_pepper)
         if claims.email_hash != expected:
             raise UnauthorizedError("guest token / email mismatch")
-        return Actor(user_id=None, email=email.strip().lower())
+        return Actor(user_id=None, email=normalised)
     raise UnauthorizedError("authorization required")
 
 
@@ -202,9 +211,19 @@ async def admin_retry_task(
     task_id: str,
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
 ) -> FulfillmentTaskOut:
+    key = normalize_idempotency_key(idempotency_key)
+    scope = "fulfillment.retry_task"
+    if key is not None:
+        cached = await load_replay(db, scope=scope, idempotency_key=key)
+        if cached is not None:
+            return FulfillmentTaskOut.model_validate(cached.body)
     task = await svc.retry_task(db, task_id=task_id)
-    return FulfillmentTaskOut.model_validate(task)
+    out = FulfillmentTaskOut.model_validate(task)
+    if key is not None:
+        await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
+    return out
 
 
 @admin_router.post(
@@ -216,9 +235,19 @@ async def admin_cancel_task(
     task_id: str,
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
 ) -> FulfillmentTaskOut:
+    key = normalize_idempotency_key(idempotency_key)
+    scope = "fulfillment.cancel_task"
+    if key is not None:
+        cached = await load_replay(db, scope=scope, idempotency_key=key)
+        if cached is not None:
+            return FulfillmentTaskOut.model_validate(cached.body)
     task = await svc.cancel_task(db, task_id=task_id)
-    return FulfillmentTaskOut.model_validate(task)
+    out = FulfillmentTaskOut.model_validate(task)
+    if key is not None:
+        await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
+    return out
 
 
 @admin_router.post(
@@ -231,12 +260,22 @@ async def admin_bulk_retry_tasks(
     body: BulkRetryIn,
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
 ) -> BulkRetryOut:
+    key = normalize_idempotency_key(idempotency_key)
+    scope = "fulfillment.bulk_retry_tasks"
+    if key is not None:
+        cached = await load_replay(db, scope=scope, idempotency_key=key)
+        if cached is not None:
+            return BulkRetryOut.model_validate(cached.body)
     retried, skipped = await svc.bulk_retry_tasks(db, task_ids=body.task_ids)
-    return BulkRetryOut(
+    out = BulkRetryOut(
         retried=[FulfillmentTaskOut.model_validate(t) for t in retried],
         skipped=[BulkRetrySkipped(id=tid, reason=reason) for tid, reason in skipped],
     )
+    if key is not None:
+        await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
+    return out
 
 
 @admin_router.post(
@@ -250,7 +289,14 @@ async def admin_complete_manual_task(
     body: ManualCompleteIn,
     db: Annotated[AsyncSession, Depends(db_session)],
     admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
 ) -> FulfillmentTaskOut:
+    key = normalize_idempotency_key(idempotency_key)
+    scope = "fulfillment.complete_manual_task"
+    if key is not None:
+        cached = await load_replay(db, scope=scope, idempotency_key=key)
+        if cached is not None:
+            return FulfillmentTaskOut.model_validate(cached.body)
     task = await svc.complete_manual_task(
         db,
         task_id=task_id,
@@ -261,7 +307,10 @@ async def admin_complete_manual_task(
         admin_id=admin.id,
         proof_url=body.proof_url,
     )
-    return FulfillmentTaskOut.model_validate(task)
+    out = FulfillmentTaskOut.model_validate(task)
+    if key is not None:
+        await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
+    return out
 
 
 @admin_router.post(
@@ -279,7 +328,14 @@ async def admin_force_complete_task(
     body: ManualCompleteIn,
     db: Annotated[AsyncSession, Depends(db_session)],
     admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
 ) -> FulfillmentTaskOut:
+    key = normalize_idempotency_key(idempotency_key)
+    scope = "fulfillment.force_complete_task"
+    if key is not None:
+        cached = await load_replay(db, scope=scope, idempotency_key=key)
+        if cached is not None:
+            return FulfillmentTaskOut.model_validate(cached.body)
     task = await svc.complete_manual_task(
         db,
         task_id=task_id,
@@ -291,7 +347,10 @@ async def admin_force_complete_task(
         proof_url=body.proof_url,
         force=True,
     )
-    return FulfillmentTaskOut.model_validate(task)
+    out = FulfillmentTaskOut.model_validate(task)
+    if key is not None:
+        await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
+    return out
 
 
 @admin_router.post(
@@ -305,7 +364,14 @@ async def admin_fail_manual_task(
     body: ManualFailIn,
     db: Annotated[AsyncSession, Depends(db_session)],
     admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
 ) -> FulfillmentTaskOut:
+    key = normalize_idempotency_key(idempotency_key)
+    scope = "fulfillment.fail_manual_task"
+    if key is not None:
+        cached = await load_replay(db, scope=scope, idempotency_key=key)
+        if cached is not None:
+            return FulfillmentTaskOut.model_validate(cached.body)
     task = await svc.fail_manual_task(
         db,
         task_id=task_id,
@@ -313,4 +379,7 @@ async def admin_fail_manual_task(
         admin_note=body.admin_note,
         admin_id=admin.id,
     )
-    return FulfillmentTaskOut.model_validate(task)
+    out = FulfillmentTaskOut.model_validate(task)
+    if key is not None:
+        await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
+    return out

@@ -28,6 +28,7 @@ REDACTED_KEYS = frozenset(
         "user_agent",
         "telegram_id",
         "tg_user_id",
+        "chat_id",
         "voucher_code",
         "code",
         "api_key",
@@ -43,6 +44,17 @@ REDACTED_KEYS = frozenset(
         "click_secret_key_bot",
         "bearer_token",
         "merchant_token",
+        # Generic terms below aren't tied to a specific provider setting, but
+        # are worth blocking outright wherever they show up as a literal key —
+        # e.g. a provider's raw webhook JSON (audit/service.py replays these
+        # verbatim into the admin audit feed; see its own docstring).
+        "card",
+        "pan",
+        "cvv",
+        "cvc",
+        "secret",
+        "signature",
+        "key",
     },
 )
 

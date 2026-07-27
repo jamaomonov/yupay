@@ -26,7 +26,7 @@ from yupay.core.errors import ForbiddenError, UnauthorizedError
 from yupay.core.ids import new_id
 from yupay.modules.auth import jwt as authjwt
 from yupay.modules.auth.models import AuthSession
-from yupay.modules.auth.security import hash_token, new_refresh_token
+from yupay.modules.auth.security import constant_time_eq, hash_token, new_refresh_token
 from yupay.modules.auth.service import SessionTokens
 from yupay.modules.users.models import User
 
@@ -71,14 +71,24 @@ async def dev_admin_login(
     """Authenticate against the hardcoded dev creds and mint a session.
 
     Raises:
-        ForbiddenError: when the endpoint is disabled by config.
+        ForbiddenError: when the endpoint is disabled by config, or when the configured
+            credentials are still the compiled-in defaults (``admin``/``admin``).
         UnauthorizedError: on bad credentials.
     """
     s = settings or get_settings()
     if not _dev_login_active(s):
         raise ForbiddenError("dev login is disabled")
 
-    if login != s.admin_dev_login or password != s.admin_dev_password:
+    # Refuse to run on the shipped defaults — an operator who enables the endpoint must
+    # first set real credentials, or the "dev-only" door is an open admin backdoor.
+    if s.admin_dev_login == "admin" and s.admin_dev_password == "admin":  # noqa: S105
+        raise ForbiddenError("dev login refuses default credentials; set ADMIN_DEV_LOGIN/PASSWORD")
+
+    # Constant-time comparison to keep the endpoint from leaking the credentials one
+    # character at a time via response timing. Evaluate both halves before combining.
+    login_ok = constant_time_eq(login, s.admin_dev_login)
+    password_ok = constant_time_eq(password, s.admin_dev_password)
+    if not (login_ok and password_ok):
         raise UnauthorizedError("invalid credentials")
 
     user = await _ensure_dev_admin(db)

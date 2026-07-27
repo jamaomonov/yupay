@@ -69,8 +69,9 @@ async def test_admin_widget_admin_succeeds(
     await db_session.execute(update(User).where(User.id == user_id).values(roles=["admin"]))
     await db_session.commit()
 
-    # Fresh payload (new auth_date so freshness holds), same Telegram id.
-    payload = _sign_widget({"id": "9003", "first_name": "Boss", "auth_date": str(fixed_now)})
+    # Fresh payload (new auth_date => distinct signature, so the single-use replay guard
+    # doesn't confuse this second login with the seed login above), same Telegram id.
+    payload = _sign_widget({"id": "9003", "first_name": "Boss", "auth_date": str(fixed_now + 5)})
     r = await integration_client.post("/api/v1/auth/telegram/widget/admin", json=_typed(payload))
     assert r.status_code == 200, r.text
     assert r.json()["access_token"]

@@ -12,13 +12,14 @@ pg_partman + a materialised audit table; for now this is fine.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Any
 
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from yupay.core.logging import REDACTED_KEYS
 from yupay.modules.fulfillment.models import FulfillmentAttempt
 from yupay.modules.orders.models import OrderEvent
 from yupay.modules.payments.models import PaymentAttempt, PaymentWebhook
@@ -26,6 +27,34 @@ from yupay.modules.wallet.models import WalletTransaction
 
 # Type alias for one source feed.
 AuditSourceName = str
+
+_REDACTED_VALUE = "<redacted>"
+
+
+def _redact(value: Any) -> Any:
+    """Recursively mask blocklisted keys before a payload leaves this module.
+
+    The five JSONB/dict columns fed into the timeline (``OrderEvent.payload``,
+    ``PaymentAttempt.payload``, ``PaymentWebhook.payload``,
+    ``FulfillmentAttempt.payload``, ``WalletTransaction.extra_metadata``) are
+    mostly hand-curated by our own services, but ``PaymentWebhook.payload`` for
+    a signature-valid webhook is the provider's raw parsed JSON body verbatim
+    (see ``payments.service.handle_webhook``) — e.g. Octo's callback can carry
+    a masked PAN + ``rrn`` (see ``payments.gateways.octo`` docstring). We don't
+    control that shape, so mask by key rather than trusting the writer.
+
+    Reuses ``core.logging.REDACTED_KEYS`` so the audit feed and the structured
+    logger agree on what counts as sensitive. Recurses into nested dicts/lists
+    since provider webhook bodies aren't guaranteed to be flat.
+    """
+    if isinstance(value, dict):
+        return {
+            k: _REDACTED_VALUE if str(k).lower() in REDACTED_KEYS else _redact(v)
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact(v) for v in value]
+    return value
 
 
 @dataclass(frozen=True)
@@ -305,7 +334,11 @@ async def list_audit_events(
     if admin_only:
         collected = [e for e in collected if e.actor is not None and e.actor.startswith("admin:")]
     collected.sort(key=lambda e: e.ts, reverse=True)
-    return collected[:limit]
+    page = collected[:limit]
+    # Redact only the page we're about to hand back — the per-source fetchers
+    # may have pulled up to `limit` rows each, most of which get discarded by
+    # the merge/trim above.
+    return [replace(e, payload=_redact(e.payload)) for e in page]
 
 
 __all__ = ["AuditEvent", "AuditSourceName", "list_audit_events"]

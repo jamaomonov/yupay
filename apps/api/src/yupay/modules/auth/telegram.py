@@ -22,6 +22,7 @@ from typing import Final
 from urllib.parse import parse_qsl
 
 from yupay.core.clock import now
+from yupay.core.redis import get_redis
 
 
 class TelegramAuthError(Exception):
@@ -62,6 +63,7 @@ class VerifiedLoginWidget:
 
     user: TelegramUser
     auth_date: int
+    hash: str
 
 
 _HASH_FIELD: Final[str] = "hash"
@@ -217,4 +219,37 @@ def verify_login_widget(
         is_premium=False,
         photo_url=fields.get("photo_url"),
     )
-    return VerifiedLoginWidget(user=user, auth_date=auth_date)
+    return VerifiedLoginWidget(user=user, auth_date=auth_date, hash=provided_hash)
+
+
+async def enforce_widget_single_use(
+    *,
+    widget_hash: str,
+    auth_date: int,
+    max_age_seconds: int,
+) -> None:
+    """Reject a replayed Login Widget signature (single-use within its freshness window).
+
+    The HMAC + ``auth_date`` freshness checks in :func:`verify_login_widget` prove the
+    payload is authentic and recent, but not that it is *fresh* — an attacker who
+    captures a valid widget response can replay it until ``auth_date`` ages out. This
+    burns the signature on first use via a Redis ``SET NX`` marker, mirroring the
+    ``auth:pwreset:{jti}`` single-use pattern. The marker TTL equals the remaining
+    freshness window, so it expires exactly when a replay would be rejected on age.
+
+    Args:
+        widget_hash: The verified widget ``hash`` (its HMAC signature).
+        auth_date: The widget's ``auth_date`` (unix seconds).
+        max_age_seconds: The freshness window the caller enforces.
+
+    Raises:
+        TelegramAuthError: If this signature has already been consumed.
+    """
+    ttl = max_age_seconds - (int(now().timestamp()) - auth_date)
+    if ttl <= 0:
+        # Already stale — the freshness check will have rejected it; nothing to burn.
+        return
+    key = f"auth:tg-widget:{hashlib.sha256(widget_hash.encode('utf-8')).hexdigest()}"
+    was_set = await get_redis().set(key, "1", ex=ttl, nx=True)
+    if not was_set:
+        raise TelegramAuthError("login payload already used")

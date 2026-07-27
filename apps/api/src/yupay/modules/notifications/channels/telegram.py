@@ -101,9 +101,10 @@ async def send_message(
     try:
         resp = await _get_client().post(url, json=payload)
     except httpx.HTTPError as exc:
+        # No chat_id here — a chat id is a Telegram user identifier (PII) and
+        # is not on the structured-logger redaction blocklist.
         log.warning(
             "telegram.send.network_error",
-            chat_id=chat_id,
             error=str(exc),
         )
         return False
@@ -113,7 +114,6 @@ async def send_message(
 
     log.warning(
         "telegram.send.rejected",
-        chat_id=chat_id,
         status=resp.status_code,
         # Don't log the response body unconditionally — it can leak the message.
         # First 120 chars of Telegram's error description is enough to triage.

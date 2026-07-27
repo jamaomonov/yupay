@@ -4,10 +4,16 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
+from yupay.core.idempotency import (
+    IDEMPOTENCY_HEADER,
+    load_replay,
+    normalize_idempotency_key,
+    save_replay,
+)
 from yupay.modules.admin.api import require_admin
 from yupay.modules.inventory import service as svc
 from yupay.modules.inventory.schemas import (
@@ -36,15 +42,25 @@ async def bulk_upload(
     body: BulkUploadIn,
     db: Annotated[AsyncSession, Depends(db_session)],
     admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
 ) -> BulkUploadOut:
+    key = normalize_idempotency_key(idempotency_key)
+    scope = "inventory.bulk_upload"
+    if key is not None:
+        cached = await load_replay(db, scope=scope, idempotency_key=key)
+        if cached is not None:
+            return BulkUploadOut.model_validate(cached.body)
     await svc.get_sku_or_404(db, body.sku_id)
     result = await svc.bulk_upload(db, sku_id=body.sku_id, codes=body.codes, uploaded_by=admin.id)
-    return BulkUploadOut(
+    out = BulkUploadOut(
         upload_id=result.upload_id,
         total=result.total,
         succeeded=result.succeeded,
         duplicates=result.duplicates,
     )
+    if key is not None:
+        await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
+    return out
 
 
 @admin_router.get(

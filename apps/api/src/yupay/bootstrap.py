@@ -184,7 +184,16 @@ def create_app() -> FastAPI:
     # ``allow_origin_regex`` so the actual Origin is echoed back while still
     # allowing cookies / Authorization headers. Useful for ngrok / cloudflared
     # tunnels in dev.
-    if "*" in settings.cors_allow_origins:
+    #
+    # This branch must never activate in prod: reflecting every Origin with
+    # credentials enabled is exactly the CORS misconfiguration that lets any
+    # third-party site ride a victim's session. If an operator sets
+    # ``CORS_ALLOW_ORIGINS=*`` in prod anyway, warn and fall back to the
+    # explicit-origins branch below — with the literal ``"*"`` entry stripped
+    # first, since passing it straight through as ``allow_origins=["*"]`` makes
+    # Starlette set ``allow_all_origins`` just the same (see
+    # ``CORSMiddleware.__init__``), which would silently reopen the same hole.
+    if "*" in settings.cors_allow_origins and not settings.is_prod:
         app.add_middleware(
             CORSMiddleware,
             allow_origin_regex=".*",
@@ -193,9 +202,18 @@ def create_app() -> FastAPI:
             allow_headers=["*"],
         )
     else:
+        if "*" in settings.cors_allow_origins:
+            get_logger("yupay.bootstrap").warning(
+                "cors_wildcard_ignored_in_prod",
+                hint="CORS_ALLOW_ORIGINS=* is dev-only (reflects any Origin with "
+                "credentials); set an explicit origin list for prod. Falling back "
+                "to the explicit-origins list with '*' stripped, which allows no "
+                "cross-origin browser requests until it is configured.",
+            )
+        origins = [origin for origin in settings.cors_allow_origins if origin != "*"]
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=settings.cors_allow_origins,
+            allow_origins=origins,
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],

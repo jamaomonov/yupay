@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -23,8 +22,7 @@ from yupay.core.errors import (
 )
 from yupay.core.ids import new_id
 from yupay.modules.catalog.models import Brand, Product, Sku
-from yupay.modules.fx.factory import build_default_service
-from yupay.modules.fx.service import FxUnavailableError
+from yupay.modules.fx.models import FxSnapshot
 from yupay.modules.orders.models import Order, OrderEvent, OrderItem
 from yupay.modules.orders.schemas import OrderCreate, OrderItemDisplay, OrderItemIn
 from yupay.modules.orders.validation import validate_fulfillment_data
@@ -103,9 +101,6 @@ def build_item_display(item: OrderItem, *, locale: str = "ru") -> OrderItemDispl
     )
 
 
-if TYPE_CHECKING:
-    from yupay.modules.fx.service import FxService
-
 # Long enough to walk through a real acquirer hop (Click / Payme / YooKassa
 # typically need 1–3 min including 3DS), short enough that an abandoned cart
 # doesn't squat the inventory reservation. 10 minutes matches the median
@@ -133,7 +128,19 @@ def _record_event(
     actor: Actor,
     payload: dict[str, object] | None = None,
 ) -> None:
-    actor_label = f"user:{actor.user_id}" if actor.user_id else f"guest:{actor.email}"
+    if actor.user_id:
+        actor_label = f"user:{actor.user_id}"
+    else:
+        # Store a (truncated) hash of the guest's email — not the raw address — in
+        # the audit actor, keeping the plaintext email out of the admin audit feed
+        # while still allowing per-guest correlation. Truncated to fit the
+        # varchar(64) actor column ("guest:" + 40 hex = 46 chars); a per-email
+        # deterministic pseudonym, non-reversible.
+        from yupay.core.config import get_settings
+        from yupay.modules.auth.security import email_hash
+
+        _eh = email_hash(actor.email or "", get_settings().auth_email_pepper)
+        actor_label = f"guest:{_eh[:40]}"
     db.add(
         OrderEvent(
             id=new_id(),
@@ -289,6 +296,32 @@ async def _variable_line_charge(
     return price_in_quote(unit_price_usd, rate=rate) * qty
 
 
+async def _snapshot_id_for_rate(db: AsyncSession, *, quote: str, rate: Decimal) -> str | None:
+    """Recover the ``fx_snapshots`` row id backing a rate obtained through
+    :func:`~yupay.modules.pricing.fx_guard.guarded_usd_rate`.
+
+    The guard persists (or reuses) a snapshot internally but only returns the
+    ``Decimal`` rate, not the row — so this looks the row back up by matching
+    on the exact rate value (not just base/quote), which rules out binding
+    the order to a different, unrelated snapshot that a concurrent request
+    might have written for the same currency in between. Picks the most
+    recent match if more than one row happens to share the rate. Returns
+    ``None`` on the (practically impossible) chance no matching row is found
+    — a missing audit id, never a reason to fail an already-guarded charge.
+    """
+    stmt = (
+        select(FxSnapshot.id)
+        .where(
+            FxSnapshot.base == "USD",
+            FxSnapshot.quote == quote,
+            FxSnapshot.rate == rate,
+        )
+        .order_by(FxSnapshot.created_at.desc())
+        .limit(1)
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
 async def _compute_total_charged(
     db: AsyncSession,
     *,
@@ -297,15 +330,16 @@ async def _compute_total_charged(
     items: list[OrderItem],
     total_usd: Decimal,
     currency: str,
-    fx_service_factory: Callable[[], FxService] | None,
 ) -> tuple[Decimal, str | None]:
     """Per-currency total. Catalog already returned a native price for SKUs
     that have a ``SkuPrice`` override in the order currency — checkout must
     charge that exact figure, otherwise the user sees one number in the
     package picker and a different (FX-derived) one at submit. Falls back to
-    a live FX rate only when no override exists for the selected currency;
-    variable-amount lines never use either path (see
-    :func:`_variable_line_charge`).
+    the guarded FX rate (:func:`~yupay.modules.pricing.fx_guard.guarded_usd_rate`
+    — the same trust gate :func:`_variable_line_charge` and the catalog use)
+    only when no override exists for the selected currency, so a fixed-price
+    line can never be charged off a wrong or stale rate the gate would
+    otherwise have rejected.
 
     The ``currency == "USD"`` short-circuit below is only safe because
     ``_resolve_line_unit_price`` already refused any variable-amount line
@@ -316,15 +350,22 @@ async def _compute_total_charged(
 
     Returns:
         ``(total_charged, fx_snapshot_id)`` — ``fx_snapshot_id`` stays
-        ``None`` when every line was priced from an override, USD, or a
-        variable-amount line's own guarded rate.
+        ``None`` when every line was priced from an override or USD.
+
+    Raises:
+        UpstreamUnavailableError: the FX trust gate rejects the rate needed
+            for a fixed-price, non-override line — the SKU falls out of sale
+            for that currency rather than charging on an untrusted rate.
     """
     if currency == "USD":
         return total_usd, None
 
     total_charged = Decimal("0")
     fx_snapshot_id: str | None = None
-    fx_snap = None
+    # Shared with ``_variable_line_charge``: both branches want the exact same
+    # guarded USD→currency market rate (pre-multiplier), so whichever line
+    # type resolves it first spares every later line — of either type — a
+    # repeat trip through the FX trust gate.
     rate_cache: dict[str, Decimal] = {}
     for line, item in zip(body.items, items, strict=True):
         sku = skus[line.sku_id]
@@ -347,20 +388,23 @@ async def _compute_total_charged(
         if override is not None:
             total_charged += override.price * line.qty
             continue
-        if fx_snap is None:
-            factory = fx_service_factory or build_default_service
-            fx = factory()
+
+        rate = rate_cache.get(currency)
+        if rate is None:
             try:
-                fx_snap = await fx.snapshot(db, base="USD", quote=currency)
-            except FxUnavailableError as exc:
+                rate = await guarded_usd_rate(db, quote=currency)
+            except RateRejected as exc:
                 raise UpstreamUnavailableError(
                     f"Не удалось получить курс USD→{currency}. Попробуйте позже или "
                     "оплатите в USD.",
                     base="USD",
                     quote=currency,
+                    reason=exc.reason,
                 ) from exc
-            fx_snapshot_id = fx_snap.id
-        total_charged += (sku.price_usd * line.qty * fx_snap.rate).quantize(Decimal("1.000000"))
+            rate_cache[currency] = rate
+        if fx_snapshot_id is None:
+            fx_snapshot_id = await _snapshot_id_for_rate(db, quote=currency, rate=rate)
+        total_charged += (sku.price_usd * line.qty * rate).quantize(Decimal("1.000000"))
 
     # Line prices carry 6 dp for intermediate precision (see
     # ``pricing.variable.price_in_quote``); the assembled total is rounded to
@@ -376,7 +420,6 @@ async def create_order(
     actor: Actor,
     idempotency_key: str,
     settings: Settings | None = None,  # noqa: ARG001 -- reserved for future per-request config
-    fx_service_factory: Callable[[], FxService] | None = None,
     ip_hash: str | None = None,
     ua_hash: str | None = None,
 ) -> Order:
@@ -437,7 +480,6 @@ async def create_order(
         items=items,
         total_usd=total_usd,
         currency=currency,
-        fx_service_factory=fx_service_factory,
     )
 
     # 4) Persist the order.

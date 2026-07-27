@@ -16,7 +16,9 @@ async def test_register_creates_user_and_returns_tokens(integration_client: Asyn
     assert r.status_code == 201, r.text
     body = r.json()
     assert body["access_token"]
-    assert body["refresh_token"]
+    # Refresh token lives in an HttpOnly cookie, not the JSON body.
+    assert "refresh_token" not in body
+    assert r.cookies.get("refresh_token")
 
     me = await integration_client.get(
         "/api/v1/auth/me",
@@ -45,7 +47,13 @@ async def test_login_succeeds_with_correct_password(integration_client: AsyncCli
         json={"email": "loginok@example.com", "password": "hunter2hunter2"},
     )
     assert r.status_code == 200, r.text
-    assert r.json()["access_token"]
+    body = r.json()
+    assert body["access_token"]
+    # Login sets the HttpOnly refresh cookie and keeps it out of the body.
+    assert "refresh_token" not in body
+    set_cookie = next(h for h in r.headers.get_list("set-cookie") if h.startswith("refresh_token="))
+    assert "httponly" in set_cookie.lower()
+    assert "samesite=lax" in set_cookie.lower()
 
 
 @pytest.mark.asyncio
@@ -95,7 +103,7 @@ async def test_reset_changes_password_and_revokes_sessions(integration_client, d
         "/api/v1/auth/register",
         json={"email": "reset@example.com", "password": "oldpassword1"},
     )
-    old_refresh = reg.json()["refresh_token"]
+    old_refresh = reg.cookies["refresh_token"]
 
     from yupay.modules.auth import jwt as authjwt
     from yupay.modules.auth.service import current_user
@@ -109,8 +117,10 @@ async def test_reset_changes_password_and_revokes_sessions(integration_client, d
     )
     assert r.status_code == 204, r.text
 
+    # The pre-reset refresh cookie is now dead (all sessions revoked).
+    integration_client.cookies.clear()
     refreshed = await integration_client.post(
-        "/api/v1/auth/refresh", json={"refresh_token": old_refresh}
+        "/api/v1/auth/refresh", cookies={"refresh_token": old_refresh}
     )
     assert refreshed.status_code == 401
 
@@ -146,3 +156,32 @@ async def test_reset_token_is_single_use(integration_client, db_session) -> None
         "/api/v1/auth/password/reset", json={"token": token, "new_password": "newpass222"}
     )
     assert second.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_login_unknown_email_still_runs_password_verify(
+    integration_client, monkeypatch
+) -> None:
+    """Anti-enumeration: an absent account still triggers a verify against the dummy hash.
+
+    Without this, an unknown email would skip argon2 entirely and answer faster than a
+    wrong password on a real account — a timing oracle for account existence.
+    """
+    from yupay.modules.auth import service as auth_service
+    from yupay.modules.auth.security import verify_password as real_verify
+
+    seen_hashes: list[str] = []
+
+    def _counting_verify(plain: str, hashed: str) -> bool:
+        seen_hashes.append(hashed)
+        return real_verify(plain, hashed)
+
+    monkeypatch.setattr(auth_service, "verify_password", _counting_verify)
+
+    r = await integration_client.post(
+        "/api/v1/auth/login",
+        json={"email": "nobody-here@example.com", "password": "whatever12"},
+    )
+    assert r.status_code == 401
+    # A verify ran, and it used the module-level constant dummy hash.
+    assert seen_hashes == [auth_service._DUMMY_HASH]

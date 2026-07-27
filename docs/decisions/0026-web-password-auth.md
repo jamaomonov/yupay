@@ -85,6 +85,8 @@ attackers cannot distinguish between "no account" and "wrong password".
 `apps/miniapp/src/lib/api.ts`. The 15-minute access-token TTL limits the XSS exposure
 window; the token payload contains no PII. `httpOnly`-cookie / BFF is explicitly
 deferred as a future hardening step (see _Alternatives considered_ below).
+**Superseded 2026-07-27 for the refresh token** — see _Amendments_ below; the access
+token described here is unchanged.
 
 **v1 account-model limitations.**
 
@@ -111,7 +113,8 @@ deferred as a future hardening step (see _Alternatives considered_ below).
   hardware; acceptable for auth paths that are not latency-critical).
 - `localStorage` tokens are readable by same-origin JavaScript; XSS is a more
   direct threat than with `httpOnly` cookies. Mitigated by the short access TTL
-  and absence of PII in the token, but not eliminated.
+  and absence of PII in the token, but not eliminated. **(Applies to the access
+  token only as of 2026-07-27 — see _Amendments_.)**
 - Telegram and email accounts are siloed in v1; a user who authenticates both ways
   has two separate accounts with separate order histories.
 
@@ -149,10 +152,29 @@ adding infra complexity that is not warranted for a v1. The short 15-minute acce
 and no-PII-in-token stance make the risk acceptable for now. Noted as the preferred
 future hardening step.
 
+## Amendments
+
+- **2026-07-27 — refresh token moved from `localStorage` to an `HttpOnly` cookie.**
+  A security-review remediation pass took the future-hardening step flagged in
+  Option 4 above, but only for the refresh token: `POST /auth/refresh` now reads
+  and rotates the refresh token from an `HttpOnly; SameSite=Lax` cookie instead of
+  the JSON body, and `apps/web`/`apps/admin`/`apps/miniapp` no longer persist a
+  refresh token client-side at all (their `setTokens()`/`clearTokens()` helpers no
+  longer touch a refresh key; legacy `localStorage` entries are purged on
+  `clearTokens()`). **The access token is unchanged** — it still lives in
+  `localStorage` on web/admin, still carries no PII, and still expires in 15
+  minutes, exactly as decided above; a reader should not infer from this
+  amendment that the access token became cookie-based or ceased to be
+  JS-readable. See [ADR-0038](./0038-security-review-remediation.md) for the full
+  change (cookie attributes, the `TokensOut` shape, and the one-time re-login
+  consequence for sessions active at deploy time).
+
 ## References
 
 - [ADR-0001](./0001-project-meta.md) — project identity and scope
 - [ADR-0027](./0027-resend-email-channel.md) — Resend email channel (verification/reset emails)
+- [ADR-0038](./0038-security-review-remediation.md) — moves the refresh token to an
+  `HttpOnly` cookie (see _Amendments_ above)
 - `docs/architecture/cache-keys.md` — `auth:pwreset:{jti}`, `auth:ipguard:{bucket}:{ip}`
 - `docs/architecture/sequence-diagrams/web-auth.mmd` — register/verify/login/reset flows
 - `docs/superpowers/specs/2026-06-05-web-accounts-design.md` — feature design spec

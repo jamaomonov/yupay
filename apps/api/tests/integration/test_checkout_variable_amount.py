@@ -4,6 +4,12 @@ a client can never smuggle its own price into the order. A paid order is never
 refused for the supplier being short on balance — that surfaces as a soft
 low-balance failure at fulfilment, not a checkout rejection.
 
+Also covers the fixed-price, no-override, non-USD branch (``_fixed_sku``
+below): it must run through the same FX trust gate as the variable-amount
+branch, not a plain unguarded FX conversion — see
+``test_fixed_sku_checkout_uses_the_guarded_fx_rate`` and
+``test_fixed_sku_checkout_fails_closed_on_a_rejected_rate``.
+
 Following the pattern in ``test_orders_routes.py``: log in via the Telegram
 webapp auth flow, POST ``/api/v1/orders``, assert on the response and the
 persisted row. FX is patched at ``yupay.modules.pricing.fx_guard`` (the same
@@ -438,3 +444,64 @@ async def test_checkout_accepts_order_even_when_supplier_balance_is_short(
     assert r.status_code == 201, r.text
     rows = (await db_session.execute(select(Order))).scalars().all()
     assert len(rows) == 1
+
+
+async def test_fixed_sku_checkout_uses_the_guarded_fx_rate(
+    integration_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    _fixed_sku: Sku,
+) -> None:
+    """A fixed-price SKU with no per-currency override, checked out in a
+    non-USD currency, is still priced from the FX *trust gate*, not a plain
+    conversion — same as the variable-amount branch. $0.85 at a guarded rate
+    of 13000 charges 11 050 UZS."""
+    monkeypatch.setattr(
+        "yupay.modules.pricing.fx_guard.build_default_service",
+        lambda: _stub_fx_service({"UZS": Decimal("13000")}),
+    )
+    token = await _login_user(integration_client, tg_id=112)
+    r = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "fixed-guarded-ok-aaaaaa",
+        },
+        json=_order_body(sku_id=_fixed_sku.id, currency="UZS"),
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert Decimal(body["total_charged"]) == Decimal("11050")
+    # Audit trail: the order binds the exact snapshot the guarded rate came
+    # from, same as any other FX-priced order.
+    assert body["fx_snapshot_id"] is not None
+
+
+async def test_fixed_sku_checkout_fails_closed_on_a_rejected_rate(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    _fixed_sku: Sku,
+) -> None:
+    """Regression test for the FX trust-gate bypass on this branch: a
+    fixed-price, no-override, non-USD line used to call ``fx.snapshot``
+    directly, skipping ``guarded_usd_rate`` — so a wrong or stale rate could
+    still set the charged price. With the guard tripped (rate far outside
+    the sane UZS band), checkout must fail closed: 502, no order persisted —
+    the SKU falls out of sale for this currency rather than charging on an
+    untrusted rate."""
+    monkeypatch.setattr(
+        "yupay.modules.pricing.fx_guard.build_default_service",
+        lambda: _stub_fx_service({"UZS": Decimal("500")}),  # below pricing_fx_min_rate_uzs
+    )
+    token = await _login_user(integration_client, tg_id=113)
+    r = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "fixed-guarded-bad-aaaaa",
+        },
+        json=_order_body(sku_id=_fixed_sku.id, currency="UZS"),
+    )
+    assert r.status_code == 502, r.text
+    rows = (await db_session.execute(select(Order))).scalars().all()
+    assert rows == []

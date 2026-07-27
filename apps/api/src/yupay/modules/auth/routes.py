@@ -7,13 +7,18 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Cookie, Depends, Header, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
 from yupay.core.config import get_settings
 from yupay.core.errors import UnauthorizedError
 from yupay.core.logging import get_logger
+from yupay.modules.auth.cookies import (
+    REFRESH_COOKIE_NAME,
+    clear_refresh_cookie,
+    set_refresh_cookie,
+)
 from yupay.modules.auth.deps import current_user
 from yupay.modules.auth.dev_login import dev_admin_login
 from yupay.modules.auth.ip_guard import guard_ip
@@ -23,9 +28,7 @@ from yupay.modules.auth.schemas import (
     GuestIn,
     GuestTokenOut,
     LoginIn,
-    LogoutIn,
     MeOut,
-    RefreshIn,
     RegisterIn,
     ResetPasswordIn,
     TelegramInitDataIn,
@@ -54,12 +57,21 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 log = get_logger("yupay.auth.routes")
 
 
-def _tokens_response(tokens: SessionTokens) -> TokensOut:
+def _session_response(response: Response, tokens: SessionTokens) -> TokensOut:
+    """Set the rotating refresh cookie and return the access token in the body.
+
+    The refresh token never appears in the JSON body — it rides an ``HttpOnly``
+    cookie so JS (and any XSS payload) cannot read it. See :mod:`.cookies`.
+    """
+    set_refresh_cookie(
+        response,
+        token=tokens.refresh_token,
+        max_age=tokens.refresh_expires_in,
+        settings=get_settings(),
+    )
     return TokensOut(
         access_token=tokens.access_token,
         expires_in=tokens.access_expires_in,
-        refresh_token=tokens.refresh_token,
-        refresh_expires_in=tokens.refresh_expires_in,
     )
 
 
@@ -79,6 +91,7 @@ def _web_base(request: Request, locale: str) -> str:
 async def register_route(
     body: RegisterIn,
     request: Request,
+    response: Response,
     db: Annotated[AsyncSession, Depends(db_session)],
 ) -> TokensOut:
     """Create an email/password account and return a session immediately."""
@@ -89,7 +102,7 @@ async def register_route(
         locale=body.locale,
         verify_link_base=_web_base(request, body.locale),
     )
-    return _tokens_response(tokens)
+    return _session_response(response, tokens)
 
 
 @router.post(
@@ -100,12 +113,13 @@ async def register_route(
 async def login_route(
     body: LoginIn,
     request: Request,
+    response: Response,
     db: Annotated[AsyncSession, Depends(db_session)],
 ) -> TokensOut:
     """Authenticate an existing email/password account and return a session."""
     await guard_ip(request, bucket="login")
     tokens = await login_password(db, email=body.email, password=body.password)
-    return _tokens_response(tokens)
+    return _session_response(response, tokens)
 
 
 @router.post(
@@ -115,6 +129,7 @@ async def login_route(
 )
 async def login_telegram_webapp(
     body: TelegramInitDataIn,
+    response: Response,
     db: Annotated[AsyncSession, Depends(db_session)],
 ) -> TokensOut:
     """Verify Telegram Mini App ``initData``, upsert the user, return a session."""
@@ -123,7 +138,7 @@ async def login_telegram_webapp(
     except TelegramAuthError as exc:
         log.info("auth.telegram.webapp.rejected", reason=str(exc))
         raise UnauthorizedError("telegram verification failed") from exc
-    return _tokens_response(tokens)
+    return _session_response(response, tokens)
 
 
 @router.post(
@@ -133,6 +148,7 @@ async def login_telegram_webapp(
 )
 async def login_telegram_widget(
     body: TelegramWidgetIn,
+    response: Response,
     db: Annotated[AsyncSession, Depends(db_session)],
 ) -> TokensOut:
     """Verify a Telegram Login Widget payload, upsert the user, return a session."""
@@ -141,7 +157,7 @@ async def login_telegram_widget(
     except TelegramAuthError as exc:
         log.info("auth.telegram.widget.rejected", reason=str(exc))
         raise UnauthorizedError("telegram verification failed") from exc
-    return _tokens_response(tokens)
+    return _session_response(response, tokens)
 
 
 @router.post(
@@ -151,6 +167,7 @@ async def login_telegram_widget(
 )
 async def login_telegram_widget_admin(
     body: TelegramWidgetIn,
+    response: Response,
     db: Annotated[AsyncSession, Depends(db_session)],
 ) -> TokensOut:
     """Verify an admin Login Widget payload (admin bot) and return a session.
@@ -163,7 +180,7 @@ async def login_telegram_widget_admin(
     except TelegramAuthError as exc:
         log.info("auth.telegram.widget.admin.rejected", reason=str(exc))
         raise UnauthorizedError("telegram verification failed") from exc
-    return _tokens_response(tokens)
+    return _session_response(response, tokens)
 
 
 @router.post(
@@ -186,12 +203,19 @@ async def login_guest(
     summary="Rotate a refresh token",
 )
 async def refresh(
-    body: RefreshIn,
+    response: Response,
     db: Annotated[AsyncSession, Depends(db_session)],
+    refresh_token: Annotated[str | None, Cookie(alias=REFRESH_COOKIE_NAME)] = None,
 ) -> TokensOut:
-    """Rotate-on-use: revoke the supplied refresh, mint a new pair."""
-    tokens = await refresh_session(db, body.refresh_token)
-    return _tokens_response(tokens)
+    """Rotate-on-use: read the refresh from the ``HttpOnly`` cookie, mint a new pair.
+
+    The client sends no body — the cookie carries the token (the request must be made
+    with ``credentials: "include"``). A fresh refresh cookie is set on the response.
+    """
+    if not refresh_token:
+        raise UnauthorizedError("missing refresh token")
+    tokens = await refresh_session(db, refresh_token)
+    return _session_response(response, tokens)
 
 
 @router.post(
@@ -200,11 +224,24 @@ async def refresh(
     summary="Revoke a refresh token",
 )
 async def logout_route(
-    body: LogoutIn,
+    response: Response,
     db: Annotated[AsyncSession, Depends(db_session)],
+    authorization: Annotated[str | None, Header()] = None,
+    refresh_token: Annotated[str | None, Cookie(alias=REFRESH_COOKIE_NAME)] = None,
 ) -> None:
-    """Idempotent: silently succeeds even if the token is unknown or already revoked."""
-    await logout(db, body.refresh_token)
+    """Idempotent: silently succeeds even if the token is unknown or already revoked.
+
+    Reads the refresh token from the ``HttpOnly`` cookie and clears it. If the request
+    also carries the access token (``Authorization: Bearer``) its ``jti`` is added to
+    the revocation blocklist so it stops working immediately.
+    """
+    access_token: str | None = None
+    if authorization:
+        scheme, _, tok = authorization.partition(" ")
+        if scheme == "Bearer" and tok.strip():
+            access_token = tok.strip()
+    await logout(db, refresh_token or "", access_token=access_token)
+    clear_refresh_cookie(response, settings=get_settings())
 
 
 @router.post(
@@ -270,12 +307,15 @@ async def me(user: Annotated[User, Depends(current_user)]) -> MeOut:
 )
 async def login_admin_dev(
     body: AdminDevLoginIn,
+    request: Request,
+    response: Response,
     db: Annotated[AsyncSession, Depends(db_session)],
 ) -> TokensOut:
     """Stop-gap before BotFather domain is set up. See ``auth.dev_login``."""
+    await guard_ip(request, bucket="admin-dev")
     settings = get_settings()
     tokens = await dev_admin_login(db, login=body.login, password=body.password, settings=settings)
-    return _tokens_response(tokens)
+    return _session_response(response, tokens)
 
 
 @router.get(

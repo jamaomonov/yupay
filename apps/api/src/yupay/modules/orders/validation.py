@@ -10,6 +10,15 @@ from typing import Any
 
 from yupay.core.errors import ValidationError
 
+# ``pattern`` (below) is admin-authored and matched inline, synchronously, with
+# no timeout — a pathological pattern risks catastrophic backtracking and
+# would block the event loop. ``catalog/schemas.py`` rejects the obviously
+# dangerous constructs at write time, but as defense in depth we also cap the
+# input length here: a short bound sharply limits how much work any
+# backtracking regex engine can do, regardless of the pattern. Real values
+# (player ids, emails, voucher codes) are always well under this.
+_MAX_PATTERN_INPUT_LENGTH = 256
+
 
 def _required_fields_schema(product: Any) -> list[dict[str, Any]]:
     fields = getattr(product, "required_fields", None) or []
@@ -76,6 +85,11 @@ def validate_fulfillment_data(
         else:
             pattern = field.get("pattern")
             if pattern:
+                if len(value) > _MAX_PATTERN_INPUT_LENGTH:
+                    raise ValidationError(
+                        f"field '{key}' is too long",
+                        extra={"field": key, "reason": "length"},
+                    )
                 try:
                     if re.fullmatch(pattern, value) is None:
                         raise ValidationError(

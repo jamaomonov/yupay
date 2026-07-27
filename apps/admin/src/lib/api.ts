@@ -4,17 +4,19 @@
  * Reads/writes the access JWT from/to localStorage, attaches it as a Bearer header,
  * and surfaces 401/403/non-2xx as typed exceptions so the UI can react explicitly.
  *
- * When a request comes back ``401`` AND a refresh token is in storage, the
- * client transparently calls ``POST /api/v1/auth/refresh`` once, swaps both
- * tokens in localStorage, and replays the original request. The refresh
- * itself is single-flight: parallel 401s from React Query / WebSocket /
- * tab-focus revalidations share one in-flight refresh promise, so we
- * never invalidate a fresh rotating-refresh-token by issuing N concurrent
- * rotates.
+ * When a request comes back ``401`` the client transparently calls
+ * ``POST /api/v1/auth/refresh`` once (the 30-day refresh token rides an HttpOnly
+ * cookie the browser sends automatically — never JS-readable), swaps the access
+ * token in localStorage, and replays the original request. The refresh itself is
+ * single-flight: parallel 401s from React Query / WebSocket / tab-focus
+ * revalidations share one in-flight refresh promise, so we never invalidate a
+ * fresh rotating-refresh-token by issuing N concurrent rotates.
  */
 
 const TOKEN_KEY = "yupay.admin.access_token";
-const REFRESH_KEY = "yupay.admin.refresh_token";
+// Legacy key: the refresh token used to be stored here. Purged on clearTokens so
+// a pre-cookie session can't leave a JS-readable 30-day token behind.
+const LEGACY_REFRESH_KEY = "yupay.admin.refresh_token";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "";
 
@@ -33,18 +35,21 @@ export function getAccessToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
 
-export function setTokens(access: string, refresh: string | null): void {
+/** Persist the access token. The second arg is accepted for call-site compatibility
+ *  (the refresh token now lives in an HttpOnly cookie) and is deliberately ignored. */
+export function setTokens(access: string, _refresh?: string | null): void {
   localStorage.setItem(TOKEN_KEY, access);
-  if (refresh) localStorage.setItem(REFRESH_KEY, refresh);
-}
-
-export function getRefreshToken(): string | null {
-  return localStorage.getItem(REFRESH_KEY);
 }
 
 export function clearTokens(): void {
   localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(REFRESH_KEY);
+  localStorage.removeItem(LEGACY_REFRESH_KEY);
+  // Ask the server to revoke the session and expire the HttpOnly refresh cookie —
+  // JS can't delete it. Fire-and-forget: logout must never block or throw.
+  void fetch(`${apiBase}/api/v1/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+  }).catch(() => {});
 }
 
 export interface RequestOptions extends RequestInit {
@@ -57,7 +62,7 @@ export interface RequestOptions extends RequestInit {
  *  failure). We do this through a registration hook rather than a
  *  direct import to avoid the cycle ``api → authStore → api``. */
 interface AuthBridge {
-  onTokensRotated: (access: string, refresh: string | null) => void;
+  onTokensRotated: (access: string) => void;
   onAuthLost: () => void;
 }
 
@@ -73,41 +78,32 @@ let refreshInFlight: Promise<boolean> | null = null;
 async function refreshAccessToken(): Promise<boolean> {
   // De-dupe concurrent callers — they all await the same promise.
   if (refreshInFlight !== null) return refreshInFlight;
-  const refresh = getRefreshToken();
-  if (!refresh) return false;
 
   refreshInFlight = (async (): Promise<boolean> => {
     try {
+      // The refresh token rides an HttpOnly cookie; `credentials: "include"` sends
+      // it and stores the rotated one. No token in the request body.
       const resp = await fetch(`${apiBase}/api/v1/auth/refresh`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({ refresh_token: refresh }),
+        credentials: "include",
+        headers: { Accept: "application/json" },
       });
       if (!resp.ok) {
-        // 401 / 422 / 5xx on refresh all mean "session is dead". Wipe
-        // tokens so the rest of the app falls back to the login page
+        // 401 / 422 / 5xx on refresh all mean "session is dead" (or no cookie).
+        // Wipe tokens so the rest of the app falls back to the login page
         // instead of looping.
         clearTokens();
         bridge?.onAuthLost();
         return false;
       }
-      const body = (await resp.json()) as {
-        access_token?: string;
-        refresh_token?: string | null;
-      };
+      const body = (await resp.json()) as { access_token?: string };
       if (!body.access_token) {
         clearTokens();
         bridge?.onAuthLost();
         return false;
       }
-      // Rotating-refresh: the backend mints a brand-new refresh too.
-      // Preserve the old one only if the response somehow lacks the field.
-      const nextRefresh = body.refresh_token ?? refresh;
-      setTokens(body.access_token, nextRefresh);
-      bridge?.onTokensRotated(body.access_token, nextRefresh);
+      setTokens(body.access_token);
+      bridge?.onTokensRotated(body.access_token);
       return true;
     } catch {
       // Network error: don't wipe — the user might just be offline. The
@@ -135,17 +131,14 @@ async function apiRaw<T>(path: string, options: RequestOptions, allowRefresh: bo
     if (token) h.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(url, { ...init, headers: h });
+  // Send the auth cookie so login/refresh can set/rotate the HttpOnly refresh
+  // token and logout can clear it. Harmless on other calls (server ignores it).
+  const response = await fetch(url, { ...init, headers: h, credentials: "include" });
 
   // Auto-refresh on a single 401, but only for authenticated calls and
-  // only once per call (``allowRefresh`` guards the recursion).
-  if (
-    response.status === 401 &&
-    allowRefresh &&
-    !anonymous &&
-    !path.includes("/auth/refresh") &&
-    getRefreshToken()
-  ) {
+  // only once per call (``allowRefresh`` guards the recursion). The refresh
+  // itself will fail fast if no valid cookie is present.
+  if (response.status === 401 && allowRefresh && !anonymous && !path.includes("/auth/refresh")) {
     const ok = await refreshAccessToken();
     if (ok) {
       // Replay the exact same request with the new access token.

@@ -312,6 +312,59 @@ async def test_wallet_partial_refund_credits_partial_amount(
     assert detail.json()["status"] == "delivered"
 
 
+async def test_second_refund_after_partial_is_rejected(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_voucher_sku: str,
+) -> None:
+    """One refund per payment (money-integrity contract).
+
+    A partial refund consumes the payment's single refund and moves it to
+    ``partially_refunded``. A second refund — full or partial — must be
+    rejected, otherwise the fixed-original-amount bound would let cumulative
+    refunds exceed the charge while the per-payment ledger key silently
+    no-ops. See ``refund_admin``'s docstring and the state guard.
+    """
+    from yupay.core.errors import ConflictError
+    from yupay.modules.payments import service as payments_svc
+
+    token, user_id = await _login_user(integration_client, tg_id=907)
+    await _credit_user_wallet(db_session, user_id=user_id, currency="USD", amount=Decimal("20"))
+
+    order_id = await _create_order(
+        integration_client, token=token, sku_id=_seed_voucher_sku, key_suffix="refund-twice"
+    )
+    status, _ = await _pay_with_wallet(integration_client, token=token, order_id=order_id)
+    assert status in (200, 201)
+
+    payment = (
+        await db_session.execute(select(Payment).where(Payment.order_id == order_id))
+    ).scalar_one()
+
+    # (a) A partial refund succeeds once and consumes the payment's only refund.
+    refunded = await payments_svc.refund_admin(
+        db_session, payment_id=payment.id, admin_id="test-admin", amount=Decimal("2")
+    )
+    await db_session.commit()
+    assert refunded.status == "partially_refunded"
+
+    # (b) A second refund (here the remaining $3) is rejected: the payment is no
+    # longer ``succeeded``, so the guard raises ConflictError.
+    with pytest.raises(ConflictError):
+        await payments_svc.refund_admin(
+            db_session, payment_id=payment.id, admin_id="test-admin", amount=Decimal("3")
+        )
+    await db_session.rollback()
+
+    # Balance is unchanged from the single $2 refund: $15 + $2 = $17.
+    wallet = await integration_client.get(
+        "/api/v1/wallet",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    bals = {b["currency"]: Decimal(b["balance"]) for b in wallet.json()["balances"]}
+    assert bals["USD"] == Decimal("17")
+
+
 # ---------- insufficient balance ----------
 
 

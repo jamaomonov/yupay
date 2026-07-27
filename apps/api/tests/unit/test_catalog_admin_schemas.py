@@ -14,7 +14,14 @@ from decimal import Decimal
 
 import pytest
 from pydantic import ValidationError
-from yupay.modules.catalog.admin_schemas import SkuCreate, SkuUpdate
+from yupay.modules.catalog.admin_schemas import (
+    BrandCreate,
+    BrandUpdate,
+    ProductCreate,
+    ProductUpdate,
+    SkuCreate,
+    SkuUpdate,
+)
 
 _BASE_CREATE: dict[str, object] = {
     "product_id": "prod-1",
@@ -128,3 +135,70 @@ def test_sku_update_variable_amount_false_with_null_bounds_is_valid() -> None:
     )
     assert patch.variable_amount is False
     assert patch.min_amount_usd is None
+
+
+# ---------- image URL SSRF guard ----------
+#
+# Full rule coverage (accept/reject matrix) lives in
+# test_catalog_image_url_safety.py — these just confirm the validator is
+# actually wired onto every image-carrying field on every schema.
+
+_BRAND_BASE: dict[str, object] = {
+    "slug": "steam",
+    "category_id": "cat-1",
+    "translations": [{"locale": "ru", "name": "Steam"}],
+}
+_PRODUCT_BASE: dict[str, object] = {
+    "slug": "steam-wallet",
+    "brand_id": "brand-1",
+    "kind": "top_up",
+    "translations": [{"locale": "ru", "name": "Steam Wallet"}],
+}
+
+
+@pytest.mark.parametrize("field", ["logo_url", "hero_image_url"])
+def test_brand_create_rejects_ssrf_image_url(field: str) -> None:
+    with pytest.raises(ValidationError, match="blocked network"):
+        BrandCreate(**_BRAND_BASE, **{field: "https://10.0.0.1/x"})  # type: ignore[arg-type]
+
+
+def test_brand_create_accepts_public_image_url() -> None:
+    brand = BrandCreate(
+        **_BRAND_BASE,  # type: ignore[arg-type]
+        logo_url="https://cdn.example.com/logo.png",
+    )
+    assert brand.logo_url == "https://cdn.example.com/logo.png"
+
+
+@pytest.mark.parametrize("field", ["logo_url", "hero_image_url"])
+def test_brand_update_rejects_ssrf_image_url(field: str) -> None:
+    with pytest.raises(ValidationError, match="not allowed"):
+        BrandUpdate(**{field: "https://localhost/x"})  # type: ignore[arg-type]
+
+
+def test_brand_update_empty_string_still_clears_the_field() -> None:
+    """ "" must keep passing through unvalidated — it's the established
+    "clear this field" signal (admin_service.update_brand only skips
+    ``None``, not ``""``)."""
+    patch = BrandUpdate(logo_url="")
+    assert patch.logo_url == ""
+
+
+def test_product_create_rejects_ssrf_image_url() -> None:
+    with pytest.raises(ValidationError, match="https"):
+        ProductCreate(**_PRODUCT_BASE, image_url="file:///etc/passwd")  # type: ignore[arg-type]
+
+
+def test_product_update_accepts_public_image_url() -> None:
+    patch = ProductUpdate(image_url="https://cdn.example.com/box-art.png")
+    assert patch.image_url == "https://cdn.example.com/box-art.png"
+
+
+def test_sku_create_rejects_ssrf_image_url() -> None:
+    with pytest.raises(ValidationError, match="blocked network"):
+        SkuCreate(**_BASE_CREATE, image_url="https://169.254.169.254/latest/meta-data/")  # type: ignore[arg-type]
+
+
+def test_sku_update_rejects_ssrf_image_url() -> None:
+    with pytest.raises(ValidationError, match="not allowed"):
+        SkuUpdate(image_url="https://box.internal/x")

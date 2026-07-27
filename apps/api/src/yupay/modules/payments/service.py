@@ -32,6 +32,12 @@ from yupay.modules.wallet import api as wallet_api
 
 log = get_logger("yupay.payments.service")
 
+# Cap on the raw body we persist for a rejected (signature/parse-failed)
+# webhook. This route is reachable pre-auth, so an attacker could otherwise
+# flood the audit table with arbitrarily large rows just by POSTing huge
+# bodies that fail verification.
+_REJECTED_WEBHOOK_BODY_CAP = 4096
+
 
 def _record_attempt(
     db: AsyncSession,
@@ -320,13 +326,17 @@ async def handle_webhook(
     try:
         event = await gw.verify_webhook(headers=headers, body=body)
     except (PaymentGatewayError, PaymentNotIntegratedError) as exc:
-        # Persist the rejection so we can audit signature-mismatch attacks later.
+        # Persist the rejection so we can audit signature-mismatch attacks
+        # later. The body is untrusted and pre-auth, so cap what we store —
+        # otherwise a flood of oversized bodies amplifies into unbounded
+        # storage even though every one of them gets rejected.
+        truncated_body = body.decode("utf-8", errors="replace")[:_REJECTED_WEBHOOK_BODY_CAP]
         db.add(
             PaymentWebhook(
                 id=new_id(),
                 provider=gw.provider,
                 external_event_id=f"rejected:{new_id()}",
-                payload={"body": body.decode("utf-8", errors="replace")},
+                payload={"body": truncated_body},
                 signature_ok=False,
             )
         )
@@ -659,10 +669,20 @@ async def refund_admin(
           D user_wallet:<user>            amount   (balance ↑)
           C house_payments_received       amount   (reverses the receipt)
 
-    ``amount`` defaults to the full charged amount. The skeleton treats any
-    ``amount < payment.amount`` as a partial refund — it does not currently
-    track cumulative refunds, so calling refund_admin twice on the same
-    payment is rejected. Add a ``payment_refunds`` row if you need that.
+    ``amount`` defaults to the full charged amount. The skeleton enforces a
+    strict **one refund per payment**: the state guard below only admits a
+    ``succeeded`` payment, and any refund — full or partial — moves the status
+    off ``succeeded`` (to ``refunded`` / ``partially_refunded``), so a second
+    call is rejected with a ``ConflictError``. Because at most one refund can
+    ever occur, the per-payment ledger idempotency key (``refund:<payment.id>``)
+    and the single-``last_refund`` replay check are sufficient and cannot
+    silently no-op a distinct second refund.
+
+    This means a partial refund currently consumes the payment's only refund —
+    there is no cumulative/remaining-balance tracking. Multi/partial refunds
+    (e.g. 60 then 40 of a 100 payment) need a dedicated ``payment_refunds``
+    table that records each refund and derives the remaining balance; that is a
+    future feature, out of scope here.
     """
     # FOR UPDATE serialises concurrent refunds of the same payment so the
     # replay check below sees the winner's committed metadata, not a stale row.
@@ -684,7 +704,12 @@ async def refund_admin(
             # second ledger posting, same payment back.
             return payment
 
-    if payment.status not in ("succeeded", "partially_refunded"):
+    # One refund per payment: only a ``succeeded`` payment may be refunded. A
+    # prior refund (full → ``refunded`` or partial → ``partially_refunded``)
+    # moves the status off ``succeeded``, so this rejects any second refund.
+    # This is the invariant that makes the per-payment ledger key and the
+    # single ``last_refund`` replay check safe — see the docstring.
+    if payment.status != "succeeded":
         raise ConflictError(
             "payment can't be refunded in its current state",
             extra={"status": payment.status},

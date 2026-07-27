@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hmac
 import json
 from typing import Annotated, Any
 
@@ -118,15 +119,29 @@ def _authenticate(request: Request) -> None:
     login, sep, password = decoded.partition(":")
     if not sep:
         raise access_denied()
-    valid_pairs = {
+    valid_pairs = [
         (login_, password_)
         for login_, password_ in (
             (settings.uzum_login, settings.uzum_password),
             (settings.uzum_test_login, settings.uzum_test_password),
         )
         if login_ and password_
-    }
-    if (login, password) not in valid_pairs:
+    ]
+    # Accumulate across every configured pair rather than short-circuiting on
+    # the first match, so response timing doesn't leak which pair (if any)
+    # matched. An empty ``valid_pairs`` (unconfigured acquirer) always fails.
+    creds_ok = False
+    try:
+        for login_, password_ in valid_pairs:
+            creds_ok |= hmac.compare_digest(login, login_) & hmac.compare_digest(
+                password, password_
+            )
+    except TypeError:
+        # ``login``/``password`` are untrusted wire input and may contain
+        # non-ASCII bytes, which ``hmac.compare_digest`` rejects on ``str``
+        # operands — fail closed, mirroring click/signature.py.
+        raise access_denied() from None
+    if not creds_ok:
         raise access_denied()
 
 

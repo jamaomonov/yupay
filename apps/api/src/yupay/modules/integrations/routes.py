@@ -18,6 +18,12 @@ if TYPE_CHECKING:
 
 from yupay.api.v1.deps import db_session
 from yupay.core.clock import now
+from yupay.core.idempotency import (
+    IDEMPOTENCY_HEADER,
+    load_replay,
+    normalize_idempotency_key,
+    save_replay,
+)
 from yupay.core.logging import get_logger
 from yupay.modules.admin.api import require_admin
 from yupay.modules.auth.ip_guard import guard_ip
@@ -110,6 +116,7 @@ async def upsert_mapping(
     body: SupplierMappingIn,
     db: Annotated[AsyncSession, Depends(db_session)],
     admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
 ) -> SupplierMappingUpsertOut:
     """Create or update the SKU↔supplier mapping.
 
@@ -118,6 +125,12 @@ async def upsert_mapping(
     and reported back through ``cost_sync`` so the admin UI can flash
     whether the cost actually moved.
     """
+    key = normalize_idempotency_key(idempotency_key)
+    scope = "integrations.upsert_mapping"
+    if key is not None:
+        cached = await load_replay(db, scope=scope, idempotency_key=key)
+        if cached is not None:
+            return SupplierMappingUpsertOut.model_validate(cached.body)
     await inv_svc.get_sku_or_404(db, sku_id)
     row = await svc.upsert_mapping(
         db,
@@ -134,11 +147,14 @@ async def upsert_mapping(
         ),
     )
     cost_sync = await _refresh_sku_cost(db, row)
-    await db.commit()
-    return SupplierMappingUpsertOut(
+    out = SupplierMappingUpsertOut(
         mapping=SupplierMappingOut.model_validate(row),
         cost_sync=cost_sync,
     )
+    if key is not None:
+        await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
+    await db.commit()
+    return out
 
 
 async def _refresh_sku_cost(db: AsyncSession, mapping: object) -> CostSyncResult:
@@ -172,8 +188,18 @@ async def delete_mapping(
     supplier_slug: str,
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
 ) -> None:
+    key = normalize_idempotency_key(idempotency_key)
+    scope = "integrations.delete_mapping"
+    if key is not None:
+        cached = await load_replay(db, scope=scope, idempotency_key=key)
+        if cached is not None:
+            return
     await svc.delete_mapping(db, sku_id=sku_id, supplier_slug=supplier_slug)
+    if key is not None:
+        await save_replay(db, scope=scope, idempotency_key=key, body=None)
+    return
 
 
 @admin_router.get(

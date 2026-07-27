@@ -20,6 +20,7 @@ from httpx import AsyncClient
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.modules.orders.models import Order, OrderEvent
+from yupay.modules.payments.models import PaymentWebhook
 from yupay.modules.users.models import TelegramLink, User
 
 pytestmark = pytest.mark.asyncio
@@ -168,3 +169,53 @@ async def test_admin_only_excludes_system_events(
     assert r.status_code == 200
     items = r.json()["items"]
     assert all(item["actor"] is None or not item["actor"].startswith("system:") for item in items)
+
+
+# ---------- payload redaction (INFO: raw JSONB forwarded verbatim) ----------
+
+
+async def test_webhook_payload_pii_and_secrets_are_masked(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _admin_headers: dict[str, str],
+) -> None:
+    """``PaymentWebhook.payload`` for a signature-valid webhook is the
+    provider's raw parsed JSON body verbatim (see
+    ``payments.service.handle_webhook``) — we don't curate its shape. Anything
+    matching the shared redaction blocklist (``core.logging.REDACTED_KEYS``)
+    must come back masked from the audit feed, never raw, no matter how deep
+    it's nested — covers AGENTS.md §9 (never surface card data / secrets to
+    admins) even though a supplier/provider chose the field names, not us.
+    """
+    external_event_id = f"evt-{uuid.uuid4()}"
+    db_session.add(
+        PaymentWebhook(
+            id=str(uuid.uuid4()),
+            provider="octo",
+            external_event_id=external_event_id,
+            payload={
+                "octo_payment_UUID": "abc-123",
+                "status": "succeeded",
+                "email": "customer@example.com",
+                "card": "411111******1111",
+                "token": "shhh-secret-token",
+                "nested": {"secret": "also-hide-me"},
+            },
+            signature_ok=True,
+        )
+    )
+    await db_session.commit()
+
+    r = await integration_client.get("/api/v1/admin/audit", headers=_admin_headers)
+    assert r.status_code == 200, r.text
+    items = r.json()["items"]
+    match = next(item for item in items if item["target_id"] == external_event_id)
+    payload = match["payload"]
+    assert payload["email"] == "<redacted>"
+    assert payload["card"] == "<redacted>"
+    assert payload["token"] == "<redacted>"
+    assert payload["nested"]["secret"] == "<redacted>"
+    # Non-sensitive fields still pass through untouched — this is masking,
+    # not wholesale suppression of the payload.
+    assert payload["status"] == "succeeded"
+    assert payload["octo_payment_UUID"] == "abc-123"
