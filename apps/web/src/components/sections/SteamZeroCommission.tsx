@@ -12,7 +12,6 @@ const PAYMENTS = [
   { src: "/payment/click.svg", alt: "Click", w: 157, h: 40 },
   { src: "/payment/payme.png", alt: "Payme", w: 454, h: 179 },
   { src: "/payment/uzum.png", alt: "Uzum", w: 506, h: 148 },
-  { src: "/payment/usdt.png", alt: "USDT", w: 2000, h: 2000 },
 ] as const;
 
 /**
