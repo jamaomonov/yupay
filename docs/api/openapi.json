@@ -3951,23 +3951,6 @@
         "title": "LoginIn",
         "type": "object"
       },
-      "LogoutIn": {
-        "additionalProperties": false,
-        "description": "Body of ``POST /auth/logout``.",
-        "properties": {
-          "refresh_token": {
-            "maxLength": 200,
-            "minLength": 20,
-            "title": "Refresh Token",
-            "type": "string"
-          }
-        },
-        "required": [
-          "refresh_token"
-        ],
-        "title": "LogoutIn",
-        "type": "object"
-      },
       "LowStockOut": {
         "properties": {
           "available": {
@@ -6523,23 +6506,6 @@
         "title": "RecipientOut",
         "type": "object"
       },
-      "RefreshIn": {
-        "additionalProperties": false,
-        "description": "Body of ``POST /auth/refresh``.",
-        "properties": {
-          "refresh_token": {
-            "maxLength": 200,
-            "minLength": 20,
-            "title": "Refresh Token",
-            "type": "string"
-          }
-        },
-        "required": [
-          "refresh_token"
-        ],
-        "title": "RefreshIn",
-        "type": "object"
-      },
       "RefundIn": {
         "additionalProperties": false,
         "description": "Body of admin's ``POST /admin/payments/{id}/refund``.",
@@ -8103,7 +8069,7 @@
         "type": "object"
       },
       "TokensOut": {
-        "description": "Response for any endpoint that mints a user session.",
+        "description": "Response for any endpoint that mints a user session.\n\nThe refresh token is intentionally absent: it is delivered as an ``HttpOnly``\ncookie (see :mod:`yupay.modules.auth.cookies`) so JS cannot read it. Only the\nshort-lived access token \u2014 which the browser needs to attach as a Bearer header\n\u2014 is returned in the body.",
         "properties": {
           "access_token": {
             "title": "Access Token",
@@ -8112,28 +8078,6 @@
           "expires_in": {
             "title": "Expires In",
             "type": "integer"
-          },
-          "refresh_expires_in": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Refresh Expires In"
-          },
-          "refresh_token": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Refresh Token"
           },
           "token_type": {
             "default": "Bearer",
@@ -11347,6 +11291,22 @@
         "parameters": [
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -11473,6 +11433,22 @@
           },
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -11527,6 +11503,22 @@
             "schema": {
               "title": "Task Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
             }
           },
           {
@@ -11599,6 +11591,22 @@
           },
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -11667,6 +11675,22 @@
           },
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -11731,6 +11755,22 @@
             "schema": {
               "title": "Task Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
             }
           },
           {
@@ -12408,6 +12448,22 @@
           },
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -12481,6 +12537,22 @@
             "schema": {
               "title": "Supplier Slug",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
             }
           },
           {
@@ -12704,6 +12776,22 @@
       "post": {
         "operationId": "bulk_upload_api_v1_admin_inventory_bulk_upload_post",
         "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
           {
             "in": "header",
             "name": "authorization",
@@ -14063,6 +14151,22 @@
           },
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -14164,6 +14268,22 @@
             "schema": {
               "title": "Sku Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
             }
           },
           {
@@ -15117,18 +15237,42 @@
     },
     "/api/v1/auth/logout": {
       "post": {
-        "description": "Idempotent: silently succeeds even if the token is unknown or already revoked.",
+        "description": "Idempotent: silently succeeds even if the token is unknown or already revoked.\n\nReads the refresh token from the ``HttpOnly`` cookie and clears it. If the request\nalso carries the access token (``Authorization: Bearer``) its ``jti`` is added to\nthe revocation blocklist so it stops working immediately.",
         "operationId": "logout_route_api_v1_auth_logout_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LogoutIn"
-              }
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
             }
           },
-          "required": true
-        },
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "Successful Response"
@@ -15272,18 +15416,26 @@
     },
     "/api/v1/auth/refresh": {
       "post": {
-        "description": "Rotate-on-use: revoke the supplied refresh, mint a new pair.",
+        "description": "Rotate-on-use: read the refresh from the ``HttpOnly`` cookie, mint a new pair.\n\nThe client sends no body \u2014 the cookie carries the token (the request must be made\nwith ``credentials: \"include\"``). A fresh refresh cookie is set on the response.",
         "operationId": "refresh_api_v1_auth_refresh_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RefreshIn"
-              }
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "refresh_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
             }
-          },
-          "required": true
-        },
+          }
+        ],
         "responses": {
           "200": {
             "content": {
