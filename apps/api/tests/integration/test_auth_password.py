@@ -146,3 +146,32 @@ async def test_reset_token_is_single_use(integration_client, db_session) -> None
         "/api/v1/auth/password/reset", json={"token": token, "new_password": "newpass222"}
     )
     assert second.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_login_unknown_email_still_runs_password_verify(
+    integration_client, monkeypatch
+) -> None:
+    """Anti-enumeration: an absent account still triggers a verify against the dummy hash.
+
+    Without this, an unknown email would skip argon2 entirely and answer faster than a
+    wrong password on a real account — a timing oracle for account existence.
+    """
+    from yupay.modules.auth import service as auth_service
+    from yupay.modules.auth.security import verify_password as real_verify
+
+    seen_hashes: list[str] = []
+
+    def _counting_verify(plain: str, hashed: str) -> bool:
+        seen_hashes.append(hashed)
+        return real_verify(plain, hashed)
+
+    monkeypatch.setattr(auth_service, "verify_password", _counting_verify)
+
+    r = await integration_client.post(
+        "/api/v1/auth/login",
+        json={"email": "nobody-here@example.com", "password": "whatever12"},
+    )
+    assert r.status_code == 401
+    # A verify ran, and it used the module-level constant dummy hash.
+    assert seen_hashes == [auth_service._DUMMY_HASH]

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Header, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
@@ -202,9 +202,19 @@ async def refresh(
 async def logout_route(
     body: LogoutIn,
     db: Annotated[AsyncSession, Depends(db_session)],
+    authorization: Annotated[str | None, Header()] = None,
 ) -> None:
-    """Idempotent: silently succeeds even if the token is unknown or already revoked."""
-    await logout(db, body.refresh_token)
+    """Idempotent: silently succeeds even if the token is unknown or already revoked.
+
+    If the request also carries the access token (``Authorization: Bearer``) its ``jti``
+    is added to the revocation blocklist so it stops working immediately.
+    """
+    access_token: str | None = None
+    if authorization:
+        scheme, _, tok = authorization.partition(" ")
+        if scheme == "Bearer" and tok.strip():
+            access_token = tok.strip()
+    await logout(db, body.refresh_token, access_token=access_token)
 
 
 @router.post(
@@ -270,9 +280,11 @@ async def me(user: Annotated[User, Depends(current_user)]) -> MeOut:
 )
 async def login_admin_dev(
     body: AdminDevLoginIn,
+    request: Request,
     db: Annotated[AsyncSession, Depends(db_session)],
 ) -> TokensOut:
     """Stop-gap before BotFather domain is set up. See ``auth.dev_login``."""
+    await guard_ip(request, bucket="admin-dev")
     settings = get_settings()
     tokens = await dev_admin_login(db, login=body.login, password=body.password, settings=settings)
     return _tokens_response(tokens)

@@ -36,12 +36,23 @@ from yupay.modules.auth.security import (
     verify_password,
 )
 from yupay.modules.notifications.channels.email import EmailSendError, send_email
-from yupay.modules.notifications.templates import password_reset_email, verify_email_email
+from yupay.modules.notifications.service import schedule
+from yupay.modules.notifications.templates import (
+    EmailContent,
+    password_reset_email,
+    verify_email_email,
+)
 from yupay.modules.users.models import User
 from yupay.modules.users.service import (
     get_user_by_id,
     upsert_user_by_telegram,
 )
+
+# A pre-computed argon2id hash of a throwaway password. ``login_password`` verifies
+# against this when the account is absent (or has no password) so the response time is
+# indistinguishable from a wrong-password attempt on a real account — closing the
+# account-enumeration timing side-channel.
+_DUMMY_HASH = hash_password("x")
 
 
 @dataclass(frozen=True)
@@ -183,7 +194,12 @@ async def login_password(
         User.deleted_at.is_(None),
     )
     user = (await db.execute(stmt)).scalar_one_or_none()
-    if user is None or not user.password_hash or not verify_password(password, user.password_hash):
+    # Always run a verify — against the real hash when we have one, otherwise against a
+    # constant dummy hash — so an absent/Telegram-only account can't be distinguished
+    # from a wrong password by response time. Result is discarded in those branches.
+    stored_hash = user.password_hash if (user is not None and user.password_hash) else _DUMMY_HASH
+    password_ok = verify_password(password, stored_hash)
+    if user is None or not user.password_hash or not password_ok:
         raise UnauthorizedError("invalid email or password")
     return await _open_session(db, user=user, settings=s)
 
@@ -224,6 +240,11 @@ async def telegram_widget_login(
         bot_token=s.telegram_bot_token,
         max_age_seconds=s.telegram_init_data_ttl_seconds,
     )
+    await tg.enforce_widget_single_use(
+        widget_hash=verified.hash,
+        auth_date=verified.auth_date,
+        max_age_seconds=s.telegram_init_data_ttl_seconds,
+    )
     user = await upsert_user_by_telegram(db, verified.user)
     return await _open_session(db, user=user, settings=s)
 
@@ -256,6 +277,11 @@ async def admin_telegram_widget_login(
     verified = tg.verify_login_widget(
         payload,
         bot_token=bot_token,
+        max_age_seconds=s.telegram_init_data_ttl_seconds,
+    )
+    await tg.enforce_widget_single_use(
+        widget_hash=verified.hash,
+        auth_date=verified.auth_date,
         max_age_seconds=s.telegram_init_data_ttl_seconds,
     )
     user = await upsert_user_by_telegram(db, verified.user)
@@ -340,8 +366,41 @@ async def refresh_session(
     )
 
 
-async def logout(db: AsyncSession, refresh_token: str) -> None:
-    """Revoke the session matching the supplied refresh token. Idempotent."""
+async def _blocklist_access_token(access_token: str, *, settings: Settings) -> None:
+    """Add a still-valid access token's ``jti`` to the Redis revocation blocklist.
+
+    Best-effort: an invalid/expired token has nothing to revoke and is ignored. The
+    marker TTL equals the token's remaining lifetime (≤ ``jwt_access_ttl_seconds``, so
+    ≤ 15 min) — once the token would expire on its own the key can safely disappear.
+    Mirrors the ``auth:pwreset:{jti}`` Redis pattern used by ``reset_password``.
+    """
+    try:
+        claims = authjwt.verify(access_token, expected_kind="access", settings=settings)
+    except UnauthorizedError:
+        return
+    ttl = int((claims.exp - now()).total_seconds())
+    if ttl <= 0:
+        return
+    await get_redis().set(f"auth:revoked:{claims.jti}", "1", ex=ttl)
+
+
+async def logout(
+    db: AsyncSession,
+    refresh_token: str,
+    *,
+    access_token: str | None = None,
+    settings: Settings | None = None,
+) -> None:
+    """Revoke the session matching the supplied refresh token. Idempotent.
+
+    When the caller also presents the access token (``Authorization: Bearer`` on the
+    logout request), its ``jti`` is added to the ``auth:revoked`` blocklist so the
+    already-issued access token stops working immediately rather than lingering for up
+    to its 15-minute lifetime.
+    """
+    s = settings or get_settings()
+    if access_token:
+        await _blocklist_access_token(access_token, settings=s)
     token_hash = hash_token(refresh_token)
     stmt = select(AuthSession).where(AuthSession.refresh_token_hash == token_hash)
     session_row = (await db.execute(stmt)).scalar_one_or_none()
@@ -390,6 +449,10 @@ async def current_user(
     """Resolve the currently-authenticated user from an access JWT."""
     s = settings or get_settings()
     claims = authjwt.verify(access_token, expected_kind="access", settings=s)
+    # ADR-0007 access-token blocklist: a single Redis GET per request. A jti lands
+    # here when the session is explicitly revoked (logout). See ``_blocklist_access_token``.
+    if await get_redis().get(f"auth:revoked:{claims.jti}") is not None:
+        raise UnauthorizedError("token revoked")
     user = await get_user_by_id(db, claims.sub)
     if user is None:
         raise NotFoundError("user not found")
@@ -427,10 +490,19 @@ async def request_password_reset(
     token = authjwt.mint_password_reset(sub=user.id, settings=s)
     link = f"{reset_link_base.rstrip('/')}/auth/reset?token={token}"
     content = password_reset_email(link=link)
+    # Dispatch fire-and-forget (there is no Dramatiq email actor; the notifications
+    # module's ``schedule`` helper runs the coroutine off the request path). This
+    # closes two problems at once: (1) the §10 "no synchronous outbound HTTP in a
+    # request handler" rule, and (2) the enumeration timing leak — the known-email
+    # branch no longer adds a blocking network round-trip that an unknown email lacks.
+    schedule(_deliver_reset_email(to=normalised, content=content))
+
+
+async def _deliver_reset_email(*, to: str, content: EmailContent) -> bool:
+    """Send a password-reset email in the background. Errors are swallowed by ``schedule``."""
     with contextlib.suppress(EmailSendError):
-        await send_email(
-            to=normalised, subject=content.subject, html=content.html, text=content.text
-        )
+        await send_email(to=to, subject=content.subject, html=content.html, text=content.text)
+    return True
 
 
 async def reset_password(

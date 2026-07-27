@@ -157,6 +157,47 @@ async def test_logout_is_idempotent(integration_client: AsyncClient, fixed_now: 
     assert r2.status_code == 204
 
 
+async def test_logout_blocklists_presented_access_token(
+    integration_client: AsyncClient, fixed_now: int
+) -> None:
+    tokens = await _login_via_webapp(integration_client, fixed_now)
+    access = tokens["access_token"]
+    headers = {"Authorization": f"Bearer {access}"}
+
+    # The access token works before logout.
+    before = await integration_client.get("/api/v1/auth/me", headers=headers)
+    assert before.status_code == 200
+
+    # Logout while presenting the access token → its jti lands on the blocklist.
+    out = await integration_client.post(
+        "/api/v1/auth/logout",
+        json={"refresh_token": tokens["refresh_token"]},
+        headers=headers,
+    )
+    assert out.status_code == 204
+
+    # The still-unexpired access token is now rejected on the very next request.
+    after = await integration_client.get("/api/v1/auth/me", headers=headers)
+    assert after.status_code == 401
+
+
+async def test_telegram_widget_rejects_replay(
+    integration_client: AsyncClient, fixed_now: int
+) -> None:
+    payload = _sign_widget({"id": "4343", "first_name": "Replay", "auth_date": str(fixed_now)})
+    typed_payload = {
+        "id": int(payload["id"]),
+        "first_name": payload["first_name"],
+        "auth_date": int(payload["auth_date"]),
+        "hash": payload["hash"],
+    }
+    first = await integration_client.post("/api/v1/auth/telegram/widget", json=typed_payload)
+    assert first.status_code == 200, first.text
+    # Replaying the exact same signed payload is rejected (single-use SET NX guard).
+    second = await integration_client.post("/api/v1/auth/telegram/widget", json=typed_payload)
+    assert second.status_code == 401
+
+
 async def test_me_requires_bearer_token(integration_client: AsyncClient) -> None:
     r = await integration_client.get("/api/v1/auth/me")
     assert r.status_code == 401
