@@ -11,6 +11,7 @@ of executing inline; the public API stays the same.
 
 from __future__ import annotations
 
+import html
 from collections.abc import Iterable
 from typing import Any
 
@@ -550,12 +551,14 @@ async def _maybe_alert_low_balance(
 
     current = extra.get("current_balance") or "?"
     required = extra.get("required") or "?"
-    ext_id = extra.get("external_product_id") or "?"
-    variant = extra.get("external_variant_id") or ""
-    variant_line = f"\nНоминал: <code>{variant}</code>" if variant else ""
+    # supplier/ext_id/variant can echo back supplier- or admin-entered free text
+    # (mapping fields) — escape before splicing into a parse_mode:HTML message.
+    ext_id = html.escape(str(extra.get("external_product_id") or "?"))
+    variant = str(extra.get("external_variant_id") or "")
+    variant_line = f"\nНоминал: <code>{html.escape(variant)}</code>" if variant else ""
     text = (
         "<b>⚠️ Низкий баланс поставщика</b>\n"
-        f"Поставщик: <code>{supplier}</code>\n"
+        f"Поставщик: <code>{html.escape(supplier)}</code>\n"
         f"Продукт: <code>{ext_id}</code>{variant_line}\n"
         f"Баланс: <b>${current}</b> · Нужно: <b>${required}</b>\n"
         f"<i>Задача: {task.id[:8]}… · клиент видит «в обработке».</i>\n"

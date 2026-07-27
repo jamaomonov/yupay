@@ -28,6 +28,7 @@ REDACTED_KEYS = frozenset(
         "user_agent",
         "telegram_id",
         "tg_user_id",
+        "chat_id",
         "voucher_code",
         "code",
         "api_key",

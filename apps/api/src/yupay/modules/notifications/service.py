@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import html
 from collections.abc import Callable, Coroutine, Sequence
 from decimal import Decimal
 from typing import Any, Final
@@ -82,13 +83,19 @@ _FIELD_LABEL_RU: Final[dict[str, str]] = {
 
 
 def _format_target_fields(fields: dict[str, object]) -> str | None:
-    """Render fulfilment-data fields as ``ID игрока: 123, Регион: EU``."""
+    """Render fulfilment-data fields as ``ID игрока: 123, Регион: EU``.
+
+    ``value`` is customer-entered free text from checkout, and ``label``
+    falls back to the raw (non-constant) field key when it isn't one of the
+    known labels — both are escaped before splicing into the
+    ``parse_mode:HTML`` Telegram message this feeds.
+    """
     parts: list[str] = []
     for key, value in fields.items():
         if not isinstance(value, str) or not value.strip():
             continue
-        label = _FIELD_LABEL_RU.get(key, key)
-        parts.append(f"{label}: <code>{value}</code>")
+        label = html.escape(_FIELD_LABEL_RU.get(key, key))
+        parts.append(f"{label}: <code>{html.escape(value)}</code>")
     return ", ".join(parts) if parts else None
 
 
