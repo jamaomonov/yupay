@@ -120,9 +120,31 @@ tokens server-side. No long-lived refresh is issued to the mini-app surface.
   edge-cases with the Telegram Mini App. Refresh is in a cookie (`HttpOnly`, `Secure`,
   `SameSite=Lax`) on the web; access stays in the `Authorization` header.
 
+## Amendments
+
+- **2026-07-27 — access-token blocklist and refresh cookie are now implemented.**
+  Both were described above as the design ("push the `jti` into Redis blocklist
+  `auth:revoked:{jti}`"; "Refresh is in a cookie... on the web") but neither had
+  actually been wired up — ADR-0026 (2026-06-05) shipped the refresh token in the
+  JSON body / `localStorage` instead, and `logout`/`current_user` never touched the
+  blocklist key. A security-review remediation pass closed both gaps: `logout` now
+  sets `auth:revoked:{jti}` (TTL = the access token's remaining life) and
+  `current_user` checks it on every request; `POST /auth/refresh` now reads/rotates
+  the refresh token from an `HttpOnly` cookie instead of the request body. The
+  refresh-reuse trip-wire limitation described above still applies as documented —
+  that request carries no access token to blocklist, so a replayed-refresh session
+  is revoked via the DB row but its already-issued access token merely self-expires
+  (≤ 15 min). See [ADR-0038](./0038-security-review-remediation.md) for the full
+  remediation record, including the frontend changes and the one-time re-login
+  consequence for sessions active at deploy time.
+
 ## References
 
 - [ADR-0002](./0002-use-modular-monolith.md)
+- [ADR-0026](./0026-web-password-auth.md) — refresh token shipped in
+  `localStorage` first; moved to the cookie described above per ADR-0038
+- [ADR-0038](./0038-security-review-remediation.md) — implements the blocklist and
+  cookie described in this ADR
 - [`apps/api/src/yupay/modules/auth/`](../../apps/api/src/yupay/modules/auth)
 - [`docs/architecture/cache-keys.md`](../architecture/cache-keys.md)
 - [Telegram Bot API — Validating data received via the Mini App](https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app)

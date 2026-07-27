@@ -2,28 +2,41 @@
 
 ## What we collect
 
-| Field                          | Source                       | Stored in                                                          | Encrypted?                                                        |
-| ------------------------------ | ---------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------- |
-| Email                          | Guest checkout, registration | `users.email`                                                      | At-rest via PG encryption (volume-level); column-level on roadmap |
-| Telegram user ID               | Telegram OAuth / initData    | `telegram_links.tg_user_id`                                        | No (operational need)                                             |
-| Telegram username / first name | Telegram OAuth               | `users.profile_jsonb`                                              | No                                                                |
-| IP address                     | All HTTP requests            | Logs only (Loki)                                                   | Retained 14 days hot, 90 days cold, then deleted                  |
-| User agent                     | All HTTP requests            | Logs only                                                          | Same retention as IP                                              |
-| Voucher codes (issued)         | Inventory / supplier         | `inventory_codes.code_ciphertext`, `deliveries.payload_ciphertext` | **Yes, column-level (libsodium)**                                 |
-| Payment provider metadata      | Webhooks                     | `payment_webhooks.payload jsonb`                                   | Provider's own redaction policy; we never store PAN               |
-| Masked card data (Octo)        | Octo webhook callback        | `payment_webhooks.payload jsonb` (admin-only)                      | Already masked by Octo (`maskedPan`, `rrn`); full PAN never sent  |
+| Field                          | Source                       | Stored in                                                          | Encrypted?                                                                                                                                              |
+| ------------------------------ | ---------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Email                          | Guest checkout, registration | `users.email`                                                      | At-rest via PG encryption (volume-level); column-level on roadmap                                                                                       |
+| Guest email (audit trail)      | Guest checkout               | `order_events.actor` (`guest:<truncated email_hash>`)              | Not raw — a truncated, non-reversible hash of the email (ADR-0038). Legacy rows written before this fix may still hold the raw address; not backfilled  |
+| Telegram user ID               | Telegram OAuth / initData    | `telegram_links.tg_user_id`                                        | No (operational need)                                                                                                                                   |
+| Telegram chat ID               | Telegram Bot API sends       | Not persisted — logs only, and redacted there                      | N/A — on the log redactor blocklist (ADR-0038); never appears in a log line                                                                             |
+| Telegram username / first name | Telegram OAuth               | `users.profile_jsonb`                                              | No                                                                                                                                                      |
+| IP address                     | All HTTP requests            | Logs only (Loki)                                                   | Retained 14 days hot, 90 days cold, then deleted                                                                                                        |
+| User agent                     | All HTTP requests            | Logs only                                                          | Same retention as IP                                                                                                                                    |
+| Voucher codes (issued)         | Inventory / supplier         | `inventory_codes.code_ciphertext`, `deliveries.payload_ciphertext` | **Yes, column-level (libsodium)**; dedup `code_hash` is HMAC-SHA256 keyed off an HKDF-derived key, not bare SHA-256 (ADR-0038)                          |
+| Payment provider metadata      | Webhooks                     | `payment_webhooks.payload jsonb`                                   | Provider's own redaction policy; we never store PAN. Masked by key (card/pan/cvv/secret/signature/…) before the admin audit feed displays it (ADR-0038) |
+| Masked card data (Octo)        | Octo webhook callback        | `payment_webhooks.payload jsonb` (admin-only)                      | Already masked by Octo (`maskedPan`, `rrn`); full PAN never sent                                                                                        |
+
+**Guest email in transit.** Guest order/deliveries lookups (`GET /orders/{id}`,
+`GET /orders/{id}/deliveries`) send the guest's email as an `X-Guest-Email` header,
+not a `?email=` query parameter (ADR-0038 §7) — it no longer lands in Caddy/proxy
+access logs or browser history from those calls. It still travels over the wire on
+every such request; this is a transport-location fix, not encryption-in-transit
+(TLS already covers that) or an elimination of the value being sent at all.
 
 ## What we never log
 
 - Email values
-- Telegram IDs
+- Telegram IDs, including `chat_id` (a private-chat id is itself a Telegram user id)
 - Voucher codes
 - Auth tokens (access / refresh / guest)
 - Provider API keys and acquirer secrets (`octo_secret`, `octo_signature_key`, bearer tokens)
 - Card data — masked card fields stay in the admin-only webhook audit row, never in app logs
 
 The structured logger's redactor blocklists these field names. New PII fields **must** be
-added to the redactor and to this document in the same PR.
+added to the redactor and to this document in the same PR. The admin **audit feed**
+(`audit.list_audit_events`) applies the same blocklist to the payloads it displays —
+it is not just a logging concern (ADR-0038 §6): a signature-valid provider webhook's
+raw JSON body (e.g. Octo's masked PAN / `rrn`) is shown to admins through that feed,
+and is now masked by key before being returned rather than forwarded verbatim.
 
 ## Right to deletion
 
