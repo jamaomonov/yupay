@@ -12,11 +12,38 @@ const nextConfig: NextConfig = {
   eslint: { ignoreDuringBuilds: true },
   images: {
     remotePatterns: [
-      { protocol: "https", hostname: "**.yupay.io" },
-      { protocol: "https", hostname: "cdn.yupay.io" },
-      // Catalog brand/product art comes from third-party CDNs referenced in the
-      // catalog DB, so allow optimising any https image host. SVGs are still
-      // sandboxed via the CSP below.
+      // First-party: the storefront domain itself + the R2-backed CDN
+      // (infra/secrets-example/api.env R2_PUBLIC_BASE_URL, wired through
+      // apps/api/.../storage/service.py public_url_for()). The prod domain
+      // is yupay.uz (see infra/caddy/Caddyfile.prod) — these two entries
+      // used to say ".yupay.io", which doesn't match any deployed host.
+      { protocol: "https", hostname: "**.yupay.uz" },
+      { protocol: "https", hostname: "cdn.yupay.uz" },
+      // R2 bucket fallback when the cdn.yupay.uz custom domain isn't wired
+      // up in a given environment (see the R2_PUBLIC_BASE_URL comment).
+      { protocol: "https", hostname: "*.r2.dev" },
+      // Catalog brand/product/SKU art also comes from admin-pasted
+      // third-party CDN URLs with no fixed, enumerable host list — see
+      // apps/admin/src/components/ImageUploader.tsx ("Catalog images often
+      // live on third-party hosts (legacy URLs)"). There is no glob that
+      // means "any public https host but not a private/internal one" (that
+      // needs IP-space knowledge Next's config layer doesn't have), so this
+      // stays a broad https catch-all rather than a curated allowlist that
+      // would silently break images we can't inventory from here.
+      //
+      // SSRF: the actual gate against this being used to reach internal
+      // infra is the backend validator
+      // (apps/api/src/yupay/modules/catalog/image_url_safety.py
+      // validate_public_image_url), applied to every
+      // image_url/logo_url/hero_image_url at write time — admin
+      // create/update AND the G2B import — which rejects IP-literal
+      // loopback/private/link-local/metadata targets and
+      // localhost/*.local/*.internal before a URL is ever persisted. By
+      // the time this config decides whether to fetch a URL, it has
+      // already passed that check. Residual risk (documented on the
+      // validator too): DNS rebinding — a hostname that resolves to a
+      // public IP when validated but a private one when fetched — is not
+      // and cannot be closed by either layer.
       { protocol: "https", hostname: "**" },
     ],
     // Brand marks + wordmark are first-party SVGs we control. Allow the image

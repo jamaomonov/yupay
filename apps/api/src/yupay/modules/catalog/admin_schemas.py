@@ -12,6 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from yupay.modules.catalog.image_url_safety import validate_optional_public_image_url
 from yupay.modules.catalog.schemas import FormField
 
 # Allow letters, digits, dashes; max 64 — matches column lengths and SEO conventions.
@@ -145,6 +146,14 @@ class BrandCreate(BaseModel):
     maintenance: bool = False
     translations: list[TranslationIn] = Field(min_length=1)
 
+    # SSRF guard: Next's image optimizer fetches these server-side (see
+    # apps/web/next.config.ts). Blank/omitted passes through untouched;
+    # see yupay.modules.catalog.image_url_safety for what's blocked and the
+    # documented residual risk (DNS rebinding).
+    _validate_image_hosts = field_validator("logo_url", "hero_image_url")(
+        validate_optional_public_image_url
+    )
+
 
 class BrandUpdate(BaseModel):
     """Body of ``PATCH /admin/catalog/brands/{id}``."""
@@ -160,6 +169,14 @@ class BrandUpdate(BaseModel):
     active: bool | None = None
     maintenance: bool | None = None
     translations: list[TranslationIn] | None = None
+
+    # See BrandCreate — "" is the established "clear this field" convention
+    # (admin_service.update_brand only skips ``None``), so it must keep
+    # passing through unvalidated; validate_optional_public_image_url does
+    # exactly that.
+    _validate_image_hosts = field_validator("logo_url", "hero_image_url")(
+        validate_optional_public_image_url
+    )
 
 
 # ---------- brand FAQs ----------
@@ -225,6 +242,9 @@ class ProductCreate(BaseModel):
     required_fields: list[FormField] = Field(default_factory=list)
     translations: list[TranslationIn] = Field(min_length=1)
 
+    # SSRF guard — see BrandCreate._validate_image_hosts.
+    _validate_image_hosts = field_validator("image_url")(validate_optional_public_image_url)
+
 
 class ProductUpdate(BaseModel):
     """Body of ``PATCH /admin/catalog/products/{id}``."""
@@ -240,6 +260,9 @@ class ProductUpdate(BaseModel):
     active: bool | None = None
     required_fields: list[FormField] | None = None
     translations: list[TranslationIn] | None = None
+
+    # SSRF guard — see BrandUpdate._validate_image_hosts.
+    _validate_image_hosts = field_validator("image_url")(validate_optional_public_image_url)
 
 
 # ---------- SKUs ----------
@@ -283,6 +306,9 @@ class SkuCreate(BaseModel):
     sort_order: int = 0
     active: bool = True
     price_overrides: list[SkuPriceOverrideIn] = Field(default_factory=list)
+
+    # SSRF guard — see BrandCreate._validate_image_hosts.
+    _validate_image_hosts = field_validator("image_url")(validate_optional_public_image_url)
 
     @model_validator(mode="after")
     def _validate_variable_amount(self) -> SkuCreate:
@@ -329,6 +355,9 @@ class SkuUpdate(BaseModel):
     sort_order: int | None = None
     active: bool | None = None
     price_overrides: list[SkuPriceOverrideIn] | None = None
+
+    # SSRF guard — see BrandUpdate._validate_image_hosts.
+    _validate_image_hosts = field_validator("image_url")(validate_optional_public_image_url)
 
     @model_validator(mode="after")
     def _validate_variable_amount(self) -> SkuUpdate:
