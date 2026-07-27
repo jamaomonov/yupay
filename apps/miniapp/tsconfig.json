@@ -17,7 +17,6 @@
     "esModuleInterop": true,
     "useDefineForClassFields": true,
     "types": ["node", "vite/client"],
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@assets/*": ["./src/assets/*"]
