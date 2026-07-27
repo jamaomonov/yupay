@@ -6,7 +6,7 @@ import { LOCALES } from "@yupay/i18n";
  * three locales + x-default, an og:locale pair, and a geo block pinned to
  * Tashkent so the storefront reads as UZ-local to search engines.
  */
-export const SITE = "https://app.yupay.uz";
+export const SITE = "https://yupay.uz";
 
 const OG_LOCALE: Record<string, string> = {
   ru: "ru_RU",
