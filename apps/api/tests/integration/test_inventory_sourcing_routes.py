@@ -340,6 +340,61 @@ async def test_upsert_and_delete_rule(
     assert after.json()["primary"] == "inventory"
 
 
+async def test_upsert_rule_idempotency_key_replays_cached_response(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_sku: str,
+) -> None:
+    """A repeated ``PUT`` with the same ``Idempotency-Key`` replays the first
+    response verbatim instead of re-running ``set_rule``.
+
+    We mutate the rule directly in the DB (and send a *different* request
+    body) between the two calls — if the handler re-executed, the second
+    response and the DB row would both reflect the mutation. They don't.
+    """
+    from yupay.modules.sourcing.models import SkuSourcingRule
+
+    admin = await _login_user(integration_client, tg_id=314)
+    await _grant_admin(db_session, tg_id=314)
+    headers = {
+        "Authorization": f"Bearer {admin}",
+        "Idempotency-Key": "sourcing-upsert-replay-0001",
+    }
+
+    first = await integration_client.put(
+        f"/api/v1/admin/sourcing/rules/{_seed_sku}",
+        headers=headers,
+        json={"mode": "force_supplier", "supplier_slug": "mock"},
+    )
+    assert first.status_code == 200, first.text
+    assert first.json()["mode"] == "force_supplier"
+
+    # Mutate the row out from under the handler so a live re-execution would
+    # observably differ from the first response.
+    await db_session.execute(
+        update(SkuSourcingRule)
+        .where(SkuSourcingRule.sku_id == _seed_sku)
+        .values(mode="manual", supplier_slug=None)
+    )
+    await db_session.commit()
+
+    replay = await integration_client.put(
+        f"/api/v1/admin/sourcing/rules/{_seed_sku}",
+        headers=headers,
+        json={"mode": "manual"},  # different body — the replay must ignore it
+    )
+    assert replay.status_code == 200, replay.text
+    assert replay.json() == first.json()
+
+    # The direct mutation above is still in place — the replay never called
+    # ``set_rule`` a second time.
+    row = (
+        await db_session.execute(select(SkuSourcingRule).where(SkuSourcingRule.sku_id == _seed_sku))
+    ).scalar_one()
+    assert row.mode == "manual"
+    assert row.supplier_slug is None
+
+
 async def test_force_supplier_validation_requires_slug(
     integration_client: AsyncClient,
     db_session: AsyncSession,
