@@ -30,7 +30,12 @@ export function OrderDeliveredDialog() {
   const order = useOrder(orderId ?? undefined);
   const [reviewFor, setReviewFor] = useState<{ orderId: string; brandSlug: string } | null>(null);
 
-  const isOpen = orderId !== null;
+  // Open only once the order has resolved — otherwise the title/body flash for
+  // a beat with no rate CTA while `useOrder` is still loading (the CTA depends
+  // on the fetched brand). The socket invalidates this key just before opening,
+  // so it's usually warm; a cold cache (delivered while browsing elsewhere)
+  // fetches first, then opens.
+  const isOpen = orderId !== null && Boolean(order.data);
   const brandSlug = order.data?.items[0]?.display?.brand_slug ?? null;
 
   function handleRate() {
