@@ -1066,6 +1066,16 @@
             "title": "Products",
             "type": "array"
           },
+          "rating": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BrandRatingOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "short_description": {
             "anyOf": [
               {
@@ -1167,6 +1177,16 @@
             "title": "Name",
             "type": "string"
           },
+          "rating": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BrandRatingOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "short_description": {
             "anyOf": [
               {
@@ -1193,6 +1213,25 @@
           "accent_color"
         ],
         "title": "BrandOut",
+        "type": "object"
+      },
+      "BrandRatingOut": {
+        "description": "Aggregate customer rating for a brand (omitted when there are no reviews).",
+        "properties": {
+          "avg": {
+            "title": "Avg",
+            "type": "number"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "avg",
+          "count"
+        ],
+        "title": "BrandRatingOut",
         "type": "object"
       },
       "BrandRevenueOut": {

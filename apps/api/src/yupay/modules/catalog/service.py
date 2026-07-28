@@ -17,6 +17,7 @@ from yupay.modules.catalog.models import Brand, BrandFaq, Category, Product, Sku
 from yupay.modules.catalog.schemas import (
     BrandDetailOut,
     BrandOut,
+    BrandRatingOut,
     CategoryOut,
     FaqOut,
     FormField,
@@ -27,6 +28,12 @@ from yupay.modules.catalog.schemas import (
 )
 from yupay.modules.pricing.fx_guard import RateRejected, guarded_usd_rate
 from yupay.modules.pricing.variable import display_rate, price_in_quote
+
+# Reach into ``reviews.service`` directly (not ``reviews.api``): importing the
+# module's api pulls its routes → the whole api/v1 router stack, a circular
+# import at bootstrap. ``get_stats`` is part of the reviews public surface.
+from yupay.modules.reviews.models import BrandRatingStats
+from yupay.modules.reviews.service import get_stats as _reviews_get_stats
 
 if TYPE_CHECKING:
     from yupay.modules.fx.service import FxService
@@ -118,7 +125,16 @@ def _pick_category_translation(translations: list[Any], locale: str) -> tuple[st
     return chosen.name, chosen.description
 
 
-def _brand_summary(brand: Brand, locale: str) -> BrandOut:
+def _to_rating(stats: BrandRatingStats | None) -> BrandRatingOut | None:
+    """Convert a reviews stats row to the catalog DTO, or ``None`` when unreviewed."""
+    if stats is None or stats.count == 0:
+        return None
+    return BrandRatingOut(avg=float(stats.avg), count=stats.count)
+
+
+def _brand_summary(
+    brand: Brand, locale: str, rating: BrandRatingOut | None = None
+) -> BrandOut:
     name, short_desc, _, _ = _pick_translation(brand.translations, locale)
     return BrandOut(
         id=brand.id,
@@ -130,6 +146,7 @@ def _brand_summary(brand: Brand, locale: str) -> BrandOut:
         hero_image_url=brand.hero_image_url,
         accent_color=brand.accent_color,
         maintenance=brand.maintenance,
+        rating=rating,
     )
 
 
@@ -300,7 +317,8 @@ async def list_brands(
         stmt = stmt.where(Category.slug == category_slug)
 
     rows = (await db.execute(stmt)).scalars().all()
-    return [_brand_summary(b, locale) for b in rows]
+    ratings = await _reviews_get_stats(db, [b.id for b in rows])
+    return [_brand_summary(b, locale, _to_rating(ratings.get(b.id))) for b in rows]
 
 
 async def get_brand_by_slug(
@@ -331,6 +349,7 @@ async def get_brand_by_slug(
     if brand is None:
         return None
 
+    rating = _to_rating((await _reviews_get_stats(db, [brand.id])).get(brand.id))
     name, short_desc, description, instructions = _pick_translation(brand.translations, locale)
     highlights = _pick_highlights(brand.translations, locale)
 
@@ -374,6 +393,7 @@ async def get_brand_by_slug(
         products=products_out,
         faqs=faqs_out,
         highlights=highlights,
+        rating=rating,
     )
 
 
