@@ -1,11 +1,15 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useTranslations } from "next-intl";
+import Link from "next/link";
+import { useLocale, useTranslations } from "next-intl";
 
 import type { OrderOut } from "@/lib/orders-types";
 
+import { useAuth } from "@/lib/auth";
+import { buttonStyles } from "@/lib/button";
 import { apiFetch } from "@/lib/client";
+import { getMyReviews } from "@/lib/reviews";
 import { useRealtimeStatus } from "@/store/useRealtimeStatus";
 
 /** Statuses that mean the order is still moving — keep polling. */
@@ -26,6 +30,9 @@ interface DeliveryListOut {
 
 export function OrderStatus({ orderId, email }: { orderId: string; email?: string }) {
   const t = useTranslations("web.orders");
+  const tr = useTranslations("web.brandReviews");
+  const locale = useLocale();
+  const { user } = useAuth();
   // Guest identification travels as a header, never a query param — a query
   // param lands in Caddy / proxy access logs and browser history, a header
   // doesn't. Trimmed + lowercased to match what the backend expects.
@@ -51,8 +58,21 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
       apiFetch<DeliveryListOut>(`/orders/${orderId}/deliveries`, { headers: guestHeaders }),
   });
 
+  // Fallback rate CTA: even if the delivered modal was skipped or missed, a
+  // logged-in buyer who hasn't reviewed this order can rate it from here. Guests
+  // can't review, so the query only runs for a signed-in user on a delivered order.
+  const myReviews = useQuery({
+    queryKey: ["my-reviews"],
+    queryFn: () => getMyReviews(),
+    enabled: Boolean(user) && status === "delivered",
+  });
+
   if (order.isLoading) return <p className="text-tx-mute">{t("loading")}</p>;
   if (order.isError || !order.data) return <p className="text-[#FF6B6B]">{t("notFound")}</p>;
+
+  const brandSlug = order.data.items[0]?.display?.brand_slug ?? null;
+  const alreadyReviewed = (myReviews.data?.items ?? []).some((r) => r.order_id === order.data.id);
+  const canRate = status === "delivered" && Boolean(user) && brandSlug !== null && !alreadyReviewed;
 
   return (
     <div className="border-border bg-card rounded-2xl border p-6">
@@ -69,6 +89,15 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
             {JSON.stringify(d.artifact, null, 2)}
           </pre>
         ))}
+
+      {canRate && brandSlug && (
+        <Link
+          href={`/${locale}/store/${brandSlug}?order=${order.data.id}#reviews`}
+          className={buttonStyles({ size: "sm", className: "mt-4" })}
+        >
+          {tr("writeCta")}
+        </Link>
+      )}
     </div>
   );
 }

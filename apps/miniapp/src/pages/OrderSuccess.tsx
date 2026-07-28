@@ -10,7 +10,7 @@
  * artifacts (voucher codes, receipts, license keys) the moment they appear.
  */
 
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
@@ -29,8 +29,10 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useParams, Link } from "wouter";
 
+import { ReviewsSheet } from "@/components/ReviewsSheet";
 import { SafeImage } from "@/components/ui/safe-image";
 import { useToast } from "@/hooks/use-toast";
+import { useMe } from "@/lib/auth";
 import { useT, type MessageKey } from "@/lib/i18n";
 import { getActiveLocale, translate } from "@/lib/i18n/core";
 import {
@@ -43,6 +45,7 @@ import {
   type OrderStatus,
   type ProductKind,
 } from "@/lib/orders";
+import { getMyReviews } from "@/lib/reviews";
 import {
   addToHomeScreen,
   canShareToStory,
@@ -206,6 +209,16 @@ export default function OrderSuccess() {
   const deliveriesQuery = useDeliveries(orderId, order?.status);
   const deliveries = deliveriesQuery.data ?? [];
 
+  // Fallback rate CTA: if the delivered dialog was skipped or missed, a
+  // signed-in buyer who hasn't reviewed this order can still rate it here.
+  const me = useMe();
+  const myReviews = useQuery({
+    queryKey: ["my-reviews"],
+    queryFn: () => getMyReviews(),
+    enabled: Boolean(me.data) && order?.status === "delivered",
+  });
+  const [reviewOpen, setReviewOpen] = useState(false);
+
   // Lookup the in-flight payment intent for a still-unpaid order so we can
   // surface a «Оплатить» button that jumps straight to the acquirer's hosted
   // page. The hook gates itself on ``status === "pending_payment"`` and 404s
@@ -258,6 +271,9 @@ export default function OrderSuccess() {
   const stage = stageFor(order);
   const isProcessing = isProcessingOrUnknown;
   const isDelivered = order.status === "delivered";
+  const rateBrandSlug = order.items[0]?.display?.brand_slug ?? null;
+  const alreadyReviewed = (myReviews.data?.items ?? []).some((r) => r.order_id === order.id);
+  const canRate = isDelivered && Boolean(me.data) && rateBrandSlug !== null && !alreadyReviewed;
   const isFailed = TERMINAL_FAIL.includes(order.status);
 
   return (
@@ -355,6 +371,28 @@ export default function OrderSuccess() {
         <DeliveredExtras
           brandName={order.items[0]?.display?.brand_name ?? null}
           imageUrl={order.items[0]?.display?.image_url ?? null}
+        />
+      )}
+
+      {canRate && rateBrandSlug && (
+        <button
+          type="button"
+          onClick={() => {
+            setReviewOpen(true);
+          }}
+          className="bg-primary text-primary-foreground mt-4 w-full rounded-xl py-2.5 text-sm font-semibold"
+        >
+          {t("reviews.rateCta")}
+        </button>
+      )}
+
+      {reviewOpen && rateBrandSlug && (
+        <ReviewsSheet
+          brandSlug={rateBrandSlug}
+          formOrderId={order.id}
+          onClose={() => {
+            setReviewOpen(false);
+          }}
         />
       )}
     </motion.div>
