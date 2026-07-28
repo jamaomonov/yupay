@@ -299,6 +299,15 @@ async def admin_list(
     return [(r.Review, r.report_count) for r in rows], total
 
 
+async def count_reports(db: AsyncSession, review_id: str) -> int:
+    """Number of abuse reports filed against a review."""
+    return (
+        await db.execute(
+            select(func.count()).select_from(ReviewReport).where(ReviewReport.review_id == review_id)
+        )
+    ).scalar_one()
+
+
 async def admin_set_status(db: AsyncSession, *, review_id: str, status: str) -> Review:
     """Admin moderation: hide/unhide/remove a review, adjusting stats accordingly."""
     review = (
@@ -376,6 +385,7 @@ async def recompute_all_stats(db: AsyncSession) -> int:
 __all__ = [
     "admin_list",
     "admin_set_status",
+    "count_reports",
     "create_review",
     "get_stats",
     "list_own",
