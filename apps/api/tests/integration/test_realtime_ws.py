@@ -12,6 +12,8 @@ to a different loop" (see the caching comment in ``integration_client``).
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
+import contextlib
 import json
 import threading
 import uuid
@@ -66,7 +68,24 @@ def test_ws_receives_published_event() -> None:
     token = authjwt.mint_ws_handshake(sub="user-abc", sid=new_id(), channel="user:user-abc")
     stop = threading.Event()
 
-    with TestClient(app) as client, client.websocket_connect(f"{_WS_PATH}?token={token}") as ws:
+    # ``run_order_socket`` now properly drains its cancelled tasks on teardown
+    # (awaits ``_forward``'s pubsub unsubscribe/aclose instead of firing-and-
+    # forgetting), which takes a hair longer than before. Starlette's
+    # ``WebSocketTestSession.__exit__`` sends the disconnect and, without waiting
+    # for the app to process it, immediately force-cancels the underlying anyio
+    # scope via ``portal.call(cs.cancel)`` as a defensive teardown (a TestClient-
+    # only mechanism — production ASGI servers don't do this for a graceful
+    # client-initiated close). That forced cancellation can now land while our
+    # handler is still mid-drain; the portal surfaces it as ``concurrent.futures.
+    # CancelledError`` (not ``asyncio.CancelledError`` — they're unrelated classes
+    # since Python 3.8) out of ``fut.result()`` inside the ``with`` block's own
+    # __exit__, after the message we care about has already been received and
+    # captured below. Suppress it here rather than in application code.
+    with (
+        contextlib.suppress(concurrent.futures.CancelledError),
+        TestClient(app) as client,
+        client.websocket_connect(f"{_WS_PATH}?token={token}") as ws,
+    ):
         publisher = threading.Thread(
             target=_publish_repeatedly,
             args=(

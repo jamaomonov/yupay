@@ -8,8 +8,9 @@ import asyncio
 import json
 from typing import Any
 
-from starlette.websockets import WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocket
 
+from yupay.core.clock import now
 from yupay.core.logging import get_logger
 from yupay.core.redis import get_redis
 
@@ -19,9 +20,12 @@ _PING_INTERVAL_SECONDS = 25
 
 
 def channel_for(user_id: str) -> str:
+    """Return the Redis pub/sub channel name a given user's order events publish to."""
     return f"realtime:user:{user_id}"
 
 
+# ``message`` is an open discriminated-union envelope mirrored in
+# packages/api-client/src/realtime/messages.ts, hence dict[str, Any] rather than a model.
 async def publish_order_event(user_id: str | None, message: dict[str, Any]) -> None:
     """Publish an order message to the user's channel. No-op for guest orders."""
     if user_id is None:
@@ -38,14 +42,16 @@ async def _forward(websocket: WebSocket, user_id: str) -> None:
             if msg.get("type") == "message":
                 await websocket.send_text(msg["data"])
     finally:
-        await pubsub.unsubscribe(channel_for(user_id))
-        await pubsub.aclose()  # type: ignore[no-untyped-call]  # redis-py: PubSub.aclose is unannotated
+        # Ensure the pooled connection is always released: if unsubscribe() raises
+        # (e.g. a transient Redis error), aclose() must still run.
+        try:
+            await pubsub.unsubscribe(channel_for(user_id))
+        finally:
+            await pubsub.aclose()  # type: ignore[no-untyped-call]  # redis-py: unannotated
 
 
 async def _ping(websocket: WebSocket) -> None:
     """Server-side keepalive so the client's 60s alive-timer never lapses."""
-    from yupay.core.clock import now
-
     while True:
         await asyncio.sleep(_PING_INTERVAL_SECONDS)
         await websocket.send_text(json.dumps({"type": "ping", "at": now().isoformat()}))
@@ -67,11 +73,13 @@ async def run_order_socket(websocket: WebSocket, user_id: str) -> None:
     ]
     try:
         await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-    except WebSocketDisconnect:
-        pass
     finally:
         for t in tasks:
             t.cancel()
+        # Wait for cancellation to complete and retrieve each task's exception (if
+        # any) so a teardown error (e.g. _forward's unsubscribe/aclose) is never
+        # dumped to stderr as an untraceable "Task exception was never retrieved".
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 __all__ = ["channel_for", "publish_order_event", "run_order_socket"]
