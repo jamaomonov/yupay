@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Query, status
+from fastapi import APIRouter, Depends, Header, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
 from yupay.core.errors import ValidationError
 from yupay.core.idempotency import IDEMPOTENCY_HEADER, MIN_IDEMPOTENCY_KEY_LENGTH
 from yupay.modules.admin.api import require_admin
-from yupay.modules.auth.deps import current_user
+from yupay.modules.auth.deps import current_user, resolve_request_actor
 from yupay.modules.reviews import service as svc
 from yupay.modules.reviews.models import BrandRatingStats, Review
 from yupay.modules.reviews.schemas import (
@@ -20,6 +20,7 @@ from yupay.modules.reviews.schemas import (
     OwnReviewListOut,
     OwnReviewOut,
     ReviewCreateIn,
+    ReviewEligibilityOut,
     ReviewListOut,
     ReviewOut,
     ReviewReportIn,
@@ -88,31 +89,52 @@ async def list_brand_reviews(
     "",
     response_model=ReviewOut,
     status_code=status.HTTP_201_CREATED,
-    summary="Submit a review for a delivered order",
+    summary="Submit a review for a delivered order (user or guest)",
 )
 async def create_review_route(
     body: ReviewCreateIn,
+    request: Request,
     db: Annotated[AsyncSession, Depends(db_session)],
-    user: Annotated[User, Depends(current_user)],
     idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
 ) -> ReviewOut:
     _require_idempotency_key(idempotency_key)
+    actor = await resolve_request_actor(request, db)
+    locale = actor.user.locale if actor.user else (request.headers.get("Accept-Language") or "ru")
     review = await svc.create_review(
         db,
-        user_id=user.id,
-        guest_email=None,
+        user_id=actor.user_id,
+        guest_email=actor.guest_email,
         order_id=body.order_id,
         brand_slug=body.brand_slug,
         rating=body.rating,
         body=body.body,
-        locale=user.locale,
+        locale=locale,
     )
     return ReviewOut(
         id=review.id,
         rating=review.rating,
         body=review.body,
-        author_name=user.display_name,
+        author_name=actor.user.display_name if actor.user else None,
         created_at=review.created_at,
+    )
+
+
+@router.get(
+    "/eligibility",
+    response_model=ReviewEligibilityOut,
+    summary="Whether the actor's order can be reviewed / already was",
+)
+async def review_eligibility_route(
+    order_id: str,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> ReviewEligibilityOut:
+    actor = await resolve_request_actor(request, db)
+    brand_slug, delivered, already = await svc.review_eligibility(
+        db, order_id=order_id, user_id=actor.user_id, guest_email=actor.guest_email
+    )
+    return ReviewEligibilityOut(
+        brand_slug=brand_slug, delivered=delivered, already_reviewed=already
     )
 
 

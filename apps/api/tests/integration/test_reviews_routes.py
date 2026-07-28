@@ -144,3 +144,75 @@ async def test_admin_list_requires_admin(
         "/api/v1/admin/reviews", headers={"Authorization": f"Bearer {_token(plain.id)}"}
     )
     assert r.status_code == 403
+
+
+async def _guest_token(client: AsyncClient, email: str) -> str:
+    r = await client.post("/api/v1/auth/guest", json={"email": email})
+    assert r.status_code == 200
+    return r.json()["access_token"]
+
+
+async def test_guest_can_post_and_list_shows_anonymous(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    from tests.integration.test_reviews_service import _make_guest_order
+
+    brand, sku = await _seed_brand(db_session, "steam")
+    order = await _make_guest_order(db_session, guest_email="g@x.com", sku_id=sku.id)
+    await db_session.commit()
+    token = await _guest_token(integration_client, "g@x.com")
+    r = await integration_client.post(
+        "/api/v1/reviews",
+        headers={
+            "Authorization": f"Guest {token}",
+            "X-Guest-Email": "g@x.com",
+            "Idempotency-Key": _KEY,
+        },
+        json={"order_id": order.id, "brand_slug": "steam", "rating": 5, "body": "fast"},
+    )
+    assert r.status_code == 201
+    assert r.json()["author_name"] is None
+    lst = await integration_client.get("/api/v1/reviews/brands/steam")
+    assert lst.json()["stats"]["count"] == 1
+
+
+async def test_guest_wrong_email_rejected(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    from tests.integration.test_reviews_service import _make_guest_order
+
+    brand, sku = await _seed_brand(db_session, "steam")
+    order = await _make_guest_order(db_session, guest_email="g@x.com", sku_id=sku.id)
+    await db_session.commit()
+    token = await _guest_token(integration_client, "g@x.com")
+    r = await integration_client.post(
+        "/api/v1/reviews",
+        headers={
+            "Authorization": f"Guest {token}",
+            "X-Guest-Email": "evil@x.com",
+            "Idempotency-Key": _KEY,
+        },
+        json={"order_id": order.id, "brand_slug": "steam", "rating": 5},
+    )
+    assert r.status_code == 401
+
+
+async def test_eligibility_guest_delivered_then_reviewed(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    from tests.integration.test_reviews_service import _make_guest_order
+
+    brand, sku = await _seed_brand(db_session, "steam")
+    order = await _make_guest_order(db_session, guest_email="g@x.com", sku_id=sku.id)
+    await db_session.commit()
+    token = await _guest_token(integration_client, "g@x.com")
+    h = {"Authorization": f"Guest {token}", "X-Guest-Email": "g@x.com"}
+    e1 = await integration_client.get(f"/api/v1/reviews/eligibility?order_id={order.id}", headers=h)
+    assert e1.json() == {"brand_slug": "steam", "delivered": True, "already_reviewed": False}
+    await integration_client.post(
+        "/api/v1/reviews",
+        headers={**h, "Idempotency-Key": _KEY},
+        json={"order_id": order.id, "brand_slug": "steam", "rating": 5},
+    )
+    e2 = await integration_client.get(f"/api/v1/reviews/eligibility?order_id={order.id}", headers=h)
+    assert e2.json()["already_reviewed"] is True

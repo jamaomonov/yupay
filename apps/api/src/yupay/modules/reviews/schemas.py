@@ -81,12 +81,19 @@ class AdminReviewListOut(BaseModel):
     total: int
 
 
+class ReviewEligibilityOut(BaseModel):
+    brand_slug: str | None
+    delivered: bool
+    already_reviewed: bool
+
+
 __all__ = [
     "AdminReviewListOut",
     "AdminReviewOut",
     "OwnReviewListOut",
     "OwnReviewOut",
     "ReviewCreateIn",
+    "ReviewEligibilityOut",
     "ReviewListOut",
     "ReviewOut",
     "ReviewReportIn",

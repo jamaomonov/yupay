@@ -226,6 +226,46 @@ async def list_own(db: AsyncSession, *, user_id: str) -> list[Review]:
     return list((await db.execute(select(Review).where(Review.user_id == user_id))).scalars().all())
 
 
+async def _first_brand_of_order(db: AsyncSession, order_id: str) -> tuple[str, str] | None:
+    """(brand_id, brand_slug) of the order's first item, or None."""
+    row = (
+        await db.execute(
+            select(Brand.id, Brand.slug)
+            .select_from(OrderItem)
+            .join(Sku, Sku.id == OrderItem.sku_id)
+            .join(Product, Product.id == Sku.product_id)
+            .join(Brand, Brand.id == Product.brand_id)
+            .where(OrderItem.order_id == order_id)
+            .limit(1)
+        )
+    ).first()
+    return (row.id, row.slug) if row else None
+
+
+async def review_eligibility(
+    db: AsyncSession, *, order_id: str, user_id: str | None, guest_email: str | None
+) -> tuple[str | None, bool, bool]:
+    """(brand_slug, delivered, already_reviewed) for an order the actor owns."""
+    order = (await db.execute(select(Order).where(Order.id == order_id))).scalar_one_or_none()
+    if order is None:
+        raise NotFoundError("order not found")
+    if user_id is not None:
+        if order.user_id != user_id:
+            raise ForbiddenError("not your order")
+    elif order.guest_email is None or order.guest_email.lower() != guest_email:
+        raise ForbiddenError("not your order")
+    brand = await _first_brand_of_order(db, order_id)
+    if brand is None:
+        return None, order.status == "delivered", False
+    brand_id, brand_slug = brand
+    reviewed = (
+        await db.execute(
+            select(Review.id).where(Review.order_id == order_id, Review.brand_id == brand_id)
+        )
+    ).first() is not None
+    return brand_slug, order.status == "delivered", reviewed
+
+
 async def _set_status(db: AsyncSession, review: Review, new_status: str) -> None:
     """Transition a review's status, adjusting stats on published-boundary crossings."""
     if new_status not in REVIEW_STATUSES:
@@ -401,4 +441,5 @@ __all__ = [
     "recompute_all_stats",
     "report_review",
     "resolve_brand_id",
+    "review_eligibility",
 ]
