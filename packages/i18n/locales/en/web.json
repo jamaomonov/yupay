@@ -162,6 +162,7 @@
     "faqTitle": "Frequently asked questions",
     "instructionsTitle": "How to top up",
     "packsTitle": "Choose a pack",
+    "amountTitle": "Top-up amount",
     "payTitle": "Payment & delivery",
     "ctaNote": "Checkout happens in the Telegram bot — no signup, pay with Click, Payme or Uzum. Auto-credit.",
     "securityNote": "Credited by your public ID — no account password required.",

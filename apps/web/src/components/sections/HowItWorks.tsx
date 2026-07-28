@@ -1,15 +1,15 @@
 import { getTranslations } from "next-intl/server";
 
-const STEPS: { n: string; titleKey: string; subKey: string; time: string }[] = [
-  { n: "01", titleKey: "step1Title", subKey: "step1Sub", time: "+0:05" },
-  { n: "02", titleKey: "step2Title", subKey: "step2Sub", time: "+0:30" },
-  { n: "03", titleKey: "step3Title", subKey: "step3Sub", time: "+1:12" },
+const STEPS: { n: string; titleKey: string; subKey: string }[] = [
+  { n: "01", titleKey: "step1Title", subKey: "step1Sub" },
+  { n: "02", titleKey: "step2Title", subKey: "step2Sub" },
+  { n: "03", titleKey: "step3Title", subKey: "step3Sub" },
 ];
 
 /**
- * ‟From tap to game in 1:47" — sticky title on the left, three numbered
- * step rows on the right. Each row carries a mono time tag (+0:05, etc.)
- * that adds up to the headline. Borders use the design-ref hairline rule.
+ * ‟From tap to game — automatic" — sticky title on the left, three numbered
+ * step rows on the right. Borders use the design-ref hairline rule. (No
+ * per-step time tags: those were fabricated precise timings.)
  */
 export async function HowItWorks() {
   const t = await getTranslations("web.how");
@@ -21,7 +21,7 @@ export async function HowItWorks() {
             <div className="text-primary font-mono text-xs font-semibold uppercase tracking-[0.16em]">
               [ 02 / {t("eyebrow")} ]
             </div>
-            <h2 className="font-display mt-3 max-w-[340px] text-[clamp(2.2rem,4vw,3.4rem)] font-extrabold leading-[0.95] tracking-[-0.04em]">
+            <h2 className="font-display mt-3 max-w-[480px] text-[clamp(2.2rem,4vw,3.4rem)] font-extrabold leading-[0.95] tracking-[-0.04em] [overflow-wrap:anywhere]">
               <span className="block">{t("titleLine1")}</span>
               <span className="block">{t("titleLine2")}</span>
               <span className="text-primary block">{t("titleLine3")}</span>
@@ -43,13 +43,8 @@ export async function HowItWorks() {
                   {step.n}
                 </div>
                 <div>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="font-display text-xl font-bold tracking-[-0.025em] sm:text-[30px]">
-                      {t(step.titleKey)}
-                    </div>
-                    <div className="border-primary/20 bg-primary/10 text-primary shrink-0 rounded-md border px-2.5 py-1.5 font-mono text-[12px] font-semibold sm:text-[13px]">
-                      {step.time}
-                    </div>
+                  <div className="font-display text-xl font-bold tracking-[-0.025em] sm:text-[30px]">
+                    {t(step.titleKey)}
                   </div>
                   <p className="text-tx-mute mt-3 max-w-[480px] text-[15px] leading-relaxed sm:text-base">
                     {t(step.subKey)}

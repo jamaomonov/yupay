@@ -569,7 +569,9 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
       <div className="grid grid-cols-1 gap-8 pb-24 lg:grid-cols-[1.5fr_1fr] lg:pb-0">
         {/* selection + fields */}
         <div>
-          <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t("packsTitle")}</h2>
+          <h2 className="font-display text-xl font-bold tracking-[-0.02em]">
+            {t(primaryIsVariable ? "amountTitle" : "packsTitle")}
+          </h2>
           {products.map((product) => {
             // A variable-amount product (Steam wallet top-up) has exactly one
             // SKU with nothing to pick — the customer types the amount, so
