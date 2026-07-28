@@ -68,3 +68,15 @@ discriminated-union JSON envelope; see `packages/api-client/src/realtime/message
 
 Each webhook is documented in detail in `apps/api/src/yupay/modules/payments/gateways/<provider>.py`
 (docstring on the gateway class).
+
+## Reviews
+
+Public: `GET /reviews/brands/{slug}` (published reviews + aggregate, keyset
+`cursor`), `POST /reviews` (auth; body `{order_id, brand_slug, rating, body?}`;
+**requires `Idempotency-Key`**; a repeat for the same `(user, order, brand)`
+returns `409 already_reviewed` — the client treats that as "already submitted"),
+`GET /reviews/mine`, `POST /reviews/{id}/report` (auth, Idempotency-Key).
+Admin: `GET /admin/reviews?status=&reported=` + `POST /admin/reviews/{id}/{hide,unhide,remove}`
+(each requires `Idempotency-Key`; the actions are naturally idempotent). Catalog
+brand DTOs (`GET /catalog/brands`, `/catalog/brands/{slug}`) carry an optional
+`rating: {avg, count}`. See `docs/decisions/0039-reviews-and-ratings.md`.

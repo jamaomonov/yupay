@@ -35,6 +35,7 @@ import { OrdersListPage } from "@/features/orders/OrdersListPage";
 import { PaymentsPage } from "@/features/payments/PaymentsPage";
 import { TriagePage } from "@/features/payments-triage/TriagePage";
 import { PromoPage } from "@/features/promo/PromoPage";
+import { ReviewsPage } from "@/features/reviews/ReviewsPage";
 import { SourcingPage } from "@/features/sourcing/SourcingPage";
 import { UsersListPage } from "@/features/users/UsersListPage";
 import { WalletPage } from "@/features/wallet/WalletPage";
@@ -80,6 +81,7 @@ export const router = createBrowserRouter([
           { path: "/audit", element: <AuditPage /> },
           { path: "/fx", element: <FxPage /> },
           { path: "/promo", element: <PromoPage /> },
+          { path: "/reviews", element: <ReviewsPage /> },
           { path: "/broadcasts", element: <BroadcastsListPage /> },
           { path: "/broadcasts/new", element: <BroadcastComposerPage /> },
           { path: "/broadcasts/:id/edit", element: <BroadcastComposerPage /> },

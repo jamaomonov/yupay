@@ -36,6 +36,11 @@ export interface FormField {
   check?: FieldCheck | null;
 }
 
+export interface BrandRating {
+  avg: number;
+  count: number;
+}
+
 export interface BrandSummary {
   id: string;
   slug: string;
@@ -46,6 +51,9 @@ export interface BrandSummary {
   hero_image_url: string | null;
   accent_color: string | null;
   maintenance: boolean;
+  // Optional: an older deployed API (or a build prerendering against one) may
+  // omit this, so consumers must tolerate `undefined` and treat it as "no reviews".
+  rating?: BrandRating | null;
 }
 
 export interface CategoryOut {

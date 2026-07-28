@@ -25,6 +25,7 @@ import {
   Route as RouteIcon,
   Search,
   ShieldCheck,
+  Star,
   Tag,
   Ticket,
   Truck,
@@ -95,6 +96,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: "/users", label: "Пользователи", icon: UsersIcon },
       { to: "/wallet", label: "Кошелёк", icon: Wallet },
+      { to: "/reviews", label: "Отзывы", icon: Star },
     ],
   },
   {

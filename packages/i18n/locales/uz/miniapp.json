@@ -307,5 +307,20 @@
   "success.addToHome": "Bosh ekranga",
   "success.share": "Ulashish",
   "success.shareStoryText": "{game} bir necha daqiqada toʻldirildi — YuPay",
-  "success.shareStoryTextGeneric": "Oʻyin bir necha daqiqada toʻldirildi — YuPay"
+  "success.shareStoryTextGeneric": "Oʻyin bir necha daqiqada toʻldirildi — YuPay",
+  "reviews.title": "Sharhlar",
+  "reviews.count": {
+    "one": "{count} ta sharh",
+    "few": "{count} ta sharh",
+    "many": "{count} ta sharh",
+    "other": "{count} ta sharh"
+  },
+  "reviews.empty": "Hozircha sharhlar yo‘q",
+  "reviews.anonymous": "Xaridor",
+  "reviews.commentPlaceholder": "Izoh (ixtiyoriy)",
+  "reviews.submit": "Yuborish",
+  "reviews.thanks": "Sharhingiz uchun rahmat!",
+  "reviews.already": "Siz allaqachon baholagansiz",
+  "reviews.error": "Yuborib bo‘lmadi",
+  "reviews.rateCta": "Baholash"
 }

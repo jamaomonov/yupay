@@ -307,5 +307,20 @@
   "success.addToHome": "На главный экран",
   "success.share": "Поделиться",
   "success.shareStoryText": "Пополнил {game} за пару минут — YuPay",
-  "success.shareStoryTextGeneric": "Пополнил игру за пару минут — YuPay"
+  "success.shareStoryTextGeneric": "Пополнил игру за пару минут — YuPay",
+  "reviews.title": "Отзывы",
+  "reviews.count": {
+    "one": "{count} отзыв",
+    "few": "{count} отзыва",
+    "many": "{count} отзывов",
+    "other": "{count} отзыва"
+  },
+  "reviews.empty": "Пока нет отзывов",
+  "reviews.anonymous": "Покупатель",
+  "reviews.commentPlaceholder": "Комментарий (необязательно)",
+  "reviews.submit": "Отправить",
+  "reviews.thanks": "Спасибо за отзыв!",
+  "reviews.already": "Вы уже оценили эту покупку",
+  "reviews.error": "Не удалось отправить",
+  "reviews.rateCta": "Оценить"
 }

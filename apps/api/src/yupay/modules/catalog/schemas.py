@@ -134,6 +134,13 @@ class CategoryOut(BaseModel):
     description: str | None
 
 
+class BrandRatingOut(BaseModel):
+    """Aggregate customer rating for a brand (omitted when there are no reviews)."""
+
+    avg: float
+    count: int
+
+
 class BrandOut(BaseModel):
     """A brand summary embedded inside product responses or shown on the brand list."""
 
@@ -148,6 +155,7 @@ class BrandOut(BaseModel):
     hero_image_url: str | None
     accent_color: str | None
     maintenance: bool = False
+    rating: BrandRatingOut | None = None
 
 
 class SkuOut(BaseModel):
@@ -232,6 +240,7 @@ class BrandDetailOut(BaseModel):
     products: list[ProductSummaryOut]
     faqs: list[FaqOut] = Field(default_factory=list)
     highlights: list[str] = Field(default_factory=list)
+    rating: BrandRatingOut | None = None
 
 
 class CategoryListOut(BaseModel):

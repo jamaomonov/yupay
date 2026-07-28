@@ -1,5 +1,4 @@
 import { useQueryClient } from "@tanstack/react-query";
-import type { Locale } from "@yupay/i18n";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -9,12 +8,16 @@ import {
   Clock3,
   Receipt,
   RotateCcw,
+  Star,
   Undo2,
   Wallet as WalletIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 
+import type { Locale } from "@yupay/i18n";
+
+import { ReviewsSheet } from "@/components/ReviewsSheet";
 import { SafeImage } from "@/components/ui/safe-image";
 import { useMe } from "@/lib/auth";
 import { useT, useLocale, type MessageKey } from "@/lib/i18n";
@@ -178,6 +181,7 @@ function OrdersTab() {
   const orders = ordersQuery.data ?? [];
   const allRows: HistoryRow[] = orders.map(orderToHistoryRow);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [reviewFor, setReviewFor] = useState<{ slug: string; orderId: string } | null>(null);
   const rows = statusFilter === "all" ? allRows : allRows.filter((r) => r.status === statusFilter);
 
   const grouped = rows.reduce<Record<string, HistoryRow[]>>((acc, tx) => {
@@ -188,6 +192,15 @@ function OrdersTab() {
 
   return (
     <div className="space-y-5" role="tabpanel">
+      {reviewFor && (
+        <ReviewsSheet
+          brandSlug={reviewFor.slug}
+          formOrderId={reviewFor.orderId}
+          onClose={() => {
+            setReviewFor(null);
+          }}
+        />
+      )}
       {ordersQuery.isLoading && (
         <div className="py-10 text-center text-sm text-white/40">{t("common.loading")}</div>
       )}
@@ -309,6 +322,21 @@ function OrdersTab() {
                       >
                         <RotateCcw size={10} aria-hidden="true" />
                         {t("history.repeat")}
+                      </button>
+                    )}
+                    {tx.gameSlug && tx.status === "success" && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (tx.gameSlug) setReviewFor({ slug: tx.gameSlug, orderId: tx.id });
+                        }}
+                        className="text-primary ml-3 mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold"
+                        data-testid={`history-rate-${tx.id}`}
+                      >
+                        <Star size={10} aria-hidden="true" />
+                        {t("reviews.rateCta")}
                       </button>
                     )}
                   </div>

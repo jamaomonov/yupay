@@ -244,6 +244,8 @@ export interface BrandSummary {
   maintenance: boolean;
   category_slug: string;
   products: ProductSummaryApi[];
+  // Optional: an older deployed API may omit it — tolerate undefined.
+  rating?: { avg: number; count: number } | null;
 }
 
 /** Brand metadata + the list of products (no SKUs). Cheap, cached separately

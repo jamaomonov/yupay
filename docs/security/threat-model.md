@@ -54,6 +54,19 @@ flowchart LR
 
 See `pii-handling.md`.
 
+## User-generated content — reviews
+
+- **XSS via review text:** review `body` is user-supplied. It is stored raw and
+  **escaped on render** by both frontends (React text nodes / Next.js — never
+  `dangerouslySetInnerHTML`; the admin queue renders it as plain text too). The
+  API never interpolates it into HTML.
+- **Spam / fake reviews:** mitigated by the verified-purchase gate (only a buyer
+  with a `delivered` order for the brand can post), one-per-`(user, order, brand)`,
+  the global rate limiter on `POST /reviews`, and a report → auto-hide (≥3
+  distinct reporters) + admin moderation path.
+- **Reviewer de-anonymisation:** the public API exposes the author's
+  `display_name` or `null`, **never** the email; the service never logs `body`.
+
 ## Out of scope (we do not handle)
 
 - Card data (PAN, CVV) — all card collection redirected to hosted provider fields.

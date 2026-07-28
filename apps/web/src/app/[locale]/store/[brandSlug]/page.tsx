@@ -10,9 +10,13 @@ import { HighlightChips } from "./HighlightChips";
 import type { Metadata } from "next";
 
 import { JsonLd } from "@/components/JsonLd";
+import { RatingSummary } from "@/components/store/RatingSummary";
+import { Stars } from "@/components/store/Stars";
+import { WriteReviewPanel } from "@/components/store/WriteReviewPanel";
 import { PurchasePanel } from "@/components/store/PurchasePanel";
 import { routing } from "@/i18n/routing";
 import { getBrandDetail, getBrandSlugs, getProductDetail, type ProductDetail } from "@/lib/catalog";
+import { getBrandReviews, type ReviewPage } from "@/lib/reviews";
 import { alternates, formatUzs, GEO_META, localeUrl, ogLocale } from "@/lib/seo";
 
 const CURRENCY = "UZS";
@@ -65,6 +69,7 @@ export default async function BrandPage({
   if (!brand) notFound();
 
   const t = await getTranslations("web.store");
+  const t2 = await getTranslations("web.brandReviews");
   const prefix = `/${locale}`;
 
   const products = (
@@ -74,6 +79,14 @@ export default async function BrandPage({
   const about = brand.description ?? brand.short_description ?? "";
   const heroImg = brand.hero_image_url ?? brand.logo_url;
   const highlights = brand.highlights ?? [];
+
+  // Reviews are additive: never let a reviews outage break the brand page (or
+  // the SSG build prerendering against an API that predates the endpoint).
+  const reviews: ReviewPage = await getBrandReviews(brandSlug, locale).catch(() => ({
+    items: [],
+    next_cursor: null,
+    stats: { avg: 0, count: 0, dist: {} },
+  }));
 
   // Starting price chip + JSON-LD offers from real SKU prices.
   const skus = products.flatMap((p) => p.skus);
@@ -102,6 +115,15 @@ export default async function BrandPage({
     brand: { "@type": "Brand", name: brand.name },
     category: brand.category_slug,
     ...(offers ? { offers } : {}),
+    ...(reviews.stats.count > 0
+      ? {
+          aggregateRating: {
+            "@type": "AggregateRating",
+            ratingValue: reviews.stats.avg,
+            reviewCount: reviews.stats.count,
+          },
+        }
+      : {}),
   };
   const breadcrumbLd = {
     "@context": "https://schema.org",
@@ -272,6 +294,38 @@ export default async function BrandPage({
             </div>
           </section>
         )}
+
+        <section id="reviews" className="mt-16 scroll-mt-[88px]">
+          <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t2("title")}</h2>
+          <div className="mt-5 max-w-[760px]">
+            <RatingSummary stats={reviews.stats} />
+            <WriteReviewPanel brandSlug={brand.slug} />
+            {reviews.items.length > 0 && (
+              <ul className="mt-8 flex flex-col gap-6">
+                {reviews.items.map((r) => (
+                  <li key={r.id} className="border-border/70 border-b pb-6 last:border-b-0">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[14px] font-semibold">
+                        {r.author_name ?? t2("anonymous")}
+                      </span>
+                      <Stars value={r.rating} size={13} />
+                    </div>
+                    {r.body && (
+                      <p className="text-tx-mute mt-2 whitespace-pre-line text-[14px] leading-relaxed">
+                        {r.body}
+                      </p>
+                    )}
+                    <time className="text-tx-dim mt-2 block font-mono text-[11px]">
+                      {new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(
+                        new Date(r.created_at),
+                      )}
+                    </time>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
       </div>
     </main>
   );
