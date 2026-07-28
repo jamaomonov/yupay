@@ -246,13 +246,18 @@ async def test_paid_fulfilling_and_delivered_publish(
     assert any(m["status"] == "fulfilling" and m["orderId"] == order_id for m in status_changed)
 
 
-async def test_task_failure_publishes_order_failed(
+async def test_task_failure_does_not_publish_order_failed(
     integration_client: AsyncClient,
     db_session: AsyncSession,
     redis_client: Redis,
 ) -> None:
-    """A SKU force-routed to an unintegrated supplier stub fails its task
-    synchronously — ``order.failed`` must land with a generic, non-PII reason."""
+    """DOMAIN RULE: a fulfilment failure is not an order failure.
+
+    A SKU force-routed to an unintegrated supplier stub fails its task
+    synchronously (``FulfillerNotIntegratedError``), but the order must stay
+    ``fulfilling`` — no ``order.failed`` is ever published. Only the two
+    expected ``status_changed`` events (``paid``, ``fulfilling``) land; the
+    admin resolves the stuck task out-of-band (retry or manual completion)."""
     sku_id = _seed_sku(db_session, slug="rt-fail")
     await db_session.commit()
     db_session.add(SkuSourcingRule(sku_id=sku_id, mode="force_supplier", supplier_slug="steam"))
@@ -265,15 +270,25 @@ async def test_task_failure_publishes_order_failed(
     try:
         order_id = await _order(integration_client, token=token, sku_id=sku_id, tag="fail")
         await _pay(integration_client, token=token, order_id=order_id, tag="fail")
-        messages = await _collect(pubsub, count=3, timeout=5)
+        messages = await _collect(pubsub, count=2, timeout=5)
+        # Give any (incorrect) extra publish a chance to land before asserting
+        # its absence — collect() above already stops as soon as it has 2.
+        extra = await pubsub.get_message(timeout=1)
     finally:
         await pubsub.unsubscribe(f"realtime:user:{uid}")
         await pubsub.aclose()
 
-    failed = [m for m in messages if m["type"] == "order.failed"]
-    assert len(failed) == 1, messages
-    assert failed[0]["orderId"] == order_id
-    assert failed[0]["reason"] == "fulfillment_failed"
+    assert extra is None, extra
+    assert not any(m["type"] == "order.failed" for m in messages), messages
+
+    status_changed = [m for m in messages if m["type"] == "order.status_changed"]
+    assert any(m["status"] == "paid" and m["orderId"] == order_id for m in status_changed)
+    assert any(m["status"] == "fulfilling" and m["orderId"] == order_id for m in status_changed)
+
+    refreshed = (
+        await db_session.execute(select(Order).where(Order.id == order_id))
+    ).scalar_one()
+    assert refreshed.status == "fulfilling"
 
 
 async def test_guest_order_publishes_nothing(
