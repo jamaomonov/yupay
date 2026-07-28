@@ -148,16 +148,27 @@ async def test_duplicate_same_order_brand_conflicts(db_session: AsyncSession) ->
     user = await _make_user(db_session)
     brand, sku = await _seed_brand(db_session, "pubg")
     order = await _make_order(db_session, user_id=user.id, sku_id=sku.id)
-    args = {
-        "user_id": user.id,
-        "guest_email": None,
-        "order_id": order.id,
-        "brand_slug": brand.slug,
-        "locale": "ru",
-    }
-    await svc.create_review(db_session, rating=4, body=None, **args)
+    await svc.create_review(
+        db_session,
+        user_id=user.id,
+        guest_email=None,
+        order_id=order.id,
+        brand_slug=brand.slug,
+        rating=4,
+        body=None,
+        locale="ru",
+    )
     with pytest.raises(ConflictError):
-        await svc.create_review(db_session, rating=3, body=None, **args)
+        await svc.create_review(
+            db_session,
+            user_id=user.id,
+            guest_email=None,
+            order_id=order.id,
+            brand_slug=brand.slug,
+            rating=3,
+            body=None,
+            locale="ru",
+        )
 
 
 async def test_undelivered_order_forbidden(db_session: AsyncSession) -> None:
