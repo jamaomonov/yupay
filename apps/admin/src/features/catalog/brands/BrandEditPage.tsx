@@ -22,6 +22,10 @@ const translationSchema = z.object({
   short_description: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
   instructions: z.string().optional().nullable(),
+  // Comma-separated chip list in the UI; converted to/from `string[]` when
+  // loading from and submitting to the API (see the load-mapping useEffect
+  // and the `save` mutationFn below).
+  highlights: z.string().optional().nullable(),
 });
 
 const brandSchema = z.object({
@@ -48,9 +52,30 @@ const EMPTY: FormValues = {
   active: true,
   maintenance: false,
   translations: [
-    { locale: "ru", name: "", short_description: "", description: "", instructions: "" },
-    { locale: "en", name: "", short_description: "", description: "", instructions: "" },
-    { locale: "uz", name: "", short_description: "", description: "", instructions: "" },
+    {
+      locale: "ru",
+      name: "",
+      short_description: "",
+      description: "",
+      instructions: "",
+      highlights: "",
+    },
+    {
+      locale: "en",
+      name: "",
+      short_description: "",
+      description: "",
+      instructions: "",
+      highlights: "",
+    },
+    {
+      locale: "uz",
+      name: "",
+      short_description: "",
+      description: "",
+      instructions: "",
+      highlights: "",
+    },
   ],
 };
 
@@ -118,6 +143,7 @@ export function BrandEditPage() {
           short_description: t?.short_description ?? "",
           description: t?.description ?? "",
           instructions: t?.instructions ?? "",
+          highlights: (t?.highlights ?? []).join(", "),
         };
       }),
     });
@@ -125,7 +151,18 @@ export function BrandEditPage() {
 
   const save = useMutation({
     mutationFn: async (values: FormValues) => {
-      const payload = nullEmptyStrings(values);
+      const payload = {
+        ...nullEmptyStrings(values),
+        // The form keeps highlights as one comma-separated string per locale;
+        // the API wants `string[]`.
+        translations: values.translations.map((t) => ({
+          ...t,
+          highlights: (t.highlights ?? "")
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+        })),
+      };
       if (isNew) return apiPost<Brand>("/api/v1/admin/catalog/brands", payload);
       return apiPatch<Brand>(`/api/v1/admin/catalog/brands/${params.id ?? ""}`, payload);
     },
@@ -267,6 +304,15 @@ export function BrandEditPage() {
                   {...form.register(`translations.${idx}.instructions`)}
                   className="min-h-28 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2 text-sm"
                 />
+              </Field>
+              <Field label="Хайлайты (чипы на карточке бренда)">
+                <Input
+                  {...form.register(`translations.${idx}.highlights`)}
+                  placeholder="Оплата в сумах, По ID игрока, Автоматически, Без пароля"
+                />
+                <span className="mt-1 block text-xs text-[var(--text-secondary)]">
+                  короткие чипы, через запятую
+                </span>
               </Field>
             </fieldset>
           ))}
