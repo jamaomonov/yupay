@@ -67,7 +67,7 @@ class ReviewReportIn(BaseModel):
 class AdminReviewOut(BaseModel):
     id: str
     brand_id: str
-    user_id: str
+    user_id: str | None
     order_id: str
     rating: int
     body: str | None

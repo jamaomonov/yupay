@@ -437,3 +437,22 @@ async def test_guest_review_row_persists_and_is_unique_per_order_brand(
     db_session.add(r2)
     with pytest.raises(IntegrityError):  # IntegrityError on uq_reviews_order_brand
         await db_session.flush()
+
+
+async def test_public_list_includes_guest_review_as_anonymous(db_session: AsyncSession) -> None:
+    brand, sku = await _seed_brand(db_session, "steam")
+    order = await _make_guest_order(db_session, guest_email="g@x.com", sku_id=sku.id)
+    await svc.create_review(
+        db_session,
+        user_id=None,
+        guest_email="g@x.com",
+        order_id=order.id,
+        brand_slug="steam",
+        rating=5,
+        body="great",
+        locale="ru",
+    )
+    items, _ = await svc.list_published(db_session, brand_id=brand.id, limit=20, cursor=None)
+    assert len(items) == 1
+    assert items[0].author_name is None
+    assert items[0].body == "great"

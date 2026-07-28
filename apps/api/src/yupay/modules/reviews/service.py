@@ -172,7 +172,7 @@ async def list_published(
     limit = max(1, min(limit, _MAX_LIST_LIMIT))
     stmt = (
         select(Review, User.display_name)
-        .join(User, User.id == Review.user_id)
+        .outerjoin(User, User.id == Review.user_id)
         .where(Review.brand_id == brand_id, Review.status == "published")
         .order_by(Review.created_at.desc(), Review.id.desc())
         .limit(limit + 1)
