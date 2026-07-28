@@ -77,6 +77,7 @@ async def db_engine():
                 text(
                     "TRUNCATE TABLE "
                     "idempotent_responses, "
+                    "review_reports, reviews, brand_rating_stats, "
                     "broadcast_recipients, broadcasts, "
                     "promo_redemptions, promo_codes, "
                     "wallet_postings, wallet_transactions, wallet_accounts, "
