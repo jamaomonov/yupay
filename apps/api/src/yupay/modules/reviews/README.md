@@ -5,10 +5,16 @@ text); aggregates feed the storefront and Google rich snippets.
 
 ## Rules
 
-- **Who:** a logged-in user with a `delivered` order that contains an item of
-  the brand (`sku → product → brand`). Guests cannot review.
-- **Cardinality:** one review per `(user_id, order_id, brand_id)` (UNIQUE). A
-  repeat submit returns `409 already_reviewed`.
+- **Who:** a logged-in user, **or a guest**, with a `delivered` order that
+  contains an item of the brand (`sku → product → brand`). The actor is
+  resolved by `auth.deps.resolve_request_actor`: `Authorization: Bearer
+<access-jwt>` → user, or `Authorization: Guest <guest-jwt>` +
+  `X-Guest-Email` → guest — the same capability model (order UUID + checkout
+  email) as guest order-view, not a new emailed token. Web only; the Mini App
+  has no guest checkout.
+- **Cardinality:** one review per `(order_id, brand_id)` (UNIQUE) — an order
+  has exactly one buyer identity (user XOR guest), so this covers both actor
+  kinds. A repeat submit returns `409 already_reviewed`.
 - **Immutable:** no user edit or delete. Admins `hide`/`unhide`/`remove`; users
   `report`.
 - **Post-moderation:** a review is `published` on creation. Only `published`
@@ -19,6 +25,9 @@ text); aggregates feed the storefront and Google rich snippets.
 
 - `reviews` — the review (rating 1–5 CHECK, `status` published/hidden/removed,
   `body` ≤ 2000, `locale`). Anchored to `order_id` as proof of purchase.
+  `user_id` is nullable; a guest-authored row instead carries `guest_email`
+  (CITEXT). `CHECK ((user_id IS NULL) <> (guest_email IS NULL))` enforces
+  exactly one identity per row.
 - `review_reports` — abuse reports, UNIQUE `(review_id, reporter_user_id)`.
 - `brand_rating_stats` — denormalized per-brand aggregate (`count`, `sum_rating`,
   `avg`, `count_1..5` histogram), bumped transactionally under `FOR UPDATE` on
@@ -35,12 +44,20 @@ text); aggregates feed the storefront and Google rich snippets.
 ## Endpoints
 
 Public: `GET /reviews/brands/{slug}` (list + aggregate), `POST /reviews`
-(buyer, Idempotency-Key), `GET /reviews/mine`, `POST /reviews/{id}/report`.
+(buyer — Bearer **or** `Guest <jwt>` + `X-Guest-Email` — Idempotency-Key),
+`GET /reviews/eligibility?order_id=` (same actor resolution; returns
+`{brand_slug, delivered, already_reviewed}` so the caller can gate a CTA/form
+without a failed POST), `GET /reviews/mine` (user-only), `POST
+/reviews/{id}/report` (user-only — a guest cannot report).
 Admin: `GET /admin/reviews` (queue), `POST /admin/reviews/{id}/{hide,unhide,remove}`.
 
 ## Notes
 
 - Author identity exposed as `display_name` or `null` — **never** the email.
+  A guest-authored review renders with the same `null`/anonymous label as a
+  user review with no display name; `guest_email` itself is **never**
+  serialized in any response DTO and **never** logged (`review.created` logs
+  only `brand_id` + `rating`).
 - UGC (`body`) is escaped by the frontends on render; the service never logs it.
 - Moderation actions are naturally idempotent (a no-op status transition does
   not double-adjust stats), so they require the header but need no replay store.

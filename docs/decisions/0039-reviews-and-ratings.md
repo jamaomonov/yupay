@@ -67,3 +67,74 @@ Integration tests cover the eligibility matrix, stats transactionality, the
 report threshold, admin transitions, and a query-count assertion proving the
 grid enrichment is not N+1. Success = rich snippets appear for reviewed brands
 and the aggregate stays consistent with the nightly reconcile finding no drift.
+
+## Amendment: guest reviews (2026-07-29)
+
+### Context
+
+Reviews launched user-only. Guest checkout (web) is a large share of first-time
+orders, and those buyers never create an account — the original "logged-in
+user" gate silently excluded them from the social-proof loop that the ADR set
+out to build.
+
+### Decision
+
+Extend `POST /reviews` and the new `GET /reviews/eligibility` to accept a
+**guest actor**, resolved by `auth.deps.resolve_request_actor`: `Authorization:
+Bearer <access-jwt>` → user, or `Authorization: Guest <guest-jwt>` +
+`X-Guest-Email` → guest (the guest JWT's `email_hash` claim is cross-checked
+against the header, mirroring the order-view capability check). This is
+**deliberately the same capability model as guest order-view** — order UUID
+(effectively unguessable) + the email the buyer used at checkout — not a new
+emailed magic-link/review token. No new secret, no new email to send, no new
+abuse surface beyond what order-view already accepts.
+
+Schema (`reviews` table): `user_id` becomes nullable; a new `guest_email
+CITEXT` column holds the buyer's email for guest-authored reviews; a
+`CHECK ((user_id IS NULL) <> (guest_email IS NULL))` enforces exactly one
+identity per row. The uniqueness constraint moves from `(user_id, order_id,
+brand_id)` to **`(order_id, brand_id)`** — one review per order per brand
+regardless of whether the buyer was logged in, since an order has exactly one
+buyer identity (user XOR guest) and a repeat submit under either identity is
+the same abuse case the original constraint guarded against.
+
+`reviews.service.create_review` takes `user_id: str | None` and `guest_email:
+str | None` (exactly one set) instead of a bare `user_id`; ownership,
+`delivered`, and brand-membership checks branch on which one is present but
+are otherwise unchanged. `GET /reviews/eligibility?order_id=` runs the same
+actor resolution and returns `{brand_slug, delivered, already_reviewed}` so
+the web can gate the CTA/form without a failed POST.
+
+Guest-authored reviews render with the same anonymous label as a user review
+that opted out of a display name (`author_name: null` in `ReviewOut` —
+`list_published` LEFT JOINs `users` on `Review.user_id`, which is simply
+`NULL` for a guest row, so no branching is needed there). Reporting
+(`POST /reviews/{id}/report`) stays **user-only**; a guest cannot report a
+review, matching the existing "no guest write access beyond their own order"
+posture elsewhere in the API.
+
+### Privacy
+
+`guest_email` is a capability credential, not a public identity: it is never
+serialized in any response DTO (`ReviewOut`, `AdminReviewOut`, etc. expose
+`author_name` / `user_id`, never `guest_email`) and never appears in a log
+line (`review.created` logs `brand_id` + `rating` only, same as the
+user-authored path).
+
+### Scope
+
+Web only. The Telegram Mini App has no guest checkout — every Mini App order
+is tied to the Telegram user — so there is no guest-review surface to add
+there.
+
+### Consequences
+
+- Positive: closes the largest gap in review coverage (guest checkout orders)
+  without inventing a new auth primitive or a new "please verify your email"
+  flow.
+- Negative: the uniqueness relaxation from `(user, order, brand)` to `(order,
+brand)` means a user who checks out as a guest and later claims that order
+  (order-linking is out of scope for this change) cannot review the same
+  order twice under two identities — accepted, since a single order has one
+  buyer identity by construction and this only forecloses a scenario that was
+  never possible anyway.

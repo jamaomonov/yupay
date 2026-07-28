@@ -12,7 +12,8 @@ import { getReviewEligibility, submitReview } from "@/lib/reviews";
 /**
  * Inline review form for a GUEST on their order-status page. A guest gets no
  * global delivered modal (the realtime channel is user-only), so the review
- * ask lives here, using the email the page already holds — no PII in any URL.
+ * ask lives here. It receives the email as a prop rather than reading the
+ * URL itself — the page-level component owns that concern.
  * Eligibility (delivered + not already reviewed) is checked server-side.
  */
 export function GuestReviewPanel({ orderId, email }: { orderId: string; email: string }) {

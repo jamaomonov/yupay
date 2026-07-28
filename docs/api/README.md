@@ -85,11 +85,27 @@ Each webhook is documented in detail in `apps/api/src/yupay/modules/payments/gat
 ## Reviews
 
 Public: `GET /reviews/brands/{slug}` (published reviews + aggregate, keyset
-`cursor`), `POST /reviews` (auth; body `{order_id, brand_slug, rating, body?}`;
-**requires `Idempotency-Key`**; a repeat for the same `(user, order, brand)`
-returns `409 already_reviewed` — the client treats that as "already submitted"),
+`cursor`), `POST /reviews` (body `{order_id, brand_slug, rating, body?}`;
+**requires `Idempotency-Key`**; a repeat for the same `(order, brand)` returns
+`409 already_reviewed` — the client treats that as "already submitted"),
 `GET /reviews/mine`, `POST /reviews/{id}/report` (auth, Idempotency-Key).
 Admin: `GET /admin/reviews?status=&reported=` + `POST /admin/reviews/{id}/{hide,unhide,remove}`
 (each requires `Idempotency-Key`; the actions are naturally idempotent). Catalog
 brand DTOs (`GET /catalog/brands`, `/catalog/brands/{slug}`) carry an optional
 `rating: {avg, count}`. See `docs/decisions/0039-reviews-and-ratings.md`.
+
+`POST /reviews` accepts **either** a logged-in user (`Authorization: Bearer
+<access-jwt>`) **or a guest** (`Authorization: Guest <guest-jwt>` +
+`X-Guest-Email: <email>`) — the same dual-actor resolution
+(`resolve_request_actor`) as guest order-view (see the Auth table above); the
+guest JWT's `email_hash` claim is cross-checked against the `X-Guest-Email`
+header server-side. `GET /reviews/mine` and `POST /reviews/{id}/report` stay
+Bearer-only — a guest cannot list their reviews across orders or report
+another review. Web only; the Mini App has no guest checkout.
+
+`GET /reviews/eligibility?order_id=<id>` runs the same actor resolution as
+`POST /reviews` (Bearer or Guest+`X-Guest-Email`) against the given order and
+returns `{brand_slug: string | null, delivered: boolean, already_reviewed:
+boolean}`, letting the client gate a "rate your purchase" CTA/form without a
+failed POST. `guest_email` is a capability credential only — it is never
+returned in any reviews response body and never logged.

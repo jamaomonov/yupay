@@ -1,0 +1,49 @@
+sequenceDiagram
+    autonumber
+    actor Guest as Guest buyer
+    participant Web as Web (order-status page)
+    participant Auth as auth.deps
+    participant API as reviews.routes
+    participant Svc as reviews.service
+    participant DB as Postgres
+
+    note over Guest,Web: Guest lands on /orders/{orderId}?email=... (no account, no Bearer token)
+    Web->>Auth: mintGuestToken(email)
+    Auth-->>Web: Guest JWT (kind="guest", email_hash claim)
+
+    Web->>API: GET /reviews/eligibility?order_id={id}<br/>Authorization: Guest {jwt}<br/>X-Guest-Email: {email}
+    API->>Auth: resolve_request_actor(request, db)
+    Auth->>Auth: verify Guest JWT + email_hash(X-Guest-Email) == claims.email_hash
+    Auth-->>API: RequestActor(user_id=None, guest_email=email)
+    API->>Svc: review_eligibility(order_id, user_id=None, guest_email=email)
+    Svc->>DB: SELECT order WHERE id=? (owner check: order.guest_email == actor email)
+    Svc->>DB: first brand of order + already-reviewed check
+    Svc-->>API: (brand_slug, delivered, already_reviewed)
+    API-->>Web: 200 ReviewEligibilityOut
+
+    alt delivered AND brand_slug AND NOT already_reviewed
+        Web->>Guest: Render inline GuestReviewPanel (rating + optional body)
+        Guest->>Web: Pick stars, submit
+        Web->>API: POST /reviews {order_id, brand_slug, rating, body?}<br/>Authorization: Guest {jwt}<br/>X-Guest-Email: {email}<br/>Idempotency-Key
+        API->>Auth: resolve_request_actor(request, db)
+        Auth-->>API: RequestActor(user_id=None, guest_email=email)
+        API->>Svc: create_review(user_id=None, guest_email=email, order_id, brand_slug, rating, body)
+        Svc->>DB: load order (guest_email matches? delivered? contains brand?)
+        alt not owner / not delivered / brand not in order
+            Svc-->>API: ForbiddenError (403)
+        else eligible
+            Svc->>DB: INSERT review (published, guest_email set, user_id NULL)<br/>[UNIQUE order_id, brand_id]
+            alt already reviewed
+                DB-->>Svc: IntegrityError
+                Svc-->>API: ConflictError 409 already_reviewed
+            else new
+                Svc->>DB: SELECT brand_rating_stats FOR UPDATE
+                Svc->>DB: bump count / sum / avg / histogram
+                Svc-->>API: Review
+                API-->>Web: 201 ReviewOut {author_name: null}
+                Web->>Guest: Show thanks state
+            end
+        end
+    else not eligible
+        note over Web: Panel renders nothing (no CTA, no failed POST)
+    end
