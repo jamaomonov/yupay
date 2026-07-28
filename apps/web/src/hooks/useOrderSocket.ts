@@ -41,8 +41,12 @@ export function useOrderSocket(): void {
   const openDeliveredModalRef = useRef(openDeliveredModal);
   openDeliveredModalRef.current = openDeliveredModal;
 
+  // Key the socket lifecycle on the user id, not the `user` object reference:
+  // a background ``["me"]`` refetch (e.g. after a profile edit) hands back a new
+  // object with the same id, which must NOT tear down and re-handshake the socket.
+  const userId = user?.id;
   useEffect(() => {
-    if (!user) return undefined;
+    if (!userId) return undefined;
 
     const handleMessage = (message: OrderUpdateMessage): void => {
       switch (message.type) {
@@ -82,7 +86,7 @@ export function useOrderSocket(): void {
       socket.close();
       setConnectedRef.current(false);
     };
-  }, [user]);
+  }, [userId]);
 }
 
 /** Mounts the order-updates socket for logged-in users. Renders no DOM of its own. */
