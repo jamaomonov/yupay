@@ -12,6 +12,9 @@ export interface Translation {
   short_description?: string | null;
   description?: string | null;
   instructions?: string | null;
+  /** Short localized value-prop chips shown on the brand hero (e.g. "0%
+   *  комиссии", "Оплата в сумах"). Brand-only — categories/products ignore it. */
+  highlights?: string[];
 }
 
 export interface CategoryTranslation {

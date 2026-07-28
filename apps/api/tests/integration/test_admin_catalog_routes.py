@@ -313,6 +313,91 @@ async def test_bulk_set_uzs_prices_recomputes_overrides(
     assert "UZS" not in overrides_b
 
 
+async def test_patch_brand_highlights_persist_and_round_trip(
+    integration_client: AsyncClient, _admin_headers: dict[str, str]
+) -> None:
+    """Admin can set ``highlights`` per-translation via PATCH and read them
+    back on GET — closing the gap where the field could only be set via
+    direct SQL. Also asserts the trim/empty-drop cleanup in
+    ``TranslationIn._clean_highlights``."""
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/categories",
+        headers=_admin_headers,
+        json={"slug": "hl-cat", "translations": [{"locale": "ru", "name": "Кат"}]},
+    )
+    assert r.status_code == 201, r.text
+    category_id = r.json()["id"]
+
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/brands",
+        headers=_admin_headers,
+        json={
+            "slug": "hl-brand",
+            "category_id": category_id,
+            "translations": [{"locale": "ru", "name": "Бренд"}],
+        },
+    )
+    assert r.status_code == 201, r.text
+    brand_id = r.json()["id"]
+    # Created without highlights -> defaults to an empty list, not null.
+    assert r.json()["translations"][0]["highlights"] == []
+
+    r = await integration_client.patch(
+        f"/api/v1/admin/catalog/brands/{brand_id}",
+        headers=_admin_headers,
+        json={
+            "translations": [
+                {
+                    "locale": "ru",
+                    "name": "Бренд",
+                    "highlights": ["Оплата в сумах", "  По ID игрока  ", "", "Без пароля"],
+                },
+                {"locale": "en", "name": "Brand", "highlights": ["No password"]},
+            ],
+        },
+    )
+    assert r.status_code == 200, r.text
+    patched = r.json()
+    by_locale = {t["locale"]: t for t in patched["translations"]}
+    # Trimmed, and the blank entry dropped.
+    assert by_locale["ru"]["highlights"] == ["Оплата в сумах", "По ID игрока", "Без пароля"]
+    assert by_locale["en"]["highlights"] == ["No password"]
+
+    # GET (admin list) reflects the persisted values.
+    r = await integration_client.get("/api/v1/admin/catalog/brands", headers=_admin_headers)
+    assert r.status_code == 200, r.text
+    brand = next(b for b in r.json() if b["id"] == brand_id)
+    by_locale = {t["locale"]: t for t in brand["translations"]}
+    assert by_locale["ru"]["highlights"] == ["Оплата в сумах", "По ID игрока", "Без пароля"]
+    assert by_locale["en"]["highlights"] == ["No password"]
+
+
+async def test_brand_highlight_over_40_chars_returns_422(
+    integration_client: AsyncClient, _admin_headers: dict[str, str]
+) -> None:
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/categories",
+        headers=_admin_headers,
+        json={"slug": "hl-len-cat", "translations": [{"locale": "ru", "name": "Кат"}]},
+    )
+    assert r.status_code == 201, r.text
+    category_id = r.json()["id"]
+
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/brands",
+        headers=_admin_headers,
+        json={
+            "slug": "hl-len-brand",
+            "category_id": category_id,
+            "translations": [
+                {"locale": "ru", "name": "Бренд", "highlights": ["x" * 41]},
+            ],
+        },
+    )
+    assert r.status_code == 422, r.text
+    assert "at most 40 characters" in r.text
+
+
 async def test_duplicate_slug_returns_409(
     integration_client: AsyncClient, _admin_headers: dict[str, str]
 ) -> None:
