@@ -181,7 +181,9 @@ async def admin_hide_review(
     return await _moderate(db, review_id, "hidden", idempotency_key)
 
 
-@admin_router.post("/{review_id}/unhide", response_model=AdminReviewOut, summary="Republish a review")
+@admin_router.post(
+    "/{review_id}/unhide", response_model=AdminReviewOut, summary="Republish a review"
+)
 async def admin_unhide_review(
     review_id: str,
     db: Annotated[AsyncSession, Depends(db_session)],

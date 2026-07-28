@@ -132,9 +132,7 @@ def _to_rating(stats: BrandRatingStats | None) -> BrandRatingOut | None:
     return BrandRatingOut(avg=float(stats.avg), count=stats.count)
 
 
-def _brand_summary(
-    brand: Brand, locale: str, rating: BrandRatingOut | None = None
-) -> BrandOut:
+def _brand_summary(brand: Brand, locale: str, rating: BrandRatingOut | None = None) -> BrandOut:
     name, short_desc, _, _ = _pick_translation(brand.translations, locale)
     return BrandOut(
         id=brand.id,

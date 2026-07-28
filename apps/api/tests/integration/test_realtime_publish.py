@@ -285,9 +285,7 @@ async def test_task_failure_does_not_publish_order_failed(
     assert any(m["status"] == "paid" and m["orderId"] == order_id for m in status_changed)
     assert any(m["status"] == "fulfilling" and m["orderId"] == order_id for m in status_changed)
 
-    refreshed = (
-        await db_session.execute(select(Order).where(Order.id == order_id))
-    ).scalar_one()
+    refreshed = (await db_session.execute(select(Order).where(Order.id == order_id))).scalar_one()
     assert refreshed.status == "fulfilling"
 
 

@@ -190,32 +190,32 @@ async def list_published(
         for r in page
     ]
     next_cursor = (
-        _encode_cursor(page[-1].Review.created_at, page[-1].Review.id) if has_more and page else None
+        _encode_cursor(page[-1].Review.created_at, page[-1].Review.id)
+        if has_more and page
+        else None
     )
     return items, next_cursor
 
 
-async def get_stats(
-    db: AsyncSession, brand_ids: Sequence[str]
-) -> dict[str, BrandRatingStats]:
+async def get_stats(db: AsyncSession, brand_ids: Sequence[str]) -> dict[str, BrandRatingStats]:
     """Batch-load rating stats keyed by brand id (missing brands simply absent)."""
     if not brand_ids:
         return {}
     rows = (
-        await db.execute(
-            select(BrandRatingStats).where(BrandRatingStats.brand_id.in_(list(brand_ids)))
+        (
+            await db.execute(
+                select(BrandRatingStats).where(BrandRatingStats.brand_id.in_(list(brand_ids)))
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return {row.brand_id: row for row in rows}
 
 
 async def list_own(db: AsyncSession, *, user_id: str) -> list[Review]:
     """Every review authored by the user (any status) — used to suppress the CTA."""
-    return list(
-        (
-            await db.execute(select(Review).where(Review.user_id == user_id))
-        ).scalars().all()
-    )
+    return list((await db.execute(select(Review).where(Review.user_id == user_id))).scalars().all())
 
 
 async def _set_status(db: AsyncSession, review: Review, new_status: str) -> None:
@@ -246,9 +246,7 @@ async def report_review(
     constraint).
     """
     review = (
-        await db.execute(
-            select(Review).where(Review.id == review_id).with_for_update()
-        )
+        await db.execute(select(Review).where(Review.id == review_id).with_for_update())
     ).scalar_one_or_none()
     if review is None:
         raise NotFoundError("review not found")
@@ -265,7 +263,9 @@ async def report_review(
 
     total = (
         await db.execute(
-            select(func.count()).select_from(ReviewReport).where(ReviewReport.review_id == review_id)
+            select(func.count())
+            .select_from(ReviewReport)
+            .where(ReviewReport.review_id == review_id)
         )
     ).scalar_one()
     if total >= _REPORT_AUTO_HIDE_THRESHOLD and review.status == "published":
@@ -303,7 +303,9 @@ async def count_reports(db: AsyncSession, review_id: str) -> int:
     """Number of abuse reports filed against a review."""
     return (
         await db.execute(
-            select(func.count()).select_from(ReviewReport).where(ReviewReport.review_id == review_id)
+            select(func.count())
+            .select_from(ReviewReport)
+            .where(ReviewReport.review_id == review_id)
         )
     ).scalar_one()
 
@@ -311,9 +313,7 @@ async def count_reports(db: AsyncSession, review_id: str) -> int:
 async def admin_set_status(db: AsyncSession, *, review_id: str, status: str) -> Review:
     """Admin moderation: hide/unhide/remove a review, adjusting stats accordingly."""
     review = (
-        await db.execute(
-            select(Review).where(Review.id == review_id).with_for_update()
-        )
+        await db.execute(select(Review).where(Review.id == review_id).with_for_update())
     ).scalar_one_or_none()
     if review is None:
         raise NotFoundError("review not found")

@@ -24,8 +24,12 @@ def _token(user_id: str) -> str:
 
 async def _make_admin(db: AsyncSession) -> User:
     admin = User(
-        id=new_id(), email=None, display_name="Admin", locale="ru",
-        display_currency="USD", roles=["admin"],
+        id=new_id(),
+        email=None,
+        display_name="Admin",
+        locale="ru",
+        display_currency="USD",
+        roles=["admin"],
     )
     db.add(admin)
     await db.flush()
@@ -70,9 +74,7 @@ async def test_post_then_public_list_shows_it(
     assert body["items"][0]["author_name"] == "Alice"  # display_name, never email
 
 
-async def test_guest_cannot_post(
-    integration_client: AsyncClient, db_session: AsyncSession
-) -> None:
+async def test_guest_cannot_post(integration_client: AsyncClient, db_session: AsyncSession) -> None:
     user = await _make_user(db_session)
     brand, sku = await _seed_brand(db_session, "mlbb")
     order = await _make_order(db_session, user_id=user.id, sku_id=sku.id)
@@ -121,7 +123,10 @@ async def test_admin_hide_removes_from_public_list(
 
     hidden = await integration_client.post(
         f"/api/v1/admin/reviews/{review_id}/hide",
-        headers={"Authorization": f"Bearer {_token(admin.id)}", "Idempotency-Key": "hide-0123456789ab"},
+        headers={
+            "Authorization": f"Bearer {_token(admin.id)}",
+            "Idempotency-Key": "hide-0123456789ab",
+        },
     )
     assert hidden.status_code == 200, hidden.text
     assert hidden.json()["status"] == "hidden"

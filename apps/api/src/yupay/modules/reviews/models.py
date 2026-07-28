@@ -81,9 +81,7 @@ class ReviewReport(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint(
-            "review_id", "reporter_user_id", name="uq_review_reports_review_reporter"
-        ),
+        UniqueConstraint("review_id", "reporter_user_id", name="uq_review_reports_review_reporter"),
         Index("ix_review_reports_review", "review_id"),
     )
 

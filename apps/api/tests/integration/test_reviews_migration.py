@@ -17,9 +17,7 @@ async def test_reviews_tables_exist(db_session: AsyncSession) -> None:
 
 async def test_reviews_unique_constraint_present(db_session: AsyncSession) -> None:
     r = await db_session.execute(
-        text(
-            "SELECT 1 FROM pg_constraint WHERE conname = 'uq_reviews_user_order_brand'"
-        )
+        text("SELECT 1 FROM pg_constraint WHERE conname = 'uq_reviews_user_order_brand'")
     )
     assert r.scalar() == 1
 

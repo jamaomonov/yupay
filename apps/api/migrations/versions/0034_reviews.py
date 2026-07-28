@@ -60,9 +60,7 @@ def upgrade() -> None:
             server_default=sa.text("CURRENT_TIMESTAMP"),
         ),
         sa.CheckConstraint("rating BETWEEN 1 AND 5", name="ck_reviews_rating_range"),
-        sa.UniqueConstraint(
-            "user_id", "order_id", "brand_id", name="uq_reviews_user_order_brand"
-        ),
+        sa.UniqueConstraint("user_id", "order_id", "brand_id", name="uq_reviews_user_order_brand"),
     )
     op.create_index(
         "ix_reviews_brand_status_created", "reviews", ["brand_id", "status", "created_at"]

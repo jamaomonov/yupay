@@ -131,8 +131,13 @@ async def test_undelivered_order_forbidden(db_session: AsyncSession) -> None:
     order = await _make_order(db_session, user_id=user.id, sku_id=sku.id, status="paid")
     with pytest.raises(ForbiddenError):
         await svc.create_review(
-            db_session, user_id=user.id, order_id=order.id, brand_slug=brand.slug,
-            rating=4, body=None, locale="ru",
+            db_session,
+            user_id=user.id,
+            order_id=order.id,
+            brand_slug=brand.slug,
+            rating=4,
+            body=None,
+            locale="ru",
         )
 
 
@@ -143,8 +148,13 @@ async def test_brand_not_in_order_forbidden(db_session: AsyncSession) -> None:
     order = await _make_order(db_session, user_id=user.id, sku_id=sku.id)
     with pytest.raises(ForbiddenError):
         await svc.create_review(
-            db_session, user_id=user.id, order_id=order.id, brand_slug=other_brand.slug,
-            rating=4, body=None, locale="ru",
+            db_session,
+            user_id=user.id,
+            order_id=order.id,
+            brand_slug=other_brand.slug,
+            rating=4,
+            body=None,
+            locale="ru",
         )
 
 
@@ -155,8 +165,13 @@ async def test_not_your_order_forbidden(db_session: AsyncSession) -> None:
     order = await _make_order(db_session, user_id=buyer.id, sku_id=sku.id)
     with pytest.raises(ForbiddenError):
         await svc.create_review(
-            db_session, user_id=stranger.id, order_id=order.id, brand_slug=brand.slug,
-            rating=4, body=None, locale="ru",
+            db_session,
+            user_id=stranger.id,
+            order_id=order.id,
+            brand_slug=brand.slug,
+            rating=4,
+            body=None,
+            locale="ru",
         )
 
 
@@ -164,8 +179,13 @@ async def _make_published_review(db: AsyncSession, brand: Brand, sku: Sku) -> Re
     user = await _make_user(db, display_name="Buyer")
     order = await _make_order(db, user_id=user.id, sku_id=sku.id)
     return await svc.create_review(
-        db, user_id=user.id, order_id=order.id, brand_slug=brand.slug,
-        rating=5, body="ok", locale="ru",
+        db,
+        user_id=user.id,
+        order_id=order.id,
+        brand_slug=brand.slug,
+        rating=5,
+        body="ok",
+        locale="ru",
     )
 
 
@@ -186,9 +206,13 @@ async def test_duplicate_report_is_noop(db_session: AsyncSession) -> None:
     brand, sku = await _seed_brand(db_session, "steam3")
     review = await _make_published_review(db_session, brand, sku)
     reporter = await _make_user(db_session)
-    await svc.report_review(db_session, review_id=review.id, reporter_user_id=reporter.id, reason=None)
+    await svc.report_review(
+        db_session, review_id=review.id, reporter_user_id=reporter.id, reason=None
+    )
     # same reporter again → swallowed
-    await svc.report_review(db_session, review_id=review.id, reporter_user_id=reporter.id, reason=None)
+    await svc.report_review(
+        db_session, review_id=review.id, reporter_user_id=reporter.id, reason=None
+    )
     await db_session.refresh(review)
     assert review.status == "published"
 
@@ -212,9 +236,7 @@ async def test_list_published_paginates_newest_first(db_session: AsyncSession) -
     page1, cursor = await svc.list_published(db_session, brand_id=brand.id, limit=2, cursor=None)
     assert len(page1) == 2
     assert cursor is not None
-    page2, cursor2 = await svc.list_published(
-        db_session, brand_id=brand.id, limit=2, cursor=cursor
-    )
+    page2, cursor2 = await svc.list_published(db_session, brand_id=brand.id, limit=2, cursor=cursor)
     assert len(page2) == 1
     assert cursor2 is None
     # Newest-first ordering: page1[0] is at least as new as page1[1].
