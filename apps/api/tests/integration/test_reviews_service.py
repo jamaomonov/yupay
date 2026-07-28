@@ -7,6 +7,7 @@ from decimal import Decimal
 
 import pytest
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.errors import ConflictError, ForbiddenError
@@ -75,6 +76,33 @@ async def _make_order(
         id=new_id(),
         user_id=user_id,
         guest_email=None,
+        status=status,
+        currency="USD",
+        total_usd=Decimal("1.00"),
+        total_charged=Decimal("1.00"),
+        created_at=moment,
+        expires_at=moment + timedelta(hours=1),
+        delivered_at=moment if status == "delivered" else None,
+    )
+    db.add(order)
+    await db.flush()
+    db.add(
+        OrderItem(
+            id=new_id(), order_id=order.id, sku_id=sku_id, qty=1, unit_price_usd=Decimal("1.00")
+        )
+    )
+    await db.flush()
+    return order
+
+
+async def _make_guest_order(
+    db: AsyncSession, *, guest_email: str, sku_id: str, status: str = "delivered"
+) -> Order:
+    moment = now()
+    order = Order(
+        id=new_id(),
+        user_id=None,
+        guest_email=guest_email,
         status=status,
         currency="USD",
         total_usd=Decimal("1.00"),
@@ -268,3 +296,37 @@ async def test_recompute_fixes_drift(db_session: AsyncSession) -> None:
     ).one()
     assert row.cnt == 1
     assert float(row.avg) == 5.0
+
+
+async def test_guest_review_row_persists_and_is_unique_per_order_brand(
+    db_session: AsyncSession,
+) -> None:
+    brand, sku = await _seed_brand(db_session, "steam")
+    order = await _make_guest_order(db_session, guest_email="g@x.com", sku_id=sku.id)
+    r1 = Review(
+        id=new_id(),
+        brand_id=brand.id,
+        user_id=None,
+        guest_email="g@x.com",
+        order_id=order.id,
+        rating=5,
+        body=None,
+        status="published",
+        locale="ru",
+    )
+    db_session.add(r1)
+    await db_session.flush()
+    r2 = Review(
+        id=new_id(),
+        brand_id=brand.id,
+        user_id=None,
+        guest_email="g@x.com",
+        order_id=order.id,
+        rating=4,
+        body=None,
+        status="published",
+        locale="ru",
+    )
+    db_session.add(r2)
+    with pytest.raises(IntegrityError):  # IntegrityError on uq_reviews_order_brand
+        await db_session.flush()
