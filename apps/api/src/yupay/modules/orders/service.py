@@ -527,6 +527,29 @@ async def create_order(
     return await _load_order(db, order_id)
 
 
+# ---------- realtime ----------
+
+
+async def _publish_status_changed(order: Order) -> None:
+    """Nudge the order's owner (if any) over the realtime channel.
+
+    No-op for guest orders (``order.user_id is None``) — that check lives in
+    ``publish_order_event`` itself. Imported lazily to avoid pulling the WS
+    route stack into every orders-module import.
+    """
+    from yupay.modules.realtime import api as realtime
+
+    await realtime.publish_order_event(
+        order.user_id,
+        {
+            "type": "order.status_changed",
+            "orderId": order.id,
+            "status": order.status,
+            "at": order.updated_at.isoformat(),
+        },
+    )
+
+
 async def _load_order(db: AsyncSession, order_id: str) -> Order:
     stmt = (
         select(Order)
@@ -611,6 +634,7 @@ async def cancel_order_admin(db: AsyncSession, order_id: str, *, admin_id: str) 
         )
     order.status = "cancelled"
     order.cancelled_at = now()
+    order.updated_at = order.cancelled_at
     db.add(
         OrderEvent(
             id=new_id(),
@@ -634,6 +658,7 @@ async def cancel_order_admin(db: AsyncSession, order_id: str, *, admin_id: str) 
         db, order_id=order_id, reason="order_cancelled"
     )
     await db.flush()
+    await _publish_status_changed(order)
     return order
 
 
@@ -694,6 +719,7 @@ async def _expire_order_inline(db: AsyncSession, order: Order) -> bool:
         return False
     order.status = "expired"
     order.cancelled_at = now()
+    order.updated_at = order.cancelled_at
     db.add(
         OrderEvent(
             id=new_id(),
@@ -706,6 +732,10 @@ async def _expire_order_inline(db: AsyncSession, order: Order) -> bool:
     await _cascade_cancel_open_payments(
         db, order_id=order.id, reason="order_expired", actor="system:expiry"
     )
+    # Immediate realtime push (in-transaction, not after-commit) — same
+    # rationale as the fulfilment saga: the client re-fetches on the nudge, so
+    # a rare rollback after this point self-corrects on that refetch.
+    await _publish_status_changed(order)
     return True
 
 

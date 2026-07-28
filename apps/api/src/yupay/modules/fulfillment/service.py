@@ -145,6 +145,61 @@ def _record_attempt(
     task.updated_at = now()
 
 
+# ---------- realtime ----------
+
+
+async def _publish_status_changed(order: Order) -> None:
+    """Nudge the order's owner (if any) over the realtime channel.
+
+    No-op for guest orders (``order.user_id is None``) — that check lives in
+    ``publish_order_event`` itself. Imported lazily to avoid pulling the WS
+    route stack into every fulfilment import.
+    """
+    from yupay.modules.realtime import api as realtime
+
+    await realtime.publish_order_event(
+        order.user_id,
+        {
+            "type": "order.status_changed",
+            "orderId": order.id,
+            "status": order.status,
+            "at": order.updated_at.isoformat(),
+        },
+    )
+
+
+async def _publish_delivered(order: Order) -> None:
+    """Tell the order's owner (if any) the order just reached ``delivered``."""
+    from yupay.modules.realtime import api as realtime
+
+    await realtime.publish_order_event(
+        order.user_id,
+        {
+            "type": "order.delivered",
+            "orderId": order.id,
+            "payload": {"kind": "order", "data": None},
+        },
+    )
+
+
+async def _publish_failed(order: Order) -> None:
+    """Nudge the order's owner that a fulfilment task permanently failed.
+
+    ``orders.status`` itself never flips to ``failed`` (see ``ck_orders_status``
+    for the legal value and ``fail_manual_task``'s docstring for why: the order
+    can still settle via a retry or a manual admin completion, and refunds are
+    handled separately). So this is a "go check the order" hint, not an
+    authoritative terminal state — the reason is a fixed, non-PII string and
+    the client re-fetches the order for the real detail.
+    """
+    from yupay.modules.realtime import api as realtime
+
+    await realtime.publish_order_event(
+        order.user_id,
+        {"type": "order.failed", "orderId": order.id, "reason": "fulfillment_failed"},
+    )
+
+
 # ---------- core saga ----------
 
 
@@ -179,9 +234,11 @@ async def start_for_order(db: AsyncSession, *, order_id: str) -> list[Fulfillmen
         db.add(task)
         new_tasks.append(task)
 
+    transitioned_to_fulfilling = False
     if order.status == "paid":
         order.status = "fulfilling"
         order.updated_at = now()
+        transitioned_to_fulfilling = True
         db.add(
             OrderEvent(
                 id=new_id(),
@@ -193,6 +250,8 @@ async def start_for_order(db: AsyncSession, *, order_id: str) -> list[Fulfillmen
         )
 
     await db.flush()
+    if transitioned_to_fulfilling:
+        await _publish_status_changed(order)
 
     for task in new_tasks:
         if task.status == "pending":
@@ -297,6 +356,7 @@ async def process_task(  # noqa: PLR0915 -- linear saga; splitting hurts readabi
             task.failed_at = now()
             task.last_error = "no stock and sourcing rule is strict"
             item.fulfillment_state = "failed"
+            await _publish_failed(order)
             return task
         # Switch the route to the supplier fallback for the rest of this attempt.
         task.supplier = _supplier_slug(decision.fallback)
@@ -334,6 +394,7 @@ async def process_task(  # noqa: PLR0915 -- linear saga; splitting hurts readabi
             supplier=task.supplier,
             error=str(exc),
         )
+        await _publish_failed(order)
         return task
 
     task.external_order_id = result.external_order_id
@@ -386,6 +447,7 @@ async def process_task(  # noqa: PLR0915 -- linear saga; splitting hurts readabi
             await _maybe_alert_low_balance(task=task, result=result)
         else:
             item.fulfillment_state = "failed"
+            await _publish_failed(order)
 
     return task
 
@@ -679,6 +741,10 @@ async def process_webhook_update(
         task.failed_at = now()
         task.last_error = status.error or "supplier reported failure"
         item.fulfillment_state = "failed"
+        failed_order = (
+            await db.execute(select(Order).where(Order.id == task.order_id))
+        ).scalar_one()
+        await _publish_failed(failed_order)
     # ``in_progress`` — leave the task untouched; the next poll / webhook
     # will fire again.
 
@@ -874,6 +940,8 @@ async def fail_manual_task(
         payload={"manual": True, "admin_id": admin_id},
         error=reason_clean,
     )
+    order = (await db.execute(select(Order).where(Order.id == task.order_id))).scalar_one()
+    await _publish_failed(order)
     await db.flush()
     return task
 
@@ -907,6 +975,11 @@ async def _try_settle_order(db: AsyncSession, *, order_id: str) -> None:
             actor="fulfillment",
         )
     )
+
+    # Immediate realtime push (in-transaction, not after-commit): the client
+    # treats it as a nudge and re-fetches the order, so a rare rollback after
+    # this point self-corrects on that refetch.
+    await _publish_delivered(order)
 
     # Telegram push — fire-and-forget *after commit* so a slow / down
     # Telegram never blocks the saga AND the notification's own session can
