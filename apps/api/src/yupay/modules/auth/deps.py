@@ -13,8 +13,8 @@ from fastapi import Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
+from yupay.api.v1.deps import db_session
 from yupay.core.config import get_settings
-from yupay.core.db import get_session
 from yupay.core.errors import UnauthorizedError, ValidationError
 from yupay.modules.auth import jwt as authjwt
 from yupay.modules.auth.security import email_hash
@@ -33,7 +33,7 @@ def _extract_bearer(authorization: str | None, *, prefix: str = "Bearer") -> str
 
 async def current_user(
     authorization: Annotated[str | None, Header()] = None,
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(db_session),  # noqa: B008
 ) -> User:
     """FastAPI dependency: resolve the authenticated user from a Bearer JWT."""
     token = _extract_bearer(authorization)

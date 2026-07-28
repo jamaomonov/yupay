@@ -3,6 +3,15 @@
 from __future__ import annotations
 
 import pytest
+
+# Forces yupay.api.v1 to finish initialising before yupay.modules.auth.deps is touched
+# below. Production always reaches auth.deps via yupay.bootstrap.create_app, which
+# imports yupay.api.v1 first, so this cycle never bites there, but this test imports
+# auth.deps directly. Without this line first, auth.deps's own db_session import would
+# trigger yupay.api.v1's package init, which (via admin.deps) re-imports auth.deps
+# mid-initialisation and raises an ImportError for a partially initialised module. See
+# the task-2 report under .superpowers/sdd for the full trace.
+import yupay.api.v1.deps  # noqa: F401
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 from yupay.core.errors import UnauthorizedError, ValidationError
