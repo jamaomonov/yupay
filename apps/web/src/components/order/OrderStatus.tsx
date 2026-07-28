@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import type { OrderOut } from "@/lib/orders-types";
 
 import { apiFetch } from "@/lib/client";
+import { useRealtimeStatus } from "@/store/useRealtimeStatus";
 
 /** Statuses that mean the order is still moving — keep polling. */
 const IN_MOTION = new Set(["pending_payment", "paid", "fulfilling", "fulfilled"]);
@@ -29,11 +30,16 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
   // param lands in Caddy / proxy access logs and browser history, a header
   // doesn't. Trimmed + lowercased to match what the backend expects.
   const guestHeaders = email ? { "X-Guest-Email": email.trim().toLowerCase() } : {};
+  // While the WS is connected, live pushes keep the cache fresh — invalidated
+  // messages already trigger a refetch, so polling is redundant. Polling is
+  // the fallback for guests, disconnected sockets, and the reconnect window.
+  const connected = useRealtimeStatus((s) => s.connected);
 
   const order = useQuery({
     queryKey: ["order", orderId],
     queryFn: () => apiFetch<OrderOut>(`/orders/${orderId}`, { headers: guestHeaders }),
-    refetchInterval: (q) => (q.state.data && IN_MOTION.has(q.state.data.status) ? 4000 : false),
+    refetchInterval: (q) =>
+      !connected && q.state.data && IN_MOTION.has(q.state.data.status) ? 4000 : false,
   });
 
   const status = order.data?.status;
