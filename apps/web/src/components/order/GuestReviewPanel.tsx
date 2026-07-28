@@ -1,11 +1,10 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Star } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
-import { buttonStyles } from "@/lib/button";
+import { ReviewForm } from "@/components/store/ReviewForm";
 import { ApiError } from "@/lib/client";
 import { getReviewEligibility, submitReview } from "@/lib/reviews";
 
@@ -18,9 +17,6 @@ import { getReviewEligibility, submitReview } from "@/lib/reviews";
  */
 export function GuestReviewPanel({ orderId, email }: { orderId: string; email: string }) {
   const t = useTranslations("web.brandReviews");
-  const [rating, setRating] = useState(0);
-  const [hover, setHover] = useState(0);
-  const [body, setBody] = useState("");
   const [state, setState] = useState<"idle" | "sending" | "done" | "already" | "error">("idle");
 
   const eligibility = useQuery({
@@ -38,9 +34,7 @@ export function GuestReviewPanel({ orderId, email }: { orderId: string; email: s
   }
 
   const brandSlug = e.brand_slug;
-  async function onSubmit(ev: React.SyntheticEvent) {
-    ev.preventDefault();
-    if (rating < 1) return;
+  async function handleSubmit(rating: number, body: string) {
     setState("sending");
     try {
       await submitReview(
@@ -48,7 +42,7 @@ export function GuestReviewPanel({ orderId, email }: { orderId: string; email: s
           order_id: orderId,
           brand_slug: brandSlug,
           rating,
-          ...(body.trim() ? { body: body.trim() } : {}),
+          ...(body ? { body } : {}),
         },
         { guestEmail: email },
       );
@@ -58,53 +52,12 @@ export function GuestReviewPanel({ orderId, email }: { orderId: string; email: s
     }
   }
 
-  const active = hover || rating;
   return (
-    <form onSubmit={onSubmit} className="border-border bg-card mt-6 rounded-2xl border p-5">
-      <p className="text-sm font-semibold">{t("formTitle")}</p>
-      <div className="mt-3">
-        <div className="text-tx-mute mb-1.5 text-xs">{t("ratingLabel")}</div>
-        <div className="flex gap-1">
-          {[1, 2, 3, 4, 5].map((n) => (
-            <button
-              key={n}
-              type="button"
-              aria-label={String(n)}
-              onClick={() => {
-                setRating(n);
-              }}
-              onMouseEnter={() => {
-                setHover(n);
-              }}
-              onMouseLeave={() => {
-                setHover(0);
-              }}
-              className="p-0.5"
-            >
-              <Star size={26} className={n <= active ? "fill-gold text-gold" : "text-white/25"} />
-            </button>
-          ))}
-        </div>
-      </div>
-      <label className="mt-4 block">
-        <span className="text-tx-mute mb-1.5 block text-xs">{t("commentLabel")}</span>
-        <textarea
-          value={body}
-          onChange={(ev) => {
-            setBody(ev.target.value.slice(0, 2000));
-          }}
-          rows={3}
-          className="border-border bg-background focus-visible:border-primary w-full resize-none rounded-xl border px-3 py-2 text-sm outline-none"
-        />
-      </label>
-      {state === "error" && <p className="mt-2 text-[13px] text-red-400">{t("error")}</p>}
-      <button
-        type="submit"
-        disabled={rating < 1 || state === "sending"}
-        className={buttonStyles({ size: "sm", className: "mt-4 disabled:opacity-50" })}
-      >
-        {state === "sending" ? t("submitting") : t("submit")}
-      </button>
-    </form>
+    <ReviewForm
+      className="mt-6"
+      submitting={state === "sending"}
+      showError={state === "error"}
+      onSubmit={handleSubmit}
+    />
   );
 }

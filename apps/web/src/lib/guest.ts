@@ -9,6 +9,7 @@ export async function mintGuestToken(email: string): Promise<string> {
     body: JSON.stringify({ email: email.trim().toLowerCase() }),
   });
   if (!r.ok) throw new Error("guest-token");
+  // server contract: POST /auth/guest returns { access_token }
   const { access_token } = (await r.json()) as { access_token: string };
   return access_token;
 }
