@@ -96,7 +96,8 @@ async def _bump_stats(db: AsyncSession, brand_id: str, rating: int, sign: int) -
 async def create_review(
     db: AsyncSession,
     *,
-    user_id: str,
+    user_id: str | None,
+    guest_email: str | None,
     order_id: str,
     brand_slug: str,
     rating: int,
@@ -105,16 +106,22 @@ async def create_review(
 ) -> Review:
     """Create a published review for a delivered order that contains the brand.
 
-    Raises ``NotFoundError`` (unknown brand/order), ``ForbiddenError`` (not the
-    buyer, order not delivered, or brand not in the order), or ``ConflictError``
-    (already reviewed this order+brand).
+    Exactly one of ``user_id`` / ``guest_email`` identifies the buyer. Raises
+    ``NotFoundError`` (unknown brand/order), ``ForbiddenError`` (not the buyer,
+    order not delivered, or brand not in the order), or ``ConflictError``
+    (already reviewed this order).
     """
+    if (user_id is None) == (guest_email is None):
+        raise ValidationError("exactly one of user_id / guest_email is required")
     brand_id = await resolve_brand_id(db, brand_slug)
 
     order = (await db.execute(select(Order).where(Order.id == order_id))).scalar_one_or_none()
     if order is None:
         raise NotFoundError("order not found")
-    if order.user_id != user_id:
+    if user_id is not None:
+        if order.user_id != user_id:
+            raise ForbiddenError("not your order")
+    elif order.guest_email is None or order.guest_email.lower() != guest_email:
         raise ForbiddenError("not your order")
     if order.status != "delivered":
         raise ForbiddenError("order not delivered")
@@ -125,6 +132,7 @@ async def create_review(
         id=new_id(),
         brand_id=brand_id,
         user_id=user_id,
+        guest_email=guest_email,
         order_id=order_id,
         rating=rating,
         body=body,

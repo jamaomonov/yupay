@@ -100,6 +100,7 @@ async def create_review_route(
     review = await svc.create_review(
         db,
         user_id=user.id,
+        guest_email=None,
         order_id=body.order_id,
         brand_slug=body.brand_slug,
         rating=body.rating,
