@@ -49,6 +49,8 @@ flowchart LR
 | **EoP**                    | Guest checkout token used outside scope                                                                                        | Token scoped to `email` + `order_id`; backend enforces                                                                                                                                                                                                                                                                        |
 | **EoP**                    | Refresh token leaked (XSS or otherwise)                                                                                        | Rides an `HttpOnly; SameSite=Lax` cookie, never JS-readable and never in the JSON body/`localStorage` (ADR-0007, implemented per ADR-0038 §1); stored hashed in DB; rotation on every use; reuse triggers full session-lineage revocation                                                                                     |
 | **EoP**                    | Access token still usable after logout                                                                                         | `auth:revoked:{jti}` Redis blocklist, set on logout and checked in `current_user` (ADR-0007, implemented per ADR-0038 §2). **Residual:** the refresh-reuse trip-wire can't blocklist the paired access token (no `jti` on that request) — it self-expires within ≤ 15 min                                                     |
+| **Spoofing**               | WebSocket handshake token reused to read another user's order events                                                           | `kind="ws"` JWT's `channel` claim is always the caller's own `user:{id}` (server-minted at handshake, never client-supplied); the WS route subscribes to `realtime:user:{sub}` derived from the verified token, not from anything the client sends (ADR-0040)                                                                 |
+| **Information disclosure** | Handshake token exposed via the WS URL (`?token=`) instead of a header                                                         | Unavoidable — the browser `WebSocket` API can't set request headers. Mitigated by `wss://` (TLS) in transit, a 60-second TTL, and the token carrying no PII (just `sub`/`channel`, both the caller's own id). **Residual:** the token can appear in server/proxy access logs for that 60s window (ADR-0040)                   |
 
 ## PII inventory
 
@@ -66,6 +68,38 @@ See `pii-handling.md`.
   distinct reporters) + admin moderation path.
 - **Reviewer de-anonymisation:** the public API exposes the author's
   `display_name` or `null`, **never** the email; the service never logs `body`.
+
+## WebSocket (realtime order updates)
+
+- **Handshake token, not a bearer token:** `POST /realtime/handshake` (behind
+  the normal `current_user` bearer-token auth) mints a **60-second**,
+  single-purpose `kind="ws"` JWT whose `channel` claim is always the caller's
+  own `user:{user.id}`. The client cannot request another user's channel —
+  there is no field to ask for one — and the WS route
+  (`WS /realtime/ws/orders?token=`) subscribes to `realtime:user:{sub}` using
+  the `sub` decoded from the _verified_ token, never a client-supplied id.
+- **Per-user channel isolation:** one Redis pub/sub channel per user
+  (`realtime:user:{id}`, see `docs/architecture/cache-keys.md`); a socket
+  subscribes to exactly one for its whole lifetime. There is no code path
+  that lets a connection read another user's channel — the channel name is
+  computed server-side from the token, never accepted as a parameter.
+- **`?token=` query-string tradeoff:** the browser `WebSocket` API has no way
+  to set an `Authorization` header, so the handshake token rides the URL
+  (`wss://api.yupay.uz/api/v1/realtime/ws/orders?token=...`). Accepted:
+  `wss://` (TLS) protects it in transit, the TTL is 60 seconds, and the token
+  carries no PII. The residual risk is the token appearing in server/proxy
+  access logs for that short window (ADR-0040).
+- **No message replay / history:** on reconnect the client re-handshakes and
+  gets no backlog — every message is a nudge that triggers an authoritative
+  `GET /orders/{id}` refetch, never trusted as payload of record. A
+  leaked/expired token is useless once its 60 seconds elapse, even before any
+  socket is opened with it.
+- **Guests never get a socket:** `publish_order_event` no-ops when
+  `order.user_id is None`, and the frontends only mount the socket hook for a
+  logged-in user — guest checkout is unaffected and keeps polling.
+- **No PII in the wire payload:** messages carry `orderId`/`status`/
+  timestamps only (see `packages/api-client/src/realtime/messages.ts`) — no
+  email, phone, or Telegram id ever crosses the socket.
 
 ## Out of scope (we do not handle)
 

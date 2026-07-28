@@ -4000,6 +4000,7 @@
         "type": "object"
       },
       "HandshakeOut": {
+        "description": "Response body for a successful WS handshake mint.",
         "properties": {
           "token": {
             "title": "Token",
@@ -17471,6 +17472,7 @@
     },
     "/api/v1/realtime/handshake": {
       "post": {
+        "description": "Mint a short-lived ``ws``-kind token the caller exchanges for a socket connection.",
         "operationId": "handshake_api_v1_realtime_handshake_post",
         "parameters": [
           {

@@ -49,10 +49,23 @@ single transaction. Re-running yields identical content. It depends on migration
 
 ## WebSocket
 
-`wss://api.yupay.io/ws/orders?token=<short-lived-jwt>` — the token is a 60-second JWT minted
-from the user's access token via `POST /api/v1/auth/ws-token`. After handshake the server
-subscribes the connection to the appropriate Redis pub/sub channel. The protocol is a
-discriminated-union JSON envelope; see `packages/api-client/src/realtime/messages.ts`.
+`POST /api/v1/realtime/handshake` (normal `Authorization: Bearer <access-jwt>` auth) mints a
+60-second, single-purpose `kind="ws"` token scoped to the caller's own channel
+(`channel="user:{id}"`). The client then opens
+`wss://api.yupay.uz/api/v1/realtime/ws/orders?token=<ws-token>` — the browser `WebSocket` API
+can't set headers, so the token rides the query string (60s TTL; tradeoff documented in
+`docs/security/threat-model.md` and ADR-0040). The server verifies the token, subscribes the
+socket to the Redis pub/sub channel `realtime:user:{id}`, and forwards every published message
+plus a 25-second keepalive ping. The protocol is a discriminated-union JSON envelope; see
+`packages/api-client/src/realtime/messages.ts`.
+
+This endpoint pair doesn't fully show up in `openapi.json`: OpenAPI 3.1 has no WebSocket
+operation object, so FastAPI omits `@router.websocket(...)` routes from the generated schema —
+only `POST /realtime/handshake` (a normal HTTP route) appears there and regenerates like any
+other endpoint. Guests never connect (`useOrderSocket` mounts only for a logged-in user, and
+`publish_order_event` no-ops for guest orders), so guest checkout keeps polling
+`GET /orders/{id}` unchanged. See `docs/decisions/0040-order-realtime-ws.md` and
+`apps/api/src/yupay/modules/realtime/README.md`.
 
 ## Webhooks per provider
 
