@@ -12,6 +12,7 @@ import type { Metadata } from "next";
 import { JsonLd } from "@/components/JsonLd";
 import { RatingSummary } from "@/components/store/RatingSummary";
 import { Stars } from "@/components/store/Stars";
+import { WriteReviewPanel } from "@/components/store/WriteReviewPanel";
 import { PurchasePanel } from "@/components/store/PurchasePanel";
 import { routing } from "@/i18n/routing";
 import { getBrandDetail, getBrandSlugs, getProductDetail, type ProductDetail } from "@/lib/catalog";
@@ -298,6 +299,7 @@ export default async function BrandPage({
           <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t2("title")}</h2>
           <div className="mt-5 max-w-[760px]">
             <RatingSummary stats={reviews.stats} />
+            <WriteReviewPanel brandSlug={brand.slug} />
             {reviews.items.length > 0 && (
               <ul className="mt-8 flex flex-col gap-6">
                 {reviews.items.map((r) => (

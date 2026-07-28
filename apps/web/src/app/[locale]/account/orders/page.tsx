@@ -2,6 +2,7 @@
 
 import { formatMoney } from "@yupay/utils";
 import { useQuery } from "@tanstack/react-query";
+import { Star } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -13,6 +14,7 @@ import type { OrderListOut, OrderOut } from "@/lib/orders-types";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { apiFetch } from "@/lib/client";
+import { getMyReviews } from "@/lib/reviews";
 import { useLoginModal } from "@/store/useLoginModal";
 
 const STATUS_CLS: Record<string, string> = {
@@ -44,6 +46,7 @@ function orderTitle(o: OrderOut, fallback: string): string {
 export default function OrdersPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = use(params);
   const t = useTranslations("web.orders");
+  const tr = useTranslations("web.brandReviews");
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const openLogin = useLoginModal((s) => s.open);
@@ -60,6 +63,16 @@ export default function OrdersPage({ params }: { params: Promise<{ locale: strin
     queryFn: () => apiFetch<OrderListOut>("/orders"),
     enabled: Boolean(user),
   });
+
+  // Orders the user has already reviewed (any brand) — suppresses the CTA.
+  // Coarse per-order match: nearly every order is single-brand, and a repeat
+  // submit is rejected server-side (409) anyway.
+  const myReviews = useQuery({
+    queryKey: ["my-reviews"],
+    queryFn: () => getMyReviews(),
+    enabled: Boolean(user),
+  });
+  const reviewedOrders = new Set((myReviews.data?.items ?? []).map((r) => r.order_id));
 
   if (authLoading || !user) {
     return (
@@ -131,6 +144,17 @@ export default function OrdersPage({ params }: { params: Promise<{ locale: strin
                     </span>
                   </div>
                 </Link>
+                {o.status === "delivered" &&
+                  !reviewedOrders.has(o.id) &&
+                  o.items[0]?.display?.brand_slug && (
+                    <Link
+                      href={`/${locale}/store/${o.items[0].display.brand_slug}?order=${o.id}#reviews`}
+                      className="text-primary ml-4 mt-1.5 inline-flex items-center gap-1 text-xs font-semibold"
+                    >
+                      <Star size={12} />
+                      {tr("writeCta")}
+                    </Link>
+                  )}
               </li>
             );
           })}
