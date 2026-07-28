@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
@@ -97,7 +98,7 @@ class BrandRatingStats(Base):
     )
     count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     sum_rating: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text("0"))
-    avg: Mapped[float] = mapped_column(Numeric(3, 2), nullable=False, server_default=text("0"))
+    avg: Mapped[Decimal] = mapped_column(Numeric(3, 2), nullable=False, server_default=text("0"))
     count_1: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     count_2: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     count_3: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
