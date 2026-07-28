@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Star, X } from "lucide-react";
 import { useState } from "react";
 
@@ -38,6 +38,7 @@ export function ReviewsSheet({
 }) {
   const { t, tn } = useT();
   const me = useMe();
+  const qc = useQueryClient();
   const reviews = useQuery<ReviewPage>({
     queryKey: ["reviews", brandSlug],
     queryFn: () => getBrandReviews(brandSlug),
@@ -61,6 +62,8 @@ export function ReviewsSheet({
       });
       setState("done");
       await reviews.refetch();
+      // Refresh "my reviews" so the order-details / History rate CTAs update.
+      void qc.invalidateQueries({ queryKey: ["my-reviews"] });
     } catch (err) {
       setState(err instanceof ApiError && err.status === 409 ? "already" : "error");
     }

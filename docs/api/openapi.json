@@ -3999,6 +3999,20 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HandshakeOut": {
+        "description": "Response body for a successful WS handshake mint.",
+        "properties": {
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "HandshakeOut",
+        "type": "object"
+      },
       "InventorySummary": {
         "properties": {
           "available": {
@@ -17453,6 +17467,56 @@
         "summary": "Redeem a promo code",
         "tags": [
           "promo"
+        ]
+      }
+    },
+    "/api/v1/realtime/handshake": {
+      "post": {
+        "description": "Mint a short-lived ``ws``-kind token the caller exchanges for a socket connection.",
+        "operationId": "handshake_api_v1_realtime_handshake_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandshakeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mint a 60s WS handshake token",
+        "tags": [
+          "realtime"
         ]
       }
     },

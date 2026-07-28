@@ -1,0 +1,67 @@
+sequenceDiagram
+    autonumber
+    participant Txn as api / worker / scheduler<br/>(order transition)
+    participant Rt as realtime.service
+    participant Redis as Redis<br/>(realtime:user:{id})
+    participant WS as realtime WS gateway (api)
+    participant Client as Web / Mini App
+
+    %% ─────────────────────────────────────────────
+    %% Phase 1: handshake (once per session, and again on reconnect)
+    %% ─────────────────────────────────────────────
+    rect rgb(240, 248, 255)
+        note over Client,WS: Phase 1 — Handshake
+        Client->>WS: POST /api/v1/realtime/handshake<br/>Authorization: Bearer {access_token}
+        WS-->>Client: 200 { token } (kind="ws", 60s TTL, channel="user:{id}")
+        Client->>WS: WS /api/v1/realtime/ws/orders?token=...
+        WS->>WS: authjwt.verify(token, expected_kind="ws")
+        alt invalid / expired / wrong-kind token
+            WS--xClient: close(4401)
+        else valid
+            WS->>Redis: SUBSCRIBE realtime:user:{id}
+            WS-->>Client: accepted
+        end
+    end
+
+    %% ─────────────────────────────────────────────
+    %% Phase 2: transition publishes (fire-and-forget, in-transaction)
+    %% ─────────────────────────────────────────────
+    rect rgb(255, 255, 240)
+        note over Txn,Redis: Phase 2 — Status transition publishes
+        Txn->>Txn: order.status = paid | fulfilling |<br/>cancelled | expired | delivered<br/>(then db.flush())
+        Txn->>Rt: publish_order_event(order.user_id, message)
+        alt guest order (user_id is None)
+            Rt-->>Txn: no-op (guests keep polling)
+        else logged-in user
+            Rt->>Redis: PUBLISH realtime:user:{id} {json}
+        end
+        note over Txn: Fulfillment failure is NOT an order failure —<br/>order stays "fulfilling" for admin remediation;<br/>order.failed is never published (no failed modal)
+    end
+
+    %% ─────────────────────────────────────────────
+    %% Phase 3: forward + client reaction
+    %% ─────────────────────────────────────────────
+    rect rgb(240, 255, 240)
+        note over Redis,Client: Phase 3 — Live push
+        Redis-->>WS: message on realtime:user:{id}
+        WS-->>Client: forward JSON text frame
+        alt type == order.status_changed
+            Client->>Client: invalidateQueries(["order", orderId])
+        else type == order.delivered
+            Client->>Client: invalidateQueries(["order", orderId])
+            Client->>Client: open delivered modal ("rate the brand")
+        else type == ping
+            Client->>Client: reset 60s alive-timer (no-op otherwise)
+        end
+        note over WS,Client: WS also sends its own {type:"ping"} every 25s<br/>independent of any Redis message
+    end
+
+    %% ─────────────────────────────────────────────
+    %% Phase 4: disconnect / polling fallback
+    %% ─────────────────────────────────────────────
+    rect rgb(255, 240, 240)
+        note over Client,WS: Phase 4 — Disconnect and fallback
+        WS--xClient: close (network drop / deploy / idle 60s)
+        Client->>Client: setConnected(false) → refetchInterval resumes (poll GET /orders/{id})
+        Client->>WS: reconnect with fresh handshake token (exponential backoff, cap 30s)
+    end

@@ -145,6 +145,43 @@ def _record_attempt(
     task.updated_at = now()
 
 
+# ---------- realtime ----------
+
+
+async def _publish_status_changed(order: Order) -> None:
+    """Nudge the order's owner (if any) over the realtime channel.
+
+    No-op for guest orders (``order.user_id is None``) — that check lives in
+    ``publish_order_event`` itself. Imported lazily to avoid pulling the WS
+    route stack into every fulfilment import.
+    """
+    from yupay.modules.realtime import api as realtime
+
+    await realtime.publish_order_event(
+        order.user_id,
+        {
+            "type": "order.status_changed",
+            "orderId": order.id,
+            "status": order.status,
+            "at": order.updated_at.isoformat(),
+        },
+    )
+
+
+async def _publish_delivered(order: Order) -> None:
+    """Tell the order's owner (if any) the order just reached ``delivered``."""
+    from yupay.modules.realtime import api as realtime
+
+    await realtime.publish_order_event(
+        order.user_id,
+        {
+            "type": "order.delivered",
+            "orderId": order.id,
+            "payload": {"kind": "order", "data": None},
+        },
+    )
+
+
 # ---------- core saga ----------
 
 
@@ -179,9 +216,11 @@ async def start_for_order(db: AsyncSession, *, order_id: str) -> list[Fulfillmen
         db.add(task)
         new_tasks.append(task)
 
+    transitioned_to_fulfilling = False
     if order.status == "paid":
         order.status = "fulfilling"
         order.updated_at = now()
+        transitioned_to_fulfilling = True
         db.add(
             OrderEvent(
                 id=new_id(),
@@ -193,6 +232,8 @@ async def start_for_order(db: AsyncSession, *, order_id: str) -> list[Fulfillmen
         )
 
     await db.flush()
+    if transitioned_to_fulfilling:
+        await _publish_status_changed(order)
 
     for task in new_tasks:
         if task.status == "pending":
@@ -907,6 +948,11 @@ async def _try_settle_order(db: AsyncSession, *, order_id: str) -> None:
             actor="fulfillment",
         )
     )
+
+    # Immediate realtime push (in-transaction, not after-commit): the client
+    # treats it as a nudge and re-fetches the order, so a rare rollback after
+    # this point self-corrects on that refetch.
+    await _publish_delivered(order)
 
     # Telegram push — fire-and-forget *after commit* so a slow / down
     # Telegram never blocks the saga AND the notification's own session can

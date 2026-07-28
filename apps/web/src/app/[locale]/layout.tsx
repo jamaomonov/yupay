@@ -11,6 +11,7 @@ import { LoginModal } from "@/components/auth/LoginModal";
 import { Footer } from "@/components/Footer";
 import { GoogleTag } from "@/components/GoogleTag";
 import { Header } from "@/components/Header";
+import { OrderDeliveredModal } from "@/components/order/OrderDeliveredModal";
 import { SupportFab } from "@/components/SupportFab";
 import { YandexMetrika } from "@/components/YandexMetrika";
 import { routing } from "@/i18n/routing";
@@ -99,6 +100,7 @@ export default async function LocaleLayout({
             {children}
             <Footer locale={locale} />
             <LoginModal locale={locale} />
+            <OrderDeliveredModal />
             <SupportFab />
           </Providers>
         </NextIntlClientProvider>

@@ -66,6 +66,29 @@ def _apply_migrations(_pg_container: PostgresContainer) -> None:
     command.upgrade(alembic_cfg, "head")
 
 
+@pytest.fixture(autouse=True)
+async def _reset_realtime_redis() -> AsyncIterator[None]:
+    """Reset the ``get_redis()`` singleton around every integration test.
+
+    Order-status transitions (``payments``/``fulfillment``/``orders`` services)
+    publish to Redis via ``realtime.api.publish_order_event`` — not just the
+    handful of WS-specific tests that already reset this through
+    ``integration_client``. Any test driving those services directly against
+    ``db_session`` can now reach ``get_redis()`` too. Each pytest-asyncio test
+    runs on its own event loop; a client cached from a previous test would be
+    bound to a closed loop and blow up with "Future attached to a different
+    loop" / "Event loop is closed" the moment a later test publishes. Resetting
+    here (in addition to ``integration_client``'s own reset, which is now
+    redundant but harmless) makes every test start from — and leave — a clean
+    singleton regardless of which fixtures it requests.
+    """
+    from yupay.core import redis as core_redis
+
+    core_redis._client = None  # type: ignore[attr-defined]
+    yield
+    await core_redis.close_redis()
+
+
 @pytest.fixture
 async def db_engine():
     """A fresh async engine per test. Truncates tables before each test."""

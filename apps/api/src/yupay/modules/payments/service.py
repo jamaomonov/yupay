@@ -273,6 +273,7 @@ async def _mark_payment_succeeded(
         from yupay.modules.fulfillment import service as fulfillment_svc
 
         await db.flush()
+        await _publish_status_changed(order)
         await fulfillment_svc.start_for_order(db, order_id=order.id)
 
         # No "payment received" Telegram push — the only customer-facing
@@ -281,6 +282,26 @@ async def _mark_payment_succeeded(
         # ``delivered``). A separate "оплата получена" ping was noisy and,
         # for async top-ups, wrongly promised "пришлём код". Re-enable
         # here if a "received, working on it" message is wanted later.
+
+
+async def _publish_status_changed(order: Order) -> None:
+    """Nudge the order's owner (if any) over the realtime channel.
+
+    No-op for guest orders (``order.user_id is None``) — that check lives in
+    ``publish_order_event`` itself. Imported lazily to avoid pulling the WS
+    route stack into every payment-webhook import.
+    """
+    from yupay.modules.realtime import api as realtime
+
+    await realtime.publish_order_event(
+        order.user_id,
+        {
+            "type": "order.status_changed",
+            "orderId": order.id,
+            "status": order.status,
+            "at": order.updated_at.isoformat(),
+        },
+    )
 
 
 async def _mark_payment_terminal(
@@ -595,7 +616,8 @@ async def _apply_refund_reversal(
     # Order: mark refunded only for a full refund. Partial refunds keep the
     # original status — they're an accounting concern, not an FSM concern.
     order = (await db.execute(select(Order).where(Order.id == payment.order_id))).scalar_one()
-    if is_full and order.status != "refunded":
+    refunded_now = is_full and order.status != "refunded"
+    if refunded_now:
         order.status = "refunded"
         order.updated_at = moment
     db.add(
@@ -637,6 +659,11 @@ async def _apply_refund_reversal(
         await fulfillment_svc.cancel_open_tasks_for_order(
             db, order_id=order.id, reason=f"refund:{payment.id}"
         )
+
+    # Realtime parity: nudge a connected viewer when a full refund walks the
+    # order to ``refunded`` (polling is off while the socket is up).
+    if refunded_now:
+        await _publish_status_changed(order)
 
 
 async def refund_admin(
