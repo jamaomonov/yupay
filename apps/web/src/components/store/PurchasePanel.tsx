@@ -12,6 +12,7 @@ import type { FormField, ProductDetail, SkuOut } from "@/lib/catalog";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { getAccessToken } from "@/lib/client";
+import { mintGuestToken } from "@/lib/guest";
 import { canCheck, IDLE, runPlayerCheck, type CheckState } from "@/lib/player-check-state";
 import { formatUzs, pathFor } from "@/lib/seo";
 import { amountError, parseAmount } from "@/lib/variable-amount";
@@ -457,13 +458,7 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
         emailSuffix = "";
       } else {
         // ── Guest path: obtain a guest token first (unchanged behavior) ──
-        const g = await fetch(`${API}/api/v1/auth/guest`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email }),
-        });
-        if (!g.ok) throw new Error("guest");
-        const { access_token } = (await g.json()) as { access_token: string };
+        const access_token = await mintGuestToken(email);
         auth = { Authorization: `Guest ${access_token}` };
         emailSuffix = `?email=${encodeURIComponent(email)}`;
       }
