@@ -119,16 +119,10 @@ async def test_duplicate_same_order_brand_conflicts(db_session: AsyncSession) ->
     user = await _make_user(db_session)
     brand, sku = await _seed_brand(db_session, "pubg")
     order = await _make_order(db_session, user_id=user.id, sku_id=sku.id)
-    kw = {
-        "user_id": user.id,
-        "order_id": order.id,
-        "brand_slug": brand.slug,
-        "body": None,
-        "locale": "ru",
-    }
-    await svc.create_review(db_session, rating=4, **kw)
+    args = {"user_id": user.id, "order_id": order.id, "brand_slug": brand.slug, "locale": "ru"}
+    await svc.create_review(db_session, rating=4, body=None, **args)
     with pytest.raises(ConflictError):
-        await svc.create_review(db_session, rating=3, **kw)
+        await svc.create_review(db_session, rating=3, body=None, **args)
 
 
 async def test_undelivered_order_forbidden(db_session: AsyncSession) -> None:
@@ -192,9 +186,9 @@ async def test_duplicate_report_is_noop(db_session: AsyncSession) -> None:
     brand, sku = await _seed_brand(db_session, "steam3")
     review = await _make_published_review(db_session, brand, sku)
     reporter = await _make_user(db_session)
-    kw = {"review_id": review.id, "reporter_user_id": reporter.id, "reason": None}
-    await svc.report_review(db_session, **kw)
-    await svc.report_review(db_session, **kw)  # same reporter again → swallowed
+    await svc.report_review(db_session, review_id=review.id, reporter_user_id=reporter.id, reason=None)
+    # same reporter again → swallowed
+    await svc.report_review(db_session, review_id=review.id, reporter_user_id=reporter.id, reason=None)
     await db_session.refresh(review)
     assert review.status == "published"
 
@@ -245,10 +239,10 @@ async def test_recompute_fixes_drift(db_session: AsyncSession) -> None:
     # session's stale identity-mapped stats object.
     row = (
         await db_session.execute(
-            select(BrandRatingStats.count, BrandRatingStats.avg).where(
+            select(BrandRatingStats.count.label("cnt"), BrandRatingStats.avg).where(
                 BrandRatingStats.brand_id == brand_id
             )
         )
     ).one()
-    assert row.count == 1
+    assert row.cnt == 1
     assert float(row.avg) == 5.0

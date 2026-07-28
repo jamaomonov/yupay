@@ -36,10 +36,10 @@ async def test_reconcile_job_fixes_drift(db_session: AsyncSession) -> None:
 
     row = (
         await db_session.execute(
-            select(BrandRatingStats.count, BrandRatingStats.avg).where(
+            select(BrandRatingStats.count.label("cnt"), BrandRatingStats.avg).where(
                 BrandRatingStats.brand_id == brand_id
             )
         )
     ).one()
-    assert row.count == 1
+    assert row.cnt == 1
     assert row.avg == Decimal("5.00")

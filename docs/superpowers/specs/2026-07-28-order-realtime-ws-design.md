@@ -15,14 +15,14 @@ globally pop a modal ("top-up successful") that asks them to rate the brand; whe
 
 ## Decisions (locked)
 
-| Decision | Choice |
-| --- | --- |
-| "Rate us" target | **Brand review** (reuse the reviews feature) |
-| Audience | **Logged-in only** (guests keep polling; guest WS deferred) |
-| Delivered/failed modal | **Global** (fires wherever the user is in the app) |
-| Both events | **delivered** (→ rate) **and** **failed** (→ support) show a modal |
-| Polling | **Kept as fallback** — WS primary; polling re-enables when WS is down |
-| Fan-out | **Redis pub/sub** (mandatory: transitions fire in worker/scheduler, WS lives in api — possibly different instances) |
+| Decision               | Choice                                                                                                              |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| "Rate us" target       | **Brand review** (reuse the reviews feature)                                                                        |
+| Audience               | **Logged-in only** (guests keep polling; guest WS deferred)                                                         |
+| Delivered/failed modal | **Global** (fires wherever the user is in the app)                                                                  |
+| Both events            | **delivered** (→ rate) **and** **failed** (→ support) show a modal                                                  |
+| Polling                | **Kept as fallback** — WS primary; polling re-enables when WS is down                                               |
+| Fan-out                | **Redis pub/sub** (mandatory: transitions fire in worker/scheduler, WS lives in api — possibly different instances) |
 
 ## Architecture
 
@@ -43,7 +43,7 @@ globally pop a modal ("top-up successful") that asks them to rate the brand; whe
 - `realtime/service.py`:
   - `async publish_order_event(user_id: str | None, message: dict) -> None` — no-op
     when `user_id is None` (guest orders don't publish); else `redis.publish(
-    f"realtime:user:{user_id}", json.dumps(message))`.
+f"realtime:user:{user_id}", json.dumps(message))`.
   - the WS subscribe/forward loop.
 - `realtime/api.py` re-exports `publish_order_event`, `router` (handshake), and the
   ws route registration.
@@ -54,14 +54,14 @@ globally pop a modal ("top-up successful") that asks them to rate the brand; whe
 Call `realtime.api.publish_order_event(order.user_id, msg)` after each order status
 transition (only when `order.user_id` is set):
 
-| Where | Transition | Message |
-| --- | --- | --- |
-| `payments`/`orders` | → `paid` | `order.status_changed` |
+| Where                     | Transition     | Message                |
+| ------------------------- | -------------- | ---------------------- |
+| `payments`/`orders`       | → `paid`       | `order.status_changed` |
 | `fulfillment.service:183` | → `fulfilling` | `order.status_changed` |
-| `fulfillment.service:897` | → `delivered` | `order.delivered` |
-| `fulfillment` fail path | → `failed` | `order.failed` |
-| `orders.service:612` | → `cancelled` | `order.status_changed` |
-| `orders.service:695` | → `expired` | `order.status_changed` |
+| `fulfillment.service:897` | → `delivered`  | `order.delivered`      |
+| `fulfillment` fail path   | → `failed`     | `order.failed`         |
+| `orders.service:612`      | → `cancelled`  | `order.status_changed` |
+| `orders.service:695`      | → `expired`    | `order.status_changed` |
 
 Messages follow the existing `packages/api-client/src/realtime/messages.ts`
 contract. **Extend `order.delivered`** to carry `brand_slug` (+ `brand_name`) so the

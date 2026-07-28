@@ -1,4 +1,5 @@
 import { ChevronRight, Clock, ShieldCheck } from "lucide-react";
+import { Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -299,7 +300,11 @@ export default async function BrandPage({
           <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t2("title")}</h2>
           <div className="mt-5 max-w-[760px]">
             <RatingSummary stats={reviews.stats} />
-            <WriteReviewPanel brandSlug={brand.slug} />
+            {/* useSearchParams() inside WriteReviewPanel needs a Suspense
+                boundary or `next build`'s static export of this page bails out. */}
+            <Suspense fallback={null}>
+              <WriteReviewPanel brandSlug={brand.slug} />
+            </Suspense>
             {reviews.items.length > 0 && (
               <ul className="mt-8 flex flex-col gap-6">
                 {reviews.items.map((r) => (

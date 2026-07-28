@@ -14,17 +14,17 @@ rich snippets via structured data — to raise trust and organic conversion.
 
 ## Decisions (locked)
 
-| Decision | Choice | Rationale |
-| --- | --- | --- |
-| Rated entity | **Brand** | Matches the storefront page unit (`/store/[brandSlug]`); rating doesn't fragment across SKUs. |
-| Who can review | **Verified buyers only** | Logged-in user with a `delivered` order containing that brand. High trust, low spam. Guest reviews are a later extension. |
-| Moderation | **Post-moderation** | Publish immediately; admin can hide/remove; users can report. Verified-purchase gate already limits spam. |
-| Content | **1–5 stars + optional text** | E-commerce standard; feeds SEO rich snippets. |
-| Surfaces | **Web + Mini App** | SEO structured data on web only. |
-| Cardinality | **One review per `(user, order, brand)`** | Anchored to a delivered order as proof of purchase. |
-| Editability | **Immutable** | No user edit (`PATCH` dropped). Once posted, the review freezes — simpler, SEO snapshot stable, no rating drift. |
-| User delete | **No** (MVP) | Only admin `hide`/`remove`; users can `report`. |
-| Aggregate storage | **Reviews-owned `brand_rating_stats` table + `api.py` batch lookup** (Approach A) | Cheap reads on the `/store` grid (no N+1), histogram built-in, module boundaries clean. |
+| Decision          | Choice                                                                            | Rationale                                                                                                                 |
+| ----------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Rated entity      | **Brand**                                                                         | Matches the storefront page unit (`/store/[brandSlug]`); rating doesn't fragment across SKUs.                             |
+| Who can review    | **Verified buyers only**                                                          | Logged-in user with a `delivered` order containing that brand. High trust, low spam. Guest reviews are a later extension. |
+| Moderation        | **Post-moderation**                                                               | Publish immediately; admin can hide/remove; users can report. Verified-purchase gate already limits spam.                 |
+| Content           | **1–5 stars + optional text**                                                     | E-commerce standard; feeds SEO rich snippets.                                                                             |
+| Surfaces          | **Web + Mini App**                                                                | SEO structured data on web only.                                                                                          |
+| Cardinality       | **One review per `(user, order, brand)`**                                         | Anchored to a delivered order as proof of purchase.                                                                       |
+| Editability       | **Immutable**                                                                     | No user edit (`PATCH` dropped). Once posted, the review freezes — simpler, SEO snapshot stable, no rating drift.          |
+| User delete       | **No** (MVP)                                                                      | Only admin `hide`/`remove`; users can `report`.                                                                           |
+| Aggregate storage | **Reviews-owned `brand_rating_stats` table + `api.py` batch lookup** (Approach A) | Cheap reads on the `/store` grid (no N+1), histogram built-in, module boundaries clean.                                   |
 
 ### CTA behaviour
 
@@ -42,6 +42,7 @@ New modular-monolith module `apps/api/src/yupay/modules/reviews/`:
 ### Data model (migration `0034_reviews`)
 
 **`reviews`**
+
 - `id` UUID PK
 - `brand_id` FK→`brands` (indexed)
 - `user_id` FK→`users` (indexed)
@@ -55,6 +56,7 @@ New modular-monolith module `apps/api/src/yupay/modules/reviews/`:
 - Index `(brand_id, status, created_at DESC)` for keyset list queries
 
 **`review_reports`**
+
 - `id` UUID PK
 - `review_id` FK→`reviews` (indexed)
 - `reporter_user_id` FK→`users` NULL
@@ -63,6 +65,7 @@ New modular-monolith module `apps/api/src/yupay/modules/reviews/`:
 - **UNIQUE `(review_id, reporter_user_id)`** — no double-reporting
 
 **`brand_rating_stats`** (reviews-owned aggregate; only `published` counted)
+
 - `brand_id` PK, FK→`brands`
 - `count` INT NOT NULL DEFAULT 0
 - `sum_rating` BIGINT NOT NULL DEFAULT 0
@@ -96,11 +99,13 @@ Indices are added in the same migration as the queries that need them.
 ### API (v1)
 
 Public:
+
 - `GET /v1/brands/{brandSlug}/reviews?cursor=&limit=` — aggregate + paginated list
 - `POST /v1/reviews` — auth; body `{order_id, brand_id, rating, body?}`; `Idempotency-Key`
 - `POST /v1/reviews/{id}/report` — auth; body `{reason}`
 
 Admin:
+
 - `GET /v1/admin/reviews?status=&reported=&cursor=` — moderation queue
 - `POST /v1/admin/reviews/{id}/hide` · `POST /v1/admin/reviews/{id}/unhide`
 - `POST /v1/admin/reviews/{id}/remove`
@@ -112,6 +117,7 @@ against the live API doesn't crash (see [[web-ssg-prerenders-against-deployed-ap
 ### Frontend
 
 **Web** (`apps/web`)
+
 - `/store/[brandSlug]`: rating summary (avg stars + count + histogram bars) → reviews
   list (paginated) → review form for eligible logged-in buyers.
 - `/store` grid cards: `avg ★ (count)`.
@@ -119,6 +125,7 @@ against the live API doesn't crash (see [[web-ssg-prerenders-against-deployed-ap
 - JSON-LD `Product`/`Brand` with `aggregateRating` + up to N `review` on the brand page.
 
 **Mini App** (`apps/miniapp`)
+
 - Brand / TopUp view: summary + list + form.
 - `History` page: "Rate" CTA per eligible order.
 
@@ -159,7 +166,7 @@ ML anti-spam. The `review_reports` table and `status` enum keep the model extens
 - Sequence diagrams: `docs/architecture/sequence-diagrams/leave-review.mmd`,
   `.../review-moderation.mmd`
 - ADR `docs/decisions/0039-reviews-and-ratings.md` (new module + denormalized aggregate
-  + SEO structured-data choice)
+  - SEO structured-data choice)
 - `docs/api/openapi.json` regen (`make gen-api`) + `packages/api-client`
 - `docs/security/threat-model.md` (UGC/XSS) + `pii-handling.md` (author identity)
 - `docs/architecture/cache-keys.md` if brand-stats reads get a Redis cache

@@ -234,7 +234,7 @@ async def test_paid_fulfilling_and_delivered_publish(
         messages = await _collect(pubsub, count=3, timeout=5)
     finally:
         await pubsub.unsubscribe(f"realtime:user:{uid}")
-        await pubsub.aclose()
+        await pubsub.aclose()  # type: ignore[no-untyped-call]
 
     delivered = [m for m in messages if m["type"] == "order.delivered"]
     assert len(delivered) == 1, messages
@@ -276,7 +276,7 @@ async def test_task_failure_does_not_publish_order_failed(
         extra = await pubsub.get_message(timeout=1)
     finally:
         await pubsub.unsubscribe(f"realtime:user:{uid}")
-        await pubsub.aclose()
+        await pubsub.aclose()  # type: ignore[no-untyped-call]
 
     assert extra is None, extra
     assert not any(m["type"] == "order.failed" for m in messages), messages
@@ -366,7 +366,7 @@ async def test_cancel_publishes_status_changed(
         messages = await _collect(pubsub, count=1, timeout=5)
     finally:
         await pubsub.unsubscribe(f"realtime:user:{user_id}")
-        await pubsub.aclose()
+        await pubsub.aclose()  # type: ignore[no-untyped-call]
 
     assert len(messages) == 1, messages
     assert messages[0]["type"] == "order.status_changed"
@@ -402,7 +402,7 @@ async def test_expire_publishes_status_changed(
         messages = await _collect(pubsub, count=1, timeout=5)
     finally:
         await pubsub.unsubscribe(f"realtime:user:{user_id}")
-        await pubsub.aclose()
+        await pubsub.aclose()  # type: ignore[no-untyped-call]
 
     assert flipped == 1
     assert len(messages) == 1, messages

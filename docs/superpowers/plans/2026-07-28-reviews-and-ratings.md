@@ -33,6 +33,7 @@
 ### Task 1: Reviews module — models + migration `0034_reviews`
 
 **Files:**
+
 - Create: `apps/api/src/yupay/modules/reviews/__init__.py`
 - Create: `apps/api/src/yupay/modules/reviews/models.py`
 - Create: `apps/api/migrations/versions/0034_reviews.py`
@@ -41,11 +42,13 @@
 - Test: `apps/api/tests/integration/test_reviews_migration.py`
 
 **Interfaces:**
+
 - Produces: ORM classes `Review`, `ReviewReport`, `BrandRatingStats` (all import `Base` from `yupay.core.db`). Statuses live in a module constant `REVIEW_STATUSES = ("published", "hidden", "removed")`.
 
 - [ ] **Step 1: Module docstring file**
 
 `apps/api/src/yupay/modules/reviews/__init__.py`:
+
 ```python
 """Brand reviews & ratings: verified-buyer star ratings with post-moderation."""
 ```
@@ -247,14 +250,17 @@ def downgrade() -> None:
 - [ ] **Step 4: Register models for metadata**
 
 In `apps/api/migrations/env.py`, add (alphabetical, after `_promo_models`... place by module name `reviews` — after `payments`/`promo`? current file has no promo import; insert in correct alphabetical slot between `_payments_models` and `_sourcing_models`):
+
 ```python
 from yupay.modules.reviews import models as _reviews_models  # noqa: F401
 ```
+
 In `apps/scheduler/src/yupay_scheduler/main.py`, add the same import in its alphabetical slot (after `_payments_models`, before `_sourcing_models`).
 
 - [ ] **Step 5: Write the migration test**
 
 `apps/api/tests/integration/test_reviews_migration.py` — assert the three tables + the unique constraint exist after `alembic upgrade head` (the integration test DB runs migrations). Mirror any existing migration/schema test; if none exists, assert via `db_session`:
+
 ```python
 import pytest
 from sqlalchemy import text
@@ -280,11 +286,13 @@ Commit: `feat(api/reviews): models + migration 0034 for brand reviews`.
 ### Task 2: Reviews service + schemas (business logic, no HTTP)
 
 **Files:**
+
 - Create: `apps/api/src/yupay/modules/reviews/schemas.py`
 - Create: `apps/api/src/yupay/modules/reviews/service.py`
 - Test: `apps/api/tests/integration/test_reviews_service.py`
 
 **Interfaces:**
+
 - Consumes: `Review`, `ReviewReport`, `BrandRatingStats` (Task 1); `yupay.core.ids.new_id`, `yupay.core.clock.now`, `yupay.core.errors.*`.
 - Produces (called by routes in Task 3 and catalog in Task 4):
   - `async create_review(db, *, user_id: str, order_id: str, brand_slug: str, rating: int, body: str | None, locale: str) -> Review`
@@ -386,6 +394,7 @@ class AdminReviewListOut(BaseModel):
 - [ ] **Step 2: Write the failing service test**
 
 `apps/api/tests/integration/test_reviews_service.py` — build fixtures for a user, a brand (with a product+sku), and a `delivered` order containing that sku (reuse existing catalog/order test factories — grep `apps/api/tests` for `make_order`/`create_brand` helpers; if none, insert rows directly). Tests:
+
 ```python
 import pytest
 from yupay.core.errors import ConflictError, ForbiddenError
@@ -449,6 +458,7 @@ async def test_admin_hide_then_unhide_adjusts_stats(db_session, published_review
     await svc.admin_set_status(db_session, review_id=published_review.id, status="published")
     assert (await svc.get_stats(db_session, [brand.id]))[brand.id].count == 1
 ```
+
 (Refine the report-threshold assertion to re-fetch the review row; the sketch above marks intent.)
 
 - [ ] **Step 3: Run to verify it fails**
@@ -458,6 +468,7 @@ Run: `pytest apps/api/tests/integration/test_reviews_service.py -v`. Expected: F
 - [ ] **Step 4: Implement `service.py`**
 
 Key logic:
+
 - `resolve_brand_id(db, slug)`: `SELECT id FROM brands WHERE slug=:slug`; `NotFoundError("brand not found")` if none.
 - `create_review`:
   1. `brand_id = await resolve_brand_id(db, brand_slug)`.
@@ -490,6 +501,7 @@ Commit: `feat(api/reviews): service + schemas (create, list, stats, moderation)`
 ### Task 3: Reviews routes + `api.py` + mount
 
 **Files:**
+
 - Create: `apps/api/src/yupay/modules/reviews/routes.py`
 - Create: `apps/api/src/yupay/modules/reviews/api.py`
 - Modify: `apps/api/src/yupay/api/v1/__init__.py` (import + mount, alphabetical)
@@ -497,12 +509,14 @@ Commit: `feat(api/reviews): service + schemas (create, list, stats, moderation)`
 - Docs: regenerate `docs/api/openapi.json` + `packages/api-client` via `make gen-api`
 
 **Interfaces:**
+
 - Consumes: service functions (Task 2); `db_session` from `yupay.api.v1.deps`; `current_user` from `yupay.modules.auth.deps`; `require_admin` from `yupay.modules.admin.api`; `IDEMPOTENCY_HEADER`, `MIN_IDEMPOTENCY_KEY_LENGTH` from `yupay.core.idempotency`.
 - Produces: `router` (prefix `/reviews`), `admin_router` (prefix `/admin/reviews`, `Depends(require_admin)`), plus `api.py` re-exporting `get_stats` for catalog.
 
 - [ ] **Step 1: Write the failing route test**
 
 `apps/api/tests/integration/test_reviews_routes.py` (fixtures `integration_client: AsyncClient`, an auth header helper — grep existing route tests for `auth_header`/login helper):
+
 ```python
 import pytest
 pytestmark = pytest.mark.asyncio
@@ -545,12 +559,14 @@ async def test_admin_hide_removes_from_public_list(integration_client, admin_tok
 - [ ] **Step 3: Implement `routes.py`**
 
 Public `router = APIRouter(prefix="/reviews", tags=["reviews"])`:
+
 - `GET /reviews/brands/{slug}?cursor=&limit=` → resolve brand id, `list_published`, `get_stats`, return `ReviewListOut` (public, anonymous OK). `limit` clamped to `[1, 50]`, default 20. Build the response `stats: ReviewStatsOut` from the ORM `BrandRatingStats` row: `ReviewStatsOut(avg=float(s.avg), count=s.count, dist={1: s.count_1, ..., 5: s.count_5})`, or a zeroed `ReviewStatsOut(avg=0, count=0, dist={1:0,...,5:0})` when the brand has no stats row yet.
 - `POST /reviews` → `current_user`, require Idempotency-Key (reuse the promo `_require_idempotency_key` helper pattern), call `create_review`, return `201` `ReviewOut`. Idempotency: because a review row is unique on `(user, order, brand)`, a retried POST with the same tuple naturally 409s — for a true replay, catch the create's `ConflictError(code="already_reviewed")` only when the incoming Idempotency-Key matches a stored one; **MVP: rely on the unique constraint (repeat = 409)** and document that the client treats 409 as "already submitted". (No generic idempotency store needed.)
 - `GET /reviews/mine` → `current_user`, `list_own`, return `OwnReviewListOut`.
 - `POST /reviews/{id}/report` → `current_user`, `report_review`, return `204`.
 
 Admin `admin_router = APIRouter(prefix="/admin/reviews", tags=["admin:reviews"], dependencies=[Depends(require_admin)])`:
+
 - `GET /admin/reviews?status=&reported=&limit=&offset=` → `admin_list` → `AdminReviewListOut`.
 - `POST /admin/reviews/{id}/hide` / `.../unhide` / `.../remove` → `admin_set_status` to `hidden`/`published`/`removed` → `AdminReviewOut`. Require Idempotency-Key on these writes (use the generic `load_replay`/`save_replay` from `yupay.core.idempotency` with `scope="reviews.admin.<action>"`, mirroring how fulfillment admin mutate-endpoints do it).
 
@@ -575,11 +591,14 @@ __all__ = [
 - [ ] **Step 5: Mount in `api/v1/__init__.py`**
 
 Add imports in the alphabetical slot (after `promo`, before `sourcing`):
+
 ```python
 from yupay.modules.reviews.api import admin_router as reviews_admin_router
 from yupay.modules.reviews.api import router as reviews_router
 ```
+
 And in the include block:
+
 ```python
 router.include_router(reviews_router)
 router.include_router(reviews_admin_router)
@@ -595,28 +614,33 @@ Commit: `feat(api/reviews): public + admin routes, mount, api.py` (include regen
 ### Task 4: Catalog enrichment — attach `rating` to brand DTOs (no N+1)
 
 **Files:**
+
 - Modify: `apps/api/src/yupay/modules/catalog/schemas.py` (add optional `rating` to `BrandOut` + `BrandDetailOut`)
 - Modify: `apps/api/src/yupay/modules/catalog/service.py` (`_brand_summary` ~line 121, `list_brands` ~line 283, `get_brand_by_slug` ~line 306)
 - Test: `apps/api/tests/integration/test_catalog_ratings.py`
 - Docs: `make gen-api` again
 
 **Interfaces:**
+
 - Consumes: `reviews.api.get_stats` (Task 3).
 - Produces: catalog DTOs now carry `rating: BrandRatingOut | None`.
 
 - [ ] **Step 1: Add the DTO**
 
 In `catalog/schemas.py`:
+
 ```python
 class BrandRatingOut(BaseModel):
     avg: float
     count: int
 ```
+
 Add `rating: BrandRatingOut | None = None` to both `BrandOut` and `BrandDetailOut`.
 
 - [ ] **Step 2: Write the failing enrichment + query-count test**
 
 `apps/api/tests/integration/test_catalog_ratings.py`:
+
 ```python
 import pytest
 from sqlalchemy import event
@@ -640,6 +664,7 @@ async def test_brand_grid_rating_is_not_n_plus_1(integration_client, db_engine, 
     await integration_client.get("/api/v1/catalog/brands")
     assert counter["stats"] <= 1
 ```
+
 (Adapt the engine-event hook to the project's existing query-counting helper if one exists — grep `before_cursor_execute` in `apps/api/tests`.)
 
 - [ ] **Step 3: Run to verify it fails** — FAIL (rating null / N+1).
@@ -648,6 +673,7 @@ async def test_brand_grid_rating_is_not_n_plus_1(integration_client, db_engine, 
 
 - Change `_brand_summary(brand, locale)` → `_brand_summary(brand, locale, rating: BrandRatingOut | None = None)` and set `rating=rating` in the returned `BrandOut`.
 - In `list_brands`, after loading `rows`:
+
 ```python
 from yupay.modules.reviews import api as reviews_api
 ...
@@ -657,7 +683,9 @@ return [
     for b in rows
 ]
 ```
+
 with a small local helper `_to_rating(s) -> BrandRatingOut | None` returning `None` when `s is None or s.count == 0`, else `BrandRatingOut(avg=float(s.avg), count=s.count)`.
+
 - In `get_brand_by_slug`, before constructing `BrandDetailOut`, add `stats = await reviews_api.get_stats(db, [brand.id])` and pass `rating=_to_rating(stats.get(brand.id))`.
 
 - [ ] **Step 5: Run + regen + commit** — tests PASS; `make gen-api`; commit `feat(api/catalog): expose per-brand rating on brand DTOs`.
@@ -667,14 +695,17 @@ with a small local helper `_to_rating(s) -> BrandRatingOut | None` returning `No
 ### Task 5: Scheduler — nightly `recompute_brand_rating_stats`
 
 **Files:**
+
 - Create: `apps/scheduler/src/yupay_scheduler/jobs/recompute_review_stats.py`
 - Modify: `apps/scheduler/src/yupay_scheduler/main.py` (import + `register`)
 - Test: `apps/scheduler` test dir (mirror an existing job test) or `apps/api/tests/integration/test_reviews_reconcile.py` exercising `recompute_all_stats`
 
 **Interfaces:**
+
 - Consumes: `reviews.service.recompute_all_stats` via `reviews.api` (`from yupay.modules.reviews.service import recompute_all_stats` — reach into service directly like `waxpeer_reconcile` does, to avoid importing `routes`).
 
 - [ ] **Step 1: Write the job** — mirror `waxpeer_reconcile.py` structure but `trigger="cron"`:
+
 ```python
 """Nightly reconcile of denormalized brand rating stats (drift safety net)."""
 
@@ -718,6 +749,7 @@ __all__ = ["register", "run_recompute_review_stats"]
 ### Task 6: Web — rating display (catalog types, brand card, brand-page summary, JSON-LD)
 
 **Files:**
+
 - Modify: `apps/web/src/lib/catalog.ts` (optional `rating` on `BrandSummary` + `BrandDetail`)
 - Create: `apps/web/src/lib/reviews.ts` (fetchers + types for the reviews API)
 - Create: `apps/web/src/components/store/RatingSummary.tsx` (stars + avg + count + histogram)
@@ -728,33 +760,70 @@ __all__ = ["register", "run_recompute_review_stats"]
 - Test: `apps/web/src/components/store/RatingSummary.test.tsx`, `Stars.test.tsx`
 
 **Interfaces:**
+
 - Consumes: `GET /api/v1/reviews/brands/{slug}` (Task 3), `rating` on brand DTOs (Task 4).
 
 - [ ] **Step 1: Types** — in `catalog.ts` add to both interfaces (optional!):
+
 ```ts
 export interface BrandRating { avg: number; count: number; }
 // on BrandSummary AND BrandDetail:
 rating?: BrandRating | null;
 ```
+
 Create `lib/reviews.ts`:
+
 ```ts
 import { apiGet, apiFetch } from "./client"; // match actual exports
 
-export interface Review { id: string; rating: number; body: string | null; author_name: string; created_at: string; }
-export interface ReviewStats { avg: number; count: number; dist: Record<string, number>; }
-export interface ReviewPage { items: Review[]; next_cursor: string | null; stats: ReviewStats; }
-
-export function getBrandReviews(slug: string, locale: string, cursor?: string): Promise<ReviewPage> {
-  const q = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
-  return apiGet<ReviewPage>(`/reviews/brands/${encodeURIComponent(slug)}${q}`, { locale, revalidate: 60 });
+export interface Review {
+  id: string;
+  rating: number;
+  body: string | null;
+  author_name: string;
+  created_at: string;
 }
-export function submitReview(body: { order_id: string; brand_slug: string; rating: number; body?: string }) {
-  return apiFetch("/reviews", { method: "POST", body, headers: { "Idempotency-Key": crypto.randomUUID() } });
+export interface ReviewStats {
+  avg: number;
+  count: number;
+  dist: Record<string, number>;
+}
+export interface ReviewPage {
+  items: Review[];
+  next_cursor: string | null;
+  stats: ReviewStats;
+}
+
+export function getBrandReviews(
+  slug: string,
+  locale: string,
+  cursor?: string,
+): Promise<ReviewPage> {
+  const q = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
+  return apiGet<ReviewPage>(`/reviews/brands/${encodeURIComponent(slug)}${q}`, {
+    locale,
+    revalidate: 60,
+  });
+}
+export function submitReview(body: {
+  order_id: string;
+  brand_slug: string;
+  rating: number;
+  body?: string;
+}) {
+  return apiFetch("/reviews", {
+    method: "POST",
+    body,
+    headers: { "Idempotency-Key": crypto.randomUUID() },
+  });
 }
 export function getMyReviews() {
-  return apiFetch<{ items: { id: string; order_id: string; brand_id: string; rating: number }[] }>("/reviews/mine");
+  return apiFetch<{ items: { id: string; order_id: string; brand_id: string; rating: number }[] }>(
+    "/reviews/mine",
+  );
 }
 ```
+
 (Reconcile the exact `apiGet`/`apiFetch` signatures with `apps/web/src/lib/client.ts` + `api.ts`.)
 
 - [ ] **Step 2: `Stars.tsx` + failing test** — a presentational component `<Stars value={4.3} size={16} />` rendering 5 `Star` icons with fractional fill. Test asserts 5 icons and the filled count for integer + rounding for fractional.
@@ -764,11 +833,13 @@ export function getMyReviews() {
 - [ ] **Step 4: Implement, then wire into pages**
 - `BrandCard.tsx`: if `brand.rating && brand.rating.count > 0`, render a small chip `★ {avg.toFixed(1)} ({count})` (mirror the maintenance badge placement). Always guard `brand.rating ?? null`.
 - Brand page `page.tsx`: fetch reviews server-side alongside `getBrandDetail` (`getBrandReviews(brandSlug, locale)` in the same `try/catch`, default to `{ items: [], next_cursor: null, stats: { avg: 0, count: 0, dist: {} } }` on failure — SSG safety). Render `<RatingSummary … />` right after the hero chips row (~line 207-224). Add to `productLd` (sibling of `offers`, conditional):
+
 ```ts
 ...(stats.count > 0 ? { aggregateRating: { "@type": "AggregateRating", ratingValue: stats.avg, reviewCount: stats.count } } : {}),
 ```
 
 - [ ] **Step 5: i18n** — add a `brandReviews` block to `web.json` in **all three** locales, incl. an ICU plural:
+
 ```json
 "brandReviews": {
   "title": "Отзывы",
@@ -783,6 +854,7 @@ export function getMyReviews() {
   "report": "Пожаловаться"
 }
 ```
+
 (en/uz translated equivalently; keep ICU plural categories valid per locale — en uses `one/other`, uz uses `other`.)
 
 - [ ] **Step 6: Run + commit** — `pnpm --filter web test` + `pnpm --filter web typecheck`. Commit `feat(web/store): brand rating summary, card badge, JSON-LD aggregateRating`.
@@ -792,12 +864,14 @@ export function getMyReviews() {
 ### Task 7: Web — submit form + account "Rate your purchase" CTA
 
 **Files:**
+
 - Create: `apps/web/src/components/store/ReviewForm.tsx` (client) + `ReviewList.tsx` (paginated list, escapes body)
 - Modify: brand page `page.tsx` to render `<ReviewList>` after FAQ and `<ReviewForm>` for eligible users (client island)
 - Modify: `apps/web/src/app/[locale]/account/orders/page.tsx` (per-delivered-order CTA) OR `apps/web/src/components/order/OrderStatus.tsx`
 - Test: `ReviewForm.test.tsx`
 
 **Interfaces:**
+
 - Consumes: `submitReview`, `getMyReviews` (Task 6), `useAuth` (`apps/web/src/lib/auth.tsx`).
 
 - [ ] **Step 1: `ReviewList.tsx`** — renders `Review[]` with `<Stars>`, `author_name`, date via `Intl.DateTimeFormat`, and body rendered as **plain text** (React escapes by default — do NOT use `dangerouslySetInnerHTML`). "Load more" uses `next_cursor` (client component with `useState` + `getBrandReviews`). Include a small "Пожаловаться" action → `POST /reviews/{id}/report` (auth only).
@@ -815,6 +889,7 @@ export function getMyReviews() {
 ### Task 8: Mini App — reviews sheet + submit + History/OrderSuccess CTA
 
 **Files:**
+
 - Create: `apps/miniapp/src/lib/reviews.ts` (fetchers using `apiGet`/`apiPost` from `src/lib/api.ts`)
 - Create: `apps/miniapp/src/components/ReviewsSheet.tsx` (bottom sheet: summary + list + form)
 - Modify: `apps/miniapp/src/pages/TopUp.tsx` (rating chip at the flagged slot ~line 660 → opens the sheet)
@@ -823,6 +898,7 @@ export function getMyReviews() {
 - Test: a component test if the miniapp has a test setup (mirror `History.test` if present)
 
 **Interfaces:**
+
 - Consumes: reviews API (Task 3), brand rating (Task 4 — available via `useBrandSummary`), `useMe()` (`src/lib/auth.ts`), `newIdempotencyKey` (`src/lib/api.ts`), `useT`/`tn` (`src/lib/i18n`).
 
 - [ ] **Step 1: `lib/reviews.ts`** — `getBrandReviews(slug, cursor?)`, `submitReview(body)` with `apiPost("/reviews", body, { idempotencyKey: newIdempotencyKey("review") })`, `getMyReviews()`, `reportReview(id, reason)`. Types mirror web.
@@ -834,6 +910,7 @@ export function getMyReviews() {
 - [ ] **Step 4: History / OrderSuccess CTA** — in `History.tsx` next to the existing `history.repeat` button (same `status === "success"` gate, same `e.preventDefault(); e.stopPropagation()`), add a "Оценить" button opening the sheet for `tx.gameSlug`. In `OrderSuccess.tsx` `DeliveredExtras`, add the same CTA using `order.items[0].display.brand_slug`. Suppress once `getMyReviews()` contains that `(order, brand)`.
 
 - [ ] **Step 5: i18n** — add flat keys to `miniapp.json` (all three locales), incl. a plural object:
+
 ```json
 "reviews.title": "Отзывы",
 "reviews.count": { "one": "{count} отзыв", "few": "{count} отзыва", "many": "{count} отзывов", "other": "{count} отзыва" },
@@ -844,6 +921,7 @@ export function getMyReviews() {
 "reviews.already": "Вы уже оценили эту покупку",
 "reviews.empty": "Пока нет отзывов"
 ```
+
 (en/uz parity — the miniapp i18n has compile-time parity assertions, so all three must match key-for-key.)
 
 - [ ] **Step 6: Run + commit** — `pnpm --filter miniapp typecheck` (+ tests if present). Commit `feat(miniapp): brand reviews sheet, rating chip, rate CTA`.
@@ -853,6 +931,7 @@ export function getMyReviews() {
 ### Task 9: Admin — moderation queue
 
 **Files:**
+
 - Create: `apps/admin/src/features/reviews/types.ts`
 - Create: `apps/admin/src/features/reviews/ReviewsPage.tsx`
 - Modify: `apps/admin/src/app/router.tsx` (route `/reviews`)
@@ -861,6 +940,7 @@ export function getMyReviews() {
 - Test: `apps/admin/src/features/reviews/ReviewsPage.test.tsx` (mirror `ManualQueuePage`/broadcasts tests)
 
 **Interfaces:**
+
 - Consumes: `GET /api/v1/admin/reviews`, `POST /api/v1/admin/reviews/{id}/{hide,unhide,remove}` (Task 3); `apiGet`/`apiPost` from `@/lib/api`; `DataTable`, `PageHeader`.
 
 - [ ] **Step 1: Types** — `AdminReview`, `AdminReviewList` mirroring `AdminReviewOut`/`AdminReviewListOut`.
@@ -876,6 +956,7 @@ export function getMyReviews() {
 ### Task 10: Docs — module map, README, diagrams, ADR, security
 
 **Files:**
+
 - Create: `apps/api/src/yupay/modules/reviews/README.md`
 - Modify: `docs/architecture/module-map.md` (add the reviews module + its edge to catalog)
 - Create: `docs/architecture/sequence-diagrams/leave-review.mmd`, `.../review-moderation.mmd`

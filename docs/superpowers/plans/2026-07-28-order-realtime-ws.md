@@ -26,6 +26,7 @@
 ### Task 1: `realtime` backend — service + WS gateway + handshake
 
 **Files:**
+
 - Create: `apps/api/src/yupay/modules/realtime/service.py`, `routes.py`, `api.py`
 - Modify: `apps/api/src/yupay/modules/realtime/__init__.py` (keep docstring)
 - Modify: `apps/api/src/yupay/api/v1/__init__.py` (mount, alphabetical — after `promo`/`reviews`)
@@ -33,6 +34,7 @@
 - Docs: `make gen-api` (handshake endpoint)
 
 **Interfaces:**
+
 - Consumes: `get_redis` (`yupay.core.redis`), `auth.jwt.{mint_ws_handshake, verify}`, `auth.deps.current_user`, `db_session`, `yupay.core.ids.new_id`, `yupay.core.clock.now`.
 - Produces: `realtime.api.publish_order_event(user_id, message)`, `router` (handshake), the WS route.
 
@@ -180,6 +182,7 @@ __all__ = ["publish_order_event", "router"]
 - [ ] **Step 5: Failing test** `apps/api/tests/integration/test_realtime_ws.py`
 
 Use the `integration_client` app with `httpx`/Starlette's WS test transport, or FastAPI `TestClient` websocket. Mint a ws token with `mint_ws_handshake`. Tests:
+
 ```python
 import pytest
 
@@ -205,6 +208,7 @@ async def test_publish_is_noop_for_guest():
     from yupay.modules.realtime.service import publish_order_event
     await publish_order_event(None, {"type": "x"})  # must not raise
 ```
+
 (Adapt to the project's WS test helper — if `integration_client` (httpx ASGITransport) can't do WS, use `starlette.testclient.TestClient(app).websocket_connect`. Discover the working approach; a helper `ws_token_for` mints via `mint_ws_handshake`. Real Redis (dev) is used by the integration harness.)
 
 - [ ] **Step 6: Run + regen + commit** — `pytest apps/api/tests/integration/test_realtime_ws.py -v` PASS; `make gen-api`; commit `feat(api/realtime): WS gateway + handshake + Redis fan-out`.
@@ -214,15 +218,18 @@ async def test_publish_is_noop_for_guest():
 ### Task 2: Publish at order-status transitions
 
 **Files:**
+
 - Modify: `apps/api/src/yupay/modules/fulfillment/service.py` (`_try_settle_order` → delivered; the `paid → fulfilling` block ~line 183). **No `order.failed`** — do not wire fulfillment failure paths (DOMAIN RULE).
 - Modify: `apps/api/src/yupay/modules/orders/service.py` (cancel ~612, expire ~695)
 - Modify: `apps/api/src/yupay/modules/payments/service.py` (the `paid` transition — `order.status = "paid"` at line 255)
 - Test: `apps/api/tests/integration/test_realtime_publish.py`
 
 **Interfaces:**
+
 - Consumes: `realtime.api.publish_order_event`. Import lazily inside the function (`from yupay.modules.realtime import api as realtime`) to avoid pulling the WS route stack at module import (same trap as the scheduler jobs / catalog↔reviews).
 
 - [ ] **Step 1: A small helper** in each touched service (or a shared one) to publish a status_changed:
+
 ```python
 async def _publish_status(order) -> None:
     from yupay.modules.realtime import api as realtime
@@ -232,11 +239,14 @@ async def _publish_status(order) -> None:
          "at": order.updated_at.isoformat()},
     )
 ```
+
 For the terminal cases in `_try_settle_order`, publish `order.delivered`:
+
 ```python
 await realtime.publish_order_event(order.user_id,
     {"type": "order.delivered", "orderId": order.id, "payload": {"kind": "order", "data": None}})
 ```
+
 **Do not publish `order.failed`** anywhere (DOMAIN RULE — fulfillment failures keep the order at `fulfilling`).
 
 - [ ] **Step 2: Wire the call sites** — after each `order.status = …; order.updated_at = now()` (+ its `db.flush()`), call the publish helper. Only fires for logged-in orders (helper passes `order.user_id`, which `publish_order_event` no-ops on None). Transitions covered: `paid`, `fulfilling`, `delivered`, `cancelled`, `expired`. **NOT `failed`.**
@@ -250,6 +260,7 @@ await realtime.publish_order_event(order.user_id,
 ### Task 3: Web — `useOrderSocket` hook + polling gate
 
 **Files:**
+
 - Modify: `apps/web/package.json` (add `"@yupay/api-client": "workspace:*"`)
 - Create: `apps/web/src/lib/realtime.ts` (handshake fetch + a `connectOrderSocket` factory)
 - Create: `apps/web/src/hooks/useOrderSocket.ts`
@@ -258,16 +269,19 @@ await realtime.publish_order_event(order.user_id,
 - Test: `apps/web/src/hooks/useOrderSocket.test.tsx`
 
 **Interfaces:**
+
 - Consumes: `OrderSocket`, `OrderUpdateMessage` from `@yupay/api-client`; `apiFetch` (`@/lib/client`); `useAuth`; `useQueryClient`.
 
 - [ ] **Step 1: `lib/realtime.ts`**
+
 ```ts
 import { OrderSocket } from "@yupay/api-client";
 import { apiFetch } from "./client";
 
-const WS_URL = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000")
-  .replace(/^http/, "ws")
-  .replace(/\/$/, "") + "/api/v1/realtime/ws/orders";
+const WS_URL =
+  (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000")
+    .replace(/^http/, "ws")
+    .replace(/\/$/, "") + "/api/v1/realtime/ws/orders";
 
 export function createOrderSocket(handlers: {
   onMessage: (m: import("@yupay/api-client").OrderUpdateMessage) => void;
@@ -276,7 +290,8 @@ export function createOrderSocket(handlers: {
 }): OrderSocket {
   return new OrderSocket({
     url: WS_URL,
-    getToken: async () => (await apiFetch<{ token: string }>("/realtime/handshake", { method: "POST" })).token,
+    getToken: async () =>
+      (await apiFetch<{ token: string }>("/realtime/handshake", { method: "POST" })).token,
     onMessage: handlers.onMessage,
     onOpen: handlers.onOpen,
     onClose: handlers.onClose,
@@ -297,6 +312,7 @@ export function createOrderSocket(handlers: {
 ### Task 4: Web — global delivered modal (rate CTA)
 
 **Files:**
+
 - Create: `apps/web/src/store/useOrderDeliveredModal.ts` (Zustand — mirror `useLoginModal`)
 - Create: `apps/web/src/components/order/OrderDeliveredModal.tsx`
 - Modify: `apps/web/src/app/[locale]/layout.tsx` (mount the modal once, like the login modal)
@@ -304,6 +320,7 @@ export function createOrderSocket(handlers: {
 - Test: `apps/web/src/components/order/OrderDeliveredModal.test.tsx`
 
 **Interfaces:**
+
 - Consumes: `useOrderDeliveredModal` (holds `{ orderId }`), `getMyReviews` (`@/lib/reviews`), `apiFetch` (to fetch the order for `brand_slug`).
 
 - [ ] **Step 1: Store** `useOrderDeliveredModal` — `{ open(orderId), close(), state }`. Task 3's hook calls `open(orderId)` on an `order.delivered` message. (No "failed" modal — DOMAIN RULE.)
@@ -317,6 +334,7 @@ export function createOrderSocket(handlers: {
 ### Task 5: Mini App — live updates + delivered dialog
 
 **Files:**
+
 - Modify: `apps/miniapp/package.json` (add `@yupay/api-client`)
 - Create: `apps/miniapp/src/lib/realtime.ts`, `apps/miniapp/src/hooks/useOrderSocket.ts`
 - Create: `apps/miniapp/src/components/OrderDeliveredDialog.tsx` (uses `components/ui/dialog.tsx`)
@@ -326,6 +344,7 @@ export function createOrderSocket(handlers: {
 - Test: a hook/component test if the miniapp suite supports it
 
 **Interfaces:**
+
 - Consumes: `OrderSocket` from `@yupay/api-client`; `apiGet`/`apiPost` (`@/lib/api`); `useMe`; the existing `ReviewsSheet` (open with `formOrderId` on the delivered "rate" CTA).
 
 - [ ] **Step 1: `lib/realtime.ts`** — derive the WS URL from `apiBase` (swap `http`→`ws`); `getToken` via `apiPost("/api/v1/realtime/handshake", {})`.
@@ -340,6 +359,7 @@ export function createOrderSocket(handlers: {
 ### Task 6: Docs
 
 **Files:**
+
 - Create: `apps/api/src/yupay/modules/realtime/README.md`
 - Modify: `docs/architecture/module-map.md` (realtime row + edges: publishers → realtime, realtime → core/redis)
 - Create: `docs/architecture/sequence-diagrams/order-live-update.mmd`
