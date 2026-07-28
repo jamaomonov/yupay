@@ -8578,6 +8578,14 @@
             ],
             "title": "Description"
           },
+          "highlights": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Highlights",
+            "type": "array"
+          },
           "instructions": {
             "anyOf": [
               {

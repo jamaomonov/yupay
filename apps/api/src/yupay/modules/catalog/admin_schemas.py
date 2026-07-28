@@ -89,6 +89,20 @@ class TranslationIn(BaseModel):
     # Longform "how to top up / regions / where to find your ID" guide. Only
     # brands persist this; products ignore it.
     instructions: str | None = None
+    # Short localized value-prop chips shown on the brand hero (e.g. "0%
+    # комиссии", "Оплата в сумах"). Same precedent as ``instructions`` above:
+    # only brands persist this; categories/products ignore it.
+    highlights: list[str] = Field(default_factory=list, max_length=8)
+
+    @field_validator("highlights")
+    @classmethod
+    def _clean_highlights(cls, v: list[str]) -> list[str]:
+        """Trim whitespace, drop empties, and cap each chip at 40 chars."""
+        cleaned = [item.strip() for item in v]
+        for item in cleaned:
+            if len(item) > 40:
+                raise ValueError("each highlight must be at most 40 characters")
+        return [item for item in cleaned if item]
 
 
 class CategoryTranslationIn(BaseModel):
