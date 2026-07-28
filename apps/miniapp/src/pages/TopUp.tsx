@@ -10,12 +10,15 @@ import {
   Send,
   Settings,
   ShieldCheck,
+  Star,
   Wallet as WalletIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useParams } from "wouter";
 
 import { DynamicFields } from "@/components/DynamicFields";
+import { ReviewsSheet } from "@/components/ReviewsSheet";
+import { SafeImage } from "@/components/ui/safe-image";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { ApiError } from "@/lib/api";
@@ -29,7 +32,6 @@ import {
 import { useDisplayCurrency } from "@/lib/currency";
 import { useT } from "@/lib/i18n";
 import { getActiveLocale } from "@/lib/i18n/core";
-import { SafeImage } from "@/components/ui/safe-image";
 import { useAvailableProviders, useCheckout } from "@/lib/orders";
 import { ACQUIRER_BY_METHOD, PAYMENT_METHODS, PROVIDER_BY_METHOD } from "@/lib/payment-methods";
 import { getRecentFulfillment, rememberFulfillment } from "@/lib/recent-checkout";
@@ -222,6 +224,7 @@ export default function TopUp() {
   useDocumentTitle(game ? t("topup.docTitleNamed", { game: game.name }) : t("topup.docTitle"));
 
   // The currently picked product within the brand (PUBG UC vs Royale Pass …).
+  const [reviewsOpen, setReviewsOpen] = useState(false);
   const [selectedProductSlug, setSelectedProductSlug] = useState<string>("");
   useEffect(() => {
     if (!selectedProductSlug && products.length > 0) {
@@ -604,6 +607,14 @@ export default function TopUp() {
 
   return (
     <>
+      {reviewsOpen && gameId && (
+        <ReviewsSheet
+          brandSlug={gameId}
+          onClose={() => {
+            setReviewsOpen(false);
+          }}
+        />
+      )}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -675,6 +686,24 @@ export default function TopUp() {
                     {t("topup.deliveryTime")}
                   </span>
                 </div>
+                {brandQuery.data?.rating && brandQuery.data.rating.count > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReviewsOpen(true);
+                    }}
+                    className="flex items-center gap-1 rounded-full px-2 py-0.5"
+                    style={{ background: "rgba(255,255,255,0.08)" }}
+                  >
+                    <Star size={10} className="fill-amber-400 text-amber-400" />
+                    <span className="text-[10px] font-semibold text-white">
+                      {brandQuery.data.rating.avg.toFixed(1)}
+                    </span>
+                    <span className="text-[10px] text-white/50">
+                      ({brandQuery.data.rating.count})
+                    </span>
+                  </button>
+                )}
               </div>
             </div>
           </div>

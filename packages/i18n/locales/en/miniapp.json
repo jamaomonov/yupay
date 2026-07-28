@@ -307,5 +307,20 @@
   "success.addToHome": "Add to home screen",
   "success.share": "Share",
   "success.shareStoryText": "Topped up {game} in a couple of minutes — YuPay",
-  "success.shareStoryTextGeneric": "Topped up my game in a couple of minutes — YuPay"
+  "success.shareStoryTextGeneric": "Topped up my game in a couple of minutes — YuPay",
+  "reviews.title": "Reviews",
+  "reviews.count": {
+    "one": "{count} review",
+    "few": "{count} reviews",
+    "many": "{count} reviews",
+    "other": "{count} reviews"
+  },
+  "reviews.empty": "No reviews yet",
+  "reviews.anonymous": "Customer",
+  "reviews.commentPlaceholder": "Comment (optional)",
+  "reviews.submit": "Submit",
+  "reviews.thanks": "Thanks for your review!",
+  "reviews.already": "You've already rated this purchase",
+  "reviews.error": "Couldn't submit",
+  "reviews.rateCta": "Rate"
 }
