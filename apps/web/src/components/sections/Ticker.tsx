@@ -1,12 +1,12 @@
 import { Zap } from "lucide-react";
 
 const ITEMS = [
-  "STEAM KZ",
+  "STEAM",
   "PUBG MOBILE",
-  "TELEGRAM PREMIUM",
+  "FREE FIRE",
   "GENSHIN IMPACT",
-  "VALORANT",
   "DELTA FORCE",
+  "ARENA BREAKOUT",
 ];
 
 /**

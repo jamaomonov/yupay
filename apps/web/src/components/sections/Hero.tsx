@@ -6,6 +6,7 @@ import { PhoneShowcase } from "./PhoneShowcase";
 
 import { buttonStyles } from "@/lib/button";
 import { TELEGRAM_MINIAPP_URL } from "@/lib/links";
+import { pathFor } from "@/lib/seo";
 
 /**
  * Storefront hero — type-led left column + a real product shot on the right:
@@ -14,7 +15,6 @@ import { TELEGRAM_MINIAPP_URL } from "@/lib/links";
  */
 export async function Hero({ locale }: { locale: string }) {
   const t = await getTranslations("web.hero");
-  const prefix = `/${locale}`;
 
   return (
     <header className="relative overflow-hidden pb-20 pt-28 sm:pb-[120px] sm:pt-[180px]">
@@ -79,7 +79,7 @@ export async function Hero({ locale }: { locale: string }) {
                 />
               </a>
               <Link
-                href={`${prefix}/store`}
+                href={pathFor(locale, "/store")}
                 className={buttonStyles({ variant: "ghost", size: "lg" })}
               >
                 {t("ctaPrimary")}
@@ -87,7 +87,7 @@ export async function Hero({ locale }: { locale: string }) {
             </div>
             <div className="hidden items-center gap-3.5 lg:flex">
               <Link
-                href={`${prefix}/store`}
+                href={pathFor(locale, "/store")}
                 className={buttonStyles({ size: "lg", className: "group" })}
               >
                 {t("ctaPrimary")}

@@ -4,6 +4,8 @@ import { getTranslations } from "next-intl/server";
 
 import { Wordmark } from "./Wordmark";
 
+import { pathFor } from "@/lib/seo";
+
 /** Public social channels. Instagram handle yupay.app, Telegram channel
  * yupay_channel (distinct from the @yupay_support contact above). Full-colour
  * brand marks live in public/social. */
@@ -25,7 +27,6 @@ export async function Footer({ locale }: { locale: string }) {
   const t = await getTranslations("web.footer");
   const nav = await getTranslations("web.nav");
   const year = new Date().getFullYear();
-  const prefix = `/${locale}`;
 
   return (
     <footer className="border-border border-t pt-[72px]">
@@ -63,8 +64,8 @@ export async function Footer({ locale }: { locale: string }) {
           </div>
 
           <FooterCol title={t("productTitle")}>
-            <FooterLink href={`${prefix}/store`}>{nav("store")}</FooterLink>
-            <FooterLink href={`${prefix}/store`}>{t("prices")}</FooterLink>
+            <FooterLink href={pathFor(locale, "/store")}>{nav("store")}</FooterLink>
+            <FooterLink href={pathFor(locale, "/store")}>{t("prices")}</FooterLink>
             <FooterLink href="#how">{nav("how")}</FooterLink>
           </FooterCol>
 
@@ -72,13 +73,13 @@ export async function Footer({ locale }: { locale: string }) {
             <FooterLink href="https://t.me/yupay_support" external>
               {nav("support")}
             </FooterLink>
-            <FooterLink href={`${prefix}/legal/refunds`}>{t("refunds")}</FooterLink>
+            <FooterLink href={pathFor(locale, "/legal/refunds")}>{t("refunds")}</FooterLink>
           </FooterCol>
 
           <FooterCol title={t("legalTitle")}>
-            <FooterLink href={`${prefix}/legal/terms`}>{t("terms")}</FooterLink>
-            <FooterLink href={`${prefix}/legal/privacy`}>{t("privacy")}</FooterLink>
-            <FooterLink href={`${prefix}/legal/imprint`}>{t("imprint")}</FooterLink>
+            <FooterLink href={pathFor(locale, "/legal/terms")}>{t("terms")}</FooterLink>
+            <FooterLink href={pathFor(locale, "/legal/privacy")}>{t("privacy")}</FooterLink>
+            <FooterLink href={pathFor(locale, "/legal/imprint")}>{t("imprint")}</FooterLink>
           </FooterCol>
 
           <FooterCol title={t("usTitle")}>

@@ -11,6 +11,7 @@ import { AccountMenu } from "./auth/AccountMenu";
 import { type AppLocale } from "@/i18n/routing";
 import { buttonStyles } from "@/lib/button";
 import { TELEGRAM_MINIAPP_URL } from "@/lib/links";
+import { pathFor } from "@/lib/seo";
 
 const LOCALES: { code: AppLocale; label: string }[] = [
   { code: "ru", label: "Русский" },
@@ -31,7 +32,6 @@ export function MobileNav() {
   const pathname = usePathname();
   const current = useLocale() as AppLocale;
   const [open, setOpen] = useState(false);
-  const prefix = `/${current}`;
 
   // Lock body scroll while the sheet is open.
   useEffect(() => {
@@ -74,7 +74,7 @@ export function MobileNav() {
         <div className="bg-bg fixed inset-x-0 top-[72px] z-50 h-[calc(100dvh-72px)] overflow-y-auto">
           <div className="mx-auto max-w-[1200px] px-6 py-5">
             <nav className="flex flex-col">
-              <Link href={`${prefix}/store`} onClick={close} className={linkClass}>
+              <Link href={pathFor(current, "/store")} onClick={close} className={linkClass}>
                 {t("store")}
               </Link>
               <a href="#how" onClick={close} className={linkClass}>

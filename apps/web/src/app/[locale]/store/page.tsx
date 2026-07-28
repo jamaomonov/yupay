@@ -11,7 +11,7 @@ import { TrustBand } from "@/components/sections/TrustBand";
 import { BrandCard } from "@/components/store/BrandCard";
 import { routing } from "@/i18n/routing";
 import { getBrands, getCategories, type BrandSummary, type CategoryOut } from "@/lib/catalog";
-import { alternates, GEO_META, localeUrl, ogLocale } from "@/lib/seo";
+import { alternates, GEO_META, localeUrl, ogLocale, pathFor } from "@/lib/seo";
 
 export const revalidate = 300;
 
@@ -60,7 +60,6 @@ export default async function StorePage({
   setRequestLocale(locale);
   const { cat } = await searchParams;
   const t = await getTranslations("web.store");
-  const prefix = `/${locale}`;
 
   // Fetch the whole catalog once; filter in-render by the ?cat= segment so the
   // page stays server-rendered per URL without an extra round-trip.
@@ -131,7 +130,7 @@ export default async function StorePage({
 
       <div className="mx-auto max-w-[1200px] px-6 sm:px-10">
         <nav className="text-tx-dim mb-7 flex items-center gap-1.5 font-mono text-[11px]">
-          <Link href={prefix} className="hover:text-tx-mute transition">
+          <Link href={pathFor(locale)} className="hover:text-tx-mute transition">
             {t("breadcrumbHome")}
           </Link>
           <ChevronRight size={12} />
@@ -175,7 +174,10 @@ export default async function StorePage({
           <div className="mt-10 flex flex-wrap gap-2.5">
             {chips.map((f) => {
               const isActive = f.slug === active;
-              const href = f.slug === "all" ? `${prefix}/store` : `${prefix}/store?cat=${f.slug}`;
+              const href =
+                f.slug === "all"
+                  ? pathFor(locale, "/store")
+                  : pathFor(locale, `/store?cat=${f.slug}`);
               return (
                 <Link
                   key={f.slug}

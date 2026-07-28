@@ -4,6 +4,7 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { buttonStyles } from "@/lib/button";
+import { pathFor } from "@/lib/seo";
 
 /** Card networks (Uzcard, Humo) + the acquirer wordmarks customers actually
  * tap (Click, Payme, Uzum) — order matches the subtitle's "Click, Payme и
@@ -164,7 +165,7 @@ export async function SteamZeroCommission({ locale }: { locale: string }) {
           {/* Row 2 — CTA on the left, payment chips immediately to its right. */}
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-5">
             <Link
-              href={`/${locale}/store/steam`}
+              href={pathFor(locale, "/store/steam")}
               className={buttonStyles({ size: "lg", className: "group shrink-0" })}
             >
               {t("cta")}

@@ -11,7 +11,7 @@
   },
   "meta": {
     "homeTitle": "Yupay — Instant game top-ups and digital subscriptions",
-    "homeDescription": "Steam, PUBG Mobile, Telegram Premium, Genshin, Valorant and more games. No passwords — top up by ID in 2 minutes. Pay with card."
+    "homeDescription": "Steam, PUBG Mobile, Free Fire, Genshin Impact, Delta Force and more games in Uzbekistan. Pay with Click, Payme and Uzum, prices in som. No passwords, credited in minutes."
   },
   "nav": {
     "store": "Catalog",
@@ -46,14 +46,14 @@
     "commission": "Commission",
     "speed": "Speed",
     "rating": "Rating",
-    "steamDesc": "Any CIS country, Kazakhstan, Turkey. 2-minute delivery, no password handover.",
+    "steamDesc": "Any CIS country, Kazakhstan, Turkey. Instant automatic crediting, no password handover.",
     "cards": {
       "steam": {
         "name": "Steam\nWallet",
         "eyebrow": "Valve · CIS / KZ / TR",
         "tag": "HOT",
         "statCommission": "0%",
-        "statSpeed": "2 min",
+        "statSpeed": "Instant",
         "statRating": "★ 5.0"
       },
       "pubg-mobile": {
@@ -101,7 +101,7 @@
     "title": "0% fee on Steam top-ups",
     "subtitle": "Pay in so‘m via Click, Payme and Uzum. What you pay is what lands on your Steam balance — no hidden fees.",
     "payLabel": "Pay in so‘m",
-    "chipSpeed": "1–3 minutes",
+    "chipSpeed": "Instant",
     "chipNoPassword": "No password",
     "chipGuarantee": "Money-back guarantee",
     "statSpeedLabel": "Speed",
@@ -140,7 +140,7 @@
   "store": {
     "meta": {
       "title": "Game & subscription top-ups in Uzbekistan",
-      "description": "Top up Steam, PUBG Mobile, Telegram Premium, Delta Force and Arena Breakout by UID. Pay with Click, Payme and Uzum, prices in som, credited in minutes, no password handover — yupay."
+      "description": "Top up Steam, PUBG Mobile, Free Fire, Genshin Impact, Delta Force and Arena Breakout by UID. Pay with Click, Payme and Uzum, prices in som, credited in minutes, no password handover — yupay."
     },
     "eyebrow": "Catalog",
     "title": "Game & subscription top-ups in Uzbekistan",
@@ -428,6 +428,9 @@
     "toCatalog": "Browse catalog",
     "notFound": "Order not found.",
     "fallbackTitle": "Order #{id}",
+    "copy": "Copy",
+    "copied": "Copied",
+    "walletCredited": "Wallet balance topped up",
     "status": {
       "pending_payment": "Awaiting payment",
       "paid": "Paid",

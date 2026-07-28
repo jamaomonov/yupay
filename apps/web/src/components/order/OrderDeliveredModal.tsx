@@ -11,6 +11,7 @@ import type { OrderOut } from "@/lib/orders-types";
 import { buttonStyles } from "@/lib/button";
 import { apiFetch } from "@/lib/client";
 import { getMyReviews } from "@/lib/reviews";
+import { pathFor } from "@/lib/seo";
 import { useOrderDeliveredModal } from "@/store/useOrderDeliveredModal";
 
 /**
@@ -110,7 +111,7 @@ export function OrderDeliveredModal() {
 
         {canRate && display && (
           <Link
-            href={`/${locale}/store/${display.brand_slug}?order=${orderId}#reviews`}
+            href={pathFor(locale, `/store/${display.brand_slug}?order=${orderId}#reviews`)}
             onClick={close}
             className={buttonStyles({ className: "mt-6 w-full" })}
           >

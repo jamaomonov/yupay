@@ -15,6 +15,7 @@ import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { apiFetch } from "@/lib/client";
 import { getMyReviews } from "@/lib/reviews";
+import { pathFor } from "@/lib/seo";
 import { useLoginModal } from "@/store/useLoginModal";
 
 const STATUS_CLS: Record<string, string> = {
@@ -53,7 +54,7 @@ export default function OrdersPage({ params }: { params: Promise<{ locale: strin
 
   useEffect(() => {
     if (!authLoading && !user) {
-      router.replace(`/${locale}`);
+      router.replace(pathFor(locale));
       openLogin();
     }
   }, [authLoading, user, router, locale, openLogin]);
@@ -96,7 +97,7 @@ export default function OrdersPage({ params }: { params: Promise<{ locale: strin
       {settled && items.length === 0 && (
         <div className="border-border bg-card rounded-2xl border p-10 text-center">
           <p className="text-tx-mute mb-5">{t("empty")}</p>
-          <Link href={`/${locale}/store`} className={buttonStyles({ size: "sm" })}>
+          <Link href={pathFor(locale, "/store")} className={buttonStyles({ size: "sm" })}>
             {t("toCatalog")}
           </Link>
         </div>
@@ -111,7 +112,7 @@ export default function OrdersPage({ params }: { params: Promise<{ locale: strin
             return (
               <li key={o.id}>
                 <Link
-                  href={`/${locale}/orders/${o.id}`}
+                  href={pathFor(locale, `/orders/${o.id}`)}
                   className="border-border bg-card hover:border-tx-dim flex items-center gap-4 rounded-2xl border p-4 transition"
                 >
                   <span className="bg-muted relative h-12 w-12 shrink-0 overflow-hidden rounded-xl">
@@ -148,7 +149,10 @@ export default function OrdersPage({ params }: { params: Promise<{ locale: strin
                   !reviewedOrders.has(o.id) &&
                   o.items[0]?.display?.brand_slug && (
                     <Link
-                      href={`/${locale}/store/${o.items[0].display.brand_slug}?order=${o.id}#reviews`}
+                      href={pathFor(
+                        locale,
+                        `/store/${o.items[0].display.brand_slug}?order=${o.id}#reviews`,
+                      )}
                       className="text-primary ml-4 mt-1.5 inline-flex items-center gap-1 text-xs font-semibold"
                     >
                       <Star size={12} />

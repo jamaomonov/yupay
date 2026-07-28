@@ -102,7 +102,8 @@ test("shows the rate CTA linking to the brand review anchor when not yet reviewe
   renderModal();
 
   const cta = await screen.findByRole("link", { name: "orderResult.rateCta" });
-  expect(cta).toHaveAttribute("href", `/ru/store/steam?order=${ORDER_ID}#reviews`);
+  // ru is the default locale → canonical, prefix-less path (pathFor).
+  expect(cta).toHaveAttribute("href", `/store/steam?order=${ORDER_ID}#reviews`);
   expect(mockApiFetch).toHaveBeenCalledWith(`/orders/${ORDER_ID}`);
 });
 

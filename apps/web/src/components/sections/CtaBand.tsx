@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { buttonStyles } from "@/lib/button";
+import { pathFor } from "@/lib/seo";
 
 /**
  * Closing CTA band — large lime card with a dark counter-CTA. A giant ‟24/7"
@@ -11,7 +12,6 @@ import { buttonStyles } from "@/lib/button";
  */
 export async function CtaBand({ locale }: { locale: string }) {
   const t = await getTranslations("web.cta");
-  const prefix = `/${locale}`;
 
   return (
     <section className="py-20">
@@ -32,7 +32,7 @@ export async function CtaBand({ locale }: { locale: string }) {
               </h2>
               <p className="text-bg/70 mt-4 text-lg">{t("subtitle")}</p>
               <Link
-                href={`${prefix}/store`}
+                href={pathFor(locale, "/store")}
                 className={buttonStyles({ variant: "onLime", size: "lg", className: "mt-8" })}
               >
                 {t("button")}
