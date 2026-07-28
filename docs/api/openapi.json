@@ -466,8 +466,15 @@
             "type": "string"
           },
           "user_id": {
-            "title": "User Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
           }
         },
         "required": [
@@ -6834,6 +6841,36 @@
           "rating"
         ],
         "title": "ReviewCreateIn",
+        "type": "object"
+      },
+      "ReviewEligibilityOut": {
+        "properties": {
+          "already_reviewed": {
+            "title": "Already Reviewed",
+            "type": "boolean"
+          },
+          "brand_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Slug"
+          },
+          "delivered": {
+            "title": "Delivered",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "brand_slug",
+          "delivered",
+          "already_reviewed"
+        ],
+        "title": "ReviewEligibilityOut",
         "type": "object"
       },
       "ReviewListOut": {
@@ -17539,22 +17576,6 @@
               ],
               "title": "Idempotency-Key"
             }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
           }
         ],
         "requestBody": {
@@ -17589,7 +17610,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Submit a review for a delivered order",
+        "summary": "Submit a review for a delivered order (user or guest)",
         "tags": [
           "reviews"
         ]
@@ -17660,6 +17681,48 @@
           }
         },
         "summary": "List published reviews for a brand + aggregate",
+        "tags": [
+          "reviews"
+        ]
+      }
+    },
+    "/api/v1/reviews/eligibility": {
+      "get": {
+        "operationId": "review_eligibility_route_api_v1_reviews_eligibility_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewEligibilityOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Whether the actor's order can be reviewed / already was",
         "tags": [
           "reviews"
         ]

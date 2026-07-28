@@ -6,6 +6,8 @@ import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
 
+import { GuestReviewPanel } from "./GuestReviewPanel";
+
 import type { OrderOut } from "@/lib/orders-types";
 
 import { useAuth } from "@/lib/auth";
@@ -96,6 +98,10 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
         >
           {tr("writeCta")}
         </Link>
+      )}
+
+      {status === "delivered" && !user && email && brandSlug && (
+        <GuestReviewPanel orderId={order.data.id} email={email} />
       )}
     </div>
   );

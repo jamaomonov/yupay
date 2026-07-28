@@ -7,6 +7,7 @@ from decimal import Decimal
 
 import pytest
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.errors import ConflictError, ForbiddenError
@@ -94,6 +95,33 @@ async def _make_order(
     return order
 
 
+async def _make_guest_order(
+    db: AsyncSession, *, guest_email: str, sku_id: str, status: str = "delivered"
+) -> Order:
+    moment = now()
+    order = Order(
+        id=new_id(),
+        user_id=None,
+        guest_email=guest_email,
+        status=status,
+        currency="USD",
+        total_usd=Decimal("1.00"),
+        total_charged=Decimal("1.00"),
+        created_at=moment,
+        expires_at=moment + timedelta(hours=1),
+        delivered_at=moment if status == "delivered" else None,
+    )
+    db.add(order)
+    await db.flush()
+    db.add(
+        OrderItem(
+            id=new_id(), order_id=order.id, sku_id=sku_id, qty=1, unit_price_usd=Decimal("1.00")
+        )
+    )
+    await db.flush()
+    return order
+
+
 async def test_create_review_happy_path_bumps_stats(db_session: AsyncSession) -> None:
     user = await _make_user(db_session, display_name="Alice")
     brand, sku = await _seed_brand(db_session, "steam")
@@ -102,6 +130,7 @@ async def test_create_review_happy_path_bumps_stats(db_session: AsyncSession) ->
     review = await svc.create_review(
         db_session,
         user_id=user.id,
+        guest_email=None,
         order_id=order.id,
         brand_slug=brand.slug,
         rating=5,
@@ -119,10 +148,27 @@ async def test_duplicate_same_order_brand_conflicts(db_session: AsyncSession) ->
     user = await _make_user(db_session)
     brand, sku = await _seed_brand(db_session, "pubg")
     order = await _make_order(db_session, user_id=user.id, sku_id=sku.id)
-    args = {"user_id": user.id, "order_id": order.id, "brand_slug": brand.slug, "locale": "ru"}
-    await svc.create_review(db_session, rating=4, body=None, **args)
+    await svc.create_review(
+        db_session,
+        user_id=user.id,
+        guest_email=None,
+        order_id=order.id,
+        brand_slug=brand.slug,
+        rating=4,
+        body=None,
+        locale="ru",
+    )
     with pytest.raises(ConflictError):
-        await svc.create_review(db_session, rating=3, body=None, **args)
+        await svc.create_review(
+            db_session,
+            user_id=user.id,
+            guest_email=None,
+            order_id=order.id,
+            brand_slug=brand.slug,
+            rating=3,
+            body=None,
+            locale="ru",
+        )
 
 
 async def test_undelivered_order_forbidden(db_session: AsyncSession) -> None:
@@ -133,6 +179,7 @@ async def test_undelivered_order_forbidden(db_session: AsyncSession) -> None:
         await svc.create_review(
             db_session,
             user_id=user.id,
+            guest_email=None,
             order_id=order.id,
             brand_slug=brand.slug,
             rating=4,
@@ -150,6 +197,7 @@ async def test_brand_not_in_order_forbidden(db_session: AsyncSession) -> None:
         await svc.create_review(
             db_session,
             user_id=user.id,
+            guest_email=None,
             order_id=order.id,
             brand_slug=other_brand.slug,
             rating=4,
@@ -167,6 +215,7 @@ async def test_not_your_order_forbidden(db_session: AsyncSession) -> None:
         await svc.create_review(
             db_session,
             user_id=stranger.id,
+            guest_email=None,
             order_id=order.id,
             brand_slug=brand.slug,
             rating=4,
@@ -181,6 +230,7 @@ async def _make_published_review(db: AsyncSession, brand: Brand, sku: Sku) -> Re
     return await svc.create_review(
         db,
         user_id=user.id,
+        guest_email=None,
         order_id=order.id,
         brand_slug=brand.slug,
         rating=5,
@@ -241,6 +291,9 @@ async def test_list_published_paginates_newest_first(db_session: AsyncSession) -
     assert cursor2 is None
     # Newest-first ordering: page1[0] is at least as new as page1[1].
     assert page1[0].created_at >= page1[1].created_at
+    # Each review's author is a logged-in user seeded with display_name="Buyer"
+    # (see _make_published_review) — the outer join to User must resolve it.
+    assert all(item.author_name == "Buyer" for item in [*page1, *page2])
 
 
 async def test_recompute_fixes_drift(db_session: AsyncSession) -> None:
@@ -268,3 +321,152 @@ async def test_recompute_fixes_drift(db_session: AsyncSession) -> None:
     ).one()
     assert row.cnt == 1
     assert float(row.avg) == 5.0
+
+
+async def test_guest_create_review_success(db_session: AsyncSession) -> None:
+    brand, sku = await _seed_brand(db_session, "steam")
+    order = await _make_guest_order(db_session, guest_email="g@x.com", sku_id=sku.id)
+    review = await svc.create_review(
+        db_session,
+        user_id=None,
+        guest_email="g@x.com",
+        order_id=order.id,
+        brand_slug="steam",
+        rating=5,
+        body="fast",
+        locale="ru",
+    )
+    assert review.user_id is None
+    assert review.guest_email == "g@x.com"
+    stats = (await svc.get_stats(db_session, [brand.id]))[brand.id]
+    assert stats.count == 1
+
+
+async def test_guest_wrong_email_forbidden(db_session: AsyncSession) -> None:
+    brand, sku = await _seed_brand(db_session, "steam")
+    order = await _make_guest_order(db_session, guest_email="g@x.com", sku_id=sku.id)
+    with pytest.raises(ForbiddenError):
+        await svc.create_review(
+            db_session,
+            user_id=None,
+            guest_email="other@x.com",
+            order_id=order.id,
+            brand_slug="steam",
+            rating=5,
+            body=None,
+            locale="ru",
+        )
+
+
+async def test_guest_not_delivered_forbidden(db_session: AsyncSession) -> None:
+    brand, sku = await _seed_brand(db_session, "steam")
+    order = await _make_guest_order(
+        db_session, guest_email="g@x.com", sku_id=sku.id, status="fulfilling"
+    )
+    with pytest.raises(ForbiddenError):
+        await svc.create_review(
+            db_session,
+            user_id=None,
+            guest_email="g@x.com",
+            order_id=order.id,
+            brand_slug="steam",
+            rating=5,
+            body=None,
+            locale="ru",
+        )
+
+
+async def test_guest_duplicate_conflict(db_session: AsyncSession) -> None:
+    brand, sku = await _seed_brand(db_session, "steam")
+    order = await _make_guest_order(db_session, guest_email="g@x.com", sku_id=sku.id)
+    await svc.create_review(
+        db_session,
+        user_id=None,
+        guest_email="g@x.com",
+        order_id=order.id,
+        brand_slug="steam",
+        rating=5,
+        body=None,
+        locale="ru",
+    )
+    with pytest.raises(ConflictError):
+        await svc.create_review(
+            db_session,
+            user_id=None,
+            guest_email="g@x.com",
+            order_id=order.id,
+            brand_slug="steam",
+            rating=4,
+            body=None,
+            locale="ru",
+        )
+
+
+async def test_user_cannot_review_guest_order(db_session: AsyncSession) -> None:
+    user = await _make_user(db_session, display_name="Bob")
+    brand, sku = await _seed_brand(db_session, "steam")
+    order = await _make_guest_order(db_session, guest_email="g@x.com", sku_id=sku.id)
+    with pytest.raises(ForbiddenError):
+        await svc.create_review(
+            db_session,
+            user_id=user.id,
+            guest_email=None,
+            order_id=order.id,
+            brand_slug="steam",
+            rating=5,
+            body=None,
+            locale="ru",
+        )
+
+
+async def test_guest_review_row_persists_and_is_unique_per_order_brand(
+    db_session: AsyncSession,
+) -> None:
+    brand, sku = await _seed_brand(db_session, "steam")
+    order = await _make_guest_order(db_session, guest_email="g@x.com", sku_id=sku.id)
+    r1 = Review(
+        id=new_id(),
+        brand_id=brand.id,
+        user_id=None,
+        guest_email="g@x.com",
+        order_id=order.id,
+        rating=5,
+        body=None,
+        status="published",
+        locale="ru",
+    )
+    db_session.add(r1)
+    await db_session.flush()
+    r2 = Review(
+        id=new_id(),
+        brand_id=brand.id,
+        user_id=None,
+        guest_email="g@x.com",
+        order_id=order.id,
+        rating=4,
+        body=None,
+        status="published",
+        locale="ru",
+    )
+    db_session.add(r2)
+    with pytest.raises(IntegrityError):  # IntegrityError on uq_reviews_order_brand
+        await db_session.flush()
+
+
+async def test_public_list_includes_guest_review_as_anonymous(db_session: AsyncSession) -> None:
+    brand, sku = await _seed_brand(db_session, "steam")
+    order = await _make_guest_order(db_session, guest_email="g@x.com", sku_id=sku.id)
+    await svc.create_review(
+        db_session,
+        user_id=None,
+        guest_email="g@x.com",
+        order_id=order.id,
+        brand_slug="steam",
+        rating=5,
+        body="great",
+        locale="ru",
+    )
+    items, _ = await svc.list_published(db_session, brand_id=brand.id, limit=20, cursor=None)
+    assert len(items) == 1
+    assert items[0].author_name is None
+    assert items[0].body == "great"

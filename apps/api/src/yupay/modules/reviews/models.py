@@ -19,7 +19,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import CITEXT, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from yupay.core.db import Base
@@ -36,9 +36,10 @@ class Review(Base):
     brand_id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), ForeignKey("brands.id", ondelete="CASCADE"), nullable=False
     )
-    user_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    user_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=True
     )
+    guest_email: Mapped[str | None] = mapped_column(CITEXT(), nullable=True)
     order_id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), ForeignKey("orders.id", ondelete="RESTRICT"), nullable=False
     )
@@ -57,7 +58,10 @@ class Review(Base):
 
     __table_args__ = (
         CheckConstraint("rating BETWEEN 1 AND 5", name="ck_reviews_rating_range"),
-        UniqueConstraint("user_id", "order_id", "brand_id", name="uq_reviews_user_order_brand"),
+        CheckConstraint(
+            "(user_id IS NULL) <> (guest_email IS NULL)", name="ck_reviews_user_xor_guest"
+        ),
+        UniqueConstraint("order_id", "brand_id", name="uq_reviews_order_brand"),
         Index("ix_reviews_brand_status_created", "brand_id", "status", "created_at"),
         Index("ix_reviews_user", "user_id"),
     )
