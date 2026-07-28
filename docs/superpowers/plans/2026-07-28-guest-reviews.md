@@ -24,11 +24,13 @@
 ### Task 1: DB model + migration — nullable user_id, guest_email, uniqueness swap
 
 **Files:**
+
 - Modify: `apps/api/src/yupay/modules/reviews/models.py`
 - Create: `apps/api/migrations/versions/0035_guest_reviews.py`
 - Test: `apps/api/tests/integration/test_reviews_service.py` (add a guest helper + insert test)
 
 **Interfaces:**
+
 - Produces: `Review.user_id: str | None`, `Review.guest_email: str | None`; unique `(order_id, brand_id)`; CHECK `ck_reviews_user_xor_guest`. A test helper `_make_guest_order(db, *, guest_email, sku_id, status="delivered") -> Order` added to `test_reviews_service.py` and imported by later tasks.
 
 - [ ] **Step 1: Write the failing test** — add to `apps/api/tests/integration/test_reviews_service.py`:
@@ -89,16 +91,20 @@ async def test_guest_review_row_persists_and_is_unique_per_order_brand(
 - [ ] **Step 3: Update the model** in `apps/api/src/yupay/modules/reviews/models.py`:
 
 Change the `user_id` column and add `guest_email`; import `CITEXT`:
+
 ```python
 from sqlalchemy.dialects.postgresql import CITEXT, UUID  # add CITEXT
 ```
+
 ```python
     user_id: Mapped[str | None] = mapped_column(
         UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=True
     )
     guest_email: Mapped[str | None] = mapped_column(CITEXT(), nullable=True)
 ```
+
 Replace `__table_args__`:
+
 ```python
     __table_args__ = (
         CheckConstraint("rating BETWEEN 1 AND 5", name="ck_reviews_rating_range"),
@@ -162,6 +168,7 @@ def downgrade() -> None:
 - [ ] **Step 5: Apply + run the test** — `make migrate` then re-run Step 2's command. Expected: PASS.
 
 - [ ] **Step 6: Commit**
+
 ```bash
 git add apps/api/src/yupay/modules/reviews/models.py apps/api/migrations/versions/0035_guest_reviews.py apps/api/tests/integration/test_reviews_service.py
 git commit -m "feat(reviews): guest-capable schema (nullable user_id, guest_email, order+brand unique)"
@@ -172,10 +179,12 @@ git commit -m "feat(reviews): guest-capable schema (nullable user_id, guest_emai
 ### Task 2: Shared request-actor resolver in `auth`
 
 **Files:**
+
 - Modify: `apps/api/src/yupay/modules/auth/deps.py`
 - Test: `apps/api/tests/integration/test_reviews_routes.py` (exercised via Task 5; add a direct unit test here)
 
 **Interfaces:**
+
 - Produces: `RequestActor(user_id: str | None, guest_email: str | None, user: User | None)` and
   `async def resolve_request_actor(request: Request, db: AsyncSession) -> RequestActor`.
   Later tasks consume `resolve_request_actor` in the reviews routes.
@@ -285,11 +294,13 @@ async def resolve_request_actor(request: Request, db: AsyncSession) -> RequestAc
         return RequestActor(user_id=None, guest_email=normalised, user=None)
     raise UnauthorizedError("invalid authorization scheme")
 ```
+
 (If `AsyncSession` / `db_session` imports aren't already present in `deps.py`, add `from sqlalchemy.ext.asyncio import AsyncSession`.)
 
 - [ ] **Step 4: Run it, expect pass** — same command as Step 2. Expected: PASS (3 tests).
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add apps/api/src/yupay/modules/auth/deps.py apps/api/tests/integration/test_auth_request_actor.py
 git commit -m "feat(auth): resolve_request_actor — shared Bearer/Guest actor resolution"
@@ -300,10 +311,12 @@ git commit -m "feat(auth): resolve_request_actor — shared Bearer/Guest actor r
 ### Task 3: Actor-aware `create_review`
 
 **Files:**
+
 - Modify: `apps/api/src/yupay/modules/reviews/service.py`
 - Test: `apps/api/tests/integration/test_reviews_service.py`
 
 **Interfaces:**
+
 - Consumes: `_make_guest_order` (Task 1), `_make_order`/`_make_user`/`_seed_brand`.
 - Produces: `create_review(db, *, user_id: str | None, guest_email: str | None, order_id, brand_slug, rating, body, locale) -> Review`.
 
@@ -368,6 +381,7 @@ async def test_user_cannot_review_guest_order(db_session: AsyncSession) -> None:
             brand_slug="steam", rating=5, body=None, locale="ru",
         )
 ```
+
 Also update any EXISTING call in this test file that calls `svc.create_review(db, user_id=..., order_id=...)` to pass `guest_email=None` (keyword now required).
 
 - [ ] **Step 2: Run, expect failure** — `make test-py ARGS="tests/integration/test_reviews_service.py -k guest or user_cannot"`. Expected: FAIL (`create_review` got unexpected keyword `guest_email`).
@@ -437,6 +451,7 @@ async def create_review(
 - [ ] **Step 4: Run, expect pass** — same command as Step 2 plus the full file: `make test-py ARGS="tests/integration/test_reviews_service.py"`. Expected: PASS.
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add apps/api/src/yupay/modules/reviews/service.py apps/api/tests/integration/test_reviews_service.py
 git commit -m "feat(reviews): actor-aware create_review (user or guest buyer)"
@@ -447,11 +462,13 @@ git commit -m "feat(reviews): actor-aware create_review (user or guest buyer)"
 ### Task 4: Public list LEFT-join + admin schema nullable
 
 **Files:**
+
 - Modify: `apps/api/src/yupay/modules/reviews/service.py` (`list_published`)
 - Modify: `apps/api/src/yupay/modules/reviews/schemas.py` (`AdminReviewOut.user_id`)
 - Test: `apps/api/tests/integration/test_reviews_service.py`
 
 **Interfaces:**
+
 - Consumes: `create_review` (Task 3). Produces: guest reviews appear in `list_published` with `author_name=None`.
 
 - [ ] **Step 1: Write the failing test** — add to `test_reviews_service.py`:
@@ -483,7 +500,9 @@ async def test_public_list_includes_guest_review_as_anonymous(db_session: AsyncS
         .limit(limit + 1)
     )
 ```
+
 And in `schemas.py` make the admin projection tolerate guests:
+
 ```python
 class AdminReviewOut(BaseModel):
     id: str
@@ -496,6 +515,7 @@ class AdminReviewOut(BaseModel):
 - [ ] **Step 4: Run, expect pass** — same command as Step 2. Expected: PASS.
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add apps/api/src/yupay/modules/reviews/service.py apps/api/src/yupay/modules/reviews/schemas.py apps/api/tests/integration/test_reviews_service.py
 git commit -m "feat(reviews): show guest reviews (LEFT join) + nullable admin user_id"
@@ -506,6 +526,7 @@ git commit -m "feat(reviews): show guest reviews (LEFT join) + nullable admin us
 ### Task 5: POST `/reviews` via resolver + `GET /reviews/eligibility`
 
 **Files:**
+
 - Modify: `apps/api/src/yupay/modules/reviews/routes.py`
 - Modify: `apps/api/src/yupay/modules/reviews/service.py` (add `review_eligibility`)
 - Modify: `apps/api/src/yupay/modules/reviews/schemas.py` (add `ReviewEligibilityOut`)
@@ -513,6 +534,7 @@ git commit -m "feat(reviews): show guest reviews (LEFT join) + nullable admin us
 - Regenerate: `docs/api/openapi.json`
 
 **Interfaces:**
+
 - Consumes: `resolve_request_actor` (Task 2), `create_review` (Task 3).
 - Produces: `POST /reviews` accepting Bearer or Guest; `GET /reviews/eligibility?order_id=` →
   `ReviewEligibilityOut(brand_slug: str | None, delivered: bool, already_reviewed: bool)`.
@@ -591,6 +613,7 @@ async def test_eligibility_guest_delivered_then_reviewed(
 - [ ] **Step 2: Run, expect failure** — `make test-py ARGS="tests/integration/test_reviews_routes.py -k guest or eligibility"`. Expected: FAIL (route still requires Bearer `current_user`; no eligibility route).
 
 - [ ] **Step 3a: Add the eligibility schema** to `schemas.py` (and `__all__`):
+
 ```python
 class ReviewEligibilityOut(BaseModel):
     brand_slug: str | None
@@ -599,6 +622,7 @@ class ReviewEligibilityOut(BaseModel):
 ```
 
 - [ ] **Step 3b: Add `review_eligibility` to `service.py`**:
+
 ```python
 async def _first_brand_of_order(db: AsyncSession, order_id: str) -> tuple[str, str] | None:
     """(brand_id, brand_slug) of the order's first item, or None."""
@@ -639,9 +663,11 @@ async def review_eligibility(
     ).first() is not None
     return brand_slug, order.status == "delivered", reviewed
 ```
+
 Add `Brand` to the existing `from yupay.modules.catalog.models import ...` line if not present (it already imports `Brand, Product, Sku`).
 
 - [ ] **Step 3c: Rewrite the POST route + add the eligibility route** in `routes.py`. Replace the `current_user`-based `create_review_route` with:
+
 ```python
 from fastapi import Request
 from yupay.modules.auth.deps import resolve_request_actor
@@ -689,6 +715,7 @@ async def review_eligibility_route(
         brand_slug=brand_slug, delivered=delivered, already_reviewed=already
     )
 ```
+
 Keep the existing `GET /reviews/mine` and `report` routes (still `current_user`).
 Note: register `/eligibility` BEFORE `/{...}` dynamic routes is not a concern here — there are none that collide; but keep it above `report` for readability.
 
@@ -697,6 +724,7 @@ Note: register `/eligibility` BEFORE `/{...}` dynamic routes is not a concern he
 - [ ] **Step 5: Regenerate the API schema** — `make gen-api`. Confirm `docs/api/openapi.json` now has the guest auth note on `POST /reviews` and the new `GET /reviews/eligibility`.
 
 - [ ] **Step 6: Commit**
+
 ```bash
 git add apps/api/src/yupay/modules/reviews/routes.py apps/api/src/yupay/modules/reviews/service.py apps/api/src/yupay/modules/reviews/schemas.py apps/api/tests/integration/test_reviews_routes.py docs/api/openapi.json packages/api-client
 git commit -m "feat(reviews): guest-capable POST + eligibility endpoint"
@@ -707,18 +735,21 @@ git commit -m "feat(reviews): guest-capable POST + eligibility endpoint"
 ### Task 6: Web client helpers — guest token mint, guest submit, eligibility
 
 **Files:**
+
 - Modify: `apps/web/src/lib/reviews.ts`
 - Create: `apps/web/src/lib/guest.ts`
 - Modify: `apps/web/src/components/store/PurchasePanel.tsx` (use the shared mint helper)
 - Test: `apps/web/src/lib/reviews.test.ts` (new)
 
 **Interfaces:**
+
 - Produces: `mintGuestToken(email: string): Promise<string>`;
   `submitReview(body, opts?: { guestEmail?: string })`;
   `getReviewEligibility(orderId: string, opts?: { guestEmail?: string }): Promise<ReviewEligibility>`
   where `ReviewEligibility = { brand_slug: string | null; delivered: boolean; already_reviewed: boolean }`.
 
 - [ ] **Step 1: Write the failing test** — `apps/web/src/lib/reviews.test.ts`:
+
 ```ts
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getReviewEligibility } from "./reviews";
@@ -727,17 +758,24 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("getReviewEligibility (guest)", () => {
   it("sends Guest auth + X-Guest-Email and no Bearer", async () => {
-    const fetchMock = vi.fn(async () => new Response(
-      JSON.stringify({ brand_slug: "steam", delivered: true, already_reviewed: false }),
-      { status: 200 },
-    ));
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ brand_slug: "steam", delivered: true, already_reviewed: false }),
+          { status: 200 },
+        ),
+    );
     vi.stubGlobal("fetch", fetchMock);
     // mintGuestToken hits /auth/guest first:
-    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ access_token: "gt" }), { status: 200 }));
-    fetchMock.mockResolvedValueOnce(new Response(
-      JSON.stringify({ brand_slug: "steam", delivered: true, already_reviewed: false }),
-      { status: 200 },
-    ));
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ access_token: "gt" }), { status: 200 }),
+    );
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ brand_slug: "steam", delivered: true, already_reviewed: false }),
+        { status: 200 },
+      ),
+    );
     const res = await getReviewEligibility("ord-1", { guestEmail: "G@x.com " });
     expect(res.brand_slug).toBe("steam");
     const headers = new Headers(fetchMock.mock.calls[1]?.[1]?.headers);
@@ -750,6 +788,7 @@ describe("getReviewEligibility (guest)", () => {
 - [ ] **Step 2: Run, expect failure** — `pnpm --filter web test src/lib/reviews.test.ts`. Expected: FAIL — `getReviewEligibility` not exported.
 
 - [ ] **Step 3a: Create `apps/web/src/lib/guest.ts`**:
+
 ```ts
 const API = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
 
@@ -768,6 +807,7 @@ export async function mintGuestToken(email: string): Promise<string> {
 ```
 
 - [ ] **Step 3b: Extend `apps/web/src/lib/reviews.ts`** — add types + guest-aware helpers:
+
 ```ts
 import { mintGuestToken } from "./guest";
 
@@ -806,20 +846,23 @@ export async function getReviewEligibility(
   );
 }
 ```
+
 (The old `submitReview` signature gains an optional 2nd arg — existing callers pass one arg and still compile.)
 
 - [ ] **Step 3c: DRY the checkout mint** — in `PurchasePanel.tsx`, replace the inline guest-token fetch (the `POST /auth/guest` block ~lines 460-467) with:
+
 ```ts
 import { mintGuestToken } from "@/lib/guest";
 // ...
-        const access_token = await mintGuestToken(email);
-        auth = { Authorization: `Guest ${access_token}` };
-        emailSuffix = `?email=${encodeURIComponent(email)}`;
+const access_token = await mintGuestToken(email);
+auth = { Authorization: `Guest ${access_token}` };
+emailSuffix = `?email=${encodeURIComponent(email)}`;
 ```
 
 - [ ] **Step 4: Run, expect pass** — `pnpm --filter web test src/lib/reviews.test.ts` then `pnpm --filter web typecheck`. Expected: PASS + clean types.
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add apps/web/src/lib/guest.ts apps/web/src/lib/reviews.ts apps/web/src/components/store/PurchasePanel.tsx apps/web/src/lib/reviews.test.ts
 git commit -m "feat(web/reviews): guest-token helper, guest submit + eligibility client"
@@ -830,16 +873,19 @@ git commit -m "feat(web/reviews): guest-token helper, guest submit + eligibility
 ### Task 7: Inline guest review form on the order-status page
 
 **Files:**
+
 - Create: `apps/web/src/components/order/GuestReviewPanel.tsx`
 - Modify: `apps/web/src/components/order/OrderStatus.tsx`
 - Test: `apps/web/src/components/order/GuestReviewPanel.test.tsx` (new)
 
 **Interfaces:**
+
 - Consumes: `getReviewEligibility`, `submitReview` (Task 6).
 - Produces: a guest-only inline review form rendered on the order page when the order is
   delivered and not yet reviewed. Logged-in users keep the existing Link-to-brand CTA unchanged.
 
 - [ ] **Step 1: Write the failing test** — `GuestReviewPanel.test.tsx`:
+
 ```tsx
 import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -849,23 +895,38 @@ import { afterEach, expect, it, vi } from "vitest";
 import { GuestReviewPanel } from "./GuestReviewPanel";
 import * as reviews from "@/lib/reviews";
 
-const messages = { web: { brandReviews: { formTitle: "Ваш отзыв", ratingLabel: "Оценка",
-  commentLabel: "Комментарий", submit: "Отправить", submitting: "…", thanks: "Спасибо!",
-  alreadyReviewed: "Уже оценено", error: "Ошибка" } } };
+const messages = {
+  web: {
+    brandReviews: {
+      formTitle: "Ваш отзыв",
+      ratingLabel: "Оценка",
+      commentLabel: "Комментарий",
+      submit: "Отправить",
+      submitting: "…",
+      thanks: "Спасибо!",
+      alreadyReviewed: "Уже оценено",
+      error: "Ошибка",
+    },
+  },
+};
 
 afterEach(() => vi.restoreAllMocks());
 
 function wrap(ui: React.ReactNode) {
   return render(
     <QueryClientProvider client={new QueryClient()}>
-      <NextIntlClientProvider locale="ru" messages={messages}>{ui}</NextIntlClientProvider>
+      <NextIntlClientProvider locale="ru" messages={messages}>
+        {ui}
+      </NextIntlClientProvider>
     </QueryClientProvider>,
   );
 }
 
 it("renders the form when eligible and not yet reviewed", async () => {
   vi.spyOn(reviews, "getReviewEligibility").mockResolvedValue({
-    brand_slug: "steam", delivered: true, already_reviewed: false,
+    brand_slug: "steam",
+    delivered: true,
+    already_reviewed: false,
   });
   wrap(<GuestReviewPanel orderId="o1" email="g@x.com" />);
   await waitFor(() => expect(screen.getByText("Ваш отзыв")).toBeInTheDocument());
@@ -873,7 +934,9 @@ it("renders the form when eligible and not yet reviewed", async () => {
 
 it("renders nothing when already reviewed", async () => {
   vi.spyOn(reviews, "getReviewEligibility").mockResolvedValue({
-    brand_slug: "steam", delivered: true, already_reviewed: true,
+    brand_slug: "steam",
+    delivered: true,
+    already_reviewed: true,
   });
   const { container } = wrap(<GuestReviewPanel orderId="o1" email="g@x.com" />);
   await waitFor(() => expect(container).toBeEmptyDOMElement());
@@ -883,6 +946,7 @@ it("renders nothing when already reviewed", async () => {
 - [ ] **Step 2: Run, expect failure** — `pnpm --filter web test src/components/order/GuestReviewPanel.test.tsx`. Expected: FAIL — module not found.
 
 - [ ] **Step 3a: Create `GuestReviewPanel.tsx`**:
+
 ```tsx
 "use client";
 
@@ -915,8 +979,10 @@ export function GuestReviewPanel({ orderId, email }: { orderId: string; email: s
 
   const e = eligibility.data;
   if (!e || !e.delivered || !e.brand_slug || e.already_reviewed) return null;
-  if (state === "done") return <p className="text-primary mt-4 text-sm font-semibold">{t("thanks")}</p>;
-  if (state === "already") return <p className="text-tx-mute mt-4 text-sm">{t("alreadyReviewed")}</p>;
+  if (state === "done")
+    return <p className="text-primary mt-4 text-sm font-semibold">{t("thanks")}</p>;
+  if (state === "already")
+    return <p className="text-tx-mute mt-4 text-sm">{t("alreadyReviewed")}</p>;
 
   const brandSlug = e.brand_slug;
   async function onSubmit(ev: React.SyntheticEvent) {
@@ -925,7 +991,12 @@ export function GuestReviewPanel({ orderId, email }: { orderId: string; email: s
     setState("sending");
     try {
       await submitReview(
-        { order_id: orderId, brand_slug: brandSlug, rating, ...(body.trim() ? { body: body.trim() } : {}) },
+        {
+          order_id: orderId,
+          brand_slug: brandSlug,
+          rating,
+          ...(body.trim() ? { body: body.trim() } : {}),
+        },
         { guestEmail: email },
       );
       setState("done");
@@ -942,9 +1013,15 @@ export function GuestReviewPanel({ orderId, email }: { orderId: string; email: s
         <div className="text-tx-mute mb-1.5 text-xs">{t("ratingLabel")}</div>
         <div className="flex gap-1">
           {[1, 2, 3, 4, 5].map((n) => (
-            <button key={n} type="button" aria-label={String(n)}
-              onClick={() => setRating(n)} onMouseEnter={() => setHover(n)} onMouseLeave={() => setHover(0)}
-              className="p-0.5">
+            <button
+              key={n}
+              type="button"
+              aria-label={String(n)}
+              onClick={() => setRating(n)}
+              onMouseEnter={() => setHover(n)}
+              onMouseLeave={() => setHover(0)}
+              className="p-0.5"
+            >
               <Star size={26} className={n <= active ? "fill-gold text-gold" : "text-white/25"} />
             </button>
           ))}
@@ -952,12 +1029,19 @@ export function GuestReviewPanel({ orderId, email }: { orderId: string; email: s
       </div>
       <label className="mt-4 block">
         <span className="text-tx-mute mb-1.5 block text-xs">{t("commentLabel")}</span>
-        <textarea value={body} onChange={(ev) => setBody(ev.target.value.slice(0, 2000))} rows={3}
-          className="border-border bg-background focus-visible:border-primary w-full resize-none rounded-xl border px-3 py-2 text-sm outline-none" />
+        <textarea
+          value={body}
+          onChange={(ev) => setBody(ev.target.value.slice(0, 2000))}
+          rows={3}
+          className="border-border bg-background focus-visible:border-primary w-full resize-none rounded-xl border px-3 py-2 text-sm outline-none"
+        />
       </label>
       {state === "error" && <p className="mt-2 text-[13px] text-red-400">{t("error")}</p>}
-      <button type="submit" disabled={rating < 1 || state === "sending"}
-        className={buttonStyles({ size: "sm", className: "mt-4 disabled:opacity-50" })}>
+      <button
+        type="submit"
+        disabled={rating < 1 || state === "sending"}
+        className={buttonStyles({ size: "sm", className: "mt-4 disabled:opacity-50" })}
+      >
         {state === "sending" ? t("submitting") : t("submit")}
       </button>
     </form>
@@ -966,16 +1050,21 @@ export function GuestReviewPanel({ orderId, email }: { orderId: string; email: s
 ```
 
 - [ ] **Step 3b: Wire it into `OrderStatus.tsx`** — render the guest panel when the viewer is a guest (has `email`, no logged-in `user`) on a delivered order. After the existing `canRate` Link block, add:
+
 ```tsx
-{status === "delivered" && !user && email && brandSlug && (
-  <GuestReviewPanel orderId={order.data.id} email={email} />
-)}
+{
+  status === "delivered" && !user && email && brandSlug && (
+    <GuestReviewPanel orderId={order.data.id} email={email} />
+  );
+}
 ```
+
 Add the import: `import { GuestReviewPanel } from "./GuestReviewPanel";`. Leave the existing logged-in `canRate` Link untouched.
 
 - [ ] **Step 4: Run, expect pass** — `pnpm --filter web test src/components/order/GuestReviewPanel.test.tsx` then `pnpm --filter web typecheck`. Expected: PASS + clean types.
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add apps/web/src/components/order/GuestReviewPanel.tsx apps/web/src/components/order/OrderStatus.tsx apps/web/src/components/order/GuestReviewPanel.test.tsx
 git commit -m "feat(web/orders): inline guest review form on the order page"
@@ -986,6 +1075,7 @@ git commit -m "feat(web/orders): inline guest review form on the order page"
 ### Task 8: Docs + full verification
 
 **Files:**
+
 - Modify: `docs/decisions/0039-reviews-and-ratings.md` (amendment)
 - Modify: `apps/api/src/yupay/modules/reviews/README.md`
 - Modify/Create: `docs/architecture/sequence-diagrams/reviews-guest.mmd`
@@ -1001,6 +1091,7 @@ git commit -m "feat(web/orders): inline guest review form on the order page"
 - [ ] **Step 5: Full web gate** — `pnpm --filter web typecheck && pnpm --filter web test && pnpm exec prettier --check apps/web packages`. For the production build, first `docker compose stop web`, then `pnpm --filter web build`, then `docker compose up -d web` (avoids the `.next` bind-mount trap). Expected: all green.
 
 - [ ] **Step 6: Commit**
+
 ```bash
 git add docs/decisions/0039-reviews-and-ratings.md apps/api/src/yupay/modules/reviews/README.md docs/architecture/sequence-diagrams/reviews-guest.mmd
 git commit -m "docs(reviews): guest-reviews ADR amendment, README, sequence diagram"

@@ -29,6 +29,7 @@ so there are no guests there.
 ## Data model — migration `00NN_guest_reviews`
 
 Alter `reviews`:
+
 - `user_id` → **nullable**.
 - add `guest_email` **CITEXT NULL**.
 - add CHECK `(user_id IS NULL) <> (guest_email IS NULL)` (exactly one set), mirroring the
@@ -44,6 +45,7 @@ No backfill: existing rows all have `user_id` set and satisfy the new CHECK and 
 ## Backend (`reviews` module)
 
 **`service.create_review`** becomes actor-aware:
+
 - signature accepts `user_id: str | None` and `guest_email: str | None` (exactly one
   non-null; assert).
 - ownership check: user → `order.user_id == user_id`; guest → `order.guest_email == guest_email`
@@ -53,6 +55,7 @@ No backfill: existing rows all have `user_id` set and satisfy the new CHECK and 
 - conflict on `(order_id, brand_id)` → `ConflictError("already reviewed", code="already_reviewed")`.
 
 **POST `/reviews`** route resolves the actor exactly like `GET /orders/{id}`:
+
 - `Authorization: Bearer <access>` → user (existing `current_user` resolution).
 - `Authorization: Guest <jwt>` + `X-Guest-Email` header → `verify_jwt(expected_kind="guest")`,
   compare `email_hash`; on match, actor is the normalised guest email; mismatch/absent →
@@ -82,8 +85,8 @@ optionally be migrated to it later — out of scope here).
   **order delivered AND not already reviewed AND (logged-in user OR guest with a known email)**.
 - Guest submit path: mint a guest token the same way checkout does
   (`POST /auth/guest { email }`), then submit the review with `Authorization: Guest <token>`
-  + `X-Guest-Email` via `apiFetch(..., { anonymous: true, headers })` so no `Bearer` is added.
-  Factor the guest-token mint into a small reusable helper (checkout + review share it).
+  - `X-Guest-Email` via `apiFetch(..., { anonymous: true, headers })` so no `Bearer` is added.
+    Factor the guest-token mint into a small reusable helper (checkout + review share it).
 - The guest's email at review time comes from the order page context (the `?email=` the
   order-success flow already carries, or the value the page already holds to view the order).
   A guest returning cross-device without their email is naturally limited exactly as
