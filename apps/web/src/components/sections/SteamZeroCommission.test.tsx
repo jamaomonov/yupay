@@ -13,7 +13,8 @@ test("renders heading, CTA to /store/steam and payment icons", async () => {
   render(await SteamZeroCommission({ locale: "ru" }));
   expect(screen.getByRole("heading", { name: /steamZero\.title/ })).toBeInTheDocument();
   const cta = screen.getByRole("link", { name: /steamZero\.cta/ });
-  expect(cta).toHaveAttribute("href", "/ru/store/steam");
+  // ru is the default locale → canonical, prefix-less path (pathFor).
+  expect(cta).toHaveAttribute("href", "/store/steam");
   for (const p of ["Uzcard", "Humo", "Click", "Payme", "Uzum"]) {
     expect(screen.getByAltText(p)).toBeInTheDocument();
   }

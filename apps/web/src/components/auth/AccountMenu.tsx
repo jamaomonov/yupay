@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
+import { pathFor } from "@/lib/seo";
 import { useLoginModal } from "@/store/useLoginModal";
 
 interface Props {
@@ -86,7 +87,7 @@ export function AccountMenu({ locale }: Props) {
           className="border-border bg-card/95 absolute right-0 top-11 z-40 min-w-[11rem] overflow-hidden rounded-xl border p-1 shadow-2xl backdrop-blur-xl"
         >
           <Link
-            href={`/${locale}/account/orders`}
+            href={pathFor(locale, "/account/orders")}
             role="menuitem"
             onClick={() => {
               setOpen(false);

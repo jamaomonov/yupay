@@ -18,7 +18,15 @@ import { PurchasePanel } from "@/components/store/PurchasePanel";
 import { routing } from "@/i18n/routing";
 import { getBrandDetail, getBrandSlugs, getProductDetail, type ProductDetail } from "@/lib/catalog";
 import { getBrandReviews, type ReviewPage } from "@/lib/reviews";
-import { alternates, formatUzs, GEO_META, localeUrl, ogLocale } from "@/lib/seo";
+import {
+  alternates,
+  firstNonEmpty,
+  formatUzs,
+  GEO_META,
+  localeUrl,
+  ogLocale,
+  pathFor,
+} from "@/lib/seo";
 
 const CURRENCY = "UZS";
 
@@ -38,8 +46,11 @@ export async function generateMetadata({
   if (!brand) return {};
   const t = await getTranslations("web.store");
   const title = t("brandMetaTitle", { name: brand.name });
+  // short_description first: it's the ~250-char blurb that fits a Google snippet;
+  // the long description is truncated. firstNonEmpty skips the API's `""` blanks.
   const description =
-    brand.description ?? brand.short_description ?? t("brandMetaDescription", { name: brand.name });
+    firstNonEmpty(brand.short_description, brand.description) ??
+    t("brandMetaDescription", { name: brand.name });
   const path = `/store/${brand.slug}`;
   return {
     title: { absolute: title },
@@ -71,13 +82,18 @@ export default async function BrandPage({
 
   const t = await getTranslations("web.store");
   const t2 = await getTranslations("web.brandReviews");
-  const prefix = `/${locale}`;
 
   const products = (
     await Promise.all((brand.products ?? []).map((p) => getProductDetail(p.slug, locale, CURRENCY)))
   ).filter((p): p is ProductDetail => p !== null);
 
-  const about = brand.description ?? brand.short_description ?? "";
+  // Long description first here (the About block has room for it); short as a
+  // fallback. firstNonEmpty skips the API's `""` blanks so 6/7 brands stop
+  // rendering an empty About / thin Product JSON-LD.
+  const about = firstNonEmpty(brand.description, brand.short_description) ?? "";
+  const metaDescription =
+    firstNonEmpty(brand.short_description, brand.description) ??
+    t("brandMetaDescription", { name: brand.name });
   const heroImg = brand.hero_image_url ?? brand.logo_url;
   const highlights = brand.highlights ?? [];
 
@@ -111,7 +127,7 @@ export default async function BrandPage({
     "@context": "https://schema.org",
     "@type": "Product",
     name: brand.name,
-    description: about || brand.name,
+    description: about || metaDescription,
     image: heroImg ?? undefined,
     brand: { "@type": "Brand", name: brand.name },
     category: brand.category_slug,
@@ -169,11 +185,11 @@ export default async function BrandPage({
 
       <div className="mx-auto max-w-[1100px] px-6 sm:px-10">
         <nav className="text-tx-dim mb-7 flex flex-wrap items-center gap-1.5 font-mono text-[11px]">
-          <Link href={prefix} className="hover:text-tx-mute transition">
+          <Link href={pathFor(locale)} className="hover:text-tx-mute transition">
             {t("breadcrumbHome")}
           </Link>
           <ChevronRight size={12} />
-          <Link href={`${prefix}/store`} className="hover:text-tx-mute transition">
+          <Link href={pathFor(locale, "/store")} className="hover:text-tx-mute transition">
             {t("breadcrumbStore")}
           </Link>
           <ChevronRight size={12} />

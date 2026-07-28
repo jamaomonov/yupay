@@ -11,6 +11,7 @@ import { z } from "zod";
 import { TelegramLoginButton } from "./TelegramLoginButton";
 
 import { buttonStyles } from "@/lib/button";
+import { pathFor } from "@/lib/seo";
 
 const baseSchema = z.object({
   email: z.string().email(),
@@ -125,7 +126,7 @@ export function AuthForm({
             ) : (
               <span />
             )}
-            <Link href={`/${locale}/auth/forgot`} className="hover:text-tx">
+            <Link href={pathFor(locale, "/auth/forgot")} className="hover:text-tx">
               {t("forgot")}
             </Link>
           </>

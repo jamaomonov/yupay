@@ -7,7 +7,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { Metadata } from "next";
 
 import { routing } from "@/i18n/routing";
-import { alternates, ogLocale } from "@/lib/seo";
+import { alternates, ogLocale, pathFor } from "@/lib/seo";
 
 const DOCS = ["terms", "privacy", "refunds", "imprint"] as const;
 type Doc = (typeof DOCS)[number];
@@ -54,14 +54,13 @@ export default async function LegalPage({
   if (!isDoc(doc)) notFound();
   setRequestLocale(locale);
   const t = await getTranslations("web.legal");
-  const prefix = `/${locale}`;
   const sections = t.raw(`${doc}.sections`) as Section[];
 
   return (
     <main className="relative min-h-screen pb-28 pt-[120px]">
       <div className="mx-auto max-w-[760px] px-6 sm:px-10">
         <nav className="text-tx-dim mb-7 flex items-center gap-1.5 font-mono text-[11px]">
-          <Link href={prefix} className="hover:text-tx-mute transition">
+          <Link href={pathFor(locale)} className="hover:text-tx-mute transition">
             {t("home")}
           </Link>
           <ChevronRight size={12} />
@@ -89,7 +88,7 @@ export default async function LegalPage({
 
         <div className="border-border mt-12 border-t pt-8">
           <Link
-            href={`${prefix}/store`}
+            href={pathFor(locale, "/store")}
             className="text-primary text-sm font-semibold underline-offset-4 hover:underline"
           >
             {t("backToStore")}

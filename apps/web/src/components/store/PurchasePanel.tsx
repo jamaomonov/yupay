@@ -13,7 +13,7 @@ import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { getAccessToken } from "@/lib/client";
 import { canCheck, IDLE, runPlayerCheck, type CheckState } from "@/lib/player-check-state";
-import { formatUzs } from "@/lib/seo";
+import { formatUzs, pathFor } from "@/lib/seo";
 import { amountError, parseAmount } from "@/lib/variable-amount";
 
 const API = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
@@ -496,7 +496,7 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
       });
       if (!intentRes.ok) throw new Error("intent");
       const intent = (await intentRes.json()) as { intent_url: string | null };
-      const trackHref = `/${locale}/orders/${order.id}${emailSuffix}`;
+      const trackHref = pathFor(locale, `/orders/${order.id}${emailSuffix}`);
       if (intent.intent_url && provider !== "mock") {
         // Real acquirer → go straight to the hosted payment page. The dev `mock`
         // provider returns a non-resolvable URL, so we keep its clickable

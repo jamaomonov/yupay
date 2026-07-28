@@ -11,7 +11,7 @@
   },
   "meta": {
     "homeTitle": "Yupay — oʻyinlar va obunalarni bir lahzada toʻldirish",
-    "homeDescription": "Steam, PUBG Mobile, Telegram Premium, Genshin, Valorant va boshqa oʻyinlar. Parol kerak emas — ID orqali 2 daqiqada toʻldiriladi. Karta bilan toʻlang."
+    "homeDescription": "Steam, PUBG Mobile, Free Fire, Genshin Impact, Delta Force va boshqa oʻyinlar Oʻzbekistonda. Click, Payme va Uzum bilan toʻlang, narxlar soʻmda. Parolsiz, bir necha daqiqada tushadi."
   },
   "nav": {
     "store": "Katalog",
@@ -46,14 +46,14 @@
     "commission": "Komissiya",
     "speed": "Tezlik",
     "rating": "Reyting",
-    "steamDesc": "MDH, Qozogʻiston, Turkiya. 2 daqiqada yetkazib berish, parolsiz.",
+    "steamDesc": "MDH, Qozogʻiston, Turkiya. Avtomatik, darhol tushadi, parolsiz.",
     "cards": {
       "steam": {
         "name": "Steam\nHamyon",
         "eyebrow": "Valve · MDH / KZ / TR",
         "tag": "HIT",
         "statCommission": "0%",
-        "statSpeed": "2 daq",
+        "statSpeed": "Darhol",
         "statRating": "★ 5.0"
       },
       "pubg-mobile": {
@@ -101,7 +101,7 @@
     "title": "Steam hisobini 0% komissiya bilan toʻldiring",
     "subtitle": "Click, Payme va Uzum orqali soʻmda toʻlang. Qancha toʻlasangiz, Steam hisobiga shuncha tushadi — yashirin toʻlovlarsiz.",
     "payLabel": "Soʻmda toʻlov",
-    "chipSpeed": "1–3 daqiqa",
+    "chipSpeed": "Darhol",
     "chipNoPassword": "Parolsiz",
     "chipGuarantee": "Pul qaytarish kafolati",
     "statSpeedLabel": "Tezlik",
@@ -140,7 +140,7 @@
   "store": {
     "meta": {
       "title": "Oʻzbekistonda oʻyin va obunalarni toʻldirish",
-      "description": "Steam, PUBG Mobile, Telegram Premium, Delta Force va Arena Breakout ni UID orqali toʻldiring. Click, Payme yoki Uzum bilan toʻlang, narxlar soʻmda, bir necha daqiqada tushadi, parolsiz — yupay."
+      "description": "Steam, PUBG Mobile, Free Fire, Genshin Impact, Delta Force va Arena Breakout ni UID orqali toʻldiring. Click, Payme yoki Uzum bilan toʻlang, narxlar soʻmda, bir necha daqiqada tushadi, parolsiz — yupay."
     },
     "eyebrow": "Katalog",
     "title": "Oʻzbekistonda oʻyin va obunalarni toʻldirish",
@@ -215,11 +215,11 @@
     "amountPlaceholder": "Masalan, 10",
     "amountRequired": "Summani kiriting",
     "amountBelow": "Kamida {min}",
-    "amountAbove": "Ko'pi bilan {max}",
+    "amountAbove": "Koʻpi bilan {max}",
     "amountPrecision": "Nuqtadan keyin ikkitagacha raqam",
     "ratePerDollar": "1 $ = {rate}",
     "zeroFee": "Komissiya 0%",
-    "priceUnavailable": "Narx vaqtincha mavjud emas. Birozdan so'ng qayta urinib ko'ring."
+    "priceUnavailable": "Narx vaqtincha mavjud emas. Birozdan soʻng qayta urinib koʻring."
   },
   "how": {
     "eyebrow": "Flow",
@@ -428,6 +428,9 @@
     "toCatalog": "Katalogga oʻtish",
     "notFound": "Buyurtma topilmadi.",
     "fallbackTitle": "Buyurtma #{id}",
+    "copy": "Nusxa olish",
+    "copied": "Nusxa olindi",
+    "walletCredited": "Hamyon balansi toʻldirildi",
     "status": {
       "pending_payment": "Toʻlov kutilmoqda",
       "paid": "Toʻlandi",
@@ -444,7 +447,7 @@
   "brandReviews": {
     "title": "Sharhlar",
     "count": "{count, plural, one {# ta sharh} other {# ta sharh}}",
-    "empty": "Hozircha sharhlar yo‘q",
+    "empty": "Hozircha sharhlar yoʻq",
     "anonymous": "Xaridor",
     "writeCta": "Xaridni baholang",
     "formTitle": "Sizning sharhingiz",
@@ -454,10 +457,10 @@
     "submitting": "Yuborilmoqda…",
     "thanks": "Sharhingiz uchun rahmat!",
     "alreadyReviewed": "Siz bu xaridni allaqachon baholagansiz",
-    "error": "Yuborib bo‘lmadi. Qayta urinib ko‘ring.",
+    "error": "Yuborib boʻlmadi. Qayta urinib koʻring.",
     "report": "Shikoyat qilish",
     "reported": "Shikoyat yuborildi",
-    "loadMore": "Ko‘proq ko‘rsatish"
+    "loadMore": "Koʻproq koʻrsatish"
   },
   "orderResult": {
     "deliveredTitle": "Toʻldirish muvaffaqiyatli",

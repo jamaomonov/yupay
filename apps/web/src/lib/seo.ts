@@ -20,6 +20,31 @@ export function localeUrl(locale: string, path = ""): string {
   return `${SITE}${base}${path}`;
 }
 
+/**
+ * Root-relative internal path for a locale + path — the canonical, prefix-less
+ * form for ru. Use for every in-app `<Link href>` / router navigation so the
+ * default locale never links through a `/ru/...` → `/...` 30x redirect (a crawl
+ * tax on every internal link). Keep `localeUrl` for absolute canonical / OG /
+ * JSON-LD URLs. An empty result (ru root) collapses to "/" so it stays a valid,
+ * navigable href rather than an empty string that resolves to the current URL.
+ */
+export function pathFor(locale: string, path = ""): string {
+  const p = locale === "ru" ? path : `/${locale}${path}`;
+  return p === "" ? "/" : p;
+}
+
+/**
+ * First value that is present and not blank (whitespace-only counts as absent).
+ * The catalog API returns empty strings `""` — not null — for missing brand
+ * copy, which `??` does not catch, so this is what lets the real fallback fire.
+ */
+export function firstNonEmpty(...vals: (string | null | undefined)[]): string | undefined {
+  for (const v of vals) {
+    if (v != null && v.trim() !== "") return v;
+  }
+  return undefined;
+}
+
 /** canonical + hreflang alternates (incl. x-default) for a given path. */
 export function alternates(locale: string, path = "") {
   const languages: Record<string, string> = {};

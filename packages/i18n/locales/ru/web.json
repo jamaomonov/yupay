@@ -11,7 +11,7 @@
   },
   "meta": {
     "homeTitle": "Yupay — Моментальное пополнение игр и подписок",
-    "homeDescription": "Steam, PUBG Mobile, Telegram Premium, Genshin, Valorant и другие игры. Без передачи паролей, зачисление за 2 минуты, оплата картой."
+    "homeDescription": "Steam, PUBG Mobile, Free Fire, Genshin Impact, Delta Force и другие игры в Узбекистане. Оплата Click, Payme и Uzum, цены в сумах. Без передачи паролей, зачисление за минуты."
   },
   "nav": {
     "store": "Каталог",
@@ -46,14 +46,14 @@
     "commission": "Комиссия",
     "speed": "Скорость",
     "rating": "Рейтинг",
-    "steamDesc": "Любая страна СНГ, Казахстан, Турция. Зачисление 2 минуты, без передачи пароля.",
+    "steamDesc": "Любая страна СНГ, Казахстан, Турция. Моментальное автоматическое начисление, без передачи пароля.",
     "cards": {
       "steam": {
         "name": "Steam\nКошелёк",
         "eyebrow": "Valve · СНГ / KZ / TR",
         "tag": "ХИТ",
         "statCommission": "0%",
-        "statSpeed": "2 мин",
+        "statSpeed": "Моментально",
         "statRating": "★ 5.0"
       },
       "pubg-mobile": {
@@ -101,7 +101,7 @@
     "title": "0% комиссии на пополнение Steam",
     "subtitle": "Оплата в сумах через Click, Payme и Uzum. Сколько платите — столько заходит на баланс Steam. Без скрытых сборов.",
     "payLabel": "Оплата в сумах",
-    "chipSpeed": "1–3 минуты",
+    "chipSpeed": "Моментально",
     "chipNoPassword": "Без пароля",
     "chipGuarantee": "Гарантия возврата",
     "statSpeedLabel": "Скорость",
@@ -140,7 +140,7 @@
   "store": {
     "meta": {
       "title": "Каталог пополнений игр и подписок в Узбекистане",
-      "description": "Пополняй Steam, PUBG Mobile, Telegram Premium, Delta Force и Arena Breakout по UID. Оплата Click, Payme и Uzum, цены в сумах, зачисление за пару минут, без передачи пароля — yupay."
+      "description": "Пополняй Steam, PUBG Mobile, Free Fire, Genshin Impact, Delta Force и Arena Breakout по UID. Оплата Click, Payme и Uzum, цены в сумах, зачисление за пару минут, без передачи пароля — yupay."
     },
     "eyebrow": "Каталог",
     "title": "Пополнение игр и подписок в Узбекистане",
@@ -428,6 +428,9 @@
     "toCatalog": "В каталог",
     "notFound": "Заказ не найден.",
     "fallbackTitle": "Заказ #{id}",
+    "copy": "Скопировать",
+    "copied": "Скопировано",
+    "walletCredited": "Баланс кошелька пополнен",
     "status": {
       "pending_payment": "Ожидает оплаты",
       "paid": "Оплачен",

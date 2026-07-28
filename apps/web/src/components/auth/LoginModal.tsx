@@ -10,6 +10,7 @@ import { ProviderButton } from "./ProviderButton";
 import { GoogleIcon, SteamIcon, TelegramIcon } from "./ProviderIcons";
 
 import { useAuth } from "@/lib/auth";
+import { pathFor } from "@/lib/seo";
 import { useLoginModal } from "@/store/useLoginModal";
 
 interface TelegramAuth {
@@ -151,11 +152,11 @@ export function LoginModal({ locale }: { locale: string }) {
 
             <p className="text-tx-dim mt-6 text-center text-xs leading-relaxed">
               {t("agreePrefix")}{" "}
-              <Link href={`/${locale}/legal/privacy`} className="hover:text-tx underline">
+              <Link href={pathFor(locale, "/legal/privacy")} className="hover:text-tx underline">
                 {t("privacy")}
               </Link>{" "}
               {t("and")}{" "}
-              <Link href={`/${locale}/legal/terms`} className="hover:text-tx underline">
+              <Link href={pathFor(locale, "/legal/terms")} className="hover:text-tx underline">
                 {t("terms")}
               </Link>
             </p>

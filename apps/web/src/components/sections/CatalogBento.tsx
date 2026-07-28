@@ -4,6 +4,7 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { getBrands, type BrandSummary } from "@/lib/catalog";
+import { pathFor } from "@/lib/seo";
 
 /**
  * Bento-grid catalog teaser on the landing — a featured brand (2×2) plus
@@ -30,7 +31,7 @@ function BentoCard({
   const accent = brand.accent_color ?? "#AAFF33";
   return (
     <Link
-      href={`/${locale}/store/${brand.slug}`}
+      href={pathFor(locale, `/store/${brand.slug}`)}
       className={`border-border hover:border-primary/30 focus-visible:ring-primary group relative isolate overflow-hidden rounded-xl border transition hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset ${
         featured ? "h-[300px] md:col-span-2 md:row-span-2 md:h-auto" : "h-[240px] md:h-auto"
       }`}
@@ -38,7 +39,7 @@ function BentoCard({
       {img ? (
         <Image
           src={img}
-          alt=""
+          alt={brand.name}
           fill
           unoptimized
           sizes={featured ? "(max-width: 768px) 100vw, 540px" : "(max-width: 768px) 100vw, 270px"}
@@ -88,7 +89,6 @@ function BentoCard({
 export async function CatalogBento({ locale }: { locale: string }) {
   const t = await getTranslations("web.catalog");
   const ts = await getTranslations("web.store");
-  const prefix = `/${locale}`;
 
   let all: BrandSummary[] = [];
   try {
@@ -119,7 +119,7 @@ export async function CatalogBento({ locale }: { locale: string }) {
             </h2>
           </div>
           <Link
-            href={`${prefix}/store`}
+            href={pathFor(locale, "/store")}
             className="border-border-2 text-foreground hover:border-tx-dim hover:bg-muted hidden h-[44px] items-center gap-2 rounded-[12px] border px-5 text-sm font-semibold transition sm:inline-flex"
           >
             {t("viewAll")}
@@ -148,7 +148,7 @@ export async function CatalogBento({ locale }: { locale: string }) {
         {/* Mobile gets the "view all" CTA below the grid (the header one is
             desktop-only to keep the heading row uncluttered on phones). */}
         <Link
-          href={`${prefix}/store`}
+          href={pathFor(locale, "/store")}
           className="border-border-2 text-foreground hover:border-tx-dim hover:bg-muted mt-4 flex h-[48px] items-center justify-center gap-2 rounded-[12px] border text-sm font-semibold transition sm:hidden"
         >
           {t("viewAll")}

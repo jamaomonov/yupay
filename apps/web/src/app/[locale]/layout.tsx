@@ -11,6 +11,7 @@ import { LoginModal } from "@/components/auth/LoginModal";
 import { Footer } from "@/components/Footer";
 import { GoogleTag } from "@/components/GoogleTag";
 import { Header } from "@/components/Header";
+import { JsonLd } from "@/components/JsonLd";
 import { OrderDeliveredModal } from "@/components/order/OrderDeliveredModal";
 import { SupportFab } from "@/components/SupportFab";
 import { YandexMetrika } from "@/components/YandexMetrika";
@@ -43,6 +44,10 @@ const mono = JetBrains_Mono({
   display: "swap",
 });
 
+/** Social share image. No dedicated 1200×630 asset exists yet, so this falls
+ *  back to the brand logo — swap for a real OG banner when one is designed. */
+const OG_IMAGE = "/logo/icon.svg";
+
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
 }
@@ -72,7 +77,16 @@ export async function generateMetadata({
       title: t("homeTitle"),
       description: t("homeDescription"),
       url: localeUrl(locale),
+      // No dedicated 1200×630 social asset yet — fall back to the brand logo so
+      // shares still carry a mark. Resolved against metadataBase above.
+      images: [{ url: OG_IMAGE, width: 1200, height: 630 }],
       ...ogLocale(locale),
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: t("homeTitle"),
+      description: t("homeDescription"),
+      images: [OG_IMAGE],
     },
   };
 }
@@ -89,9 +103,27 @@ export default async function LocaleLayout({
   setRequestLocale(locale);
   const messages = await getMessages();
 
+  // Site-wide structured data (there is none on `/` otherwise). Organization
+  // identifies the brand; WebSite lets search engines attach a sitelinks box.
+  const organizationLd = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "YuPay",
+    url: SITE,
+    logo: `${SITE}/logo/icon.svg`,
+  };
+  const websiteLd = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: "YuPay",
+    url: SITE,
+  };
+
   return (
     <html lang={locale} className={`${sans.variable} ${display.variable} ${mono.variable}`}>
       <body className="bg-bg text-foreground min-h-screen font-sans antialiased">
+        <JsonLd data={organizationLd} />
+        <JsonLd data={websiteLd} />
         <GoogleTag />
         <YandexMetrika />
         <NextIntlClientProvider locale={locale} messages={messages}>

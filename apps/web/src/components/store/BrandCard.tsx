@@ -5,6 +5,8 @@ import { getTranslations } from "next-intl/server";
 
 import type { BrandSummary } from "@/lib/catalog";
 
+import { pathFor } from "@/lib/seo";
+
 /**
  * Catalog tile backed by live API data — brand key-art (hero, falling back to
  * logo or an accent gradient), localised name + short description, and a
@@ -13,19 +15,18 @@ import type { BrandSummary } from "@/lib/catalog";
  */
 export async function BrandCard({ brand, locale }: { brand: BrandSummary; locale: string }) {
   const ts = await getTranslations("web.store");
-  const prefix = `/${locale}`;
   const img = brand.hero_image_url ?? brand.logo_url;
   const accent = brand.accent_color ?? "#AAFF33";
 
   return (
     <Link
-      href={`${prefix}/store/${brand.slug}`}
+      href={pathFor(locale, `/store/${brand.slug}`)}
       className="border-border hover:border-primary/30 focus-visible:ring-primary group relative isolate flex h-[240px] flex-col justify-end overflow-hidden rounded-xl border transition hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset"
     >
       {img ? (
         <Image
           src={img}
-          alt=""
+          alt={brand.name}
           fill
           unoptimized
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 300px"
