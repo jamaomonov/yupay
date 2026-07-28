@@ -322,5 +322,8 @@
   "reviews.thanks": "Sharhingiz uchun rahmat!",
   "reviews.already": "Siz allaqachon baholagansiz",
   "reviews.error": "Yuborib bo‘lmadi",
-  "reviews.rateCta": "Baholash"
+  "reviews.rateCta": "Baholash",
+  "orderResult.deliveredTitle": "Toʻldirish muvaffaqiyatli",
+  "orderResult.deliveredBody": "Buyurtmangiz yetkazildi. Balansingizni yoki olingan kodni tekshiring.",
+  "orderResult.rateCta": "Baholash"
 }

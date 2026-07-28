@@ -322,5 +322,8 @@
   "reviews.thanks": "Thanks for your review!",
   "reviews.already": "You've already rated this purchase",
   "reviews.error": "Couldn't submit",
-  "reviews.rateCta": "Rate"
+  "reviews.rateCta": "Rate",
+  "orderResult.deliveredTitle": "Top-up successful",
+  "orderResult.deliveredBody": "Your order has been delivered. Check your balance or the code you received.",
+  "orderResult.rateCta": "Rate"
 }

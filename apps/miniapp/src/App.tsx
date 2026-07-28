@@ -6,8 +6,10 @@ import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { BootstrapGate } from "@/components/BootstrapGate";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Shell } from "@/components/layout/Shell";
+import { OrderDeliveredDialog } from "@/components/OrderDeliveredDialog";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useOrderSocket } from "@/hooks/useOrderSocket";
 import { I18nProvider, useT } from "@/lib/i18n";
 import { showSettingsButton, watchTelegramActivity } from "@/lib/telegram";
 import { useTelegramBackButton } from "@/lib/use-telegram-back-button";
@@ -26,6 +28,18 @@ function NotFound() {
 }
 
 const queryClient = new QueryClient();
+
+/**
+ * Mounts the order-updates WebSocket (no-op while signed out) and the global
+ * "order delivered → rate" dialog it opens. A separate component (rather than
+ * inlining both calls in `App`) keeps `useOrderSocket`'s `useMe()` /
+ * `useQueryClient()` reads scoped to something that re-renders on its own,
+ * not on every `App` render.
+ */
+function RealtimeUpdates() {
+  useOrderSocket();
+  return <OrderDeliveredDialog />;
+}
 
 /**
  * Native Settings entry (client ⋮ menu) → our settings route, and background
@@ -97,6 +111,7 @@ function App() {
                   <Router />
                 </WouterRouter>
               </BootstrapGate>
+              <RealtimeUpdates />
               <Toaster />
             </TooltipProvider>
           </MotionConfig>

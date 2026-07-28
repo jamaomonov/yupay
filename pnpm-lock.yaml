@@ -171,6 +171,9 @@ importers:
       '@telegram-apps/sdk-react':
         specifier: ^3.0.0
         version: 3.3.9(@types/react@19.2.14)(react@19.2.6)(typescript@5.9.3)
+      '@yupay/api-client':
+        specifier: workspace:*
+        version: link:../../packages/api-client
       '@yupay/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n

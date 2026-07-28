@@ -322,5 +322,8 @@
   "reviews.thanks": "Спасибо за отзыв!",
   "reviews.already": "Вы уже оценили эту покупку",
   "reviews.error": "Не удалось отправить",
-  "reviews.rateCta": "Оценить"
+  "reviews.rateCta": "Оценить",
+  "orderResult.deliveredTitle": "Пополнение успешно",
+  "orderResult.deliveredBody": "Ваш заказ доставлен. Проверьте баланс или полученный код.",
+  "orderResult.rateCta": "Оценить"
 }

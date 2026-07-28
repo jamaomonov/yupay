@@ -13,6 +13,8 @@ import { useMe } from "./auth";
 import { getActiveLocale, translate, translatePlural } from "./i18n/core";
 import { isAppActive } from "./telegram";
 
+import { useRealtimeStatus } from "@/store/useRealtimeStatus";
+
 // --- DTOs -----------------------------------------------------------------
 
 export type OrderStatus =
@@ -207,23 +209,39 @@ export function useCheckout() {
   });
 }
 
+/**
+ * Decide the REST polling interval for `useOrder`, given the order's live
+ * status and whether the app/realtime channel are already covering it.
+ * Exported (pure, no hooks) so the gating logic is unit-testable without
+ * mounting the hook.
+ */
+export function orderRefetchInterval(
+  status: OrderStatus | undefined,
+  opts: { appActive: boolean; realtimeConnected: boolean },
+): number | false {
+  if (!status) return false;
+  // Minimised app: stop burning the customer's battery and our API on an
+  // order nobody is watching. `activated` refetches immediately (App.tsx).
+  if (!opts.appActive) return false;
+  // The order-updates WebSocket is live: it nudges this query on every
+  // change, so REST polling on top of it would just burn battery/API budget
+  // for no fresher data.
+  if (opts.realtimeConnected) return false;
+  // Poll while the order is in motion. Once terminal, stop.
+  return ["pending_payment", "paid", "fulfilling", "fulfilled"].includes(status) ? 3_000 : false;
+}
+
 export function useOrder(orderId: string | undefined) {
+  const realtimeConnected = useRealtimeStatus((s) => s.connected);
   return useQuery<OrderOut>({
     queryKey: ["order", orderId],
     enabled: Boolean(orderId),
     queryFn: () => apiGet<OrderOut>(`/api/v1/orders/${orderId ?? ""}`),
-    refetchInterval: (q) => {
-      const status = q.state.data?.status;
-      if (!status) return false;
-      // Minimised app: stop burning the customer's battery and our API on an
-      // order nobody is watching. `activated` refetches immediately (App.tsx).
-      if (!isAppActive()) return false;
-      // Poll while the order is in motion. Once terminal, stop.
-      if (["pending_payment", "paid", "fulfilling", "fulfilled"].includes(status)) {
-        return 3_000;
-      }
-      return false;
-    },
+    refetchInterval: (q) =>
+      orderRefetchInterval(q.state.data?.status, {
+        appActive: isAppActive(),
+        realtimeConnected,
+      }),
   });
 }
 
