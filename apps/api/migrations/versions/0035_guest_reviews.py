@@ -2,6 +2,10 @@
 
 See docs/decisions/0039-reviews-and-ratings.md (guest-reviews amendment).
 
+Note: downgrade() re-adds NOT NULL on user_id, so it will fail if any guest
+reviews exist (rows with user_id IS NULL) — those rows must be deleted or
+backfilled with a user_id first.
+
 Revision ID: 0035_guest_reviews
 Revises: 0034_reviews
 Create Date: 2026-07-28

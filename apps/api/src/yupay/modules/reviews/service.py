@@ -227,7 +227,12 @@ async def list_own(db: AsyncSession, *, user_id: str) -> list[Review]:
 
 
 async def _first_brand_of_order(db: AsyncSession, order_id: str) -> tuple[str, str] | None:
-    """(brand_id, brand_slug) of the order's first item, or None."""
+    """(brand_id, brand_slug) of the order's first item, or None.
+
+    Only the first brand is considered — correct for today's single-item web
+    orders, but a known limit for hypothetical multi-brand orders (the
+    eligibility check would only ever surface one brand to review).
+    """
     row = (
         await db.execute(
             select(Brand.id, Brand.slug)

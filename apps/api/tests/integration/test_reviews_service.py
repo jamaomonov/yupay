@@ -291,6 +291,9 @@ async def test_list_published_paginates_newest_first(db_session: AsyncSession) -
     assert cursor2 is None
     # Newest-first ordering: page1[0] is at least as new as page1[1].
     assert page1[0].created_at >= page1[1].created_at
+    # Each review's author is a logged-in user seeded with display_name="Buyer"
+    # (see _make_published_review) — the outer join to User must resolve it.
+    assert all(item.author_name == "Buyer" for item in [*page1, *page2])
 
 
 async def test_recompute_fixes_drift(db_session: AsyncSession) -> None:
