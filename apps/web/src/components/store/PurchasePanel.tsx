@@ -311,8 +311,21 @@ function VariableAmountCard({
 export function PurchasePanel({ products, locale }: { products: ProductDetail[]; locale: string }) {
   const t = useTranslations("web.store");
   const { user } = useAuth();
-  const firstSku = products[0]?.skus[0]?.id;
-  const [skuId, setSkuId] = useState<string | undefined>(firstSku);
+  // Anchor the default on a mid-tier pack, not the cheapest, and badge it as
+  // the recommended "Хит" — a default nudge on grids with several packs. Only
+  // applies to a fixed-denomination primary product with 3+ SKUs; a
+  // variable-amount product (Steam) or a 1–2 SKU brand gets no badge and falls
+  // back to the first SKU.
+  const primarySkus = products[0]?.skus ?? [];
+  const primaryIsVariable =
+    primarySkus.length > 0 && primarySkus.every((s) => s.variable_amount ?? false);
+  const recommendedSkuId =
+    !primaryIsVariable && primarySkus.length >= 3
+      ? primarySkus[Math.floor(primarySkus.length / 2)]?.id
+      : undefined;
+  const [skuId, setSkuId] = useState<string | undefined>(
+    recommendedSkuId ?? products[0]?.skus[0]?.id,
+  );
   const [form, setForm] = useState<Record<string, string>>({});
   const [email, setEmail] = useState("");
   // The dollar amount typed for a variable-amount SKU. Raw string, not a
@@ -584,6 +597,7 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                     {product.skus.map((sku) => {
                       const active = sku.id === skuId;
+                      const recommended = sku.id === recommendedSkuId;
                       const img = sku.image_url ?? product.image_url;
                       return (
                         <button
@@ -593,12 +607,17 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
                           onClick={() => {
                             setSkuId(sku.id);
                           }}
-                          className={`focus-visible:ring-primary focus-visible:ring-offset-bg flex flex-col items-start gap-2 rounded-[14px] border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                          className={`focus-visible:ring-primary focus-visible:ring-offset-bg relative flex flex-col items-start gap-2 rounded-[14px] border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
                             active
                               ? "border-primary bg-primary/10"
                               : "border-border bg-card hover:border-border-2"
                           }`}
                         >
+                          {recommended && (
+                            <span className="bg-primary text-primary-foreground absolute right-2 top-2 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.06em]">
+                              {t("popular")}
+                            </span>
+                          )}
                           <span className="relative h-12 w-12 overflow-hidden rounded-[10px]">
                             {img && (
                               <Image

@@ -1,20 +1,21 @@
 import { ChevronRight, Clock, ShieldCheck } from "lucide-react";
-import { Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { hasLocale } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
+import { Suspense } from "react";
 
 import { HighlightChips } from "./HighlightChips";
 
 import type { Metadata } from "next";
 
 import { JsonLd } from "@/components/JsonLd";
+import { PurchasePanel } from "@/components/store/PurchasePanel";
+import { RatingChip } from "@/components/store/RatingChip";
 import { RatingSummary } from "@/components/store/RatingSummary";
 import { Stars } from "@/components/store/Stars";
 import { WriteReviewPanel } from "@/components/store/WriteReviewPanel";
-import { PurchasePanel } from "@/components/store/PurchasePanel";
 import { routing } from "@/i18n/routing";
 import { getBrandDetail, getBrandSlugs, getProductDetail, type ProductDetail } from "@/lib/catalog";
 import { getBrandReviews, type ReviewPage } from "@/lib/reviews";
@@ -249,12 +250,15 @@ export default async function BrandPage({
                   {t("from")} {startingChip}
                 </Chip>
               )}
+              {/* Real rating at the decision point — renders only when there
+                  are genuine reviews (count > 0), never fabricated. */}
+              <RatingChip stats={reviews.stats} />
               {/* Generic eta/security chips only when the brand has no
-                  highlights — otherwise the highlights (e.g. "1–3 минуты",
+                  highlights — otherwise the highlights (e.g. auto-crediting,
                   "Без пароля") would duplicate them. */}
               {highlights.length === 0 && (
                 <>
-                  <Chip icon={<Clock size={13} />}>{t("etaChip", { eta: "1–3" })}</Chip>
+                  <Chip icon={<Clock size={13} />}>{t("etaChip")}</Chip>
                   <Chip icon={<ShieldCheck size={13} />}>{t("securityChip")}</Chip>
                 </>
               )}

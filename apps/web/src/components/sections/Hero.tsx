@@ -1,4 +1,4 @@
-import { ArrowRight, ChevronDown, Send, Star } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, Send } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
@@ -116,33 +116,19 @@ export async function Hero({ locale }: { locale: string }) {
             </a>
           </div>
 
-          {/* Trust strip — avatar stack + counter + stars */}
-          <div className="mt-12 flex items-center gap-4">
-            <div className="flex">
-              {AVATARS.map((a, i) => (
-                <div
-                  key={i}
-                  className="border-bg -ml-2.5 flex h-[38px] w-[38px] items-center justify-center rounded-full border-2 text-[13px] font-extrabold text-white first:ml-0"
-                  style={{ background: a.bg }}
-                >
-                  {a.letter}
-                </div>
-              ))}
-            </div>
-            <div>
-              <div className="text-foreground text-[14px] font-semibold">
-                <span className="text-primary font-mono font-bold">{t("trustCount")}</span>{" "}
-                {t("trustCountLabel")}
-              </div>
-              <div className="mt-1 flex items-center gap-2">
-                <div className="flex gap-[1px]">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Star key={i} size={12} className="fill-gold text-gold" />
-                  ))}
-                </div>
-                <span className="text-tx-mute text-[11px]">{t("rating")}</span>
-              </div>
-            </div>
+          {/* Trust chips — honest, verifiable signals only (no review counts
+              or invented totals): the Steam commission, local rails, refund
+              window. */}
+          <div className="mt-12 flex flex-wrap gap-2.5">
+            {(["chip1", "chip2", "chip3"] as const).map((k) => (
+              <span
+                key={k}
+                className="border-border bg-card/60 text-tx-mute inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-[13px] font-medium"
+              >
+                <Check size={14} strokeWidth={2.6} className="text-primary shrink-0" />
+                {t(k)}
+              </span>
+            ))}
           </div>
         </div>
 
@@ -154,11 +140,3 @@ export async function Hero({ locale }: { locale: string }) {
     </header>
   );
 }
-
-const AVATARS = [
-  { letter: "А", bg: "linear-gradient(135deg, #FFAA00, #1a1a1a)" },
-  { letter: "М", bg: "linear-gradient(135deg, #5B2C82, #1a1a1a)" },
-  { letter: "К", bg: "linear-gradient(135deg, #FF4655, #1a1a1a)" },
-  { letter: "С", bg: "linear-gradient(135deg, #5BA8FF, #1a1a1a)" },
-  { letter: "Д", bg: "linear-gradient(135deg, #1DB954, #1a1a1a)" },
-];

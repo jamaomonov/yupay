@@ -11,7 +11,7 @@
   },
   "meta": {
     "homeTitle": "Yupay — Instant game top-ups and digital subscriptions",
-    "homeDescription": "Steam, PUBG Mobile, Free Fire, Genshin Impact, Delta Force and more games in Uzbekistan. Pay with Click, Payme and Uzum, prices in som. No passwords, credited in minutes."
+    "homeDescription": "Steam, PUBG Mobile, Free Fire, Genshin Impact, Delta Force and more games in Uzbekistan. Pay with Click, Payme and Uzum, prices in som. No passwords, credited automatically."
   },
   "nav": {
     "store": "Catalog",
@@ -30,13 +30,13 @@
     "badge": "Games & subscriptions · 1 hub",
     "titleLine1": "All your top-ups",
     "titleLine2": "in one place.",
-    "subtitle": "Steam, mobile games and subscriptions — no passwords. UID top-ups in 2 minutes.",
+    "subtitle": "Steam, PUBG Mobile, Genshin and more — by ID, no account password. Pay with Click, Payme and Uzum, prices in som.",
     "ctaPrimary": "Browse catalog",
     "ctaSecondary": "How it works",
     "ctaTelegram": "Open in Telegram",
-    "trustCount": "100,482",
-    "trustCountLabel": "successful top-ups",
-    "rating": "4.9 / 5 · 8,247 reviews"
+    "chip1": "0% fee on Steam",
+    "chip2": "Pay with Click · Payme · Uzum",
+    "chip3": "Refund within 24 h"
   },
   "catalog": {
     "eyebrow": "Catalog",
@@ -80,12 +80,12 @@
   },
   "trust": {
     "speed": {
-      "title": "Delivery in 1–3 minutes",
+      "title": "Automatic crediting",
       "sub": "Automatic after payment"
     },
     "noPassword": {
       "title": "No password handover",
-      "sub": "We top up by public UID"
+      "sub": "We top up by public ID"
     },
     "guarantee": {
       "title": "Money-back guarantee",
@@ -140,11 +140,11 @@
   "store": {
     "meta": {
       "title": "Game & subscription top-ups in Uzbekistan",
-      "description": "Top up Steam, PUBG Mobile, Free Fire, Genshin Impact, Delta Force and Arena Breakout by UID. Pay with Click, Payme and Uzum, prices in som, credited in minutes, no password handover — yupay."
+      "description": "Top up Steam, PUBG Mobile, Free Fire, Genshin Impact, Delta Force and Arena Breakout by ID. Pay with Click, Payme and Uzum, prices in som, credited automatically, no password handover — yupay."
     },
     "eyebrow": "Catalog",
     "title": "Game & subscription top-ups in Uzbekistan",
-    "subtitle": "Pick a service, enter the UID — and get credited in minutes. Pay with Click, Payme or Uzum, prices in som. No password handover.",
+    "subtitle": "Pick a service, enter the ID — and get credited automatically. Pay with Click, Payme or Uzum, prices in som. No password handover.",
     "payWith": "Pay with",
     "maintenance": "Maintenance",
     "empty": "Games will appear here soon.",
@@ -164,7 +164,7 @@
     "packsTitle": "Choose a pack",
     "payTitle": "Payment & delivery",
     "ctaNote": "Checkout happens in the Telegram bot — no signup, pay with Click, Payme or Uzum. Auto-credit.",
-    "securityNote": "Credited by your public UID — no account password required.",
+    "securityNote": "Credited by your public ID — no account password required.",
     "detailsTitle": "Where to credit",
     "summaryTitle": "Your order",
     "selectPack": "Pick a pack above",
@@ -186,25 +186,25 @@
     "orderStatus": "Order status",
     "orderLabel": "Order",
     "commissionChip": "Commission from {pct}%",
-    "etaChip": "Credited in {eta} min",
+    "etaChip": "Credited automatically",
     "securityChip": "No password",
     "brandMetaTitle": "{name} top-up in Uzbekistan | yupay",
-    "brandMetaDescription": "Top up {name} by UID in minutes. Prices in som, pay with Click, Payme or Uzum. No password handover — yupay.",
+    "brandMetaDescription": "Top up {name} by ID, credited automatically. Prices in som, pay with Click, Payme or Uzum. No password handover — yupay.",
     "brands": {
       "steam": {
-        "about": "Steam wallet top-ups for CIS, Kazakhstan and Turkey accounts. Funds land on your balance in minutes — no login or password handover, pay in som."
+        "about": "Steam wallet top-ups for CIS, Kazakhstan and Turkey accounts. Funds are credited to your balance automatically — no login or password handover, pay in som."
       },
       "pubg-mobile": {
-        "about": "UC for PUBG Mobile by player ID. Credited in minutes without logging in — just your public UID. Pay with Click, Payme or Uzum."
+        "about": "UC for PUBG Mobile by player ID. Credited automatically without logging in — just your public ID. Pay with Click, Payme or Uzum."
       },
       "telegram-premium": {
-        "about": "Telegram Premium for 1–12 months by @username. Activated in minutes, pay in som — no password handover."
+        "about": "Telegram Premium for 1–12 months by @username. Activated automatically, pay in som — no password handover."
       },
       "delta-force": {
         "about": "Delta Force in-game currency by player ID. Fast credit in som, no password handover."
       },
       "arena-breakout": {
-        "about": "Bonds for Arena Breakout by player ID. Credited in minutes, pay with Click, Payme or Uzum."
+        "about": "Bonds for Arena Breakout by player ID. Credited automatically, pay with Click, Payme or Uzum."
       }
     },
     "checkEdit": "Edit",
@@ -225,25 +225,30 @@
     "eyebrow": "Flow",
     "titleLine1": "From tap",
     "titleLine2": "to game —",
-    "titleLine3": "1:47.",
+    "titleLine3": "automatic.",
     "subtitle": "No signup, no verifications. Three steps and you're back in the lobby.",
     "step1Title": "Pick a game",
     "step1Sub": "Find your game in the catalog or via search — from Steam to Telegram Premium.",
-    "step2Title": "Enter UID and amount",
+    "step2Title": "Enter ID and amount",
     "step2Sub": "No password — just the public profile ID. Pick a pack and we show exactly what lands.",
     "step3Title": "Pay and you're in",
     "step3Sub": "Card. Auto-credit, email receipt, support whenever you need it."
   },
   "metrics": {
-    "eyebrow": "Numbers",
-    "title": "Numbers, not marketing.",
-    "updatedLabel": "Updated",
-    "totalOrdersLabel": "Successful top-ups",
-    "totalOrdersNote": "all-time",
-    "avgTimeLabel": "Average time",
-    "avgTimeNote": "from payment to playable",
-    "supportReplyLabel": "Support reply",
-    "supportReplyNote": "median chat response"
+    "eyebrow": "Facts",
+    "title": "Why people trust us.",
+    "feeValue": "0",
+    "feeSuffix": "%",
+    "feeLabel": "Fee on Steam",
+    "feeNote": "on top of the top-up",
+    "methodsValue": "3",
+    "methodsSuffix": "",
+    "methodsLabel": "Ways to pay",
+    "methodsNote": "Click, Payme and Uzum",
+    "guaranteeValue": "24",
+    "guaranteeSuffix": "h",
+    "guaranteeLabel": "Refund guarantee",
+    "guaranteeNote": "not credited — refunded"
   },
   "reviews": {
     "eyebrow": "Reviews",
@@ -283,7 +288,7 @@
     "titleLine2": "a live app.",
     "subtitle": "All of yupay lives right inside Telegram. Catalog, payment and wallet — no install, no signup, in the same chat you hang out with friends.",
     "f1Title": "A couple of taps",
-    "f1Sub": "Pick a game, enter the UID, pay — the top-up lands in minutes. No password handover.",
+    "f1Sub": "Pick a game, enter the ID, pay — the top-up is credited automatically. No password handover.",
     "f2Title": "Telegram-native",
     "f2Sub": "Opens from the bot as a Mini App. Dark theme, native gestures, nothing extra.",
     "f3Title": "Wallet & cashback",
@@ -297,11 +302,11 @@
     "titleLine1": "Ready to get",
     "titleLine2": "back in the game?",
     "subtitle": "Instant delivery and help whenever you need it.",
-    "button": "Open catalog",
+    "button": "Top up now",
     "offerCaption": "support, always on"
   },
   "footer": {
-    "tagline": "Instant top-ups for games and subscriptions. No passwords, UID-only.",
+    "tagline": "Instant top-ups for games and subscriptions. No passwords, ID-only.",
     "followUs": "Follow us",
     "productTitle": "Product",
     "helpTitle": "Help",
@@ -329,7 +334,7 @@
       "sections": [
         {
           "h": "What we sell",
-          "p": "yupay resells digital goods: in-game currency, wallet top-ups and subscriptions. Credit is delivered to the public UID or account you provide — we never ask for your account password."
+          "p": "yupay resells digital goods: in-game currency, wallet top-ups and subscriptions. Credit is delivered to the public ID or account you provide — we never ask for your account password."
         },
         {
           "h": "Orders and payment",
@@ -337,7 +342,7 @@
         },
         {
           "h": "Fulfilment",
-          "p": "Most orders are fulfilled automatically within minutes. You are responsible for the accuracy of the UID and account details; a credit sent to a wrong UID is non-refundable."
+          "p": "Most orders are fulfilled automatically. You are responsible for the accuracy of the ID and account details; a credit sent to a wrong ID is non-refundable."
         },
         {
           "h": "Liability",
@@ -356,7 +361,7 @@
       "sections": [
         {
           "h": "What we collect",
-          "p": "Email (for the receipt and order status), the game UID or account identifier, and payment data. Card details are handled by the payment provider — we do not store them."
+          "p": "Email (for the receipt and order status), the game ID or account identifier, and payment data. Card details are handled by the payment provider — we do not store them."
         },
         {
           "h": "How we use it",
@@ -387,7 +392,7 @@
         },
         {
           "h": "When a refund is not possible",
-          "p": "After a successful credit, or if the UID or account were entered incorrectly through your own fault."
+          "p": "After a successful credit, or if the ID or account were entered incorrectly through your own fault."
         },
         {
           "h": "Timing",

@@ -6,7 +6,6 @@ import { CtaBand } from "@/components/sections/CtaBand";
 import { Hero } from "@/components/sections/Hero";
 import { HowItWorks } from "@/components/sections/HowItWorks";
 import { MetricsBand } from "@/components/sections/MetricsBand";
-import { Reviews } from "@/components/sections/Reviews";
 import { SteamZeroCommission } from "@/components/sections/SteamZeroCommission";
 import { Ticker } from "@/components/sections/Ticker";
 import { TrustBand } from "@/components/sections/TrustBand";
@@ -25,7 +24,6 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
       <HowItWorks />
       <AppShowcase />
       <MetricsBand />
-      <Reviews />
       <CtaBand locale={locale} />
     </>
   );

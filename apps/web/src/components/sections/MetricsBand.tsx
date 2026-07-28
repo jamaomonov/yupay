@@ -1,15 +1,16 @@
 import { getTranslations } from "next-intl/server";
 
-const METRICS: { key: string; value: string; suffix?: string; lime?: boolean }[] = [
-  { key: "totalOrders", value: "100", suffix: "K+" },
-  { key: "avgTime", value: "1:47", lime: true },
-  { key: "supportReply", value: "30", suffix: "сек" },
+const METRICS: { key: string; lime?: boolean }[] = [
+  { key: "fee", lime: true },
+  { key: "methods" },
+  { key: "guarantee" },
 ];
 
 /**
- * Numbers band — rounded card with a faint grid overlay. Lays the trust
- * proof out as three big monospaced numerals with paired labels + sub-notes.
- * Headline + ‟updated at" timestamp wrap above the grid.
+ * Facts band — rounded card with a faint grid overlay. Lays out three honest,
+ * verifiable product facts (Steam commission, payment rails, refund window) as
+ * big numerals with paired labels + sub-notes. Value/suffix come from i18n so
+ * the unit localises (e.g. "24 ч" / "24 h" / "24 soat").
  */
 export async function MetricsBand() {
   const t = await getTranslations("web.metrics");
@@ -37,26 +38,29 @@ export async function MetricsBand() {
           </div>
 
           <div className="relative grid grid-cols-1 gap-8 sm:grid-cols-3">
-            {METRICS.map((m) => (
-              <div key={m.key} className="border-border-2 border-t pt-6">
-                <div
-                  className={`font-display flex items-baseline text-[clamp(3rem,6vw,5rem)] font-extrabold leading-[0.9] tracking-[-0.05em] ${
-                    m.lime ? "text-primary" : "text-foreground"
-                  }`}
-                >
-                  {m.value}
-                  {m.suffix && (
-                    <span className="text-tx-mute ml-1 text-[clamp(1.4rem,2.5vw,2rem)] font-bold">
-                      {m.suffix}
-                    </span>
-                  )}
+            {METRICS.map((m) => {
+              const suffix = t(`${m.key}Suffix`);
+              return (
+                <div key={m.key} className="border-border-2 border-t pt-6">
+                  <div
+                    className={`font-display flex items-baseline text-[clamp(3rem,6vw,5rem)] font-extrabold leading-[0.9] tracking-[-0.05em] ${
+                      m.lime ? "text-primary" : "text-foreground"
+                    }`}
+                  >
+                    {t(`${m.key}Value`)}
+                    {suffix && (
+                      <span className="text-tx-mute ml-1 text-[clamp(1.4rem,2.5vw,2rem)] font-bold">
+                        {suffix}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-3 text-sm font-semibold tracking-[-0.01em]">
+                    {t(`${m.key}Label`)}
+                  </div>
+                  <div className="text-tx-mute mt-1 text-xs">{t(`${m.key}Note`)}</div>
                 </div>
-                <div className="mt-3 text-sm font-semibold tracking-[-0.01em]">
-                  {t(`${m.key}Label`)}
-                </div>
-                <div className="text-tx-mute mt-1 text-xs">{t(`${m.key}Note`)}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>

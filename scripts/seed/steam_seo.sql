@@ -1,7 +1,7 @@
 -- scripts/seed/steam_seo.sql
 --
 -- SEO content pack for the `steam` brand: highlights + short/long descriptions +
--- instructions on `brand_translations`, and 4 FAQ entries with ru/en/uz answers.
+-- instructions on `brand_translations`, and 5 FAQ entries with ru/en/uz answers.
 --
 -- Content-managed, NOT a fixture and NOT an Alembic data migration. Applied to
 -- prod by an operator (psql / `!`), gated by the standing deploy rule. Depends on
@@ -87,7 +87,7 @@ WITH steam AS (
 new_faqs AS (
     INSERT INTO brand_faqs (id, brand_id, sort_order, active)
     SELECT gen_random_uuid(), steam.id, v.sort_order, true
-    FROM steam, (VALUES (1), (2), (3), (4)) AS v(sort_order)
+    FROM steam, (VALUES (1), (2), (3), (4), (5)) AS v(sort_order)
     RETURNING id, sort_order
 )
 INSERT INTO brand_faq_translations (brand_faq_id, locale, question, answer)
@@ -125,7 +125,15 @@ JOIN (
         (4, 'en', $q$Do you need my account password?$q$,
             $a$No. Your Steam login is all we need to top up — you never share your account password, and we never ask for it.$a$),
         (4, 'uz', $q$Akkaunt paroli kerakmi?$q$,
-            $a$Yoʻq. Toʻldirish uchun Steam login yetarli — akkaunt parolini bermaysiz, biz uni soʻramaymiz.$a$)
+            $a$Yoʻq. Toʻldirish uchun Steam login yetarli — akkaunt parolini bermaysiz, biz uni soʻramaymiz.$a$),
+
+        -- 5. Это официальный сайт Steam?
+        (5, 'ru', $q$Это официальный сайт Steam?$q$,
+            $a$Нет. YuPay — независимый сервис пополнения, не связанный с Valve. Мы покупаем и перепродаём пополнения по прозрачному курсу, без скрытых комиссий.$a$),
+        (5, 'en', $q$Is this the official Steam website?$q$,
+            $a$No. YuPay is an independent top-up service, not affiliated with Valve. We buy and resell top-ups at a transparent rate, with no hidden fees.$a$),
+        (5, 'uz', $q$Bu Steamning rasmiy saytimi?$q$,
+            $a$Yoʻq. YuPay — mustaqil toʻldirish xizmati, Valve bilan bogʻliq emas. Biz toʻldirishlarni shaffof kurs boʻyicha sotib olib, qayta sotamiz, yashirin komissiyalarsiz.$a$)
 ) AS t(sort_order, locale, question, answer) ON t.sort_order = nf.sort_order;
 
 COMMIT;

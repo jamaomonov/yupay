@@ -11,7 +11,7 @@
   },
   "meta": {
     "homeTitle": "Yupay — oʻyinlar va obunalarni bir lahzada toʻldirish",
-    "homeDescription": "Steam, PUBG Mobile, Free Fire, Genshin Impact, Delta Force va boshqa oʻyinlar Oʻzbekistonda. Click, Payme va Uzum bilan toʻlang, narxlar soʻmda. Parolsiz, bir necha daqiqada tushadi."
+    "homeDescription": "Steam, PUBG Mobile, Free Fire, Genshin Impact, Delta Force va boshqa oʻyinlar Oʻzbekistonda. Click, Payme va Uzum bilan toʻlang, narxlar soʻmda. Parolsiz, avtomatik tushadi."
   },
   "nav": {
     "store": "Katalog",
@@ -30,13 +30,13 @@
     "badge": "Oʻyin va obunalar · 1 markaz",
     "titleLine1": "Barcha donat",
     "titleLine2": "bir joyda.",
-    "subtitle": "Steam, mobil oʻyinlar va obunalar — parol kerak emas. UID orqali 2 daqiqada.",
+    "subtitle": "Steam, PUBG Mobile, Genshin va boshqalar — ID orqali, akkaunt parolisiz. Click, Payme va Uzum bilan toʻlang, narxlar soʻmda.",
     "ctaPrimary": "Katalogni ochish",
     "ctaSecondary": "Qanday ishlaydi",
     "ctaTelegram": "Telegramda ochish",
-    "trustCount": "100 482",
-    "trustCountLabel": "muvaffaqiyatli toʻldirish",
-    "rating": "4.9 / 5 · 8 247 sharh"
+    "chip1": "Steam uchun 0% komissiya",
+    "chip2": "Click · Payme · Uzum bilan toʻlov",
+    "chip3": "24 soat ichida qaytarish"
   },
   "catalog": {
     "eyebrow": "Katalog",
@@ -80,12 +80,12 @@
   },
   "trust": {
     "speed": {
-      "title": "1–3 daqiqada yetkazib berish",
+      "title": "Avtomatik tushadi",
       "sub": "Toʻlovdan keyin avtomatik"
     },
     "noPassword": {
       "title": "Parolsiz",
-      "sub": "Ommaviy UID orqali toʻldiramiz"
+      "sub": "Ommaviy ID orqali toʻldiramiz"
     },
     "guarantee": {
       "title": "Pulni qaytaramiz",
@@ -140,11 +140,11 @@
   "store": {
     "meta": {
       "title": "Oʻzbekistonda oʻyin va obunalarni toʻldirish",
-      "description": "Steam, PUBG Mobile, Free Fire, Genshin Impact, Delta Force va Arena Breakout ni UID orqali toʻldiring. Click, Payme yoki Uzum bilan toʻlang, narxlar soʻmda, bir necha daqiqada tushadi, parolsiz — yupay."
+      "description": "Steam, PUBG Mobile, Free Fire, Genshin Impact, Delta Force va Arena Breakout ni ID orqali toʻldiring. Click, Payme yoki Uzum bilan toʻlang, narxlar soʻmda, avtomatik tushadi, parolsiz — yupay."
     },
     "eyebrow": "Katalog",
     "title": "Oʻzbekistonda oʻyin va obunalarni toʻldirish",
-    "subtitle": "Xizmatni tanlang, UID kiriting — va bir necha daqiqada hisobingizga tushadi. Click, Payme yoki Uzum bilan toʻlang, narxlar soʻmda. Parolsiz.",
+    "subtitle": "Xizmatni tanlang, ID kiriting — va hisobingizga avtomatik tushadi. Click, Payme yoki Uzum bilan toʻlang, narxlar soʻmda. Parolsiz.",
     "payWith": "Toʻlov",
     "maintenance": "Texnik ishlar",
     "empty": "Tez orada bu yerda oʻyinlar paydo boʻladi.",
@@ -164,7 +164,7 @@
     "packsTitle": "Paketni tanlang",
     "payTitle": "Toʻlov va yetkazib berish",
     "ctaNote": "Rasmiylashtirish Telegram-botda — roʻyxatdan oʻtmasdan, Click, Payme yoki Uzum bilan toʻlang. Avtomatik tushadi.",
-    "securityNote": "Ommaviy UID orqali tushadi — akkaunt paroli kerak emas.",
+    "securityNote": "Ommaviy ID orqali tushadi — akkaunt paroli kerak emas.",
     "detailsTitle": "Qayerga tushirish",
     "summaryTitle": "Sizning buyurtmangiz",
     "selectPack": "Yuqoridan paket tanlang",
@@ -186,25 +186,25 @@
     "orderStatus": "Buyurtma holati",
     "orderLabel": "Buyurtma",
     "commissionChip": "Komissiya {pct}% dan",
-    "etaChip": "{eta} daqiqada",
+    "etaChip": "Avtomatik tushadi",
     "securityChip": "Parolsiz",
     "brandMetaTitle": "{name} — Oʻzbekistonda toʻldirish | yupay",
-    "brandMetaDescription": "{name} ni UID orqali bir necha daqiqada toʻldiring. Narxlar soʻmda, Click, Payme yoki Uzum bilan toʻlang. Parolsiz — yupay.",
+    "brandMetaDescription": "{name} ni ID orqali toʻldiring, avtomatik tushadi. Narxlar soʻmda, Click, Payme yoki Uzum bilan toʻlang. Parolsiz — yupay.",
     "brands": {
       "steam": {
-        "about": "MDH, Qozogʻiston va Turkiya akkauntlari uchun Steam hamyonini toʻldirish. Pul bir necha daqiqada balansga tushadi — login va parolsiz, soʻmda toʻlov."
+        "about": "MDH, Qozogʻiston va Turkiya akkauntlari uchun Steam hamyonini toʻldirish. Pul balansga avtomatik tushadi — login va parolsiz, soʻmda toʻlov."
       },
       "pubg-mobile": {
-        "about": "PUBG Mobile uchun UC oʻyinchi IDsi orqali. Akkauntga kirmasdan bir necha daqiqada tushadi — faqat ommaviy UID. Click, Payme yoki Uzum bilan toʻlang."
+        "about": "PUBG Mobile uchun UC oʻyinchi IDsi orqali. Akkauntga kirmasdan avtomatik tushadi — faqat ommaviy ID. Click, Payme yoki Uzum bilan toʻlang."
       },
       "telegram-premium": {
-        "about": "Telegram Premium 1–12 oyga @username orqali. Bir necha daqiqada faollashadi, soʻmda toʻlov — parolsiz."
+        "about": "Telegram Premium 1–12 oyga @username orqali. Avtomatik faollashadi, soʻmda toʻlov — parolsiz."
       },
       "delta-force": {
         "about": "Delta Force ichki oʻyin valyutasi oʻyinchi IDsi orqali. Soʻmda tez tushadi, parolsiz."
       },
       "arena-breakout": {
-        "about": "Arena Breakout uchun Bonds oʻyinchi IDsi orqali. Bir necha daqiqada tushadi, Click, Payme yoki Uzum bilan toʻlang."
+        "about": "Arena Breakout uchun Bonds oʻyinchi IDsi orqali. Avtomatik tushadi, Click, Payme yoki Uzum bilan toʻlang."
       }
     },
     "checkEdit": "Tahrirlash",
@@ -225,25 +225,30 @@
     "eyebrow": "Flow",
     "titleLine1": "Bosishdan",
     "titleLine2": "oʻyingacha —",
-    "titleLine3": "1:47.",
+    "titleLine3": "avtomatik.",
     "subtitle": "Roʻyxatdan oʻtish va tekshiruvlar yoʻq. Uch qadam — va oʻynay olasiz.",
     "step1Title": "Oʻyinni tanlang",
     "step1Sub": "Katalogdan yoki qidiruv orqali oʻyinni toping — Steam dan Telegram Premium gacha.",
-    "step2Title": "UID va summani kiriting",
+    "step2Title": "ID va summani kiriting",
     "step2Sub": "Parolsiz — faqat profilning ochiq IDsi. Paketni tanlang, hisobingizga nima tushishini koʻrsatamiz.",
     "step3Title": "Toʻlov va tayyor",
     "step3Sub": "Karta. Avtomatik tushadi, chek emailga, yordam — istalgan paytda."
   },
   "metrics": {
-    "eyebrow": "Numbers",
-    "title": "Raqamlar, marketing emas.",
-    "updatedLabel": "Yangilangan",
-    "totalOrdersLabel": "Muvaffaqiyatli toʻldirish",
-    "totalOrdersNote": "umumiy",
-    "avgTimeLabel": "Oʻrtacha vaqt",
-    "avgTimeNote": "toʻlovdan oʻyingacha",
-    "supportReplyLabel": "Yordam javobi",
-    "supportReplyNote": "chatda oʻrtacha"
+    "eyebrow": "Faktlar",
+    "title": "Nega bizga ishonishadi.",
+    "feeValue": "0",
+    "feeSuffix": "%",
+    "feeLabel": "Steam uchun komissiya",
+    "feeNote": "toʻldirish summasi ustiga",
+    "methodsValue": "3",
+    "methodsSuffix": "",
+    "methodsLabel": "Toʻlov usuli",
+    "methodsNote": "Click, Payme va Uzum",
+    "guaranteeValue": "24",
+    "guaranteeSuffix": "soat",
+    "guaranteeLabel": "Qaytarish kafolati",
+    "guaranteeNote": "tushmasa — qaytaramiz"
   },
   "reviews": {
     "eyebrow": "Sharhlar",
@@ -283,7 +288,7 @@
     "titleLine2": "tirik ilova.",
     "subtitle": "Butun yupay toʻgʻridan-toʻgʻri Telegram ichida. Katalog, toʻlov va hamyon — oʻrnatishsiz va roʻyxatdan oʻtishsiz, doʻstlaringiz bilan turgan chatning oʻzida.",
     "f1Title": "Bir necha bosishda",
-    "f1Sub": "Oʻyinni tanladingiz, UID kiritdingiz, toʻladingiz — donat bir necha daqiqada keladi. Parolsiz.",
+    "f1Sub": "Oʻyinni tanladingiz, ID kiritdingiz, toʻladingiz — donat avtomatik tushadi. Parolsiz.",
     "f2Title": "Telegram uchun moslangan",
     "f2Sub": "Botdan Mini App sifatida ochiladi. Qora mavzu, tabiiy imo-ishoralar, ortiqcha narsa yoʻq.",
     "f3Title": "Hamyon va keshbek",
@@ -297,11 +302,11 @@
     "titleLine1": "Oʻyinga",
     "titleLine2": "qaytishga tayyormisiz?",
     "subtitle": "Bir lahzada yetkazib berish va istalgan vaqtda yordam.",
-    "button": "Katalogni ochish",
+    "button": "Hozir toʻldiring",
     "offerCaption": "doimiy yordam"
   },
   "footer": {
-    "tagline": "Oʻyinlar va obunalar uchun bir lahzali toʻldirish. Parol yoʻq, faqat UID.",
+    "tagline": "Oʻyinlar va obunalar uchun bir lahzali toʻldirish. Parol yoʻq, faqat ID.",
     "followUs": "Bizni kuzating",
     "productTitle": "Mahsulot",
     "helpTitle": "Yordam",
@@ -329,7 +334,7 @@
       "sections": [
         {
           "h": "Nimani sotamiz",
-          "p": "yupay raqamli mahsulotlarni qayta sotadi: ichki oʻyin valyutasi, hamyon toʻldirish va obunalar. Tushirish siz koʻrsatgan ommaviy UID yoki akkauntga amalga oshiriladi — akkaunt parolini soʻramaymiz."
+          "p": "yupay raqamli mahsulotlarni qayta sotadi: ichki oʻyin valyutasi, hamyon toʻldirish va obunalar. Tushirish siz koʻrsatgan ommaviy ID yoki akkauntga amalga oshiriladi — akkaunt parolini soʻramaymiz."
         },
         {
           "h": "Buyurtma va toʻlov",
@@ -337,7 +342,7 @@
         },
         {
           "h": "Bajarilishi",
-          "p": "Aksariyat buyurtmalar bir necha daqiqada avtomatik bajariladi. UID va akkaunt maʼlumotlari toʻgʻriligi uchun siz javobgarsiz; notoʻgʻri UID ga tushirilgan mablagʻ qaytarilmaydi."
+          "p": "Aksariyat buyurtmalar avtomatik bajariladi. ID va akkaunt maʼlumotlari toʻgʻriligi uchun siz javobgarsiz; notoʻgʻri ID ga tushirilgan mablagʻ qaytarilmaydi."
         },
         {
           "h": "Javobgarlik",
@@ -356,7 +361,7 @@
       "sections": [
         {
           "h": "Qanday maʼlumot yigʻamiz",
-          "p": "Email (chek va buyurtma holati uchun), oʻyin UID yoki akkaunt identifikatori va toʻlov maʼlumotlari. Karta rekvizitlarini toʻlov provayderi qayta ishlaydi — biz ularni saqlamaymiz."
+          "p": "Email (chek va buyurtma holati uchun), oʻyin ID yoki akkaunt identifikatori va toʻlov maʼlumotlari. Karta rekvizitlarini toʻlov provayderi qayta ishlaydi — biz ularni saqlamaymiz."
         },
         {
           "h": "Qanday foydalanamiz",
@@ -387,7 +392,7 @@
         },
         {
           "h": "Qachon qaytarish mumkin emas",
-          "p": "Muvaffaqiyatli tushirilgandan soʻng, shuningdek UID yoki akkaunt sizning aybingiz bilan notoʻgʻri kiritilgan boʻlsa."
+          "p": "Muvaffaqiyatli tushirilgandan soʻng, shuningdek ID yoki akkaunt sizning aybingiz bilan notoʻgʻri kiritilgan boʻlsa."
         },
         {
           "h": "Muddatlar",
