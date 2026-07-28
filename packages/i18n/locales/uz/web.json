@@ -61,11 +61,6 @@
         "eyebrow": "Tencent · UC",
         "tag": "YANGI"
       },
-      "telegram-premium": {
-        "name": "Telegram\nPremium",
-        "eyebrow": "Telegram FZ",
-        "tag": "−10%"
-      },
       "delta-force": {
         "name": "Delta Force",
         "eyebrow": "Garena · koinlar",
@@ -198,9 +193,6 @@
       "pubg-mobile": {
         "about": "PUBG Mobile uchun UC oʻyinchi IDsi orqali. Akkauntga kirmasdan avtomatik tushadi — faqat ommaviy ID. Click, Payme yoki Uzum bilan toʻlang."
       },
-      "telegram-premium": {
-        "about": "Telegram Premium 1–12 oyga @username orqali. Avtomatik faollashadi, soʻmda toʻlov — parolsiz."
-      },
       "delta-force": {
         "about": "Delta Force ichki oʻyin valyutasi oʻyinchi IDsi orqali. Soʻmda tez tushadi, parolsiz."
       },
@@ -229,7 +221,7 @@
     "titleLine3": "avtomatik.",
     "subtitle": "Roʻyxatdan oʻtish va tekshiruvlar yoʻq. Uch qadam — va oʻynay olasiz.",
     "step1Title": "Oʻyinni tanlang",
-    "step1Sub": "Katalogdan yoki qidiruv orqali oʻyinni toping — Steam dan Telegram Premium gacha.",
+    "step1Sub": "Katalogdan yoki qidiruv orqali oʻyinni toping — Steam dan Genshin gacha.",
     "step2Title": "ID va summani kiriting",
     "step2Sub": "Parolsiz — faqat profilning ochiq IDsi. Paketni tanlang, hisobingizga nima tushishini koʻrsatamiz.",
     "step3Title": "Toʻlov va tayyor",
@@ -280,7 +272,7 @@
     "zero": {
       "quote": "Yupay orqali uchinchi marta uzaytirdim. Barqaror, kutilmagan holatsiz.",
       "name": "ZeroTwo",
-      "meta": "Telegram Premium"
+      "meta": "Genshin Impact"
     }
   },
   "showcase": {

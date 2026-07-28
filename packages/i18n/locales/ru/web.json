@@ -61,11 +61,6 @@
         "eyebrow": "Tencent · UC",
         "tag": "НОВОЕ"
       },
-      "telegram-premium": {
-        "name": "Telegram\nPremium",
-        "eyebrow": "Telegram FZ",
-        "tag": "−10%"
-      },
       "delta-force": {
         "name": "Delta Force",
         "eyebrow": "Garena · койны",
@@ -198,9 +193,6 @@
       "pubg-mobile": {
         "about": "UC для PUBG Mobile по ID игрока. Автоматическое зачисление без входа в аккаунт — нужен только публичный ID. Оплата Click, Payme или Uzum."
       },
-      "telegram-premium": {
-        "about": "Telegram Premium на 1–12 месяцев по @username. Активация автоматическая, оплата в сумах — без передачи пароля."
-      },
       "delta-force": {
         "about": "Внутриигровая валюта Delta Force по ID игрока. Быстрое зачисление в сумах, без передачи пароля."
       },
@@ -229,7 +221,7 @@
     "titleLine3": "автоматически.",
     "subtitle": "Без регистрации и верификаций. Три шага — и можно играть.",
     "step1Title": "Выберите игру",
-    "step1Sub": "Найдите нужную игру в каталоге или через поиск — от Steam до Telegram Premium.",
+    "step1Sub": "Найдите нужную игру в каталоге или через поиск — от Steam до Genshin.",
     "step2Title": "Введите ID и сумму",
     "step2Sub": "Без пароля, только публичный ID профиля. Выберите пакет — покажем, что придёт на счёт.",
     "step3Title": "Оплатите — и всё",
@@ -280,7 +272,7 @@
     "zero": {
       "quote": "Уже третий раз продлеваю через yupay. Стабильно, без сюрпризов.",
       "name": "ZeroTwo",
-      "meta": "Telegram Premium"
+      "meta": "Genshin Impact"
     }
   },
   "showcase": {
