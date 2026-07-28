@@ -1,0 +1,33 @@
+sequenceDiagram
+    autonumber
+    actor User
+    actor Admin
+    participant API as reviews.routes
+    participant Svc as reviews.service
+    participant DB as Postgres
+
+    rect rgb(245,245,245)
+    note over User,DB: Report path (auto-hide)
+    User->>API: POST /reviews/{id}/report + Idempotency-Key
+    API->>Svc: report_review(review_id, reporter_user_id, reason)
+    Svc->>DB: INSERT review_reports [UNIQUE review+reporter]
+    alt duplicate reporter
+        DB-->>Svc: IntegrityError → no-op
+    else new report
+        Svc->>DB: COUNT distinct reports
+        alt count >= threshold (3) and published
+            Svc->>DB: status = hidden, bump stats -1
+        end
+    end
+    API-->>User: 204
+    end
+
+    rect rgb(240,248,255)
+    note over Admin,DB: Admin moderation
+    Admin->>API: POST /admin/reviews/{id}/{hide|unhide|remove} + Idempotency-Key
+    API->>Svc: admin_set_status(review_id, status)
+    Svc->>DB: load review FOR UPDATE
+    Svc->>DB: on published-boundary crossing, bump stats ±1; set status; flush
+    Svc-->>API: Review + report_count
+    API-->>Admin: 200 AdminReviewOut
+    end

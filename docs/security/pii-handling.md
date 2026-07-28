@@ -59,3 +59,9 @@ us, in JSON. Implemented in the `users` module.
 - Logs: 14 days hot, 90 days cold (R2).
 - Webhook payloads: 1 year, then archived to cold storage.
 - Auth sessions: 30 days TTL on the refresh token; access JWTs are stateless and expire in 15 min.
+- Reviews: a review is authored by a `user_id` and shown publicly only as the
+  user's `display_name` (or an anonymous label when null) — **never the email**.
+  The review `body` is user-controlled free text and is never logged. Reviews are
+  retained with the account; deleting the user cascades their reviews (FK
+  `ondelete=CASCADE`), and a report's `reporter_user_id` is nulled on account
+  deletion (`ondelete=SET NULL`).
