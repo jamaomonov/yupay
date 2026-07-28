@@ -75,6 +75,11 @@ export function useOrderSocket(): void {
       onMessage: handleMessage,
       onOpen: () => {
         setConnectedRef.current(true);
+        // Catch-up refetch: a transition published in the sliver before the
+        // server's Redis SUBSCRIBE completes is dropped (pub/sub has no
+        // subscriber yet), and polling is now off — so re-pull any mounted
+        // order query on every (re)connect to close that window.
+        void queryClientRef.current.invalidateQueries({ queryKey: ["order"] });
       },
       onClose: () => {
         setConnectedRef.current(false);

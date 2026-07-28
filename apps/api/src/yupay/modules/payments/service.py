@@ -616,7 +616,8 @@ async def _apply_refund_reversal(
     # Order: mark refunded only for a full refund. Partial refunds keep the
     # original status — they're an accounting concern, not an FSM concern.
     order = (await db.execute(select(Order).where(Order.id == payment.order_id))).scalar_one()
-    if is_full and order.status != "refunded":
+    refunded_now = is_full and order.status != "refunded"
+    if refunded_now:
         order.status = "refunded"
         order.updated_at = moment
     db.add(
@@ -658,6 +659,11 @@ async def _apply_refund_reversal(
         await fulfillment_svc.cancel_open_tasks_for_order(
             db, order_id=order.id, reason=f"refund:{payment.id}"
         )
+
+    # Realtime parity: nudge a connected viewer when a full refund walks the
+    # order to ``refunded`` (polling is off while the socket is up).
+    if refunded_now:
+        await _publish_status_changed(order)
 
 
 async def refund_admin(
