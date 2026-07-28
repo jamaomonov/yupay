@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { Star } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -19,6 +20,7 @@ import { submitReview } from "@/lib/reviews";
 export function WriteReviewPanel({ brandSlug }: { brandSlug: string }) {
   const t = useTranslations("web.brandReviews");
   const { user } = useAuth();
+  const qc = useQueryClient();
   const orderId = useSearchParams().get("order");
 
   const [rating, setRating] = useState(0);
@@ -46,6 +48,9 @@ export function WriteReviewPanel({ brandSlug }: { brandSlug: string }) {
         ...(body.trim() ? { body: body.trim() } : {}),
       });
       setState("done");
+      // Refresh "my reviews" so the account CTA and the delivered modal stop
+      // offering to rate an order that's now reviewed.
+      void qc.invalidateQueries({ queryKey: ["my-reviews"] });
     } catch (err) {
       setState(err instanceof ApiError && err.status === 409 ? "already" : "error");
     }
