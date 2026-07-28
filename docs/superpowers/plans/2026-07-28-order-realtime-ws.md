@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Push order-status changes to logged-in users over a WebSocket (polling kept as fallback); on `order.delivered` pop a global modal that asks them to rate the brand, on `order.failed` a modal pointing to support.
+**Goal:** Push order-status changes to logged-in users over a WebSocket (polling kept as fallback); on `order.delivered` pop a global modal that asks them to rate the brand. (No "failed" modal — see the DOMAIN RULE below: fulfillment failures keep the order at `fulfilling` for admin resolution.)
 
 **Architecture:** A new `realtime` FastAPI module exposes a handshake endpoint + a WS gateway that subscribes each connection to a Redis pub/sub channel `realtime:user:{id}`. Order-status transitions (in api / worker / scheduler processes) publish to that channel via `realtime.publish_order_event`. Web + miniapp open the shared `OrderSocket` client, update the TanStack Query order cache on each message, gate polling on WS-disconnected, and show a global delivered/failed modal.
 
@@ -13,6 +13,7 @@
 ## Global Constraints
 
 - **Logged-in only.** Publish only when `order.user_id` is set; guests keep polling. The WS endpoint authenticates a 60s ws-handshake JWT (`kind="ws"`) whose `channel` is bound to the caller's own `user_id`; a connection only ever subscribes to `realtime:user:{sub}` — no cross-user data.
+- **DOMAIN RULE (decided during execution): a fulfillment failure is NOT an order failure.** A paid order sits at `fulfilling` while fulfillment works internally; if the supplier errors or our balance is empty, the order **stays `fulfilling`** and only the internal fulfillment/task status flips — the customer keeps seeing "в работе" and an admin resolves it (top up + retry, or deliver manually). The order only leaves `fulfilling` to `delivered` on success. Therefore **`order.failed` is NOT emitted** from fulfillment paths, and there is **no customer "failed" modal** in this MVP. Terminal-bad outcomes the customer sees (`cancelled`/`expired`/`refunded`) surface via the order-status page, not a modal.
 - **Redis pub/sub is the fan-out** (transitions fire in worker/scheduler, WS lives in api — possibly different instances). `get_redis()` returns a `decode_responses=True` `redis.asyncio.Redis`.
 - **Immediate publish at the transition point** (after the status is set + flushed). The client treats every message as a nudge and does an authoritative `GET /orders/{id}` refetch (HTTP round-trip ≫ the µs to commit, so no practical race); a rare rollback-after-publish self-corrects on that refetch. Publishing is fire-and-forget (at-most-once) — the DB is the source of truth.
 - **Message contract is fixed:** `packages/api-client/src/realtime/messages.ts` (`order.status_changed` / `order.delivered` / `order.failed` / `ping`). Do not add fields — the client resolves `brand_slug` from the refetched order (`items[0].display.brand_slug`).
@@ -213,7 +214,7 @@ async def test_publish_is_noop_for_guest():
 ### Task 2: Publish at order-status transitions
 
 **Files:**
-- Modify: `apps/api/src/yupay/modules/fulfillment/service.py` (`_try_settle_order` → delivered; fail paths → failed; the `paid → fulfilling` block ~line 183)
+- Modify: `apps/api/src/yupay/modules/fulfillment/service.py` (`_try_settle_order` → delivered; the `paid → fulfilling` block ~line 183). **No `order.failed`** — do not wire fulfillment failure paths (DOMAIN RULE).
 - Modify: `apps/api/src/yupay/modules/orders/service.py` (cancel ~612, expire ~695)
 - Modify: `apps/api/src/yupay/modules/payments/service.py` (the `paid` transition — `order.status = "paid"` at line 255)
 - Test: `apps/api/tests/integration/test_realtime_publish.py`
@@ -236,9 +237,9 @@ For the terminal cases in `_try_settle_order`, publish `order.delivered`:
 await realtime.publish_order_event(order.user_id,
     {"type": "order.delivered", "orderId": order.id, "payload": {"kind": "order", "data": None}})
 ```
-and for the fail path, `order.failed` with a generic reason (never PII).
+**Do not publish `order.failed`** anywhere (DOMAIN RULE — fulfillment failures keep the order at `fulfilling`).
 
-- [ ] **Step 2: Wire the call sites** — after each `order.status = …; order.updated_at = now()` (+ its `db.flush()`), call the publish helper. Only fires for logged-in orders (helper passes `order.user_id`, which `publish_order_event` no-ops on None). Confirm the transitions covered: `paid`, `fulfilling`, `delivered`, `failed`, `cancelled`, `expired`.
+- [ ] **Step 2: Wire the call sites** — after each `order.status = …; order.updated_at = now()` (+ its `db.flush()`), call the publish helper. Only fires for logged-in orders (helper passes `order.user_id`, which `publish_order_event` no-ops on None). Transitions covered: `paid`, `fulfilling`, `delivered`, `cancelled`, `expired`. **NOT `failed`.**
 
 - [ ] **Step 3: Failing test** — drive an order to delivered through the fulfillment service (reuse the fulfillment test factories) with a real Redis SUBSCRIBE on `realtime:user:{uid}`; assert an `order.delivered` message lands. A guest order (`user_id=None`) publishes nothing. Assert the `paid`/`cancelled` transitions publish `order.status_changed`.
 
@@ -293,32 +294,32 @@ export function createOrderSocket(handlers: {
 
 ---
 
-### Task 4: Web — global delivered/failed modal
+### Task 4: Web — global delivered modal (rate CTA)
 
 **Files:**
-- Create: `apps/web/src/store/useOrderResultModal.ts` (Zustand — mirror `useLoginModal`)
-- Create: `apps/web/src/components/order/OrderResultModal.tsx`
+- Create: `apps/web/src/store/useOrderDeliveredModal.ts` (Zustand — mirror `useLoginModal`)
+- Create: `apps/web/src/components/order/OrderDeliveredModal.tsx`
 - Modify: `apps/web/src/app/[locale]/layout.tsx` (mount the modal once, like the login modal)
 - Modify: `packages/i18n/locales/{ru,en,uz}/web.json` (new `orderResult` keys)
-- Test: `apps/web/src/components/order/OrderResultModal.test.tsx`
+- Test: `apps/web/src/components/order/OrderDeliveredModal.test.tsx`
 
 **Interfaces:**
-- Consumes: `useOrderResultModal` (holds `{ kind: "delivered" | "failed"; orderId }`), `getMyReviews` (`@/lib/reviews`), `apiFetch` (to fetch the order for `brand_slug`).
+- Consumes: `useOrderDeliveredModal` (holds `{ orderId }`), `getMyReviews` (`@/lib/reviews`), `apiFetch` (to fetch the order for `brand_slug`).
 
-- [ ] **Step 1: Store** `useOrderResultModal` — `{ open(kind, orderId), close(), state }`. Task 3's hook calls `open("delivered", orderId)` / `open("failed", orderId)`.
-- [ ] **Step 2: Modal** — on open, fetch `GET /orders/{orderId}` for `items[0].display.{brand_slug,brand_name}`. **Delivered:** title `orderResult.deliveredTitle` ("Пополнение успешно"), body, and a **"Оценить покупку"** button → `/{locale}/store/{brand_slug}?order={orderId}#reviews` (hidden if `getMyReviews()` already contains the order). **Failed:** title `orderResult.failedTitle`, body, a support link. Reuse the app's dialog styling (mirror the login modal).
-- [ ] **Step 3: i18n** — `orderResult.{deliveredTitle,deliveredBody,rateCta,failedTitle,failedBody,supportCta,close}` in ru/en/uz.
-- [ ] **Step 4: Test** — render with the store opened `delivered` + a mocked order fetch → asserts the rate link href; opened `failed` → asserts the support CTA.
-- [ ] **Step 5: Run + commit** — `feat(web): global delivered/failed order modal with rate CTA`.
+- [ ] **Step 1: Store** `useOrderDeliveredModal` — `{ open(orderId), close(), state }`. Task 3's hook calls `open(orderId)` on an `order.delivered` message. (No "failed" modal — DOMAIN RULE.)
+- [ ] **Step 2: Modal** — on open, fetch `GET /orders/{orderId}` for `items[0].display.{brand_slug,brand_name}`. Title `orderResult.deliveredTitle` ("Пополнение успешно"), body, and a **"Оценить покупку"** button → `/{locale}/store/{brand_slug}?order={orderId}#reviews` (hidden if `getMyReviews()` already contains the order). Reuse the app's dialog styling (mirror the login modal).
+- [ ] **Step 3: i18n** — `orderResult.{deliveredTitle,deliveredBody,rateCta,close}` in ru/en/uz.
+- [ ] **Step 4: Test** — render with the store opened + a mocked order fetch → asserts the rate link href; when `getMyReviews` already has the order, the rate CTA is hidden.
+- [ ] **Step 5: Run + commit** — `feat(web): global delivered order modal with rate CTA`.
 
 ---
 
-### Task 5: Mini App — live updates + delivered/failed modal
+### Task 5: Mini App — live updates + delivered dialog
 
 **Files:**
 - Modify: `apps/miniapp/package.json` (add `@yupay/api-client`)
 - Create: `apps/miniapp/src/lib/realtime.ts`, `apps/miniapp/src/hooks/useOrderSocket.ts`
-- Create: `apps/miniapp/src/components/OrderResultDialog.tsx` (uses `components/ui/dialog.tsx`)
+- Create: `apps/miniapp/src/components/OrderDeliveredDialog.tsx` (uses `components/ui/dialog.tsx`)
 - Modify: `apps/miniapp/src/lib/orders.ts` (`useOrder` — gate `refetchInterval` on WS state)
 - Modify: `apps/miniapp/src/App.tsx` (mount the socket hook + dialog for a signed-in user, after `BootstrapGate`)
 - Modify: `packages/i18n/locales/{ru,en,uz}/miniapp.json` (flat `orderResult.*` keys)
@@ -328,9 +329,9 @@ export function createOrderSocket(handlers: {
 - Consumes: `OrderSocket` from `@yupay/api-client`; `apiGet`/`apiPost` (`@/lib/api`); `useMe`; the existing `ReviewsSheet` (open with `formOrderId` on the delivered "rate" CTA).
 
 - [ ] **Step 1: `lib/realtime.ts`** — derive the WS URL from `apiBase` (swap `http`→`ws`); `getToken` via `apiPost("/api/v1/realtime/handshake", {})`.
-- [ ] **Step 2: `useOrderSocket`** — mounted for a signed-in user (`useMe().data`), one `OrderSocket`, tracks `connected` in a small store, invalidates `["order", orderId]` on message, and opens the `OrderResultDialog` on delivered/failed.
+- [ ] **Step 2: `useOrderSocket`** — mounted for a signed-in user (`useMe().data`), one `OrderSocket`, tracks `connected` in a small store, invalidates `["order", orderId]` on message, and opens the `OrderDeliveredDialog` on an `order.delivered` message. (No "failed" dialog — DOMAIN RULE.)
 - [ ] **Step 3: Gate polling** — `useOrder` refetchInterval also returns `false` when the socket is connected.
-- [ ] **Step 4: `OrderResultDialog`** — delivered: "Пополнение успешно" + "Оценить" → opens `ReviewsSheet` with `formOrderId`; failed: support message. Fetch the order for `brand_slug`.
+- [ ] **Step 4: `OrderDeliveredDialog`** — "Пополнение успешно" + "Оценить" → opens `ReviewsSheet` with `formOrderId`. Fetch the order for `brand_slug`.
 - [ ] **Step 5: i18n** — `orderResult.*` flat keys in ru/en/uz (parity test must stay green).
 - [ ] **Step 6: Run + commit** — `pnpm --filter miniapp typecheck`; commit `feat(miniapp): live order updates + delivered/failed dialog`.
 
