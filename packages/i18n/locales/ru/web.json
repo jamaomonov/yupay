@@ -440,5 +440,23 @@
       "refunded": "Возврат",
       "partially_refunded": "Частичный возврат"
     }
+  },
+  "brandReviews": {
+    "title": "Отзывы",
+    "count": "{count, plural, one {# отзыв} few {# отзыва} many {# отзывов} other {# отзыва}}",
+    "empty": "Пока нет отзывов",
+    "anonymous": "Покупатель",
+    "writeCta": "Оценить покупку",
+    "formTitle": "Ваш отзыв",
+    "ratingLabel": "Ваша оценка",
+    "commentLabel": "Комментарий (необязательно)",
+    "submit": "Отправить",
+    "submitting": "Отправка…",
+    "thanks": "Спасибо за отзыв!",
+    "alreadyReviewed": "Вы уже оценили эту покупку",
+    "error": "Не удалось отправить. Попробуйте ещё раз.",
+    "report": "Пожаловаться",
+    "reported": "Жалоба отправлена",
+    "loadMore": "Показать ещё"
   }
 }

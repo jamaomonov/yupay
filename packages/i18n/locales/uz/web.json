@@ -440,5 +440,23 @@
       "refunded": "Qaytarildi",
       "partially_refunded": "Qisman qaytarildi"
     }
+  },
+  "brandReviews": {
+    "title": "Sharhlar",
+    "count": "{count, plural, one {# ta sharh} other {# ta sharh}}",
+    "empty": "Hozircha sharhlar yo‘q",
+    "anonymous": "Xaridor",
+    "writeCta": "Xaridni baholang",
+    "formTitle": "Sizning sharhingiz",
+    "ratingLabel": "Bahoyingiz",
+    "commentLabel": "Izoh (ixtiyoriy)",
+    "submit": "Yuborish",
+    "submitting": "Yuborilmoqda…",
+    "thanks": "Sharhingiz uchun rahmat!",
+    "alreadyReviewed": "Siz bu xaridni allaqachon baholagansiz",
+    "error": "Yuborib bo‘lmadi. Qayta urinib ko‘ring.",
+    "report": "Shikoyat qilish",
+    "reported": "Shikoyat yuborildi",
+    "loadMore": "Ko‘proq ko‘rsatish"
   }
 }

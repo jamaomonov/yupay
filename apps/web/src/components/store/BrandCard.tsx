@@ -1,4 +1,4 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Star } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
@@ -47,6 +47,13 @@ export async function BrandCard({ brand, locale }: { brand: BrandSummary; locale
       )}
 
       <div className="relative z-10 p-5">
+        {brand.rating && brand.rating.count > 0 && (
+          <div className="mb-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-white">
+            <Star size={12} className="fill-gold text-gold" />
+            {brand.rating.avg.toFixed(1)}
+            <span className="font-semibold text-white/55">({brand.rating.count})</span>
+          </div>
+        )}
         {brand.short_description && (
           <div className="mb-1 line-clamp-1 text-[11px] font-bold uppercase tracking-[0.1em] text-white/65">
             {brand.short_description}

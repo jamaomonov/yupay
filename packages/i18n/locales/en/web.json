@@ -440,5 +440,23 @@
       "refunded": "Refunded",
       "partially_refunded": "Partially refunded"
     }
+  },
+  "brandReviews": {
+    "title": "Reviews",
+    "count": "{count, plural, one {# review} other {# reviews}}",
+    "empty": "No reviews yet",
+    "anonymous": "Customer",
+    "writeCta": "Rate your purchase",
+    "formTitle": "Your review",
+    "ratingLabel": "Your rating",
+    "commentLabel": "Comment (optional)",
+    "submit": "Submit",
+    "submitting": "Submitting…",
+    "thanks": "Thanks for your review!",
+    "alreadyReviewed": "You've already rated this purchase",
+    "error": "Couldn't submit. Please try again.",
+    "report": "Report",
+    "reported": "Report sent",
+    "loadMore": "Show more"
   }
 }
