@@ -11,6 +11,7 @@ import type { AdminReview, AdminReviewList } from "./types";
 
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
+import { ErrorState } from "@/components/States";
 import { apiGet, apiPost } from "@/lib/api";
 
 type StatusFilter = "all" | "published" | "hidden" | "removed";
@@ -167,18 +168,21 @@ export function ReviewsPage() {
         </label>
       </div>
 
-      {query.isError && (
-        <p className="mb-3 text-sm text-[var(--danger)]">
-          Не удалось загрузить: {(query.error as Error | undefined)?.message ?? "ошибка сети"}
-        </p>
+      {query.isError ? (
+        <ErrorState
+          description={(query.error as Error | undefined)?.message ?? "Ошибка сети."}
+          onRetry={() => void query.refetch()}
+          retryPending={query.isFetching}
+        />
+      ) : (
+        <DataTable
+          rows={query.data?.items ?? []}
+          columns={columns}
+          rowKey={(r) => r.id}
+          loading={query.isLoading}
+          empty="Нет отзывов под фильтр."
+        />
       )}
-
-      <DataTable
-        rows={query.data?.items ?? []}
-        columns={columns}
-        rowKey={(r) => r.id}
-        empty="Нет отзывов под фильтр."
-      />
     </div>
   );
 }
