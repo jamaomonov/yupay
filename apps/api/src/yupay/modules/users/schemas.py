@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 # Keep in sync with the ``DISPLAY_CURRENCIES`` constant in
 # ``apps/miniapp/src/lib/currency.ts``. Limited to what we can actually FX
@@ -15,6 +15,18 @@ DisplayCurrencyLiteral = Literal["USD", "UZS", "RUB", "USDT"]
 # Locales the storefront ships UI translations for. Keep in sync with
 # ``LOCALES`` in ``packages/i18n/src/index.ts`` and the miniapp catalogs.
 LocaleLiteral = Literal["ru", "en", "uz"]
+
+
+def _coerce_roles(value: Any) -> Any:
+    """Coerce a malformed ``roles`` value to ``[]`` instead of failing validation.
+
+    The column defaults to ``'[]'::jsonb`` but legacy/edge rows have been seen
+    holding ``{}`` (a JSON object) rather than a list. That should never crash
+    ``GET /admin/users`` — treat it as "no roles" instead.
+    """
+    if not isinstance(value, list):
+        return []
+    return value
 
 
 class UserOut(BaseModel):
@@ -30,6 +42,8 @@ class UserOut(BaseModel):
     photo_url: str | None
     roles: list[str] = []
     created_at: datetime
+
+    _coerce_roles = field_validator("roles", mode="before")(_coerce_roles)
 
 
 class UpdateMeIn(BaseModel):
@@ -71,6 +85,8 @@ class UserAdminOut(BaseModel):
     updated_at: datetime
     deleted_at: datetime | None
     telegram_link: TelegramLinkOut | None
+
+    _coerce_roles = field_validator("roles", mode="before")(_coerce_roles)
 
 
 class UserAdminListOut(BaseModel):
