@@ -138,7 +138,7 @@ export default function OrdersPage({ params }: { params: Promise<{ locale: strin
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1.5">
                     <span className="font-display text-foreground font-bold">
-                      {formatMoney(o.total_usd, "USD", locale)}
+                      {formatMoney(o.total_charged, o.currency, locale)}
                     </span>
                     <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${cls}`}>
                       {label}

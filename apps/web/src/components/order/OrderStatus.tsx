@@ -7,6 +7,8 @@ import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
 
 import { GuestReviewPanel } from "./GuestReviewPanel";
+import { OrderItems } from "./OrderItems";
+import { OrderSummary } from "./OrderSummary";
 
 import type { OrderOut } from "@/lib/orders-types";
 
@@ -87,6 +89,14 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
           ? t(`status.${order.data.status}`)
           : order.data.status}
       </h2>
+
+      <div className="mt-4">
+        <OrderSummary order={order.data} />
+      </div>
+
+      <div className="mt-4">
+        <OrderItems items={order.data.items} />
+      </div>
 
       {status === "delivered" &&
         deliveries.data?.items.map((d) => <ArtifactReveal key={d.id} artifact={d.artifact} />)}
