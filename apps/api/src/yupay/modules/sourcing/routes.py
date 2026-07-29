@@ -90,7 +90,12 @@ async def upsert_rule(
     if key is not None:
         cached = await load_replay(db, scope=scope, idempotency_key=key)
         if cached is not None:
-            return SourcingRuleOut.model_validate(cached.body)
+            # Tolerate replay bodies cached before ``sku_code`` was added (the
+            # deploy window): fall back to the sku_id, matching the fresh path's
+            # fallback for a missing code, so a same-key retry never 500s.
+            data = {**(cached.body or {})}
+            data.setdefault("sku_code", data.get("sku_id", ""))
+            return SourcingRuleOut.model_validate(data)
     await inv_svc.get_sku_or_404(db, sku_id)
     rule = await svc.set_rule(
         db,

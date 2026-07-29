@@ -141,7 +141,14 @@ async def upsert_mapping(
     if key is not None:
         cached = await load_replay(db, scope=scope, idempotency_key=key)
         if cached is not None:
-            return SupplierMappingUpsertOut.model_validate(cached.body)
+            # Tolerate replay bodies cached before ``mapping.sku_code`` was added
+            # (the deploy window): fall back to the sku_id so a same-key retry
+            # never 500s on the now-required nested field.
+            data = {**(cached.body or {})}
+            mapping = data.get("mapping")
+            if isinstance(mapping, dict) and not mapping.get("sku_code"):
+                data["mapping"] = {**mapping, "sku_code": mapping.get("sku_id", "")}
+            return SupplierMappingUpsertOut.model_validate(data)
     await inv_svc.get_sku_or_404(db, sku_id)
     row = await svc.upsert_mapping(
         db,

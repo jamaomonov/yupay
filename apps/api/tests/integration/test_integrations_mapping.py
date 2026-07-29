@@ -473,3 +473,48 @@ async def test_topup_routes_to_supplier_once_mapped(
     assert after.json()["primary"] == "supplier:g2b"
     assert after.json()["fallback"] == "supplier:manual"
     assert after.json()["rule_present"] is False
+
+
+async def test_upsert_mapping_replays_pre_sku_code_body(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_sku: str,
+) -> None:
+    """A replay body cached before ``mapping.sku_code`` was added (the deploy
+    window) must still replay with 200 — sku_code falls back to sku_id — not 500."""
+    from yupay.core.idempotency import save_replay
+
+    admin = await _login_user(integration_client, tg_id=450)
+    await _grant_admin(db_session, tg_id=450)
+    headers = {"Authorization": f"Bearer {admin}"}
+    payload = {
+        "supplier_slug": "g2b",
+        "kind": "voucher",
+        "external_product_id": "42",
+        "quantity": 1,
+        "extra": {},
+        "is_active": True,
+    }
+    # A real upsert yields a valid current-shape response body.
+    first = await integration_client.put(
+        f"/api/v1/admin/integrations/mappings/{_seed_sku}",
+        headers={**headers, "Idempotency-Key": "idem-mapping-seed-000001"},
+        json=payload,
+    )
+    assert first.status_code == 200, first.text
+    body = first.json()
+    body["mapping"].pop("sku_code", None)  # mimic a pre-deploy cached body
+
+    key = "idem-pre-skucode-map-0001"
+    await save_replay(
+        db_session, scope="integrations.upsert_mapping", idempotency_key=key, body=body
+    )
+    await db_session.commit()
+
+    r = await integration_client.put(
+        f"/api/v1/admin/integrations/mappings/{_seed_sku}",
+        headers={**headers, "Idempotency-Key": key},
+        json=payload,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["mapping"]["sku_code"] == _seed_sku
