@@ -472,7 +472,8 @@
       "login": "Login",
       "message": "Message",
       "note": "Note",
-      "fulfillment_data": "Your details"
+      "fulfillment_data": "Your details",
+      "deliveredNote": "Order delivered."
     }
   },
   "brandReviews": {

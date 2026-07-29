@@ -95,6 +95,21 @@ function receiptLabel(t: ReturnType<typeof useTranslations>, key: ArtifactKey): 
   return t.has(`receipt.${key}`) ? t(`receipt.${key}`) : key;
 }
 
+/** Whether a whitelisted key's value actually produces visible content in
+ *  `ArtifactRow` — a key can be *present* (`key in artifact`) while its
+ *  value renders nothing, e.g. a `message: null` game top-up receipt or an
+ *  empty `fulfillment_data: {}`. Presence alone must never be mistaken for
+ *  something to show. */
+function isRenderableValue(key: ArtifactKey, value: unknown): boolean {
+  if (key === "codes") {
+    return Array.isArray(value) && value.some(isScalar);
+  }
+  if (key === "fulfillment_data") {
+    return isPlainObject(value) && Object.values(value).some(isScalar);
+  }
+  return isScalar(value);
+}
+
 /**
  * Clean, translated reveal of a delivered order's artifact — every key here
  * comes from the customer-facing whitelist, so all of it is safe to show (no
@@ -113,14 +128,28 @@ export function ArtifactReceipt({ artifact }: { artifact: Record<string, unknown
     if (key === "codes" && !multiCode) return false;
     return true;
   });
-  if (keys.length === 0) return null;
+  const renderableKeys = keys.filter((key) => isRenderableValue(key, artifact[key]));
+  // A key can survive the whitelist and still have nothing to show (`message:
+  // null`, `fulfillment_data: {}`, an empty `codes`) — an empty bordered card
+  // under "Доставлено" reads as broken, so fall back to a plain confirmation
+  // line instead of rendering a shell with no content.
+  if (renderableKeys.length === 0) {
+    return (
+      <div className="border-border bg-muted/40 mt-4 rounded-xl border p-4">
+        <p className="text-foreground text-sm">{t("receipt.deliveredNote")}</p>
+      </div>
+    );
+  }
   // Dead today (no whitelisted key name matches this pattern), kept only so
   // a future supplier adding a wallet-credit artifact key doesn't also need
   // to touch this banner.
-  const walletCredited = keys.some((k) => /wallet|balance|credit/i.test(k));
+  const walletCredited = renderableKeys.some((k) => /wallet|balance|credit/i.test(k));
 
   return (
     <div className="border-border bg-muted/40 mt-4 rounded-xl border p-4">
+      <h3 className="text-tx-dim mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]">
+        {t("receiptTitle")}
+      </h3>
       {walletCredited && (
         <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-emerald-400">
           <CheckCircle2 size={16} />
@@ -128,7 +157,7 @@ export function ArtifactReceipt({ artifact }: { artifact: Record<string, unknown
         </p>
       )}
       <dl className="flex flex-col gap-3">
-        {keys.map((key) => (
+        {renderableKeys.map((key) => (
           <ArtifactRow key={key} artifactKey={key} value={artifact[key]} t={t} />
         ))}
       </dl>

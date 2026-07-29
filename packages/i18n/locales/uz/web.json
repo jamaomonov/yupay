@@ -472,7 +472,8 @@
       "login": "Login",
       "message": "Xabar",
       "note": "Izoh",
-      "fulfillment_data": "Sizning maʼlumotlaringiz"
+      "fulfillment_data": "Sizning maʼlumotlaringiz",
+      "deliveredNote": "Buyurtma yetkazib berildi."
     }
   },
   "brandReviews": {

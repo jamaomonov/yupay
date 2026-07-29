@@ -472,7 +472,8 @@
       "login": "Логин",
       "message": "Сообщение",
       "note": "Примечание",
-      "fulfillment_data": "Ваши данные"
+      "fulfillment_data": "Ваши данные",
+      "deliveredNote": "Заказ доставлен."
     }
   },
   "brandReviews": {
