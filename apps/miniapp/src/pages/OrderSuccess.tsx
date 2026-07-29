@@ -832,6 +832,62 @@ function isStringRecord(v: unknown): v is Record<string, unknown> {
 
 // ─── Artifact block ──────────────────────────────────────────────────────────
 
+/** Ordered preference for the artifact's primary copyable identifier — the
+ *  first non-empty string value wins. Every key here is part of the API's
+ *  customer-facing whitelist (`_CUSTOMER_SAFE_ARTIFACT_KEYS` in
+ *  `fulfillment/routes.py`) — never read `external_id`: no supplier or
+ *  admin-manual-completion flow reaching this component ever sets it, and
+ *  Phase 1 strips it server-side if one did. */
+const COPYABLE_ARTIFACT_KEYS = ["code", "key", "pin", "serial", "steam_login", "login"] as const;
+type CopyableArtifactKey = (typeof COPYABLE_ARTIFACT_KEYS)[number];
+
+const COPYABLE_ARTIFACT_LABEL: Record<CopyableArtifactKey, MessageKey> = {
+  code: "success.code",
+  key: "success.key",
+  pin: "success.pin",
+  serial: "success.serial",
+  steam_login: "success.steamLogin",
+  login: "success.login",
+};
+
+type ArtifactDisplay =
+  | { kind: "copyable"; artifactKey: CopyableArtifactKey; value: string }
+  | { kind: "text"; value: string }
+  | { kind: "fields"; entries: [string, string][] }
+  | { kind: "empty" };
+
+/**
+ * Decide how to render a non-top-up delivery artifact: a copyable
+ * identifier first (code/key/pin/serial/steam_login/login), then a
+ * free-text delivery note (message/note — e.g. an admin-manual-completion
+ * that hands over an account without a single code/key field), then the
+ * customer's own `fulfillment_data` snapshot, and only a bare "credited"
+ * line if none of the whitelisted keys carry anything to show. Exported for
+ * unit testing — pure, no i18n/React dependency.
+ */
+export function pickArtifactDisplay(artifact: Record<string, unknown>): ArtifactDisplay {
+  for (const key of COPYABLE_ARTIFACT_KEYS) {
+    const value = artifact[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return { kind: "copyable", artifactKey: key, value };
+    }
+  }
+  for (const key of ["message", "note"] as const) {
+    const value = artifact[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return { kind: "text", value };
+    }
+  }
+  if (isStringRecord(artifact.fulfillment_data)) {
+    const entries = Object.entries(artifact.fulfillment_data).filter(
+      (entry): entry is [string, string] =>
+        typeof entry[1] === "string" && entry[1].trim().length > 0,
+    );
+    if (entries.length > 0) return { kind: "fields", entries };
+  }
+  return { kind: "empty" };
+}
+
 function ArtifactBlock({ delivery }: { delivery: DeliveryOut }) {
   const { toast } = useToast();
   const { t } = useT();
@@ -849,10 +905,7 @@ function ArtifactBlock({ delivery }: { delivery: DeliveryOut }) {
     }
   };
 
-  const code = typeof delivery.artifact.code === "string" ? delivery.artifact.code : null;
-  const key = typeof delivery.artifact.key === "string" ? delivery.artifact.key : null;
-  const receipt =
-    typeof delivery.artifact.external_id === "string" ? delivery.artifact.external_id : null;
+  const display = pickArtifactDisplay(delivery.artifact);
 
   return (
     <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mt-3">
@@ -874,21 +927,14 @@ function ArtifactBlock({ delivery }: { delivery: DeliveryOut }) {
         </span>
       </div>
 
-      {code && (
+      {display.kind === "copyable" && (
         <CopyableValue
-          value={code}
-          label={t("success.code")}
-          onCopy={(v) => void onCopy(v, t("success.code"))}
+          value={display.value}
+          label={t(COPYABLE_ARTIFACT_LABEL[display.artifactKey])}
+          onCopy={(v) => void onCopy(v, t(COPYABLE_ARTIFACT_LABEL[display.artifactKey]))}
         />
       )}
-      {!code && key && (
-        <CopyableValue
-          value={key}
-          label={t("success.key")}
-          onCopy={(v) => void onCopy(v, t("success.key"))}
-        />
-      )}
-      {!code && !key && receipt && (
+      {display.kind === "text" && (
         <div
           className="rounded-xl px-3 py-2.5 text-xs leading-snug text-white/75"
           style={{
@@ -897,10 +943,26 @@ function ArtifactBlock({ delivery }: { delivery: DeliveryOut }) {
           }}
         >
           <span className="text-white/45">{t("success.credited")} · </span>
-          <span className="font-mono">{receipt}</span>
+          <span>{display.value}</span>
         </div>
       )}
-      {!code && !key && !receipt && (
+      {display.kind === "fields" && (
+        <div
+          className="space-y-1.5 rounded-xl p-3"
+          style={{
+            background: "hsl(var(--surface-2))",
+            border: "1px solid hsl(var(--border))",
+          }}
+        >
+          {display.entries.map(([field, value]) => (
+            <div key={field} className="flex items-baseline justify-between gap-3 text-xs">
+              <span className="text-white/50">{labelForField(field)}</span>
+              <span className="max-w-[60%] truncate text-right font-mono text-white">{value}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {display.kind === "empty" && (
         <div
           className="rounded-xl px-3 py-2.5 text-xs leading-snug text-white/60"
           style={{

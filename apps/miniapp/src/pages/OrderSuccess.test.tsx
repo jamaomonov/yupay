@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { providerLabel } from "./OrderSuccess";
+import { pickArtifactDisplay, providerLabel } from "./OrderSuccess";
 
 import { translate } from "@/lib/i18n/core";
 
@@ -24,5 +24,77 @@ describe("providerLabel", () => {
     expect(providerLabel("mock")).toBe("mock");
     expect(providerLabel(null)).toBeNull();
     expect(providerLabel("")).toBeNull();
+  });
+});
+
+describe("pickArtifactDisplay", () => {
+  it("prefers code over every other whitelisted key", () => {
+    expect(pickArtifactDisplay({ code: "ABC-123", key: "K", message: "hi" })).toEqual({
+      kind: "copyable",
+      artifactKey: "code",
+      value: "ABC-123",
+    });
+  });
+
+  it("falls back to key when there is no code", () => {
+    expect(pickArtifactDisplay({ key: "SECRET-KEY" })).toEqual({
+      kind: "copyable",
+      artifactKey: "key",
+      value: "SECRET-KEY",
+    });
+  });
+
+  // Regression: an admin-manual-completion (e.g. handing over a Steam
+  // account) or a G2B-style receipt has no code/key at all — the artifact's
+  // only content is steam_login/login. ArtifactBlock used to derive its
+  // fallback line from `artifact.external_id`, which the Phase 1 whitelist
+  // strips server-side, so this case rendered only the generic "credited"
+  // line with no actual account info.
+  it("shows steam_login when there is no code/key", () => {
+    expect(pickArtifactDisplay({ steam_login: "player123" })).toEqual({
+      kind: "copyable",
+      artifactKey: "steam_login",
+      value: "player123",
+    });
+  });
+
+  it("shows login when there is no code/key/steam_login", () => {
+    expect(pickArtifactDisplay({ login: "someone@example.com" })).toEqual({
+      kind: "copyable",
+      artifactKey: "login",
+      value: "someone@example.com",
+    });
+  });
+
+  it("falls back to a free-text message when no copyable key is present", () => {
+    expect(pickArtifactDisplay({ message: "Account handed over via support chat" })).toEqual({
+      kind: "text",
+      value: "Account handed over via support chat",
+    });
+  });
+
+  it("falls back to note when there is no message", () => {
+    expect(pickArtifactDisplay({ note: "See attached receipt" })).toEqual({
+      kind: "text",
+      value: "See attached receipt",
+    });
+  });
+
+  it("falls back to fulfillment_data scalar entries when nothing else is present", () => {
+    expect(pickArtifactDisplay({ fulfillment_data: { player_id: "PID-1", region: "" } })).toEqual({
+      kind: "fields",
+      entries: [["player_id", "PID-1"]],
+    });
+  });
+
+  it("never reads external_id — it is not part of the customer-safe whitelist", () => {
+    expect(pickArtifactDisplay({ external_id: "mock_abc123" })).toEqual({ kind: "empty" });
+  });
+
+  it("returns empty for an artifact with no renderable whitelisted content", () => {
+    expect(pickArtifactDisplay({})).toEqual({ kind: "empty" });
+    expect(pickArtifactDisplay({ message: null, fulfillment_data: {} })).toEqual({
+      kind: "empty",
+    });
   });
 });
