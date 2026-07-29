@@ -4,12 +4,15 @@ import { ScrollText, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
+import { UserPicker } from "./UserPicker";
+
 import type {
   AccountWithBalance,
   AdjustmentsListOut,
   AdminUserLedgerOut,
   Transaction,
 } from "./types";
+import type { UserAdminOut } from "@/features/users/types";
 
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
@@ -90,6 +93,10 @@ function LookupTab() {
   const initialUserId = searchParams.get("user_id") ?? "";
   const [userIdInput, setUserIdInput] = useState(initialUserId);
   const [activeUserId, setActiveUserId] = useState<string>(initialUserId);
+  // Typeahead selection — separate from `userIdInput` so picking a user
+  // doesn't fight with manually pasting a raw UUID into the field below;
+  // either path converges on `activeUserId`, which the ledger query keys off.
+  const [pickedUser, setPickedUser] = useState<UserAdminOut | null>(null);
   // Catch the case where Customer 360 → /wallet swap happens while the
   // tab is already mounted (React Router does not remount the page).
   useEffect(() => {
@@ -201,10 +208,28 @@ function LookupTab() {
 
   return (
     <div>
+      <section className="mb-4">
+        <label className="text-xs font-medium uppercase text-[var(--text-secondary)]">
+          Найти пользователя
+        </label>
+        <div className="mt-1">
+          <UserPicker
+            value={pickedUser}
+            onChange={(u) => {
+              setPickedUser(u);
+              if (u) {
+                setUserIdInput(u.id);
+                setActiveUserId(u.id);
+              }
+            }}
+          />
+        </div>
+      </section>
+
       <section className="mb-6 flex flex-wrap items-end gap-3">
         <div className="grow">
           <label className="text-xs font-medium uppercase text-[var(--text-secondary)]">
-            User ID
+            User ID (или вставь напрямую)
           </label>
           <Input
             value={userIdInput}
