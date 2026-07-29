@@ -27,6 +27,7 @@ import {
   localeUrl,
   ogLocale,
   pathFor,
+  ROBOTS,
 } from "@/lib/seo";
 
 const CURRENCY = "UZS";
@@ -58,10 +59,10 @@ export async function generateMetadata({
     description,
     alternates: alternates(locale, path),
     other: GEO_META,
-    robots: { index: true, follow: true },
+    robots: ROBOTS,
     openGraph: {
       type: "website",
-      siteName: "yupay",
+      siteName: "YuPay",
       title,
       description,
       url: localeUrl(locale, path),
@@ -121,6 +122,9 @@ export default async function BrandPage({
         highPrice: Math.max(...uzs),
         offerCount: skus.length,
         availability: "https://schema.org/InStock",
+        // Rolling 14-day validity window — safe because this page is ISR
+        // revalidate=300, so the date keeps advancing with every regen.
+        priceValidUntil: new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10),
       }
     : undefined;
 
@@ -132,6 +136,12 @@ export default async function BrandPage({
     image: heroImg ?? undefined,
     brand: { "@type": "Brand", name: brand.name },
     category: brand.category_slug,
+    // Digital goods: delivery is instant and non-returnable once issued.
+    hasMerchantReturnPolicy: {
+      "@type": "MerchantReturnPolicy",
+      applicableCountry: "UZ",
+      returnPolicyCategory: "https://schema.org/MerchantReturnNotPermitted",
+    },
     ...(offers ? { offers } : {}),
     ...(reviews.stats.count > 0
       ? {

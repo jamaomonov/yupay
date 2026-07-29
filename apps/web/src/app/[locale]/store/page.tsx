@@ -11,7 +11,7 @@ import { TrustBand } from "@/components/sections/TrustBand";
 import { BrandCard } from "@/components/store/BrandCard";
 import { routing } from "@/i18n/routing";
 import { getBrands, getCategories, type BrandSummary, type CategoryOut } from "@/lib/catalog";
-import { alternates, GEO_META, localeUrl, ogLocale, pathFor } from "@/lib/seo";
+import { alternates, GEO_META, localeUrl, ogLocale, pathFor, ROBOTS } from "@/lib/seo";
 
 export const revalidate = 300;
 
@@ -37,10 +37,10 @@ export async function generateMetadata({
     description,
     alternates: alternates(locale, "/store"),
     other: GEO_META,
-    robots: { index: true, follow: true },
+    robots: ROBOTS,
     openGraph: {
       type: "website",
-      siteName: "yupay",
+      siteName: "YuPay",
       title,
       description,
       url: localeUrl(locale, "/store"),

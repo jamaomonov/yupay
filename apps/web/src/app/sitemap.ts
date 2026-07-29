@@ -15,7 +15,6 @@ function languagesFor(path: string): Record<string, string> {
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const lastModified = new Date();
   const entries: MetadataRoute.Sitemap = [];
   const slugs = await getBrandSlugs();
 
@@ -43,7 +42,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     for (const locale of LOCALES) {
       entries.push({
         url: localeUrl(locale, path),
-        lastModified,
         changeFrequency,
         priority,
         alternates: { languages },

@@ -7,7 +7,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { Metadata } from "next";
 
 import { routing } from "@/i18n/routing";
-import { alternates, ogLocale, pathFor } from "@/lib/seo";
+import { alternates, ogLocale, pathFor, ROBOTS } from "@/lib/seo";
 
 const DOCS = ["terms", "privacy", "refunds", "imprint"] as const;
 type Doc = (typeof DOCS)[number];
@@ -40,8 +40,8 @@ export async function generateMetadata({
     title,
     description,
     alternates: alternates(locale, `/legal/${doc}`),
-    robots: { index: true, follow: true },
-    openGraph: { type: "website", siteName: "yupay", title, description, ...ogLocale(locale) },
+    robots: ROBOTS,
+    openGraph: { type: "website", siteName: "YuPay", title, description, ...ogLocale(locale) },
   };
 }
 

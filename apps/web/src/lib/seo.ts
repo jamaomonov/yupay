@@ -1,5 +1,7 @@
 import { LOCALES } from "@yupay/i18n";
 
+import type { Metadata } from "next";
+
 /**
  * SEO helpers shared across routes. Canonical host is the .uz domain (a strong
  * Uzbekistan signal on its own); every page emits hreflang alternates for the
@@ -7,6 +9,21 @@ import { LOCALES } from "@yupay/i18n";
  * Tashkent so the storefront reads as UZ-local to search engines.
  */
 export const SITE = "https://yupay.uz";
+
+/**
+ * Shared robots directives. Beyond index/follow we opt into the LARGEST
+ * previews Google allows — `max-image-preview:large` unlocks full-width image
+ * thumbnails (and Discover eligibility) for a visual storefront, and
+ * `max-snippet:-1`/`max-video-preview:-1` remove text/video preview caps.
+ * Set on the generic `robots` meta so Bing/Yandex honour it too.
+ */
+export const ROBOTS: Metadata["robots"] = {
+  index: true,
+  follow: true,
+  "max-image-preview": "large",
+  "max-snippet": -1,
+  "max-video-preview": -1,
+};
 
 const OG_LOCALE: Record<string, string> = {
   ru: "ru_RU",

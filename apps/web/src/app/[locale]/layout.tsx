@@ -16,7 +16,7 @@ import { OrderDeliveredModal } from "@/components/order/OrderDeliveredModal";
 import { SupportFab } from "@/components/SupportFab";
 import { YandexMetrika } from "@/components/YandexMetrika";
 import { routing } from "@/i18n/routing";
-import { alternates, localeUrl, ogLocale, SITE } from "@/lib/seo";
+import { alternates, localeUrl, ogLocale, ROBOTS, SITE } from "@/lib/seo";
 
 import "../globals.css";
 
@@ -44,9 +44,8 @@ const mono = JetBrains_Mono({
   display: "swap",
 });
 
-/** Social share image. No dedicated 1200×630 asset exists yet, so this falls
- *  back to the brand logo — swap for a real OG banner when one is designed. */
-const OG_IMAGE = "/logo/icon.svg";
+/** Social share image, 1200×630. */
+const OG_IMAGE = "/og.png";
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
@@ -67,18 +66,17 @@ export async function generateMetadata({
     metadataBase: new URL(SITE),
     title: { template: "%s — yupay", default: t("homeTitle") },
     description: t("homeDescription"),
-    robots: { index: true, follow: true },
+    robots: ROBOTS,
     // Absolute canonical + hreflang (incl. x-default), ru without a prefix —
     // same helper the store pages use.
     alternates: alternates(locale),
     openGraph: {
       type: "website",
-      siteName: "yupay",
+      siteName: "YuPay",
       title: t("homeTitle"),
       description: t("homeDescription"),
       url: localeUrl(locale),
-      // No dedicated 1200×630 social asset yet — fall back to the brand logo so
-      // shares still carry a mark. Resolved against metadataBase above.
+      // Resolved against metadataBase above.
       images: [{ url: OG_IMAGE, width: 1200, height: 630 }],
       ...ogLocale(locale),
     },
@@ -111,11 +109,23 @@ export default async function LocaleLayout({
     name: "YuPay",
     url: SITE,
     logo: `${SITE}/logo/icon.svg`,
+    sameAs: [
+      "https://instagram.com/yupay.app",
+      "https://t.me/yupay_channel",
+      "https://t.me/yupayapp_bot",
+    ],
+    contactPoint: {
+      "@type": "ContactPoint",
+      contactType: "customer support",
+      email: "support@yupay.uz",
+      availableLanguage: ["ru", "uz", "en"],
+    },
   };
   const websiteLd = {
     "@context": "https://schema.org",
     "@type": "WebSite",
     name: "YuPay",
+    alternateName: "yupay",
     url: SITE,
   };
 
