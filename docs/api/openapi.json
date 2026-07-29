@@ -13497,7 +13497,7 @@
     },
     "/api/v1/admin/orders": {
       "get": {
-        "description": "Admin order list with optional status filter.",
+        "description": "Admin order list with optional status filter and created-at date range.\n\n``since``/``until`` are inclusive bounds on ``Order.created_at``, ISO 8601\nquery params (matching the audit feed's convention \u2014 see\n``modules/audit/routes.py``).",
         "operationId": "admin_list_orders_api_v1_admin_orders_get",
         "parameters": [
           {
@@ -13514,6 +13514,40 @@
                 }
               ],
               "title": "Status Filter"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
             }
           },
           {

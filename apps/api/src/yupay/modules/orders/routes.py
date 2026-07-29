@@ -6,6 +6,7 @@ User/guest surface mounted at ``/api/v1/orders``; admin surface mounted at
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Request, status
@@ -184,13 +185,22 @@ async def admin_list_orders(
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
     status_filter: Annotated[str | None, "status"] = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> OrderAdminListOut:
-    """Admin order list with optional status filter."""
+    """Admin order list with optional status filter and created-at date range.
+
+    ``since``/``until`` are inclusive bounds on ``Order.created_at``, ISO 8601
+    query params (matching the audit feed's convention — see
+    ``modules/audit/routes.py``).
+    """
     orders, total = await svc.list_orders_admin(
         db,
         status_filter=status_filter,
+        since=since,
+        until=until,
         limit=max(1, min(limit, 500)),
         offset=max(0, offset),
     )
