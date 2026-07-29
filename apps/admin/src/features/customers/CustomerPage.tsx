@@ -42,6 +42,7 @@ import type { AdminUserLedgerOut, Transaction } from "@/features/wallet/types";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { Spinner } from "@/components/States";
+import { StatusChip } from "@/components/StatusChip";
 import { useToast } from "@/components/Toast";
 import { type ApiError, api, apiGet } from "@/lib/api";
 import { formatMoney, formatMoneyValue } from "@/lib/money";
@@ -392,7 +393,12 @@ function RecentOrders({
       render: (o) => <span className="font-mono text-xs">{o.id.slice(0, 8)}…</span>,
       className: "w-24",
     },
-    { key: "status", header: "Статус", render: (o) => o.status, className: "w-32" },
+    {
+      key: "status",
+      header: "Статус",
+      render: (o) => <StatusChip domain="orderStatus" value={o.status} />,
+      className: "w-32",
+    },
     {
       key: "items",
       header: "Позиции",
@@ -442,7 +448,12 @@ function RecentPayments({
       className: "w-24",
     },
     { key: "provider", header: "Провайдер", render: (p) => p.provider, className: "w-32" },
-    { key: "status", header: "Статус", render: (p) => p.status, className: "w-28" },
+    {
+      key: "status",
+      header: "Статус",
+      render: (p) => <StatusChip domain="paymentStatus" value={p.status} />,
+      className: "w-28",
+    },
     {
       key: "amount",
       header: "Сумма",
@@ -492,7 +503,12 @@ function OpenTasks({
       className: "w-24",
     },
     { key: "supplier", header: "Поставщик", render: (t) => t.supplier, className: "w-32" },
-    { key: "status", header: "Статус", render: (t) => t.status, className: "w-28" },
+    {
+      key: "status",
+      header: "Статус",
+      render: (t) => <StatusChip domain="taskStatus" value={t.status} />,
+      className: "w-28",
+    },
     {
       key: "error",
       header: "Ошибка",
@@ -597,7 +613,7 @@ function WalletHistoryRow({
   return (
     <li className="rounded-md border bg-[var(--bg-surface)] px-3 py-2 text-xs shadow-[var(--shadow-sm)]">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="truncate">{tx.kind}</span>
+        <StatusChip domain="walletTxKind" value={tx.kind} className="truncate" />
         <span
           className={[
             "whitespace-nowrap font-mono font-medium",

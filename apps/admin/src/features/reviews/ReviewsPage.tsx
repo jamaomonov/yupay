@@ -12,17 +12,16 @@ import type { AdminReview, AdminReviewList } from "./types";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { ErrorState } from "@/components/States";
+import { StatusChip, localizeStatus } from "@/components/StatusChip";
 import { apiGet, apiPost } from "@/lib/api";
 
 type StatusFilter = "all" | "published" | "hidden" | "removed";
 
-const STATUS_CLS: Record<string, string> = {
-  published: "bg-emerald-500/15 text-emerald-400",
-  hidden: "bg-amber-500/15 text-amber-400",
-  removed: "bg-red-500/15 text-red-400",
-};
-
 const FILTERS: StatusFilter[] = ["all", "published", "hidden", "removed"];
+
+function filterLabel(f: StatusFilter): string {
+  return f === "all" ? "Все" : localizeStatus("reviewStatus", f).label;
+}
 
 function idemHeaders(): Record<string, string> {
   return { "Idempotency-Key": crypto.randomUUID() };
@@ -89,15 +88,7 @@ export function ReviewsPage() {
     {
       key: "status",
       header: "Статус",
-      render: (r) => (
-        <span
-          className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-            STATUS_CLS[r.status] ?? ""
-          }`}
-        >
-          {r.status}
-        </span>
-      ),
+      render: (r) => <StatusChip domain="reviewStatus" value={r.status} />,
     },
     {
       key: "actions",
@@ -153,7 +144,7 @@ export function ReviewsPage() {
                 : "bg-[var(--surface-2)] text-[var(--text-secondary)]"
             }`}
           >
-            {f}
+            {filterLabel(f)}
           </button>
         ))}
         <label className="ml-2 flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">

@@ -27,6 +27,7 @@ import type { PaymentAdminListOut, PaymentAdminOut } from "@/features/payments/t
 import { Badge } from "@/components/Badge";
 import { PageHeader } from "@/components/PageHeader";
 import { Spinner } from "@/components/States";
+import { StatusChip } from "@/components/StatusChip";
 import {
   STATUS_LABEL as PAYMENT_STATUS_LABEL,
   STATUS_TONE as PAYMENT_STATUS_TONE,
@@ -302,7 +303,7 @@ function ItemsCard({ order }: { order: OrderAdminOut }) {
                   ${formatMoneyValue(it.unit_price_usd, "USD")}
                 </td>
                 <td className="px-3 py-2.5">
-                  <code className="text-xs">{it.fulfillment_state}</code>
+                  <StatusChip domain="fulfillmentState" value={it.fulfillment_state} />
                 </td>
                 <td className="px-3 py-2.5">
                   {it.supplier_order_id ? (
@@ -352,7 +353,7 @@ function Timeline({ events, status }: { events: OrderEventOut[]; status: OrderSt
                 }}
               />
               <div className="flex items-baseline justify-between gap-3">
-                <code className="text-sm font-semibold">{ev.kind}</code>
+                <StatusChip domain="eventKind" value={ev.kind} />
                 <span className="text-xs text-[var(--text-secondary)]">
                   {formatDate(ev.created_at)}
                 </span>
@@ -362,7 +363,7 @@ function Timeline({ events, status }: { events: OrderEventOut[]; status: OrderSt
               )}
               {Object.keys(ev.payload).length > 0 && (
                 <pre className="mt-1 whitespace-pre-wrap rounded border bg-[var(--bg-muted)] p-2 text-[10px] text-[var(--text-secondary)]">
-                  {JSON.stringify(ev.payload, null, 2)}
+                  {JSON.stringify(roundMoneyFields(ev.payload), null, 2)}
                 </pre>
               )}
             </li>
@@ -452,20 +453,7 @@ function FulfillmentCard({ tasks }: { tasks: TaskAdminOut[] }) {
             <li key={t.id} className="p-3 text-sm">
               <div className="flex items-baseline justify-between gap-3">
                 <code className="text-xs">{t.supplier}</code>
-                <Badge
-                  tone={
-                    t.status === "succeeded"
-                      ? "bg-[var(--success-soft)] text-[var(--success-fg)]"
-                      : t.status === "failed"
-                        ? "bg-[var(--danger-soft)] text-[var(--danger-fg)]"
-                        : t.status === "cancelled"
-                          ? "bg-[var(--bg-muted)] text-[var(--text-secondary)]"
-                          : "bg-[var(--warning-soft)] text-[var(--warning-fg)]"
-                  }
-                  dot
-                >
-                  {t.status}
-                </Badge>
+                <StatusChip domain="taskStatus" value={t.status} />
               </div>
               <p className="mt-1 text-xs text-[var(--text-secondary)]">
                 item {t.order_item_id.slice(0, 8)}… · попыток {t.attempts_count}
@@ -485,6 +473,28 @@ function StatusBadge({ status }: { status: OrderStatus }) {
       {STATUS_LABEL[status]}
     </Badge>
   );
+}
+
+// Event payloads are raw audit JSON straight off the backend — money fields
+// carry full NUMERIC(20,6) ledger precision (e.g. "total_charged":
+// "12919.969152"). This is a debug/audit blob, not a money column with a
+// known currency, so the full currency-aware `formatMoney` doesn't apply —
+// just round decimal-looking numeric strings on money-ish keys to 2 places
+// so raw ledger fractions never leak into the timeline.
+const MONEY_ISH_KEY = /(amount|total|price|cost|balance|charged|_usd|_usdt)/i;
+const DECIMAL_STRING = /^-?\d+\.\d+$/;
+
+function roundMoneyFields(payload: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (typeof value === "string" && MONEY_ISH_KEY.test(key) && DECIMAL_STRING.test(value)) {
+      const n = Number.parseFloat(value);
+      out[key] = Number.isFinite(n) ? n.toFixed(2) : value;
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
 }
 
 function formatDate(value: string | null): string {

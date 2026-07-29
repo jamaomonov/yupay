@@ -20,7 +20,9 @@ import { useNavigate } from "react-router-dom";
 
 import type { HitType, SearchHit, SearchOut } from "./types";
 
+import { StatusChip, type StatusDomain } from "@/components/StatusChip";
 import { type ApiError, apiGet } from "@/lib/api";
+import { formatMoney } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
 import { useDialog } from "@/lib/useDialog";
 
@@ -277,9 +279,13 @@ function HitRow({
     >
       <span className="min-w-0 flex-1">
         <span className="block truncate font-medium">{hit.label}</span>
-        {hit.sublabel && (
-          <span className="block truncate text-xs text-[var(--text-secondary)]">
-            {hit.sublabel}
+        {(hit.status ?? hit.sublabel ?? hit.amount) != null && (
+          <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+            {hit.status && <StatusChip domain={statusDomainFor(hit.type)} value={hit.status} />}
+            {hit.sublabel && <span className="truncate">{hit.sublabel}</span>}
+            {hit.amount != null && hit.currency && (
+              <span className="font-mono">{formatMoney(hit.amount, hit.currency)}</span>
+            )}
           </span>
         )}
       </span>
@@ -288,6 +294,20 @@ function HitRow({
       </span>
     </button>
   );
+}
+
+function statusDomainFor(type: HitType): StatusDomain {
+  // Only "order" / "payment" hits ever carry a `status` — the guard at the
+  // call site (`hit.status &&`) means this never actually resolves for
+  // "user" / "sku", but the switch stays exhaustive for future hit types.
+  switch (type) {
+    case "payment":
+      return "paymentStatus";
+    case "order":
+    case "user":
+    case "sku":
+      return "orderStatus";
+  }
 }
 
 function Hint({ children, danger }: { children: React.ReactNode; danger?: boolean }) {

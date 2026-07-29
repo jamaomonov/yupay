@@ -25,11 +25,11 @@ const PAGE_SIZE = 50;
 
 const STATUSES: { value: PaymentStatus | ""; label: string }[] = [
   { value: "", label: "Все" },
-  { value: "pending", label: "pending" },
-  { value: "requires_action", label: "requires_action" },
-  { value: "succeeded", label: "succeeded" },
-  { value: "failed", label: "failed" },
-  { value: "cancelled", label: "cancelled" },
+  { value: "pending", label: STATUS_LABEL.pending },
+  { value: "requires_action", label: STATUS_LABEL.requires_action },
+  { value: "succeeded", label: STATUS_LABEL.succeeded },
+  { value: "failed", label: STATUS_LABEL.failed },
+  { value: "cancelled", label: STATUS_LABEL.cancelled },
 ];
 
 const PROVIDERS = ["", "mock", "click", "payme", "uzum", "yookassa", "tinkoff", "crypto"];

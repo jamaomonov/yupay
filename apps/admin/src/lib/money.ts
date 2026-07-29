@@ -14,9 +14,10 @@
  * other file should call `.toFixed()` / `.toLocaleString()` on a money value
  * directly.
  *
- * Keep ``CURRENCY_DECIMALS`` in sync with ``_CURRENCY_DISPLAY_DECIMALS`` in
- * ``apps/api/src/yupay/modules/admin/service.py`` (used for the global
- * search sublabel, which is pre-formatted server-side).
+ * The global search sublabel used to pre-format amounts server-side (with a
+ * duplicate decimals table) — it now sends the raw `amount` + `currency` and
+ * the admin SPA formats them through `formatMoney` here, same as every other
+ * surface (see `features/search/SearchPalette.tsx`).
  */
 
 const CURRENCY_DECIMALS: Record<string, number> = {

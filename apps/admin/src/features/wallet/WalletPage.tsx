@@ -13,6 +13,7 @@ import type {
 
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
+import { StatusChip } from "@/components/StatusChip";
 import { Tabs, type TabDescriptor } from "@/components/Tabs";
 import { useToast } from "@/components/Toast";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
@@ -486,8 +487,8 @@ function TransactionsList({ items }: { items: Transaction[] }) {
           className="rounded-lg border bg-[var(--bg-surface)] p-4 text-sm shadow-[var(--shadow-sm)]"
         >
           <header className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-            <div>
-              <span className="font-medium">{tx.kind}</span>
+            <div className="flex items-center gap-2">
+              <StatusChip domain="walletTxKind" value={tx.kind} />
               {tx.actor && (
                 <span className="ml-2 text-xs text-[var(--text-secondary)]">by {tx.actor}</span>
               )}
