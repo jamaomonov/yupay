@@ -23,6 +23,7 @@ from yupay.core.db import Base
 
 if TYPE_CHECKING:  # pragma: no cover -- type hints only
     from yupay.modules.catalog.models import Sku
+    from yupay.modules.payments.models import Payment
 
 
 class Order(Base):
@@ -73,6 +74,17 @@ class Order(Base):
         cascade="all, delete-orphan",
         lazy="selectin",
         order_by="OrderEvent.created_at",
+    )
+    # One-directional (no back_populates) so this module doesn't force an
+    # import of yupay.modules.payments.models at class-definition time —
+    # viewonly because orders never mutate payments; lazy="raise" guards
+    # against an accidental N+1 (a read path that forgot the selectinload
+    # in _order_load_options will error loudly in tests, not silently fan out).
+    payments: Mapped[list[Payment]] = relationship(
+        "Payment",
+        primaryjoin="Order.id == foreign(Payment.order_id)",
+        viewonly=True,
+        lazy="raise",
     )
 
     __table_args__ = (

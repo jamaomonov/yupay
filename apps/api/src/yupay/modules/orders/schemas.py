@@ -117,6 +117,7 @@ class OrderOut(BaseModel):
     delivered_at: datetime | None
     cancelled_at: datetime | None
     items: list[OrderItemOut]
+    payment_provider: str | None = None
 
 
 class OrderListOut(BaseModel):

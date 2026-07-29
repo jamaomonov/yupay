@@ -28,7 +28,7 @@ from yupay.modules.orders.schemas import (
     OrderListOut,
     OrderOut,
 )
-from yupay.modules.orders.service import Actor, build_item_display
+from yupay.modules.orders.service import Actor, build_item_display, succeeded_provider_for
 from yupay.modules.users.models import User
 
 
@@ -40,12 +40,14 @@ def _attach_displays(order_out: OrderOut, order: Order, locale: str = "ru") -> N
 
 def _to_order_out(order: Order, locale: str = "ru") -> OrderOut:
     out = OrderOut.model_validate(order)
+    out.payment_provider = succeeded_provider_for(order)
     _attach_displays(out, order, locale=locale)
     return out
 
 
 def _to_admin_order_out(order: Order, locale: str = "ru") -> OrderAdminOut:
     out = OrderAdminOut.model_validate(order)
+    out.payment_provider = succeeded_provider_for(order)
     _attach_displays(out, order, locale=locale)
     return out
 

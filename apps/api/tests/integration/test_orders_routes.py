@@ -14,13 +14,14 @@ import hashlib
 import hmac
 import json
 import time
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from urllib.parse import urlencode
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import update
+from sqlalchemy import event, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.ids import new_id
 from yupay.modules.catalog.models import (
@@ -71,6 +72,39 @@ async def _grant_admin(db: AsyncSession, tg_id: int) -> str:
     await db.execute(update(User).where(User.id == user_id).values(roles=["admin"]))
     await db.commit()
     return user_id
+
+
+@pytest.fixture
+async def sql_counter(db_engine) -> AsyncIterator[dict[str, int]]:
+    """Counts every cursor execution on the engine the app is wired to.
+
+    Mirrors the fixture in ``test_query_counts.py`` (AGENTS.md §10: every
+    list endpoint must have an integration test asserting query count) —
+    duplicated locally rather than imported, matching this suite's existing
+    convention of per-file test helpers (see ``_login_user``/``_grant_admin``
+    above)."""
+    holder = {"n": 0}
+
+    def _before(conn, cursor, statement, parameters, context, executemany) -> None:
+        holder["n"] += 1
+
+    sync_engine = db_engine.sync_engine
+    event.listen(sync_engine, "before_cursor_execute", _before)
+    try:
+        yield holder
+    finally:
+        event.remove(sync_engine, "before_cursor_execute", _before)
+
+
+async def _measure_get(
+    client: AsyncClient, counter: dict[str, int], url: str, headers: dict[str, str] | None = None
+) -> int:
+    counter["n"] = 0
+    r = await client.get(url, headers=headers or {})
+    assert r.status_code == 200, r.text
+    # Guard against a dead counter: 0 == 0 would green-light anything.
+    assert counter["n"] > 0, "sql_counter saw no queries — listener not wired to the app engine"
+    return counter["n"]
 
 
 @pytest.fixture
@@ -382,6 +416,178 @@ async def test_get_order_only_owner(
         headers={"Authorization": f"Bearer {other_token}"},
     )
     assert stranger.status_code == 404
+
+
+async def test_paid_order_surfaces_payment_provider(
+    integration_client: AsyncClient, _seed_pubg: dict[str, str]
+) -> None:
+    """The customer order-detail view must show which provider the order was
+    actually paid with — the newest succeeded payment's (normalized)
+    provider slug, sourced from the eager-loaded ``Order.payments``."""
+    token = await _login_user(integration_client, tg_id=61)
+    create = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "provider-surface-iiiiiiii",
+        },
+        json={
+            "currency": "USD",
+            "items": [
+                {
+                    "sku_id": _seed_pubg["sku_id"],
+                    "qty": 1,
+                    "fulfillment_data": {"player_id": "222222", "server": "as"},
+                }
+            ],
+        },
+    )
+    assert create.status_code == 201, create.text
+    order_id = create.json()["id"]
+
+    # Unpaid yet: no provider to surface.
+    unpaid = await integration_client.get(
+        f"/api/v1/orders/{order_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert unpaid.status_code == 200, unpaid.text
+    assert unpaid.json()["payment_provider"] is None
+
+    intent = await integration_client.post(
+        "/api/v1/payments/intents",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "provider-surface-intent-iiiiiiii",
+        },
+        json={"order_id": order_id, "provider": "mock"},
+    )
+    assert intent.status_code == 201, intent.text
+    external_id = intent.json()["external_id"]
+
+    wh = await integration_client.post(
+        "/api/v1/webhooks/payments/mock",
+        content=json.dumps(
+            {
+                "event_id": "evt_provider_surface_001",
+                "payment_id": external_id,
+                "outcome": "succeeded",
+            }
+        ),
+        headers={"content-type": "application/json"},
+    )
+    assert wh.status_code == 200, wh.text
+
+    order_resp = await integration_client.get(
+        f"/api/v1/orders/{order_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert order_resp.status_code == 200, order_resp.text
+    body = order_resp.json()
+    # The provider the customer actually paid with is surfaced (safe slug).
+    assert body["payment_provider"] in {"click", "payme", "uzum", "octo", "wallet", "mock"}
+    assert body["payment_provider"] == "mock"
+
+
+async def _create_and_pay_order(client: AsyncClient, *, token: str, sku_id: str, key: str) -> str:
+    """Create an order and pay it via the mock provider; returns the order id."""
+    create = await client.post(
+        "/api/v1/orders",
+        headers={"Authorization": f"Bearer {token}", "Idempotency-Key": key},
+        json={
+            "currency": "USD",
+            "items": [{"sku_id": sku_id, "qty": 1, "fulfillment_data": {}}],
+        },
+    )
+    assert create.status_code == 201, create.text
+    order_id = create.json()["id"]
+
+    intent = await client.post(
+        "/api/v1/payments/intents",
+        headers={"Authorization": f"Bearer {token}", "Idempotency-Key": f"{key}-intent"},
+        json={"order_id": order_id, "provider": "mock"},
+    )
+    assert intent.status_code == 201, intent.text
+    external_id = intent.json()["external_id"]
+
+    wh = await client.post(
+        "/api/v1/webhooks/payments/mock",
+        content=json.dumps(
+            {"event_id": f"evt_{key}", "payment_id": external_id, "outcome": "succeeded"}
+        ),
+        headers={"content-type": "application/json"},
+    )
+    assert wh.status_code == 200, wh.text
+    return order_id
+
+
+async def test_orders_list_payment_provider_is_o1(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    sql_counter: dict[str, int],
+) -> None:
+    """Surfacing ``payment_provider`` on the orders list must not add a
+    per-row query — ``Order.payments`` is ``lazy="raise"`` precisely so a
+    missed ``selectinload`` fails loudly here instead of fanning out N+1 in
+    production. The product SKU carries no fulfilment_data requirements, so
+    the products used here need no ``required_fields``; a fresh product is
+    used to keep the fixture minimal (it doesn't need the full brand/category
+    seed the module-level ``_seed_pubg`` fixture builds for other tests)."""
+    category = Category(id=new_id(), slug="qc-provider", sort_order=1, active=True)
+    brand = Brand(
+        id=new_id(), slug="qc-provider-brand", category_id=category.id, sort_order=1, active=True
+    )
+    product = Product(
+        id=new_id(),
+        slug="qc-provider-product",
+        brand_id=brand.id,
+        kind="top_up",
+        sort_order=1,
+        active=True,
+        required_fields=[],
+    )
+    sku = Sku(
+        id=new_id(),
+        product_id=product.id,
+        sku_code="qc-provider-sku",
+        denomination="1",
+        region="GLOBAL",
+        price_usd=Decimal("1.50"),
+        sort_order=1,
+        active=True,
+    )
+    db_session.add_all([category, brand, product, sku])
+    await db_session.commit()
+
+    token = await _login_user(integration_client, tg_id=71)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    order_id = await _create_and_pay_order(
+        integration_client, token=token, sku_id=sku.id, key="qc-provider-order-01-pad"
+    )
+    await integration_client.get("/api/v1/orders", headers=headers)  # warm-up, untracked
+    with_one = await _measure_get(integration_client, sql_counter, "/api/v1/orders", headers)
+
+    order_ids = [order_id]
+    for n in range(2, 6):
+        order_ids.append(
+            await _create_and_pay_order(
+                integration_client,
+                token=token,
+                sku_id=sku.id,
+                key=f"qc-provider-order-{n:02d}-pad",
+            )
+        )
+
+    with_five = await _measure_get(integration_client, sql_counter, "/api/v1/orders", headers)
+    assert with_five == with_one, (
+        f"orders list with payment_provider grew from {with_one} to {with_five} queries "
+        "— Order.payments is not being eager-loaded"
+    )
+
+    listed = (await integration_client.get("/api/v1/orders", headers=headers)).json()["items"]
+    listed_by_id = {o["id"]: o for o in listed}
+    for oid in order_ids:
+        assert listed_by_id[oid]["payment_provider"] == "mock"
 
 
 async def test_list_orders_for_user(

@@ -4556,6 +4556,17 @@
             ],
             "title": "Paid At"
           },
+          "payment_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Provider"
+          },
           "status": {
             "enum": [
               "pending_payment",
@@ -5027,6 +5038,17 @@
               }
             ],
             "title": "Paid At"
+          },
+          "payment_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Provider"
           },
           "status": {
             "enum": [

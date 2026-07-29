@@ -66,7 +66,23 @@ def _order_load_options() -> tuple[Any, ...]:
                 selectinload(Product.brand).selectinload(Brand.translations),
             ),
         ),
+        selectinload(Order.payments),
     )
+
+
+def succeeded_provider_for(order: Order) -> str | None:
+    """The provider of the order's newest succeeded payment, normalized.
+
+    ``click_miniapp`` collapses to ``click`` (same brand). Returns ``None``
+    when nothing has succeeded yet (e.g. pending_payment). Reads the
+    eager-loaded ``order.payments`` collection — never triggers a query.
+    """
+    succeeded = [p for p in order.payments if p.status == "succeeded"]
+    if not succeeded:
+        return None
+    latest = max(succeeded, key=lambda p: p.succeeded_at or p.created_at)
+    provider = latest.provider
+    return "click" if provider == "click_miniapp" else provider
 
 
 def _tr_name(translations: list[Any], locale: str = "ru") -> str:
@@ -790,4 +806,5 @@ __all__ = [
     "get_order_for_actor",
     "list_orders_admin",
     "list_orders_for_actor",
+    "succeeded_provider_for",
 ]
