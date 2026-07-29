@@ -27,6 +27,7 @@ import {
   localeUrl,
   ogLocale,
   pathFor,
+  ROBOTS,
 } from "@/lib/seo";
 
 const CURRENCY = "UZS";
@@ -58,10 +59,10 @@ export async function generateMetadata({
     description,
     alternates: alternates(locale, path),
     other: GEO_META,
-    robots: { index: true, follow: true },
+    robots: ROBOTS,
     openGraph: {
       type: "website",
-      siteName: "yupay",
+      siteName: "YuPay",
       title,
       description,
       url: localeUrl(locale, path),

@@ -16,7 +16,7 @@ import { OrderDeliveredModal } from "@/components/order/OrderDeliveredModal";
 import { SupportFab } from "@/components/SupportFab";
 import { YandexMetrika } from "@/components/YandexMetrika";
 import { routing } from "@/i18n/routing";
-import { alternates, localeUrl, ogLocale, SITE } from "@/lib/seo";
+import { alternates, localeUrl, ogLocale, ROBOTS, SITE } from "@/lib/seo";
 
 import "../globals.css";
 
@@ -66,13 +66,13 @@ export async function generateMetadata({
     metadataBase: new URL(SITE),
     title: { template: "%s — yupay", default: t("homeTitle") },
     description: t("homeDescription"),
-    robots: { index: true, follow: true },
+    robots: ROBOTS,
     // Absolute canonical + hreflang (incl. x-default), ru without a prefix —
     // same helper the store pages use.
     alternates: alternates(locale),
     openGraph: {
       type: "website",
-      siteName: "yupay",
+      siteName: "YuPay",
       title: t("homeTitle"),
       description: t("homeDescription"),
       url: localeUrl(locale),
