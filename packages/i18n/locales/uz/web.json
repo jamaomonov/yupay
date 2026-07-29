@@ -449,6 +449,30 @@
       "expired": "Muddati oʻtdi",
       "refunded": "Qaytarildi",
       "partially_refunded": "Qisman qaytarildi"
+    },
+    "body": {
+      "pending_payment": "Toʻlovingizni kutmoqdamiz.",
+      "paid": "Toʻlov qabul qilindi — buyurtmangizni tayyorlamoqdamiz.",
+      "fulfilling": "Toʻlov qabul qilindi. Buyurtmangizni yetkazmoqdamiz — odatda avtomatik va tez. Agar biror narsa notoʻgʻri ketsa, qoʻllab-quvvatlash xizmati tayyor.",
+      "fulfilled": "Buyurtmangiz tayyor.",
+      "delivered": "Yetkazildi. Mahsulotlaringiz quyida.",
+      "failed": "Nimadir notoʻgʻri ketdi. Jamoamiz masalani hal qilmoqda — yordam kerak boʻlsa, qoʻllab-quvvatlashga murojaat qiling.",
+      "cancelled": "Bu buyurtma bekor qilindi.",
+      "expired": "Bu buyurtma toʻlovdan oldin muddati oʻtdi.",
+      "refunded": "Bu buyurtma boʻyicha mablagʻ qaytarildi.",
+      "partially_refunded": "Bu buyurtma boʻyicha mablagʻ qisman qaytarildi."
+    },
+    "receipt": {
+      "code": "Kod",
+      "codes": "Kodlar",
+      "key": "Kalit",
+      "pin": "PIN-kod",
+      "serial": "Seriya raqami",
+      "steam_login": "Steam login",
+      "login": "Login",
+      "message": "Xabar",
+      "note": "Izoh",
+      "fulfillment_data": "Sizning maʼlumotlaringiz"
     }
   },
   "brandReviews": {

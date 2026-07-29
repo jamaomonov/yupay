@@ -449,6 +449,30 @@
       "expired": "Expired",
       "refunded": "Refunded",
       "partially_refunded": "Partially refunded"
+    },
+    "body": {
+      "pending_payment": "Waiting for your payment.",
+      "paid": "Payment received — preparing your order.",
+      "fulfilling": "Payment accepted. We're delivering your order — usually automatic and quick. Support is on standby if anything's off.",
+      "fulfilled": "Your order is ready.",
+      "delivered": "Delivered. Your items are below.",
+      "failed": "Something went wrong. Our team is on it — contact support if you need help.",
+      "cancelled": "This order was cancelled.",
+      "expired": "This order expired before payment.",
+      "refunded": "This order was refunded.",
+      "partially_refunded": "This order was partially refunded."
+    },
+    "receipt": {
+      "code": "Code",
+      "codes": "Codes",
+      "key": "Key",
+      "pin": "PIN",
+      "serial": "Serial",
+      "steam_login": "Steam login",
+      "login": "Login",
+      "message": "Message",
+      "note": "Note",
+      "fulfillment_data": "Your details"
     }
   },
   "brandReviews": {
