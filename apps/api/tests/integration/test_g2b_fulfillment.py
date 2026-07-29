@@ -292,8 +292,11 @@ async def test_voucher_completed_delivers_codes(
     items = deliveries.json()["items"]
     assert len(items) == 1
     assert items[0]["artifact"]["code"] == "G2B-CODE-1"
-    assert items[0]["artifact"]["source"] == "g2b"
-    assert items[0]["artifact"]["external_order_id"] == "7777"
+    # source/external_order_id are internal audit fields; the customer API
+    # strips them via the artifact whitelist (_CUSTOMER_SAFE_ARTIFACT_KEYS in
+    # fulfillment/routes.py) — only ``code``/``codes`` are customer-safe here.
+    assert "source" not in items[0]["artifact"]
+    assert "external_order_id" not in items[0]["artifact"]
     assert purchase.called
     # Idempotency-Key must be the task.id (UUID) — it's the only thing
     # G2B knows about for replay safety.
@@ -420,7 +423,11 @@ async def test_game_pending_then_webhook_completes(
     items = deliveries.json()["items"]
     assert len(items) == 1
     assert items[0]["artifact_kind"] == "topup_receipt"
-    assert items[0]["artifact"]["external_order_id"] == "9090"
+    # external_order_id is an internal audit field stripped by the artifact
+    # whitelist (_CUSTOMER_SAFE_ARTIFACT_KEYS); the human-readable message
+    # is the only customer-safe field on a game top-up receipt.
+    assert "external_order_id" not in items[0]["artifact"]
+    assert items[0]["artifact"]["message"] == "done"
 
 
 # ---------- webhook security ----------

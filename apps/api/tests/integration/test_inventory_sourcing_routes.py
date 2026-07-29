@@ -446,7 +446,9 @@ async def test_inventory_serves_paid_order(
     assert len(items) == 1
     assert items[0]["artifact_kind"] == "voucher_code"
     assert items[0]["artifact"]["code"] == "STOCK-AAA-001"
-    assert items[0]["artifact"]["source"] == "inventory"
+    # source is an internal audit field stripped by the customer-facing
+    # artifact whitelist (_CUSTOMER_SAFE_ARTIFACT_KEYS in fulfillment/routes.py).
+    assert "source" not in items[0]["artifact"]
 
 
 async def test_auto_falls_back_to_supplier_when_no_stock(

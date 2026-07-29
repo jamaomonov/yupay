@@ -83,20 +83,36 @@ async def _ensure_order_owner(db: AsyncSession, *, actor: Actor, order_id: str) 
 # ---------- customer ----------
 
 
-# Artifact keys that are stored on ``deliveries`` for audit / chargeback
-# evidence but must not leak to the customer over the public API. The DB
-# row keeps them; admins still see them through ``/admin/fulfillment/tasks``
-# (task.external_order_id + task.extra_metadata).
-_CUSTOMER_HIDDEN_ARTIFACT_KEYS: frozenset[str] = frozenset({"external_id"})
+# Artifact keys that ARE safe to show the customer. This is an allow-list
+# (not a blocklist) on purpose: a delivery ``artifact`` also carries
+# internal audit/chargeback fields — ``source`` (the upstream supplier),
+# ``external_order_id``, ``inventory_code_id``, ``sku_id``,
+# ``catalogue_name``, raw ``amount_units`` — that MUST NOT leave the API.
+# The DB row keeps everything; admins see it via ``/admin/fulfillment``.
+# A new supplier adding a field defaults to hidden until listed here.
+_CUSTOMER_SAFE_ARTIFACT_KEYS: frozenset[str] = frozenset(
+    {
+        "code",  # single voucher/gift code
+        "codes",  # multi-code delivery
+        "key",  # license/activation key
+        "pin",  # scratch PIN
+        "serial",  # serial number
+        "steam_login",  # the account the customer themselves entered
+        "login",  # generic account login the customer entered
+        "message",  # human-readable delivery note
+        "note",  # human-readable delivery note (alt key)
+        "fulfillment_data",  # the customer's own checkout input, echoed back
+    }
+)
 
 
 def _to_customer_delivery_out(row: object) -> DeliveryOut:
-    """Project a ``Delivery`` ORM row into the customer-facing DTO with
-    internal-only keys stripped from ``artifact``."""
+    """Project a ``Delivery`` ORM row into the customer-facing DTO, keeping
+    ONLY whitelisted ``artifact`` keys (everything else is internal)."""
     artifact = {
         k: v
         for k, v in (row.artifact or {}).items()  # type: ignore[attr-defined]
-        if k not in _CUSTOMER_HIDDEN_ARTIFACT_KEYS
+        if k in _CUSTOMER_SAFE_ARTIFACT_KEYS
     }
     return DeliveryOut(
         id=row.id,  # type: ignore[attr-defined]

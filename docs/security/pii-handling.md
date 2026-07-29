@@ -22,6 +22,16 @@ access logs or browser history from those calls. It still travels over the wire 
 every such request; this is a transport-location fix, not encryption-in-transit
 (TLS already covers that) or an elimination of the value being sent at all.
 
+**Delivery artifact whitelist.** `GET /orders/{id}/deliveries` projects the
+`deliveries.artifact` JSONB through `_CUSTOMER_SAFE_ARTIFACT_KEYS` (an allow-list
+in `apps/api/src/yupay/modules/fulfillment/routes.py`) before it reaches any
+frontend. Only customer-safe keys (`code`/`codes`/`key`/`pin`/`serial`/
+`steam_login`/`login`/`message`/`note`/`fulfillment_data`) survive; the upstream
+supplier (`source`) and internal/external ids (`external_id`,
+`external_order_id`, `inventory_code_id`, `sku_id`, `catalogue_name`, raw
+`amount_units`) are never exposed to the customer — admins see the full row via
+`/admin/fulfillment`.
+
 ## What we never log
 
 - Email values

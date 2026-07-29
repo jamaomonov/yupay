@@ -189,11 +189,14 @@ async def test_paid_order_walks_to_delivered(
     # artifact (not a voucher code — that branch is exercised when the
     # product is ``kind="voucher"``). See modules/fulfillment/suppliers/mock.py.
     assert items[0]["artifact_kind"] == "topup_receipt"
-    # ``external_id`` is stored on the row for admin audit, but the
-    # customer-facing route strips it (see _CUSTOMER_HIDDEN_ARTIFACT_KEYS
-    # in routes.py). ``sku_id`` stays so the UI can still cross-reference.
+    # The delivery row stores internal audit fields (external_id, sku_id,
+    # source, qty) but the customer API exposes ONLY the whitelist — here the
+    # customer's own checkout input echoed back as ``fulfillment_data``.
     assert "external_id" not in items[0]["artifact"]
-    assert items[0]["artifact"]["sku_id"] == _seed_sku
+    assert "sku_id" not in items[0]["artifact"]
+    assert "source" not in items[0]["artifact"]
+    assert "qty" not in items[0]["artifact"]
+    assert "fulfillment_data" in items[0]["artifact"]
 
 
 async def test_deliveries_owner_only(integration_client: AsyncClient, _seed_sku: str) -> None:

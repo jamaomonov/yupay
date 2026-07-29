@@ -66,6 +66,15 @@ class Fulfiller(Protocol):
 | `fulfillment_attempts` | append-only аудит каждого тика (`kind` ∈ fulfill/status_check/cancel, `status` ∈ ok/error, `payload jsonb`, `error text`).                                                                                                                                                                |
 | `deliveries`           | финальный артефакт. UNIQUE `(order_item_id)`. `channel` (today всегда `in_app`), `artifact_kind`, `artifact jsonb`.                                                                                                                                                                       |
 
+> **Whitelist на клиентском API.** `GET /orders/{id}/deliveries` отдаёт `artifact`
+> строго через allow-list `_CUSTOMER_SAFE_ARTIFACT_KEYS` (`routes.py`): наружу
+> идут только `code`/`codes`/`key`/`pin`/`serial`/`steam_login`/`login`/
+> `message`/`note`/`fulfillment_data`. `source` (апстрим-поставщик) и любые
+> внешние/внутренние id (`external_id`, `external_order_id`,
+> `inventory_code_id`, `sku_id`, `catalogue_name`, raw `amount_units`) —
+> admin-only, видны через `/admin/fulfillment`. Новое поле от поставщика по
+> умолчанию скрыто, пока не добавлено в whitelist явно.
+
 Миграция: `0008_fulfillment_init`.
 
 ## FSM (после оплаты)
