@@ -60,9 +60,8 @@ export function CategoriesListPage() {
       header: "Иконка",
       render: (c) =>
         c.icon ? (
-          <span className="inline-flex items-center gap-1.5 text-[var(--text-secondary)]">
+          <span className="inline-flex items-center text-[var(--text-secondary)]" title={c.icon}>
             <DynamicIcon name={c.icon} className="size-4" />
-            <code className="text-xs">{c.icon}</code>
           </span>
         ) : (
           "—"

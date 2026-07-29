@@ -93,7 +93,7 @@ export function FxPage() {
     <div>
       <PageHeader
         title="Курсы валют"
-        description={`Через провайдер-цепочку из ADR-0008 (exchangerate-api → exchangerate.host → openexchangerates → coingecko). База — ${base}.`}
+        description={`Курсы подтягиваются из нескольких внешних источников с автопереключением при сбое одного из них. База — ${base}.`}
         actions={
           <Button
             onClick={() => {
