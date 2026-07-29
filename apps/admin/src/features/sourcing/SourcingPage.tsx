@@ -156,11 +156,9 @@ export function SourcingPage() {
       key: "sku",
       header: "SKU",
       render: (r) => (
-        <code className="font-mono text-xs text-[var(--text-secondary)]">
-          {r.sku_id.slice(0, 8)}…
-        </code>
+        <code className="font-mono text-xs text-[var(--text-secondary)]">{r.sku_code}</code>
       ),
-      className: "w-32",
+      className: "w-40",
     },
     {
       key: "mode",

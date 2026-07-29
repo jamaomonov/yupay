@@ -52,10 +52,10 @@ export function MappingsPage() {
           to={`/skus/${r.sku_id}`}
           className="font-mono text-xs underline-offset-2 hover:underline"
         >
-          {r.sku_id.slice(0, 8)}…
+          {r.sku_code}
         </Link>
       ),
-      className: "w-32",
+      className: "w-40",
     },
     {
       key: "supplier",
