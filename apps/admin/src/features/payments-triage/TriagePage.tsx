@@ -26,6 +26,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Tabs, type TabDescriptor } from "@/components/Tabs";
 import { SaveSegmentButton } from "@/features/segments/SaveSegmentButton";
 import { type ApiError, apiGet } from "@/lib/api";
+import { formatMoney } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
 import { numberCodec, useSearchParamsState } from "@/lib/useSearchParamsState";
 
@@ -162,14 +163,7 @@ function StuckSection({
     {
       key: "amount",
       header: "Сумма",
-      render: (p) => (
-        <span className="font-mono">
-          {Number.parseFloat(p.amount).toLocaleString("ru", {
-            maximumFractionDigits: 2,
-          })}{" "}
-          {p.currency}
-        </span>
-      ),
+      render: (p) => <span className="font-mono">{formatMoney(p.amount, p.currency)}</span>,
       className: "w-36 text-right",
     },
     {
@@ -221,7 +215,7 @@ function StuckSection({
         <p className="text-xs text-[var(--text-secondary)]">
           Сумма в очереди:{" "}
           {Object.entries(totalsByCurrency)
-            .map(([cur, v]) => `${v.toFixed(2)} ${cur}`)
+            .map(([cur, v]) => formatMoney(v, cur))
             .join(" · ")}
         </p>
       )}

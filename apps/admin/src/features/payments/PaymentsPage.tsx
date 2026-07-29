@@ -2,7 +2,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input } from "@yupay/ui";
 import { useState } from "react";
 
-import type { PaymentAdminListOut, PaymentAdminOut, PaymentStatus } from "./types";
+import {
+  type PaymentAdminListOut,
+  type PaymentAdminOut,
+  type PaymentStatus,
+  STATUS_LABEL,
+  STATUS_TONE,
+} from "./types";
 
 import { Badge } from "@/components/Badge";
 import { DataTable, type Column } from "@/components/DataTable";
@@ -11,6 +17,7 @@ import { Pagination } from "@/components/Pagination";
 import { useToast } from "@/components/Toast";
 import { SaveSegmentButton } from "@/features/segments/SaveSegmentButton";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
+import { formatMoney } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
 import { useSearchParamsState } from "@/lib/useSearchParamsState";
 
@@ -123,11 +130,7 @@ export function PaymentsPage() {
     {
       key: "amount",
       header: "Сумма",
-      render: (p) => (
-        <span className="font-medium">
-          {Number.parseFloat(p.amount).toFixed(2)} {p.currency}
-        </span>
-      ),
+      render: (p) => <span className="font-medium">{formatMoney(p.amount, p.currency)}</span>,
       className: "w-32 text-right",
       sortAccessor: (p) => Number.parseFloat(p.amount) || 0,
     },
@@ -190,14 +193,14 @@ export function PaymentsPage() {
               disabled={refundMutation.isPending}
               onClick={() => {
                 const reason = window.prompt(
-                  `Возврат ${Number.parseFloat(p.amount).toFixed(2)} ${p.currency}.\nПричина (видна в audit log):`,
+                  `Возврат ${formatMoney(p.amount, p.currency)}.\nПричина (видна в audit log):`,
                   "",
                 );
                 if (reason === null) return;
                 refundMutation.mutate({ id: p.id, reason: reason.trim() });
               }}
             >
-              Refund
+              Возврат
             </Button>
           )}
         </div>
@@ -282,18 +285,9 @@ export function PaymentsPage() {
 }
 
 function StatusBadge({ status }: { status: PaymentStatus }) {
-  const map: Record<PaymentStatus, string> = {
-    pending: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
-    requires_action: "bg-[var(--warning-soft)] text-[var(--warning-fg)]",
-    succeeded: "bg-[var(--success-soft)] text-[var(--success-fg)]",
-    failed: "bg-[var(--danger-soft)] text-[var(--danger-fg)]",
-    cancelled: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
-    refunded: "bg-[var(--info-soft)] text-[var(--info-fg)]",
-    partially_refunded: "bg-[var(--info-soft)] text-[var(--info-fg)]",
-  };
   return (
-    <Badge tone={map[status]} dot>
-      {status}
+    <Badge tone={STATUS_TONE[status]} dot>
+      {STATUS_LABEL[status]}
     </Badge>
   );
 }

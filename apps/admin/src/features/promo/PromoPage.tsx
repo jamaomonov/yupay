@@ -7,6 +7,7 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/components/Toast";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
+import { formatMoney } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
 
 /** Mirrors the backend `PromoAdminOut`. */
@@ -35,12 +36,6 @@ function fmtDate(iso: string): string {
   return new Intl.DateTimeFormat("ru", { dateStyle: "medium", timeStyle: "short" }).format(
     new Date(iso),
   );
-}
-
-/** Trim the ledger's fixed-scale decimal to a readable amount (5000.000000 → "5 000"). */
-function fmtAmount(raw: string): string {
-  const n = Number(raw);
-  return Number.isFinite(n) ? n.toLocaleString("ru") : raw;
 }
 
 /** UTC ISO from a `datetime-local` value, or null when empty. */
@@ -125,11 +120,7 @@ export function PromoPage() {
     {
       key: "amount",
       header: "Номинал",
-      render: (p) => (
-        <span className="font-mono">
-          {fmtAmount(p.amount)} {p.currency}
-        </span>
-      ),
+      render: (p) => <span className="font-mono">{formatMoney(p.amount, p.currency)}</span>,
       className: "w-36 text-right",
     },
     {

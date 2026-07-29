@@ -18,6 +18,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Pagination } from "@/components/Pagination";
 import { SaveSegmentButton } from "@/features/segments/SaveSegmentButton";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
+import { formatMoney } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
 import { numberCodec, useSearchParamsState } from "@/lib/useSearchParamsState";
 
@@ -158,9 +159,7 @@ export function OrdersListPage() {
       key: "total",
       header: "Сумма",
       render: (o) => (
-        <span className="font-medium">
-          {Number.parseFloat(o.total_charged).toFixed(2)} {o.currency}
-        </span>
+        <span className="font-medium">{formatMoney(o.total_charged, o.currency)}</span>
       ),
       className: "w-32 text-right",
       sortAccessor: (o) => Number.parseFloat(o.total_charged) || 0,
@@ -270,7 +269,7 @@ export function OrdersListPage() {
         <p className="mb-3 text-xs text-[var(--text-secondary)]">
           Сумма по списку:{" "}
           {Object.entries(totalCharged)
-            .map(([cur, v]) => `${v.toFixed(2)} ${cur}`)
+            .map(([cur, v]) => formatMoney(v, cur))
             .join(" · ")}
         </p>
       )}

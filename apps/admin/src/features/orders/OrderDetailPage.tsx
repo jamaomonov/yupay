@@ -27,7 +27,12 @@ import type { PaymentAdminListOut, PaymentAdminOut } from "@/features/payments/t
 import { Badge } from "@/components/Badge";
 import { PageHeader } from "@/components/PageHeader";
 import { Spinner } from "@/components/States";
+import {
+  STATUS_LABEL as PAYMENT_STATUS_LABEL,
+  STATUS_TONE as PAYMENT_STATUS_TONE,
+} from "@/features/payments/types";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
+import { formatMoney, formatMoneyValue } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
 
 export function OrderDetailPage() {
@@ -158,7 +163,7 @@ export function OrderDetailPage() {
             refunding={refund.isPending}
             onRefund={(p) => {
               const reason = window.prompt(
-                `Возврат ${Number.parseFloat(p.amount).toFixed(2)} ${p.currency} (${p.provider}). Причина:`,
+                `Возврат ${formatMoney(p.amount, p.currency)} (${p.provider}). Причина:`,
                 "",
               );
               if (reason === null) return;
@@ -182,10 +187,10 @@ function SummaryCard({ order }: { order: OrderAdminOut }) {
       label: "Сумма",
       value: (
         <span className="font-medium">
-          {Number.parseFloat(order.total_charged).toFixed(2)} {order.currency}
+          {formatMoney(order.total_charged, order.currency)}
           {order.currency !== "USD" && (
             <span className="ml-2 text-xs text-[var(--text-secondary)]">
-              ≈ ${Number.parseFloat(order.total_usd).toFixed(2)}
+              ≈ ${formatMoneyValue(order.total_usd, "USD")}
             </span>
           )}
         </span>
@@ -294,7 +299,7 @@ function ItemsCard({ order }: { order: OrderAdminOut }) {
                 </td>
                 <td className="px-3 py-2.5 text-center font-mono">{it.qty}</td>
                 <td className="px-3 py-2.5 text-right font-mono">
-                  ${Number.parseFloat(it.unit_price_usd).toFixed(2)}
+                  ${formatMoneyValue(it.unit_price_usd, "USD")}
                 </td>
                 <td className="px-3 py-2.5">
                   <code className="text-xs">{it.fulfillment_state}</code>
@@ -397,23 +402,12 @@ function PaymentsCard({
               <li key={p.id} className="p-3 text-sm">
                 <div className="flex items-baseline justify-between gap-3">
                   <code className="text-xs">{p.id.slice(0, 8)}…</code>
-                  <Badge
-                    tone={
-                      p.status === "succeeded"
-                        ? "bg-[var(--success-soft)] text-[var(--success-fg)]"
-                        : p.status === "failed"
-                          ? "bg-[var(--danger-soft)] text-[var(--danger-fg)]"
-                          : p.status === "refunded" || p.status === "partially_refunded"
-                            ? "bg-[var(--info-soft)] text-[var(--info-fg)]"
-                            : "bg-[var(--warning-soft)] text-[var(--warning-fg)]"
-                    }
-                    dot
-                  >
-                    {p.status}
+                  <Badge tone={PAYMENT_STATUS_TONE[p.status]} dot>
+                    {PAYMENT_STATUS_LABEL[p.status]}
                   </Badge>
                 </div>
                 <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                  {p.provider} · {Number.parseFloat(p.amount).toFixed(2)} {p.currency}
+                  {p.provider} · {formatMoney(p.amount, p.currency)}
                 </p>
                 {p.intent_url && p.provider === "mock" && (
                   <p className="mt-1 break-all text-[10px] text-[var(--text-secondary)]">

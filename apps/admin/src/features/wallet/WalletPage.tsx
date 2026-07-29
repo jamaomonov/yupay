@@ -16,6 +16,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Tabs, type TabDescriptor } from "@/components/Tabs";
 import { useToast } from "@/components/Toast";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
+import { formatMoney, formatMoneyValue } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
 
 const ADJUST_KINDS = [
@@ -178,7 +179,7 @@ function LookupTab() {
     {
       key: "balance",
       header: "Баланс",
-      render: (a) => <span className="font-medium">{formatMoney(a.balance)}</span>,
+      render: (a) => <span className="font-medium">{formatMoneyValue(a.balance, a.currency)}</span>,
       className: "w-32 text-right",
     },
     {
@@ -448,9 +449,7 @@ function AdjustmentsFeed({ items }: { items: Transaction[] }) {
                   <span>
                     {p.direction === "D" ? "↓ D" : "↑ C"} · {p.account_id.slice(0, 8)}…
                   </span>
-                  <span>
-                    {formatMoney(p.amount)} {p.currency}
-                  </span>
+                  <span>{formatMoney(p.amount, p.currency)}</span>
                 </li>
               ))}
             </ul>
@@ -503,9 +502,7 @@ function TransactionsList({ items }: { items: Transaction[] }) {
                 <span>
                   {p.direction === "D" ? "↓ D" : "↑ C"} · {p.account_id.slice(0, 8)}…
                 </span>
-                <span>
-                  {formatMoney(p.amount)} {p.currency}
-                </span>
+                <span>{formatMoney(p.amount, p.currency)}</span>
               </li>
             ))}
           </ul>
@@ -518,12 +515,6 @@ function TransactionsList({ items }: { items: Transaction[] }) {
       ))}
     </div>
   );
-}
-
-function formatMoney(value: string): string {
-  const n = Number.parseFloat(value);
-  if (Number.isNaN(n)) return value;
-  return n.toFixed(2);
 }
 
 function formatApiError(err: ApiError): string {
