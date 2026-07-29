@@ -36,6 +36,7 @@ function makeOrder(brandSlug: string): OrderOut {
     currency: "USD",
     total_usd: "10.00",
     total_charged: "10.00",
+    payment_provider: null,
     fx_snapshot_id: null,
     expires_at: "2026-07-28T00:00:00Z",
     created_at: "2026-07-28T00:00:00Z",
