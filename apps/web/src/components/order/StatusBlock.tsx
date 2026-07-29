@@ -27,9 +27,7 @@ export function StatusBlock({ status }: { status: string }) {
   const known = KNOWN.has(status);
   return (
     <div className="space-y-1">
-      <h2 className="font-display text-xl font-bold">
-        {known ? t(`status.${status}`) : status}
-      </h2>
+      <h2 className="font-display text-xl font-bold">{known ? t(`status.${status}`) : status}</h2>
       {known ? <p className="text-tx-mute text-sm">{t(`body.${status}`)}</p> : null}
     </div>
   );
