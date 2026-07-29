@@ -7929,6 +7929,10 @@
             "title": "Mode",
             "type": "string"
           },
+          "sku_code": {
+            "title": "Sku Code",
+            "type": "string"
+          },
           "sku_id": {
             "title": "Sku Id",
             "type": "string"
@@ -7963,6 +7967,7 @@
         },
         "required": [
           "sku_id",
+          "sku_code",
           "mode",
           "supplier_slug",
           "updated_by",
@@ -8186,6 +8191,10 @@
             "title": "Quantity",
             "type": "integer"
           },
+          "sku_code": {
+            "title": "Sku Code",
+            "type": "string"
+          },
           "sku_id": {
             "title": "Sku Id",
             "type": "string"
@@ -8213,6 +8222,7 @@
         },
         "required": [
           "sku_id",
+          "sku_code",
           "supplier_slug",
           "kind",
           "external_product_id",

@@ -28,6 +28,7 @@ from yupay.core.logging import get_logger
 from yupay.modules.admin.api import require_admin
 from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.integrations import service as svc
+from yupay.modules.integrations.models import SkuSupplierMapping
 from yupay.modules.integrations.player_check import check_player_for_product
 from yupay.modules.integrations.schemas import (
     CatalogEntryOut,
@@ -90,6 +91,13 @@ async def check_player(
 _KNOWN_SUPPLIERS = {"g2b"}
 
 
+def _mapping_out(row: SkuSupplierMapping, sku_code: str) -> SupplierMappingOut:
+    """Build ``SupplierMappingOut`` from the ORM row plus a separately
+    resolved ``sku_code`` (no ORM relationship to ``Sku`` to pull it from —
+    see ``svc.sku_codes_for``)."""
+    return SupplierMappingOut.model_validate({**row.__dict__, "sku_code": sku_code})
+
+
 @admin_router.get(
     "/mappings",
     response_model=SupplierMappingListOut,
@@ -103,7 +111,10 @@ async def list_mappings(
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
 ) -> SupplierMappingListOut:
     rows = await svc.list_mappings(db, supplier_slug=supplier_slug, sku_id=sku_id, limit=limit)
-    return SupplierMappingListOut(items=[SupplierMappingOut.model_validate(r) for r in rows])
+    sku_codes = await svc.sku_codes_for(db, (r.sku_id for r in rows))
+    return SupplierMappingListOut(
+        items=[_mapping_out(r, sku_codes.get(r.sku_id, r.sku_id)) for r in rows]
+    )
 
 
 @admin_router.put(
@@ -147,8 +158,9 @@ async def upsert_mapping(
         ),
     )
     cost_sync = await _refresh_sku_cost(db, row)
+    sku_codes = await svc.sku_codes_for(db, [sku_id])
     out = SupplierMappingUpsertOut(
-        mapping=SupplierMappingOut.model_validate(row),
+        mapping=_mapping_out(row, sku_codes.get(sku_id, sku_id)),
         cost_sync=cost_sync,
     )
     if key is not None:

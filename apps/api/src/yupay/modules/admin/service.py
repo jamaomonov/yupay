@@ -146,9 +146,31 @@ def _user_hit(u: User) -> SearchHit:
     )
 
 
+# Canonical display decimals per currency — UZS/RUB are effectively zero-decimal
+# in customer-facing UI, USD/USDT keep cents. Amounts are stored as
+# ``NUMERIC(20, 6)`` internally (see ADR-0017's search note), so a raw
+# interpolation like ``f"{o.total_charged}"`` leaks 6-digit fractions
+# (``"12919.969152"``) into the search sublabel. Keep in sync with
+# ``CURRENCY_DECIMALS`` in ``apps/admin/src/lib/money.ts``.
+_CURRENCY_DISPLAY_DECIMALS: dict[str, int] = {"UZS": 0, "RUB": 0, "USD": 2, "USDT": 2}
+
+
+def _fmt_amount(amount: Decimal, currency: str) -> str:
+    """Round a ledger-precision ``Decimal`` to the currency's display scale.
+
+    No thousands-grouping here — this feeds a compact single-line search
+    sublabel, not the admin's primary money columns (those group via the
+    shared TS formatter). Rounding alone is what kills the raw 6-digit
+    fractions (``"12919.969152"`` → ``"12920"``).
+    """
+    decimals = _CURRENCY_DISPLAY_DECIMALS.get(currency.upper(), 2)
+    quant = Decimal(1).scaleb(-decimals) if decimals else Decimal(1)
+    return str(amount.quantize(quant))
+
+
 def _order_hit(o: Order) -> SearchHit:
     short = o.id.split("-")[0]
-    sub = f"{o.status} · {o.total_charged} {o.currency}"
+    sub = f"{o.status} · {_fmt_amount(o.total_charged, o.currency)} {o.currency}"
     return SearchHit(
         type="order",
         id=o.id,
@@ -160,7 +182,7 @@ def _order_hit(o: Order) -> SearchHit:
 
 def _payment_hit(p: Payment) -> SearchHit:
     short = p.id.split("-")[0]
-    sub_parts = [p.provider, p.status, f"{p.amount} {p.currency}"]
+    sub_parts = [p.provider, p.status, f"{_fmt_amount(p.amount, p.currency)} {p.currency}"]
     if p.external_id:
         sub_parts.append(p.external_id)
     return SearchHit(
@@ -177,7 +199,7 @@ def _sku_hit(s: Sku) -> SearchHit:
         type="sku",
         id=s.id,
         label=s.sku_code,
-        sublabel=f"price ${s.price_usd}",
+        sublabel=f"price ${_fmt_amount(s.price_usd, 'USD')}",
         path=f"/skus/{s.id}",
     )
 

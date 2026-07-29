@@ -17,6 +17,7 @@ from yupay.core.idempotency import (
 from yupay.modules.admin.api import require_admin
 from yupay.modules.inventory import service as inv_svc
 from yupay.modules.sourcing import service as svc
+from yupay.modules.sourcing.models import SkuSourcingRule
 from yupay.modules.sourcing.schemas import (
     SourcingDecisionOut,
     SourcingRuleIn,
@@ -32,6 +33,13 @@ admin_router = APIRouter(
 )
 
 
+def _rule_out(row: SkuSourcingRule, sku_code: str) -> SourcingRuleOut:
+    """Build ``SourcingRuleOut`` from the ORM row plus a separately resolved
+    ``sku_code`` (no ORM relationship to ``Sku`` to pull it from — see
+    ``svc.sku_codes_for``)."""
+    return SourcingRuleOut.model_validate({**row.__dict__, "sku_code": sku_code})
+
+
 @admin_router.get("/rules", response_model=SourcingRuleListOut, summary="List all explicit rules")
 async def list_rules(
     db: Annotated[AsyncSession, Depends(db_session)],
@@ -39,7 +47,10 @@ async def list_rules(
     limit: int = 200,
 ) -> SourcingRuleListOut:
     rules = await svc.list_rules(db, limit=limit)
-    return SourcingRuleListOut(items=[SourcingRuleOut.model_validate(r) for r in rules])
+    sku_codes = await svc.sku_codes_for(db, (r.sku_id for r in rules))
+    return SourcingRuleListOut(
+        items=[_rule_out(r, sku_codes.get(r.sku_id, r.sku_id)) for r in rules]
+    )
 
 
 @admin_router.get(
@@ -88,7 +99,8 @@ async def upsert_rule(
         supplier_slug=body.supplier_slug,
         admin_id=admin.id,
     )
-    out = SourcingRuleOut.model_validate(rule)
+    sku_codes = await svc.sku_codes_for(db, [sku_id])
+    out = _rule_out(rule, sku_codes.get(sku_id, sku_id))
     if key is not None:
         await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
     return out

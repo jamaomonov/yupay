@@ -21,6 +21,10 @@ class SourcingRuleOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     sku_id: str
+    # ``sku_sourcing_rules`` has no ORM relationship to ``Sku`` — the route
+    # resolves this separately (see ``service.sku_codes_for``) so the admin
+    # UI can show the human SKU code instead of a raw UUID.
+    sku_code: str
     mode: Mode
     supplier_slug: str | None
     updated_by: str | None

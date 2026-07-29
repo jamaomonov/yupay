@@ -22,6 +22,7 @@ kind-aware defaults are a sane starting point, not a constraint.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -219,6 +220,22 @@ async def delete_rule(db: AsyncSession, sku_id: str) -> None:
     await db.flush()
 
 
+async def sku_codes_for(db: AsyncSession, sku_ids: Iterable[str]) -> dict[str, str]:
+    """Batch-resolve ``sku_id -> sku_code`` for the given ids — one query, no N+1.
+
+    ``SkuSourcingRule`` carries only ``sku_id`` (no ORM relationship to
+    ``Sku``); admin list views need the human-readable code instead of a raw
+    UUID, so routes call this once after fetching rule rows.
+    """
+    from yupay.modules.catalog.models import Sku
+
+    ids = list(dict.fromkeys(sku_ids))
+    if not ids:
+        return {}
+    rows = (await db.execute(select(Sku.id, Sku.sku_code).where(Sku.id.in_(ids)))).all()
+    return {row.id: row.sku_code for row in rows}
+
+
 __all__ = [
     "DEFAULT_FALLBACK_SUPPLIER",
     "Decision",
@@ -228,4 +245,5 @@ __all__ = [
     "list_rules",
     "resolve_for_sku",
     "set_rule",
+    "sku_codes_for",
 ]
