@@ -4539,7 +4539,7 @@
           },
           "items": {
             "items": {
-              "$ref": "#/components/schemas/OrderItemOut"
+              "$ref": "#/components/schemas/OrderItemAdminOut"
             },
             "title": "Items",
             "type": "array"
@@ -4690,6 +4690,68 @@
           "created_at"
         ],
         "title": "OrderEventOut",
+        "type": "object"
+      },
+      "OrderItemAdminOut": {
+        "description": "Admin view of an order line \u2014 adds the internal supplier order id.",
+        "properties": {
+          "display": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderItemDisplay"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fulfillment_data": {
+            "additionalProperties": true,
+            "title": "Fulfillment Data",
+            "type": "object"
+          },
+          "fulfillment_state": {
+            "title": "Fulfillment State",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "qty": {
+            "title": "Qty",
+            "type": "integer"
+          },
+          "sku_id": {
+            "title": "Sku Id",
+            "type": "string"
+          },
+          "supplier_order_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Order Id"
+          },
+          "unit_price_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Unit Price Usd",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "sku_id",
+          "qty",
+          "unit_price_usd",
+          "fulfillment_state",
+          "fulfillment_data"
+        ],
+        "title": "OrderItemAdminOut",
         "type": "object"
       },
       "OrderItemDisplay": {
@@ -4845,17 +4907,6 @@
             "title": "Sku Id",
             "type": "string"
           },
-          "supplier_order_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Supplier Order Id"
-          },
           "unit_price_usd": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Unit Price Usd",
@@ -4868,8 +4919,7 @@
           "qty",
           "unit_price_usd",
           "fulfillment_state",
-          "fulfillment_data",
-          "supplier_order_id"
+          "fulfillment_data"
         ],
         "title": "OrderItemOut",
         "type": "object"

@@ -79,8 +79,13 @@ class OrderItemOut(BaseModel):
     unit_price_usd: Decimal
     fulfillment_state: str
     fulfillment_data: dict[str, Any]
-    supplier_order_id: str | None
     display: OrderItemDisplay | None = None
+
+
+class OrderItemAdminOut(OrderItemOut):
+    """Admin view of an order line — adds the internal supplier order id."""
+
+    supplier_order_id: str | None = None
 
 
 class OrderEventOut(BaseModel):
@@ -123,6 +128,7 @@ class OrderListOut(BaseModel):
 class OrderAdminOut(OrderOut):
     """Same as :class:`OrderOut` but exposes actor identifiers + audit trail."""
 
+    items: list[OrderItemAdminOut]  # type: ignore[assignment]
     user_id: str | None
     # Plain ``str`` (not ``EmailStr``) on purpose: this is a read-only view of an
     # already-stored address, and re-validating it on output makes the whole
@@ -144,6 +150,7 @@ __all__ = [
     "OrderAdminOut",
     "OrderCreate",
     "OrderEventOut",
+    "OrderItemAdminOut",
     "OrderItemDisplay",
     "OrderItemIn",
     "OrderItemOut",

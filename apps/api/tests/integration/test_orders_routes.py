@@ -449,7 +449,10 @@ async def test_admin_can_list_and_cancel(
         "/api/v1/admin/orders", headers={"Authorization": f"Bearer {admin_token}"}
     )
     assert listing.status_code == 200
-    assert any(o["id"] == order_id for o in listing.json()["items"])
+    admin_order = next(o for o in listing.json()["items"] if o["id"] == order_id)
+    # Admins keep the internal upstream supplier order id on each line — only
+    # the customer-facing DTO strips it (see OrderItemOut vs OrderItemAdminOut).
+    assert "supplier_order_id" in admin_order["items"][0]
 
     cancel = await integration_client.post(
         f"/api/v1/admin/orders/{order_id}/cancel",

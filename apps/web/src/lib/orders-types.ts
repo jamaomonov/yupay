@@ -17,7 +17,6 @@ export interface OrderItemOut {
   unit_price_usd: string;
   fulfillment_state: string;
   fulfillment_data: Record<string, unknown>;
-  supplier_order_id: string | null;
   display: OrderItemDisplay | null;
 }
 

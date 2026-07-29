@@ -51,7 +51,6 @@ function makeOrder(brandSlug: string): OrderOut {
         unit_price_usd: "10.00",
         fulfillment_state: "delivered",
         fulfillment_data: {},
-        supplier_order_id: null,
         display: {
           brand_slug: brandSlug,
           brand_name: "Steam",

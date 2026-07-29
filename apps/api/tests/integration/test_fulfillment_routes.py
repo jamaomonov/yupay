@@ -176,6 +176,8 @@ async def test_paid_order_walks_to_delivered(
     assert body["status"] == "delivered"
     assert body["paid_at"] is not None
     assert body["delivered_at"] is not None
+    # supplier_order_id is an internal upstream id — customers must not see it.
+    assert "supplier_order_id" not in body["items"][0]
 
     deliveries = await integration_client.get(
         f"/api/v1/orders/{order_id}/deliveries",
