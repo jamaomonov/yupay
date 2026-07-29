@@ -13,19 +13,20 @@ import { Button } from "@yupay/ui";
 import { Database, ListTree, RefreshCw, TrendingUp } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
-import { PageHeader } from "@/components/PageHeader";
-import { Spinner } from "@/components/States";
-import { useToast } from "@/components/Toast";
-import { ApiError, apiGet, apiPost } from "@/lib/api";
-import { qk } from "@/lib/queryKeys";
-
 import { G2bAttemptsTab } from "./G2bAttemptsTab";
 import {
+  HEALTH_CHECK_TIMEOUT_MS,
   SUPPLIER_LABELS,
   type CatalogSyncResult,
   type PriceRefreshOut,
   type SupplierHealth,
 } from "./types";
+
+import { PageHeader } from "@/components/PageHeader";
+import { ErrorState, Spinner } from "@/components/States";
+import { useToast } from "@/components/Toast";
+import { ApiError, apiGet, apiPost } from "@/lib/api";
+import { qk } from "@/lib/queryKeys";
 
 export function G2bDetailPage() {
   const { slug = "g2b" } = useParams<{ slug?: string }>();
@@ -35,8 +36,15 @@ export function G2bDetailPage() {
 
   const health = useQuery<SupplierHealth>({
     queryKey: qk.integrationHealth(slug),
-    queryFn: () => apiGet<SupplierHealth>(`/api/v1/admin/integrations/${slug}/health`),
+    // See `HEALTH_CHECK_TIMEOUT_MS` — without a client-side cap a dead
+    // upstream leaves this query (and the Sync/Pricing actions gated on
+    // `health.data?.available`) hanging forever instead of failing visibly.
+    queryFn: () =>
+      apiGet<SupplierHealth>(`/api/v1/admin/integrations/${slug}/health`, {
+        signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
+      }),
     refetchInterval: 60_000,
+    retry: 1,
   });
 
   const refreshPrices = useMutation<PriceRefreshOut, ApiError>({
@@ -75,8 +83,8 @@ export function G2bDetailPage() {
         title={label}
         description={
           <>
-            Подключение через <code className="font-mono text-xs">{slug}</code> в реестре{" "}
-            <code className="font-mono text-xs">fulfillment/suppliers</code>. См.{" "}
+            Подключение, баланс и синхронизация каталога для поставщика{" "}
+            <code className="font-mono text-xs">{slug}</code>. См.{" "}
             <Link to="/integrations" className="underline">
               все интеграции
             </Link>
@@ -101,6 +109,15 @@ export function G2bDetailPage() {
 
       {health.isLoading ? (
         <Spinner label="Проверяем подключение…" />
+      ) : health.isError ? (
+        <ErrorState
+          title="Проверка связи не отвечает"
+          description={`Поставщик не ответил за ${(HEALTH_CHECK_TIMEOUT_MS / 1000).toString()} с — возможно, сервис недоступен или ключ не настроен.`}
+          onRetry={() => {
+            void qc.invalidateQueries({ queryKey: qk.integrationHealth(slug) });
+          }}
+          retryPending={health.isFetching}
+        />
       ) : (
         <HealthSummary data={health.data} />
       )}

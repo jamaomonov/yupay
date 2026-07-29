@@ -5,11 +5,16 @@ import { Button } from "@yupay/ui";
 import { ArrowRight, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
 
+import {
+  HEALTH_CHECK_TIMEOUT_MS,
+  KNOWN_SUPPLIERS,
+  SUPPLIER_LABELS,
+  type SupplierHealth,
+} from "./types";
+
 import { PageHeader } from "@/components/PageHeader";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
-
-import { KNOWN_SUPPLIERS, SUPPLIER_LABELS, type SupplierHealth } from "./types";
 
 export function IntegrationsPage() {
   return (
@@ -31,8 +36,15 @@ function SupplierCard({ slug }: { slug: string }) {
   const qc = useQueryClient();
   const query = useQuery<SupplierHealth>({
     queryKey: qk.integrationHealth(slug),
-    queryFn: () => apiGet<SupplierHealth>(`/api/v1/admin/integrations/${slug}/health`),
+    // The health endpoint calls out to the supplier with no server-side
+    // timeout of its own — cap the client wait so a dead upstream settles
+    // into an error instead of leaving "Проверяем…" spinning forever.
+    queryFn: () =>
+      apiGet<SupplierHealth>(`/api/v1/admin/integrations/${slug}/health`, {
+        signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
+      }),
     refetchInterval: 60_000,
+    retry: 1,
   });
   const label = SUPPLIER_LABELS[slug as keyof typeof SUPPLIER_LABELS] ?? slug;
   const health = query.data;
@@ -45,7 +57,7 @@ function SupplierCard({ slug }: { slug: string }) {
           <h2 className="text-lg font-semibold">{label}</h2>
           <p className="font-mono text-xs text-[var(--text-secondary)]">{slug}</p>
         </div>
-        <HealthBadge health={health} loading={query.isLoading} />
+        <HealthBadge health={health} loading={query.isLoading} error={query.isError} />
       </header>
 
       <dl className="grid grid-cols-2 gap-2 text-sm">
@@ -53,6 +65,12 @@ function SupplierCard({ slug }: { slug: string }) {
         <Field label="Аккаунт" value={health?.username ?? "—"} />
       </dl>
 
+      {query.isError && (
+        <p className="text-xs text-[var(--danger)]">
+          Проверка не отвечает (таймаут {(HEALTH_CHECK_TIMEOUT_MS / 1000).toString()} с). Нажми
+          «Обновить», чтобы повторить.
+        </p>
+      )}
       {health?.reason && (
         <p className="text-xs text-[var(--text-secondary)]">
           <span className="text-[var(--text-tertiary)]">Причина:</span> {health.reason}
@@ -87,14 +105,23 @@ function SupplierCard({ slug }: { slug: string }) {
 function HealthBadge({
   health,
   loading,
+  error,
 }: {
   health: SupplierHealth | undefined;
   loading: boolean;
+  error: boolean;
 }) {
   if (loading) {
     return (
       <span className="rounded-full bg-[var(--bg-muted)] px-2.5 py-1 text-xs text-[var(--text-secondary)]">
         Проверяем…
+      </span>
+    );
+  }
+  if (error) {
+    return (
+      <span className="bg-[var(--danger)]/10 rounded-full px-2.5 py-1 text-xs font-medium text-[var(--danger)]">
+        Офлайн / таймаут
       </span>
     );
   }
