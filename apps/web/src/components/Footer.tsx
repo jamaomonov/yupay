@@ -86,7 +86,7 @@ export async function Footer({ locale }: { locale: string }) {
             <FooterLink href="https://t.me/yupay_support" external>
               Telegram
             </FooterLink>
-            <FooterLink href="mailto:hello@yupay.uz" external>
+            <FooterLink href="mailto:support@yupay.uz" external>
               Email
             </FooterLink>
           </FooterCol>
