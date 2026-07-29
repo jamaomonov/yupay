@@ -22,7 +22,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.clock import now
 from yupay.core.config import Settings, get_settings
-from yupay.core.errors import ConflictError, ForbiddenError, NotFoundError, UnauthorizedError
+from yupay.core.errors import (
+    ConflictError,
+    EmailUnverifiedError,
+    ForbiddenError,
+    NotFoundError,
+    UnauthorizedError,
+)
 from yupay.core.ids import new_id
 from yupay.core.redis import get_redis
 from yupay.modules.auth import jwt as authjwt
@@ -186,6 +192,9 @@ async def login_password(
     Raises:
         UnauthorizedError: On unknown email, Telegram-only account (no password),
             or wrong password — all surfaced identically to avoid enumeration.
+        EmailUnverifiedError: On correct credentials for an account whose email
+            has not been verified yet (see ``verify_email``). Telegram/guest/dev
+            logins are not affected by this check.
     """
     s = settings or get_settings()
     normalised = email.strip().lower()
@@ -201,6 +210,8 @@ async def login_password(
     password_ok = verify_password(password, stored_hash)
     if user is None or not user.password_hash or not password_ok:
         raise UnauthorizedError("invalid email or password")
+    if user.email_verified_at is None:
+        raise EmailUnverifiedError("Confirm your email address before signing in.")
     return await _open_session(db, user=user, settings=s)
 
 

@@ -61,6 +61,14 @@ class ForbiddenError(AppError):
     title = "Forbidden"
 
 
+class EmailUnverifiedError(AppError):
+    """Login attempted before the account's email was verified."""
+
+    status_code = 403
+    type_uri = "https://app.yupay.uz/errors/email-unverified"
+    title = "Email not verified"
+
+
 class RateLimitedError(AppError):
     """Request rate limit exceeded — client should slow down."""
 

@@ -3,9 +3,32 @@
 from __future__ import annotations
 
 import pytest
-from httpx import AsyncClient
+from httpx import AsyncClient, Response
+from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = pytest.mark.asyncio
+
+
+async def _verify_registered_user(
+    client: AsyncClient, db_session: AsyncSession, reg: Response
+) -> None:
+    """Verify a just-registered account's email via the real endpoint.
+
+    ``login_password`` now rejects unverified accounts (see
+    ``test_auth_verification_gate.py``), so every test here that registers a
+    user and then immediately logs in must drive verification first, the
+    same way a real user would after clicking the emailed link. Mirrors the
+    pattern already used by ``test_verify_email_marks_verified``: resolve
+    the user id via ``current_user``, mint the same signed token the
+    register flow's email would carry, and POST it to ``/auth/verify-email``.
+    """
+    from yupay.modules.auth import jwt as authjwt
+    from yupay.modules.auth.service import current_user
+
+    user = await current_user(db_session, reg.json()["access_token"])
+    token = authjwt.mint_email_verify(sub=user.id)
+    r = await client.post("/api/v1/auth/verify-email", json={"token": token})
+    assert r.status_code == 204, r.text
 
 
 async def test_register_creates_user_and_returns_tokens(integration_client: AsyncClient) -> None:
@@ -37,11 +60,14 @@ async def test_register_duplicate_email_conflicts(integration_client: AsyncClien
 
 
 @pytest.mark.asyncio
-async def test_login_succeeds_with_correct_password(integration_client: AsyncClient) -> None:
-    await integration_client.post(
+async def test_login_succeeds_with_correct_password(
+    integration_client: AsyncClient, db_session
+) -> None:
+    reg = await integration_client.post(
         "/api/v1/auth/register",
         json={"email": "loginok@example.com", "password": "hunter2hunter2"},
     )
+    await _verify_registered_user(integration_client, db_session, reg)
     r = await integration_client.post(
         "/api/v1/auth/login",
         json={"email": "loginok@example.com", "password": "hunter2hunter2"},
@@ -123,6 +149,12 @@ async def test_reset_changes_password_and_revokes_sessions(integration_client, d
         "/api/v1/auth/refresh", cookies={"refresh_token": old_refresh}
     )
     assert refreshed.status_code == 401
+
+    verify_token = authjwt.mint_email_verify(sub=user.id)
+    verify = await integration_client.post(
+        "/api/v1/auth/verify-email", json={"token": verify_token}
+    )
+    assert verify.status_code == 204, verify.text
 
     ok = await integration_client.post(
         "/api/v1/auth/login",
