@@ -138,7 +138,10 @@ const EMPTY: FormValues = {
   sku_code: "",
   denomination: "",
   region: "GLOBAL",
-  price_usd: "1.00",
+  // Empty, not a pre-filled "1.00" — an accidental Save on a fresh form must
+  // never create a live $1.00 SKU. superRefine above already requires a
+  // positive value before submit for non-variable-amount SKUs.
+  price_usd: "",
   cost_usdt: "",
   variable_amount: false,
   min_amount_usd: "",

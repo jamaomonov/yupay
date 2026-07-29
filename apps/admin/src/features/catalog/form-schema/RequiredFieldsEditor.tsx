@@ -92,7 +92,13 @@ function FieldRow({
           <code className="text-xs">{key || "(новое поле)"}</code>
           <span className="text-xs text-[var(--text-secondary)]">{type ?? ""}</span>
         </button>
-        <Button type="button" variant="ghost" size="sm" onClick={onRemove}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onRemove}
+          aria-label={key ? `Удалить поле «${key}»` : "Удалить поле"}
+        >
           <Trash2 className="size-4" />
         </Button>
       </header>
@@ -215,6 +221,7 @@ function OptionsEditor({
             onClick={() => {
               remove(idx);
             }}
+            aria-label="Удалить опцию"
           >
             <Trash2 className="size-4" />
           </Button>

@@ -9,6 +9,7 @@ import { z } from "zod";
 
 import type { Category } from "../types";
 
+import { DynamicIcon } from "@/components/DynamicIcon";
 import { PageHeader } from "@/components/PageHeader";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
@@ -156,7 +157,16 @@ export function CategoryEditPage() {
             label="Иконка"
             help="Произвольная строка — обычно имя lucide-иконки (например, gamepad-2)."
           >
-            <Input {...form.register("icon")} placeholder="gamepad-2" />
+            <div className="flex items-center gap-2">
+              <span className="flex size-10 flex-shrink-0 items-center justify-center rounded-md border border-[var(--border-default)] bg-[var(--bg-muted)] text-[var(--text-secondary)]">
+                <DynamicIcon
+                  name={form.watch("icon")}
+                  className="size-4"
+                  fallback={<span className="text-[10px]">—</span>}
+                />
+              </span>
+              <Input {...form.register("icon")} placeholder="gamepad-2" />
+            </div>
           </Field>
           <div className="flex gap-4">
             <Field label="Порядок">

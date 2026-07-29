@@ -41,6 +41,7 @@ import { UsersListPage } from "@/features/users/UsersListPage";
 import { WalletPage } from "@/features/wallet/WalletPage";
 import { WebhooksPage } from "@/features/webhooks/WebhooksPage";
 import { DashboardPage } from "@/routes/Dashboard";
+import { NotFoundPage } from "@/routes/NotFound";
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -100,7 +101,7 @@ export const router = createBrowserRouter([
           { path: "/integrations/:slug", element: <G2bDetailPage /> },
           // Legacy stub route — operators may still have bookmarks.
           { path: "/settings", element: <Navigate to="/integrations" replace /> },
-          { path: "*", element: <Navigate to="/" replace /> },
+          { path: "*", element: <NotFoundPage /> },
         ],
       },
     ],

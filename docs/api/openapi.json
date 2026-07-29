@@ -7099,6 +7099,29 @@
       "SearchHit": {
         "description": "One row in the search palette.",
         "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -7110,6 +7133,17 @@
           "path": {
             "title": "Path",
             "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
           },
           "sublabel": {
             "anyOf": [
@@ -7929,6 +7963,10 @@
             "title": "Mode",
             "type": "string"
           },
+          "sku_code": {
+            "title": "Sku Code",
+            "type": "string"
+          },
           "sku_id": {
             "title": "Sku Id",
             "type": "string"
@@ -7963,6 +8001,7 @@
         },
         "required": [
           "sku_id",
+          "sku_code",
           "mode",
           "supplier_slug",
           "updated_by",
@@ -8186,6 +8225,10 @@
             "title": "Quantity",
             "type": "integer"
           },
+          "sku_code": {
+            "title": "Sku Code",
+            "type": "string"
+          },
           "sku_id": {
             "title": "Sku Id",
             "type": "string"
@@ -8213,6 +8256,7 @@
         },
         "required": [
           "sku_id",
+          "sku_code",
           "supplier_slug",
           "kind",
           "external_product_id",
@@ -13453,7 +13497,7 @@
     },
     "/api/v1/admin/orders": {
       "get": {
-        "description": "Admin order list with optional status filter.",
+        "description": "Admin order list with optional status filter and created-at date range.\n\n``since``/``until`` are inclusive bounds on ``Order.created_at``, ISO 8601\nquery params (matching the audit feed's convention \u2014 see\n``modules/audit/routes.py``).",
         "operationId": "admin_list_orders_api_v1_admin_orders_get",
         "parameters": [
           {
@@ -13470,6 +13514,40 @@
                 }
               ],
               "title": "Status Filter"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
             }
           },
           {

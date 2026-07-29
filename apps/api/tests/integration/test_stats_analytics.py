@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import json
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from urllib.parse import urlencode
 
@@ -129,6 +129,63 @@ async def test_range_filtering(db_session: AsyncSession) -> None:
     out90 = await svc.build_business_analytics(db_session, r=AnalyticsRange.D90)
     assert out7.summary.orders == 1
     assert out90.summary.orders == 2
+
+
+async def _order_with_status(db: AsyncSession, *, status: str, moment: datetime) -> None:
+    """Minimal order row for funnel/KPI counting tests — no items needed."""
+    order = Order(
+        id=new_id(),
+        user_id=None,
+        guest_email="g@example.com",
+        status=status,
+        currency="USD",
+        total_usd=Decimal("1.00"),
+        total_charged=Decimal("1.00"),
+        created_at=moment,
+        paid_at=None if status == "pending_payment" else moment,
+        delivered_at=moment if status == "delivered" else None,
+        expires_at=moment + timedelta(hours=1),
+    )
+    db.add(order)
+    await db.flush()
+
+
+async def test_funnel_paid_bucket_includes_progressed_orders(db_session: AsyncSession) -> None:
+    """Orders that moved past ``paid`` (fulfilling/delivered) must still count
+    in the funnel's ``paid`` bucket, and the KPI card's ``paid_orders`` must
+    match the funnel exactly — regression for "Оплачено 0, Доставлено 6,
+    Конверсия 100%" (delivered > paid is impossible)."""
+    moment = now()
+    await _order_with_status(db_session, status="pending_payment", moment=moment)
+    await _order_with_status(db_session, status="paid", moment=moment)
+    await _order_with_status(db_session, status="fulfilling", moment=moment)
+    await _order_with_status(db_session, status="fulfilling", moment=moment)
+    for _ in range(6):
+        await _order_with_status(db_session, status="delivered", moment=moment)
+    await _order_with_status(db_session, status="cancelled", moment=moment)
+
+    out = await svc.build_business_analytics(db_session, r=AnalyticsRange.D30)
+    funnel = out.funnel
+
+    assert funnel.created == 11
+    assert funnel.delivered == 6
+    assert funnel.paid == 1 + 2 + 6  # paid + fulfilling + delivered, cumulative
+    assert funnel.delivered <= funnel.paid <= funnel.created
+    assert 0.0 <= funnel.payment_conversion_pct <= 100.0
+    assert funnel.payment_conversion_pct == round((1 + 2 + 6) / 11 * 100, 2)
+
+    # KPI card and funnel must agree exactly — same underlying counts.
+    assert out.summary.orders == funnel.created
+    assert out.summary.paid_orders == funnel.paid
+    assert out.summary.delivered_orders == funnel.delivered
+
+
+async def test_funnel_conversion_guards_divide_by_zero(db_session: AsyncSession) -> None:
+    out = await svc.build_business_analytics(db_session, r=AnalyticsRange.D7)
+    assert out.funnel.created == 0
+    assert out.funnel.paid == 0
+    assert out.funnel.delivered == 0
+    assert out.funnel.payment_conversion_pct == 0.0
 
 
 async def _bare_order_item(db: AsyncSession, sku_id: str) -> tuple[str, str]:

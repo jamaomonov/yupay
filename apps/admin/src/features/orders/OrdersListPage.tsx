@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input } from "@yupay/ui";
 import { Ban, Search } from "lucide-react";
-import { useMemo } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useCallback, useMemo } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import {
   type OrderAdminListOut,
@@ -18,6 +18,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Pagination } from "@/components/Pagination";
 import { SaveSegmentButton } from "@/features/segments/SaveSegmentButton";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
+import { formatMoney } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
 import { numberCodec, useSearchParamsState } from "@/lib/useSearchParamsState";
 
@@ -39,15 +40,59 @@ export function OrdersListPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   // Filters live in the URL so the view is shareable and survives reload (ADR-0017).
-  const [status, setStatus] = useSearchParamsState<OrderStatus | "">("status", "");
+  // `status`/`dateFrom`/`dateTo` are read through `useSearchParamsState` (always
+  // fresh from the current render's URL) but *written* through `applyFilters`
+  // below instead of their individual setters — `setSearchParams` computes its
+  // next value from the params snapshot closed over at the *previous* render,
+  // so firing two of these setters back-to-back in one handler (e.g. "change
+  // status" + "reset the page to 0") makes the second call silently clobber
+  // the first with a stale snapshot. `offset` alone still uses its own setter
+  // since paging never touches another filter in the same handler.
+  const [status] = useSearchParamsState<OrderStatus | "">("status", "");
   const [query, setQuery] = useSearchParamsState("q", "");
   const [offset, setOffset] = useSearchParamsState("offset", 0, numberCodec);
+  // Plain `YYYY-MM-DD` from <input type="date">; converted to ISO
+  // day-boundary instants before hitting the API (see `toSinceIso`/`toUntilIso`).
+  const [dateFrom] = useSearchParamsState("from", "");
+  const [dateTo] = useSearchParamsState("to", "");
+  const [, setSearchParams] = useSearchParams();
+
+  // Atomically applies one or more filter changes and resets pagination back
+  // to page 0 in a single URL update — see the comment above for why this
+  // can't be three separate `useSearchParamsState` setter calls.
+  const applyFilters = useCallback(
+    (patch: Partial<{ status: string; from: string; to: string }>) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          for (const [key, value] of Object.entries(patch)) {
+            if (value) next.set(key, value);
+            else next.delete(key);
+          }
+          next.delete("offset");
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
 
   const ordersQuery = useQuery<OrderAdminListOut>({
-    queryKey: [...qk.orders({ status: status || null }), "page", offset],
+    queryKey: [
+      ...qk.orders({ status: status || null }),
+      "page",
+      offset,
+      dateFrom || null,
+      dateTo || null,
+    ],
     queryFn: () => {
       const params = new URLSearchParams();
       if (status) params.set("status_filter", status);
+      const since = toSinceIso(dateFrom);
+      if (since) params.set("since", since);
+      const until = toUntilIso(dateTo);
+      if (until) params.set("until", until);
       params.set("limit", String(PAGE_SIZE));
       params.set("offset", String(offset));
       return apiGet<OrderAdminListOut>(`/api/v1/admin/orders?${params.toString()}`);
@@ -158,9 +203,7 @@ export function OrdersListPage() {
       key: "total",
       header: "Сумма",
       render: (o) => (
-        <span className="font-medium">
-          {Number.parseFloat(o.total_charged).toFixed(2)} {o.currency}
-        </span>
+        <span className="font-medium">{formatMoney(o.total_charged, o.currency)}</span>
       ),
       className: "w-32 text-right",
       sortAccessor: (o) => Number.parseFloat(o.total_charged) || 0,
@@ -250,8 +293,7 @@ export function OrdersListPage() {
         <select
           value={status}
           onChange={(e) => {
-            setStatus(e.target.value as OrderStatus | "");
-            setOffset(0);
+            applyFilters({ status: e.target.value });
           }}
           className="h-10 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
         >
@@ -263,6 +305,45 @@ export function OrdersListPage() {
         </select>
       </section>
 
+      <section className="mb-5 flex flex-wrap items-center gap-3">
+        <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+          Создан с
+          <input
+            type="date"
+            value={dateFrom}
+            max={dateTo || undefined}
+            onChange={(e) => {
+              applyFilters({ from: e.target.value });
+            }}
+            className="h-9 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 text-sm text-[var(--text-primary)]"
+          />
+        </label>
+        <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+          по
+          <input
+            type="date"
+            value={dateTo}
+            min={dateFrom || undefined}
+            onChange={(e) => {
+              applyFilters({ to: e.target.value });
+            }}
+            className="h-9 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 text-sm text-[var(--text-primary)]"
+          />
+        </label>
+        {(dateFrom || dateTo) && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              applyFilters({ from: "", to: "" });
+            }}
+          >
+            Сбросить даты
+          </Button>
+        )}
+      </section>
+
       {/* The Input setter is wired to the local search-param state; the controlled `query`
           string also flows back through the URL so admins can share their working view. */}
 
@@ -270,7 +351,7 @@ export function OrdersListPage() {
         <p className="mb-3 text-xs text-[var(--text-secondary)]">
           Сумма по списку:{" "}
           {Object.entries(totalCharged)
-            .map(([cur, v]) => `${v.toFixed(2)} ${cur}`)
+            .map(([cur, v]) => formatMoney(v, cur))
             .join(" · ")}
         </p>
       )}
@@ -337,4 +418,20 @@ function formatDate(value: string | null): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+// `<input type="date">` yields a local-timezone `YYYY-MM-DD` string with no
+// time component. The admin API's `since`/`until` are inclusive bounds on
+// `created_at`, so "from" is the start of that local day and "to" is the end
+// of it — otherwise picking the same day for both would match zero orders.
+function toSinceIso(dateOnly: string): string | null {
+  if (!dateOnly) return null;
+  const d = new Date(`${dateOnly}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function toUntilIso(dateOnly: string): string | null {
+  if (!dateOnly) return null;
+  const d = new Date(`${dateOnly}T23:59:59.999`);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }

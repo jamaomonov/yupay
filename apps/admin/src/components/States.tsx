@@ -8,13 +8,15 @@
  *   - <Spinner>    — inline, with optional text. For headers, buttons, etc.
  *   - <Skeleton>   — visual placeholder shaped like the eventual content.
  *   - <EmptyState> — full panel with icon + title + optional CTA + hint.
+ *   - <ErrorState> — full panel for a failed query, with a Retry action.
  *
- * All three are theme-aware (Dim Slate tokens) and respect motion preferences
+ * All four are theme-aware (Dim Slate tokens) and respect motion preferences
  * via a CSS-only fallback (the `animate-spin` Tailwind utility honours
  * `prefers-reduced-motion`).
  */
 
-import { Loader2, type LucideIcon } from "lucide-react";
+import { Button } from "@yupay/ui";
+import { AlertTriangle, Loader2, type LucideIcon } from "lucide-react";
 
 import type { ReactNode } from "react";
 
@@ -152,6 +154,59 @@ export function EmptyState({
       <p className="text-sm font-medium text-[var(--text-primary)]">{title}</p>
       {description && <p className="mt-1 text-sm text-[var(--text-secondary)]">{description}</p>}
       {action && <div className="mt-4 flex justify-center">{action}</div>}
+    </div>
+  );
+}
+
+interface ErrorStateProps {
+  title?: string;
+  description?: ReactNode;
+  /** Shows a "Повторить" button that calls this — typically `query.refetch`. */
+  onRetry?: () => void;
+  retryLabel?: string;
+  retryPending?: boolean;
+  className?: string;
+}
+
+/**
+ * Failed-query panel — icon + message + optional Retry button. Renders
+ * instead of (never alongside) an `<EmptyState>`: a page is either "no data"
+ * or "couldn't load data", never both at once.
+ */
+export function ErrorState({
+  title = "Не удалось загрузить данные",
+  description,
+  onRetry,
+  retryLabel = "Повторить",
+  retryPending = false,
+  className,
+}: ErrorStateProps) {
+  return (
+    <div
+      role="alert"
+      className={[
+        "border-[var(--danger)]/40 rounded-lg border border-dashed bg-[var(--bg-surface)] px-6 py-10 text-center",
+        className ?? "",
+      ].join(" ")}
+    >
+      <div className="bg-[var(--danger)]/10 mx-auto mb-3 grid size-12 place-items-center rounded-full text-[var(--danger)]">
+        <AlertTriangle className="size-6" aria-hidden />
+      </div>
+      <p className="text-sm font-medium text-[var(--text-primary)]">{title}</p>
+      {description && <p className="mt-1 text-sm text-[var(--text-secondary)]">{description}</p>}
+      {onRetry && (
+        <div className="mt-4 flex justify-center">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={onRetry}
+            disabled={retryPending}
+          >
+            {retryPending ? "Повтор…" : retryLabel}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

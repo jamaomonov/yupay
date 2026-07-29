@@ -161,7 +161,7 @@ async function apiRaw<T>(path: string, options: RequestOptions, allowRefresh: bo
   return (await response.json()) as T;
 }
 
-export const apiGet = <T>(path: string) => api<T>(path);
+export const apiGet = <T>(path: string, options?: RequestOptions) => api<T>(path, options);
 export const apiPost = <T>(path: string, body: unknown, headers?: HeadersInit) =>
   api<T>(path, {
     method: "POST",

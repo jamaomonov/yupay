@@ -42,8 +42,10 @@ import type { AdminUserLedgerOut, Transaction } from "@/features/wallet/types";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { Spinner } from "@/components/States";
+import { StatusChip } from "@/components/StatusChip";
 import { useToast } from "@/components/Toast";
 import { type ApiError, api, apiGet } from "@/lib/api";
+import { formatMoney, formatMoneyValue } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
 
 export function CustomerPage() {
@@ -273,7 +275,7 @@ function UserHeader({
             </a>
           )}
           <Link
-            to={`/wallet?user=${u.id}`}
+            to={`/wallet?user_id=${u.id}`}
             className="inline-flex items-center gap-2 rounded-md border border-[var(--border-default)] px-3 py-1.5 text-sm hover:bg-[var(--bg-muted)]"
           >
             <Wallet className="size-4" />
@@ -339,7 +341,7 @@ function Stats({ stats }: { stats: CustomerOverviewOut["stats"] }) {
     <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
       <Stat label="Заказов всего" value={stats.total_orders} />
       <Stat label="Доставлено" value={stats.delivered_orders} tone="success" />
-      <Stat label="Потрачено (USD)" value={formatMoney(stats.total_spent_usd)} accent />
+      <Stat label="Потрачено (USD)" value={formatMoneyValue(stats.total_spent_usd, "USD")} accent />
       <Stat
         label="Failed-платежей"
         value={stats.failed_payments}
@@ -391,7 +393,12 @@ function RecentOrders({
       render: (o) => <span className="font-mono text-xs">{o.id.slice(0, 8)}…</span>,
       className: "w-24",
     },
-    { key: "status", header: "Статус", render: (o) => o.status, className: "w-32" },
+    {
+      key: "status",
+      header: "Статус",
+      render: (o) => <StatusChip domain="orderStatus" value={o.status} />,
+      className: "w-32",
+    },
     {
       key: "items",
       header: "Позиции",
@@ -401,7 +408,7 @@ function RecentOrders({
     {
       key: "total",
       header: "Сумма",
-      render: (o) => `${formatMoney(o.total_charged)} ${o.currency}`,
+      render: (o) => formatMoney(o.total_charged, o.currency),
       className: "w-32 text-right",
     },
     { key: "created", header: "Создан", render: (o) => formatDate(o.created_at) },
@@ -441,11 +448,16 @@ function RecentPayments({
       className: "w-24",
     },
     { key: "provider", header: "Провайдер", render: (p) => p.provider, className: "w-32" },
-    { key: "status", header: "Статус", render: (p) => p.status, className: "w-28" },
+    {
+      key: "status",
+      header: "Статус",
+      render: (p) => <StatusChip domain="paymentStatus" value={p.status} />,
+      className: "w-28",
+    },
     {
       key: "amount",
       header: "Сумма",
-      render: (p) => `${formatMoney(p.amount)} ${p.currency}`,
+      render: (p) => formatMoney(p.amount, p.currency),
       className: "w-32 text-right",
     },
     {
@@ -491,7 +503,12 @@ function OpenTasks({
       className: "w-24",
     },
     { key: "supplier", header: "Поставщик", render: (t) => t.supplier, className: "w-32" },
-    { key: "status", header: "Статус", render: (t) => t.status, className: "w-28" },
+    {
+      key: "status",
+      header: "Статус",
+      render: (t) => <StatusChip domain="taskStatus" value={t.status} />,
+      className: "w-28",
+    },
     {
       key: "error",
       header: "Ошибка",
@@ -596,7 +613,7 @@ function WalletHistoryRow({
   return (
     <li className="rounded-md border bg-[var(--bg-surface)] px-3 py-2 text-xs shadow-[var(--shadow-sm)]">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="truncate">{tx.kind}</span>
+        <StatusChip domain="walletTxKind" value={tx.kind} className="truncate" />
         <span
           className={[
             "whitespace-nowrap font-mono font-medium",
@@ -604,7 +621,7 @@ function WalletHistoryRow({
           ].join(" ")}
         >
           {positive ? "+" : "−"}
-          {Math.abs(delta).toFixed(2)} {userLeg.currency}
+          {formatMoneyValue(Math.abs(delta), userLeg.currency)} {userLeg.currency}
         </span>
       </div>
       <div className="mt-0.5 flex items-baseline justify-between gap-2 text-[10px] text-[var(--text-secondary)]">
@@ -628,9 +645,7 @@ function WalletBalances({ balances }: { balances: CustomerOverviewOut["wallet_ba
               className="flex items-center justify-between rounded-md border bg-[var(--bg-surface)] px-3 py-2 text-sm shadow-[var(--shadow-sm)]"
             >
               <span className="text-[var(--text-secondary)]">{b.kind}</span>
-              <span className="font-mono">
-                {formatMoney(b.balance)} {b.currency}
-              </span>
+              <span className="font-mono">{formatMoney(b.balance, b.currency)}</span>
             </li>
           ))}
         </ul>
@@ -679,12 +694,6 @@ function formatDate(value: string | null): string {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-function formatMoney(value: string): string {
-  const n = Number.parseFloat(value);
-  if (!Number.isFinite(n)) return value;
-  return n.toLocaleString("ru", { maximumFractionDigits: 2 });
 }
 
 function formatApiError(err: ApiError): string {

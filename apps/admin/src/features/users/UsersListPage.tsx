@@ -8,6 +8,7 @@ import type { UserAdminListOut, UserAdminOut } from "./types";
 
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
+import { ErrorState } from "@/components/States";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
@@ -165,21 +166,26 @@ export function UsersListPage() {
         </div>
       </section>
 
-      {usersQuery.isError && (
-        <p className="mb-3 text-sm text-[var(--danger)]">Не удалось загрузить список.</p>
+      {usersQuery.isError ? (
+        <ErrorState
+          title="Не удалось загрузить список"
+          onRetry={() => void usersQuery.refetch()}
+          retryPending={usersQuery.isFetching}
+        />
+      ) : (
+        <DataTable
+          rows={rows}
+          columns={columns}
+          rowKey={(u) => u.id}
+          loading={usersQuery.isLoading}
+          onRowClick={(u) => {
+            void navigate(`/customers/${u.id}`);
+          }}
+          empty={debounced ? "Под этот поиск пользователей нет." : "Пока никто не регистрировался."}
+        />
       )}
 
-      <DataTable
-        rows={rows}
-        columns={columns}
-        rowKey={(u) => u.id}
-        onRowClick={(u) => {
-          void navigate(`/customers/${u.id}`);
-        }}
-        empty={debounced ? "Под этот поиск пользователей нет." : "Пока никто не регистрировался."}
-      />
-
-      {total > PAGE_SIZE && (
+      {!usersQuery.isError && total > PAGE_SIZE && (
         <div className="mt-4 flex items-center justify-between text-sm text-[var(--text-secondary)]">
           <span>
             {showingFrom}–{showingTo} из {total}

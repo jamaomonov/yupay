@@ -2,6 +2,8 @@ export type SourcingMode = "auto" | "force_inventory" | "force_supplier" | "manu
 
 export interface SourcingRuleOut {
   sku_id: string;
+  /** Human-readable code — always prefer this over `sku_id` in the UI. */
+  sku_code: string;
   mode: SourcingMode;
   supplier_slug: string | null;
   updated_by: string | null;

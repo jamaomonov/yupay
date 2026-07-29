@@ -27,6 +27,13 @@ class SearchHit(BaseModel):
     id: str
     label: str
     sublabel: str | None = None
+    # Structured status/amount so the admin SPA can render them through its own
+    # localizer + currency-aware money formatter instead of a pre-baked English
+    # string (round-2 fix — see AGENTS.md). ``sublabel`` keeps whatever doesn't
+    # fit those two buckets (provider, tg handle, external id, …).
+    status: str | None = None
+    amount: Decimal | None = None
+    currency: str | None = None
     # Admin SPA deep-link path. Sprint-0 points users to ``/users/{id}``; once Customer 360
     # ships (Sprint 1) it will point to ``/customers/{id}``.
     path: str

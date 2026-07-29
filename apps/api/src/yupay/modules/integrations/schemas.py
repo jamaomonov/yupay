@@ -38,6 +38,10 @@ class SupplierMappingOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     sku_id: str
+    # ``sku_supplier_mapping`` has no ORM relationship to ``Sku`` — the route
+    # resolves this separately (see ``service.sku_codes_for``) so the admin
+    # UI can show the human SKU code instead of a raw UUID.
+    sku_code: str
     supplier_slug: str
     kind: MappingKind
     external_product_id: str

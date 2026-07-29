@@ -11,6 +11,9 @@ from urllib.parse import urlencode
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select, text, update
+from sqlalchemy.ext.asyncio import AsyncSession
+from yupay.modules.users.models import TelegramLink, User
 
 pytestmark = pytest.mark.asyncio
 
@@ -26,10 +29,10 @@ def _sign_init_data(fields: dict[str, str]) -> str:
     return urlencode(fields)
 
 
-async def _login(client: AsyncClient) -> str:
+async def _login(client: AsyncClient, tg_id: int = 555) -> str:
     """Log in a fresh Telegram user and return the bearer access token."""
     user_json = json.dumps(
-        {"id": 555, "first_name": "Lo", "username": "lo_user", "language_code": "ru"},
+        {"id": tg_id, "first_name": "Lo", "username": "lo_user", "language_code": "ru"},
         separators=(",", ":"),
     )
     init_data = _sign_init_data(
@@ -40,6 +43,20 @@ async def _login(client: AsyncClient) -> str:
     body: dict[str, Any] = r.json()
     token: str = body["access_token"]
     return token
+
+
+async def _grant_admin(db_session: AsyncSession, tg_id: int) -> str:
+    """Promote the Telegram-linked user to ``admin`` and return their user id."""
+    user_id = (
+        await db_session.execute(
+            select(User.id)
+            .join(TelegramLink, TelegramLink.user_id == User.id)
+            .where(TelegramLink.tg_user_id == tg_id)
+        )
+    ).scalar_one()
+    await db_session.execute(update(User).where(User.id == user_id).values(roles=["admin"]))
+    await db_session.commit()
+    return str(user_id)
 
 
 async def test_patch_me_requires_auth(integration_client: AsyncClient) -> None:
@@ -91,3 +108,44 @@ async def test_patch_me_updates_display_currency(integration_client: AsyncClient
     )
     assert r.status_code == 200, r.text
     assert r.json()["display_currency"] == "UZS"
+
+
+# ---------- B1: admin listing must survive a malformed ``roles`` value ----------
+
+
+async def test_admin_list_users_coerces_malformed_roles_to_empty_list(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A legacy row with ``roles = '{}'::jsonb`` (a JSON object, not a list) must
+    not 500 the admin listing — it should serialize as ``roles: []``."""
+    admin_token = await _login(integration_client, tg_id=42)
+    await _grant_admin(db_session, tg_id=42)
+
+    other_token = await _login(integration_client, tg_id=777)
+    # Bypass app-level validation to simulate the legacy/edge DB state directly.
+    await db_session.execute(
+        text("UPDATE users SET roles = '{}'::jsonb WHERE id = :id"),
+        {"id": _decode_user_id(other_token)},
+    )
+    await db_session.commit()
+
+    r = await integration_client.get(
+        "/api/v1/admin/users",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    by_id = {item["id"]: item for item in body["items"]}
+    assert by_id[_decode_user_id(other_token)]["roles"] == []
+
+
+def _decode_user_id(access_token: str) -> str:
+    """Pull ``sub`` (the user id) out of the JWT without verifying signature —
+    test-only convenience, the token was just minted by our own login flow."""
+    import base64
+
+    payload_b64 = access_token.split(".")[1]
+    padded = payload_b64 + "=" * (-len(payload_b64) % 4)
+    payload = json.loads(base64.urlsafe_b64decode(padded))
+    sub: str = payload["sub"]
+    return sub

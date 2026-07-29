@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
@@ -602,15 +602,27 @@ async def list_orders_admin(
     db: AsyncSession,
     *,
     status_filter: str | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[Order], int]:
-    """Paged admin listing. Returns ``(rows, total_matching_filter)``."""
+    """Paged admin listing. Returns ``(rows, total_matching_filter)``.
+
+    ``since``/``until`` filter on ``Order.created_at`` (inclusive on both
+    ends), mirroring the audit feed's date-range convention.
+    """
     base = select(Order).options(*_order_load_options(), selectinload(Order.events))
     count_stmt = select(func.count()).select_from(Order)
     if status_filter is not None:
         base = base.where(Order.status == status_filter)
         count_stmt = count_stmt.where(Order.status == status_filter)
+    if since is not None:
+        base = base.where(Order.created_at >= since)
+        count_stmt = count_stmt.where(Order.created_at >= since)
+    if until is not None:
+        base = base.where(Order.created_at <= until)
+        count_stmt = count_stmt.where(Order.created_at <= until)
     rows = list(
         (await db.execute(base.order_by(Order.created_at.desc()).limit(limit).offset(offset)))
         .scalars()

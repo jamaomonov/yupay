@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import type { Category } from "../types";
 
 import { DataTable, type Column } from "@/components/DataTable";
+import { DynamicIcon } from "@/components/DynamicIcon";
 import { PageHeader } from "@/components/PageHeader";
 import { Spinner } from "@/components/States";
 import { type ApiError, apiDelete, apiGet, apiPatch } from "@/lib/api";
@@ -57,8 +58,15 @@ export function CategoriesListPage() {
     {
       key: "icon",
       header: "Иконка",
-      render: (c) => (c.icon ? <code className="text-xs">{c.icon}</code> : "—"),
-      className: "w-28",
+      render: (c) =>
+        c.icon ? (
+          <span className="inline-flex items-center text-[var(--text-secondary)]" title={c.icon}>
+            <DynamicIcon name={c.icon} className="size-4" />
+          </span>
+        ) : (
+          "—"
+        ),
+      className: "w-40",
     },
     {
       key: "sort",

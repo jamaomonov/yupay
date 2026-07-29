@@ -148,26 +148,33 @@ def _user_hit(u: User) -> SearchHit:
 
 def _order_hit(o: Order) -> SearchHit:
     short = o.id.split("-")[0]
-    sub = f"{o.status} · {o.total_charged} {o.currency}"
     return SearchHit(
         type="order",
         id=o.id,
         label=f"Order {short}",
-        sublabel=sub,
+        status=o.status,
+        amount=o.total_charged,
+        currency=o.currency,
         path=f"/orders/{o.id}",
     )
 
 
 def _payment_hit(p: Payment) -> SearchHit:
     short = p.id.split("-")[0]
-    sub_parts = [p.provider, p.status, f"{p.amount} {p.currency}"]
-    if p.external_id:
-        sub_parts.append(p.external_id)
+    # ``sublabel`` keeps only what doesn't fit status/amount — provider and
+    # (when present) the upstream external id. Status and amount go through
+    # their own fields so the admin SPA can localize/format them itself
+    # (round-2 fix — raw status + un-grouped amount used to leak straight
+    # into this string; see AGENTS.md).
+    sublabel = f"{p.provider} · {p.external_id}" if p.external_id else p.provider
     return SearchHit(
         type="payment",
         id=p.id,
         label=f"Payment {short}",
-        sublabel=" · ".join(sub_parts),
+        sublabel=sublabel,
+        status=p.status,
+        amount=p.amount,
+        currency=p.currency,
         path=f"/orders/{p.order_id}",
     )
 
@@ -177,7 +184,8 @@ def _sku_hit(s: Sku) -> SearchHit:
         type="sku",
         id=s.id,
         label=s.sku_code,
-        sublabel=f"price ${s.price_usd}",
+        amount=s.price_usd,
+        currency="USD",
         path=f"/skus/{s.id}",
     )
 

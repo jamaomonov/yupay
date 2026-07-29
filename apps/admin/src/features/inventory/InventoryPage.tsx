@@ -47,6 +47,18 @@ export function InventoryPage() {
     return map;
   }, [productsQuery.data]);
 
+  const selectedSku = useMemo(
+    () => skusQuery.data?.find((s) => s.id === skuId) ?? null,
+    [skusQuery.data, skuId],
+  );
+  const selectedProduct = selectedSku ? (productById.get(selectedSku.product_id) ?? null) : null;
+  // The code warehouse only holds fixed-value voucher codes. Floating-amount
+  // top-ups (e.g. `steam-wallet-usd`) are fulfilled by charging a supplier
+  // API for whatever amount the customer entered — there is nothing to
+  // upload, so the bulk-uploader is meaningless (and mildly dangerous —
+  // pasting "codes" for a top-up SKU would just silently no-op) for them.
+  const isVoucherSku = selectedProduct?.kind === "voucher";
+
   const countsQuery = useQuery<SkuCountsOut>({
     queryKey: qk.inventoryCounts(skuId),
     queryFn: () => apiGet<SkuCountsOut>(`/api/v1/admin/inventory/sku/${skuId}`),
@@ -172,7 +184,7 @@ export function InventoryPage() {
         {skuId && countsQuery.data && <CountsCard counts={countsQuery.data} />}
       </section>
 
-      {skuId && (
+      {skuId && isVoucherSku && (
         <section className="mb-6 rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
           <h2 className="mb-2 text-sm font-semibold">Загрузить коды</h2>
           <p className="mb-2 text-xs text-[var(--text-secondary)]">
@@ -195,6 +207,18 @@ export function InventoryPage() {
             {feedback && <span className="text-sm text-[var(--success)]">{feedback}</span>}
             {error && <span className="text-sm text-[var(--danger)]">{error}</span>}
           </div>
+        </section>
+      )}
+
+      {skuId && selectedProduct && !isVoucherSku && (
+        <section className="mb-6 rounded-lg border border-dashed bg-[var(--bg-surface)] p-4 text-sm text-[var(--text-secondary)] shadow-[var(--shadow-sm)]">
+          <h2 className="mb-2 text-sm font-semibold text-[var(--text-primary)]">
+            Загрузка кодов недоступна
+          </h2>
+          <p>
+            Этот SKU — товар с плавающей суммой (пополнение по факту оплаты, без склада кодов), а не
+            ваучер. Загрузчик показывается только для SKU типа «voucher».
+          </p>
         </section>
       )}
 

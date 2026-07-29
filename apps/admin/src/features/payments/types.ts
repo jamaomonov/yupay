@@ -35,3 +35,26 @@ export interface PaymentAdminListOut {
   items: PaymentAdminOut[];
   total: number;
 }
+
+/** Localized labels — mirrors the Orders list's `STATUS_LABEL` pattern
+ *  (`apps/admin/src/features/orders/types.ts`) so both surfaces read the
+ *  same way. */
+export const STATUS_LABEL: Record<PaymentStatus, string> = {
+  pending: "Ожидание",
+  requires_action: "Требуется действие",
+  succeeded: "Успешно",
+  failed: "Ошибка",
+  cancelled: "Отменён",
+  refunded: "Возврат",
+  partially_refunded: "Частичный возврат",
+};
+
+export const STATUS_TONE: Record<PaymentStatus, string> = {
+  pending: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
+  requires_action: "bg-[var(--warning-soft)] text-[var(--warning-fg)]",
+  succeeded: "bg-[var(--success-soft)] text-[var(--success-fg)]",
+  failed: "bg-[var(--danger-soft)] text-[var(--danger-fg)]",
+  cancelled: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
+  refunded: "bg-[var(--info-soft)] text-[var(--info-fg)]",
+  partially_refunded: "bg-[var(--info-soft)] text-[var(--info-fg)]",
+};

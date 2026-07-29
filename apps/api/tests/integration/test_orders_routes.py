@@ -509,6 +509,73 @@ async def test_admin_list_renders_order_with_reserved_tld_guest_email(
     assert match[0]["guest_email"] == "uzum-test@test.local"
 
 
+async def test_admin_list_paginates_and_filters_by_date_range(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_pubg: dict[str, str],
+) -> None:
+    """``limit``/``offset`` page the result and ``since``/``until`` narrow it
+    to a ``created_at`` window — the filters admins reach for from the
+    orders list page's date-range UI."""
+
+    def _make_order(created_at: datetime) -> Order:
+        return Order(
+            id=new_id(),
+            guest_email="daterange-test@example.com",
+            status="pending_payment",
+            currency="USD",
+            total_usd=Decimal("1.00"),
+            total_charged=Decimal("1.00"),
+            expires_at=created_at + timedelta(hours=1),
+            created_at=created_at,
+            items=[
+                OrderItem(
+                    id=new_id(),
+                    sku_id=_seed_pubg["sku_id"],
+                    qty=1,
+                    unit_price_usd=Decimal("0.85"),
+                    fulfillment_data={"player_id": "555555", "server": "as"},
+                )
+            ],
+        )
+
+    now = datetime.now(UTC)
+    old_order = _make_order(now - timedelta(days=10))
+    mid_order = _make_order(now - timedelta(days=5))
+    recent_order = _make_order(now - timedelta(hours=1))
+    db_session.add_all([old_order, mid_order, recent_order])
+    await db_session.commit()
+
+    admin_token = await _login_user(integration_client, tg_id=44)
+    await _grant_admin(db_session, tg_id=44)
+    headers = {"Authorization": f"Bearer {admin_token}"}
+
+    # limit=1 pages down to a single row while total still reports every match.
+    paged = await integration_client.get(
+        "/api/v1/admin/orders",
+        params={"limit": 1, "offset": 0},
+        headers=headers,
+    )
+    assert paged.status_code == 200, paged.text
+    assert len(paged.json()["items"]) == 1
+    assert paged.json()["total"] >= 3
+
+    # since/until narrows to the mid-range order only.
+    windowed = await integration_client.get(
+        "/api/v1/admin/orders",
+        params={
+            "since": (now - timedelta(days=7)).isoformat(),
+            "until": (now - timedelta(days=2)).isoformat(),
+        },
+        headers=headers,
+    )
+    assert windowed.status_code == 200, windowed.text
+    ids = {o["id"] for o in windowed.json()["items"]}
+    assert mid_order.id in ids
+    assert old_order.id not in ids
+    assert recent_order.id not in ids
+
+
 # ---------- expiry ----------
 
 

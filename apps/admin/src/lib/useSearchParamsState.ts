@@ -38,18 +38,29 @@ export function useSearchParamsState<T = string>(
   const raw = params.get(key);
   const value: T = raw === null ? defaultValue : effective.parse(raw);
 
+  // Uses the functional-updater form of `setSearchParams` (reads `prev`
+  // rather than the `params` closed over at render time) so that firing
+  // several of these setters back-to-back in one handler — e.g. a "reset
+  // filters" button clearing status + date range + offset together —
+  // composes correctly instead of each call clobbering the others' writes
+  // with its own stale snapshot of the URL.
   const setValue = useCallback(
     (next: T) => {
-      const updated = new URLSearchParams(params);
-      const isDefault = effective.isDefault?.(next) ?? next === defaultValue;
-      if (isDefault) {
-        updated.delete(key);
-      } else {
-        updated.set(key, effective.serialize(next));
-      }
-      setParams(updated, { replace: true });
+      setParams(
+        (prev) => {
+          const updated = new URLSearchParams(prev);
+          const isDefault = effective.isDefault?.(next) ?? next === defaultValue;
+          if (isDefault) {
+            updated.delete(key);
+          } else {
+            updated.set(key, effective.serialize(next));
+          }
+          return updated;
+        },
+        { replace: true },
+      );
     },
-    [params, setParams, key, defaultValue, effective],
+    [setParams, key, defaultValue, effective],
   );
 
   return [value, setValue];

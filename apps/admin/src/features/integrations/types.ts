@@ -1,5 +1,12 @@
 /** Shared types for the integrations admin pages. */
 
+/** Ceiling on how long a connectivity/balance probe is allowed to hang
+ *  before we treat it as failed. Supplier health endpoints call out to a
+ *  third party with no server-side timeout of their own — without a client
+ *  timeout a dead upstream leaves the "Проверяем…" badge spinning forever
+ *  and the gated Sync/Pricing actions permanently disabled. */
+export const HEALTH_CHECK_TIMEOUT_MS = 8_000;
+
 export interface SupplierHealth {
   supplier: string;
   available: boolean;
@@ -14,6 +21,9 @@ export type MappingKind = "voucher" | "game";
 
 export interface SupplierMapping {
   sku_id: string;
+  /** Human-readable code (e.g. "steam-50-usd") — always prefer this over `sku_id`
+   *  in the UI; an operator can't tell which SKU a raw UUID belongs to. */
+  sku_code: string;
   supplier_slug: string;
   kind: MappingKind;
   external_product_id: string;

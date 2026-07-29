@@ -72,3 +72,18 @@ it("hides a published review via the moderation endpoint", async () => {
     );
   });
 });
+
+it("shows an error state with Retry — never the empty state — when the fetch fails", async () => {
+  mockedApiGet.mockRejectedValue(new Error("network down"));
+  renderPage();
+
+  expect(await screen.findByRole("alert")).toBeInTheDocument();
+  expect(screen.getByText("Не удалось загрузить данные")).toBeInTheDocument();
+  expect(screen.queryByText("Нет отзывов под фильтр.")).not.toBeInTheDocument();
+
+  const retryBtn = screen.getByRole("button", { name: "Повторить" });
+  mockedApiGet.mockResolvedValueOnce(LIST);
+  fireEvent.click(retryBtn);
+
+  expect(await screen.findByText("Отличный сервис")).toBeInTheDocument();
+});

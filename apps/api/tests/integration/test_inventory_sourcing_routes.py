@@ -665,3 +665,37 @@ async def test_voucher_with_mapping_prefers_supplier_over_mock(
     decision = await sourcing_svc.resolve_for_sku(db_session, _seed_sku)
     assert decision.primary == "inventory"
     assert decision.fallback == "supplier:g2b"
+
+
+async def test_upsert_rule_replays_pre_sku_code_body(
+    integration_client: AsyncClient, db_session: AsyncSession, _seed_sku: str
+) -> None:
+    """A replay body cached before ``sku_code`` was added (the deploy window) must
+    still replay with 200 — sku_code falls back to the sku_id — not 500."""
+    from yupay.core.idempotency import save_replay
+
+    admin = await _login_user(integration_client, tg_id=350)
+    await _grant_admin(db_session, tg_id=350)
+    key = "idem-pre-skucode-rule-0001"
+    # Old-shape body: everything SourcingRuleOut needs EXCEPT sku_code.
+    await save_replay(
+        db_session,
+        scope="sourcing.upsert_rule",
+        idempotency_key=key,
+        body={
+            "sku_id": _seed_sku,
+            "mode": "auto",
+            "supplier_slug": None,
+            "updated_by": None,
+            "updated_at": "2026-01-01T00:00:00Z",
+        },
+    )
+    await db_session.commit()
+
+    r = await integration_client.put(
+        f"/api/v1/admin/sourcing/rules/{_seed_sku}",
+        headers={"Authorization": f"Bearer {admin}", "Idempotency-Key": key},
+        json={"mode": "auto"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["sku_code"] == _seed_sku

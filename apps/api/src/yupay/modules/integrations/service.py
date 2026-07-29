@@ -8,6 +8,7 @@ by the admin autocomplete UI — never by the live fulfilment path.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any, Literal
@@ -97,6 +98,22 @@ async def list_mappings(
         stmt = stmt.where(SkuSupplierMapping.sku_id == sku_id)
     stmt = stmt.limit(min(limit, 500))
     return list((await db.execute(stmt)).scalars().all())
+
+
+async def sku_codes_for(db: AsyncSession, sku_ids: Iterable[str]) -> dict[str, str]:
+    """Batch-resolve ``sku_id -> sku_code`` for the given ids — one query, no N+1.
+
+    ``SkuSupplierMapping`` carries only ``sku_id`` (no ORM relationship to
+    ``Sku``); admin list views need the human-readable code instead of a raw
+    UUID, so routes call this once after fetching mapping rows.
+    """
+    from yupay.modules.catalog.models import Sku
+
+    ids = list(dict.fromkeys(sku_ids))
+    if not ids:
+        return {}
+    rows = (await db.execute(select(Sku.id, Sku.sku_code).where(Sku.id.in_(ids)))).all()
+    return {row.id: row.sku_code for row in rows}
 
 
 async def upsert_mapping(db: AsyncSession, payload: MappingUpsert) -> SkuSupplierMapping:
@@ -554,6 +571,7 @@ __all__ = [
     "list_mappings",
     "list_price_history",
     "refresh_sku_cost_for_mapping",
+    "sku_codes_for",
     "upsert_catalog_entry",
     "upsert_mapping",
 ]

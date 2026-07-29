@@ -4,18 +4,23 @@ import { ScrollText, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
+import { UserPicker } from "./UserPicker";
+
 import type {
   AccountWithBalance,
   AdjustmentsListOut,
   AdminUserLedgerOut,
   Transaction,
 } from "./types";
+import type { UserAdminOut } from "@/features/users/types";
 
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
+import { StatusChip } from "@/components/StatusChip";
 import { Tabs, type TabDescriptor } from "@/components/Tabs";
 import { useToast } from "@/components/Toast";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
+import { formatMoney, formatMoneyValue } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
 
 const ADJUST_KINDS = [
@@ -88,6 +93,10 @@ function LookupTab() {
   const initialUserId = searchParams.get("user_id") ?? "";
   const [userIdInput, setUserIdInput] = useState(initialUserId);
   const [activeUserId, setActiveUserId] = useState<string>(initialUserId);
+  // Typeahead selection — separate from `userIdInput` so picking a user
+  // doesn't fight with manually pasting a raw UUID into the field below;
+  // either path converges on `activeUserId`, which the ledger query keys off.
+  const [pickedUser, setPickedUser] = useState<UserAdminOut | null>(null);
   // Catch the case where Customer 360 → /wallet swap happens while the
   // tab is already mounted (React Router does not remount the page).
   useEffect(() => {
@@ -178,7 +187,7 @@ function LookupTab() {
     {
       key: "balance",
       header: "Баланс",
-      render: (a) => <span className="font-medium">{formatMoney(a.balance)}</span>,
+      render: (a) => <span className="font-medium">{formatMoneyValue(a.balance, a.currency)}</span>,
       className: "w-32 text-right",
     },
     {
@@ -199,10 +208,28 @@ function LookupTab() {
 
   return (
     <div>
+      <section className="mb-4">
+        <label className="text-xs font-medium uppercase text-[var(--text-secondary)]">
+          Найти пользователя
+        </label>
+        <div className="mt-1">
+          <UserPicker
+            value={pickedUser}
+            onChange={(u) => {
+              setPickedUser(u);
+              if (u) {
+                setUserIdInput(u.id);
+                setActiveUserId(u.id);
+              }
+            }}
+          />
+        </div>
+      </section>
+
       <section className="mb-6 flex flex-wrap items-end gap-3">
         <div className="grow">
           <label className="text-xs font-medium uppercase text-[var(--text-secondary)]">
-            User ID
+            User ID (или вставь напрямую)
           </label>
           <Input
             value={userIdInput}
@@ -448,9 +475,7 @@ function AdjustmentsFeed({ items }: { items: Transaction[] }) {
                   <span>
                     {p.direction === "D" ? "↓ D" : "↑ C"} · {p.account_id.slice(0, 8)}…
                   </span>
-                  <span>
-                    {formatMoney(p.amount)} {p.currency}
-                  </span>
+                  <span>{formatMoney(p.amount, p.currency)}</span>
                 </li>
               ))}
             </ul>
@@ -487,8 +512,8 @@ function TransactionsList({ items }: { items: Transaction[] }) {
           className="rounded-lg border bg-[var(--bg-surface)] p-4 text-sm shadow-[var(--shadow-sm)]"
         >
           <header className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-            <div>
-              <span className="font-medium">{tx.kind}</span>
+            <div className="flex items-center gap-2">
+              <StatusChip domain="walletTxKind" value={tx.kind} />
               {tx.actor && (
                 <span className="ml-2 text-xs text-[var(--text-secondary)]">by {tx.actor}</span>
               )}
@@ -503,9 +528,7 @@ function TransactionsList({ items }: { items: Transaction[] }) {
                 <span>
                   {p.direction === "D" ? "↓ D" : "↑ C"} · {p.account_id.slice(0, 8)}…
                 </span>
-                <span>
-                  {formatMoney(p.amount)} {p.currency}
-                </span>
+                <span>{formatMoney(p.amount, p.currency)}</span>
               </li>
             ))}
           </ul>
@@ -518,12 +541,6 @@ function TransactionsList({ items }: { items: Transaction[] }) {
       ))}
     </div>
   );
-}
-
-function formatMoney(value: string): string {
-  const n = Number.parseFloat(value);
-  if (Number.isNaN(n)) return value;
-  return n.toFixed(2);
 }
 
 function formatApiError(err: ApiError): string {

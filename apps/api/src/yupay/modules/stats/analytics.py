@@ -54,9 +54,13 @@ async def build_business_analytics(db: AsyncSession, *, r: AnalyticsRange) -> Bu
     moment = now()
     since = moment - timedelta(days=range_to_days(r))
 
-    summary = await _business_summary(db, since)
+    # The KPI card ("Заказов" / "оплачено N") and the funnel below it must never
+    # disagree, so both are built from the *same* created_at-windowed status
+    # counts — one query, two consumers. See ``_funnel`` and ``_business_summary``.
+    status_counts = await _status_counts_since(db, since)
+    funnel = _funnel(status_counts)
+    summary = await _business_summary(db, since, status_counts)
     revenue_series = await _revenue_series(db, since)
-    funnel = await _funnel(db, since)
     top_brands = await _top_brands(db, since)
     top_skus = await _top_skus(db, since)
     customers = await _customers(db, since)
@@ -73,24 +77,31 @@ async def build_business_analytics(db: AsyncSession, *, r: AnalyticsRange) -> Bu
     )
 
 
-async def _business_summary(db: AsyncSession, since: datetime) -> BusinessSummaryOut:
-    # Orders + GMV over paid-like orders paid in window.
-    base = select(
-        func.count(Order.id),
-        func.coalesce(func.sum(Order.total_usd), 0),
-        func.count(Order.id).filter(Order.status == "delivered"),
-    ).where(Order.paid_at >= since, Order.status.in_(_PAID_LIKE))
-    paid_orders_row, gmv_raw, delivered_raw = (await db.execute(base)).one()
-    paid_orders = int(paid_orders_row or 0)
+async def _business_summary(
+    db: AsyncSession, since: datetime, status_counts: dict[str, int]
+) -> BusinessSummaryOut:
+    # GMV: money actually collected in the window — orders whose *payment*
+    # landed in ``since..now`` (``paid_at``-windowed), which can include orders
+    # created just before the window started. This is a deliberately different
+    # population from the created_at-windowed counts below; it only feeds
+    # revenue/margin/AOV, never the "orders" / "paid_orders" headline counts
+    # (those come from ``status_counts`` so they match the funnel exactly).
+    gmv_raw = (
+        await db.execute(
+            select(func.coalesce(func.sum(Order.total_usd), 0)).where(
+                Order.paid_at >= since, Order.status.in_(_PAID_LIKE)
+            )
+        )
+    ).scalar_one()
     gmv = Decimal(str(gmv_raw or 0))
 
-    # Total orders created (for "orders" headline) in same window by created_at.
-    total_created = int(
-        (
-            await db.execute(select(func.count(Order.id)).where(Order.created_at >= since))
-        ).scalar_one()
-        or 0
-    )
+    # Orders / paid / delivered counts share the funnel's created_at-windowed
+    # status counts — see ``build_business_analytics``. "Paid" here means
+    # "reached paid or beyond" (paid/fulfilling/fulfilled/delivered all count),
+    # same rule as the funnel's ``paid`` bucket.
+    total_created = sum(status_counts.values())
+    paid_orders = sum(status_counts.get(s, 0) for s in _PAID_LIKE)
+    delivered_orders = status_counts.get("delivered", 0)
 
     # Margin (approx): join items→sku, only rows with cost_usdt known.
     m = (
@@ -122,7 +133,7 @@ async def _business_summary(db: AsyncSession, since: datetime) -> BusinessSummar
         gmv_usd=gmv,
         orders=total_created,
         paid_orders=paid_orders,
-        delivered_orders=int(delivered_raw or 0),
+        delivered_orders=delivered_orders,
         aov_usd=aov.quantize(Decimal("0.01")) if paid_orders else Decimal("0"),
         gross_margin_usd=margin,
         margin_pct=round(margin_pct, 2),
@@ -155,19 +166,40 @@ async def _revenue_series(db: AsyncSession, since: datetime) -> list[RevenuePoin
     ]
 
 
-async def _funnel(db: AsyncSession, since: datetime) -> FunnelOut:
+async def _status_counts_since(db: AsyncSession, since: datetime) -> dict[str, int]:
+    """Order counts by current status, for orders *created* since ``since``.
+
+    Single source of truth for both the funnel and the "orders" / "paid
+    orders" / "delivered orders" KPI headlines — see ``build_business_analytics``.
+    """
     stmt = (
         select(Order.status, func.count()).where(Order.created_at >= since).group_by(Order.status)
     )
-    counts = {s: int(c) for s, c in (await db.execute(stmt)).all()}
+    return {s: int(c) for s, c in (await db.execute(stmt)).all()}
+
+
+def _funnel(counts: dict[str, int]) -> FunnelOut:
+    """Build the funnel from status counts.
+
+    Each stage is *cumulative* — "reached this stage or beyond" — so the
+    funnel is monotonically non-increasing (``delivered <= fulfilling <=
+    paid <= created``) instead of counting only orders currently sitting in
+    that exact status. Without this, an order that already progressed from
+    ``paid`` to ``delivered`` would vanish from the "paid" bucket entirely,
+    which previously produced nonsense like "Оплачено 0, Доставлено 6".
+    """
     created = sum(counts.values())
     paid = sum(counts.get(s, 0) for s in _PAID_LIKE)
+    fulfilling_or_beyond = (
+        counts.get("fulfilling", 0) + counts.get("fulfilled", 0) + counts.get("delivered", 0)
+    )
+    delivered = counts.get("delivered", 0)
     conv = (paid / created * 100) if created else 0.0
     return FunnelOut(
         created=created,
-        paid=counts.get("paid", 0),
-        fulfilling=counts.get("fulfilling", 0),
-        delivered=counts.get("delivered", 0),
+        paid=paid,
+        fulfilling=fulfilling_or_beyond,
+        delivered=delivered,
         cancelled=counts.get("cancelled", 0),
         expired=counts.get("expired", 0),
         refunded=counts.get("refunded", 0),
