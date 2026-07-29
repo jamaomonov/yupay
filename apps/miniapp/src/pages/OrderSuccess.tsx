@@ -901,15 +901,15 @@ function ArtifactBlock({ delivery }: { delivery: DeliveryOut }) {
         </div>
       )}
       {!code && !key && !receipt && (
-        <pre
-          className="overflow-x-auto whitespace-pre-wrap rounded-xl px-3 py-2.5 font-mono text-[11px] leading-snug text-white/65"
+        <div
+          className="rounded-xl px-3 py-2.5 text-xs leading-snug text-white/60"
           style={{
             background: "hsl(var(--surface-2))",
             border: "1px solid hsl(var(--border))",
           }}
         >
-          {JSON.stringify(delivery.artifact, null, 2)}
-        </pre>
+          {t("success.credited")}
+        </div>
       )}
     </motion.div>
   );
@@ -960,10 +960,40 @@ function CopyableValue({
   );
 }
 
+/**
+ * Map a payment-provider slug to the label shown on the order summary.
+ * Mirrors ``paymentProviderDisplay`` on web
+ * (apps/web/src/lib/payment-providers.ts) but is text-only — the miniapp has
+ * no provider logo assets under ``apps/miniapp/public``. Backend already
+ * normalizes ``click_miniapp`` → ``click``; we tolerate both. Returns null
+ * when there is no provider yet (unpaid order).
+ */
+export function providerLabel(provider: string | null): string | null {
+  switch (provider) {
+    case "click":
+    case "click_miniapp":
+      return "Click";
+    case "payme":
+      return "Payme";
+    case "uzum":
+      return "Uzum";
+    case "octo":
+      return "Octo";
+    case "wallet":
+      return translate("success.paidWithWallet");
+    case null:
+    case "":
+      return null;
+    default:
+      return provider;
+  }
+}
+
 // ─── Summary footer ─────────────────────────────────────────────────────────
 
 function Summary({ order }: { order: OrderOut }) {
   const { t } = useT();
+  const providerText = providerLabel(order.payment_provider);
   return (
     <div className="px-4">
       <div
@@ -977,6 +1007,7 @@ function Summary({ order }: { order: OrderOut }) {
           label={t("success.amount")}
           value={`${Number.parseFloat(order.total_charged).toLocaleString(getActiveLocale(), { maximumFractionDigits: 2 })} ${order.currency}`}
         />
+        {providerText && <Row label={t("success.paidWith")} value={providerText} />}
         <Row label={t("success.createdAt")} value={fmtDate(order.created_at)} />
         {order.paid_at && <Row label={t("success.paidAt")} value={fmtDate(order.paid_at)} />}
         {order.delivered_at && (

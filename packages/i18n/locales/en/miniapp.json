@@ -214,6 +214,8 @@
   "success.key": "Key",
   "success.copied": "{label} copied",
   "success.amount": "Amount",
+  "success.paidWith": "Paid with",
+  "success.paidWithWallet": "Balance",
   "success.createdAt": "Created",
   "success.paidAt": "Paid",
   "success.deliveredAt": "Delivered",

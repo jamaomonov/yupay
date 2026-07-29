@@ -57,6 +57,7 @@ export interface OrderOut {
   currency: string;
   total_usd: string;
   total_charged: string;
+  payment_provider: string | null;
   fx_snapshot_id: string | null;
   expires_at: string;
   created_at: string;

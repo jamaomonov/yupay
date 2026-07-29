@@ -214,6 +214,8 @@
   "success.key": "Kalit",
   "success.copied": "{label} nusxalandi",
   "success.amount": "Summa",
+  "success.paidWith": "To'lov usuli",
+  "success.paidWithWallet": "Balans",
   "success.createdAt": "Yaratilgan",
   "success.paidAt": "To'langan",
   "success.deliveredAt": "Yetkazilgan",

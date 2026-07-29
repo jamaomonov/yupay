@@ -214,6 +214,8 @@
   "success.key": "Ключ",
   "success.copied": "{label} скопирован",
   "success.amount": "Сумма",
+  "success.paidWith": "Способ оплаты",
+  "success.paidWithWallet": "Баланс",
   "success.createdAt": "Создан",
   "success.paidAt": "Оплачен",
   "success.deliveredAt": "Выдан",
