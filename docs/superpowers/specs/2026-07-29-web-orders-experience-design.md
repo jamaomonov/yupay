@@ -65,24 +65,38 @@ The web order-details experience is poor and leaks internal data:
 
 ---
 
-## Phase 3 — Post-payment flow + guest orders + verified email
+## Phase 3 — Post-payment flow + guest orders + enforced email verification
+
+**Decision (locked):** email verification is **enforced at password login**. This is the strict option; the design below neutralizes its two footguns (existing-user lockout, prod email dependency).
+
+**Email verification enforcement**
+
+- `User.email_verified_at` already exists (nullable; `NULL` = unverified) and the verify-email endpoint already sets it. Login just never checks it — that's the gap.
+- **Password login** (`login_password`) rejects a user with `email_verified_at IS NULL` → a distinct `email_unverified` error (HTTP 403) the web can detect to show a "verify your email" state + resend button. **Telegram login is exempt** (no email; those users are authenticated by Telegram — set their `email_verified_at` at creation or bypass the check on that path).
+- **Register** no longer issues a session immediately: it creates the account, sends the verify email, and returns a "verification required" response (no tokens). The web shows "проверьте почту". **Verify-email** endpoint, on success, sets `email_verified_at` **and issues a session** (auto-login) so the link flow ends logged-in and triggers the claim.
+- **Resend**: new `POST /auth/resend-verification` (rate-limited) so a user who lost/never got the email can re-trigger; wired to the "verify your email" screen + the login-blocked error.
+- **Grandfather existing users**: a data migration sets `email_verified_at = now()` for all existing users where it is `NULL`, so enforcement applies only to new signups and no current account is locked out.
+- **Operational note (runbook)**: with login gated on verification, prod email delivery (Resend/Postmark) becomes load-bearing — a signup can't complete without a working mailer. Add a runbook note; keep the resend path as the recovery.
 
 **Post-payment → order page**
 
-- Set the payment intent's acquirer **return_url** to the order page (`/orders/{id}?email=<guest>` for a guest, `/orders/{id}` for a user), so after paying the customer lands on their live order. Trace where the intent's return/redirect URL is configured (payments gateways / `POST /payments/intents`) and point it at the order page. The order page already polls/WS to delivered and fires the delivered modal.
+- Web `PurchasePanel` sends `return_url = ${origin}/{locale}/orders/{id}[?email=<guest>]` in the payment-intent body so the acquirer returns the customer to their live order. Backend default return_url is derived from `settings.web_base_url` (replacing the hardcoded `app.yupay.uz/checkout/return`; octo's `telegram_miniapp_url` default likewise), and the backend validates a client-supplied `return_url` is same-origin as `web_base_url` (open-redirect hardening). The order page already polls/WS to delivered and fires the delivered modal.
+
+**Guest order viewing (pre-existing gap this phase must fix)**
+
+- The web order page currently sends only `X-Guest-Email`, not a `Guest` token, so a cold guest link 401s. The order page, for a guest (email present, no user), mints a `Guest` token from the email (`mintGuestToken`, freely mintable) and sends `Authorization: Guest <token>` + `X-Guest-Email` on the order + deliveries fetches. This makes both the emailed single-order link and the new guest list actually load.
 
 **Guest orders (localStorage list)**
 
-- After a guest checkout, persist `{ orderId, email, brandSlug, brandName, createdAt }` to `localStorage` (`yupay.guest_orders`), append-only, capped/deduped.
-- A guest-visible **orders page** lists these entries and links each to `/orders/{id}?email=` (the existing guest-access mechanism). The current account list redirects guests to login — instead, for a guest it renders the localStorage list.
+- After a guest checkout, `PurchasePanel.pay()` persists `{ orderId, email, brandSlug, brandName, createdAt }` to `localStorage` (`yupay.web.guest_orders`), append-only, capped/deduped — saved before the acquirer redirect and on the mock path.
+- A guest-visible **orders page**: `account/orders` currently bounces guests to login; instead, for a guest (no user) it renders the localStorage list, linking each entry to `/orders/{id}?email=`.
 
 **Claim on login (verified-email match)**
 
-- Backend `POST /orders/claim`: for the authenticated user, reassign every guest order whose `guest_email == user.email` **and** the user's email is **verified** — set `user_id`, null `guest_email` (respecting the `user_id` XOR `guest_email` constraint and the `reviews.order_id` FK). Idempotent; returns the claimed count.
-- Client: on successful login/signup, call the claim endpoint, then clear the matching `localStorage` guest entries.
-- **Email-verification blocker (must be resolved here):** today signup sends a verification link but admits the user unverified, so `user.email` isn't a trustworthy claim key. Phase-3 planning must decide + implement the fix — options to weigh at plan time: (a) enforce verification before login/claim, (b) add/trust an `email_verified` flag and gate the claim on it (unverified users simply can't claim until they verify). The claim MUST NOT reassign orders to an unverified email.
+- Backend `POST /orders/claim` (authenticated): reassign every guest order where `guest_email == user.email` **and** `user_id IS NULL` **and** the user's `email_verified_at IS NOT NULL` — set `user_id`, null `guest_email` in one UPDATE (satisfying the `user_id` XOR `guest_email` CHECK). The `reviews.order_id` FK targets the unchanged `orders.id` PK, so it's unaffected. Idempotent; returns the claimed count. (With login now gated on verification, the caller is always verified; the `email_verified_at` gate is belt-and-suspenders.)
+- Client: in the single post-auth funnel (`auth.tsx afterTokens`) and on verify-email success, call the claim endpoint, then clear the matching `localStorage` guest entries.
 
-**Verification:** the post-payment redirect, the guest list, and the claim-on-login are each confirmed via Playwright (guest checkout → order page → guest list → login → orders migrated).
+**Verification:** the post-payment redirect, the guest single-order link + list loading (guest-token auth), the enforced-login/verify/resend flow, and the claim-on-login are each confirmed via Playwright (guest checkout → order page → guest list → register → verify → orders migrated).
 
 ---
 
