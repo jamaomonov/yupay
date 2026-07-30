@@ -64,6 +64,12 @@ it("shows the credited USD amount for a variable-amount top-up (no denomination)
   expect(screen.getByText("Steam · $11.30")).toBeInTheDocument();
 });
 
+it("shows the amount, not a digit-free placeholder denomination (Любая сумма)", () => {
+  wrap(<OrderItems items={[item({ display: display({ denomination: "Любая сумма" }) })]} />);
+  expect(screen.getByText("Steam · $11.30")).toBeInTheDocument();
+  expect(screen.queryByText(/Любая сумма/)).not.toBeInTheDocument();
+});
+
 it("renders the target account (checkout input) as a labeled row, not a delivery", () => {
   wrap(<OrderItems items={[item({ fulfillment_data: { steam_login: "_jamshid__" } })]} />);
   expect(screen.getByText("Steam login")).toBeInTheDocument();
