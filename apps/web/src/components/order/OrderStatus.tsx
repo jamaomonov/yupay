@@ -125,19 +125,17 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
     order.data.items.every((i) => i.display?.product_kind === "top_up");
 
   return (
-    <div className="border-border bg-card rounded-2xl border p-6">
-      <p className="text-tx-dim font-mono text-xs">#{order.data.id.slice(0, 8)}</p>
-      <div className="mt-2">
+    <div className="border-border bg-card space-y-5 rounded-2xl border p-5 sm:p-6">
+      <div className="space-y-3">
+        <p className="text-tx-dim font-mono text-[11px] uppercase tracking-[0.14em]">
+          #{order.data.id.slice(0, 8)}
+        </p>
         <StatusBlock status={order.data.status} isTopUp={isTopUp} />
       </div>
 
-      <div className="mt-4">
-        <OrderSummary order={order.data} />
-      </div>
+      <OrderSummary order={order.data} />
 
-      <div className="mt-4">
-        <OrderItems items={order.data.items} />
-      </div>
+      <OrderItems items={order.data.items} />
 
       {status === "delivered" &&
         deliveries.data?.items.map((d) => <ArtifactReceipt key={d.id} artifact={d.artifact} />)}
@@ -145,7 +143,7 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
       {canRate && brandSlug && (
         <Link
           href={pathFor(locale, `/store/${brandSlug}?order=${order.data.id}#reviews`)}
-          className={buttonStyles({ size: "sm", className: "mt-4" })}
+          className={buttonStyles({ size: "sm" })}
         >
           {tr("writeCta")}
         </Link>

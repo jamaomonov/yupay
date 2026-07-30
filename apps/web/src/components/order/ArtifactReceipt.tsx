@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, CheckCircle2, Copy } from "lucide-react";
+import { Check, CheckCircle2, Copy, Gift } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
@@ -72,14 +72,15 @@ function CopyChip({ value }: { value: string }) {
     <button
       type="button"
       onClick={onCopy}
-      className="border-border bg-bg hover:border-tx-dim group flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition"
+      aria-label={copied ? t("copied") : `${t("copy")}: ${value}`}
+      className="border-border-2 bg-bg hover:border-primary/50 focus-visible:ring-primary/60 rounded-btn group flex w-full items-center gap-3 border px-3.5 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 active:scale-[0.99]"
     >
       <code className="text-foreground min-w-0 flex-1 truncate font-mono text-sm font-semibold">
         {value}
       </code>
       <span
-        className={`inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold ${
-          copied ? "text-emerald-400" : "text-tx-dim group-hover:text-tx-mute"
+        className={`inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold transition-colors ${
+          copied ? "text-primary" : "text-tx-dim group-hover:text-tx-mute"
         }`}
       >
         {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -135,7 +136,8 @@ export function ArtifactReceipt({ artifact }: { artifact: Record<string, unknown
   // line instead of rendering a shell with no content.
   if (renderableKeys.length === 0) {
     return (
-      <div className="border-border bg-muted/40 mt-4 rounded-xl border p-4">
+      <div className="border-border bg-card-2/60 flex items-center gap-2.5 rounded-xl border p-4">
+        <CheckCircle2 className="text-primary shrink-0" size={16} />
         <p className="text-foreground text-sm">{t("receipt.deliveredNote")}</p>
       </div>
     );
@@ -146,12 +148,13 @@ export function ArtifactReceipt({ artifact }: { artifact: Record<string, unknown
   const walletCredited = renderableKeys.some((k) => /wallet|balance|credit/i.test(k));
 
   return (
-    <div className="border-border bg-muted/40 mt-4 rounded-xl border p-4">
-      <h3 className="text-tx-dim mb-3 text-[11px] font-semibold uppercase tracking-[0.08em]">
+    <div className="border-primary/25 bg-primary/[0.05] rounded-xl border p-4">
+      <h3 className="text-primary mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em]">
+        <Gift size={13} aria-hidden="true" />
         {t("receiptTitle")}
       </h3>
       {walletCredited && (
-        <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-emerald-400">
+        <p className="text-primary mb-3 flex items-center gap-2 text-sm font-semibold">
           <CheckCircle2 size={16} />
           {t("walletCredited")}
         </p>
