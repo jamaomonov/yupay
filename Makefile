@@ -146,6 +146,10 @@ deploy: ## Deploy via GitHub Actions: make deploy env=prod
 	@if [ -z "$(env)" ]; then echo "Usage: make deploy env=prod"; exit 1; fi
 	gh workflow run deploy.yml -f environment=$(env)
 
+.PHONY: indexnow
+indexnow: ## Ping Bing/Yandex (IndexNow) with the live sitemap URLs (run after deploy)
+	node scripts/indexnow.mjs
+
 ##@ Ops
 
 .PHONY: backup

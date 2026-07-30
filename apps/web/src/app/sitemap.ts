@@ -18,6 +18,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const entries: MetadataRoute.Sitemap = [];
   const slugs = await getBrandSlugs();
 
+  // No per-entry content timestamps are exposed to the storefront, so use the
+  // build/generation time as `lastModified`. It's a truthful "site last
+  // rebuilt/deployed" signal (a redeploy is what publishes content changes) and
+  // `lastmod` is the one sitemap hint Google actually uses. Computed once so
+  // every URL in a given generation shares the same value.
+  const lastModified = new Date();
+
   const paths: {
     path: string;
     priority: number;
@@ -42,6 +49,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     for (const locale of LOCALES) {
       entries.push({
         url: localeUrl(locale, path),
+        lastModified,
         changeFrequency,
         priority,
         alternates: { languages },
