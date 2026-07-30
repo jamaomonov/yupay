@@ -30,6 +30,8 @@ from yupay.modules.auth.schemas import (
     LoginIn,
     MeOut,
     RegisterIn,
+    RegisterOut,
+    ResendVerificationIn,
     ResetPasswordIn,
     TelegramInitDataIn,
     TelegramWidgetIn,
@@ -45,6 +47,7 @@ from yupay.modules.auth.service import (
     refresh_session,
     register_user,
     request_password_reset,
+    resend_verification,
     reset_password,
     telegram_init_data_login,
     telegram_widget_login,
@@ -84,25 +87,29 @@ def _web_base(request: Request, locale: str) -> str:
 
 @router.post(
     "/register",
-    response_model=TokensOut,
+    response_model=RegisterOut,
     status_code=status.HTTP_201_CREATED,
     summary="Register an email/password account",
 )
 async def register_route(
     body: RegisterIn,
     request: Request,
-    response: Response,
     db: Annotated[AsyncSession, Depends(db_session)],
-) -> TokensOut:
-    """Create an email/password account and return a session immediately."""
-    tokens = await register_user(
+) -> RegisterOut:
+    """Create an email/password account. No session is opened.
+
+    The account must be verified (``POST /auth/verify-email``) before it can be
+    used to log in — see ``login_password``'s ``EmailUnverifiedError`` gate.
+    """
+    user = await register_user(
         db,
         email=body.email,
         password=body.password,
         locale=body.locale,
         verify_link_base=_web_base(request, body.locale),
     )
-    return _session_response(response, tokens)
+    assert user.email is not None  # register_user always sets one from RegisterIn.email
+    return RegisterOut(email=user.email)
 
 
 @router.post(
@@ -246,15 +253,34 @@ async def logout_route(
 
 @router.post(
     "/verify-email",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Confirm an email address from a signed token",
+    response_model=TokensOut,
+    summary="Confirm an email address from a signed token and open a session",
 )
 async def verify_email_route(
     body: VerifyEmailIn,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> TokensOut:
+    """Mark the user's email as verified using a signed ``email_verify`` JWT, then log in."""
+    tokens = await verify_email(db, token=body.token)
+    return _session_response(response, tokens)
+
+
+@router.post(
+    "/resend-verification",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Resend the email-verification link (non-enumerating)",
+)
+async def resend_verification_route(
+    body: ResendVerificationIn,
+    request: Request,
     db: Annotated[AsyncSession, Depends(db_session)],
 ) -> None:
-    """Mark the user's email as verified using a signed ``email_verify`` JWT."""
-    await verify_email(db, token=body.token)
+    """Non-enumerating: always returns 204 regardless of whether the email is known."""
+    await guard_ip(request, bucket="resend-verification")
+    await resend_verification(
+        db, email=body.email, verify_link_base=_web_base(request, "ru")
+    )
 
 
 @router.post(

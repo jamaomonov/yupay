@@ -6827,6 +6827,42 @@
         "title": "RegisterIn",
         "type": "object"
       },
+      "RegisterOut": {
+        "description": "Response for ``POST /auth/register``.\n\nRegistration no longer opens a session: the account exists but is unusable\nfor password login until the emailed link is followed (``POST\n/auth/verify-email``, which *does* open a session).",
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "status": {
+            "const": "verification_required",
+            "default": "verification_required",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "RegisterOut",
+        "type": "object"
+      },
+      "ResendVerificationIn": {
+        "description": "Body of ``POST /auth/resend-verification``.",
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "ResendVerificationIn",
+        "type": "object"
+      },
       "ResetPasswordIn": {
         "description": "Body of ``POST /auth/reset-password``.",
         "properties": {
@@ -16326,7 +16362,7 @@
     },
     "/api/v1/auth/register": {
       "post": {
-        "description": "Create an email/password account and return a session immediately.",
+        "description": "Create an email/password account. No session is opened.\n\nThe account must be verified (``POST /auth/verify-email``) before it can be\nused to log in \u2014 see ``login_password``'s ``EmailUnverifiedError`` gate.",
         "operationId": "register_route_api_v1_auth_register_post",
         "requestBody": {
           "content": {
@@ -16343,7 +16379,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TokensOut"
+                  "$ref": "#/components/schemas/RegisterOut"
                 }
               }
             },
@@ -16361,6 +16397,41 @@
           }
         },
         "summary": "Register an email/password account",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/resend-verification": {
+      "post": {
+        "description": "Non-enumerating: always returns 204 regardless of whether the email is known.",
+        "operationId": "resend_verification_route_api_v1_auth_resend_verification_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendVerificationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resend the email-verification link (non-enumerating)",
         "tags": [
           "auth"
         ]
@@ -16494,7 +16565,7 @@
     },
     "/api/v1/auth/verify-email": {
       "post": {
-        "description": "Mark the user's email as verified using a signed ``email_verify`` JWT.",
+        "description": "Mark the user's email as verified using a signed ``email_verify`` JWT, then log in.",
         "operationId": "verify_email_route_api_v1_auth_verify_email_post",
         "requestBody": {
           "content": {
@@ -16507,7 +16578,14 @@
           "required": true
         },
         "responses": {
-          "204": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokensOut"
+                }
+              }
+            },
             "description": "Successful Response"
           },
           "422": {
@@ -16521,7 +16599,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Confirm an email address from a signed token",
+        "summary": "Confirm an email address from a signed token and open a session",
         "tags": [
           "auth"
         ]

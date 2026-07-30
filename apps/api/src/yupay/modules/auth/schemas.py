@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -73,6 +74,12 @@ class VerifyEmailIn(BaseModel):
     token: str = Field(min_length=10, max_length=2048)
 
 
+class ResendVerificationIn(BaseModel):
+    """Body of ``POST /auth/resend-verification``."""
+
+    email: EmailStr
+
+
 class ForgotPasswordIn(BaseModel):
     """Body of ``POST /auth/forgot-password``."""
 
@@ -84,6 +91,18 @@ class ResetPasswordIn(BaseModel):
 
     token: str = Field(min_length=10, max_length=2048)
     new_password: str = Field(min_length=8, max_length=200)
+
+
+class RegisterOut(BaseModel):
+    """Response for ``POST /auth/register``.
+
+    Registration no longer opens a session: the account exists but is unusable
+    for password login until the emailed link is followed (``POST
+    /auth/verify-email``, which *does* open a session).
+    """
+
+    status: Literal["verification_required"] = "verification_required"
+    email: EmailStr
 
 
 class TokensOut(BaseModel):
@@ -131,6 +150,8 @@ __all__ = [
     "LoginIn",
     "MeOut",
     "RegisterIn",
+    "RegisterOut",
+    "ResendVerificationIn",
     "ResetPasswordIn",
     "TelegramInitDataIn",
     "TelegramWidgetIn",

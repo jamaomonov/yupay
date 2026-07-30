@@ -130,8 +130,12 @@ async def register_user(
     locale: str = "ru",
     settings: Settings | None = None,
     verify_link_base: str | None = None,
-) -> SessionTokens:
-    """Create an email/password user, open a session, and send a verify email.
+) -> User:
+    """Create an email/password user and send a verify email. No session is opened.
+
+    The account exists immediately but cannot be used for password login until
+    the emailed link is followed (``verify_email``, which does open a session)
+    — see ``login_password``'s ``EmailUnverifiedError`` gate.
 
     Args:
         db: Async session.
@@ -143,7 +147,7 @@ async def register_user(
             ``https://yupay.uz/ru``. When ``None`` no email is sent (dev).
 
     Returns:
-        Freshly minted session tokens for immediate login.
+        The newly created user row.
 
     Raises:
         ConflictError: When the email already belongs to a live account.
@@ -177,7 +181,7 @@ async def register_user(
                 text=content.text,
             )
 
-    return await _open_session(db, user=user, settings=s)
+    return user
 
 
 async def login_password(
@@ -439,8 +443,15 @@ async def verify_email(
     *,
     token: str,
     settings: Settings | None = None,
-) -> None:
-    """Mark a user's email as verified from a signed ``email_verify`` token."""
+) -> SessionTokens:
+    """Mark a user's email as verified from a signed ``email_verify`` token, then log in.
+
+    The link flow ends in a usable session rather than dropping the user back
+    to a login form immediately after they've proven the address is theirs.
+
+    Raises:
+        NotFoundError: If the user referenced by the token no longer exists.
+    """
     s = settings or get_settings()
     claims = authjwt.verify(token, expected_kind="email_verify", settings=s)
     user = await get_user_by_id(db, claims.sub)
@@ -449,6 +460,48 @@ async def verify_email(
     if user.email_verified_at is None:
         user.email_verified_at = now()
         await db.flush()
+    return await _open_session(db, user=user, settings=s)
+
+
+async def resend_verification(
+    db: AsyncSession,
+    *,
+    email: str,
+    settings: Settings | None = None,
+    verify_link_base: str | None = None,
+) -> None:
+    """Re-send the verify-email link if the account exists and is unverified.
+
+    Never reveals whether the email exists or its verification state (no
+    enumeration): the caller returns 204 regardless of what happened here.
+
+    Args:
+        db: Async database session.
+        email: The email address to look up.
+        settings: Optional settings override.
+        verify_link_base: Absolute URL prefix for the verification link, e.g.
+            ``https://yupay.uz/ru``. When ``None`` no email is sent (dev).
+    """
+    s = settings or get_settings()
+    normalised = email.strip().lower()
+    stmt = select(User).where(
+        User.email == normalised,
+        User.deleted_at.is_(None),
+    )
+    user = (await db.execute(stmt)).scalar_one_or_none()
+    if user is None or user.email_verified_at is not None or not verify_link_base:
+        return
+    token = authjwt.mint_email_verify(sub=user.id, settings=s)
+    link = f"{verify_link_base.rstrip('/')}/auth/verify?token={token}"
+    content = verify_email_email(link=link)
+    with contextlib.suppress(EmailSendError):
+        # non-blocking: silently drops on send failure, same as register_user
+        await send_email(
+            to=normalised,
+            subject=content.subject,
+            html=content.html,
+            text=content.text,
+        )
 
 
 async def current_user(
@@ -569,6 +622,7 @@ __all__ = [
     "refresh_session",
     "register_user",
     "request_password_reset",
+    "resend_verification",
     "reset_password",
     "telegram_init_data_login",
     "telegram_widget_login",
