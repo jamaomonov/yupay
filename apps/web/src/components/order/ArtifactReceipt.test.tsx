@@ -13,7 +13,6 @@ const messages = {
     orders: {
       copy: "Copy",
       copied: "Copied",
-      walletCredited: "Wallet balance topped up",
       receiptTitle: "Your delivery",
       receipt: {
         code: "Code",
@@ -47,33 +46,52 @@ it("renders a copyable code with the receipt heading", () => {
   expect(screen.getByText("ABC-123-XYZ")).toBeInTheDocument();
 });
 
-// Regression: a G2B game top-up delivers `_game_artifact(message=None)` —
-// after the Phase 1 whitelist, `message` is the only surviving key and it's
-// `null`, which renders nothing. The card must show a human confirmation
-// line, not an empty bordered shell.
-it("shows the delivered note instead of an empty card when the only key is a null message", () => {
-  wrap(<ArtifactReceipt artifact={{ message: null }} />);
-  expect(screen.getByText("Order delivered.")).toBeInTheDocument();
-  expect(screen.queryByText("Message")).not.toBeInTheDocument();
-  expect(screen.queryByText("Your delivery")).not.toBeInTheDocument();
+it("renders every code of a multi-code voucher purchase", () => {
+  wrap(<ArtifactReceipt artifact={{ code: "A-1", codes: ["A-1", "B-2"] }} />);
+  expect(screen.getByText("Codes")).toBeInTheDocument();
+  expect(screen.getByText("A-1")).toBeInTheDocument();
+  expect(screen.getByText("B-2")).toBeInTheDocument();
+  // `code` (=== codes[0]) must not show a duplicate "Code" row alongside "Codes".
+  expect(screen.queryByText("Code")).not.toBeInTheDocument();
 });
 
-// Regression: an artifact whose only surviving whitelisted key is an empty
-// `fulfillment_data: {}` must not render an empty card either.
-it("shows the delivered note instead of an empty card when fulfillment_data is empty", () => {
-  wrap(<ArtifactReceipt artifact={{ fulfillment_data: {} }} />);
-  expect(screen.getByText("Order delivered.")).toBeInTheDocument();
-  expect(screen.queryByText("Your details")).not.toBeInTheDocument();
-});
-
-it("shows the delivered note when the artifact has no whitelisted keys at all", () => {
-  wrap(<ArtifactReceipt artifact={{}} />);
-  expect(screen.getByText("Order delivered.")).toBeInTheDocument();
-});
-
-it("still renders a real message alongside the heading when one is present", () => {
-  wrap(<ArtifactReceipt artifact={{ message: "Топ-ап зачислен на ваш аккаунт." }} />);
+it("shows a redemption note alongside a real key", () => {
+  wrap(<ArtifactReceipt artifact={{ key: "STEAM-KEY-1", message: "Redeem in the client." }} />);
   expect(screen.getByText("Your delivery")).toBeInTheDocument();
+  expect(screen.getByText("STEAM-KEY-1")).toBeInTheDocument();
   expect(screen.getByText("Message")).toBeInTheDocument();
-  expect(screen.getByText("Топ-ап зачислен на ваш аккаунт.")).toBeInTheDocument();
+  expect(screen.getByText("Redeem in the client.")).toBeInTheDocument();
+});
+
+// A top-up receipt has NO deliverable — the login is the target account (shown
+// in the order composition), never dressed up as "Ваша выдача". The block must
+// be absent entirely, not an empty shell or a login masquerading as a delivery.
+it("renders nothing for a top-up receipt whose only key is the target login", () => {
+  const { container } = wrap(<ArtifactReceipt artifact={{ steam_login: "_jamshid__" }} />);
+  expect(container).toBeEmptyDOMElement();
+  expect(screen.queryByText("Your delivery")).not.toBeInTheDocument();
+  expect(screen.queryByText("_jamshid__")).not.toBeInTheDocument();
+});
+
+it("renders nothing when the only key is a null message", () => {
+  const { container } = wrap(<ArtifactReceipt artifact={{ message: null }} />);
+  expect(container).toBeEmptyDOMElement();
+});
+
+it("renders nothing when fulfillment_data is the only (empty) key", () => {
+  const { container } = wrap(<ArtifactReceipt artifact={{ fulfillment_data: {} }} />);
+  expect(container).toBeEmptyDOMElement();
+});
+
+it("renders nothing when the artifact has no whitelisted keys at all", () => {
+  const { container } = wrap(<ArtifactReceipt artifact={{}} />);
+  expect(container).toBeEmptyDOMElement();
+});
+
+it("renders nothing when a message is present without any real deliverable", () => {
+  const { container } = wrap(
+    <ArtifactReceipt artifact={{ message: "Топ-ап зачислен на ваш аккаунт." }} />,
+  );
+  expect(container).toBeEmptyDOMElement();
+  expect(screen.queryByText("Your delivery")).not.toBeInTheDocument();
 });
