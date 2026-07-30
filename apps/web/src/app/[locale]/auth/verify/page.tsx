@@ -1,50 +1,81 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Loader2 } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { Suspense, use, useEffect, useRef, useState } from "react";
 
-import { apiFetch } from "@/lib/client";
+import { useAuth } from "@/lib/auth";
+import { pathFor } from "@/lib/seo";
 
-function VerifyInner() {
+/**
+ * Landing page for the link in the verify-email message
+ * (`{web_base}/{locale}/auth/verify?token=...`, built by
+ * `apps/api/.../auth/service.py`'s `register_user`/`resend_verification`).
+ *
+ * `POST /auth/verify-email` opens a session (`TokensOut`) — this must go
+ * through `useAuth().verifyEmail`, not a raw `apiFetch`, so the access token
+ * is actually stored and the shared post-auth funnel runs (seed `/auth/me`,
+ * claim this browser's guest orders, clear their localStorage copies). Once
+ * that settles we hand off to the account orders list, where the claimed
+ * order(s) become visible.
+ */
+function VerifyInner({ locale }: { locale: string }) {
   const token = useSearchParams().get("token");
-  const [state, setState] = useState<"pending" | "ok" | "error">(token ? "pending" : "error");
-  const fired = useRef(false);
+  const { verifyEmail } = useAuth();
+  const router = useRouter();
+  const t = useTranslations("web.auth");
+  const [status, setStatus] = useState<"pending" | "invalid">(token ? "pending" : "invalid");
+  // Effects can re-run (StrictMode, fast refresh); the token is single-use.
+  const startedRef = useRef(false);
 
   useEffect(() => {
-    if (fired.current || !token) return;
-    fired.current = true;
-    apiFetch("/auth/verify-email", {
-      method: "POST",
-      anonymous: true,
-      body: { token },
-    })
+    if (!token || startedRef.current) return;
+    startedRef.current = true;
+    let cancelled = false;
+    verifyEmail(token)
       .then(() => {
-        setState("ok");
+        if (!cancelled) router.replace(pathFor(locale, "/account/orders"));
       })
       .catch(() => {
-        setState("error");
+        if (!cancelled) setStatus("invalid");
       });
-  }, [token]);
+    return () => {
+      cancelled = true;
+    };
+  }, [token, verifyEmail, router, locale]);
+
+  if (status === "invalid") {
+    return (
+      <main className="mx-auto max-w-[420px] px-4 py-16 text-center">
+        <h1 className="font-display mb-4 text-2xl font-bold tracking-[-0.02em]">
+          {t("verifyRequiredTitle")}
+        </h1>
+        <p className="text-[15px] leading-relaxed text-[#FF6B6B]">{t("verifyInvalid")}</p>
+      </main>
+    );
+  }
 
   return (
-    <main className="mx-auto max-w-[420px] px-4 py-16 text-center">
-      {state === "pending" && <p>Подтверждаем…</p>}
-      {state === "ok" && <p>Email подтверждён ✓</p>}
-      {state === "error" && <p>Ссылка недействительна или устарела.</p>}
+    <main className="mx-auto flex max-w-[420px] flex-col items-center px-4 py-16">
+      <Loader2 size={28} className="animate-spin" />
     </main>
   );
 }
 
-export default function VerifyPage() {
+function VerifyFallback() {
   return (
-    <Suspense
-      fallback={
-        <main className="mx-auto max-w-[420px] px-4 py-16 text-center">
-          <p>Подтверждаем…</p>
-        </main>
-      }
-    >
-      <VerifyInner />
+    <main className="mx-auto flex max-w-[420px] flex-col items-center px-4 py-16">
+      <Loader2 size={28} className="animate-spin" />
+    </main>
+  );
+}
+
+export default function VerifyPage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = use(params);
+  return (
+    <Suspense fallback={<VerifyFallback />}>
+      <VerifyInner locale={locale} />
     </Suspense>
   );
 }

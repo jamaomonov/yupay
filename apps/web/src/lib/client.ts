@@ -48,6 +48,14 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     public path: string,
+    /**
+     * RFC 7807 `type` URI from the problem+json error body (e.g.
+     * `https://app.yupay.uz/errors/email-unverified`), when the response body
+     * was parseable JSON with a `type` string. `undefined` for non-JSON
+     * bodies or bodies without a `type` field — callers that need to
+     * distinguish error kinds should check this rather than status alone.
+     */
+    public type?: string,
   ) {
     super(`API ${String(status)} on ${path}`);
     this.name = "ApiError";
@@ -98,7 +106,18 @@ export async function apiFetch<T>(path: string, opts: ReqOpts = {}): Promise<T> 
     const fresh = await refreshAccess();
     if (fresh) return apiFetch<T>(path, { ...opts, retry: true });
   }
-  if (!res.ok) throw new ApiError(res.status, path);
+  if (!res.ok) {
+    let type: string | undefined;
+    try {
+      const body: unknown = await res.json();
+      if (body && typeof body === "object" && "type" in body && typeof body.type === "string") {
+        type = body.type;
+      }
+    } catch {
+      /* non-JSON or empty error body — leave `type` undefined */
+    }
+    throw new ApiError(res.status, path, type);
+  }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }

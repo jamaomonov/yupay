@@ -10,6 +10,8 @@ import { ProviderButton } from "./ProviderButton";
 import { GoogleIcon, SteamIcon, TelegramIcon } from "./ProviderIcons";
 
 import { useAuth } from "@/lib/auth";
+import { buttonStyles } from "@/lib/button";
+import { ApiError, apiFetch } from "@/lib/client";
 import { pathFor } from "@/lib/seo";
 import { useLoginModal } from "@/store/useLoginModal";
 
@@ -28,8 +30,14 @@ export function LoginModal({ locale }: { locale: string }) {
   const t = useTranslations("web.auth");
   const { isOpen, close } = useLoginModal();
   const { login, register, loginWithTelegram } = useAuth();
-  const [screen, setScreen] = useState<"providers" | "email">("providers");
+  const [screen, setScreen] = useState<"providers" | "email" | "verify">("providers");
   const [mode, setMode] = useState<"login" | "register">("login");
+  // Populated when register succeeds (verification_required) or login is
+  // blocked by the 403 email-unverified gate — `verify` screen shows either
+  // "check your inbox" (register) or "confirm to sign in" (login) copy for it.
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [unverified, setUnverified] = useState(false);
+  const [resendStatus, setResendStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const cardRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
 
@@ -37,6 +45,8 @@ export function LoginModal({ locale }: { locale: string }) {
     if (isOpen) {
       setScreen("providers");
       setMode("login");
+      setUnverified(false);
+      setResendStatus("idle");
     }
   }, [isOpen]);
 
@@ -84,6 +94,20 @@ export function LoginModal({ locale }: { locale: string }) {
       });
     }
   }, [loginWithTelegram]);
+
+  const handleResend = useCallback(async () => {
+    setResendStatus("sending");
+    try {
+      await apiFetch("/auth/resend-verification", {
+        method: "POST",
+        anonymous: true,
+        body: { email: pendingEmail },
+      });
+      setResendStatus("sent");
+    } catch {
+      setResendStatus("error");
+    }
+  }, [pendingEmail]);
 
   if (!isOpen) return null;
 
@@ -161,6 +185,36 @@ export function LoginModal({ locale }: { locale: string }) {
               </Link>
             </p>
           </>
+        ) : screen === "verify" ? (
+          <div className="mt-6">
+            <button
+              type="button"
+              onClick={() => {
+                setScreen("email");
+                setResendStatus("idle");
+              }}
+              className="text-tx-mute hover:text-tx mb-4 text-[13px]"
+            >
+              ← {t("back")}
+            </button>
+            <h3 className="text-foreground mb-2 text-lg font-semibold">
+              {unverified ? t("loginUnverified") : t("verifyRequiredTitle")}
+            </h3>
+            <p className="text-tx-mute mb-1 text-[14px] leading-relaxed">
+              {t("verifyRequiredBody", { email: pendingEmail })}
+            </p>
+            <p className="text-tx-dim mb-5 text-[13px]">{t("checkEmail")}</p>
+            <button
+              type="button"
+              onClick={() => {
+                void handleResend();
+              }}
+              disabled={resendStatus === "sending"}
+              className={buttonStyles({ size: "lg", variant: "ghost", className: "w-full" })}
+            >
+              {resendStatus === "sent" ? t("resendSent") : t("resend")}
+            </button>
+          </div>
         ) : (
           <div className="mt-6">
             <button
@@ -182,8 +236,30 @@ export function LoginModal({ locale }: { locale: string }) {
               onSubmit={async (v) => {
                 if (mode === "register") {
                   await register(v.email, v.password, locale);
-                } else {
+                  // No session yet — the account needs email verification
+                  // before it can log in. Show the "check your inbox" screen
+                  // instead of the normal post-auth close().
+                  setPendingEmail(v.email);
+                  setUnverified(false);
+                  setResendStatus("idle");
+                  setScreen("verify");
+                  return;
+                }
+                try {
                   await login(v.email, v.password);
+                } catch (err) {
+                  if (
+                    err instanceof ApiError &&
+                    err.status === 403 &&
+                    err.type?.endsWith("/email-unverified")
+                  ) {
+                    setPendingEmail(v.email);
+                    setUnverified(true);
+                    setResendStatus("idle");
+                    setScreen("verify");
+                    return;
+                  }
+                  throw err;
                 }
                 // Stay on the current page — the header reflects the signed-in
                 // state; no dedicated account page to navigate to.

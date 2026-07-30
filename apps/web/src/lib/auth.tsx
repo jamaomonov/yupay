@@ -12,6 +12,7 @@ import {
 } from "react";
 
 import { apiFetch, clearTokens, getAccessToken, setTokens, type Tokens } from "./client";
+import { listGuestOrders, removeGuestOrders } from "./guest-orders";
 
 export interface Me {
   id: string;
@@ -28,8 +29,16 @@ interface AuthValue {
   user: Me | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  /**
+   * Creates the account but opens no session — the API now requires email
+   * verification before password login works (`RegisterOut.status ===
+   * "verification_required"`). Callers show verify-your-email copy on success;
+   * they already have the submitted `email` to render it with.
+   */
   register: (email: string, password: string, locale: string) => Promise<void>;
   loginWithTelegram: (payload: Record<string, unknown>) => Promise<void>;
+  /** Redeems a `POST /auth/verify-email` token and opens a session (afterTokens). */
+  verifyEmail: (token: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -65,6 +74,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // ignores that gate, so `user` is populated before the caller navigates
       // to an auth-gated route.
       await qc.fetchQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/auth/me") });
+
+      // Migrate this browser's guest orders (if any) onto the now-authenticated
+      // account, then drop the local copies — they're either claimed onto this
+      // account or belonged to a different email and were never claimable here
+      // either way. Non-fatal: a claim failure shouldn't block sign-in.
+      try {
+        await apiFetch<{ claimed: number }>("/orders/claim", { method: "POST" });
+      } catch {
+        /* best-effort — claim errors don't block sign-in */
+      }
+      removeGuestOrders(listGuestOrders().map((o) => o.orderId));
+      void qc.invalidateQueries({ queryKey: ["orders"] });
     },
     [qc],
   );
@@ -81,12 +102,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [afterTokens],
   );
 
-  const register = useCallback(
-    async (email: string, password: string, locale: string) => {
-      const tokens = await apiFetch<Tokens>("/auth/register", {
+  const register = useCallback(async (email: string, password: string, locale: string) => {
+    // No session comes back — the account exists but needs email verification
+    // (POST /auth/verify-email) before it can log in. The response body is just
+    // `{status: "verification_required", email}`; callers already hold `email`.
+    await apiFetch<{ status: "verification_required"; email: string }>("/auth/register", {
+      method: "POST",
+      anonymous: true,
+      body: { email, password, locale },
+    });
+  }, []);
+
+  const verifyEmail = useCallback(
+    async (token: string) => {
+      const tokens = await apiFetch<Tokens>("/auth/verify-email", {
         method: "POST",
         anonymous: true,
-        body: { email, password, locale },
+        body: { token },
       });
       await afterTokens(tokens);
     },
@@ -123,9 +155,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       register,
       loginWithTelegram,
+      verifyEmail,
       logout,
     }),
-    [mounted, meQuery.data, meQuery.isLoading, login, register, loginWithTelegram, logout],
+    [
+      mounted,
+      meQuery.data,
+      meQuery.isLoading,
+      login,
+      register,
+      loginWithTelegram,
+      verifyEmail,
+      logout,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

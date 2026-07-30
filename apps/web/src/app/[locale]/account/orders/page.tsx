@@ -1,22 +1,22 @@
 "use client";
 
-import { formatMoney } from "@yupay/utils";
 import { useQuery } from "@tanstack/react-query";
+import { formatMoney } from "@yupay/utils";
 import { Star } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { use, useEffect } from "react";
+import { use } from "react";
 
 import type { OrderListOut, OrderOut } from "@/lib/orders-types";
 
+import { GuestOrdersList } from "@/components/order/GuestOrdersList";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { apiFetch } from "@/lib/client";
+import { listGuestOrders } from "@/lib/guest-orders";
 import { getMyReviews } from "@/lib/reviews";
 import { pathFor } from "@/lib/seo";
-import { useLoginModal } from "@/store/useLoginModal";
 
 const STATUS_CLS: Record<string, string> = {
   pending_payment: "bg-amber-500/15 text-amber-400",
@@ -49,15 +49,6 @@ export default function OrdersPage({ params }: { params: Promise<{ locale: strin
   const t = useTranslations("web.orders");
   const tr = useTranslations("web.brandReviews");
   const { user, isLoading: authLoading } = useAuth();
-  const router = useRouter();
-  const openLogin = useLoginModal((s) => s.open);
-
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.replace(pathFor(locale));
-      openLogin();
-    }
-  }, [authLoading, user, router, locale, openLogin]);
 
   const orders = useQuery({
     queryKey: ["orders"],
@@ -75,10 +66,20 @@ export default function OrdersPage({ params }: { params: Promise<{ locale: strin
   });
   const reviewedOrders = new Set((myReviews.data?.items ?? []).map((r) => r.order_id));
 
-  if (authLoading || !user) {
+  if (authLoading) {
     return (
       <main className="mx-auto max-w-[640px] px-4 pb-24 pt-[120px]">
-        {authLoading && <p className="text-tx-dim text-sm">{t("loading")}</p>}
+        <p className="text-tx-dim text-sm">{t("loading")}</p>
+      </main>
+    );
+  }
+
+  // Guests have no account to list orders against — fall back to this
+  // browser's local order history instead of bouncing them to /login.
+  if (!user) {
+    return (
+      <main className="mx-auto max-w-[640px] px-4 pb-24 pt-[120px]">
+        <GuestOrdersList orders={listGuestOrders()} locale={locale} />
       </main>
     );
   }

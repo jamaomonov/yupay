@@ -99,4 +99,29 @@ describe("apiFetch", () => {
     expect(new Headers(init?.headers).get("Authorization")).toBeNull();
     clearTokens();
   });
+
+  it("surfaces the RFC 7807 `type` from a problem+json error body on ApiError", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(403, {
+        type: "https://app.yupay.uz/errors/email-unverified",
+        title: "Email not verified",
+        status: 403,
+        detail: "Confirm your email address before signing in.",
+      }),
+    );
+
+    await expect(apiFetch("/auth/login", { anonymous: true })).rejects.toMatchObject({
+      status: 403,
+      type: "https://app.yupay.uz/errors/email-unverified",
+    });
+  });
+
+  it("leaves ApiError.type undefined for a non-JSON or typeless error body", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response("not json", { status: 500, headers: { "Content-Type": "text/plain" } }),
+    );
+
+    const err = await apiFetch("/orders", { anonymous: true }).catch((e: unknown) => e);
+    expect(err).toMatchObject({ status: 500, type: undefined });
+  });
 });
