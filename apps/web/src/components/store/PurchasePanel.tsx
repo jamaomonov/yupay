@@ -13,6 +13,7 @@ import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { getAccessToken } from "@/lib/client";
 import { mintGuestToken } from "@/lib/guest";
+import { saveGuestOrder } from "@/lib/guest-orders";
 import { canCheck, IDLE, runPlayerCheck, type CheckState } from "@/lib/player-check-state";
 import { formatUzs, pathFor } from "@/lib/seo";
 import { amountError, parseAmount } from "@/lib/variable-amount";
@@ -493,6 +494,12 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
         ? `${API}/api/v1/payments/intents`
         : `${API}/api/v1/payments/intents?email=${encodeURIComponent(email)}`;
 
+      // Absolute URL the acquirer redirects the customer back to after they
+      // pay — the server validates + defaults it, but the order page (with
+      // the guest `?email=` suffix, when applicable) is always the right target.
+      const trackHref = pathFor(locale, `/orders/${order.id}${emailSuffix}`);
+      const returnUrl = `${window.location.origin}${trackHref}`;
+
       const intentRes = await fetch(intentsUrl, {
         method: "POST",
         headers: {
@@ -500,11 +507,26 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
           "Idempotency-Key": crypto.randomUUID(),
           ...auth,
         },
-        body: JSON.stringify({ order_id: order.id, provider }),
+        body: JSON.stringify({ order_id: order.id, provider, return_url: returnUrl }),
       });
       if (!intentRes.ok) throw new Error("intent");
       const intent = (await intentRes.json()) as { intent_url: string | null };
-      const trackHref = pathFor(locale, `/orders/${order.id}${emailSuffix}`);
+
+      if (!isLoggedIn) {
+        // Guests have no account to list orders against — remember this one
+        // in localStorage so a later guest order list can render it.
+        const brand = selProduct?.brand ?? products[0]?.brand;
+        if (brand) {
+          saveGuestOrder({
+            orderId: order.id,
+            email,
+            brandSlug: brand.slug,
+            brandName: brand.name,
+            createdAt: new Date().toISOString(),
+          });
+        }
+      }
+
       if (intent.intent_url && provider !== "mock") {
         // Real acquirer → go straight to the hosted payment page. The dev `mock`
         // provider returns a non-resolvable URL, so we keep its clickable

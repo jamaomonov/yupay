@@ -15,6 +15,7 @@ import type { OrderOut } from "@/lib/orders-types";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { apiFetch } from "@/lib/client";
+import { mintGuestToken } from "@/lib/guest";
 import { getMyReviews } from "@/lib/reviews";
 import { pathFor } from "@/lib/seo";
 import { useRealtimeStatus } from "@/store/useRealtimeStatus";
@@ -40,10 +41,41 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
   const tr = useTranslations("web.brandReviews");
   const locale = useLocale();
   const { user } = useAuth();
-  // Guest identification travels as a header, never a query param — a query
-  // param lands in Caddy / proxy access logs and browser history, a header
-  // doesn't. Trimmed + lowercased to match what the backend expects.
-  const guestHeaders = email ? { "X-Guest-Email": email.trim().toLowerCase() } : {};
+  // A guest is identified by the `?email=` query param and has no session. If
+  // both are present (e.g. a logged-in user opened a guest link), the Bearer
+  // session wins and the email is ignored — the logged-in path is unchanged.
+  const isGuest = Boolean(email) && !user;
+  const normalizedEmail = email?.trim().toLowerCase();
+
+  // Guests carry no Bearer token, so the backend requires a short-lived
+  // `Guest` token minted from the email (see /auth/guest). Cached by
+  // react-query under the email key rather than per-render; a stale/expired
+  // token gets re-minted the next time this query refetches (focus, retry).
+  const guestToken = useQuery({
+    queryKey: ["guest-token", normalizedEmail],
+    enabled: isGuest,
+    queryFn: () => {
+      // `enabled: isGuest` guarantees `email` (and so `normalizedEmail`) is set
+      // whenever this actually runs; the guard just satisfies the type checker.
+      if (!normalizedEmail) throw new Error("guest order view: missing email");
+      return mintGuestToken(normalizedEmail);
+    },
+  });
+  // `anonymous: true` stops apiFetch from overwriting Authorization with a
+  // stale/absent Bearer header — the explicit Guest header below survives.
+  const guestAuth =
+    isGuest && guestToken.data && normalizedEmail
+      ? {
+          anonymous: true as const,
+          headers: {
+            Authorization: `Guest ${guestToken.data}`,
+            "X-Guest-Email": normalizedEmail,
+          },
+        }
+      : undefined;
+  // Guest fetches wait for the token; the logged-in (no email) path never blocks.
+  const authReady = !isGuest || Boolean(guestAuth);
+
   // While the WS is connected, live pushes keep the cache fresh — invalidated
   // messages already trigger a refetch, so polling is redundant. Polling is
   // the fallback for guests, disconnected sockets, and the reconnect window.
@@ -51,7 +83,8 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
 
   const order = useQuery({
     queryKey: ["order", orderId],
-    queryFn: () => apiFetch<OrderOut>(`/orders/${orderId}`, { headers: guestHeaders }),
+    queryFn: () => apiFetch<OrderOut>(`/orders/${orderId}`, guestAuth),
+    enabled: authReady,
     refetchInterval: (q) =>
       !connected && q.state.data && IN_MOTION.has(q.state.data.status) ? 4000 : false,
   });
@@ -60,9 +93,8 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
 
   const deliveries = useQuery({
     queryKey: ["deliveries", orderId],
-    enabled: status === "delivered",
-    queryFn: () =>
-      apiFetch<DeliveryListOut>(`/orders/${orderId}/deliveries`, { headers: guestHeaders }),
+    enabled: authReady && status === "delivered",
+    queryFn: () => apiFetch<DeliveryListOut>(`/orders/${orderId}/deliveries`, guestAuth),
   });
 
   // Fallback rate CTA: even if the delivered modal was skipped or missed, a
@@ -74,8 +106,14 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
     enabled: Boolean(user) && status === "delivered",
   });
 
-  if (order.isLoading) return <p className="text-tx-mute">{t("loading")}</p>;
-  if (order.isError || !order.data) return <p className="text-[#FF6B6B]">{t("notFound")}</p>;
+  // Waiting on the guest token counts as loading too — the order query
+  // stays disabled (and so `order.isLoading` false) until it resolves.
+  if (order.isLoading || (isGuest && guestToken.isPending)) {
+    return <p className="text-tx-mute">{t("loading")}</p>;
+  }
+  if (guestToken.isError || order.isError || !order.data) {
+    return <p className="text-[#FF6B6B]">{t("notFound")}</p>;
+  }
 
   const brandSlug = order.data.items[0]?.display?.brand_slug ?? null;
   const alreadyReviewed = (myReviews.data?.items ?? []).some((r) => r.order_id === order.data.id);
