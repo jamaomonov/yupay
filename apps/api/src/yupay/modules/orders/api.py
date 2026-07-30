@@ -3,6 +3,7 @@
 from yupay.modules.orders.models import Order, OrderEvent, OrderItem
 from yupay.modules.orders.routes import admin_router, router
 from yupay.modules.orders.schemas import (
+    ClaimOut,
     OrderAdminListOut,
     OrderAdminOut,
     OrderCreate,
@@ -17,6 +18,7 @@ from yupay.modules.orders.schemas import (
 from yupay.modules.orders.service import (
     Actor,
     cancel_order_admin,
+    claim_orders_for_user,
     create_order,
     expire_stale_orders,
     get_order_admin,
@@ -27,6 +29,7 @@ from yupay.modules.orders.service import (
 
 __all__ = [
     "Actor",
+    "ClaimOut",
     "Order",
     "OrderAdminListOut",
     "OrderAdminOut",
@@ -42,6 +45,7 @@ __all__ = [
     "OrderStatus",
     "admin_router",
     "cancel_order_admin",
+    "claim_orders_for_user",
     "create_order",
     "expire_stale_orders",
     "get_order_admin",

@@ -22,6 +22,7 @@ from yupay.modules.auth.jwt import verify as verify_jwt
 from yupay.modules.orders import service as svc
 from yupay.modules.orders.models import Order
 from yupay.modules.orders.schemas import (
+    ClaimOut,
     OrderAdminListOut,
     OrderAdminOut,
     OrderCreate,
@@ -177,6 +178,16 @@ async def list_orders_route(
     """List orders for the logged-in user. Guests get this view via the email link."""
     orders = await svc.list_orders_for_actor(db, actor=Actor(user_id=user.id, email=None))
     return OrderListOut(items=[_to_order_out(o) for o in orders])
+
+
+@router.post("/claim", response_model=ClaimOut, summary="Claim guest orders for the logged-in user")
+async def claim_orders_route(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    user: Annotated[User, Depends(current_user)],
+) -> ClaimOut:
+    """Migrate any guest orders matching the caller's (verified) email to their account."""
+    count = await svc.claim_orders_for_user(db, user=user)
+    return ClaimOut(claimed=count)
 
 
 # ---------- admin ----------

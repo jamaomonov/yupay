@@ -146,7 +146,14 @@ class OrderAdminListOut(BaseModel):
     total: int = 0
 
 
+class ClaimOut(BaseModel):
+    """Response of ``POST /orders/claim`` — how many guest orders were migrated."""
+
+    claimed: int
+
+
 __all__ = [
+    "ClaimOut",
     "OrderAdminListOut",
     "OrderAdminOut",
     "OrderCreate",

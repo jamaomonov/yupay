@@ -2393,6 +2393,20 @@
         "title": "CheckPlayerOut",
         "type": "object"
       },
+      "ClaimOut": {
+        "description": "Response of ``POST /orders/claim`` \u2014 how many guest orders were migrated.",
+        "properties": {
+          "claimed": {
+            "title": "Claimed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "claimed"
+        ],
+        "title": "ClaimOut",
+        "type": "object"
+      },
       "CodeAdminListOut": {
         "properties": {
           "items": {
@@ -17214,6 +17228,56 @@
           }
         },
         "summary": "Create an order (idempotent)",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/v1/orders/claim": {
+      "post": {
+        "description": "Migrate any guest orders matching the caller's (verified) email to their account.",
+        "operationId": "claim_orders_route_api_v1_orders_claim_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Claim guest orders for the logged-in user",
         "tags": [
           "orders"
         ]

@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -29,6 +29,7 @@ from yupay.modules.orders.validation import validate_fulfillment_data
 from yupay.modules.payments.models import Payment, PaymentAttempt
 from yupay.modules.pricing.fx_guard import RateRejected, guarded_usd_rate
 from yupay.modules.pricing.variable import display_rate, price_in_quote, validate_amount
+from yupay.modules.users.models import User
 
 # Smallest unit an acquirer will actually charge, per quote currency. UZS is
 # whole so'm (tiyin coins are defunct; the catalog also prices UZS SKUs to whole
@@ -614,6 +615,28 @@ async def list_orders_for_actor(db: AsyncSession, *, actor: Actor, limit: int = 
     return rows
 
 
+async def claim_orders_for_user(db: AsyncSession, *, user: User) -> int:
+    """Reassign the user's guest orders to their account.
+
+    Reassigns every order where ``guest_email`` equals the user's email, the
+    order is still a guest order (``user_id IS NULL``), and the user's email is
+    verified. Sets ``user_id`` and nulls ``guest_email`` in one statement so the
+    ``ck_orders_actor_exclusive`` XOR CHECK always holds. Idempotent. Returns the
+    number of orders claimed.
+    """
+    if user.email_verified_at is None or user.email is None:
+        return 0
+    result = await db.execute(
+        update(Order)
+        .where(
+            Order.user_id.is_(None),
+            func.lower(Order.guest_email) == user.email.lower(),
+        )
+        .values(user_id=user.id, guest_email=None)
+    )
+    return result.rowcount or 0  # type: ignore[attr-defined]
+
+
 async def list_orders_admin(
     db: AsyncSession,
     *,
@@ -800,6 +823,7 @@ __all__ = [
     "Actor",
     "build_item_display",
     "cancel_order_admin",
+    "claim_orders_for_user",
     "create_order",
     "expire_stale_orders",
     "get_order_admin",
