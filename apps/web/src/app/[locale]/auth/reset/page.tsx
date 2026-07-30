@@ -41,7 +41,7 @@ function ResetInner() {
 
   if (status === "ok") {
     return (
-      <main className="mx-auto max-w-[420px] px-4 py-16">
+      <main className="mx-auto max-w-[420px] px-4 pb-16 pt-[120px]">
         <h1 className="font-display mb-6 text-2xl font-bold tracking-[-0.02em]">Пароль изменён</h1>
         <p className="text-[15px] leading-relaxed">
           Ваш пароль успешно изменён.{" "}
@@ -55,7 +55,7 @@ function ResetInner() {
 
   if (status === "invalid") {
     return (
-      <main className="mx-auto max-w-[420px] px-4 py-16">
+      <main className="mx-auto max-w-[420px] px-4 pb-16 pt-[120px]">
         <h1 className="font-display mb-6 text-2xl font-bold tracking-[-0.02em]">Сброс пароля</h1>
         <p className="text-[15px] leading-relaxed text-[#FF6B6B]">
           Ссылка недействительна или устарела.
@@ -65,7 +65,7 @@ function ResetInner() {
   }
 
   return (
-    <main className="mx-auto max-w-[420px] px-4 py-16">
+    <main className="mx-auto max-w-[420px] px-4 pb-16 pt-[120px]">
       <h1 className="font-display mb-6 text-2xl font-bold tracking-[-0.02em]">Новый пароль</h1>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -97,7 +97,7 @@ function ResetInner() {
 
 function ResetFallback() {
   return (
-    <main className="mx-auto max-w-[420px] px-4 py-16">
+    <main className="mx-auto max-w-[420px] px-4 pb-16 pt-[120px]">
       <h1 className="font-display mb-6 text-2xl font-bold tracking-[-0.02em]">Новый пароль</h1>
     </main>
   );

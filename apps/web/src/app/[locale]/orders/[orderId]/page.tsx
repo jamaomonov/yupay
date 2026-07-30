@@ -16,7 +16,7 @@ export default function OrderPage({ params }: { params: Promise<{ orderId: strin
   const { orderId } = use(params);
   const t = useTranslations("web.orders");
   return (
-    <main className="mx-auto max-w-[560px] px-4 py-16">
+    <main className="mx-auto max-w-[560px] px-4 pb-16 pt-[120px]">
       <Suspense fallback={<p className="text-tx-mute">{t("loading")}</p>}>
         <OrderPageInner orderId={orderId} />
       </Suspense>

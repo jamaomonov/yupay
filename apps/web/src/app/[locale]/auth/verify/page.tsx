@@ -47,7 +47,7 @@ function VerifyInner({ locale }: { locale: string }) {
 
   if (status === "invalid") {
     return (
-      <main className="mx-auto max-w-[420px] px-4 py-16 text-center">
+      <main className="mx-auto max-w-[420px] px-4 pb-16 pt-[120px] text-center">
         <h1 className="font-display mb-4 text-2xl font-bold tracking-[-0.02em]">
           {t("verifyRequiredTitle")}
         </h1>
@@ -57,7 +57,7 @@ function VerifyInner({ locale }: { locale: string }) {
   }
 
   return (
-    <main className="mx-auto flex max-w-[420px] flex-col items-center px-4 py-16">
+    <main className="mx-auto flex max-w-[420px] flex-col items-center px-4 pb-16 pt-[120px]">
       <Loader2 size={28} className="animate-spin" />
     </main>
   );
@@ -65,7 +65,7 @@ function VerifyInner({ locale }: { locale: string }) {
 
 function VerifyFallback() {
   return (
-    <main className="mx-auto flex max-w-[420px] flex-col items-center px-4 py-16">
+    <main className="mx-auto flex max-w-[420px] flex-col items-center px-4 pb-16 pt-[120px]">
       <Loader2 size={28} className="animate-spin" />
     </main>
   );

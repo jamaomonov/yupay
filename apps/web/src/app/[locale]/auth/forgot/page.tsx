@@ -29,7 +29,7 @@ export default function ForgotPage() {
   }
 
   return (
-    <main className="mx-auto max-w-[420px] px-4 py-16">
+    <main className="mx-auto max-w-[420px] px-4 pb-16 pt-[120px]">
       <h1 className="font-display mb-6 text-2xl font-bold tracking-[-0.02em]">Сброс пароля</h1>
 
       {sent ? (
