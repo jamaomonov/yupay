@@ -434,6 +434,7 @@
     "guestListTitle": "Ваши заказы",
     "guestListEmpty": "Заказов пока нет на этом устройстве.",
     "guestListHint": "Заказы на этом устройстве",
+    "open": "Открыть",
     "notFound": "Заказ не найден.",
     "fallbackTitle": "Заказ #{id}",
     "copy": "Скопировать",

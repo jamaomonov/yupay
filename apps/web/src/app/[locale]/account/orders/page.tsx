@@ -1,16 +1,15 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { formatMoney } from "@yupay/utils";
 import { Star } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { use } from "react";
 
-import type { OrderListOut, OrderOut } from "@/lib/orders-types";
+import type { OrderListOut } from "@/lib/orders-types";
 
 import { GuestOrdersList } from "@/components/order/GuestOrdersList";
+import { OrderCard } from "@/components/order/OrderCard";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { apiFetch } from "@/lib/client";
@@ -18,31 +17,9 @@ import { listGuestOrders } from "@/lib/guest-orders";
 import { getMyReviews } from "@/lib/reviews";
 import { pathFor } from "@/lib/seo";
 
-const STATUS_CLS: Record<string, string> = {
-  pending_payment: "bg-amber-500/15 text-amber-400",
-  paid: "bg-emerald-500/15 text-emerald-400",
-  fulfilling: "bg-sky-500/15 text-sky-400",
-  fulfilled: "bg-emerald-500/15 text-emerald-400",
-  delivered: "bg-emerald-500/15 text-emerald-400",
-  failed: "bg-red-500/15 text-red-400",
-  cancelled: "bg-tx-dim/15 text-tx-dim",
-  expired: "bg-tx-dim/15 text-tx-dim",
-  refunded: "bg-tx-dim/15 text-tx-dim",
-  partially_refunded: "bg-tx-dim/15 text-tx-dim",
-};
-
 // Hide checkouts the customer never paid for — these clutter the history with
 // "clicked Pay, didn't finish" rows (the scheduler eventually expires them).
 const HIDDEN_STATUSES = new Set(["pending_payment", "expired"]);
-
-function orderTitle(o: OrderOut, fallback: string): string {
-  const d = o.items[0]?.display;
-  if (!d) return fallback;
-  const name = d.brand_name || d.product_name;
-  const denom = d.denomination ? ` · ${d.denomination}` : "";
-  const extra = o.items.length > 1 ? ` +${String(o.items.length - 1)}` : "";
-  return `${name}${denom}${extra}`;
-}
 
 export default function OrdersPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = use(params);
@@ -106,63 +83,25 @@ export default function OrdersPage({ params }: { params: Promise<{ locale: strin
 
       {items.length > 0 && (
         <ul className="space-y-3">
-          {items.map((o) => {
-            const cls = STATUS_CLS[o.status] ?? "bg-tx-dim/15 text-tx-dim";
-            const label = o.status in STATUS_CLS ? t(`status.${o.status}`) : o.status;
-            const img = o.items[0]?.display?.image_url;
-            return (
-              <li key={o.id}>
-                <Link
-                  href={pathFor(locale, `/orders/${o.id}`)}
-                  className="border-border bg-card hover:border-tx-dim flex items-center gap-4 rounded-2xl border p-4 transition"
-                >
-                  <span className="bg-muted relative h-12 w-12 shrink-0 overflow-hidden rounded-xl">
-                    {img && (
-                      <Image
-                        src={img}
-                        alt=""
-                        fill
-                        unoptimized
-                        sizes="48px"
-                        className="object-contain"
-                      />
+          {items.map((o) => (
+            <li key={o.id}>
+              <OrderCard order={o} locale={locale} href={pathFor(locale, `/orders/${o.id}`)} />
+              {o.status === "delivered" &&
+                !reviewedOrders.has(o.id) &&
+                o.items[0]?.display?.brand_slug && (
+                  <Link
+                    href={pathFor(
+                      locale,
+                      `/store/${o.items[0].display.brand_slug}?order=${o.id}#reviews`,
                     )}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-foreground truncate font-semibold">
-                      {orderTitle(o, t("fallbackTitle", { id: o.id.slice(0, 8) }))}
-                    </p>
-                    <p className="text-tx-dim mt-0.5 text-xs">
-                      #{o.id.slice(0, 8)} ·{" "}
-                      {new Intl.DateTimeFormat(locale).format(new Date(o.created_at))}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1.5">
-                    <span className="font-display text-foreground font-bold">
-                      {formatMoney(o.total_charged, o.currency, locale)}
-                    </span>
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${cls}`}>
-                      {label}
-                    </span>
-                  </div>
-                </Link>
-                {o.status === "delivered" &&
-                  !reviewedOrders.has(o.id) &&
-                  o.items[0]?.display?.brand_slug && (
-                    <Link
-                      href={pathFor(
-                        locale,
-                        `/store/${o.items[0].display.brand_slug}?order=${o.id}#reviews`,
-                      )}
-                      className="text-primary ml-4 mt-1.5 inline-flex items-center gap-1 text-xs font-semibold"
-                    >
-                      <Star size={12} />
-                      {tr("writeCta")}
-                    </Link>
-                  )}
-              </li>
-            );
-          })}
+                    className="text-primary ml-4 mt-1.5 inline-flex items-center gap-1 text-xs font-semibold"
+                  >
+                    <Star size={12} />
+                    {tr("writeCta")}
+                  </Link>
+                )}
+            </li>
+          ))}
         </ul>
       )}
     </main>

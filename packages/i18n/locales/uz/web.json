@@ -434,6 +434,7 @@
     "guestListTitle": "Buyurtmalaringiz",
     "guestListEmpty": "Bu qurilmada hozircha buyurtmalar yoʻq.",
     "guestListHint": "Bu qurilmadagi buyurtmalar",
+    "open": "Ochish",
     "notFound": "Buyurtma topilmadi.",
     "fallbackTitle": "Buyurtma #{id}",
     "copy": "Nusxa olish",

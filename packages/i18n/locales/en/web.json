@@ -434,6 +434,7 @@
     "guestListTitle": "Your orders",
     "guestListEmpty": "No orders on this device yet.",
     "guestListHint": "Orders on this device",
+    "open": "Open",
     "notFound": "Order not found.",
     "fallbackTitle": "Order #{id}",
     "copy": "Copy",

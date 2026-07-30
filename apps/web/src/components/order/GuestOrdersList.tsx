@@ -5,15 +5,16 @@ import { useTranslations } from "next-intl";
 
 import type { GuestOrder } from "@/lib/guest-orders";
 
+import { GuestOrderCard } from "@/components/order/GuestOrderCard";
 import { buttonStyles } from "@/lib/button";
 import { pathFor } from "@/lib/seo";
 
 /**
  * Order history for a signed-out visitor, sourced entirely from this
  * browser's localStorage (see `lib/guest-orders.ts`) — the server has no
- * account to list against. Each entry links to the public order-status page
- * with a `?email=` suffix so that page can authenticate the guest via their
- * order-scoped token (see `OrderStatus`).
+ * account to list against. Each stub is enriched into a full `OrderCard` by
+ * `GuestOrderCard`, which fetches the order via a per-email guest token so
+ * the guest list matches the logged-in list's look.
  */
 export function GuestOrdersList({ orders, locale }: { orders: GuestOrder[]; locale: string }) {
   const t = useTranslations("web.orders");
@@ -34,24 +35,11 @@ export function GuestOrdersList({ orders, locale }: { orders: GuestOrder[]; loca
         </div>
       ) : (
         <ul className="space-y-3">
-          {orders.map((o) => {
-            // Stored un-normalized at save time (whatever the buyer typed) —
-            // normalize before echoing it back as a guest-auth query param.
-            const email = o.email.trim().toLowerCase();
-            return (
-              <li key={o.orderId}>
-                <Link
-                  href={pathFor(locale, `/orders/${o.orderId}?email=${encodeURIComponent(email)}`)}
-                  className="border-border bg-card hover:border-tx-dim flex items-center justify-between gap-4 rounded-2xl border p-4 transition"
-                >
-                  <p className="text-foreground truncate font-semibold">{o.brandName}</p>
-                  <p className="text-tx-dim shrink-0 text-xs">
-                    {new Intl.DateTimeFormat(locale).format(new Date(o.createdAt))}
-                  </p>
-                </Link>
-              </li>
-            );
-          })}
+          {orders.map((o) => (
+            <li key={o.orderId}>
+              <GuestOrderCard entry={o} locale={locale} />
+            </li>
+          ))}
         </ul>
       )}
     </>
