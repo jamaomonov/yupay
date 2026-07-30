@@ -101,6 +101,40 @@ See `pii-handling.md`.
   timestamps only (see `packages/api-client/src/realtime/messages.ts`) — no
   email, phone, or Telegram id ever crosses the socket.
 
+## Order claim, email verification & payment return (Phase 3 web-orders)
+
+- **Email verification enforced at password login:** `login_password` rejects
+  accounts with `email_verified_at IS NULL` (`EmailUnverifiedError`, 403).
+  Telegram, guest-checkout, and admin-dev logins are exempt (no email to
+  verify). Register no longer issues a session; verify-email does. This makes a
+  user's email a trustworthy identity key for the order claim below. Existing
+  users were grandfathered to verified by migration `0036` (forward-only), so
+  enforcement applies only to signups from that point on.
+- **Verify-email tokens are single-use:** consumed via `SET NX
+auth:emailverify:{jti}` (same pattern as `auth:pwreset:{jti}`), so a leaked or
+  replayed verify link cannot repeatedly mint sessions within its TTL. Recovery
+  is the resend endpoint if a scanner/double-click burns the token.
+- **Resend-verification is non-enumerating:** always 204, and the email send is
+  scheduled off the request path (like `request_password_reset`) so response
+  latency doesn't reveal whether the address exists or is already verified.
+- **Order claim cannot cross accounts:** `POST /orders/claim` requires a Bearer
+  session (guests are rejected before the handler), re-checks
+  `email_verified_at`, and reassigns only orders where `user_id IS NULL` and
+  `guest_email` matches the caller's email, in one XOR-safe UPDATE. It can never
+  move an order to a non-matching or unverified account.
+- **Guest order-view capability is unchanged:** a guest token is minted from an
+  email but grants access only to orders whose `guest_email` matches (the
+  backend re-hashes `X-Guest-Email` against the token). Knowing an unguessable
+  order id **and** its email remains the capability — no escalation added.
+- **Payment `return_url` open-redirect hardening:** the acquirer return URL
+  defaults to the storefront (`web_base_url`) and any client-supplied
+  `return_url` is validated same-origin (scheme+host) as `web_base_url`, so it
+  can only ever bounce the customer back to our own storefront. Payment truth is
+  the webhook, never the return; the return is UX only. **Deploy invariant:**
+  `WEB_BASE_URL` must equal the canonical web origin (`https://yupay.uz`) — a
+  mismatch/unset value makes web card intents 422 (see the email-verification
+  runbook).
+
 ## Out of scope (we do not handle)
 
 - Card data (PAN, CVV) — all card collection redirected to hosted provider fields.
