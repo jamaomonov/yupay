@@ -77,9 +77,7 @@ async def test_resend_verification_is_non_enumerating(
 
     # A known, unverified email: 204, no body content, no way to tell the
     # request "did" anything from the response alone.
-    known = await integration_client.post(
-        "/api/v1/auth/resend-verification", json={"email": email}
-    )
+    known = await integration_client.post("/api/v1/auth/resend-verification", json={"email": email})
     assert known.status_code == 204, known.text
     assert known.text == ""
 

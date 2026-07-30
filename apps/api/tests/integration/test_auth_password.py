@@ -18,9 +18,7 @@ async def _get_user_by_email(db_session: AsyncSession, email: str) -> User:
     tests can't resolve the just-registered user via ``current_user`` +
     access token anymore — they look the row up directly instead.
     """
-    return (
-        await db_session.execute(select(User).where(User.email == email))
-    ).scalar_one()
+    return (await db_session.execute(select(User).where(User.email == email))).scalar_one()
 
 
 async def _verify_registered_user(

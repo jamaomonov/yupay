@@ -278,9 +278,7 @@ async def resend_verification_route(
 ) -> None:
     """Non-enumerating: always returns 204 regardless of whether the email is known."""
     await guard_ip(request, bucket="resend-verification")
-    await resend_verification(
-        db, email=body.email, verify_link_base=_web_base(request, "ru")
-    )
+    await resend_verification(db, email=body.email, verify_link_base=_web_base(request, "ru"))
 
 
 @router.post(
