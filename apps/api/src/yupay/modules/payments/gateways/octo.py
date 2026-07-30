@@ -300,7 +300,7 @@ class OctoGateway(PaymentGateway):
             total_sum=total_sum,
             currency=currency,
             description=f"YuPay order {order.id}",
-            return_url=return_url or s.telegram_miniapp_url,
+            return_url=return_url,
             notify_url=notify_url,
             init_time=now().strftime("%Y-%m-%d %H:%M:%S"),
             auto_capture=True,

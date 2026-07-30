@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
+from urllib.parse import urlparse
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -17,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from yupay.core.clock import now
+from yupay.core.config import Settings, get_settings
 from yupay.core.errors import ConflictError, NotFoundError, ValidationError
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
@@ -115,6 +117,18 @@ def _validate_intent_replay(payment: Payment, *, order_id: str, provider: str) -
     return payment
 
 
+def _safe_return_url(candidate: str | None, settings: Settings) -> str:
+    """Resolve the acquirer return URL, defaulting to the web order surface and
+    rejecting any client-supplied URL that isn't same-origin as web_base_url."""
+    base = (settings.web_base_url or settings.base_url).rstrip("/")
+    if not candidate:
+        return f"{base}/checkout/return"
+    want, got = urlparse(base), urlparse(candidate)
+    if (got.scheme, got.netloc) != (want.scheme, want.netloc):
+        raise ValidationError("return_url must be on the storefront origin")
+    return candidate
+
+
 async def create_intent(
     db: AsyncSession,
     *,
@@ -163,12 +177,14 @@ async def create_intent(
             extra={"current_provider": existing.provider},
         )
 
+    safe_return_url = _safe_return_url(return_url, get_settings())
+
     payment_id = new_id()
     try:
         intent = await gw.create_intent(
             db=db,
             order=order,
-            return_url=return_url or "https://app.yupay.uz/checkout/return",
+            return_url=safe_return_url,
         )
     except (PaymentGatewayError, PaymentNotIntegratedError) as exc:
         log.warning("payments.create_intent.failed", provider=provider, error=str(exc))
