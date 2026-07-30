@@ -444,16 +444,31 @@ async def verify_email(
     token: str,
     settings: Settings | None = None,
 ) -> SessionTokens:
-    """Mark a user's email as verified from a signed ``email_verify`` token, then log in.
+    """Consume a single-use ``email_verify`` token, mark the email verified, then log in.
 
     The link flow ends in a usable session rather than dropping the user back
     to a login form immediately after they've proven the address is theirs.
 
+    The single-use guarantee is enforced via a Redis ``SET NX`` on a key
+    derived from the token's ``jti`` — the same mechanism ``reset_password``
+    uses for ``password_reset`` tokens. Without it, a leaked/forwarded verify
+    link would mint a fresh session on every hit for the token's full TTL
+    (``jwt_email_token_ttl_seconds``): a repeatable magic-login link.
+
     Raises:
+        UnauthorizedError: On an invalid/expired token or one already consumed.
         NotFoundError: If the user referenced by the token no longer exists.
     """
     s = settings or get_settings()
     claims = authjwt.verify(token, expected_kind="email_verify", settings=s)
+
+    redis = get_redis()
+    marker = f"auth:emailverify:{claims.jti}"
+    # redis-py returns True on successful SET NX, None when the key already exists.
+    was_set = await redis.set(marker, "1", ex=s.jwt_email_token_ttl_seconds, nx=True)
+    if not was_set:
+        raise UnauthorizedError("verification token already used")
+
     user = await get_user_by_id(db, claims.sub)
     if user is None:
         raise NotFoundError("user not found")
@@ -474,6 +489,7 @@ async def resend_verification(
 
     Never reveals whether the email exists or its verification state (no
     enumeration): the caller returns 204 regardless of what happened here.
+    Crucially, this must hold for *latency* too — see ``_deliver_verify_email``.
 
     Args:
         db: Async database session.
@@ -494,14 +510,22 @@ async def resend_verification(
     token = authjwt.mint_email_verify(sub=user.id, settings=s)
     link = f"{verify_link_base.rstrip('/')}/auth/verify?token={token}"
     content = verify_email_email(link=link)
+    # Dispatch fire-and-forget, exactly like ``request_password_reset`` (there is
+    # no Dramatiq email actor; the notifications module's ``schedule`` helper runs
+    # the coroutine off the request path). This closes two problems at once: (1)
+    # the §10 "no synchronous outbound HTTP in a request handler" rule, and (2) an
+    # enumeration timing leak — without this, the known+unverified branch alone
+    # would add a blocking network round-trip that the unknown-email and
+    # already-verified branches lack, letting response latency (not just
+    # status/body) distinguish "this email exists and is unverified" from the rest.
+    schedule(_deliver_verify_email(to=normalised, content=content))
+
+
+async def _deliver_verify_email(*, to: str, content: EmailContent) -> bool:
+    """Send a verify-email link in the background. Errors are swallowed by ``schedule``."""
     with contextlib.suppress(EmailSendError):
-        # non-blocking: silently drops on send failure, same as register_user
-        await send_email(
-            to=normalised,
-            subject=content.subject,
-            html=content.html,
-            text=content.text,
-        )
+        await send_email(to=to, subject=content.subject, html=content.html, text=content.text)
+    return True
 
 
 async def current_user(

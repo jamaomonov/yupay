@@ -8,6 +8,9 @@ reveals whether an email exists or its verification state.
 
 from __future__ import annotations
 
+from collections.abc import Coroutine
+from typing import Any
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
@@ -118,3 +121,89 @@ async def test_resend_verification_for_already_verified_email_is_still_204(
         "/api/v1/auth/resend-verification", json={"email": email}
     )
     assert resend.status_code == 204, resend.text
+
+
+@pytest.mark.asyncio
+async def test_resend_verification_schedules_email_instead_of_blocking(
+    integration_client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression test: the known+unverified branch must not block the request
+    on a real outbound email send.
+
+    Before the fix, ``resend_verification`` awaited ``send_email`` inline for a
+    known+unverified email while the unknown-email / already-verified branches
+    returned near-instantly — identical status/body, but distinguishable
+    *latency* (a timing side-channel for user enumeration). The fix mirrors
+    ``request_password_reset``: build the message and hand it to the
+    notifications module's fire-and-forget ``schedule`` helper instead of
+    awaiting the send on the request path, so every branch returns at the
+    same (near-instant) speed.
+    """
+    email = "resend-scheduled@example.com"
+    reg = await integration_client.post(
+        "/api/v1/auth/register",
+        json={"email": email, "password": "s3cret-passw0rd", "locale": "ru"},
+    )
+    assert reg.status_code == 201, reg.text
+
+    from yupay.modules.auth import service as auth_service
+
+    scheduled: list[Coroutine[Any, Any, bool]] = []
+    monkeypatch.setattr(auth_service, "schedule", scheduled.append)
+
+    sent: list[dict[str, str]] = []
+
+    async def _send_spy(*, to: str, subject: str, html: str, text: str) -> str:
+        sent.append({"to": to, "subject": subject})
+        return "msg_test"
+
+    monkeypatch.setattr(auth_service, "send_email", _send_spy)
+
+    await auth_service.resend_verification(
+        db_session, email=email, verify_link_base="https://yupay.uz/ru"
+    )
+
+    # Not sent synchronously on the request path...
+    assert sent == []
+    assert len(scheduled) == 1
+
+    # ...but the scheduled coroutine, once actually run, does deliver it.
+    await scheduled[0]
+    assert len(sent) == 1
+    assert sent[0]["to"] == email
+
+
+@pytest.mark.asyncio
+async def test_verify_email_token_is_single_use(
+    integration_client: AsyncClient, db_session
+) -> None:
+    """Regression test: a replayed/leaked verify link must not mint a second
+    session.
+
+    Before the fix, ``email_verify`` tokens had a ``jti`` that nothing
+    consumed, so every hit of ``verify_email`` (auto-login, Task 2) opened a
+    brand-new live session for the token's full TTL — a repeatable magic-login
+    link. The fix enforces single-use exactly like ``reset_password`` does for
+    ``password_reset`` tokens: an atomic Redis ``SET NX`` claim on the
+    token's ``jti``.
+    """
+    email = "verify-once@example.com"
+    reg = await integration_client.post(
+        "/api/v1/auth/register",
+        json={"email": email, "password": "s3cret-passw0rd", "locale": "ru"},
+    )
+    assert reg.status_code == 201, reg.text
+
+    from yupay.modules.auth import jwt as authjwt
+
+    user = (await db_session.execute(select(User).where(User.email == email))).scalar_one()
+    token = authjwt.mint_email_verify(sub=user.id)
+
+    first = await integration_client.post("/api/v1/auth/verify-email", json={"token": token})
+    assert first.status_code == 200, first.text
+    assert first.json()["access_token"]
+
+    # Replay of the SAME token must be rejected — no second session opened.
+    second = await integration_client.post("/api/v1/auth/verify-email", json={"token": token})
+    assert second.status_code == 401, second.text
+    assert "access_token" not in second.json()
