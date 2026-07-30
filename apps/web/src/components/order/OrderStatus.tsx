@@ -118,12 +118,17 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
   const brandSlug = order.data.items[0]?.display?.brand_slug ?? null;
   const alreadyReviewed = (myReviews.data?.items ?? []).some((r) => r.order_id === order.data.id);
   const canRate = status === "delivered" && Boolean(user) && brandSlug !== null && !alreadyReviewed;
+  // Top-up only when every item is a top-up (mirrors the Mini App's
+  // `orderKind`); a mixed cart falls back to the neutral "delivered" wording.
+  const isTopUp =
+    order.data.items.length > 0 &&
+    order.data.items.every((i) => i.display?.product_kind === "top_up");
 
   return (
     <div className="border-border bg-card rounded-2xl border p-6">
       <p className="text-tx-dim font-mono text-xs">#{order.data.id.slice(0, 8)}</p>
       <div className="mt-2">
-        <StatusBlock status={order.data.status} />
+        <StatusBlock status={order.data.status} isTopUp={isTopUp} />
       </div>
 
       <div className="mt-4">
