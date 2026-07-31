@@ -99,21 +99,56 @@ def _format_target_fields(fields: dict[str, object]) -> str | None:
     return ", ".join(parts) if parts else None
 
 
-def _delivery_codes_for_email(deliveries: Sequence[Delivery]) -> list[str]:
-    """Plain (non-HTML) artifact lines for the delivery email body.
+def _format_target_plain(fields: dict[str, object]) -> str | None:
+    """Plain-text variant of :func:`_format_target_fields` for email bodies.
+
+    The email template escapes text itself, so this returns raw ``label: value``
+    pairs (``ID игрока: 123, Регион: EU``) with no HTML markup.
+    """
+    parts: list[str] = []
+    for key, value in fields.items():
+        if not isinstance(value, str) or not value.strip():
+            continue
+        label = _FIELD_LABEL_RU.get(key, key)
+        parts.append(f"{label}: {value}")
+    return ", ".join(parts) if parts else None
+
+
+def _credited_line_for_email(d: Delivery) -> str:
+    """Build a top-up 'credited' line, echoing the target account when known."""
+    snapshot = d.artifact.get("fulfillment_data")
+    fields = snapshot if isinstance(snapshot, dict) else {}
+    target = _format_target_plain(fields)
+    if target:
+        return f"Зачислено · {target}"
+    ext = d.artifact.get("external_id")
+    if isinstance(ext, str) and ext.strip():
+        return f"Зачислено · {ext}"
+    return "Зачислено на ваш аккаунт"
+
+
+def _delivery_lines_for_email(
+    deliveries: Sequence[Delivery],
+) -> tuple[list[str], list[str]]:
+    """Split delivery artifacts into secret codes and top-up 'credited' lines.
 
     Voucher / license artifacts surface the raw code so the buyer gets their key
-    straight from the email; top-up receipts surface a short 'credited' line
-    instead of a secret. Capped at :data:`_MAX_INLINE_CODES`.
+    straight from the email; top-up receipts deliver no code, only a short
+    'credited' confirmation (with the target account when known). Both lists are
+    capped together at :data:`_MAX_INLINE_CODES`.
+
+    Returns:
+        A ``(codes, credited)`` tuple of plain (non-HTML) lines.
     """
-    lines: list[str] = []
+    codes: list[str] = []
+    credited: list[str] = []
     for d in deliveries[:_MAX_INLINE_CODES]:
         code = d.artifact.get("code") or d.artifact.get("key")
         if isinstance(code, str) and code:
-            lines.append(code)
+            codes.append(code)
         elif d.artifact_kind == "topup_receipt":
-            lines.append("Зачислено на ваш аккаунт")
-    return lines
+            credited.append(_credited_line_for_email(d))
+    return codes, credited
 
 
 def _summarise_order(order: Order, *, locale: str = "ru") -> str:
@@ -178,6 +213,7 @@ async def _send_guest_email_delivered(
     guest_email: str | None,
     web_base: str | None,
     codes: list[str] | None = None,
+    credited: list[str] | None = None,
 ) -> None:
     """Email a guest buyer that their order was delivered (best-effort).
 
@@ -186,9 +222,11 @@ async def _send_guest_email_delivered(
         guest_email: Recipient address, or ``None`` for registered users.
         web_base: Web base URL including locale prefix (e.g. ``https://yupay.uz/ru``).
             When empty (dev default) the function returns early without sending.
-        codes: Voucher/license keys (or a 'credited' line for top-ups) to render
-            inline in the email body, so the buyer gets their goods straight from
-            the email. ``None`` => link-only.
+        codes: Voucher/license keys to render inline as monospace chips, so the
+            buyer gets their secret straight from the email. ``None`` => none.
+        credited: Top-up 'credited' lines (no secret code) rendered as info rows.
+            ``None`` => none. When both ``codes`` and ``credited`` are empty the
+            email is link-only.
 
     No-ops silently when ``guest_email`` or ``web_base`` are absent. Any send
     failure is swallowed so a best-effort notification never breaks (or rolls
@@ -197,7 +235,7 @@ async def _send_guest_email_delivered(
     if not guest_email or not web_base:
         return
     link = f"{web_base.rstrip('/')}/orders/{order_id}"
-    content = order_delivered_email(order_id=order_id, link=link, codes=codes)
+    content = order_delivered_email(order_id=order_id, link=link, codes=codes, credited=credited)
     with contextlib.suppress(Exception):  # best-effort: never break the order flow
         await send_email(
             to=guest_email,
@@ -273,11 +311,13 @@ async def notify_order_delivered(order_id: str) -> bool:
 
     # Email notification for guest buyers — best-effort, independent of Telegram.
     # Inline the same voucher codes / top-up receipts the Telegram message shows.
+    email_codes, email_credited = _delivery_lines_for_email(deliveries)
     await _send_guest_email_delivered(
         order_id=order_id,
         guest_email=guest_email,
         web_base=settings.web_base_url or None,
-        codes=_delivery_codes_for_email(deliveries),
+        codes=email_codes,
+        credited=email_credited,
     )
 
     if chat is None:

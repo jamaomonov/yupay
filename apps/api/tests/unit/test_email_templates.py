@@ -45,6 +45,19 @@ def test_order_delivered_embeds_codes() -> None:
     assert "STEAM-CCCC-DDDD" in t.text
 
 
+def test_order_delivered_topup_credited_without_codes() -> None:
+    t = order_delivered_email(
+        order_id="abcdef12",
+        link="https://yupay.uz/ru/orders/abcdef12",
+        credited=["Зачислено · ID игрока: 42"],
+    )
+    assert "Зачислено · ID игрока: 42" in t.html
+    assert "Зачислено · ID игрока: 42" in t.text
+    assert "средства зачислены" in t.html
+    # No "save your codes" wording when there is no secret code.
+    assert "сохраните" not in t.html
+
+
 def test_order_delivered_escapes_html_in_codes() -> None:
     t = order_delivered_email(
         order_id="abcdef12",

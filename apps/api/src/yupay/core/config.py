@@ -135,6 +135,15 @@ class Settings(BaseSettings):
     resend_api_key: str = Field(default="")
     email_from: str = Field(default="noreply@yupay.uz")
     email_from_name: str = Field(default="YuPay")
+    email_logo_url: str = Field(
+        default="",
+        description=(
+            "Absolute, publicly reachable URL of the brand logo PNG shown in the "
+            "header of transactional emails (email clients don't render SVG). When "
+            "empty, falls back to ``{web_base_url}/logo/email-logo.png``; if that is "
+            "also unavailable the emails render a text-only wordmark."
+        ),
+    )
 
     # --- Auth IP guard (lightweight; full rate limiting is a separate concern) ---
     auth_ip_guard_max: int = Field(

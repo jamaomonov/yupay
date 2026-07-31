@@ -5,6 +5,26 @@
 - **Deciders**: @jamaomonov
 - **Tags**: backend | infra
 
+> **Amendment (2026-07-31): branded HTML templates.** The v1 plain f-string bodies
+> were replaced with a shared, email-client-safe HTML shell (table layout, inline
+> styles, brand palette, a bulletproof lime CTA button with an MSO fallback, and a
+> dark header carrying the brand logo). Template **function signatures and the
+> `EmailContent` value object are unchanged**, so callers and tests are unaffected;
+> only the rendered markup changed. Email clients (notably Gmail) do not render SVG,
+> so the header uses a **PNG logo** at `apps/web/public/logo/email-logo.png`. A new
+> setting `email_logo_url` (env `EMAIL_LOGO_URL`, default `""`) points at a publicly
+> reachable logo URL; when empty it falls back to
+> `{web_base_url}/logo/email-logo.png`, and if that is also unset the header degrades
+> to a text wordmark. Copy remains Russian-only.
+>
+> The delivered-order email now distinguishes **secret codes** (voucher / license
+> keys — rendered as monospace chips with a "save them safely" copy) from
+> **top-up receipts** (which deliver no code — rendered as a "✓ Зачислено · …"
+> info row echoing the target account, with a "средства зачислены" copy). The
+> dispatch splits deliveries into `(codes, credited)` via
+> `_delivery_lines_for_email`, and `order_delivered_email` gained a `credited`
+> parameter alongside the existing `codes`.
+
 ## Context and problem statement
 
 Guests have been checking out by email since the storefront launched, but **no

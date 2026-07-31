@@ -1,16 +1,38 @@
-"""Plain, dependency-free email template builders.
+"""Branded, email-client-safe template builders.
 
 Each returns an :class:`EmailContent` (subject + html + text). Copy is in
 Russian (the storefront's default locale); per-locale copy can be layered later.
-Keep these simple — no templating engine, just f-strings — so they are trivial
-to unit-test and review.
+
+The HTML is deliberately hand-written with table-based layout, inline styles and
+a "bulletproof" CTA button so it renders consistently across Gmail, Apple Mail
+and Outlook. The brand logo is loaded from a public PNG URL (email clients don't
+render SVG); when no URL is configured it degrades to a text wordmark.
 """
 
 from __future__ import annotations
 
+import datetime
 import html
 
 from pydantic import BaseModel, ConfigDict
+
+from yupay.core.config import get_settings
+
+# --- Brand palette (mirrors apps/web globals.css) ---
+_BRAND_DARK = "#0A0D1A"
+_LIME = "#AAFF33"
+_ON_LIME = "#05080F"
+_PAGE_BG = "#F4F5F7"
+_CARD_BG = "#FFFFFF"
+_BORDER = "#E6E8EC"
+_HEADING = "#0F1117"
+_BODY = "#4A4F5C"
+_MUTED = "#8A90A0"
+_LINK = "#3D7A00"
+_FONT = (
+    "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif,"
+    "'Apple Color Emoji','Segoe UI Emoji'"
+)
 
 
 class EmailContent(BaseModel):
@@ -23,90 +45,302 @@ class EmailContent(BaseModel):
     text: str
 
 
-def _wrap(body_html: str) -> str:
+def _site_url() -> str:
+    """Public storefront URL used for the header logo link."""
+    return get_settings().web_base_url.rstrip("/") or "https://yupay.uz"
+
+
+def _logo_html() -> str:
+    """Header logo: PNG when a public URL is available, else a text wordmark."""
+    s = get_settings()
+    src = s.email_logo_url or (
+        f"{s.web_base_url.rstrip('/')}/logo/email-logo.png" if s.web_base_url else ""
+    )
+    site = _site_url()
+    if src:
+        img = (
+            f'<img src="{html.escape(src, quote=True)}" width="128" alt="YuPay" '
+            'style="display:block;margin:0 auto;height:38px;width:auto;border:0;'
+            'line-height:38px;outline:none;text-decoration:none;">'
+        )
+        return f'<a href="{site}" target="_blank" style="text-decoration:none;">{img}</a>'
     return (
-        '<div style="font-family:system-ui,sans-serif;max-width:480px;margin:auto">'
-        f"{body_html}"
-        '<p style="color:#888;font-size:12px;margin-top:24px">YuPay</p></div>'
+        f'<a href="{site}" target="_blank" '
+        f'style="font-family:{_FONT};font-size:24px;font-weight:800;letter-spacing:-0.5px;'
+        f'color:#FFFFFF;text-decoration:none;">Yu<span style="color:{_LIME}">Pay</span></a>'
+    )
+
+
+def _button(*, href: str, label: str) -> str:
+    """Bulletproof lime CTA button (with an MSO fallback for Outlook)."""
+    safe_href = html.escape(href, quote=True)
+    safe_label = html.escape(label)
+    return (
+        '<table role="presentation" border="0" cellpadding="0" cellspacing="0" '
+        'style="margin:28px auto 4px;"><tr>'
+        f'<td align="center" bgcolor="{_LIME}" style="border-radius:12px;">'
+        "<!--[if mso]>"
+        f'<v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="{safe_href}" '
+        'style="height:48px;v-text-anchor:middle;width:280px;" arcsize="25%" '
+        f'fillcolor="{_LIME}" stroke="f"><center style="color:{_ON_LIME};'
+        f'font-family:{_FONT};font-size:15px;font-weight:700;">{safe_label}</center>'
+        "</v:roundrect><![endif]-->"
+        "<!--[if !mso]><!-- -->"
+        f'<a href="{safe_href}" target="_blank" '
+        f'style="display:inline-block;padding:15px 34px;font-family:{_FONT};font-size:15px;'
+        f'font-weight:700;line-height:18px;color:{_ON_LIME};text-decoration:none;border-radius:12px;">'
+        f"{safe_label}</a>"
+        "<!--<![endif]-->"
+        "</td></tr></table>"
+    )
+
+
+def _fallback_link(href: str) -> str:
+    """Muted 'copy the link' block shown under the CTA button."""
+    safe_href = html.escape(href, quote=True)
+    return (
+        f'<p style="margin:20px 0 0;font-family:{_FONT};font-size:13px;line-height:20px;'
+        f'color:{_MUTED};">Кнопка не работает? Скопируйте ссылку в браузер:</p>'
+        f'<p style="margin:6px 0 0;font-family:{_FONT};font-size:13px;line-height:20px;'
+        f'word-break:break-all;"><a href="{safe_href}" target="_blank" '
+        f'style="color:{_LINK};text-decoration:underline;">{safe_href}</a></p>'
+    )
+
+
+def _layout(
+    *,
+    preheader: str,
+    heading: str,
+    body_html: str,
+) -> str:
+    """Wrap inner content into the branded, responsive email shell."""
+    year = datetime.datetime.now(tz=datetime.UTC).year
+    site = _site_url()
+    return (
+        '<!DOCTYPE html><html lang="ru" xmlns:v="urn:schemas-microsoft-com:vml">'
+        '<head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light">'
+        "<title>YuPay</title></head>"
+        f'<body style="margin:0;padding:0;background:{_PAGE_BG};">'
+        f'<span style="display:none!important;visibility:hidden;opacity:0;color:transparent;'
+        f'height:0;width:0;font-size:1px;line-height:1px;">{html.escape(preheader)}</span>'
+        f'<table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" '
+        f'bgcolor="{_PAGE_BG}" style="background:{_PAGE_BG};"><tr>'
+        '<td align="center" style="padding:28px 12px;">'
+        '<table role="presentation" width="520" border="0" cellpadding="0" cellspacing="0" '
+        'style="width:520px;max-width:520px;">'
+        # header
+        f'<tr><td style="background:{_BRAND_DARK};border-radius:16px 16px 0 0;'
+        f'padding:24px 28px;text-align:center;">{_logo_html()}</td></tr>'
+        # body card
+        f'<tr><td style="background:{_CARD_BG};padding:34px 30px;'
+        f'border-left:1px solid {_BORDER};border-right:1px solid {_BORDER};">'
+        f'<h1 style="margin:0 0 12px;font-family:{_FONT};font-size:21px;line-height:28px;'
+        f'font-weight:700;color:{_HEADING};">{html.escape(heading)}</h1>'
+        f"{body_html}</td></tr>"
+        # footer
+        f'<tr><td style="background:{_BRAND_DARK};border-radius:0 0 16px 16px;'
+        f'padding:22px 28px;text-align:center;">'
+        f'<p style="margin:0;font-family:{_FONT};font-size:13px;line-height:20px;color:#C8CDD8;">'
+        f'Yu<span style="color:{_LIME}">Pay</span> — цифровые товары и пополнения</p>'
+        f'<p style="margin:8px 0 0;font-family:{_FONT};font-size:12px;line-height:18px;color:#6C7284;">'
+        f"Это письмо отправлено автоматически, отвечать на него не нужно.<br>"
+        f'© {year} YuPay · <a href="{site}" target="_blank" style="color:#8A90A0;'
+        f'text-decoration:underline;">yupay.uz</a></p>'
+        "</td></tr>"
+        "</table></td></tr></table></body></html>"
+    )
+
+
+def _paragraph(text_html: str) -> str:
+    """A standard body paragraph."""
+    return (
+        f'<p style="margin:0 0 16px;font-family:{_FONT};font-size:15px;line-height:23px;'
+        f'color:{_BODY};">{text_html}</p>'
     )
 
 
 def verify_email_email(*, link: str) -> EmailContent:
     """Email-verification message with a confirmation link."""
+    body = (
+        _paragraph(
+            "Спасибо за регистрацию в YuPay. Остался один шаг — подтвердите свой адрес электронной почты, чтобы активировать аккаунт."
+        )
+        + _button(href=link, label="Подтвердить email")
+        + _fallback_link(link)
+    )
     return EmailContent(
         subject="Подтвердите ваш email — YuPay",
-        html=_wrap(
-            "<h2>Подтверждение email</h2>"
-            "<p>Нажмите кнопку, чтобы подтвердить ваш адрес:</p>"
-            f'<p><a href="{link}">Подтвердить email</a></p>'
-            f"<p>Или откройте ссылку: {link}</p>"
+        html=_layout(
+            preheader="Подтвердите email, чтобы активировать аккаунт YuPay.",
+            heading="Подтверждение email",
+            body_html=body,
         ),
-        text=f"Подтвердите ваш email, открыв ссылку: {link}",
+        text=(
+            "Подтверждение email — YuPay\n\n"
+            "Спасибо за регистрацию. Подтвердите свой адрес, открыв ссылку:\n"
+            f"{link}\n"
+        ),
     )
 
 
 def password_reset_email(*, link: str) -> EmailContent:
     """Password-reset message with a reset link."""
+    body = (
+        _paragraph(
+            "Вы запросили сброс пароля для аккаунта YuPay. Нажмите кнопку ниже, чтобы задать новый пароль. Ссылка действует 30 минут."
+        )
+        + _button(href=link, label="Задать новый пароль")
+        + _fallback_link(link)
+        + _paragraph(
+            f'<span style="font-size:13px;color:{_MUTED};">Если вы не запрашивали сброс — '
+            "просто проигнорируйте это письмо, пароль останется прежним.</span>"
+        )
+    )
     return EmailContent(
         subject="Сброс пароля — YuPay",
-        html=_wrap(
-            "<h2>Сброс пароля</h2>"
-            "<p>Вы запросили сброс пароля. Ссылка действует 30 минут:</p>"
-            f'<p><a href="{link}">Задать новый пароль</a></p>'
-            f"<p>Или откройте: {link}</p>"
-            "<p>Если это были не вы — проигнорируйте письмо.</p>"
+        html=_layout(
+            preheader="Ссылка для сброса пароля действует 30 минут.",
+            heading="Сброс пароля",
+            body_html=body,
         ),
-        text=f"Сброс пароля (ссылка действует 30 минут): {link}",
+        text=(
+            "Сброс пароля — YuPay\n\n"
+            "Вы запросили сброс пароля. Ссылка действует 30 минут:\n"
+            f"{link}\n\n"
+            "Если это были не вы — проигнорируйте письмо.\n"
+        ),
     )
 
 
 def order_confirmation_email(*, order_id: str, link: str) -> EmailContent:
     """Order-created confirmation for guest buyers."""
     short = order_id[:8]
+    body = (
+        _paragraph(
+            f'Мы приняли ваш заказ <b style="color:{_HEADING}">#{html.escape(short)}</b> и уже готовим его к выдаче. '
+            "Отслеживайте статус на странице заказа — мы уведомим вас, как только всё будет готово."
+        )
+        + _button(href=link, label="Открыть заказ")
+        + _fallback_link(link)
+    )
     return EmailContent(
         subject=f"Заказ #{short} принят — YuPay",
-        html=_wrap(
-            "<h2>Спасибо за заказ!</h2>"
-            f"<p>Заказ <b>#{short}</b> принят. Отслеживайте статус по ссылке:</p>"
-            f'<p><a href="{link}">Открыть заказ</a></p>'
+        html=_layout(
+            preheader=f"Заказ #{short} принят и готовится к выдаче.",
+            heading="Спасибо за заказ!",
+            body_html=body,
         ),
-        text=f"Заказ #{short} принят. Статус: {link}",
+        text=(
+            f"Заказ #{short} принят — YuPay\n\n"
+            f"Мы приняли ваш заказ #{short} и готовим его к выдаче.\n"
+            f"Статус заказа: {link}\n"
+        ),
+    )
+
+
+def _codes_block(codes: list[str]) -> str:
+    """Render voucher/license keys as monospace chips (secrets to copy)."""
+    rows = ""
+    for code in codes:
+        rows += (
+            '<tr><td style="background:#F4F5F7;border:1px solid '
+            f"{_BORDER};border-radius:10px;padding:13px 15px;font-family:ui-monospace,"
+            "SFMono-Regular,Menlo,Consolas,monospace;font-size:15px;line-height:20px;"
+            f'color:{_HEADING};word-break:break-all;">{html.escape(code)}</td></tr>'
+            '<tr><td style="height:8px;line-height:8px;font-size:8px;">&nbsp;</td></tr>'
+        )
+    return (
+        '<table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" '
+        f'style="margin:8px 0 20px;">{rows}</table>'
+    )
+
+
+def _credited_block(lines: list[str]) -> str:
+    """Render top-up receipts as info rows with a check mark (not a secret code)."""
+    rows = ""
+    for line in lines:
+        rows += (
+            '<tr><td style="background:#F4F5F7;border:1px solid '
+            f"{_BORDER};border-radius:10px;padding:13px 15px;font-family:{_FONT};"
+            f'font-size:14px;line-height:20px;color:{_HEADING};">'
+            f'<span style="color:{_LINK};font-weight:700;">&#10003;</span>&nbsp;&nbsp;'
+            f"{html.escape(line)}</td></tr>"
+            '<tr><td style="height:8px;line-height:8px;font-size:8px;">&nbsp;</td></tr>'
+        )
+    return (
+        '<table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" '
+        f'style="margin:8px 0 20px;">{rows}</table>'
     )
 
 
 def order_delivered_email(
-    *, order_id: str, link: str, codes: list[str] | None = None
+    *,
+    order_id: str,
+    link: str,
+    codes: list[str] | None = None,
+    credited: list[str] | None = None,
 ) -> EmailContent:
     """Order-delivered notification for guest buyers.
 
-    When ``codes`` is given (voucher/license keys, or a 'credited' line for
-    top-ups) they are rendered inline in the body so the buyer gets their goods
-    straight from the email. Otherwise the email just links to the order page.
+    Two kinds of artifacts can be surfaced inline so the buyer gets their goods
+    straight from the email:
+
+    - ``codes``: voucher / license keys — secrets rendered as monospace chips
+      with a "save them somewhere safe" copy.
+    - ``credited``: top-up receipts (e.g. "Зачислено · ID игрока: 42") — rendered
+      as info rows, since a top-up delivers no code, only a confirmation that the
+      account was credited.
+
+    When neither is given the email just links to the order page.
     """
     short = order_id[:8]
-    if codes:
-        html_codes = "".join(
-            '<div style="font-family:monospace;font-size:15px;background:#f4f4f5;'
-            f'border-radius:8px;padding:10px 12px;margin:6px 0">{html.escape(c)}</div>'
-            for c in codes
-        )
-        body_html = (
-            "<h2>Ваш заказ выполнен</h2>"
-            f"<p>Заказ <b>#{short}</b> доставлен:</p>"
-            f"{html_codes}"
-            f'<p style="margin-top:16px"><a href="{link}">Открыть заказ</a></p>'
-        )
-        text = f"Заказ #{short} выполнен.\n\n" + "\n".join(codes) + f"\n\nОткрыть: {link}"
+    has_codes = bool(codes)
+    has_credited = bool(credited)
+
+    if has_codes and has_credited:
+        intro = "выполнен. Ваши коды и детали заказа ниже:"
+    elif has_codes:
+        intro = "выполнен. Ваши коды ниже — сохраните их в надёжном месте:"
+    elif has_credited:
+        intro = "выполнен — средства зачислены на ваш аккаунт:"
     else:
-        body_html = (
-            "<h2>Ваш заказ выполнен</h2>"
-            f"<p>Заказ <b>#{short}</b> доставлен. Откройте, чтобы увидеть артефакт:</p>"
-            f'<p><a href="{link}">Открыть заказ</a></p>'
-        )
-        text = f"Заказ #{short} выполнен. Откройте: {link}"
+        intro = "выполнен. Откройте страницу заказа, чтобы получить свой цифровой товар."
+
+    body = _paragraph(f'Ваш заказ <b style="color:{_HEADING}">#{html.escape(short)}</b> {intro}')
+    if has_codes:
+        body += _codes_block(codes or [])
+    if has_credited:
+        body += _credited_block(credited or [])
+    body += _button(href=link, label="Открыть заказ")
+    if not (has_codes or has_credited):
+        body += _fallback_link(link)
+
+    text_lines: list[str] = []
+    if has_codes:
+        text_lines.append("Ваши коды:")
+        text_lines.extend(codes or [])
+    if has_credited:
+        if has_codes:
+            text_lines.append("")
+        text_lines.extend(credited or [])
+    if not (has_codes or has_credited):
+        text_lines.append(f"Ваш заказ #{short} выполнен.")
+    text = (
+        f"Заказ #{short} выполнен — YuPay\n\n"
+        + "\n".join(text_lines)
+        + f"\n\nОткрыть заказ: {link}\n"
+    )
+
+    preheader = (
+        f"Заказ #{short} выполнен — средства зачислены."
+        if (has_credited and not has_codes)
+        else f"Заказ #{short} выполнен."
+    )
     return EmailContent(
         subject=f"Заказ #{short} выполнен — YuPay",
-        html=_wrap(body_html),
+        html=_layout(preheader=preheader, heading="Ваш заказ выполнен", body_html=body),
         text=text,
     )
 

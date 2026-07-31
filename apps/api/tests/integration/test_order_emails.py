@@ -63,10 +63,10 @@ async def test_delivered_email_embeds_codes(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 @pytest.mark.asyncio
-async def test_delivery_codes_for_email_extracts_codes_and_topup() -> None:
-    """The extractor returns raw voucher codes and a 'credited' line for top-ups."""
+async def test_delivery_lines_for_email_splits_codes_and_topup() -> None:
+    """The extractor splits raw voucher codes from top-up 'credited' lines."""
     from yupay.modules.notifications.service import (
-        _delivery_codes_for_email,  # type: ignore[attr-defined]
+        _delivery_lines_for_email,  # type: ignore[attr-defined]
     )
 
     class _D:
@@ -78,9 +78,35 @@ async def test_delivery_codes_for_email_extracts_codes_and_topup() -> None:
         _D({"code": "VOUCHER-1"}, "voucher_code"),
         _D({"key": "LICENSE-2"}, "license_key"),
         _D({"fulfillment_data": {"player_id": "42"}}, "topup_receipt"),
+        _D({}, "topup_receipt"),
     ]
-    lines = _delivery_codes_for_email(rows)  # type: ignore[arg-type]
-    assert lines == ["VOUCHER-1", "LICENSE-2", "Зачислено на ваш аккаунт"]
+    codes, credited = _delivery_lines_for_email(rows)  # type: ignore[arg-type]
+    assert codes == ["VOUCHER-1", "LICENSE-2"]
+    assert credited == ["Зачислено · ID игрока: 42", "Зачислено на ваш аккаунт"]
+
+
+@pytest.mark.asyncio
+async def test_delivered_email_renders_topup_credited(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A top-up delivery (no code) renders the 'credited' line, not a code chip."""
+    sent: list[dict[str, str]] = []
+
+    async def _spy(*, to: str, subject: str, html: str, text: str) -> str:
+        sent.append({"html": html, "text": text})
+        return "msg_test"
+
+    monkeypatch.setattr("yupay.modules.notifications.service.send_email", _spy, raising=False)
+
+    await _send_guest_email_delivered(
+        order_id="abcdef1234",
+        guest_email="guest@example.com",
+        web_base="https://yupay.uz/ru",
+        credited=["Зачислено · ID игрока: 42"],
+    )
+
+    assert len(sent) == 1
+    assert "Зачислено · ID игрока: 42" in sent[0]["html"]
+    assert "Зачислено · ID игрока: 42" in sent[0]["text"]
+    assert "средства зачислены" in sent[0]["html"]
 
 
 @pytest.mark.asyncio
