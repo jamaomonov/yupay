@@ -115,15 +115,17 @@ def _format_target_plain(fields: dict[str, object]) -> str | None:
 
 
 def _credited_line_for_email(d: Delivery) -> str:
-    """Build a top-up 'credited' line, echoing the target account when known."""
+    """Build a top-up 'credited' line, echoing the target account when known.
+
+    Only the customer's own checkout input (``fulfillment_data``) is echoed; the
+    supplier's ``external_id`` is never surfaced in the email. When no target is
+    known, fall back to a neutral confirmation.
+    """
     snapshot = d.artifact.get("fulfillment_data")
     fields = snapshot if isinstance(snapshot, dict) else {}
     target = _format_target_plain(fields)
     if target:
         return f"Зачислено · {target}"
-    ext = d.artifact.get("external_id")
-    if isinstance(ext, str) and ext.strip():
-        return f"Зачислено · {ext}"
     return "Зачислено на ваш аккаунт"
 
 
