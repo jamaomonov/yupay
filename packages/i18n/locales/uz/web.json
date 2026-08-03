@@ -182,6 +182,7 @@
     "checkNotFound": "Oʻyinchi topilmadi",
     "paymentTitle": "Toʻlov usuli",
     "paymentMaintenance": "Texnik ishlar",
+    "paymentNone": "To'lov usullari mavjud emas",
     "pay": "Toʻlash",
     "payError": "Buyurtma yaratilmadi. Qayta urinib koʻring yoki qoʻllab-quvvatlashga yozing.",
     "successTitle": "Buyurtma yaratildi",

@@ -433,6 +433,12 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
   const selectedMethodActive =
     selectedProvider !== undefined &&
     methodVisibility(selectedProvider, providerStatus) === "active";
+  // When every acquirer is admin-disabled/unavailable the grid renders empty;
+  // show an explicit "no methods" line instead of a bare heading. Fails open
+  // while `providerStatus` loads, so it never flashes during the initial fetch.
+  const anyMethodVisible = METHODS.some(
+    (m) => methodVisibility(m.provider, providerStatus) !== "hidden",
+  );
   // Logged-in users don't need to supply an email — the account email is used server-side.
   const canPay =
     Boolean(selSku) &&
@@ -818,6 +824,11 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
               <span className="text-tx-mute mb-2 block text-[13px] font-semibold">
                 {t("paymentTitle")}
               </span>
+              {!anyMethodVisible && (
+                <p className="border-border bg-card text-tx-dim rounded-[12px] border px-3 py-3 text-[13px]">
+                  {t("paymentNone")}
+                </p>
+              )}
               <div className="grid grid-cols-2 gap-2">
                 {METHODS.map((m) => {
                   // Absent from the providers response → admin-disabled, not
