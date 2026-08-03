@@ -6,7 +6,7 @@
  * "Buy" button is a single mutation from the UI's perspective.
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 
 import { ApiError, apiGet, apiPost, newIdempotencyKey } from "./api";
 import { useMe } from "./auth";
@@ -83,18 +83,32 @@ export interface PaymentOut {
   external_id: string | null;
 }
 
+/** An acquirer's admin-controlled availability state. */
+export type ProviderAvailability = "active" | "maintenance";
+
+/**
+ * One entry of `GET /payments/providers`, mirroring the backend's
+ * `ProviderStatusOut` (`apps/api/src/yupay/modules/payments/schemas.py`). A
+ * provider slug absent from the response entirely means it isn't offered at
+ * all (admin-disabled) — see `methodVisibility` below.
+ */
+export interface ProviderStatus {
+  slug: string;
+  status: ProviderAvailability;
+}
+
 interface ProvidersOut {
-  providers: string[];
+  providers: ProviderStatus[];
 }
 
 /**
- * Live payment-provider slugs (those whose ``gateway.available`` is true on
- * the backend). Stubs like ``click`` / ``yookassa`` / ``crypto`` are absent
- * until integrated, so the UI can grey them out instead of letting users
- * create an orphan order followed by a failed intent.
+ * Live payment-provider statuses (admin-controlled per-provider
+ * active/maintenance state). Stubs like ``click`` / ``yookassa`` / ``crypto``
+ * are absent until integrated, so the UI can hide them entirely instead of
+ * letting users create an orphan order followed by a failed intent.
  */
 export function useAvailableProviders() {
-  return useQuery<string[]>({
+  return useQuery<ProviderStatus[]>({
     queryKey: ["payments", "providers"],
     queryFn: async () => {
       const data = await apiGet<ProvidersOut>("/api/v1/payments/providers");
@@ -102,6 +116,61 @@ export function useAvailableProviders() {
     },
     staleTime: 60_000,
   });
+}
+
+/**
+ * Build a slug → status lookup from the providers response. A slug absent
+ * from the map means the provider isn't offered at all (admin-disabled).
+ */
+export function providerStatusMap(providers: ProviderStatus[]): Map<string, ProviderAvailability> {
+  return new Map(providers.map((p) => [p.slug, p.status]));
+}
+
+export type MethodVisibility = "active" | "maintenance" | "hidden";
+
+/**
+ * Resolve how a payment method should render, given the live provider-status
+ * map:
+ * - `statusBySlug === null` means the fetch hasn't resolved yet (or failed) —
+ *   this fails OPEN, rendering every method as `"active"`, so a slow network
+ *   or a transient error never blanks out the checkout's payment methods.
+ * - Once loaded, a slug absent from the map is `"hidden"` (not offered).
+ * - `"maintenance"` renders the method but keeps it non-clickable;
+ *   `"active"` is selectable exactly as before this admin control existed.
+ */
+export function methodVisibility(
+  provider: string,
+  statusBySlug: Map<string, ProviderAvailability> | null,
+): MethodVisibility {
+  if (statusBySlug === null) return "active";
+  return statusBySlug.get(provider) ?? "hidden";
+}
+
+interface MethodLike {
+  id: string;
+  provider: string;
+}
+
+/**
+ * Once live provider status has loaded, decide which method id should be
+ * selected: keep `currentId` when its provider is `"active"`; otherwise fall
+ * back to the first method whose provider is `"active"`; if none are, return
+ * `null` — nothing is selectable, and the caller must not let checkout
+ * proceed. This exists so a hardcoded UI default (e.g. the first method in a
+ * fixed list) can never stay silently selected once it's known to be under
+ * maintenance or admin-disabled.
+ */
+export function selectActiveMethodId(
+  methods: MethodLike[],
+  currentId: string,
+  statusBySlug: Map<string, ProviderAvailability>,
+): string | null {
+  const current = methods.find((m) => m.id === currentId);
+  if (current && statusBySlug.get(current.provider) === "active") {
+    return currentId;
+  }
+  const firstActive = methods.find((m) => statusBySlug.get(m.provider) === "active");
+  return firstActive?.id ?? null;
 }
 
 // --- hooks ----------------------------------------------------------------
@@ -139,63 +208,100 @@ export interface CheckoutResult {
 }
 
 /**
- * Checkout = create order + create payment intent. One mutation from the UI.
- * Provider defaults to ``mock`` while real acquirers are stubs (see ADR-0012).
- *
- * The mutation *first* resolves the live-providers list (hit cache if fresh,
- * otherwise fetch) and refuses to create an order when the requested provider
- * isn't available. Without that guard a fast tap would race the providers
- * useQuery hook on the calling page and leave an orphan ``pending_payment``
- * order whenever the user picked a stub gateway.
+ * In-house providers that never appear in `GET /payments/providers`
+ * (Task 4): that endpoint enumerates managed acquirer slugs only
+ * (click_miniapp, payme, uzum, octo, crypto). ``wallet`` (pay-from-balance)
+ * and ``mock`` are validated authoritatively by the backend's
+ * `create_intent`, not by the acquirer-availability list — so the checkout
+ * guard below must never treat their absence from `/payments/providers` as
+ * "unavailable".
  */
+const IN_HOUSE_PROVIDERS = new Set(["wallet", "mock"]);
+
+/**
+ * Whether `performCheckout` must fetch `/payments/providers` and require
+ * `status === "active"` before creating an order for `provider`. In-house
+ * providers (`IN_HOUSE_PROVIDERS`) are exempt and skip the fetch entirely —
+ * see that constant's doc for why.
+ */
+export function requiresAcquirerAvailabilityCheck(provider: string): boolean {
+  return !IN_HOUSE_PROVIDERS.has(provider);
+}
+
+/**
+ * Checkout = create order + create payment intent. Exported standalone (not
+ * just inlined in `useMutation`) so it's testable without mounting a React
+ * hook — this app's Vitest suite runs under `environment: "node"` with no
+ * DOM/React Testing Library (see `useOrderSocket.test.ts` for the same
+ * pattern). Provider defaults to ``mock`` while real acquirers are stubs
+ * (see ADR-0012).
+ *
+ * For acquirer providers, this *first* resolves the live-providers list (hit
+ * cache if fresh, otherwise fetch) and refuses to create an order when the
+ * requested provider isn't available. Without that guard a fast tap would
+ * race the providers useQuery hook on the calling page and leave an orphan
+ * ``pending_payment`` order whenever the user picked a stub gateway.
+ * In-house providers (`wallet`, `mock`) skip this check entirely — see
+ * `requiresAcquirerAvailabilityCheck`.
+ */
+export async function performCheckout(
+  qc: QueryClient,
+  {
+    skuId,
+    fulfillmentData,
+    currency = "USD",
+    provider = "mock",
+    amountUsd,
+  }: CreateOrderInput & {
+    provider?: string;
+  },
+): Promise<CheckoutResult> {
+  if (requiresAcquirerAvailabilityCheck(provider)) {
+    const live = await qc.fetchQuery<ProviderStatus[]>({
+      queryKey: ["payments", "providers"],
+      queryFn: async () => {
+        const data = await apiGet<ProvidersOut>("/api/v1/payments/providers");
+        return data.providers;
+      },
+      staleTime: 60_000,
+    });
+    const isActive = live.some((p) => p.slug === provider && p.status === "active");
+    if (!isActive) {
+      throw new ApiError(409, "Conflict", {
+        detail: translate("checkout.providerUnavailable"),
+      });
+    }
+  }
+  const order = await apiPost<OrderOut>(
+    "/api/v1/orders",
+    {
+      currency,
+      items: [
+        {
+          sku_id: skuId,
+          qty: 1,
+          fulfillment_data: fulfillmentData,
+          ...(amountUsd !== undefined ? { amount_usd: amountUsd } : {}),
+        },
+      ],
+    },
+    { idempotencyKey: newIdempotencyKey("order") },
+  );
+  const payment = await apiPost<PaymentOut>(
+    "/api/v1/payments/intents",
+    {
+      order_id: order.id,
+      provider,
+    },
+    { idempotencyKey: newIdempotencyKey("payment") },
+  );
+  return { order, payment };
+}
+
 export function useCheckout() {
   const qc = useQueryClient();
   return useMutation<CheckoutResult, ApiError, CreateOrderInput & { provider?: string }>({
-    mutationFn: async ({
-      skuId,
-      fulfillmentData,
-      currency = "USD",
-      provider = "mock",
-      amountUsd,
-    }) => {
-      const live = await qc.fetchQuery<string[]>({
-        queryKey: ["payments", "providers"],
-        queryFn: async () => {
-          const data = await apiGet<ProvidersOut>("/api/v1/payments/providers");
-          return data.providers;
-        },
-        staleTime: 60_000,
-      });
-      if (!live.includes(provider)) {
-        throw new ApiError(409, "Conflict", {
-          detail: translate("checkout.providerUnavailable"),
-        });
-      }
-      const order = await apiPost<OrderOut>(
-        "/api/v1/orders",
-        {
-          currency,
-          items: [
-            {
-              sku_id: skuId,
-              qty: 1,
-              fulfillment_data: fulfillmentData,
-              ...(amountUsd !== undefined ? { amount_usd: amountUsd } : {}),
-            },
-          ],
-        },
-        { idempotencyKey: newIdempotencyKey("order") },
-      );
-      const payment = await apiPost<PaymentOut>(
-        "/api/v1/payments/intents",
-        {
-          order_id: order.id,
-          provider,
-        },
-        { idempotencyKey: newIdempotencyKey("payment") },
-      );
-      return { order, payment };
-    },
+    mutationFn: (input) => performCheckout(qc, input),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["my-orders"] });
       // A wallet-funded checkout debits the balance synchronously inside the

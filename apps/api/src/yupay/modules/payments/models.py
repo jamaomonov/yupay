@@ -108,4 +108,22 @@ class PaymentWebhook(Base):
     signature_ok: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
 
-__all__ = ["Payment", "PaymentAttempt", "PaymentWebhook"]
+class PaymentProviderState(Base):
+    """Admin-controlled runtime state for a payment gateway slug.
+
+    Orthogonal to a gateway's config-availability (are the keys set): this row
+    lets an operator take a provider offline (`disabled`) or flag it as under
+    maintenance (`maintenance`) without a code/config change. Absence of a row
+    means `active`. One row per slug — the admin layer writes every slug in a
+    logical provider's group together (see ``provider_state.LOGICAL_PROVIDERS``).
+    """
+
+    __tablename__ = "payment_provider_states"
+
+    provider: Mapped[str] = mapped_column(String(32), primary_key=True)
+    state: Mapped[str] = mapped_column(String(16), nullable=False)
+    changed_by: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
+    changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+__all__ = ["Payment", "PaymentAttempt", "PaymentProviderState", "PaymentWebhook"]

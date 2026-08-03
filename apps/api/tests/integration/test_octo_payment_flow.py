@@ -156,7 +156,8 @@ def _signed_webhook_body(uuid: str, status: str) -> str:
 async def test_octo_appears_in_providers(integration_client: AsyncClient) -> None:
     r = await integration_client.get("/api/v1/payments/providers")
     assert r.status_code == 200
-    assert "octo" in r.json()["providers"]
+    by_slug = {p["slug"]: p["status"] for p in r.json()["providers"]}
+    assert by_slug.get("octo") == "active"
 
 
 @respx.mock

@@ -33,6 +33,7 @@ import { InventoryPage } from "@/features/inventory/InventoryPage";
 import { OrderDetailPage } from "@/features/orders/OrderDetailPage";
 import { OrdersListPage } from "@/features/orders/OrdersListPage";
 import { PaymentsPage } from "@/features/payments/PaymentsPage";
+import { ProvidersPage } from "@/features/payments/providers/ProvidersPage";
 import { TriagePage } from "@/features/payments-triage/TriagePage";
 import { PromoPage } from "@/features/promo/PromoPage";
 import { ReviewsPage } from "@/features/reviews/ReviewsPage";
@@ -72,6 +73,7 @@ export const router = createBrowserRouter([
           { path: "/orders/:id", element: <OrderDetailPage /> },
           { path: "/payments", element: <PaymentsPage /> },
           { path: "/payments/triage", element: <TriagePage /> },
+          { path: "/payments/providers", element: <ProvidersPage /> },
           { path: "/webhooks", element: <WebhooksPage /> },
           { path: "/fulfillment", element: <InboxPage /> },
           {

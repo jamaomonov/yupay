@@ -149,6 +149,11 @@ export const qk = {
     ] as const,
   payment: (id: string) => ["admin", "payments", id] as const,
 
+  // payment providers (admin control panel — list + per-provider analytics detail)
+  paymentProviders: () => ["admin", "payments", "providers"] as const,
+  paymentProviderDetail: (provider: string, window: string) =>
+    ["admin", "payments", "providers", provider, window] as const,
+
   // promo
   promoCodes: () => ["admin", "promo"] as const,
 

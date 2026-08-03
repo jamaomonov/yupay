@@ -70,6 +70,17 @@ class PaymentListOut(BaseModel):
     items: list[PaymentOut]
 
 
+class ProviderStatusOut(BaseModel):
+    """A payment provider slug the storefront may show, and whether it's usable."""
+
+    slug: str
+    status: Literal["active", "maintenance"]
+
+
+class ProvidersOut(BaseModel):
+    providers: list[ProviderStatusOut]
+
+
 class PaymentAdminListOut(BaseModel):
     items: list[PaymentAdminOut]
     total: int = 0
@@ -118,7 +129,102 @@ class WebhookResolveIn(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
 
 
+class AdminProviderSummary(BaseModel):
+    """One logical payment provider as the admin control panel sees it."""
+
+    provider: str
+    display_name: str
+    slugs: list[str]
+    config_available: bool
+    state: Literal["active", "disabled", "maintenance"]
+    changed_by: str | None
+    changed_at: datetime | None
+
+
+class AdminProviderListOut(BaseModel):
+    providers: list[AdminProviderSummary]
+
+
+class SetProviderStateIn(BaseModel):
+    """Body of admin's ``PUT /admin/payments/providers/{provider}/state``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    state: Literal["active", "disabled", "maintenance"]
+
+
+class VolumeRow(BaseModel):
+    """Payment volume for one currency within the analytics window."""
+
+    model_config = ConfigDict(frozen=True)
+
+    currency: str
+    amount: Decimal
+    count: int
+
+
+class SuccessRateOut(BaseModel):
+    """Succeeded / failed / pending counts + success percentage for the window.
+
+    See ``provider_analytics`` module docstring for the exact status-bucket
+    mapping (in particular how ``refunded``/``partially_refunded`` are
+    treated as succeeded).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    succeeded: int
+    failed: int
+    pending: int
+    success_pct: float
+
+
+class RecentPaymentOut(BaseModel):
+    """One payment row for the admin detail screen's recent list.
+
+    Deliberately narrow — id/order_id/status/amount/currency/created_at only.
+    Never include email/phone/user identifiers here (see AGENTS.md §9).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    order_id: str
+    status: PaymentStatus
+    amount: Decimal
+    currency: str
+    created_at: datetime
+
+
+class ProviderIncidentsOut(BaseModel):
+    """Stuck-pending + failed-webhook counts for a provider group.
+
+    Mirrors ``admin.service.triage_payments``'s definitions exactly so the
+    numbers agree with the existing triage screen.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    stuck_pending: int
+    failed_webhooks: int
+
+
+class AdminProviderDetailOut(BaseModel):
+    """Full analytics detail for one logical payment provider (admin screen)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    summary: AdminProviderSummary
+    volume: list[VolumeRow] = Field(default_factory=list)
+    success_rate: SuccessRateOut
+    recent: list[RecentPaymentOut] = Field(default_factory=list)
+    incidents: ProviderIncidentsOut
+
+
 __all__ = [
+    "AdminProviderDetailOut",
+    "AdminProviderListOut",
+    "AdminProviderSummary",
     "PaymentAdminListOut",
     "PaymentAdminOut",
     "PaymentAttemptOut",
@@ -128,7 +234,14 @@ __all__ = [
     "PaymentStatus",
     "PaymentWebhookListOut",
     "PaymentWebhookOut",
+    "ProviderIncidentsOut",
+    "ProviderStatusOut",
+    "ProvidersOut",
+    "RecentPaymentOut",
     "RefundIn",
+    "SetProviderStateIn",
     "SimulateWebhookIn",
+    "SuccessRateOut",
+    "VolumeRow",
     "WebhookResolveIn",
 ]

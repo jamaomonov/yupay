@@ -23,6 +23,7 @@ from yupay.core.errors import ConflictError, NotFoundError, ValidationError
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.modules.orders.models import Order, OrderEvent
+from yupay.modules.payments import provider_state
 from yupay.modules.payments.gateways import (
     PaymentGatewayError,
     PaymentNotIntegratedError,
@@ -117,6 +118,33 @@ def _validate_intent_replay(payment: Payment, *, order_id: str, provider: str) -
     return payment
 
 
+def _ensure_provider_accepting_intents(
+    *, provider: str, state: provider_state.ProviderState
+) -> None:
+    """Reject NEW intents for a disabled/maintenance provider (Task 3).
+
+    Extracted out of :func:`create_intent` purely to keep that function's
+    branch count under the ``PLR0912`` gate — it does not encapsulate any
+    reusable logic beyond the single check.
+
+    Never called from the webhook/callback settlement paths
+    (``handle_webhook``, ``settle_provider_payment``,
+    ``reverse_provider_payment``, ``cancel_pending_provider_payment``) — an
+    already-in-flight payment must settle regardless of admin state; see
+    :mod:`yupay.modules.payments.provider_state`'s module docstring.
+
+    Raises:
+        ConflictError: ``state`` is not ``"active"``. ``extra["reason"]`` is
+            ``"provider_disabled"`` or ``"provider_maintenance"``.
+    """
+    if state != "active":
+        raise ConflictError(
+            "payment provider is not accepting new payments",
+            provider=provider,
+            reason="provider_disabled" if state == "disabled" else "provider_maintenance",
+        )
+
+
 def _safe_return_url(candidate: str | None, settings: Settings) -> str:
     """Resolve the acquirer return URL, defaulting to the web order surface and
     rejecting any client-supplied URL that isn't same-origin as web_base_url."""
@@ -166,6 +194,15 @@ async def create_intent(
             "payment provider not available",
             extra={"provider": gw.provider},
         )
+
+    # Admin-controlled provider state (Task 3): a disabled/maintenance provider
+    # rejects NEW intents, but never touches an already-in-flight payment — the
+    # webhook/callback settlement paths (handle_webhook, settle_provider_payment,
+    # reverse_provider_payment, cancel_pending_provider_payment) deliberately do
+    # not consult this, so a payment created while active still settles even if
+    # the provider is disabled before the customer finishes paying.
+    state = await provider_state.get_state(db, gw.provider)
+    _ensure_provider_accepting_intents(provider=gw.provider, state=state)
 
     # Reuse the pending payment for this order — one intent at a time.
     existing = await _find_active_payment(db, order.id)

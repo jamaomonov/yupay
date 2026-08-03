@@ -14,6 +14,13 @@ import { buttonStyles } from "@/lib/button";
 import { getAccessToken } from "@/lib/client";
 import { mintGuestToken } from "@/lib/guest";
 import { saveGuestOrder } from "@/lib/guest-orders";
+import {
+  methodVisibility,
+  providerStatusMap,
+  selectActiveMethodId,
+  type ProviderStatus,
+  type ProvidersOut,
+} from "@/lib/payment-providers";
 import { canCheck, IDLE, runPlayerCheck, type CheckState } from "@/lib/player-check-state";
 import { formatUzs, pathFor } from "@/lib/seo";
 import { amountError, parseAmount } from "@/lib/variable-amount";
@@ -334,6 +341,10 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
   // number — see `@/lib/variable-amount` for parsing/validation.
   const [amountInput, setAmountInput] = useState("");
   const [methodId, setMethodId] = useState<string>(METHODS[0]?.id ?? "click");
+  // Admin-controlled provider availability (`GET /payments/providers`). `null`
+  // until the fetch resolves — `methodVisibility` treats that as "fail open"
+  // so the method grid never blanks out on a slow network.
+  const [providerStatus, setProviderStatus] = useState<Map<string, ProviderStatus> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{
@@ -343,6 +354,34 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
   } | null>(null);
   // The mobile sticky pay bar scrolls here when the form isn't complete yet.
   const asideRef = useRef<HTMLElement>(null);
+
+  // Load provider availability once on mount so the method grid below can
+  // hide admin-disabled providers and grey out ones under maintenance before
+  // the customer ever tries to pay.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API}/api/v1/payments/providers`)
+      .then((r) => r.json() as Promise<ProvidersOut>) // narrows a known-shape JSON response
+      .then((data) => {
+        if (!cancelled) setProviderStatus(providerStatusMap(data));
+      })
+      .catch(() => {
+        // Leave `providerStatus` as `null` — fails open, see its declaration.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Once live status lands, make sure the selection reflects it: the
+  // hardcoded default (`METHODS[0]`) may itself be under maintenance or
+  // admin-disabled. Reselect the first `active` method, or clear the
+  // selection entirely when none are — `canPay` below then keeps Pay
+  // disabled rather than ever letting a non-active provider be submitted.
+  useEffect(() => {
+    if (!providerStatus) return;
+    setMethodId((current) => selectActiveMethodId(METHODS, current, providerStatus) ?? "");
+  }, [providerStatus]);
 
   let selSku: SkuOut | undefined;
   let selProduct: ProductDetail | undefined;
@@ -385,12 +424,27 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
 
   const emailOk = EMAIL_RE.test(email);
   const fieldsOk = fields.every((f) => !f.required || (form[f.key]?.trim() ?? "") !== "");
+  // Not just "a method id is set" — the selected method's *provider* must
+  // currently be `active`. Combined with the reselection effect above, this
+  // is the belt-and-suspenders guarantee that Pay can never submit a
+  // maintenance/admin-disabled provider (`methodVisibility` fails open while
+  // `providerStatus` is still loading, matching the method grid's own render).
+  const selectedProvider = METHODS.find((m) => m.id === methodId)?.provider;
+  const selectedMethodActive =
+    selectedProvider !== undefined &&
+    methodVisibility(selectedProvider, providerStatus) === "active";
+  // When every acquirer is admin-disabled/unavailable the grid renders empty;
+  // show an explicit "no methods" line instead of a bare heading. Fails open
+  // while `providerStatus` loads, so it never flashes during the initial fetch.
+  const anyMethodVisible = METHODS.some(
+    (m) => methodVisibility(m.provider, providerStatus) !== "hidden",
+  );
   // Logged-in users don't need to supply an email — the account email is used server-side.
   const canPay =
     Boolean(selSku) &&
     (user !== null || emailOk) &&
     fieldsOk &&
-    Boolean(methodId) &&
+    selectedMethodActive &&
     variableAmountOk &&
     !loading;
   // Tell the user *why* the pay button is inactive instead of leaving a dimmed
@@ -437,15 +491,13 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
     setLoading(true);
     setError(null);
     try {
-      const providers = await fetch(`${API}/api/v1/payments/providers`)
-        .then((r) => r.json() as Promise<{ providers: string[] }>)
-        .catch(() => ({ providers: [] as string[] }));
-      const wanted = METHODS.find((m) => m.id === methodId)?.provider ?? "mock";
-      const provider = providers.providers.includes(wanted)
-        ? wanted
-        : providers.providers.includes("mock")
-          ? "mock"
-          : wanted;
+      // The early return above (`!canPay`) guarantees `selectedMethodActive`,
+      // which in turn guarantees `selectedProvider !== undefined` — but that's
+      // a runtime guarantee only. Checking a separate boolean doesn't narrow
+      // `selectedProvider`'s type (it stays `string | undefined` to TS); no
+      // fallback is needed because the early return has already ensured it's
+      // defined by the time we get here.
+      const provider = selectedProvider;
 
       const token = getAccessToken();
       const isLoggedIn = user !== null && token !== null;
@@ -772,22 +824,36 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
               <span className="text-tx-mute mb-2 block text-[13px] font-semibold">
                 {t("paymentTitle")}
               </span>
+              {!anyMethodVisible && (
+                <p className="border-border bg-card text-tx-dim rounded-[12px] border px-3 py-3 text-[13px]">
+                  {t("paymentNone")}
+                </p>
+              )}
               <div className="grid grid-cols-2 gap-2">
                 {METHODS.map((m) => {
-                  const active = m.id === methodId;
+                  // Absent from the providers response → admin-disabled, not
+                  // offered at all. `maintenance` still renders, but greyed
+                  // out and non-clickable via the native `disabled` attribute.
+                  const visibility = methodVisibility(m.provider, providerStatus);
+                  if (visibility === "hidden") return null;
+                  const disabled = visibility === "maintenance";
+                  const active = !disabled && m.id === methodId;
                   return (
                     <button
                       key={m.id}
                       type="button"
                       aria-label={m.name}
                       aria-pressed={active}
+                      disabled={disabled}
                       onClick={() => {
                         setMethodId(m.id);
                       }}
-                      className={`focus-visible:ring-primary focus-visible:ring-offset-bg flex items-center justify-center rounded-[12px] border px-3 py-3 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
-                        active
-                          ? "border-primary bg-primary/10"
-                          : "border-border bg-card hover:border-border-2"
+                      className={`focus-visible:ring-primary focus-visible:ring-offset-bg flex flex-col items-center justify-center gap-1 rounded-[12px] border px-3 py-3 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
+                        disabled
+                          ? "border-border bg-card"
+                          : active
+                            ? "border-primary bg-primary/10"
+                            : "border-border bg-card hover:border-border-2"
                       }`}
                     >
                       <Image
@@ -800,6 +866,11 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
                         style={{ width: "auto", height: 20 }}
                         className="object-contain"
                       />
+                      {disabled && (
+                        <span className="text-tx-dim text-[10px] font-semibold uppercase tracking-[0.04em]">
+                          {t("paymentMaintenance")}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
