@@ -4,11 +4,13 @@ import { Link, useLocation } from "wouter";
 import { useT } from "@/lib/i18n";
 import { useKeyboardOpen } from "@/lib/use-keyboard-open";
 import { cn } from "@/lib/utils";
+import { useOverlayOpen } from "@/store/useOverlay";
 
 export function BottomNav() {
   const [location] = useLocation();
   const { t } = useT();
   const keyboardOpen = useKeyboardOpen();
+  const overlayOpen = useOverlayOpen();
 
   const navItems = [
     { href: "/", label: t("nav.home"), icon: Home },
@@ -20,6 +22,10 @@ export function BottomNav() {
   // plus the pay button swallow most of the remaining screen. `--app-nav-h`
   // collapses in step (lib/telegram.ts), so the layout closes the gap.
   if (keyboardOpen) return null;
+
+  // Full-screen overlays (e.g. the reviews sheet) share this bar's z-50 and sit
+  // earlier in the DOM, so without this the bar would paint over them.
+  if (overlayOpen) return null;
 
   return (
     <nav

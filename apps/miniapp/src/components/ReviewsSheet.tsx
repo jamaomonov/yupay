@@ -1,11 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Star, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { ApiError } from "@/lib/api";
 import { useMe } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import { getBrandReviews, submitReview, type ReviewPage } from "@/lib/reviews";
+import { useOverlay } from "@/store/useOverlay";
 
 function StarRow({ value, size = 14 }: { value: number; size?: number }) {
   const filled = Math.round(value);
@@ -39,6 +40,15 @@ export function ReviewsSheet({
   const { t, tn } = useT();
   const me = useMe();
   const qc = useQueryClient();
+
+  // Hide the fixed bottom nav while this sheet is up — otherwise it paints over
+  // the sheet (both are z-50; the nav is later in the DOM).
+  const openOverlay = useOverlay((s) => s.open);
+  const closeOverlay = useOverlay((s) => s.close);
+  useEffect(() => {
+    openOverlay();
+    return closeOverlay;
+  }, [openOverlay, closeOverlay]);
   const reviews = useQuery<ReviewPage>({
     queryKey: ["reviews", brandSlug],
     queryFn: () => getBrandReviews(brandSlug),
