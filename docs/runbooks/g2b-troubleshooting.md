@@ -2,16 +2,16 @@
 
 ## Symptoms → diagnosis
 
-| Symptom (admin sees)                                                                         | Likely cause                                | First action                                                                                                |
-| -------------------------------------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `/admin/integrations/g2b/health` → `available: false, reason: G2B_API_KEY is not configured` | Env var missing in `api.env`                | Add `G2B_API_KEY=…` to `secrets/api.env`, then `docker compose up -d --force-recreate api worker scheduler` |
-| `available: false, reason: g2b HTTP 401`                                                     | Wrong / revoked / banned key                | **STOP making calls** — repeated 401s permanently ban our IP. Get a fresh key via the G2B Telegram bot      |
-| `available: true, balance: 0`                                                                | Pre-paid wallet empty on G2B side           | Top up the G2B account via their Telegram bot                                                               |
-| Task stuck `in_progress` after ~10 min, no webhook                                           | Webhook never reached us                    | Auto-recovered by the `g2b_reconcile` sweep (every 60s); see "Webhook lost" below                          |
-| Game task stuck `in_progress` **though the credit reached the player**, webhook logged `g2b.webhook.unknown_order` | `external_order_id` was persisted as the string `"None"` (pre-fix response-parsing bug) — the flat webhook can't match it | See "Mis-stored external_order_id" below |
-| Task `failed`, `last_error: g2b purchase failed: HTTP 410`                                   | Order was refunded / cancelled on G2B side  | Refund the customer via `/admin/payments/{id}/refund`; the G2B balance was already returned automatically   |
-| Task `failed`, `last_error: no active g2b mapping for SKU`                                   | Missing or `is_active=false` mapping        | Create the mapping at `/admin/integrations/mappings`                                                        |
-| Game task `failed`, `last_error: missing fulfillment_data.player_id`                         | Customer didn't enter player_id at checkout | Refund + ask product team why the form let the order through                                                |
+| Symptom (admin sees)                                                                                               | Likely cause                                                                                                              | First action                                                                                                |
+| ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `/admin/integrations/g2b/health` → `available: false, reason: G2B_API_KEY is not configured`                       | Env var missing in `api.env`                                                                                              | Add `G2B_API_KEY=…` to `secrets/api.env`, then `docker compose up -d --force-recreate api worker scheduler` |
+| `available: false, reason: g2b HTTP 401`                                                                           | Wrong / revoked / banned key                                                                                              | **STOP making calls** — repeated 401s permanently ban our IP. Get a fresh key via the G2B Telegram bot      |
+| `available: true, balance: 0`                                                                                      | Pre-paid wallet empty on G2B side                                                                                         | Top up the G2B account via their Telegram bot                                                               |
+| Task stuck `in_progress` after ~10 min, no webhook                                                                 | Webhook never reached us                                                                                                  | Auto-recovered by the `g2b_reconcile` sweep (every 60s); see "Webhook lost" below                           |
+| Game task stuck `in_progress` **though the credit reached the player**, webhook logged `g2b.webhook.unknown_order` | `external_order_id` was persisted as the string `"None"` (pre-fix response-parsing bug) — the flat webhook can't match it | See "Mis-stored external_order_id" below                                                                    |
+| Task `failed`, `last_error: g2b purchase failed: HTTP 410`                                                         | Order was refunded / cancelled on G2B side                                                                                | Refund the customer via `/admin/payments/{id}/refund`; the G2B balance was already returned automatically   |
+| Task `failed`, `last_error: no active g2b mapping for SKU`                                                         | Missing or `is_active=false` mapping                                                                                      | Create the mapping at `/admin/integrations/mappings`                                                        |
+| Game task `failed`, `last_error: missing fulfillment_data.player_id`                                               | Customer didn't enter player_id at checkout                                                                               | Refund + ask product team why the form let the order through                                                |
 
 ## Webhook lost — reconciliation
 
@@ -39,7 +39,7 @@ start / redeploy / transient 5xx on our side loses it for good. Two safety nets:
 
 **Root cause (fixed):** G2B wraps order data under an `order` key
 (`{"success": true, "order": {"order_id": …, "status": …}}`) in the `create`
-and `games/order/status` responses — but the webhook body is *flat*. An early
+and `games/order/status` responses — but the webhook body is _flat_. An early
 `g2b_client` read `order_id`/`status` off the top level, so it stored
 `external_order_id="None"` and treated every game order as `pending`. The flat
 webhook (`order_id: 1309981`) then logged `g2b.webhook.unknown_order` and the
