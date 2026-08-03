@@ -70,6 +70,17 @@ class PaymentListOut(BaseModel):
     items: list[PaymentOut]
 
 
+class ProviderStatusOut(BaseModel):
+    """A payment provider slug the storefront may show, and whether it's usable."""
+
+    slug: str
+    status: Literal["active", "maintenance"]
+
+
+class ProvidersOut(BaseModel):
+    providers: list[ProviderStatusOut]
+
+
 class PaymentAdminListOut(BaseModel):
     items: list[PaymentAdminOut]
     total: int = 0
@@ -128,6 +139,8 @@ __all__ = [
     "PaymentStatus",
     "PaymentWebhookListOut",
     "PaymentWebhookOut",
+    "ProviderStatusOut",
+    "ProvidersOut",
     "RefundIn",
     "SimulateWebhookIn",
     "WebhookResolveIn",

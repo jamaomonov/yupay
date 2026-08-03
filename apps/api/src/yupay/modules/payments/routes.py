@@ -17,8 +17,9 @@ from yupay.modules.auth import jwt as authjwt
 from yupay.modules.auth.security import email_hash
 from yupay.modules.orders.models import Order
 from yupay.modules.orders.service import Actor
+from yupay.modules.payments import provider_state
 from yupay.modules.payments import service as svc
-from yupay.modules.payments.gateways import available_providers
+from yupay.modules.payments.provider_state import SLUG_TO_LOGICAL
 from yupay.modules.payments.schemas import (
     PaymentAdminListOut,
     PaymentAdminOut,
@@ -26,6 +27,8 @@ from yupay.modules.payments.schemas import (
     PaymentOut,
     PaymentWebhookListOut,
     PaymentWebhookOut,
+    ProvidersOut,
+    ProviderStatusOut,
     RefundIn,
     SimulateWebhookIn,
     WebhookResolveIn,
@@ -92,9 +95,18 @@ async def _ensure_actor_owns_order(db: AsyncSession, *, actor: Actor, order_id: 
 # ---------- customer ----------
 
 
-@router.get("/providers", summary="List provider slugs currently usable")
-async def list_providers() -> dict[str, list[str]]:
-    return {"providers": available_providers()}
+@router.get(
+    "/providers", response_model=ProvidersOut, summary="Payment providers the storefront may show"
+)
+async def list_providers(db: Annotated[AsyncSession, Depends(db_session)]) -> ProvidersOut:
+    slugs = list(SLUG_TO_LOGICAL.keys())
+    states = await provider_state.get_states(db, slugs)
+    out: list[ProviderStatusOut] = []
+    for slug in slugs:
+        status_ = provider_state.customer_status(slug, states[slug])
+        if status_ is not None:
+            out.append(ProviderStatusOut(slug=slug, status=status_))
+    return ProvidersOut(providers=out)
 
 
 @router.post(
