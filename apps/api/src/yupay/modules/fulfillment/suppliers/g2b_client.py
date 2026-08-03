@@ -203,7 +203,8 @@ class G2bClient:
             idempotency_key=idempotency_key,
         )
         body = resp.json()
-        raw_status = str(body.get("status") or "").upper()
+        order = _unwrap_order(body)
+        raw_status = str(order.get("status") or "").upper()
         outcome: VoucherOutcome
         if raw_status == "COMPLETED":
             outcome = "completed"
@@ -211,10 +212,15 @@ class G2bClient:
             outcome = "pending"
         else:
             outcome = "failed"
+        # ``delivery_items`` may sit inside the ``order`` wrapper or at the top
+        # level depending on the endpoint — accept either.
+        delivery_items = order.get("delivery_items")
+        if delivery_items is None:
+            delivery_items = body.get("delivery_items")
         return VoucherPurchaseResult(
-            g2b_order_id=str(body.get("order_id")),
+            g2b_order_id=str(order.get("order_id")),
             status=outcome,
-            delivery_items=body.get("delivery_items"),
+            delivery_items=delivery_items,
         )
 
     async def poll_voucher_delivery(self, g2b_order_id: str) -> VoucherDeliveryResult:
@@ -269,10 +275,10 @@ class G2bClient:
             json=payload,
             idempotency_key=idempotency_key,
         )
-        body = resp.json()
+        order = _unwrap_order(resp.json())
         return GameOrderCreated(
-            g2b_order_id=str(body.get("order_id")),
-            status=_normalise_game_status(body.get("status")),
+            g2b_order_id=str(order.get("order_id")),
+            status=_normalise_game_status(order.get("status")),
         )
 
     async def get_game_order_status(self, *, g2b_order_id: str, game_code: str) -> GameOrderStatus:
@@ -281,11 +287,11 @@ class G2bClient:
             "/games/order/status",
             json={"order_id": g2b_order_id, "game": game_code},
         )
-        body = resp.json()
+        order = _unwrap_order(resp.json())
         return GameOrderStatus(
-            g2b_order_id=str(body.get("order_id")),
-            status=_normalise_game_status(body.get("status")),
-            message=body.get("message"),
+            g2b_order_id=str(order.get("order_id")),
+            status=_normalise_game_status(order.get("status")),
+            message=order.get("message"),
         )
 
     async def games_fields(self, game_code: str) -> dict[str, Any]:
@@ -389,6 +395,27 @@ def _verdict_or_none(exc: G2bError) -> dict[str, Any] | None:
     if isinstance(body, dict) and "valid" in body:
         return body
     return None
+
+
+def _unwrap_order(body: Any) -> dict[str, Any]:
+    """Return the order object from a G2B response.
+
+    G2B wraps order-shaped responses (``create``, ``games/order/status``,
+    voucher ``purchase``) under a top-level ``order`` key alongside
+    ``success`` — e.g. ``{"success": true, "order": {"order_id": 1309981,
+    "status": "COMPLETED", ...}}``. Reading ``order_id`` / ``status`` off the
+    top level yields ``None`` and silently persists ``external_order_id="None"``
+    (the bug that stranded a completed top-up in ``in_progress`` — the flat
+    webhook could never match). Some endpoints (``getMe``) are flat instead,
+    so unwrap defensively: use ``body["order"]`` only when it's a dict, else
+    fall back to ``body`` itself.
+    """
+    if isinstance(body, dict):
+        inner = body.get("order")
+        if isinstance(inner, dict):
+            return inner
+        return body
+    return {}
 
 
 def _normalise_game_status(

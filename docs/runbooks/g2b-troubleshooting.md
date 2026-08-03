@@ -7,26 +7,60 @@
 | `/admin/integrations/g2b/health` → `available: false, reason: G2B_API_KEY is not configured` | Env var missing in `api.env`                | Add `G2B_API_KEY=…` to `secrets/api.env`, then `docker compose up -d --force-recreate api worker scheduler` |
 | `available: false, reason: g2b HTTP 401`                                                     | Wrong / revoked / banned key                | **STOP making calls** — repeated 401s permanently ban our IP. Get a fresh key via the G2B Telegram bot      |
 | `available: true, balance: 0`                                                                | Pre-paid wallet empty on G2B side           | Top up the G2B account via their Telegram bot                                                               |
-| Task stuck `in_progress` after ~10 min, no webhook                                           | Webhook never reached us                    | See "Webhook lost" below                                                                                    |
+| Task stuck `in_progress` after ~10 min, no webhook                                           | Webhook never reached us                    | Auto-recovered by the `g2b_reconcile` sweep (every 60s); see "Webhook lost" below                          |
+| Game task stuck `in_progress` **though the credit reached the player**, webhook logged `g2b.webhook.unknown_order` | `external_order_id` was persisted as the string `"None"` (pre-fix response-parsing bug) — the flat webhook can't match it | See "Mis-stored external_order_id" below |
 | Task `failed`, `last_error: g2b purchase failed: HTTP 410`                                   | Order was refunded / cancelled on G2B side  | Refund the customer via `/admin/payments/{id}/refund`; the G2B balance was already returned automatically   |
 | Task `failed`, `last_error: no active g2b mapping for SKU`                                   | Missing or `is_active=false` mapping        | Create the mapping at `/admin/integrations/mappings`                                                        |
 | Game task `failed`, `last_error: missing fulfillment_data.player_id`                         | Customer didn't enter player_id at checkout | Refund + ask product team why the form let the order through                                                |
 
-## Webhook lost — manual reconciliation
+## Webhook lost — reconciliation
 
-If a task is stuck `in_progress` and you suspect the webhook never fired:
+G2B's webhook fires **once with a single retry and a 10s timeout**, so a cold
+start / redeploy / transient 5xx on our side loses it for good. Two safety nets:
 
-1. Confirm `g2b_callback_url` env var matches what's actually publicly
-   reachable (`curl -X POST $G2B_CALLBACK_URL`). Behind Cloudflare /
-   Caddy a wrong URL = silent failure.
-2. Hit `POST /api/v1/admin/fulfillment/tasks/{task_id}/retry` — this
-   replays `fulfill()` against G2B with the same `X-Idempotency-Key`
-   (= `task.id`), which means within 30 minutes G2B returns the same
-   order; outside of 30 min G2B may create a duplicate. Prefer to
-   resolve within the window.
-3. If the task is past the idempotency window, the safer path is
-   `/cancel` the task locally and refund the customer; do not let the
-   adapter create a second G2B order.
+- **Automatic:** the `g2b_reconcile` scheduler job sweeps every `in_progress`
+  g2b task every 60s and re-verifies it via `POST /games/order/status` (the same
+  `process_webhook_update` path a real webhook takes). A lost webhook self-heals
+  within a minute — no action needed. Confirm it's running: look for
+  `g2b_reconcile.tick` / `g2b_reconcile.registered` in the scheduler logs.
+- **Manual (only if the sweep can't):**
+  1. Confirm `g2b_callback_url` matches what's publicly reachable
+     (`curl -X POST $G2B_CALLBACK_URL`). Behind Cloudflare / Caddy a wrong URL =
+     silent failure.
+  2. `POST /api/v1/admin/fulfillment/tasks/{task_id}/retry` only accepts
+     `failed`/`pending` tasks — it **rejects `in_progress`** (409 Conflict). For
+     a stuck `in_progress` task, let the sweep reconcile it; do **not** re-run
+     `fulfill()` (that risks a duplicate G2B order outside the 30-min
+     idempotency window).
+  3. If genuinely unrecoverable, `/cancel` the task locally and refund the
+     customer.
+
+## Mis-stored external_order_id (`"None"`)
+
+**Root cause (fixed):** G2B wraps order data under an `order` key
+(`{"success": true, "order": {"order_id": …, "status": …}}`) in the `create`
+and `games/order/status` responses — but the webhook body is *flat*. An early
+`g2b_client` read `order_id`/`status` off the top level, so it stored
+`external_order_id="None"` and treated every game order as `pending`. The flat
+webhook (`order_id: 1309981`) then logged `g2b.webhook.unknown_order` and the
+task stranded in `in_progress` even though the player was already credited.
+Fixed by `_unwrap_order()` in `g2b_client.py` (unwraps `order` when present,
+falls back to flat).
+
+**Repairing a task stranded before the fix** (the `g2b_reconcile` sweep can't —
+it would call status with `order_id="None"`):
+
+1. Find the real G2B order id from history — it echoes our `remark`
+   (`yupay:<order_item_id[:8]>`):
+   ```bash
+   curl -s "$G2B_BASE_URL/games/orders?limit=50" -H "X-API-Key: $G2B_API_KEY"
+   ```
+2. Point the task at it, then let the next sweep (≤60s) complete it:
+   ```sql
+   UPDATE fulfillment_tasks
+      SET external_order_id = '<real_order_id>', updated_at = now()
+    WHERE supplier = 'g2b' AND status = 'in_progress' AND external_order_id = 'None';
+   ```
 
 ## Webhook poisoning attempt
 

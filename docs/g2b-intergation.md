@@ -179,6 +179,15 @@ Webhook-эндпоинт агента должен:
 POST /v1/games/order/status
 Проверка текущего статуса (если webhook не используется или для подстраховки).
 json{ "order_id": 42, "game": "pubgm" }
+
+⚠️ Форма ответа (create и order/status): объект заказа ОБЁРНУТ в ключ `order`,
+рядом лежит `success` — а НЕ на верхнем уровне:
+json{ "success": true, "order": { "order_id": 1309981, "status": "COMPLETED", "message": "..." } }
+При этом ТЕЛО ВЕБХУКА — плоское (`order_id` на верхнем уровне). Несогласованность
+реальная (проверено вживую на api.g2bulk.com). `getMe` тоже плоский. Клиент
+разворачивает `order` через `_unwrap_order()`; читать поля с верхнего уровня
+нельзя — иначе `external_order_id` сохранится как строка "None" и вебхук с
+реальным id никогда не совпадёт (см. runbook g2b-troubleshooting).
 GET /v1/games/orders
 История топ-апов с пагинацией (page, limit, search). Поля каждого заказа включают order_id, game_code, player_id, player_name, denom_id, price, status, is_refunded, created_at, completed_at.
 

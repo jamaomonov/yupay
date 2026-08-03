@@ -115,8 +115,20 @@ async def test_voucher_delivery_polling_states() -> None:
 
 @respx.mock
 async def test_game_order_create_and_status() -> None:
+    # The real G2B API wraps the order object under an ``order`` key (and adds
+    # a top-level ``success``). The ``order_id`` / ``status`` fields live INSIDE
+    # that wrapper — reading them off the top level yields ``None`` and silently
+    # persists ``external_order_id="None"``, which is exactly what stranded a
+    # completed prod top-up in ``in_progress`` (the flat webhook could never
+    # match the mis-stored id). Captured live from api.g2bulk.com.
     create = respx.post("https://g2b.test/v1/games/pubg_mobile/order").mock(
-        return_value=httpx.Response(200, json={"order_id": 999, "status": "PENDING"})
+        return_value=httpx.Response(
+            200,
+            json={
+                "success": True,
+                "order": {"order_id": 999, "status": "PENDING", "message": "Create success"},
+            },
+        )
     )
     created = await _client().create_game_order(
         game_code="pubg_mobile",
@@ -136,12 +148,41 @@ async def test_game_order_create_and_status() -> None:
     respx.post("https://g2b.test/v1/games/order/status").mock(
         return_value=httpx.Response(
             200,
-            json={"order_id": 999, "status": "COMPLETED", "message": "done"},
+            json={
+                "success": True,
+                "order": {"order_id": 999, "status": "COMPLETED", "message": "done"},
+            },
         )
     )
     status = await _client().get_game_order_status(g2b_order_id="999", game_code="pubg_mobile")
+    assert status.g2b_order_id == "999"
     assert status.status == "completed"
     assert status.message == "done"
+
+
+@respx.mock
+async def test_game_order_flat_response_still_parsed() -> None:
+    """Back-compat: a flat (un-wrapped) response must keep working.
+
+    We defensively unwrap ``order`` only when present, so any endpoint/version
+    that returns fields at the top level (like ``getMe`` does today) is
+    unaffected.
+    """
+    respx.post("https://g2b.test/v1/games/pubg_mobile/order").mock(
+        return_value=httpx.Response(200, json={"order_id": 777, "status": "PROCESSING"})
+    )
+    created = await _client().create_game_order(
+        game_code="pubg_mobile",
+        catalogue_name="60 UC",
+        player_id="5679523421",
+        server_id=None,
+        charname=None,
+        callback_url=None,
+        remark=None,
+        idempotency_key="task-flat",
+    )
+    assert created.g2b_order_id == "777"
+    assert created.status == "processing"
 
 
 @respx.mock
