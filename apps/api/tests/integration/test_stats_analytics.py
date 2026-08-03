@@ -121,6 +121,77 @@ async def test_business_summary_and_margin_approx(db_session: AsyncSession) -> N
     assert brands["pubg"].margin_usd == Decimal("0.80")
 
 
+async def _seed_steam_sku(db: AsyncSession) -> str:
+    """A variable-amount (Steam) SKU: ``cost_usdt`` is NULL (dynamic cost);
+    margin is instead driven by ``rate_multiplier`` — see
+    ``docs/superpowers/specs/2026-08-04-steam-margin-analytics-design.md``."""
+    cat = Category(id=new_id(), slug="wallets", sort_order=1, active=True)
+    cat.translations = [CategoryTranslation(locale="ru", name="Кошельки")]
+    db.add(cat)
+    await db.flush()
+    brand = Brand(id=new_id(), slug="steam", category_id=cat.id, sort_order=0, active=True)
+    brand.translations = [BrandTranslation(locale="ru", name="Steam")]
+    db.add(brand)
+    await db.flush()
+    product = Product(id=new_id(), slug="steam-wallet", brand_id=brand.id, kind="top_up")
+    product.translations = [ProductTranslation(locale="ru", name="Steam Wallet")]
+    db.add(product)
+    await db.flush()
+    sku = Sku(
+        id=new_id(),
+        product_id=product.id,
+        sku_code="steam-wallet-variable",
+        price_usd=Decimal("1.00"),
+        cost_usdt=None,
+        variable_amount=True,
+        min_amount_usd=Decimal("1.00"),
+        max_amount_usd=Decimal("300.00"),
+        rate_multiplier=Decimal("1.20"),
+    )
+    db.add(sku)
+    await db.flush()
+    return sku.id
+
+
+async def test_business_summary_steam_margin(db_session: AsyncSession) -> None:
+    """Steam (variable-amount) margin is priced off ``rate_multiplier``, not
+    ``cost_usdt`` (NULL for Steam) — regression for Steam always reporting
+    zero margin and being swallowed into ``margin_unknown_units``."""
+    steam_sku = await _seed_steam_sku(db_session)
+    await _paid_order(db_session, sku_id=steam_sku, qty=1, unit="10.00", paid_ago_days=1)
+
+    out = await svc.build_business_analytics(db_session, r=AnalyticsRange.D30)
+
+    # margin = qty * unit_price_usd * (rate_multiplier - 1) = 1 * 10 * 0.20 = 2.00
+    assert out.summary.gross_margin_usd == Decimal("2.00")
+    assert out.summary.margin_unknown_units == 0
+
+    brands = {b.slug: b for b in out.top_brands}
+    assert brands["steam"].margin_usd == Decimal("2.00")
+    skus = {s.sku_code: s for s in out.top_skus}
+    assert skus["steam-wallet-variable"].margin_usd == Decimal("2.00")
+
+
+async def test_business_summary_mixed_fixed_unknown_and_steam_margin(
+    db_session: AsyncSession,
+) -> None:
+    """All three margin buckets in the same window: fixed-known-cost, a
+    fixed SKU with no cost (still counted in ``margin_unknown_units``), and
+    a variable/Steam SKU (no longer swallowed into unknown)."""
+    sku_with, sku_no = await _seed_catalog(db_session)
+    steam_sku = await _seed_steam_sku(db_session)
+    await _paid_order(db_session, sku_id=sku_with, qty=2, unit="1.00", paid_ago_days=1)
+    await _paid_order(db_session, sku_id=sku_no, qty=1, unit="5.00", paid_ago_days=1)
+    await _paid_order(db_session, sku_id=steam_sku, qty=1, unit="10.00", paid_ago_days=1)
+
+    out = await svc.build_business_analytics(db_session, r=AnalyticsRange.D30)
+
+    # fixed-known margin 0.80 (2 * (1.00 - 0.60)) + steam margin 2.00 = 2.80;
+    # the fixed-without-cost unit stays excluded from margin, counted as unknown.
+    assert out.summary.gross_margin_usd == Decimal("2.80")
+    assert out.summary.margin_unknown_units == 1
+
+
 async def test_range_filtering(db_session: AsyncSession) -> None:
     sku_with, _ = await _seed_catalog(db_session)
     await _paid_order(db_session, sku_id=sku_with, qty=1, unit="1.00", paid_ago_days=2)

@@ -10,8 +10,9 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from decimal import Decimal
+from typing import Any
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import Case, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.clock import now
@@ -47,6 +48,38 @@ from yupay.modules.stats.service import (
 from yupay.modules.users.models import User
 
 _PAID_LIKE = ("paid", "fulfilling", "fulfilled", "delivered")
+
+
+def _margin_expr() -> Case[Any]:
+    """Per-order-item margin (USD), for use inside ``func.sum(...)``.
+
+    Fixed SKUs with a known cost: ``qty * (unit_price_usd - cost_usdt)``.
+    Variable-amount (Steam) SKUs: ``unit_price_usd`` is the raw dollar cost
+    basis and ``rate_multiplier`` is the SKU's markup (always set for
+    variable SKUs — see ``ck_skus_variable_amount_complete``), so margin is
+    ``qty * unit_price_usd * (rate_multiplier - 1)``. See
+    ``docs/superpowers/specs/2026-08-04-steam-margin-analytics-design.md``.
+
+    Fixed SKUs without a known cost evaluate to ``NULL``, so
+    ``func.sum(_margin_expr())`` naturally excludes them from a group's
+    total (NULL when a group has no costable rows at all).
+
+    Returns:
+        A SQLAlchemy ``CASE`` expression. Typed ``Case[Any]`` because
+        SQLAlchemy's ``case()`` stub always returns ``Case[Any]``,
+        regardless of the branch value types.
+    """
+    return case(
+        (
+            Sku.variable_amount.is_(True),
+            OrderItem.qty * OrderItem.unit_price_usd * (Sku.rate_multiplier - 1),
+        ),
+        (
+            Sku.cost_usdt.isnot(None),
+            OrderItem.qty * (OrderItem.unit_price_usd - Sku.cost_usdt),
+        ),
+        else_=None,
+    )
 
 
 async def build_business_analytics(db: AsyncSession, *, r: AnalyticsRange) -> BusinessAnalyticsOut:
@@ -103,19 +136,41 @@ async def _business_summary(
     paid_orders = sum(status_counts.get(s, 0) for s in _PAID_LIKE)
     delivered_orders = status_counts.get("delivered", 0)
 
-    # Margin (approx): join items→sku, only rows with cost_usdt known.
+    # Margin (approx): join items→sku, split fixed-known-cost / variable
+    # (Steam, priced off rate_multiplier) / unknown (fixed, cost_usdt NULL).
+    # See ``_margin_expr`` and the design doc referenced there.
     m = (
         select(
             func.coalesce(
                 func.sum(OrderItem.qty * OrderItem.unit_price_usd).filter(
-                    Sku.cost_usdt.isnot(None)
+                    Sku.variable_amount.is_(False), Sku.cost_usdt.isnot(None)
+                ),
+                0,
+            )
+            + func.coalesce(
+                func.sum(OrderItem.qty * OrderItem.unit_price_usd * Sku.rate_multiplier).filter(
+                    Sku.variable_amount.is_(True)
                 ),
                 0,
             ),
             func.coalesce(
-                func.sum(OrderItem.qty * Sku.cost_usdt).filter(Sku.cost_usdt.isnot(None)), 0
+                func.sum(OrderItem.qty * Sku.cost_usdt).filter(
+                    Sku.variable_amount.is_(False), Sku.cost_usdt.isnot(None)
+                ),
+                0,
+            )
+            + func.coalesce(
+                func.sum(OrderItem.qty * OrderItem.unit_price_usd).filter(
+                    Sku.variable_amount.is_(True)
+                ),
+                0,
             ),
-            func.coalesce(func.sum(OrderItem.qty).filter(Sku.cost_usdt.is_(None)), 0),
+            func.coalesce(
+                func.sum(OrderItem.qty).filter(
+                    Sku.variable_amount.is_(False), Sku.cost_usdt.is_(None)
+                ),
+                0,
+            ),
         )
         .select_from(OrderItem)
         .join(Order, Order.id == OrderItem.order_id)
@@ -213,10 +268,9 @@ async def _top_brands(db: AsyncSession, since: datetime) -> list[BrandRevenueOut
             Brand.slug,
             func.coalesce(func.sum(OrderItem.qty * OrderItem.unit_price_usd), 0),
             func.coalesce(func.sum(OrderItem.qty), 0),
-            # Margin over known-cost rows only — NULL when the group has none.
-            func.sum(OrderItem.qty * (OrderItem.unit_price_usd - Sku.cost_usdt)).filter(
-                Sku.cost_usdt.isnot(None)
-            ),
+            # Margin (fixed known-cost + variable/Steam) — NULL when the group
+            # has no costable rows. See ``_margin_expr``.
+            func.sum(_margin_expr()),
         )
         .select_from(OrderItem)
         .join(Order, Order.id == OrderItem.order_id)
@@ -247,10 +301,9 @@ async def _top_skus(db: AsyncSession, since: datetime) -> list[SkuRevenueOut]:
             Sku.sku_code,
             func.coalesce(func.sum(OrderItem.qty * OrderItem.unit_price_usd), 0),
             func.coalesce(func.sum(OrderItem.qty), 0),
-            # Margin over known-cost rows only — NULL when the group has none.
-            func.sum(OrderItem.qty * (OrderItem.unit_price_usd - Sku.cost_usdt)).filter(
-                Sku.cost_usdt.isnot(None)
-            ),
+            # Margin (fixed known-cost + variable/Steam) — NULL when the group
+            # has no costable rows. See ``_margin_expr``.
+            func.sum(_margin_expr()),
         )
         .select_from(OrderItem)
         .join(Order, Order.id == OrderItem.order_id)
