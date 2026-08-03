@@ -74,7 +74,7 @@ async def set_logical_state(
     """
     lp = LOGICAL_PROVIDERS.get(provider)
     if lp is None:
-        raise NotFoundError("unknown payment provider", extra={"provider": provider})
+        raise NotFoundError("unknown payment provider", provider=provider)
     stamp = now()
     existing = {
         r.provider: r
