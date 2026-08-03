@@ -179,6 +179,9 @@ Webhook-эндпоинт агента должен:
 POST /v1/games/order/status
 Проверка текущего статуса (если webhook не используется или для подстраховки).
 json{ "order_id": 42, "game": "pubgm" }
+⚠️ `order_id` в теле — ЧИСЛО, не строка. Строка ("42") → HTTP 400
+`{"message":"Failed to parse request body"}`. `external_order_id` у нас — text,
+поэтому клиент приводит его к int (`_numeric_order_id`).
 
 ⚠️ Форма ответа (create и order/status): объект заказа ОБЁРНУТ в ключ `order`,
 рядом лежит `success` — а НЕ на верхнем уровне:
