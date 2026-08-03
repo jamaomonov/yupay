@@ -704,15 +704,13 @@ function ItemCard({
         )}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold leading-tight text-white">{headline}</p>
-          <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-white/40">
-            <span>{Number.parseFloat(item.unit_price_usd).toFixed(2)} USD</span>
-            {item.qty > 1 && (
-              <>
-                <span>·</span>
-                <span>×{item.qty}</span>
-              </>
-            )}
-          </p>
+          {/* Never surface the USD unit price to the customer — the charge is in
+              their own currency (shown in the order-summary "Сумма" row). */}
+          {item.qty > 1 && (
+            <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-white/40">
+              <span>×{item.qty}</span>
+            </p>
+          )}
         </div>
       </div>
 
