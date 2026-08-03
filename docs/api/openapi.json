@@ -402,6 +402,124 @@
         "title": "AdminProductOut",
         "type": "object"
       },
+      "AdminProviderDetailOut": {
+        "description": "Full analytics detail for one logical payment provider (admin screen).",
+        "properties": {
+          "incidents": {
+            "$ref": "#/components/schemas/ProviderIncidentsOut"
+          },
+          "recent": {
+            "items": {
+              "$ref": "#/components/schemas/RecentPaymentOut"
+            },
+            "title": "Recent",
+            "type": "array"
+          },
+          "success_rate": {
+            "$ref": "#/components/schemas/SuccessRateOut"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/AdminProviderSummary"
+          },
+          "volume": {
+            "items": {
+              "$ref": "#/components/schemas/VolumeRow"
+            },
+            "title": "Volume",
+            "type": "array"
+          }
+        },
+        "required": [
+          "summary",
+          "success_rate",
+          "incidents"
+        ],
+        "title": "AdminProviderDetailOut",
+        "type": "object"
+      },
+      "AdminProviderListOut": {
+        "properties": {
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/AdminProviderSummary"
+            },
+            "title": "Providers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "providers"
+        ],
+        "title": "AdminProviderListOut",
+        "type": "object"
+      },
+      "AdminProviderSummary": {
+        "description": "One logical payment provider as the admin control panel sees it.",
+        "properties": {
+          "changed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Changed At"
+          },
+          "changed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Changed By"
+          },
+          "config_available": {
+            "title": "Config Available",
+            "type": "boolean"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "slugs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Slugs",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "active",
+              "disabled",
+              "maintenance"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "display_name",
+          "slugs",
+          "config_available",
+          "state",
+          "changed_by",
+          "changed_at"
+        ],
+        "title": "AdminProviderSummary",
+        "type": "object"
+      },
       "AdminReviewListOut": {
         "properties": {
           "items": {
@@ -6614,6 +6732,25 @@
         "title": "PromoRedeemOut",
         "type": "object"
       },
+      "ProviderIncidentsOut": {
+        "description": "Stuck-pending + failed-webhook counts for a provider group.\n\nMirrors ``admin.service.triage_payments``'s definitions exactly so the\nnumbers agree with the existing triage screen.",
+        "properties": {
+          "failed_webhooks": {
+            "title": "Failed Webhooks",
+            "type": "integer"
+          },
+          "stuck_pending": {
+            "title": "Stuck Pending",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "stuck_pending",
+          "failed_webhooks"
+        ],
+        "title": "ProviderIncidentsOut",
+        "type": "object"
+      },
       "ProviderStatOut": {
         "properties": {
           "count": {
@@ -6641,6 +6778,45 @@
           "success_rate_pct"
         ],
         "title": "ProviderStatOut",
+        "type": "object"
+      },
+      "ProviderStatusOut": {
+        "description": "A payment provider slug the storefront may show, and whether it's usable.",
+        "properties": {
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "maintenance"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "status"
+        ],
+        "title": "ProviderStatusOut",
+        "type": "object"
+      },
+      "ProvidersOut": {
+        "properties": {
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderStatusOut"
+            },
+            "title": "Providers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "providers"
+        ],
+        "title": "ProvidersOut",
         "type": "object"
       },
       "RateOut": {
@@ -6699,6 +6875,56 @@
           "rates"
         ],
         "title": "RatesOut",
+        "type": "object"
+      },
+      "RecentPaymentOut": {
+        "description": "One payment row for the admin detail screen's recent list.\n\nDeliberately narrow \u2014 id/order_id/status/amount/currency/created_at only.\nNever include email/phone/user identifiers here (see AGENTS.md \u00a79).",
+        "properties": {
+          "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "order_id": {
+            "title": "Order Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "requires_action",
+              "succeeded",
+              "failed",
+              "cancelled",
+              "refunded",
+              "partially_refunded"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "order_id",
+          "status",
+          "amount",
+          "currency",
+          "created_at"
+        ],
+        "title": "RecentPaymentOut",
         "type": "object"
       },
       "RecipientListOut": {
@@ -7331,6 +7557,26 @@
           }
         },
         "title": "SearchOut",
+        "type": "object"
+      },
+      "SetProviderStateIn": {
+        "additionalProperties": false,
+        "description": "Body of admin's ``PUT /admin/payments/providers/{provider}/state``.",
+        "properties": {
+          "state": {
+            "enum": [
+              "active",
+              "disabled",
+              "maintenance"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "SetProviderStateIn",
         "type": "object"
       },
       "SimulateWebhookIn": {
@@ -8148,6 +8394,35 @@
           "count"
         ],
         "title": "StatusCount",
+        "type": "object"
+      },
+      "SuccessRateOut": {
+        "description": "Succeeded / failed / pending counts + success percentage for the window.\n\nSee ``provider_analytics`` module docstring for the exact status-bucket\nmapping (in particular how ``refunded``/``partially_refunded`` are\ntreated as succeeded).",
+        "properties": {
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "succeeded": {
+            "title": "Succeeded",
+            "type": "integer"
+          },
+          "success_pct": {
+            "title": "Success Pct",
+            "type": "number"
+          }
+        },
+        "required": [
+          "succeeded",
+          "failed",
+          "pending",
+          "success_pct"
+        ],
+        "title": "SuccessRateOut",
         "type": "object"
       },
       "SupplierHealthOut": {
@@ -9110,6 +9385,31 @@
           "token"
         ],
         "title": "VerifyEmailIn",
+        "type": "object"
+      },
+      "VolumeRow": {
+        "description": "Payment volume for one currency within the analytics window.",
+        "properties": {
+          "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currency",
+          "amount",
+          "count"
+        ],
+        "title": "VolumeRow",
         "type": "object"
       },
       "WalletOverviewOut": {
@@ -13971,6 +14271,214 @@
         ]
       }
     },
+    "/api/v1/admin/payments/providers": {
+      "get": {
+        "operationId": "admin_list_providers_route_api_v1_admin_payments_providers_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminProviderListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List logical payment providers with their current admin-controlled state",
+        "tags": [
+          "admin:payments"
+        ]
+      }
+    },
+    "/api/v1/admin/payments/providers/{provider}": {
+      "get": {
+        "operationId": "admin_provider_detail_route_api_v1_admin_payments_providers__provider__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Analytics window",
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "default": "7d",
+              "description": "Analytics window",
+              "enum": [
+                "today",
+                "7d",
+                "30d"
+              ],
+              "title": "Window",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminProviderDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Per-provider analytics detail: volume, success rate, recent payments, incidents",
+        "tags": [
+          "admin:payments"
+        ]
+      }
+    },
+    "/api/v1/admin/payments/providers/{provider}/state": {
+      "put": {
+        "operationId": "admin_set_provider_state_route_api_v1_admin_payments_providers__provider__state_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetProviderStateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminProviderSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set a logical provider's state (writes every slug in its group)",
+        "tags": [
+          "admin:payments"
+        ]
+      }
+    },
     "/api/v1/admin/payments/triage": {
       "get": {
         "description": "Two focused buckets for finance / ops to triage payment incidents.",
@@ -17550,21 +18058,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "items": {
-                      "type": "string"
-                    },
-                    "type": "array"
-                  },
-                  "title": "Response List Providers Api V1 Payments Providers Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProvidersOut"
                 }
               }
             },
             "description": "Successful Response"
           }
         },
-        "summary": "List provider slugs currently usable",
+        "summary": "Payment providers the storefront may show",
         "tags": [
           "payments"
         ]
