@@ -101,3 +101,50 @@ async def test_set_state_unknown_provider_404(
         json={"state": "disabled"},
     )
     assert r.status_code == 404
+
+
+async def test_set_state_idempotency_key_replays_cached_response(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A repeated ``PUT`` with the same ``Idempotency-Key`` replays the first
+    response verbatim instead of re-running ``set_provider_state``.
+
+    We mutate the provider's state directly (via ``provider_state``, bypassing
+    the route) between the two calls, and send a *different* body on the
+    replay — if the handler re-executed, the second response and the DB rows
+    would both reflect that mutation. They don't.
+    """
+    from yupay.modules.payments import provider_state as ps
+
+    token = await _admin_token(integration_client, db_session, tg_id=603)
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Idempotency-Key": "replay-1-replay-1",
+    }
+
+    first = await integration_client.put(
+        "/api/v1/admin/payments/providers/click/state",
+        headers=headers,
+        json={"state": "maintenance"},
+    )
+    assert first.status_code == 200, first.text
+    assert first.json()["state"] == "maintenance"
+
+    # Mutate the underlying state out-of-band so a live re-execution would be
+    # observably different from the cached first response.
+    await ps.set_logical_state(db_session, provider="click", state="active", changed_by=None)
+    await db_session.commit()
+
+    replay = await integration_client.put(
+        "/api/v1/admin/payments/providers/click/state",
+        headers=headers,
+        json={"state": "disabled"},  # different body — the replay must ignore it
+    )
+    assert replay.status_code == 200, replay.text
+    assert replay.json() == first.json()
+    assert replay.json()["state"] == "maintenance"
+
+    # The out-of-band mutation is still in place — the replay never called
+    # ``set_provider_state`` a second time.
+    states = await ps.get_states(db_session, ["click", "click_miniapp"])
+    assert states == {"click": "active", "click_miniapp": "active"}
