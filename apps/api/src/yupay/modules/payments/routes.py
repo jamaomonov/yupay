@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
 from yupay.core.config import get_settings
-from yupay.core.errors import UnauthorizedError, ValidationError
+from yupay.core.errors import NotFoundError, UnauthorizedError, ValidationError
 from yupay.core.idempotency import (
     IDEMPOTENCY_HEADER,
     MIN_IDEMPOTENCY_KEY_LENGTH,
@@ -23,10 +23,11 @@ from yupay.modules.auth import jwt as authjwt
 from yupay.modules.auth.security import email_hash
 from yupay.modules.orders.models import Order
 from yupay.modules.orders.service import Actor
-from yupay.modules.payments import provider_admin, provider_state
+from yupay.modules.payments import provider_admin, provider_analytics, provider_state
 from yupay.modules.payments import service as svc
 from yupay.modules.payments.provider_state import SLUG_TO_LOGICAL
 from yupay.modules.payments.schemas import (
+    AdminProviderDetailOut,
     AdminProviderListOut,
     AdminProviderSummary,
     PaymentAdminListOut,
@@ -265,6 +266,32 @@ async def admin_set_provider_state_route(
     if key is not None:
         await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
     return out
+
+
+@admin_router.get(
+    "/providers/{provider}",
+    response_model=AdminProviderDetailOut,
+    summary="Per-provider analytics detail: volume, success rate, recent payments, incidents",
+)
+async def admin_provider_detail_route(
+    provider: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+    window: Annotated[Literal["today", "7d", "30d"], Query(description="Analytics window")] = "7d",
+) -> AdminProviderDetailOut:
+    lp = provider_state.LOGICAL_PROVIDERS.get(provider)
+    if lp is None:
+        raise NotFoundError("unknown payment provider", provider=provider)
+    since = provider_analytics.window_start(window)
+    summaries = await provider_admin.list_admin_providers(db)
+    summary = next(s for s in summaries if s.provider == provider)
+    return AdminProviderDetailOut(
+        summary=summary,
+        volume=await provider_analytics.volume_by_currency(db, slugs=lp.slugs, since=since),
+        success_rate=await provider_analytics.success_rate(db, slugs=lp.slugs, since=since),
+        recent=await provider_analytics.recent_payments(db, slugs=lp.slugs),
+        incidents=await provider_analytics.incidents(db, slugs=lp.slugs),
+    )
 
 
 @admin_router.get("/{payment_id}", response_model=PaymentAdminOut)
