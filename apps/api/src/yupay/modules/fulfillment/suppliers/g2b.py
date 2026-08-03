@@ -351,13 +351,11 @@ class G2bFulfiller(Fulfiller):
                 error="g2b returned failed status on create",
                 extra_metadata={"supplier": "g2b", "kind": "game"},
             )
-        # pending / processing — the webhook will finish it later. The
-        # standalone polling actor in apps/worker/.../g2b_polling.py is
-        # available as a safety net, but auto-scheduling it from the API
-        # process requires a shared Dramatiq broker handle which is wired
-        # up in a follow-up sprint; for now an admin can hit the
-        # ``/admin/fulfillment/tasks/{id}/retry`` route to reconcile a
-        # stuck task by hand.
+        # pending / processing — the webhook finishes it later (fast path). If
+        # the webhook is lost (it fires once, 1 retry, 10s timeout), the
+        # ``g2b_reconcile`` scheduler sweep reconciles every in_progress g2b
+        # task every 60s via the same ``process_webhook_update`` path, so a
+        # stuck task self-heals without any manual action.
         return FulfillResult(
             outcome="in_progress",
             external_order_id=created.g2b_order_id,

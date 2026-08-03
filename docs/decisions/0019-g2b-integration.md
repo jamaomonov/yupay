@@ -72,9 +72,12 @@ Plus three supporting decisions:
 - Webhook secret in URL path: `POST /api/v1/webhooks/g2b/{secret}`. Body
   payload is **never trusted** — every webhook triggers a fresh status
   re-fetch through the adapter before any state mutation.
-- Polling actor (`apps/worker/.../g2b_polling.py`) as a backup — runs
-  when `g2b_callback_url` is unset (e.g. dev without a tunnel) or when
-  the webhook doesn't arrive within 5 minutes of `in_progress`.
+- A backup for lost/absent webhooks. **Superseded (2026-08):** the originally
+  planned per-order dramatiq polling actor (`g2b_polling.py`) was never wired up
+  (nothing kicked off the first poll) and has been removed. The backup is now
+  the `g2b_reconcile` scheduler sweep — every 60s it reconciles all `in_progress`
+  g2b tasks through the same `process_webhook_update` path, mirroring
+  `waxpeer_reconcile`. See `docs/runbooks/g2b-troubleshooting.md`.
 
 ### Positive consequences
 

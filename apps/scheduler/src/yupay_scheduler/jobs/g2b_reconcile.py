@@ -3,11 +3,10 @@
 G2B *does* send a webhook on terminal status, but it fires exactly once with a
 single retry and a 10s timeout (see ``docs/g2b-intergation.md``) — a cold
 start, a redeploy, or a transient 5xx on our side loses it permanently and the
-task is then stranded in ``in_progress`` forever. The dedicated ``poll_g2b_task``
-dramatiq actor was never a safety net for that: it is only ever kicked off *by*
-the webhook arriving, so a lost webhook has nothing to schedule it. This is the
-exact gap ``waxpeer_reconcile`` already closes for the webhook-less Waxpeer flow;
-G2B needs the same periodic sweep.
+task is then stranded in ``in_progress`` forever. A periodic sweep is the fix:
+it reconciles *any* stuck task, including ones a lost webhook would never have
+notified us about. This is the exact gap ``waxpeer_reconcile`` already closes for
+the webhook-less Waxpeer flow; G2B needs the same periodic sweep.
 
 Runs every 60 seconds. Each stuck task is reconciled through
 ``fulfillment.process_webhook_update`` — the same supplier-generic reconciler

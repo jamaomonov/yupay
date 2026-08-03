@@ -2,11 +2,11 @@
 
 Waxpeer has no webhook: ``fulfill()`` can come back ``in_progress`` (status
 ``created``/``sending``) and nothing will ever call back to move the task
-forward. A dramatiq self-reschedule (the pattern ``poll_g2b_task`` uses) was
-considered and rejected — that actor is only ever kicked off by G2B's
-webhook arriving, and Waxpeer has none to kick it. A periodic sweep also
-self-heals: it reconciles *any* stuck task, including ones that predate a
-scheduler restart, not just ones it personally scheduled a follow-up for.
+forward. A dramatiq self-reschedule (each fulfill enqueues its own delayed
+poll) was considered and rejected — a poll that predates a scheduler/worker
+restart is lost, and it only ever recovers tasks it personally scheduled a
+follow-up for. A periodic sweep self-heals instead: it reconciles *any* stuck
+task, including ones that predate a restart.
 
 Runs every 60 seconds. Each stuck task is reconciled through
 ``fulfillment.process_webhook_update`` — the exact same supplier-generic
@@ -21,10 +21,10 @@ once a task is reconciled to ``succeeded``/``failed`` it drops out of that
 list, so a second, later sweep (or a slow first sweep whose effects are
 already committed) simply never looks at it again. ``max_instances=1`` below
 additionally stops two ticks of *this* job from literally running at once;
-what is not guarded against — same as ``poll_g2b_task`` — is two *genuinely
-concurrent* writers racing the same task row (e.g. a sweep tick together
-with a hypothetical future webhook), which is a pre-existing property of
-``process_webhook_update``, not something introduced here.
+what is not guarded against is two *genuinely concurrent* writers racing the
+same task row (e.g. a sweep tick together with a hypothetical future webhook),
+which is a pre-existing property of ``process_webhook_update``, not something
+introduced here.
 """
 
 from __future__ import annotations

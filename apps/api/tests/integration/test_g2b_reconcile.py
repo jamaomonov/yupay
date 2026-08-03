@@ -2,9 +2,8 @@
 
 G2B sends a terminal-status webhook, but it fires once with a single retry and
 a 10s timeout — a lost webhook strands a completed top-up in ``in_progress``
-forever (the ``poll_g2b_task`` dramatiq actor is only ever kicked off *by* the
-webhook, so it can't recover a lost one). ``g2b_reconcile`` is the periodic
-safety net, mirroring ``waxpeer_reconcile``; these tests exercise
+forever. ``g2b_reconcile`` is the periodic safety net, mirroring
+``waxpeer_reconcile``; these tests exercise
 ``run_g2b_reconcile`` end to end against a directly-seeded task + stubbed G2B
 HTTP, in the **real wrapped** response shape (``{"success", "order": {...}}``).
 
