@@ -1,4 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -22,6 +22,7 @@ import { SafeImage } from "@/components/ui/safe-image";
 import { useMe } from "@/lib/auth";
 import { useT, useLocale, type MessageKey } from "@/lib/i18n";
 import { useMyOrders, orderToHistoryRow, type HistoryRow } from "@/lib/orders";
+import { getMyReviews } from "@/lib/reviews";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import {
   summarizeForUser,
@@ -180,6 +181,14 @@ function OrdersTab() {
   const ordersQuery = useMyOrders();
   const orders = ordersQuery.data ?? [];
   const allRows: HistoryRow[] = orders.map(orderToHistoryRow);
+  // Hide the "Оценить" CTA on orders the user has already reviewed. Shares the
+  // ["my-reviews"] query key with OrderSuccess, which ReviewsSheet invalidates
+  // on submit, so a fresh review makes the button disappear here too.
+  const myReviews = useQuery({ queryKey: ["my-reviews"], queryFn: () => getMyReviews() });
+  const reviewedOrderIds = useMemo(
+    () => new Set((myReviews.data?.items ?? []).map((r) => r.order_id)),
+    [myReviews.data],
+  );
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [reviewFor, setReviewFor] = useState<{ slug: string; orderId: string } | null>(null);
   const rows = statusFilter === "all" ? allRows : allRows.filter((r) => r.status === statusFilter);
@@ -324,7 +333,7 @@ function OrdersTab() {
                         {t("history.repeat")}
                       </button>
                     )}
-                    {tx.gameSlug && tx.status === "success" && (
+                    {tx.gameSlug && tx.status === "success" && !reviewedOrderIds.has(tx.id) && (
                       <button
                         type="button"
                         onClick={(e) => {
