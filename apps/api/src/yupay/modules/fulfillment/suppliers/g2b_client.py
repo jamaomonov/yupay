@@ -285,7 +285,7 @@ class G2bClient:
         resp = await self._request(
             "POST",
             "/games/order/status",
-            json={"order_id": g2b_order_id, "game": game_code},
+            json={"order_id": _numeric_order_id(g2b_order_id), "game": game_code},
         )
         order = _unwrap_order(resp.json())
         return GameOrderStatus(
@@ -395,6 +395,22 @@ def _verdict_or_none(exc: G2bError) -> dict[str, Any] | None:
     if isinstance(body, dict) and "valid" in body:
         return body
     return None
+
+
+def _numeric_order_id(g2b_order_id: str) -> int | str:
+    """Coerce a stored order id back to a JSON number for request bodies.
+
+    G2B's ``games/order/status`` rejects a *string* ``order_id`` with
+    ``HTTP 400 {"message":"Failed to parse request body"}`` — it must be a JSON
+    number. ``FulfillmentTask.external_order_id`` is a text column, so the id
+    round-trips as a string ("1309981"); send it back as an int. Fall back to
+    the raw value if it is somehow non-numeric so a malformed id still surfaces
+    as a real upstream error rather than a ``ValueError`` here.
+    """
+    try:
+        return int(g2b_order_id)
+    except (TypeError, ValueError):
+        return g2b_order_id
 
 
 def _unwrap_order(body: Any) -> dict[str, Any]:

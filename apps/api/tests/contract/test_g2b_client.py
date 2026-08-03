@@ -12,6 +12,7 @@ Doesn't touch the DB or the saga — just the wire format. Verifies that:
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import httpx
@@ -145,7 +146,7 @@ async def test_game_order_create_and_status() -> None:
     sent = create.calls.last.request
     assert sent.headers["X-Idempotency-Key"] == "task-game"
 
-    respx.post("https://g2b.test/v1/games/order/status").mock(
+    status_route = respx.post("https://g2b.test/v1/games/order/status").mock(
         return_value=httpx.Response(
             200,
             json={
@@ -154,7 +155,13 @@ async def test_game_order_create_and_status() -> None:
             },
         )
     )
+    # external_order_id round-trips as a string ("999") but G2B rejects a string
+    # order_id in the status body with HTTP 400 "Failed to parse request body" —
+    # it must be a JSON number. Assert we send it numeric.
     status = await _client().get_game_order_status(g2b_order_id="999", game_code="pubg_mobile")
+    sent_body = json.loads(status_route.calls.last.request.content)
+    assert sent_body["order_id"] == 999
+    assert isinstance(sent_body["order_id"], int)
     assert status.g2b_order_id == "999"
     assert status.status == "completed"
     assert status.message == "done"
