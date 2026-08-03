@@ -383,8 +383,15 @@ async def test_game_pending_then_webhook_completes(
         external_variant_id="60 UC",
     )
 
+    # The real G2B API wraps the order object under ``order`` (with a top-level
+    # ``success``) — captured live from api.g2bulk.com. A flat mock here hid the
+    # prod bug where ``external_order_id`` was persisted as "None" and the flat
+    # webhook could never match it; keep this mock in the real shape so it stays
+    # a regression guard.
     respx.post(f"{G2B_BASE}/games/pubg_mobile/order").mock(
-        return_value=httpx.Response(200, json={"order_id": 9090, "status": "PENDING"})
+        return_value=httpx.Response(
+            200, json={"success": True, "order": {"order_id": 9090, "status": "PENDING"}}
+        )
     )
 
     customer = await _login_user(integration_client, tg_id=522)
@@ -402,13 +409,20 @@ async def test_game_pending_then_webhook_completes(
     )
     assert detail.json()["status"] == "fulfilling"
 
+    # Status re-verification response is wrapped the same way as create.
     respx.post(f"{G2B_BASE}/games/order/status").mock(
         return_value=httpx.Response(
             200,
-            json={"order_id": 9090, "status": "COMPLETED", "message": "done"},
+            json={
+                "success": True,
+                "order": {"order_id": 9090, "status": "COMPLETED", "message": "done"},
+            },
         )
     )
 
+    # The webhook body itself IS flat (top-level order_id) — that half of the
+    # G2B contract is not wrapped, which is exactly why the receiver reads it
+    # off the top level.
     wh = await integration_client.post(
         f"/api/v1/webhooks/g2b/{WEBHOOK_SECRET}",
         json={"order_id": 9090, "status": "COMPLETED"},

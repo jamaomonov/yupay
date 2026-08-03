@@ -36,6 +36,7 @@ from yupay_scheduler.jobs import (
     broadcast_dispatch,
     click_timeout,
     expire_orders,
+    g2b_reconcile,
     payme_timeout,
     recompute_review_stats,
     refresh_supplier_prices,
@@ -57,6 +58,7 @@ def build_scheduler() -> AsyncIOScheduler:
     broadcast_dispatch.register(scheduler)
     click_timeout.register(scheduler)
     expire_orders.register(scheduler)
+    g2b_reconcile.register(scheduler)
     payme_timeout.register(scheduler)
     recompute_review_stats.register(scheduler)
     refresh_supplier_prices.register(scheduler)
