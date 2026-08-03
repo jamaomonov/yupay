@@ -129,7 +129,33 @@ class WebhookResolveIn(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
 
 
+class AdminProviderSummary(BaseModel):
+    """One logical payment provider as the admin control panel sees it."""
+
+    provider: str
+    display_name: str
+    slugs: list[str]
+    config_available: bool
+    state: Literal["active", "disabled", "maintenance"]
+    changed_by: str | None
+    changed_at: datetime | None
+
+
+class AdminProviderListOut(BaseModel):
+    providers: list[AdminProviderSummary]
+
+
+class SetProviderStateIn(BaseModel):
+    """Body of admin's ``PUT /admin/payments/providers/{provider}/state``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    state: Literal["active", "disabled", "maintenance"]
+
+
 __all__ = [
+    "AdminProviderListOut",
+    "AdminProviderSummary",
     "PaymentAdminListOut",
     "PaymentAdminOut",
     "PaymentAttemptOut",
@@ -142,6 +168,7 @@ __all__ = [
     "ProviderStatusOut",
     "ProvidersOut",
     "RefundIn",
+    "SetProviderStateIn",
     "SimulateWebhookIn",
     "WebhookResolveIn",
 ]

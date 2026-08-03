@@ -11,16 +11,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.api.v1.deps import db_session
 from yupay.core.config import get_settings
 from yupay.core.errors import UnauthorizedError, ValidationError
-from yupay.core.idempotency import IDEMPOTENCY_HEADER, MIN_IDEMPOTENCY_KEY_LENGTH
+from yupay.core.idempotency import (
+    IDEMPOTENCY_HEADER,
+    MIN_IDEMPOTENCY_KEY_LENGTH,
+    load_replay,
+    normalize_idempotency_key,
+    save_replay,
+)
 from yupay.modules.admin.api import require_admin
 from yupay.modules.auth import jwt as authjwt
 from yupay.modules.auth.security import email_hash
 from yupay.modules.orders.models import Order
 from yupay.modules.orders.service import Actor
-from yupay.modules.payments import provider_state
+from yupay.modules.payments import provider_admin, provider_state
 from yupay.modules.payments import service as svc
 from yupay.modules.payments.provider_state import SLUG_TO_LOGICAL
 from yupay.modules.payments.schemas import (
+    AdminProviderListOut,
+    AdminProviderSummary,
     PaymentAdminListOut,
     PaymentAdminOut,
     PaymentIntentIn,
@@ -30,6 +38,7 @@ from yupay.modules.payments.schemas import (
     ProvidersOut,
     ProviderStatusOut,
     RefundIn,
+    SetProviderStateIn,
     SimulateWebhookIn,
     WebhookResolveIn,
 )
@@ -218,6 +227,44 @@ async def admin_list_payments(
         items=[PaymentAdminOut.model_validate(p) for p in rows],
         total=total,
     )
+
+
+@admin_router.get(
+    "/providers",
+    response_model=AdminProviderListOut,
+    summary="List logical payment providers with their current admin-controlled state",
+)
+async def admin_list_providers_route(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+) -> AdminProviderListOut:
+    return AdminProviderListOut(providers=await provider_admin.list_admin_providers(db))
+
+
+@admin_router.put(
+    "/providers/{provider}/state",
+    response_model=AdminProviderSummary,
+    summary="Set a logical provider's state (writes every slug in its group)",
+)
+async def admin_set_provider_state_route(
+    provider: str,
+    body: SetProviderStateIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
+) -> AdminProviderSummary:
+    key = normalize_idempotency_key(idempotency_key)
+    scope = "payments.set_provider_state"
+    if key is not None:
+        cached = await load_replay(db, scope=scope, idempotency_key=key)
+        if cached is not None:
+            return AdminProviderSummary.model_validate(cached.body)
+    out = await provider_admin.set_provider_state(
+        db, provider=provider, state=body.state, changed_by=admin.id
+    )
+    if key is not None:
+        await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
+    return out
 
 
 @admin_router.get("/{payment_id}", response_model=PaymentAdminOut)

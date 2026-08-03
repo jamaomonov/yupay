@@ -99,6 +99,19 @@ async def set_logical_state(
     await db.flush()
 
 
+async def get_state_rows(db: AsyncSession, slugs: list[str]) -> dict[str, PaymentProviderState]:
+    """Raw rows for ``slugs`` (for ``changed_by``/``changed_at``); missing slugs are
+    simply absent from the returned mapping rather than defaulted."""
+    return {
+        r.provider: r
+        for r in (
+            await db.execute(
+                select(PaymentProviderState).where(PaymentProviderState.provider.in_(slugs))
+            )
+        ).scalars()
+    }
+
+
 def state_status(state: ProviderState) -> CustomerStatus | None:
     """Pure state→customer-status mapping (ignores config-availability).
 
