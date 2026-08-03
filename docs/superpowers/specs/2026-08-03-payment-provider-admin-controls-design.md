@@ -36,7 +36,7 @@ We want operators to, from the admin SPA:
 - **Click grouping:** one logical "Click" control drives **both** slugs
   (`click` + `click_miniapp`) together.
 - **State model:** three mutually-exclusive states `active | disabled |
-  maintenance`. Default (no row) = `active`.
+maintenance`. Default (no row) = `active`.
 
 ## Architecture
 
@@ -44,12 +44,12 @@ We want operators to, from the admin SPA:
 
 New table `payment_provider_states`, **one row per manageable slug**:
 
-| column       | type                 | notes                                        |
-| ------------ | -------------------- | -------------------------------------------- |
-| `provider`   | `String(32)` PK      | the gateway slug (`click`, `click_miniapp`, `payme`, `uzum`, `octo`, `crypto`) |
-| `state`      | `String(16)`         | `active` \| `disabled` \| `maintenance`       |
-| `changed_by` | `UUID` (user id) null | who last changed it (null = never touched)   |
-| `changed_at` | `timestamptz` null    | when                                          |
+| column       | type                  | notes                                                                          |
+| ------------ | --------------------- | ------------------------------------------------------------------------------ |
+| `provider`   | `String(32)` PK       | the gateway slug (`click`, `click_miniapp`, `payme`, `uzum`, `octo`, `crypto`) |
+| `state`      | `String(16)`          | `active` \| `disabled` \| `maintenance`                                        |
+| `changed_by` | `UUID` (user id) null | who last changed it (null = never touched)                                     |
+| `changed_at` | `timestamptz` null    | when                                                                           |
 
 Absence of a row means `active` — the migration seeds nothing; a provider only
 gets a row once an operator changes its state.
@@ -75,12 +75,12 @@ logic on the hot path.
 
 Admin state layers on top of the existing `gateway.available` (keys present):
 
-| config `available` | admin `state`  | customer sees                         | new intent |
-| ------------------ | -------------- | ------------------------------------- | ---------- |
-| false              | (any)          | not shown                             | rejected   |
-| true               | `active`       | shown, clickable                      | allowed    |
-| true               | `maintenance`  | shown, **non-clickable**, "тех работы" | rejected   |
-| true               | `disabled`     | **not shown**                         | rejected   |
+| config `available` | admin `state` | customer sees                          | new intent |
+| ------------------ | ------------- | -------------------------------------- | ---------- |
+| false              | (any)         | not shown                              | rejected   |
+| true               | `active`      | shown, clickable                       | allowed    |
+| true               | `maintenance` | shown, **non-clickable**, "тех работы" | rejected   |
+| true               | `disabled`    | **not shown**                          | rejected   |
 
 Effective "shown to customer" = `gateway.available AND state != disabled`.
 Effective status = `maintenance` if `state == maintenance` else `active`.

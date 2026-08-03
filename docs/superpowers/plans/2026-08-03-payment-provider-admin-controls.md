@@ -27,11 +27,13 @@
 ### Task 1: `payment_provider_states` model + migration
 
 **Files:**
+
 - Modify: `apps/api/src/yupay/modules/payments/models.py` (append `PaymentProviderState`)
 - Create: `apps/api/migrations/versions/0037_payment_provider_states.py`
 - Test: `apps/api/tests/integration/test_payment_provider_state_model.py`
 
 **Interfaces:**
+
 - Produces: `PaymentProviderState` ORM model with columns `provider: str` (PK), `state: str`, `changed_by: str | None`, `changed_at: datetime | None`.
 
 - [ ] **Step 1: Write the failing test**
@@ -156,10 +158,12 @@ git commit -m "feat(api/payments): payment_provider_states table + model"
 ### Task 2: `provider_state` service module
 
 **Files:**
+
 - Create: `apps/api/src/yupay/modules/payments/provider_state.py`
 - Test: `apps/api/tests/integration/test_provider_state_service.py`
 
 **Interfaces:**
+
 - Consumes: `PaymentProviderState` (Task 1); `REGISTRY` from `payments.gateways`.
 - Produces:
   - `ProviderState = Literal["active", "disabled", "maintenance"]`
@@ -374,10 +378,12 @@ git commit -m "feat(api/payments): provider_state module (logical map + state re
 ### Task 3: Enforce state in `create_intent` (+ in-flight money-safety test)
 
 **Files:**
+
 - Modify: `apps/api/src/yupay/modules/payments/service.py` (in `create_intent`, after the `gw.available` check ~line 163)
 - Test: `apps/api/tests/integration/test_provider_state_enforcement.py`
 
 **Interfaces:**
+
 - Consumes: `provider_state.get_state` (Task 2); existing `ConflictError`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -419,7 +425,7 @@ async def test_create_intent_rejected_when_not_active(
     assert ei.value.extra.get("reason") in {"provider_disabled", "provider_maintenance"}
 ```
 
-> Also add a money-safety test asserting an in-flight webhook still settles a payment whose provider was disabled *after* the intent was created. Model it on the existing webhook/settlement integration test for the mock or click gateway (find it under `tests/integration/`), disabling the provider via `ps.set_logical_state(...)` between intent creation and the webhook call, and assert the payment reaches `succeeded` and the order settles.
+> Also add a money-safety test asserting an in-flight webhook still settles a payment whose provider was disabled _after_ the intent was created. Model it on the existing webhook/settlement integration test for the mock or click gateway (find it under `tests/integration/`), disabling the provider via `ps.set_logical_state(...)` between intent creation and the webhook call, and assert the payment reaches `succeeded` and the order settles.
 
 - [ ] **Step 2: Run, verify it fails**
 
@@ -472,11 +478,13 @@ git commit -m "feat(api/payments): block new intents for disabled/maintenance pr
 ### Task 4: `GET /payments/providers` returns `[{slug, status}]`
 
 **Files:**
+
 - Modify: `apps/api/src/yupay/modules/payments/routes.py` (the `/providers` route ~line 95)
 - Modify: `apps/api/src/yupay/modules/payments/schemas.py` (add `ProviderStatusOut`, `ProvidersOut`)
 - Test: `apps/api/tests/integration/test_providers_endpoint.py`
 
 **Interfaces:**
+
 - Consumes: `provider_state.customer_status`, `LOGICAL_PROVIDERS`/`SLUG_TO_LOGICAL`, `REGISTRY`, `get_states`.
 - Produces: response `{"providers": [{"slug": str, "status": "active" | "maintenance"}]}`.
 
@@ -588,12 +596,14 @@ git commit -m "feat(api/payments): /providers returns {slug,status}, hides disab
 ### Task 5: Admin list + set-state endpoints
 
 **Files:**
+
 - Modify: `apps/api/src/yupay/modules/payments/routes.py` (`admin_router`, prefix `/admin/payments`)
 - Modify: `apps/api/src/yupay/modules/payments/schemas.py` (admin DTOs)
 - Modify: `apps/api/src/yupay/modules/payments/service.py` (list/set service fns) — or a new `payments/provider_admin.py` if `service.py` is near its length limit; check LOC first.
 - Test: `apps/api/tests/integration/test_admin_providers.py`
 
 **Interfaces:**
+
 - Consumes: `provider_state` (Task 2), `require_admin`, `load_replay`/`save_replay`, `IDEMPOTENCY_HEADER`, `normalize_idempotency_key`.
 - Produces:
   - `GET /admin/payments/providers` → `AdminProviderListOut { providers: list[AdminProviderSummary] }`
@@ -798,12 +808,14 @@ git commit -m "feat(api/payments): admin list + set-state provider endpoints"
 ### Task 6: Admin per-provider analytics detail endpoint
 
 **Files:**
+
 - Modify: `apps/api/src/yupay/modules/payments/routes.py` (`admin_router`)
 - Modify: `apps/api/src/yupay/modules/payments/schemas.py` (analytics DTOs)
 - Create: `apps/api/src/yupay/modules/payments/provider_analytics.py`
 - Test: `apps/api/tests/integration/test_admin_provider_detail.py`
 
 **Interfaces:**
+
 - Produces: `GET /admin/payments/providers/{provider}?window=today|7d|30d` → `AdminProviderDetailOut` with `summary` (Task 5's `AdminProviderSummary`), `volume: list[{currency, amount, count}]`, `success_rate: {succeeded, failed, pending, success_pct}`, `recent: list[{id, order_id, status, amount, currency, created_at}]`, `incidents: {stuck_pending, failed_webhooks}`.
 
 - [ ] **Step 1: Write the failing test**
@@ -1001,6 +1013,7 @@ git commit -m "feat(api/payments): admin per-provider analytics detail endpoint"
 ### Task 7: Regenerate OpenAPI + TS API client
 
 **Files:**
+
 - Modify: `docs/api/openapi.json` (generated)
 - Modify: `packages/api-client/**` (generated)
 
@@ -1026,11 +1039,13 @@ git commit -m "chore(api-client): regenerate for provider admin endpoints + prov
 ### Task 8: Web — hide disabled, render maintenance non-clickable
 
 **Files:**
+
 - Modify: `apps/web/src/components/store/PurchasePanel.tsx:440-446` (provider fetch/parse)
 - Modify: `packages/i18n/locales/{ru,en,uz}/web.json` (maintenance string)
 - Test: `apps/web/src/components/store/PurchasePanel.test.tsx` (or nearest existing test) — a focused unit test of the provider-parsing/rendering helper.
 
 **Interfaces:**
+
 - Consumes: `GET /api/v1/payments/providers` new shape `{providers: {slug, status}[]}`.
 
 - [ ] **Step 1: Update the fetch/parse**
@@ -1039,7 +1054,9 @@ Replace the typed fetch:
 
 ```tsx
 const providers = await fetch(`${API}/api/v1/payments/providers`)
-  .then((r) => r.json() as Promise<{ providers: { slug: string; status: "active" | "maintenance" }[] }>)
+  .then(
+    (r) => r.json() as Promise<{ providers: { slug: string; status: "active" | "maintenance" }[] }>,
+  )
   .catch(() => ({ providers: [] as { slug: string; status: "active" | "maintenance" }[] }));
 
 const bySlug = new Map(providers.providers.map((p) => [p.slug, p.status]));
@@ -1052,6 +1069,7 @@ Update the downstream selection logic that currently does `providers.providers.i
 - [ ] **Step 2: Add i18n string (all three locales)**
 
 In `packages/i18n/locales/{ru,en,uz}/web.json`, add under the payments namespace:
+
 - ru: `"payment.maintenance": "Технические работы"`
 - en: `"payment.maintenance": "Under maintenance"`
 - uz: `"payment.maintenance": "Texnik ishlar"`
@@ -1079,12 +1097,14 @@ git commit -m "feat(web/checkout): hide disabled providers, show maintenance as 
 ### Task 9: Mini App — hide disabled, render maintenance non-clickable
 
 **Files:**
+
 - Modify: `apps/miniapp/src/lib/orders.ts:87-101,145-165` (`ProvidersOut` type + `useAvailableProviders` + the pre-submit provider guard)
 - Modify: `apps/miniapp/src/pages/TopUp.tsx` (render maintenance method disabled) and `WalletTopUp` if it lists methods
 - Modify: `apps/miniapp/src/lib/i18n/messages.ts` (maintenance `MessageKey` in ru/en/uz)
 - Test: nearest existing miniapp test for the payment-method list, or a new focused test.
 
 **Interfaces:**
+
 - Consumes: new `/payments/providers` shape.
 
 - [ ] **Step 1: Update the provider type + hook**
@@ -1092,8 +1112,13 @@ git commit -m "feat(web/checkout): hide disabled providers, show maintenance as 
 In `apps/miniapp/src/lib/orders.ts`:
 
 ```ts
-export interface ProviderStatus { slug: string; status: "active" | "maintenance" }
-interface ProvidersOut { providers: ProviderStatus[] }
+export interface ProviderStatus {
+  slug: string;
+  status: "active" | "maintenance";
+}
+interface ProvidersOut {
+  providers: ProviderStatus[];
+}
 
 export function useAvailableProviders() {
   return useQuery({
@@ -1133,12 +1158,14 @@ git commit -m "feat(miniapp/checkout): hide disabled providers, show maintenance
 ### Task 10: Admin SPA — payment providers screen
 
 **Files:**
+
 - Create: `apps/admin/src/features/payments/providers/ProvidersPage.tsx` (list)
 - Create: `apps/admin/src/features/payments/providers/ProviderDetailDrawer.tsx` (analytics + actions)
 - Modify: `apps/admin/src/routes/*` (register the route) + the payments feature index/nav
 - Test: `apps/admin/src/features/payments/providers/*.test.tsx` (list renders, action calls the client)
 
 **Interfaces:**
+
 - Consumes: generated `@yupay/api-client` methods for `GET /admin/payments/providers`, `GET /admin/payments/providers/{provider}`, `PUT /admin/payments/providers/{provider}/state`.
 
 - [ ] **Step 1: List page**
@@ -1174,6 +1201,7 @@ git commit -m "feat(admin/payments): provider management screen (list + analytic
 ### Task 11: Docs — ADR + runbook + module-map
 
 **Files:**
+
 - Create: `docs/decisions/00NN-admin-payment-provider-controls.md` (next ADR number — check `ls docs/decisions/`)
 - Create: `docs/runbooks/payment-provider-controls.md`
 - Modify: `docs/architecture/module-map.md` (payments public surface note)

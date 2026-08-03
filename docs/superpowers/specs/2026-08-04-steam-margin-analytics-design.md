@@ -42,11 +42,11 @@ The analytics report is denominated in **USD**, where the `fx_rate` cancels out:
 Compute Steam margin from the SKU's `rate_multiplier` instead of skipping it.
 Classify each order-item row into three buckets (by `Sku.variable_amount`):
 
-| Bucket | Predicate | revenue term (USD) | cost term (USD) |
-| --- | --- | --- | --- |
-| **fixed, known cost** | `NOT variable_amount AND cost_usdt IS NOT NULL` | `qty × unit_price_usd` | `qty × cost_usdt` |
-| **variable (Steam)** | `variable_amount` | `qty × unit_price_usd × rate_multiplier` | `qty × unit_price_usd` |
-| **unknown** | `NOT variable_amount AND cost_usdt IS NULL` | — (counted in `margin_unknown_units`) | — |
+| Bucket                | Predicate                                       | revenue term (USD)                       | cost term (USD)        |
+| --------------------- | ----------------------------------------------- | ---------------------------------------- | ---------------------- |
+| **fixed, known cost** | `NOT variable_amount AND cost_usdt IS NOT NULL` | `qty × unit_price_usd`                   | `qty × cost_usdt`      |
+| **variable (Steam)**  | `variable_amount`                               | `qty × unit_price_usd × rate_multiplier` | `qty × unit_price_usd` |
+| **unknown**           | `NOT variable_amount AND cost_usdt IS NULL`     | — (counted in `margin_unknown_units`)    | —                      |
 
 - **Multiplier source:** the SKU's **current** `rate_multiplier` (it is not
   snapshotted on the order). The report is already flagged `margin_approx=True`
