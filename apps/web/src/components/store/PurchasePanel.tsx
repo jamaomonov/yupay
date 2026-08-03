@@ -485,9 +485,12 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
     setLoading(true);
     setError(null);
     try {
-      // `canPay` already requires `selectedMethodActive`, which in turn
-      // requires `selectedProvider !== undefined` — TS narrows it to
-      // `string` here via that chain, so no fallback is needed.
+      // The early return above (`!canPay`) guarantees `selectedMethodActive`,
+      // which in turn guarantees `selectedProvider !== undefined` — but that's
+      // a runtime guarantee only. Checking a separate boolean doesn't narrow
+      // `selectedProvider`'s type (it stays `string | undefined` to TS); no
+      // fallback is needed because the early return has already ensured it's
+      // defined by the time we get here.
       const provider = selectedProvider;
 
       const token = getAccessToken();
