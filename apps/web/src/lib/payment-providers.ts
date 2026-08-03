@@ -54,6 +54,33 @@ export function methodVisibility(
   return statusBySlug.get(provider) ?? "hidden";
 }
 
+interface MethodLike {
+  id: string;
+  provider: string;
+}
+
+/**
+ * Once live provider status has loaded, decide which method id should be
+ * selected: keep `currentId` when its provider is `"active"`; otherwise fall
+ * back to the first method whose provider is `"active"`; if none are, return
+ * `null` — nothing is selectable, and the caller must not let checkout
+ * proceed. This exists so a hardcoded UI default (e.g. the first method in a
+ * fixed list) can never stay silently selected once it's known to be under
+ * maintenance or admin-disabled.
+ */
+export function selectActiveMethodId(
+  methods: MethodLike[],
+  currentId: string,
+  statusBySlug: Map<string, ProviderStatus>,
+): string | null {
+  const current = methods.find((m) => m.id === currentId);
+  if (current && statusBySlug.get(current.provider) === "active") {
+    return currentId;
+  }
+  const firstActive = methods.find((m) => statusBySlug.get(m.provider) === "active");
+  return firstActive?.id ?? null;
+}
+
 /**
  * Map a payment-provider slug to how the customer should see it on an order.
  * Backend already normalizes `click_miniapp` → `click`; we tolerate both.

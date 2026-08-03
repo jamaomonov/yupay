@@ -17,6 +17,7 @@ import { saveGuestOrder } from "@/lib/guest-orders";
 import {
   methodVisibility,
   providerStatusMap,
+  selectActiveMethodId,
   type ProviderStatus,
   type ProvidersOut,
 } from "@/lib/payment-providers";
@@ -372,6 +373,16 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
     };
   }, []);
 
+  // Once live status lands, make sure the selection reflects it: the
+  // hardcoded default (`METHODS[0]`) may itself be under maintenance or
+  // admin-disabled. Reselect the first `active` method, or clear the
+  // selection entirely when none are — `canPay` below then keeps Pay
+  // disabled rather than ever letting a non-active provider be submitted.
+  useEffect(() => {
+    if (!providerStatus) return;
+    setMethodId((current) => selectActiveMethodId(METHODS, current, providerStatus) ?? "");
+  }, [providerStatus]);
+
   let selSku: SkuOut | undefined;
   let selProduct: ProductDetail | undefined;
   for (const p of products) {
@@ -413,12 +424,21 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
 
   const emailOk = EMAIL_RE.test(email);
   const fieldsOk = fields.every((f) => !f.required || (form[f.key]?.trim() ?? "") !== "");
+  // Not just "a method id is set" — the selected method's *provider* must
+  // currently be `active`. Combined with the reselection effect above, this
+  // is the belt-and-suspenders guarantee that Pay can never submit a
+  // maintenance/admin-disabled provider (`methodVisibility` fails open while
+  // `providerStatus` is still loading, matching the method grid's own render).
+  const selectedProvider = METHODS.find((m) => m.id === methodId)?.provider;
+  const selectedMethodActive =
+    selectedProvider !== undefined &&
+    methodVisibility(selectedProvider, providerStatus) === "active";
   // Logged-in users don't need to supply an email — the account email is used server-side.
   const canPay =
     Boolean(selSku) &&
     (user !== null || emailOk) &&
     fieldsOk &&
-    Boolean(methodId) &&
+    selectedMethodActive &&
     variableAmountOk &&
     !loading;
   // Tell the user *why* the pay button is inactive instead of leaving a dimmed
@@ -465,23 +485,10 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
     setLoading(true);
     setError(null);
     try {
-      // Re-fetched fresh right before charging (not read from the mount-time
-      // `providerStatus` state) so a provider that flips to maintenance while
-      // the customer was filling the form is still caught here.
-      const providers = await fetch(`${API}/api/v1/payments/providers`)
-        .then((r) => r.json() as Promise<ProvidersOut>) // narrows a known-shape JSON response
-        .catch(() => ({ providers: [] }) satisfies ProvidersOut);
-      const statusBySlug = providerStatusMap(providers);
-      const wanted = METHODS.find((m) => m.id === methodId)?.provider ?? "mock";
-      // Only an `active` provider is chargeable; fall back to the dev-only
-      // `mock` provider when it's active, else keep the customer's pick — the
-      // server has the final say and surfaces a clear error otherwise.
-      const provider =
-        statusBySlug.get(wanted) === "active"
-          ? wanted
-          : statusBySlug.get("mock") === "active"
-            ? "mock"
-            : wanted;
+      // `canPay` already requires `selectedMethodActive`, which in turn
+      // requires `selectedProvider !== undefined` — TS narrows it to
+      // `string` here via that chain, so no fallback is needed.
+      const provider = selectedProvider;
 
       const token = getAccessToken();
       const isLoggedIn = user !== null && token !== null;
