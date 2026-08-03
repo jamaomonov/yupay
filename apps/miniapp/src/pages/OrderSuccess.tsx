@@ -24,6 +24,7 @@ import {
   Share2,
   ShoppingBag,
   Sparkles,
+  Star,
   XCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -371,19 +372,11 @@ export default function OrderSuccess() {
         <DeliveredExtras
           brandName={order.items[0]?.display?.brand_name ?? null}
           imageUrl={order.items[0]?.display?.image_url ?? null}
-        />
-      )}
-
-      {canRate && rateBrandSlug && (
-        <button
-          type="button"
-          onClick={() => {
+          canRate={canRate}
+          onRate={() => {
             setReviewOpen(true);
           }}
-          className="bg-primary text-primary-foreground mt-4 w-full rounded-xl py-2.5 text-sm font-semibold"
-        >
-          {t("reviews.rateCta")}
-        </button>
+        />
       )}
 
       {reviewOpen && rateBrandSlug && (
@@ -410,9 +403,13 @@ export default function OrderSuccess() {
 function DeliveredExtras({
   brandName,
   imageUrl,
+  canRate,
+  onRate,
 }: {
   brandName: string | null;
   imageUrl: string | null;
+  canRate: boolean;
+  onRate: () => void;
 }) {
   const { t } = useT();
   const [canPin, setCanPin] = useState(false);
@@ -430,7 +427,7 @@ function DeliveredExtras({
     };
   }, []);
 
-  if (!canPin && !canShare) return null;
+  if (!canPin && !canShare && !canRate) return null;
 
   return (
     <div className="grid grid-cols-2 gap-3 px-4 pt-1">
@@ -456,6 +453,14 @@ function DeliveredExtras({
                 : t("success.shareStoryTextGeneric"),
             });
           }}
+        />
+      )}
+      {canRate && (
+        <ActionButton
+          icon={<Star size={15} />}
+          label={t("reviews.rateCta")}
+          variant="secondary"
+          onClick={onRate}
         />
       )}
     </div>
