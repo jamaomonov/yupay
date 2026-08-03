@@ -108,7 +108,7 @@ async def db_engine():
                     "sku_supplier_mapping, supplier_catalog_cache, supplier_price_history, "
                     "deliveries, fulfillment_attempts, fulfillment_tasks, "
                     "payme_transactions, uzum_transactions, click_transactions, "
-                    "payment_webhooks, payment_attempts, payments, "
+                    "payment_webhooks, payment_attempts, payments, payment_provider_states, "
                     "order_events, order_items, orders, "
                     "sku_prices, skus, product_translations, products, "
                     "brand_translations, brands, "
