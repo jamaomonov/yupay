@@ -181,6 +181,7 @@
     "checkFailed": "Could not verify",
     "checkNotFound": "Player not found",
     "paymentTitle": "Payment method",
+    "paymentMaintenance": "Under maintenance",
     "pay": "Pay",
     "payError": "Couldn't create the order. Try again or contact support.",
     "successTitle": "Order created",

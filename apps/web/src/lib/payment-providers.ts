@@ -8,6 +8,53 @@ export interface ProviderDisplay {
 }
 
 /**
+ * A payment provider's admin-controlled availability, mirroring the backend's
+ * `ProviderStatusOut` (`apps/api/src/yupay/modules/payments/schemas.py`). Kept
+ * as a local type rather than imported from `@yupay/api-client` because the
+ * storefront hand-rolls this fetch instead of using the generated client —
+ * see the `pay()` call in `PurchasePanel.tsx`.
+ */
+export type ProviderStatus = "active" | "maintenance";
+
+export interface ProviderStatusEntry {
+  slug: string;
+  status: ProviderStatus;
+}
+
+/** Shape of `GET /api/v1/payments/providers`. */
+export interface ProvidersOut {
+  providers: ProviderStatusEntry[];
+}
+
+/**
+ * Build a slug → status lookup from the providers response. A slug absent
+ * from the map means the provider isn't offered at all (admin-disabled).
+ */
+export function providerStatusMap(payload: ProvidersOut): Map<string, ProviderStatus> {
+  return new Map(payload.providers.map((p) => [p.slug, p.status]));
+}
+
+export type MethodVisibility = "active" | "maintenance" | "hidden";
+
+/**
+ * Resolve how a storefront payment method should render, given the live
+ * provider-status map:
+ * - `statusBySlug === null` means the fetch hasn't resolved yet (or failed) —
+ *   this fails OPEN, rendering every method as `"active"`, so a slow network
+ *   or a transient error never blanks out the checkout's payment methods.
+ * - Once loaded, a slug absent from the map is `"hidden"` (not offered).
+ * - `"maintenance"` renders the method but keeps it non-clickable;
+ *   `"active"` is selectable exactly as before this admin control existed.
+ */
+export function methodVisibility(
+  provider: string,
+  statusBySlug: Map<string, ProviderStatus> | null,
+): MethodVisibility {
+  if (statusBySlug === null) return "active";
+  return statusBySlug.get(provider) ?? "hidden";
+}
+
+/**
  * Map a payment-provider slug to how the customer should see it on an order.
  * Backend already normalizes `click_miniapp` → `click`; we tolerate both.
  * Returns null when there is no provider yet (unpaid order).

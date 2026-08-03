@@ -181,6 +181,7 @@
     "checkFailed": "Tekshirib boʻlmadi",
     "checkNotFound": "Oʻyinchi topilmadi",
     "paymentTitle": "Toʻlov usuli",
+    "paymentMaintenance": "Texnik ishlar",
     "pay": "Toʻlash",
     "payError": "Buyurtma yaratilmadi. Qayta urinib koʻring yoki qoʻllab-quvvatlashga yozing.",
     "successTitle": "Buyurtma yaratildi",

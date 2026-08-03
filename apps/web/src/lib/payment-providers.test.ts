@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { paymentProviderDisplay } from "./payment-providers";
+
+import {
+  methodVisibility,
+  paymentProviderDisplay,
+  providerStatusMap,
+  type ProvidersOut,
+} from "./payment-providers";
 
 describe("paymentProviderDisplay", () => {
   it("maps click (and click_miniapp) to the Click brand + logo", () => {
@@ -22,5 +28,33 @@ describe("paymentProviderDisplay", () => {
   it("renders an unknown slug as plain text and null as null", () => {
     expect(paymentProviderDisplay("mock")).toEqual({ name: "mock" });
     expect(paymentProviderDisplay(null)).toBeNull();
+  });
+});
+
+describe("providerStatusMap + methodVisibility", () => {
+  // One active, one under maintenance, one omitted entirely (admin-disabled).
+  const payload: ProvidersOut = {
+    providers: [
+      { slug: "click", status: "active" },
+      { slug: "payme", status: "maintenance" },
+    ],
+  };
+  const bySlug = providerStatusMap(payload);
+
+  it("keeps an active provider selectable", () => {
+    expect(methodVisibility("click", bySlug)).toBe("active");
+  });
+
+  it("flags a maintenance provider as non-clickable but still rendered", () => {
+    expect(methodVisibility("payme", bySlug)).toBe("maintenance");
+  });
+
+  it("hides a provider slug absent from the response entirely", () => {
+    expect(methodVisibility("uzum", bySlug)).toBe("hidden");
+  });
+
+  it("fails open (treats every method as active) before the fetch resolves", () => {
+    expect(methodVisibility("click", null)).toBe("active");
+    expect(methodVisibility("uzum", null)).toBe("active");
   });
 });

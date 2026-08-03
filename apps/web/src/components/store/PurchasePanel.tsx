@@ -14,6 +14,12 @@ import { buttonStyles } from "@/lib/button";
 import { getAccessToken } from "@/lib/client";
 import { mintGuestToken } from "@/lib/guest";
 import { saveGuestOrder } from "@/lib/guest-orders";
+import {
+  methodVisibility,
+  providerStatusMap,
+  type ProviderStatus,
+  type ProvidersOut,
+} from "@/lib/payment-providers";
 import { canCheck, IDLE, runPlayerCheck, type CheckState } from "@/lib/player-check-state";
 import { formatUzs, pathFor } from "@/lib/seo";
 import { amountError, parseAmount } from "@/lib/variable-amount";
@@ -334,6 +340,10 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
   // number — see `@/lib/variable-amount` for parsing/validation.
   const [amountInput, setAmountInput] = useState("");
   const [methodId, setMethodId] = useState<string>(METHODS[0]?.id ?? "click");
+  // Admin-controlled provider availability (`GET /payments/providers`). `null`
+  // until the fetch resolves — `methodVisibility` treats that as "fail open"
+  // so the method grid never blanks out on a slow network.
+  const [providerStatus, setProviderStatus] = useState<Map<string, ProviderStatus> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{
@@ -343,6 +353,24 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
   } | null>(null);
   // The mobile sticky pay bar scrolls here when the form isn't complete yet.
   const asideRef = useRef<HTMLElement>(null);
+
+  // Load provider availability once on mount so the method grid below can
+  // hide admin-disabled providers and grey out ones under maintenance before
+  // the customer ever tries to pay.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API}/api/v1/payments/providers`)
+      .then((r) => r.json() as Promise<ProvidersOut>) // narrows a known-shape JSON response
+      .then((data) => {
+        if (!cancelled) setProviderStatus(providerStatusMap(data));
+      })
+      .catch(() => {
+        // Leave `providerStatus` as `null` — fails open, see its declaration.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   let selSku: SkuOut | undefined;
   let selProduct: ProductDetail | undefined;
@@ -437,15 +465,23 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
     setLoading(true);
     setError(null);
     try {
+      // Re-fetched fresh right before charging (not read from the mount-time
+      // `providerStatus` state) so a provider that flips to maintenance while
+      // the customer was filling the form is still caught here.
       const providers = await fetch(`${API}/api/v1/payments/providers`)
-        .then((r) => r.json() as Promise<{ providers: string[] }>)
-        .catch(() => ({ providers: [] as string[] }));
+        .then((r) => r.json() as Promise<ProvidersOut>) // narrows a known-shape JSON response
+        .catch(() => ({ providers: [] }) satisfies ProvidersOut);
+      const statusBySlug = providerStatusMap(providers);
       const wanted = METHODS.find((m) => m.id === methodId)?.provider ?? "mock";
-      const provider = providers.providers.includes(wanted)
-        ? wanted
-        : providers.providers.includes("mock")
-          ? "mock"
-          : wanted;
+      // Only an `active` provider is chargeable; fall back to the dev-only
+      // `mock` provider when it's active, else keep the customer's pick — the
+      // server has the final say and surfaces a clear error otherwise.
+      const provider =
+        statusBySlug.get(wanted) === "active"
+          ? wanted
+          : statusBySlug.get("mock") === "active"
+            ? "mock"
+            : wanted;
 
       const token = getAccessToken();
       const isLoggedIn = user !== null && token !== null;
@@ -774,20 +810,29 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
               </span>
               <div className="grid grid-cols-2 gap-2">
                 {METHODS.map((m) => {
-                  const active = m.id === methodId;
+                  // Absent from the providers response → admin-disabled, not
+                  // offered at all. `maintenance` still renders, but greyed
+                  // out and non-clickable via the native `disabled` attribute.
+                  const visibility = methodVisibility(m.provider, providerStatus);
+                  if (visibility === "hidden") return null;
+                  const disabled = visibility === "maintenance";
+                  const active = !disabled && m.id === methodId;
                   return (
                     <button
                       key={m.id}
                       type="button"
                       aria-label={m.name}
                       aria-pressed={active}
+                      disabled={disabled}
                       onClick={() => {
                         setMethodId(m.id);
                       }}
-                      className={`focus-visible:ring-primary focus-visible:ring-offset-bg flex items-center justify-center rounded-[12px] border px-3 py-3 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
-                        active
-                          ? "border-primary bg-primary/10"
-                          : "border-border bg-card hover:border-border-2"
+                      className={`focus-visible:ring-primary focus-visible:ring-offset-bg flex flex-col items-center justify-center gap-1 rounded-[12px] border px-3 py-3 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
+                        disabled
+                          ? "border-border bg-card"
+                          : active
+                            ? "border-primary bg-primary/10"
+                            : "border-border bg-card hover:border-border-2"
                       }`}
                     >
                       <Image
@@ -800,6 +845,11 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
                         style={{ width: "auto", height: 20 }}
                         className="object-contain"
                       />
+                      {disabled && (
+                        <span className="text-tx-dim text-[10px] font-semibold uppercase tracking-[0.04em]">
+                          {t("paymentMaintenance")}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
