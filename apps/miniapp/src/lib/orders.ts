@@ -83,18 +83,32 @@ export interface PaymentOut {
   external_id: string | null;
 }
 
+/** An acquirer's admin-controlled availability state. */
+export type ProviderAvailability = "active" | "maintenance";
+
+/**
+ * One entry of `GET /payments/providers`, mirroring the backend's
+ * `ProviderStatusOut` (`apps/api/src/yupay/modules/payments/schemas.py`). A
+ * provider slug absent from the response entirely means it isn't offered at
+ * all (admin-disabled) — see `methodVisibility` below.
+ */
+export interface ProviderStatus {
+  slug: string;
+  status: ProviderAvailability;
+}
+
 interface ProvidersOut {
-  providers: string[];
+  providers: ProviderStatus[];
 }
 
 /**
- * Live payment-provider slugs (those whose ``gateway.available`` is true on
- * the backend). Stubs like ``click`` / ``yookassa`` / ``crypto`` are absent
- * until integrated, so the UI can grey them out instead of letting users
- * create an orphan order followed by a failed intent.
+ * Live payment-provider statuses (admin-controlled per-provider
+ * active/maintenance state). Stubs like ``click`` / ``yookassa`` / ``crypto``
+ * are absent until integrated, so the UI can hide them entirely instead of
+ * letting users create an orphan order followed by a failed intent.
  */
 export function useAvailableProviders() {
-  return useQuery<string[]>({
+  return useQuery<ProviderStatus[]>({
     queryKey: ["payments", "providers"],
     queryFn: async () => {
       const data = await apiGet<ProvidersOut>("/api/v1/payments/providers");
@@ -102,6 +116,61 @@ export function useAvailableProviders() {
     },
     staleTime: 60_000,
   });
+}
+
+/**
+ * Build a slug → status lookup from the providers response. A slug absent
+ * from the map means the provider isn't offered at all (admin-disabled).
+ */
+export function providerStatusMap(providers: ProviderStatus[]): Map<string, ProviderAvailability> {
+  return new Map(providers.map((p) => [p.slug, p.status]));
+}
+
+export type MethodVisibility = "active" | "maintenance" | "hidden";
+
+/**
+ * Resolve how a payment method should render, given the live provider-status
+ * map:
+ * - `statusBySlug === null` means the fetch hasn't resolved yet (or failed) —
+ *   this fails OPEN, rendering every method as `"active"`, so a slow network
+ *   or a transient error never blanks out the checkout's payment methods.
+ * - Once loaded, a slug absent from the map is `"hidden"` (not offered).
+ * - `"maintenance"` renders the method but keeps it non-clickable;
+ *   `"active"` is selectable exactly as before this admin control existed.
+ */
+export function methodVisibility(
+  provider: string,
+  statusBySlug: Map<string, ProviderAvailability> | null,
+): MethodVisibility {
+  if (statusBySlug === null) return "active";
+  return statusBySlug.get(provider) ?? "hidden";
+}
+
+interface MethodLike {
+  id: string;
+  provider: string;
+}
+
+/**
+ * Once live provider status has loaded, decide which method id should be
+ * selected: keep `currentId` when its provider is `"active"`; otherwise fall
+ * back to the first method whose provider is `"active"`; if none are, return
+ * `null` — nothing is selectable, and the caller must not let checkout
+ * proceed. This exists so a hardcoded UI default (e.g. the first method in a
+ * fixed list) can never stay silently selected once it's known to be under
+ * maintenance or admin-disabled.
+ */
+export function selectActiveMethodId(
+  methods: MethodLike[],
+  currentId: string,
+  statusBySlug: Map<string, ProviderAvailability>,
+): string | null {
+  const current = methods.find((m) => m.id === currentId);
+  if (current && statusBySlug.get(current.provider) === "active") {
+    return currentId;
+  }
+  const firstActive = methods.find((m) => statusBySlug.get(m.provider) === "active");
+  return firstActive?.id ?? null;
 }
 
 // --- hooks ----------------------------------------------------------------
@@ -158,7 +227,7 @@ export function useCheckout() {
       provider = "mock",
       amountUsd,
     }) => {
-      const live = await qc.fetchQuery<string[]>({
+      const live = await qc.fetchQuery<ProviderStatus[]>({
         queryKey: ["payments", "providers"],
         queryFn: async () => {
           const data = await apiGet<ProvidersOut>("/api/v1/payments/providers");
@@ -166,7 +235,8 @@ export function useCheckout() {
         },
         staleTime: 60_000,
       });
-      if (!live.includes(provider)) {
+      const isActive = live.some((p) => p.slug === provider && p.status === "active");
+      if (!isActive) {
         throw new ApiError(409, "Conflict", {
           detail: translate("checkout.providerUnavailable"),
         });

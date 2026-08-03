@@ -32,7 +32,12 @@ import {
 import { useDisplayCurrency } from "@/lib/currency";
 import { useT } from "@/lib/i18n";
 import { getActiveLocale } from "@/lib/i18n/core";
-import { useAvailableProviders, useCheckout } from "@/lib/orders";
+import {
+  methodVisibility,
+  providerStatusMap,
+  useAvailableProviders,
+  useCheckout,
+} from "@/lib/orders";
 import { ACQUIRER_BY_METHOD, PAYMENT_METHODS, PROVIDER_BY_METHOD } from "@/lib/payment-methods";
 import { getRecentFulfillment, rememberFulfillment } from "@/lib/recent-checkout";
 import { isInsideTelegram, openExternalLink, setClosingConfirmation } from "@/lib/telegram";
@@ -255,9 +260,9 @@ export default function TopUp() {
   // lands we optimistically treat the catalogue as fully available so the UI
   // doesn't flash a "Скоро" badge across every method on first paint.
   const providersQuery = useAvailableProviders();
-  const liveProviderSet = useMemo(() => {
+  const providerStatusBySlug = useMemo(() => {
     if (!providersQuery.data) return null;
-    return new Set(providersQuery.data);
+    return providerStatusMap(providersQuery.data);
   }, [providersQuery.data]);
   const isMethodAvailable = (methodId: string): boolean => {
     // Wallet eligibility is computed below from the user's balance — the
@@ -272,12 +277,13 @@ export default function TopUp() {
       const method = PAYMENT_METHODS.find((m) => m.id === methodId);
       if (method && method.currency !== "UZS") return false;
     }
-    if (liveProviderSet === null) return true;
     // Resolve through the FULL map (not the shared base map) so the
     // availability check agrees with what checkout actually sends —
     // including the wallet sentinel, which only the FULL map carries.
+    // Submittable only when the provider is present AND `"active"` —
+    // `"maintenance"` and admin-disabled (absent) both fail this check.
     const provider = PROVIDER_BY_METHOD_FULL[methodId];
-    return provider !== undefined && liveProviderSet.has(provider);
+    return provider !== undefined && methodVisibility(provider, providerStatusBySlug) === "active";
   };
 
   // Wallet balance in the SKU's display currency. ``finalPrice`` is set
@@ -313,14 +319,14 @@ export default function TopUp() {
   // the first live method instead of letting them tap a button that will
   // refuse.
   useEffect(() => {
-    if (liveProviderSet === null) return;
+    if (providerStatusBySlug === null) return;
     if (paymentMethod === "" || isMethodAvailable(paymentMethod)) return;
     // No live acquirer at all → deselect instead of leaving the highlight on
-    // a method that renders with a «Скоро» badge (selected-but-disabled).
+    // a method that renders as maintenance/«Скоро» (selected-but-disabled).
     const fallback = PAYMENT_METHODS.find((m) => isMethodAvailable(m.id));
     setPaymentMethod(fallback ? fallback.id : "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveProviderSet, paymentMethod, isVariableProduct]);
+  }, [providerStatusBySlug, paymentMethod, isVariableProduct]);
 
   // Don't pre-select a package — the customer chooses. A variable-amount
   // product is the exception: there's nothing to pick (one SKU, no
@@ -900,9 +906,16 @@ export default function TopUp() {
 
             <div className="mb-3 grid grid-cols-4 gap-2">
               {PAYMENT_METHODS.map((m) => {
+                // Absent from the providers response → admin-disabled, not
+                // offered at all — distinct from `maintenance`, which is
+                // still rendered but locked out below.
+                const visibility = methodVisibility(m.provider, providerStatusBySlug);
+                if (visibility === "hidden") return null;
+                const maintenance = visibility === "maintenance";
                 const available = isMethodAvailable(m.id);
                 // An unavailable method can never look selected.
                 const active = paymentMethod === m.id && available;
+                const unavailableLabel = maintenance ? t("payment.maintenance") : t("topup.soon");
                 return (
                   <button
                     key={m.id}
@@ -913,7 +926,7 @@ export default function TopUp() {
                     }}
                     disabled={!available}
                     aria-disabled={!available}
-                    title={available ? undefined : t("topup.soon")}
+                    title={available ? undefined : unavailableLabel}
                     className="relative flex flex-col items-center gap-1 rounded-2xl py-3 transition-all duration-150 disabled:cursor-not-allowed"
                     style={{
                       background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
@@ -932,7 +945,7 @@ export default function TopUp() {
                         <Check size={9} strokeWidth={3} className="text-black" />
                       </div>
                     )}
-                    {!available && (
+                    {!available && !maintenance && (
                       <div
                         className="absolute right-1 top-1 rounded px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide"
                         style={{
@@ -954,6 +967,11 @@ export default function TopUp() {
                     >
                       {m.name}
                     </span>
+                    {maintenance && (
+                      <span className="px-0.5 text-center text-[8px] font-semibold uppercase leading-tight text-white/40">
+                        {t("payment.maintenance")}
+                      </span>
+                    )}
                   </button>
                 );
               })}

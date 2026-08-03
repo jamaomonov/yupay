@@ -1,11 +1,17 @@
 import { motion } from "framer-motion";
 import { ArrowLeft, Shield, Wallet as WalletIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 
 import { useToast } from "@/hooks/use-toast";
 import { useMe } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
+import {
+  methodVisibility,
+  providerStatusMap,
+  selectActiveMethodId,
+  useAvailableProviders,
+} from "@/lib/orders";
 import { PAYMENT_METHODS } from "@/lib/payment-methods";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { formatBalance } from "@/lib/wallet";
@@ -37,17 +43,40 @@ export default function WalletTopUp() {
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState<string>(DEFAULT_METHOD_ID);
 
+  // Admin-controlled provider availability (`GET /payments/providers`) — same
+  // source the checkout flow (`TopUp`) reads. A slug absent from the response
+  // is hidden entirely; `maintenance` is shown but locked out below.
+  const providersQuery = useAvailableProviders();
+  const providerStatusBySlug = useMemo(() => {
+    if (!providersQuery.data) return null;
+    return providerStatusMap(providersQuery.data);
+  }, [providersQuery.data]);
+
+  // Once live status lands, make sure the selection reflects it: the
+  // hardcoded default (`PAYMENT_METHODS[0]`) may itself be under maintenance
+  // or admin-disabled. Reselect the first active method, or clear the
+  // selection entirely when none are — `canSubmit` below then keeps the
+  // submit button disabled rather than ever leaving a non-active method
+  // selected.
+  useEffect(() => {
+    if (!providerStatusBySlug) return;
+    setMethod(
+      (current) => selectActiveMethodId(PAYMENT_METHODS, current, providerStatusBySlug) ?? "",
+    );
+  }, [providerStatusBySlug]);
+
   const selectedMethod = PAYMENT_METHODS.find((m) => m.id === method) ?? PAYMENT_METHODS[0]!;
   const currency = selectedMethod.currency;
   const quickAmounts = QUICK_AMOUNTS[currency] ?? QUICK_AMOUNTS.USD!;
 
   const numericAmount = Number.parseFloat(amount) || 0;
-  const canSubmit = numericAmount > 0 && me.data !== undefined;
+  const canSubmit = numericAmount > 0 && me.data !== undefined && method !== "";
 
   // Switching methods between different currencies (UZS → USDT) would leave a
   // stale amount in the wrong context. Clearing on currency change avoids the
   // "пополнить на 50 000 USDT" confusion.
   const onMethodChange = (next: (typeof PAYMENT_METHODS)[number]) => {
+    if (methodVisibility(next.provider, providerStatusBySlug) !== "active") return;
     if (next.currency !== currency) {
       setAmount("");
     }
@@ -158,7 +187,13 @@ export default function WalletTopUp() {
         </h2>
         <ul className="space-y-2">
           {PAYMENT_METHODS.map((m) => {
-            const active = method === m.id;
+            // Absent from the providers response → admin-disabled, not
+            // offered at all — distinct from `maintenance`, which is still
+            // rendered but locked out (non-clickable) below.
+            const visibility = methodVisibility(m.provider, providerStatusBySlug);
+            if (visibility === "hidden") return null;
+            const maintenance = visibility === "maintenance";
+            const active = method === m.id && !maintenance;
             return (
               <li key={m.id}>
                 <button
@@ -166,12 +201,15 @@ export default function WalletTopUp() {
                   onClick={() => {
                     onMethodChange(m);
                   }}
-                  className="flex w-full items-center gap-3 rounded-2xl p-3.5 transition-colors"
+                  disabled={maintenance}
+                  aria-disabled={maintenance}
+                  className="flex w-full items-center gap-3 rounded-2xl p-3.5 transition-colors disabled:cursor-not-allowed"
                   style={{
                     background: active ? "hsl(var(--primary) / 0.12)" : "hsl(var(--surface-1))",
                     border: active
                       ? "1.5px solid hsl(var(--primary))"
                       : "1px solid hsl(var(--border))",
+                    opacity: maintenance ? 0.5 : 1,
                   }}
                   data-testid={`provider-${m.id}`}
                 >
@@ -195,7 +233,7 @@ export default function WalletTopUp() {
                       </span>
                     </span>
                     <span className="mt-0.5 block truncate text-[12px] text-white/45">
-                      {t(m.subKey)}
+                      {maintenance ? t("payment.maintenance") : t(m.subKey)}
                     </span>
                   </span>
                   <span

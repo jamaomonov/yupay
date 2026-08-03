@@ -53,6 +53,7 @@
   "payment.payme.sub": "Card · Humo · Uzcard",
   "payment.uzum.sub": "Humo · Uzcard",
   "payment.usdt.sub": "TRC-20 / ERC-20",
+  "payment.maintenance": "Under maintenance",
   "category.games": "Games",
   "category.services": "Services",
   "category.cards": "Gift cards",
