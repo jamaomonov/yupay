@@ -303,14 +303,14 @@ function VariableAmountCard({
       <div className="p-5 pb-0">
         <div
           className={`rounded-[16px] border p-5 transition ${
-            customActive ? "border-primary bg-primary/[0.04]" : "border-border bg-bg"
+            customActive ? "border-primary bg-primary/[0.04]" : "border-border bg-card-2"
           }`}
         >
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {/* left: label + input + slider */}
             <div className="lg:border-border/70 lg:border-r lg:pr-6">
               <span className="text-tx-mute mb-2 block text-[13px]">{t("amountOwn")}</span>
-              <div className="border-border bg-bg focus-within:border-primary flex items-center gap-2 rounded-[12px] border px-3.5 transition">
+              <div className="border-border bg-muted focus-within:border-primary flex items-center gap-2 rounded-[12px] border px-3.5 transition">
                 <span className="text-tx-dim text-[18px] font-bold" aria-hidden="true">
                   $
                 </span>
@@ -389,7 +389,7 @@ function VariableAmountCard({
                 className={`focus-visible:ring-primary focus-visible:ring-offset-bg relative flex flex-col items-start gap-3 rounded-[16px] border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
                   active
                     ? "border-primary bg-primary/10"
-                    : "border-border bg-bg hover:border-border-2"
+                    : "border-border bg-card-2 hover:border-border-2"
                 }`}
               >
                 <div className="flex w-full items-center justify-between">
