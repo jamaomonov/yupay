@@ -276,71 +276,36 @@ function VariableAmountCard({
   const PRESETS = [5, 10, 20, 30, 50, 100].filter((a) => a >= min && a <= max);
   const HIT = 10;
   const sliderVal = Math.min(max, Math.max(min, parsed ?? min));
+  // The custom card is highlighted only when the amount isn't one of the presets
+  // (otherwise the matching preset is the highlighted one — never both).
+  const customActive = parsed !== null && !PRESETS.includes(parsed);
   const pick = (amount: number) => {
     onFocus();
     onChange(String(amount));
+  };
+  // Hard-cap the typed amount at the SKU's max ($300 for Steam). The slider is
+  // already bounded; the text input would otherwise accept a larger number.
+  const handleAmountChange = (raw: string) => {
+    const n = parseAmount(raw);
+    onChange(n !== null && n > max ? String(max) : raw);
   };
   const rateLine = t("ratePerDollar", { rate: formatUzs(locale, Math.round(rateUzs)) });
 
   return (
     <div className="border-border bg-card overflow-hidden rounded-[18px] border">
-      {/* header band: title + subtitle, live rate pill */}
-      <div className="border-border/70 flex flex-wrap items-start justify-between gap-3 border-b p-5">
-        <div className="min-w-0">
-          <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t("amountTitle")}</h2>
-          <p className="text-tx-mute mt-1 text-[13px]">{t("amountSubtitle")}</p>
-        </div>
-        <span className="border-border text-tx-mute shrink-0 rounded-[10px] border px-3 py-2 font-mono text-[12px]">
-          {rateLine}
-        </span>
+      {/* header band: title + subtitle */}
+      <div className="border-border/70 border-b p-5">
+        <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t("amountTitle")}</h2>
+        <p className="text-tx-mute mt-1 text-[13px]">{t("amountSubtitle")}</p>
       </div>
 
-      {/* quick-pick preset grid */}
-      {PRESETS.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-3">
-          {PRESETS.map((amount) => {
-            const active = parsed === amount;
-            return (
-              <button
-                key={amount}
-                type="button"
-                aria-pressed={active}
-                onClick={() => {
-                  pick(amount);
-                }}
-                className={`focus-visible:ring-primary focus-visible:ring-offset-bg relative flex flex-col items-start gap-3 rounded-[16px] border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
-                  active
-                    ? "border-primary bg-primary/10"
-                    : "border-border bg-bg hover:border-border-2"
-                }`}
-              >
-                <div className="flex w-full items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="border-border/60 size-9 rounded-[10px] border bg-[hsl(var(--card-2))] bg-gradient-to-br from-white/[0.04] to-transparent"
-                      aria-hidden="true"
-                    />
-                    <span className="text-tx-dim font-mono text-[12px] tracking-[0.08em]">USD</span>
-                  </div>
-                  {amount === HIT && (
-                    <span className="bg-primary text-primary-foreground rounded-full px-2 py-0.5 text-[10px] font-bold">
-                      {t("popular")}
-                    </span>
-                  )}
-                </div>
-                <div className="font-display text-2xl font-extrabold">${amount}</div>
-                <div className="text-tx-mute font-mono text-[12px]">
-                  {formatUzs(locale, Math.round(amount * rateUzs))}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* custom amount — accented, with slider + rate/fee/limit details */}
-      <div className="p-5 pt-0">
-        <div className="border-primary bg-primary/[0.04] rounded-[16px] border p-5">
+      {/* custom amount first — accented only when it's the selected input */}
+      <div className="p-5 pb-0">
+        <div
+          className={`rounded-[16px] border p-5 transition ${
+            customActive ? "border-primary bg-primary/[0.04]" : "border-border bg-bg"
+          }`}
+        >
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {/* left: label + input + slider */}
             <div className="lg:border-border/70 lg:border-r lg:pr-6">
@@ -355,7 +320,7 @@ function VariableAmountCard({
                   value={value}
                   onFocus={onFocus}
                   onChange={(e) => {
-                    onChange(e.target.value);
+                    handleAmountChange(e.target.value);
                   }}
                   placeholder={t("amountPlaceholder")}
                   className="h-[52px] min-w-0 flex-1 bg-transparent text-[22px] font-extrabold outline-none"
@@ -407,6 +372,49 @@ function VariableAmountCard({
           {errorMessage && <p className="mt-3 text-[12px] text-[#FF6B6B]">{errorMessage}</p>}
         </div>
       </div>
+
+      {/* quick-pick preset grid */}
+      {PRESETS.length > 0 && (
+        <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-3">
+          {PRESETS.map((amount) => {
+            const active = parsed === amount;
+            return (
+              <button
+                key={amount}
+                type="button"
+                aria-pressed={active}
+                onClick={() => {
+                  pick(amount);
+                }}
+                className={`focus-visible:ring-primary focus-visible:ring-offset-bg relative flex flex-col items-start gap-3 rounded-[16px] border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                  active
+                    ? "border-primary bg-primary/10"
+                    : "border-border bg-bg hover:border-border-2"
+                }`}
+              >
+                <div className="flex w-full items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="border-border/60 size-9 rounded-[10px] border bg-[hsl(var(--card-2))] bg-gradient-to-br from-white/[0.04] to-transparent"
+                      aria-hidden="true"
+                    />
+                    <span className="text-tx-dim font-mono text-[12px] tracking-[0.08em]">USD</span>
+                  </div>
+                  {amount === HIT && (
+                    <span className="bg-primary text-primary-foreground rounded-full px-2 py-0.5 text-[10px] font-bold">
+                      {t("popular")}
+                    </span>
+                  )}
+                </div>
+                <div className="font-display text-2xl font-extrabold">${amount}</div>
+                <div className="text-tx-mute font-mono text-[12px]">
+                  {formatUzs(locale, Math.round(amount * rateUzs))}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
