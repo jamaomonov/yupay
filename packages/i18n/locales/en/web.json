@@ -221,7 +221,12 @@
     "amountPrecision": "At most two decimal places",
     "ratePerDollar": "$1 = {rate}",
     "zeroFee": "0% fee",
-    "priceUnavailable": "Price is temporarily unavailable. Please check back soon."
+    "priceUnavailable": "Price is temporarily unavailable. Please check back soon.",
+    "amountSubtitle": "Quick pick or your own amount — rate and total update instantly",
+    "amountOwn": "Custom amount, $",
+    "rateLabel": "Rate",
+    "feeLabel": "Service fee",
+    "limitLabel": "Per-order limit"
   },
   "how": {
     "eyebrow": "Flow",

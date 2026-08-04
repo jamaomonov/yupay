@@ -221,7 +221,12 @@
     "amountPrecision": "Nuqtadan keyin ikkitagacha raqam",
     "ratePerDollar": "1 $ = {rate}",
     "zeroFee": "Komissiya 0%",
-    "priceUnavailable": "Narx vaqtincha mavjud emas. Birozdan soʻng qayta urinib koʻring."
+    "priceUnavailable": "Narx vaqtincha mavjud emas. Birozdan soʻng qayta urinib koʻring.",
+    "amountSubtitle": "Tez tanlash yoki oʻz summangiz — kurs va yakuniy narx darhol hisoblanadi",
+    "amountOwn": "Oʻz summangiz, $",
+    "rateLabel": "Kurs",
+    "feeLabel": "Xizmat komissiyasi",
+    "limitLabel": "Operatsiya limiti"
   },
   "how": {
     "eyebrow": "Flow",
