@@ -207,8 +207,10 @@ export default async function BrandPage({
           <span className="text-tx-mute">{brand.name}</span>
         </nav>
 
-        {/* hero banner */}
-        <div className="border-border relative overflow-hidden rounded-2xl border">
+        {/* hero banner — mirrors the design reference: the brand image bleeds
+            in from the right while a left-to-right scrim keeps the copy
+            readable; content is bottom-aligned over it. */}
+        <div className="border-border bg-card relative overflow-hidden rounded-[22px] border">
           {heroImg ? (
             <Image
               src={heroImg}
@@ -217,48 +219,66 @@ export default async function BrandPage({
               priority
               unoptimized
               sizes="(max-width: 1024px) 100vw, 1040px"
-              className="object-cover object-top"
+              className="object-cover"
+              style={{ objectPosition: "50% 30%", opacity: 0.6 }}
             />
           ) : (
             <div
               aria-hidden
               className="absolute inset-0"
               style={{
-                background: `linear-gradient(135deg, ${brand.accent_color ?? "#AAFF33"}55, #0A0D1A)`,
+                background: `radial-gradient(120% 120% at 80% 0%, ${brand.accent_color ?? "#AAFF33"}33, transparent 62%)`,
               }}
             />
           )}
-          <div className="absolute inset-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.92)_0%,rgba(0,0,0,0.45)_60%,rgba(0,0,0,0.2)_100%)]" />
-          <div className="relative z-10 flex min-h-[300px] flex-col justify-end p-6 sm:min-h-[360px] sm:p-9">
-            <div className="flex items-center gap-3">
+          {/* left-to-right scrim (copy side dark, image visible on the right) */}
+          <div
+            aria-hidden
+            className="absolute inset-0"
+            style={{
+              background:
+                "linear-gradient(90deg, hsl(var(--bg)) 0%, hsl(var(--bg)/0.93) 32%, hsl(var(--bg)/0.55) 66%, hsl(var(--bg)/0.18) 100%)",
+            }}
+          />
+          {/* bottom fade so the pills always sit on solid ground */}
+          <div
+            aria-hidden
+            className="absolute inset-0"
+            style={{
+              background: "linear-gradient(0deg, hsl(var(--bg)) 0%, hsl(var(--bg)/0.05) 58%)",
+            }}
+          />
+          <div className="relative z-10 flex min-h-[272px] flex-col justify-end gap-4 p-6 sm:p-8">
+            <div className="flex items-center gap-4">
               {brand.logo_url && (
-                <span className="relative h-14 w-14 shrink-0 overflow-hidden rounded-[14px] bg-black/40 backdrop-blur">
+                <span className="relative h-16 w-16 shrink-0 overflow-hidden rounded-[17px] border border-white/15 bg-black/40 shadow-[0_12px_32px_rgba(0,0,0,0.55)] backdrop-blur">
                   <Image
                     src={brand.logo_url}
                     alt=""
-                    width={56}
-                    height={56}
+                    width={64}
+                    height={64}
                     unoptimized
                     className="h-full w-full object-cover"
                   />
                 </span>
               )}
               {/* Name next to the logo — big and white (the H1). */}
-              <h1 className="font-display text-[clamp(2rem,5vw,3.2rem)] font-extrabold leading-[0.98] tracking-[-0.03em] text-white">
+              <h1 className="font-display text-[clamp(1.9rem,3.2vw,2.75rem)] font-bold leading-none tracking-[-0.025em] text-white">
                 {brand.name}
               </h1>
             </div>
-            {/* Short description below the name — smaller and muted. */}
+            {/* Short description — normal sentence case, muted, tight measure. */}
             {brand.short_description && (
-              <p className="mt-3 text-[12px] font-bold uppercase leading-relaxed tracking-[0.12em] text-white/70">
+              <p className="max-w-[58ch] text-pretty text-[15px] leading-[1.55] text-white/75">
                 {brand.short_description}
               </p>
             )}
-            <div className="mt-4 flex flex-wrap items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-2">
               {startingChip && (
-                <Chip>
-                  {t("from")} {startingChip}
-                </Chip>
+                <span className="border-border-2 inline-flex items-baseline gap-2 rounded-full border bg-black/50 px-3.5 py-2 backdrop-blur">
+                  <span className="text-tx-mute text-[12px]">{t("from")}</span>
+                  <span className="font-mono text-[14px] font-bold text-white">{startingChip}</span>
+                </span>
               )}
               {/* Real rating at the decision point — renders only when there
                   are genuine reviews (count > 0), never fabricated. */}

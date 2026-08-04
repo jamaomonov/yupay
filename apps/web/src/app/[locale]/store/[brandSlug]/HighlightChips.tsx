@@ -1,10 +1,9 @@
-import { Check } from "lucide-react";
-
 /**
  * Localized value-prop chips shown in the brand hero (e.g. Steam's
- * "0% комиссии", "Оплата в сумах"). Renders nothing when `items` is empty —
- * callers pass `brand.highlights ?? []` since older/older-prerendering API
- * responses may omit the field entirely.
+ * "0% комиссии", "Оплата в сумах"). A small lime dot leads each label — the
+ * hero-banner style from the design reference. Renders nothing when `items`
+ * is empty — callers pass `brand.highlights ?? []` since older/older-
+ * prerendering API responses may omit the field entirely.
  */
 export function HighlightChips({ items }: { items: string[] }) {
   if (items.length === 0) return null;
@@ -13,9 +12,9 @@ export function HighlightChips({ items }: { items: string[] }) {
       {items.map((h) => (
         <span
           key={h}
-          className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/40 px-3 py-1.5 text-[12px] font-semibold text-white backdrop-blur"
+          className="border-border-2/70 inline-flex items-center gap-2 whitespace-nowrap rounded-full border bg-black/45 px-3.5 py-2 text-[13px] text-white/85 backdrop-blur"
         >
-          <Check size={13} className="text-primary shrink-0" />
+          <span className="bg-primary size-[5px] shrink-0 rounded-full" aria-hidden="true" />
           {h}
         </span>
       ))}
