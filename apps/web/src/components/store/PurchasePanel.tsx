@@ -276,9 +276,6 @@ function VariableAmountCard({
   const PRESETS = [5, 10, 20, 30, 50, 100].filter((a) => a >= min && a <= max);
   const HIT = 10;
   const sliderVal = Math.min(max, Math.max(min, parsed ?? min));
-  // The custom card is highlighted only when the amount isn't one of the presets
-  // (otherwise the matching preset is the highlighted one — never both).
-  const customActive = parsed !== null && !PRESETS.includes(parsed);
   const pick = (amount: number) => {
     onFocus();
     onChange(String(amount));
@@ -299,13 +296,10 @@ function VariableAmountCard({
         <p className="text-tx-mute mt-1 text-[13px]">{t("amountSubtitle")}</p>
       </div>
 
-      {/* custom amount first — accented only when it's the selected input */}
+      {/* custom amount first — stays neutral; the selected preset (or nothing)
+          carries the lime accent, never this block */}
       <div className="p-5 pb-0">
-        <div
-          className={`rounded-[16px] border p-5 transition ${
-            customActive ? "border-primary bg-primary/[0.04]" : "border-border bg-card"
-          }`}
-        >
+        <div className="border-border bg-card rounded-[16px] border p-5">
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {/* left: label + input + slider */}
             <div className="lg:border-border/70 lg:border-r lg:pr-6">
