@@ -378,9 +378,11 @@ function VariableAmountCard({
         </div>
       </div>
 
-      {/* quick-pick preset grid */}
+      {/* quick-pick preset grid — hidden on phones (below sm) so the custom
+          amount input + slider is the single, uncluttered way to choose; the
+          presets return as a convenience on wider screens. */}
       {PRESETS.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-3">
+        <div className="hidden gap-3 p-5 sm:grid sm:grid-cols-3">
           {PRESETS.map((amount) => {
             const active = parsed === amount;
             return (
@@ -471,6 +473,38 @@ export function PurchasePanel({
   } | null>(null);
   // The mobile sticky pay bar scrolls here when the form isn't complete yet.
   const asideRef = useRef<HTMLElement>(null);
+
+  // Hide the mobile pay bar whenever the real order form (the aside) or the
+  // page footer is on screen: the bar is a shortcut to a CTA that's scrolled
+  // away, so it should never duplicate the visible one — nor sit on top of the
+  // footer at the end of the page (the reported overlap).
+  const [barHidden, setBarHidden] = useState(false);
+  useEffect(() => {
+    // No observer (jsdom/old browsers) → leave the bar always visible.
+    if (typeof IntersectionObserver === "undefined") return;
+    const footer = document.querySelector("footer");
+    const targets: Element[] = [];
+    if (asideRef.current) targets.push(asideRef.current);
+    if (footer) targets.push(footer);
+    if (targets.length === 0) return;
+    const visible = new Set<Element>();
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) visible.add(e.target);
+          else visible.delete(e.target);
+        }
+        setBarHidden(visible.size > 0);
+      },
+      { threshold: 0 },
+    );
+    targets.forEach((el) => {
+      io.observe(el);
+    });
+    return () => {
+      io.disconnect();
+    };
+  }, []);
 
   // Load provider availability once on mount so the method grid below can
   // hide admin-disabled providers and grey out ones under maintenance before
@@ -754,7 +788,7 @@ export function PurchasePanel({
     <>
       <div className="grid grid-cols-1 gap-8 pb-24 lg:grid-cols-[1.5fr_1fr] lg:pb-0">
         {/* selection + fields */}
-        <div>
+        <div className="lg:col-start-1 lg:row-start-1">
           {/* Variable products (Steam) render their own titled "Сумма пополнения"
               card, so the section heading is only for the fixed-denomination grid. */}
           {!primaryIsVariable && (
@@ -834,14 +868,17 @@ export function PurchasePanel({
               </div>
             );
           })}
-          {/* How-to / about / FAQ live in the left column so the sticky order
-              sidebar (right) scrolls alongside them instead of pinning against
-              empty space. */}
-          {children}
         </div>
 
-        {/* summary + payment + pay */}
-        <aside ref={asideRef} className="scroll-mt-[88px] lg:sticky lg:top-[100px] lg:self-start">
+        {/* summary + payment + pay — placed in DOM before the how-to/about/FAQ
+            so that on mobile (single-column auto-flow) the order form sits right
+            under the pick, not at the very end of the page. On desktop it's the
+            right column, spanning both rows so the sticky sidebar scrolls
+            alongside the secondary content below. */}
+        <aside
+          ref={asideRef}
+          className="scroll-mt-[88px] lg:sticky lg:top-[100px] lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start"
+        >
           <div className="border-border rounded-xl border bg-[linear-gradient(135deg,hsl(var(--card)),hsl(var(--bg)))] p-6">
             <h2 className="font-display text-lg font-bold tracking-[-0.02em]">
               {t("summaryTitle")}
@@ -1031,13 +1068,21 @@ export function PurchasePanel({
             </div>
           </div>
         </aside>
+
+        {/* How-to / about / FAQ — desktop: left column, row 2, so the sticky
+            aside scrolls alongside it; mobile: after the order form. */}
+        {children && <div className="lg:col-start-1 lg:row-start-2">{children}</div>}
       </div>
 
       {/* Mobile sticky checkout bar — brings the total + pay CTA up so the
           customer doesn't scroll past the whole form. Pays when ready, else
           jumps to the form (which shows what's still missing). */}
       {selSku && (
-        <div className="border-border bg-bg/95 fixed inset-x-0 bottom-0 z-40 border-t px-4 py-3 backdrop-blur-xl lg:hidden">
+        <div
+          className={`border-border bg-bg/95 fixed inset-x-0 bottom-0 z-40 border-t px-4 py-3 backdrop-blur-xl transition-transform duration-200 lg:hidden ${
+            barHidden ? "pointer-events-none translate-y-full" : "translate-y-0"
+          }`}
+        >
           <div className="mx-auto flex max-w-[1200px] items-center justify-between gap-4">
             <div className="min-w-0">
               <div className="text-tx-mute text-[11px] font-semibold">{t("summaryTitle")}</div>
