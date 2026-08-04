@@ -227,7 +227,9 @@
     "rateLabel": "Rate",
     "feeLabel": "Service fee",
     "limitLabel": "Per-order limit",
-    "close": "Close"
+    "close": "Close",
+    "readMore": "Read more",
+    "readLess": "Show less"
   },
   "how": {
     "eyebrow": "Flow",

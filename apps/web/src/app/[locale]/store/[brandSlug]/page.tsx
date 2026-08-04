@@ -11,6 +11,7 @@ import { HighlightChips } from "./HighlightChips";
 import type { Metadata } from "next";
 
 import { JsonLd } from "@/components/JsonLd";
+import { AboutText } from "@/components/store/AboutText";
 import { PurchasePanel } from "@/components/store/PurchasePanel";
 import { RatingChip } from "@/components/store/RatingChip";
 import { RatingSummary } from "@/components/store/RatingSummary";
@@ -319,7 +320,7 @@ export default async function BrandPage({
                   <h2 className="font-display text-xl font-bold tracking-[-0.02em]">
                     {t("aboutTitle")}
                   </h2>
-                  <p className="text-tx-mute mt-3 text-[15px] leading-relaxed">{about}</p>
+                  <AboutText text={about} moreLabel={t("readMore")} lessLabel={t("readLess")} />
                 </section>
               )}
               {faqs.length > 0 && (

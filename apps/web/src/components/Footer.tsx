@@ -48,7 +48,7 @@ export async function Footer({ locale }: { locale: string }) {
                   target="_blank"
                   rel="noreferrer noopener"
                   aria-label={label}
-                  className="opacity-90 transition hover:opacity-100"
+                  className="-m-1.5 flex h-11 w-11 items-center justify-center opacity-90 transition hover:opacity-100"
                 >
                   <Image
                     src={src}
@@ -137,10 +137,11 @@ export async function Footer({ locale }: { locale: string }) {
 function FooterCol({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h4 className="text-tx-dim mb-5 font-mono text-[11px] font-bold uppercase tracking-[0.16em]">
+      <h4 className="text-tx-dim mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.16em]">
         {title}
       </h4>
-      <div className="flex flex-col gap-3">{children}</div>
+      {/* Rows are 44px-tall tap targets (min-h), so no extra gap between them. */}
+      <div className="flex flex-col">{children}</div>
     </div>
   );
 }
@@ -154,23 +155,17 @@ function FooterLink({
   external?: boolean;
   children: React.ReactNode;
 }) {
+  const cls =
+    "text-foreground hover:text-primary flex min-h-[44px] items-center text-[13px] font-medium transition";
   if (external) {
     return (
-      <a
-        href={href}
-        target="_blank"
-        rel="noreferrer noopener"
-        className="text-foreground hover:text-primary text-[13px] font-medium transition"
-      >
+      <a href={href} target="_blank" rel="noreferrer noopener" className={cls}>
         {children}
       </a>
     );
   }
   return (
-    <Link
-      href={href}
-      className="text-foreground hover:text-primary text-[13px] font-medium transition"
-    >
+    <Link href={href} className={cls}>
       {children}
     </Link>
   );

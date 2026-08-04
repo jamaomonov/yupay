@@ -227,7 +227,9 @@
     "rateLabel": "Kurs",
     "feeLabel": "Xizmat komissiyasi",
     "limitLabel": "Operatsiya limiti",
-    "close": "Yopish"
+    "close": "Yopish",
+    "readMore": "Batafsil",
+    "readLess": "Yigʻish"
   },
   "how": {
     "eyebrow": "Flow",

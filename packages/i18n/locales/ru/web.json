@@ -227,7 +227,9 @@
     "rateLabel": "Курс",
     "feeLabel": "Комиссия сервиса",
     "limitLabel": "Лимит на операцию",
-    "close": "Закрыть"
+    "close": "Закрыть",
+    "readMore": "Читать далее",
+    "readLess": "Свернуть"
   },
   "how": {
     "eyebrow": "Flow",
