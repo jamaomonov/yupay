@@ -1,3 +1,4 @@
+import { MessageSquareText } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 
 import { Stars } from "./Stars";
@@ -12,7 +13,13 @@ export async function RatingSummary({ stats }: { stats: ReviewStats }) {
   const t = await getTranslations("web.brandReviews");
 
   if (stats.count === 0) {
-    return <p className="text-tx-mute text-[14px]">{t("empty")}</p>;
+    return (
+      <div className="border-border/70 flex flex-col items-center gap-2 rounded-2xl border border-dashed px-6 py-10 text-center">
+        <MessageSquareText className="text-tx-dim" size={26} aria-hidden="true" />
+        <p className="text-foreground text-[15px] font-semibold">{t("empty")}</p>
+        <p className="text-tx-mute max-w-[280px] text-[13px] leading-relaxed">{t("emptyHint")}</p>
+      </div>
+    );
   }
 
   const rows = [5, 4, 3, 2, 1].map((star) => ({

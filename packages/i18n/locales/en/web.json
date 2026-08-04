@@ -515,7 +515,8 @@
     "error": "Couldn't submit. Please try again.",
     "report": "Report",
     "reported": "Report sent",
-    "loadMore": "Show more"
+    "loadMore": "Show more",
+    "emptyHint": "Reviews will show up here after the first orders."
   },
   "orderResult": {
     "deliveredTitle": "Top-up successful",

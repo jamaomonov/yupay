@@ -515,7 +515,8 @@
     "error": "Yuborib boʻlmadi. Qayta urinib koʻring.",
     "report": "Shikoyat qilish",
     "reported": "Shikoyat yuborildi",
-    "loadMore": "Koʻproq koʻrsatish"
+    "loadMore": "Koʻproq koʻrsatish",
+    "emptyHint": "Sharhlar birinchi buyurtmalardan soʻng shu yerda paydo boʻladi."
   },
   "orderResult": {
     "deliveredTitle": "Toʻldirish muvaffaqiyatli",

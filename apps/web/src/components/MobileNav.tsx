@@ -41,6 +41,18 @@ export function MobileNav() {
     };
   }, [open]);
 
+  // Escape closes the sheet (keyboard users / attached hardware keyboards).
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   const close = () => {
     setOpen(false);
   };
@@ -71,7 +83,12 @@ export function MobileNav() {
       </button>
 
       {open && (
-        <div className="bg-bg fixed inset-x-0 top-[72px] z-50 h-[calc(100dvh-72px)] overflow-y-auto">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={t("openMenu")}
+          className="anim-sheet-in bg-bg fixed inset-x-0 top-[72px] z-50 h-[calc(100dvh-72px)] overflow-y-auto"
+        >
           <div className="mx-auto max-w-[1200px] px-6 py-5">
             <nav className="flex flex-col">
               <Link href={pathFor(current, "/store")} onClick={close} className={linkClass}>

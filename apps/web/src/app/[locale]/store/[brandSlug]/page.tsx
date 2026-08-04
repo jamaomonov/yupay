@@ -196,12 +196,18 @@ export default async function BrandPage({
       {faqLd && <JsonLd data={faqLd} />}
 
       <div className="mx-auto max-w-[1100px] px-6 sm:px-10">
-        <nav className="text-tx-dim mb-7 flex flex-wrap items-center gap-1.5 font-mono text-[11px]">
-          <Link href={pathFor(locale)} className="hover:text-tx-mute transition">
+        <nav className="text-tx-dim mb-6 flex flex-wrap items-center gap-x-1.5 font-mono text-[11px]">
+          <Link
+            href={pathFor(locale)}
+            className="hover:text-tx-mute inline-flex items-center py-1.5 transition"
+          >
             {t("breadcrumbHome")}
           </Link>
           <ChevronRight size={12} />
-          <Link href={pathFor(locale, "/store")} className="hover:text-tx-mute transition">
+          <Link
+            href={pathFor(locale, "/store")}
+            className="hover:text-tx-mute inline-flex items-center py-1.5 transition"
+          >
             {t("breadcrumbStore")}
           </Link>
           <ChevronRight size={12} />

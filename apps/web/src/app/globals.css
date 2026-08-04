@@ -178,6 +178,21 @@
   }
 }
 
+/* Mobile nav sheet entrance — a short fade + slide so the menu doesn't pop. */
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.anim-sheet-in {
+  animation: sheet-in 0.2s ease;
+}
+
 .anim-orbit-cw {
   animation: orbit-cw 34s linear infinite;
 }
