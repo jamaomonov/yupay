@@ -34,7 +34,14 @@ const OG_LOCALE: Record<string, string> = {
 /** Absolute URL for a locale + path. ru is the default locale → no prefix. */
 export function localeUrl(locale: string, path = ""): string {
   const base = locale === "ru" ? "" : `/${locale}`;
-  return `${SITE}${base}${path}`;
+  const url = `${SITE}${base}${path}`;
+  // The bare apex (ru home) must carry the canonical trailing slash so it
+  // matches how Google/Yandex normalise the root — `https://yupay.uz/`, not
+  // `https://yupay.uz`. This keeps the sitemap <loc> and the <link rel=canonical>
+  // identical to the URL search engines actually index. Every other path stays
+  // slash-less (Next.js `trailingSlash:false`), so sub-pages and the /en, /uz
+  // homes are unaffected.
+  return url === SITE ? `${SITE}/` : url;
 }
 
 /**
