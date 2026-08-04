@@ -75,7 +75,11 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    overflow-x: hidden;
+    /* `clip` (not `hidden`) contains horizontal overflow WITHOUT turning the
+       element into a scroll container — `overflow-x: hidden` forces `overflow-y`
+       to `auto`, which breaks viewport `position: sticky` (e.g. the checkout
+       order sidebar). `clip` keeps sticky working. */
+    overflow-x: clip;
   }
 
   ::selection {

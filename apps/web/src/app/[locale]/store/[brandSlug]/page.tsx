@@ -278,53 +278,61 @@ export default async function BrandPage({
           </div>
         </div>
 
-        {about && (
-          <div className="mt-10">
-            <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t("aboutTitle")}</h2>
-            <p className="text-tx-mute mt-3 max-w-[680px] text-[15px] leading-relaxed">{about}</p>
-          </div>
-        )}
-
-        <div className="mt-10">
+        {/* Pick sits right under the hero; the how-to / about / FAQ sections are
+            passed into the left column so the sticky order sidebar scrolls with
+            them — one aligned 2-column grid (see PurchasePanel). */}
+        <div className="mt-8">
           {products.length > 0 ? (
-            <PurchasePanel products={products} locale={locale} />
+            <PurchasePanel products={products} locale={locale}>
+              {brand.instructions && (
+                <section className="mt-14 scroll-mt-[88px]">
+                  <h2 className="font-display text-xl font-bold tracking-[-0.02em]">
+                    {t("instructionsTitle")}
+                  </h2>
+                  <div className="text-tx-mute mt-4 whitespace-pre-line text-[15px] leading-relaxed">
+                    {brand.instructions}
+                  </div>
+                </section>
+              )}
+              {about && (
+                <section className="mt-14 scroll-mt-[88px]">
+                  <h2 className="font-display text-xl font-bold tracking-[-0.02em]">
+                    {t("aboutTitle")}
+                  </h2>
+                  <p className="text-tx-mute mt-3 text-[15px] leading-relaxed">{about}</p>
+                </section>
+              )}
+              {faqs.length > 0 && (
+                <section className="mt-14 scroll-mt-[88px]">
+                  <h2 className="font-display text-xl font-bold tracking-[-0.02em]">
+                    {t("faqTitle")}
+                  </h2>
+                  <div className="border-border/70 mt-5 border-y">
+                    {faqs.map((f) => (
+                      <details
+                        key={f.id}
+                        className="border-border/70 group border-b last:border-b-0"
+                      >
+                        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-[15px] font-semibold [&::-webkit-details-marker]:hidden">
+                          {f.question}
+                          <ChevronRight
+                            size={16}
+                            className="text-tx-dim shrink-0 transition group-open:rotate-90"
+                          />
+                        </summary>
+                        <p className="text-tx-mute -mt-1 pb-4 pr-8 text-[15px] leading-relaxed">
+                          {f.answer}
+                        </p>
+                      </details>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </PurchasePanel>
           ) : (
             <p className="text-tx-mute">{t("empty")}</p>
           )}
         </div>
-
-        {brand.instructions && (
-          <section className="mt-16 scroll-mt-[88px]">
-            <h2 className="font-display text-xl font-bold tracking-[-0.02em]">
-              {t("instructionsTitle")}
-            </h2>
-            <div className="text-tx-mute mt-4 max-w-[760px] whitespace-pre-line text-[15px] leading-relaxed">
-              {brand.instructions}
-            </div>
-          </section>
-        )}
-
-        {faqs.length > 0 && (
-          <section className="mt-16 scroll-mt-[88px]">
-            <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t("faqTitle")}</h2>
-            <div className="border-border/70 mt-5 max-w-[760px] border-y">
-              {faqs.map((f) => (
-                <details key={f.id} className="border-border/70 group border-b last:border-b-0">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-[15px] font-semibold [&::-webkit-details-marker]:hidden">
-                    {f.question}
-                    <ChevronRight
-                      size={16}
-                      className="text-tx-dim shrink-0 transition group-open:rotate-90"
-                    />
-                  </summary>
-                  <p className="text-tx-mute -mt-1 pb-4 pr-8 text-[15px] leading-relaxed">
-                    {f.answer}
-                  </p>
-                </details>
-              ))}
-            </div>
-          </section>
-        )}
 
         <section id="reviews" className="mt-16 scroll-mt-[88px]">
           <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t2("title")}</h2>

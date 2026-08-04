@@ -5,7 +5,7 @@ import { ArrowUpRight, Check, Info, Loader2, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import type { FormField, ProductDetail, SkuOut } from "@/lib/catalog";
 
@@ -411,7 +411,17 @@ function VariableAmountCard({
   );
 }
 
-export function PurchasePanel({ products, locale }: { products: ProductDetail[]; locale: string }) {
+export function PurchasePanel({
+  products,
+  locale,
+  children,
+}: {
+  products: ProductDetail[];
+  locale: string;
+  /** Server-rendered sections (how-to, about, FAQ) placed in the left column
+   *  below the pick, so the sticky order sidebar scrolls alongside them. */
+  children?: ReactNode;
+}) {
   const t = useTranslations("web.store");
   const { user } = useAuth();
   // Anchor the default on a mid-tier pack, not the cheapest, and badge it as
@@ -811,6 +821,10 @@ export function PurchasePanel({ products, locale }: { products: ProductDetail[];
               </div>
             );
           })}
+          {/* How-to / about / FAQ live in the left column so the sticky order
+              sidebar (right) scrolls alongside them instead of pinning against
+              empty space. */}
+          {children}
         </div>
 
         {/* summary + payment + pay */}
