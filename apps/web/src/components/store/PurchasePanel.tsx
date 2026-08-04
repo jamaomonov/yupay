@@ -5,7 +5,9 @@ import { ArrowUpRight, Check, Info, Loader2, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+
+import { WhereToFindModal } from "./WhereToFindModal";
 
 import type { FormField, ProductDetail, SkuOut } from "@/lib/catalog";
 
@@ -86,6 +88,9 @@ function CheckablePlayerField({
 }) {
   const [state, setState] = useState<CheckState>(IDLE);
   const [helpOpen, setHelpOpen] = useState(false);
+  const closeHelp = useCallback(() => {
+    setHelpOpen(false);
+  }, []);
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     setState(IDLE);
@@ -178,10 +183,10 @@ function CheckablePlayerField({
             <button
               type="button"
               onClick={() => {
-                setHelpOpen((o) => !o);
+                setHelpOpen(true);
               }}
               aria-label={t("whereToFind")}
-              aria-expanded={helpOpen}
+              aria-haspopup="dialog"
               className="bg-muted text-tx-mute hover:text-primary hover:bg-primary/10 absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full transition"
             >
               <Info size={15} />
@@ -198,8 +203,14 @@ function CheckablePlayerField({
           {state.phase === "loading" ? t("checking") : t("check")}
         </button>
       </div>
-      {help && helpOpen && (
-        <p className="text-tx-dim mt-2 px-1 text-[13px] leading-relaxed">{help}</p>
+      {help && (
+        <WhereToFindModal
+          open={helpOpen}
+          title={t("whereToFind")}
+          body={help}
+          closeLabel={t("close")}
+          onClose={closeHelp}
+        />
       )}
       {done?.status === "error" && (
         <p className="text-tx-dim mt-2 px-1 text-[13px]">

@@ -226,7 +226,8 @@
     "amountOwn": "Oʻz summangiz, $",
     "rateLabel": "Kurs",
     "feeLabel": "Xizmat komissiyasi",
-    "limitLabel": "Operatsiya limiti"
+    "limitLabel": "Operatsiya limiti",
+    "close": "Yopish"
   },
   "how": {
     "eyebrow": "Flow",

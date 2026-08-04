@@ -226,7 +226,8 @@
     "amountOwn": "Своя сумма, $",
     "rateLabel": "Курс",
     "feeLabel": "Комиссия сервиса",
-    "limitLabel": "Лимит на операцию"
+    "limitLabel": "Лимит на операцию",
+    "close": "Закрыть"
   },
   "how": {
     "eyebrow": "Flow",

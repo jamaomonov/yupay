@@ -226,7 +226,8 @@
     "amountOwn": "Custom amount, $",
     "rateLabel": "Rate",
     "feeLabel": "Service fee",
-    "limitLabel": "Per-order limit"
+    "limitLabel": "Per-order limit",
+    "close": "Close"
   },
   "how": {
     "eyebrow": "Flow",
