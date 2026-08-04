@@ -74,6 +74,7 @@ function CheckablePlayerField({
   required,
   serverId,
   help,
+  placeholder,
   t,
 }: {
   productId: string;
@@ -84,8 +85,13 @@ function CheckablePlayerField({
   required: boolean;
   serverId: string | null;
   help: string | null;
+  placeholder: string;
   t: (key: string, values?: Record<string, string>) => string;
 }) {
+  // Pick the mobile keyboard from the field's pattern: a letter-bearing
+  // pattern (e.g. a Steam login `[A-Za-z0-9_-]`) needs the full text keyboard,
+  // while a digits-only id (a game player id) gets the numeric pad.
+  const inputMode = pattern && !/[A-Za-z]/.test(pattern) ? "numeric" : "text";
   const [state, setState] = useState<CheckState>(IDLE);
   const [helpOpen, setHelpOpen] = useState(false);
   const closeHelp = useCallback(() => {
@@ -169,11 +175,12 @@ function CheckablePlayerField({
           <input
             ref={inputRef}
             type="text"
-            inputMode="numeric"
+            inputMode={inputMode}
+            autoComplete="off"
             required={required}
             aria-required={required}
             value={value}
-            placeholder={t("playerIdPlaceholder")}
+            placeholder={placeholder}
             onChange={(e) => {
               onChange(e.target.value);
             }}
@@ -187,7 +194,7 @@ function CheckablePlayerField({
               }}
               aria-label={t("whereToFind")}
               aria-haspopup="dialog"
-              className="bg-muted text-tx-mute hover:text-primary hover:bg-primary/10 absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full transition"
+              className="bg-muted text-tx-mute hover:text-primary hover:bg-primary/10 absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full transition"
             >
               <Info size={15} />
             </button>
@@ -932,6 +939,7 @@ export function PurchasePanel({
                       required={f.required}
                       serverId={f.check.server_field ? (form[f.check.server_field] ?? null) : null}
                       help={f.help_text ? label(f.help_text) : null}
+                      placeholder={f.placeholder ? label(f.placeholder) : t("playerIdPlaceholder")}
                       t={t}
                     />
                   ) : (
@@ -1079,7 +1087,7 @@ export function PurchasePanel({
           jumps to the form (which shows what's still missing). */}
       {selSku && (
         <div
-          className={`border-border bg-bg/95 fixed inset-x-0 bottom-0 z-40 border-t px-4 py-3 backdrop-blur-xl transition-transform duration-200 lg:hidden ${
+          className={`border-border bg-bg/95 fixed inset-x-0 bottom-0 z-40 border-t px-4 pt-3 backdrop-blur-xl transition-transform duration-200 [padding-bottom:calc(0.75rem+env(safe-area-inset-bottom))] lg:hidden ${
             barHidden ? "pointer-events-none translate-y-full" : "translate-y-0"
           }`}
         >
