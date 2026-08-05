@@ -101,6 +101,10 @@ async def register_route(
     The account must be verified (``POST /auth/verify-email``) before it can be
     used to log in — see ``login_password``'s ``EmailUnverifiedError`` gate.
     """
+    # Per-IP throttle like login/forgot: registration sends a verification email
+    # to an arbitrary address, so without this it is an unbounded
+    # account-enumeration and verification-email-bomb relay.
+    await guard_ip(request, bucket="register")
     user = await register_user(
         db,
         email=body.email,
