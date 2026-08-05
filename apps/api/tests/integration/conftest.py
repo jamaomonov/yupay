@@ -82,9 +82,23 @@ async def _reset_realtime_redis() -> AsyncIterator[None]:
     redundant but harmless) makes every test start from — and leave — a clean
     singleton regardless of which fixtures it requests.
     """
+    import contextlib
+
     from yupay.core import redis as core_redis
 
     core_redis._client = None  # type: ignore[attr-defined]
+    # Flush leftover Redis DATA (the singleton reset only drops the client object).
+    # Per-IP guard counters, single-use token markers, and revocation blocklists
+    # would otherwise accumulate across the whole run from the shared test-client
+    # IP — e.g. the /register guard would trip mid-suite once enough tests have
+    # registered. Flushing per test keeps within-test rate-limit loops working
+    # (they still accumulate inside one test) while isolating tests from each other.
+    # Close the flush client immediately: ``integration_client`` resets the
+    # singleton on its own setup, which would otherwise orphan this client's
+    # connection — a leak that exhausts the pool and hangs the run mid-suite.
+    with contextlib.suppress(Exception):
+        await core_redis.get_redis().flushdb()
+        await core_redis.close_redis()
     yield
     await core_redis.close_redis()
 
