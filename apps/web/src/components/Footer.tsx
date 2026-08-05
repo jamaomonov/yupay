@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 
 import { Wordmark } from "./Wordmark";
 
+import { getBrands, type BrandSummary } from "@/lib/catalog";
 import { pathFor } from "@/lib/seo";
 
 /** Public social channels. Instagram handle yupay.app, Telegram channel
@@ -27,12 +28,20 @@ export async function Footer({ locale }: { locale: string }) {
   const t = await getTranslations("web.footer");
   const nav = await getTranslations("web.nav");
   const year = new Date().getFullYear();
+  // Site-wide links to the brand pages: gives the money pages the same footer
+  // reach the legal pages have, so internal authority isn't hoarded by /legal/*.
+  let brands: BrandSummary[] = [];
+  try {
+    brands = await getBrands(locale);
+  } catch {
+    // API down → skip the games column rather than break the footer.
+  }
 
   return (
     <footer className="border-border border-t pt-[72px]">
       <div className="mx-auto max-w-[1200px] px-6 pb-10 sm:px-10">
-        <div className="mb-14 grid grid-cols-2 gap-10 md:grid-cols-[2fr_1fr_1fr_1fr_1fr]">
-          <div className="col-span-2 md:col-span-1">
+        <div className="mb-14 grid grid-cols-2 gap-10 md:grid-cols-3 lg:grid-cols-[1.6fr_1fr_1fr_1fr_1fr_1fr]">
+          <div className="col-span-2 md:col-span-3 lg:col-span-1">
             <Wordmark />
             <p className="text-tx-mute mt-5 max-w-[300px] text-sm leading-relaxed">
               {t("tagline")}
@@ -63,10 +72,20 @@ export async function Footer({ locale }: { locale: string }) {
             </div>
           </div>
 
+          {brands.length > 0 && (
+            <FooterCol title={t("gamesTitle")}>
+              {brands.map((b) => (
+                <FooterLink key={b.slug} href={pathFor(locale, `/store/${b.slug}`)}>
+                  {b.name}
+                </FooterLink>
+              ))}
+            </FooterCol>
+          )}
+
           <FooterCol title={t("productTitle")}>
             <FooterLink href={pathFor(locale, "/store")}>{nav("store")}</FooterLink>
             <FooterLink href={pathFor(locale, "/store")}>{t("prices")}</FooterLink>
-            <FooterLink href="#how">{nav("how")}</FooterLink>
+            <FooterLink href={`${pathFor(locale)}#how`}>{nav("how")}</FooterLink>
           </FooterCol>
 
           <FooterCol title={t("helpTitle")}>

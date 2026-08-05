@@ -94,10 +94,10 @@ export function MobileNav() {
               <Link href={pathFor(current, "/store")} onClick={close} className={linkClass}>
                 {t("store")}
               </Link>
-              <a href="#how" onClick={close} className={linkClass}>
+              <a href={`${pathFor(current)}#how`} onClick={close} className={linkClass}>
                 {t("how")}
               </a>
-              <a href="#reviews" onClick={close} className={linkClass}>
+              <a href={`${pathFor(current)}#reviews`} onClick={close} className={linkClass}>
                 {t("reviews")}
               </a>
               <a

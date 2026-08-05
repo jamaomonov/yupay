@@ -31,13 +31,13 @@ export async function Header({ locale }: { locale: string }) {
             {t("store")}
           </Link>
           <a
-            href="#how"
+            href={`${pathFor(locale)}#how`}
             className="text-tx-mute hover:text-foreground text-sm font-medium transition"
           >
             {t("how")}
           </a>
           <a
-            href="#reviews"
+            href={`${pathFor(locale)}#reviews`}
             className="text-tx-mute hover:text-foreground text-sm font-medium transition"
           >
             {t("reviews")}

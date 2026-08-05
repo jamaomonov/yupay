@@ -361,7 +361,8 @@
     "careers": "Карьера",
     "copyright": "© {year} yupay",
     "disclaimer": "Не связано с Valve, Tencent, Riot или miHoYo.",
-    "madeBy": "Made by"
+    "madeBy": "Made by",
+    "gamesTitle": "Игры"
   },
   "legal": {
     "home": "Главная",
