@@ -95,7 +95,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-yupay_app}
       POSTGRES_DB: ${POSTGRES_DB:-yupay}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      # Bind to loopback only — a dev Postgres with default creds must not be
+      # reachable from the LAN. Use an SSH tunnel for remote access.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
@@ -110,7 +112,7 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
     healthcheck:
@@ -127,8 +129,8 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-yupay}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-yupay-dev-secret-change-me}
     ports:
-      - "${MINIO_PORT_API:-9000}:9000"
-      - "${MINIO_PORT_CONSOLE:-9001}:9001"
+      - "127.0.0.1:${MINIO_PORT_API:-9000}:9000"
+      - "127.0.0.1:${MINIO_PORT_CONSOLE:-9001}:9001"
     volumes:
       - minio-data:/data
 
@@ -136,14 +138,14 @@ services:
     image: mailhog/mailhog:latest
     restart: unless-stopped
     ports:
-      - "1025:1025"
-      - "8025:8025"
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
 
   adminer:
     image: adminer:5
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     depends_on:
       - postgres
 

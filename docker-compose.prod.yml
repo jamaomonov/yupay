@@ -209,7 +209,10 @@ services:
     command: ["-config.file=/etc/promtail/promtail-config.yml"]
     volumes:
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - /var/run/docker.sock:/var/run/docker.sock
+      # Read-only: promtail only enumerates containers. A writable docker.sock
+      # is host root — an RCE/supply-chain compromise of this image would
+      # otherwise escalate to full host takeover.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./infra/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
     depends_on: [loki]
 
