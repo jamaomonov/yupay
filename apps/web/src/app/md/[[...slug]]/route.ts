@@ -1,6 +1,6 @@
 import { LOCALES } from "@yupay/i18n";
 
-import { brandMarkdown, homeMarkdown, storeMarkdown } from "@/lib/markdown";
+import { brandMarkdown, homeMarkdown, howToMarkdown, storeMarkdown } from "@/lib/markdown";
 
 /**
  * Markdown content-negotiation endpoint. The middleware rewrites supported
@@ -44,6 +44,13 @@ export async function GET(
   const brand = rest.length === 2 && rest[0] === "store" ? rest[1] : undefined;
   if (brand !== undefined) {
     const body = await brandMarkdown(locale, brand);
+    return body ? md(body) : md("# 404\n\nСтраница не найдена.\n", 404);
+  }
+  // Brand "how to" guide
+  const guide =
+    rest.length === 3 && rest[0] === "store" && rest[2] === "how-to" ? rest[1] : undefined;
+  if (guide !== undefined) {
+    const body = await howToMarkdown(locale, guide);
     return body ? md(body) : md("# 404\n\nСтраница не найдена.\n", 404);
   }
   return md("# 404\n\nСтраница не найдена.\n", 404);

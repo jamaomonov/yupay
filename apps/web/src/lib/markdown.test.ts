@@ -18,6 +18,15 @@ vi.mock("./catalog", () => ({
   getProductDetail: () =>
     Promise.resolve({
       name: "Кошелёк Steam",
+      required_fields: [
+        {
+          key: "steam_login",
+          type: "text",
+          required: true,
+          label: { ru: "Логин Steam" },
+          help_text: { ru: "Откройте Steam и войдите." },
+        },
+      ],
       skus: [
         {
           variable_amount: true,
@@ -29,7 +38,7 @@ vi.mock("./catalog", () => ({
     }),
 }));
 
-import { brandMarkdown, homeMarkdown } from "./markdown";
+import { brandMarkdown, homeMarkdown, howToMarkdown } from "./markdown";
 
 test("home markdown lists brands as links under a heading", async () => {
   const out = await homeMarkdown("ru");
@@ -48,4 +57,13 @@ test("brand markdown carries description, highlights, prices and FAQ", async () 
   expect(out).not.toContain("300.000000");
   expect(out).toContain("## Частые вопросы");
   expect(out).toContain("### Есть ли комиссия?");
+});
+
+test("how-to markdown uses a guide title and step/price/faq sections", async () => {
+  const out = await howToMarkdown("ru", "steam");
+  expect(out).not.toBeNull();
+  expect(out).toContain("# Как пополнить Steam в Узбекистане");
+  expect(out).toContain("## Пошаговая инструкция");
+  expect(out).toContain("## Цены и номиналы");
+  expect(out).toContain("## Частые вопросы");
 });

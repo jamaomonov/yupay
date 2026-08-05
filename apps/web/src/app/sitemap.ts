@@ -37,6 +37,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.8,
       changeFrequency: "weekly" as const,
     })),
+    // Per-brand "how to top up" guide pages (capture the how-to / where-to-find
+    // queries the money pages don't answer head-on).
+    ...slugs.map((slug) => ({
+      path: `/store/${slug}/how-to`,
+      priority: 0.6,
+      changeFrequency: "monthly" as const,
+    })),
     ...["terms", "privacy", "refunds", "imprint"].map((doc) => ({
       path: `/legal/${doc}`,
       priority: 0.3,

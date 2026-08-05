@@ -319,6 +319,13 @@ export default async function BrandPage({
                   <div className="text-tx-mute mt-4 whitespace-pre-line text-[15px] leading-relaxed">
                     {brand.instructions}
                   </div>
+                  <Link
+                    href={pathFor(locale, `/store/${brand.slug}/how-to`)}
+                    className="text-primary mt-4 inline-flex items-center gap-1 text-[14px] font-semibold hover:underline"
+                  >
+                    {t("howToLink")}
+                    <ChevronRight size={15} />
+                  </Link>
                 </section>
               )}
               {about && (

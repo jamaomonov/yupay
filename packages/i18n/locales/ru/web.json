@@ -229,7 +229,15 @@
     "limitLabel": "Лимит на операцию",
     "close": "Закрыть",
     "readMore": "Читать далее",
-    "readLess": "Свернуть"
+    "readLess": "Свернуть",
+    "howToTitle": "Как пополнить {name} в Узбекистане",
+    "howToMetaTitle": "Как пополнить {name} в Узбекистане за сумы — YuPay",
+    "howToMetaDescription": "Пошаговая инструкция: как пополнить {name} в Узбекистане за сумы по игровому ID, где найти ID и сколько это стоит.",
+    "howToStepsTitle": "Пошаговая инструкция",
+    "pricesTitle": "Цены и номиналы",
+    "guideCtaButton": "Пополнить {name}",
+    "breadcrumbHowTo": "Как пополнить",
+    "howToLink": "Как пополнить и где найти ID"
   },
   "how": {
     "eyebrow": "Flow",

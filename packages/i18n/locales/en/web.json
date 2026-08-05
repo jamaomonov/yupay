@@ -229,7 +229,15 @@
     "limitLabel": "Per-order limit",
     "close": "Close",
     "readMore": "Read more",
-    "readLess": "Show less"
+    "readLess": "Show less",
+    "howToTitle": "How to top up {name} in Uzbekistan",
+    "howToMetaTitle": "How to top up {name} in Uzbekistan in sum — YuPay",
+    "howToMetaDescription": "Step-by-step: how to top up {name} in Uzbekistan in sum by player ID, where to find your ID and how much it costs.",
+    "howToStepsTitle": "Step by step",
+    "pricesTitle": "Prices and denominations",
+    "guideCtaButton": "Top up {name}",
+    "breadcrumbHowTo": "How to top up",
+    "howToLink": "How to top up and where to find your ID"
   },
   "how": {
     "eyebrow": "Flow",

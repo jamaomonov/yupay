@@ -11,7 +11,9 @@ const intlMiddleware = createMiddleware(routing);
  */
 function supportsMarkdown(pathname: string): boolean {
   const p = pathname.replace(/^\/(ru|en|uz)(?=\/|$)/, "") || "/";
-  return p === "/" || p === "/store" || /^\/store\/[^/]+$/.test(p);
+  return (
+    p === "/" || p === "/store" || /^\/store\/[^/]+$/.test(p) || /^\/store\/[^/]+\/how-to$/.test(p)
+  );
 }
 
 export default function middleware(req: NextRequest): NextResponse {
