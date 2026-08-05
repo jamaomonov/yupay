@@ -9,31 +9,43 @@
   "refresh": "30s",
   "time": { "from": "now-3h", "to": "now" },
   "tags": ["yupay", "api"],
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROM",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "prometheus" },
+        "hide": 2
+      }
+    ]
+  },
   "panels": [
     {
       "type": "stat",
       "title": "Requests / sec (5m avg)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
       "id": 1,
       "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
       "targets": [
-        {
-          "expr": "sum(rate(http_requests_total{job=\"api\"}[5m]))",
-          "legendFormat": "rps"
-        }
+        { "expr": "sum(rate(http_requests_total{job=\"api\"}[5m]))", "legendFormat": "rps" }
       ],
+      "options": { "colorMode": "value", "graphMode": "area" },
       "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 2 } }
     },
     {
       "type": "stat",
       "title": "Error rate (5xx, 5m)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
       "id": 2,
       "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
       "targets": [
         {
-          "expr": "sum(rate(http_requests_total{job=\"api\",status_code=~\"5..\"}[5m])) / sum(rate(http_requests_total{job=\"api\"}[5m]))",
+          "expr": "sum(rate(http_requests_total{job=\"api\",status=\"5xx\"}[5m])) / clamp_min(sum(rate(http_requests_total{job=\"api\"}[5m])), 0.001)",
           "legendFormat": "err"
         }
       ],
+      "options": { "colorMode": "background", "graphMode": "area" },
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
@@ -52,6 +64,7 @@
     {
       "type": "stat",
       "title": "p95 latency (5m)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
       "id": 3,
       "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
       "targets": [
@@ -60,6 +73,7 @@
           "legendFormat": "p95"
         }
       ],
+      "options": { "colorMode": "value", "graphMode": "area" },
       "fieldConfig": {
         "defaults": {
           "unit": "s",
@@ -78,6 +92,7 @@
     {
       "type": "stat",
       "title": "p99 latency (5m)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
       "id": 4,
       "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
       "targets": [
@@ -86,24 +101,49 @@
           "legendFormat": "p99"
         }
       ],
+      "options": { "colorMode": "value", "graphMode": "area" },
       "fieldConfig": { "defaults": { "unit": "s", "decimals": 3 } }
     },
     {
       "type": "timeseries",
       "title": "Requests / sec by status class",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
       "id": 5,
       "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
       "targets": [
         {
-          "expr": "sum by (status_code) (rate(http_requests_total{job=\"api\"}[1m]))",
-          "legendFormat": "{{status_code}}"
+          "expr": "sum by (status) (rate(http_requests_total{job=\"api\"}[1m]))",
+          "legendFormat": "{{status}}"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "reqps" } }
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "line", "fillOpacity": 25, "stacking": { "mode": "normal" } }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "5xx" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "4xx" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "2xx" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }]
+          }
+        ]
+      }
     },
     {
       "type": "timeseries",
       "title": "Latency percentiles",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
       "id": 6,
       "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
       "targets": [
@@ -120,43 +160,67 @@
           "legendFormat": "p99"
         }
       ],
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "fieldConfig": { "defaults": { "unit": "s" } }
     },
     {
       "type": "timeseries",
-      "title": "Top 10 routes by RPS",
+      "title": "Top 10 routes by RPS (excl. probes/metrics)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
       "id": 7,
-      "gridPos": { "x": 0, "y": 12, "w": 24, "h": 8 },
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
       "targets": [
         {
-          "expr": "topk(10, sum by (handler) (rate(http_requests_total{job=\"api\"}[5m])))",
+          "expr": "topk(10, sum by (handler) (rate(http_requests_total{job=\"api\",handler!~\"/metrics|/healthz|/readyz|none\"}[5m])))",
           "legendFormat": "{{handler}}"
         }
       ],
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean"] } },
       "fieldConfig": { "defaults": { "unit": "reqps" } }
     },
     {
       "type": "timeseries",
-      "title": "Dramatiq queue depth",
-      "id": 8,
-      "gridPos": { "x": 0, "y": 20, "w": 12, "h": 6 },
+      "title": "Error responses by route (4xx / 5xx)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
+      "id": 10,
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
       "targets": [
         {
-          "expr": "redis_list_length{key=~\"dramatiq:.*\"}",
-          "legendFormat": "{{key}}"
+          "expr": "topk(10, sum by (handler, status) (rate(http_requests_total{job=\"api\",status=~\"4xx|5xx\"}[5m])))",
+          "legendFormat": "{{status}} {{handler}}"
         }
-      ]
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] }
+      },
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Redis — keys per DB (broker db1 / cache db0)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
+      "id": 8,
+      "gridPos": { "x": 0, "y": 20, "w": 8, "h": 6 },
+      "targets": [{ "expr": "redis_db_keys", "legendFormat": "{{db}}" }],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Redis memory used",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
+      "id": 11,
+      "gridPos": { "x": 8, "y": 20, "w": 8, "h": 6 },
+      "targets": [{ "expr": "redis_memory_used_bytes", "legendFormat": "used" }],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
     },
     {
       "type": "stat",
       "title": "API up?",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
       "id": 9,
-      "gridPos": { "x": 12, "y": 20, "w": 12, "h": 6 },
+      "gridPos": { "x": 16, "y": 20, "w": 8, "h": 6 },
       "targets": [{ "expr": "up{job=\"api\"}", "legendFormat": "up" }],
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none"
-      },
+      "options": { "colorMode": "background", "graphMode": "none" },
       "fieldConfig": {
         "defaults": {
           "mappings": [

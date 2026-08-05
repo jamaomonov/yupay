@@ -1,11 +1,27 @@
 apiVersion: 1
+
+# Stable UIDs so the versioned dashboards can bind to these datasources by uid.
+# Changing a *previously provisioned* datasource's uid in place fails Grafana's
+# provisioner ("data source not found") and crash-loops the whole service, so
+# the old name-matched entries are deleted first and recreated with a pinned uid.
+deleteDatasources:
+  - name: Prometheus
+    orgId: 1
+  - name: Loki
+    orgId: 1
+
 datasources:
   - name: Prometheus
+    uid: prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090
     isDefault: true
+    jsonData:
+      timeInterval: "15s" # matches prometheus scrape_interval — correct rate() steps
+
   - name: Loki
+    uid: loki
     type: loki
     access: proxy
     url: http://loki:3100

@@ -9,10 +9,22 @@
   "refresh": "30s",
   "time": { "from": "now-6h", "to": "now" },
   "tags": ["yupay", "infra"],
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROM",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "prometheus" },
+        "hide": 2
+      }
+    ]
+  },
   "panels": [
     {
       "type": "stat",
       "title": "Host CPU (%)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
       "id": 1,
       "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
       "targets": [
@@ -21,6 +33,7 @@
           "legendFormat": "cpu"
         }
       ],
+      "options": { "colorMode": "background", "graphMode": "area" },
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
@@ -39,6 +52,7 @@
     {
       "type": "stat",
       "title": "Host memory used (%)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
       "id": 2,
       "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
       "targets": [
@@ -47,6 +61,7 @@
           "legendFormat": "mem"
         }
       ],
+      "options": { "colorMode": "background", "graphMode": "area" },
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
@@ -65,6 +80,7 @@
     {
       "type": "stat",
       "title": "Disk used (root, %)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
       "id": 3,
       "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
       "targets": [
@@ -73,6 +89,7 @@
           "legendFormat": "disk"
         }
       ],
+      "options": { "colorMode": "background", "graphMode": "none" },
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
@@ -81,7 +98,7 @@
             "mode": "absolute",
             "steps": [
               { "color": "green", "value": null },
-              { "color": "orange", "value": 70 },
+              { "color": "orange", "value": 75 },
               { "color": "red", "value": 90 }
             ]
           }
@@ -91,40 +108,51 @@
     {
       "type": "stat",
       "title": "Load avg (1m)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
       "id": 4,
       "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
       "targets": [{ "expr": "node_load1", "legendFormat": "load1" }],
+      "options": { "colorMode": "value", "graphMode": "area" },
       "fieldConfig": { "defaults": { "decimals": 2 } }
     },
     {
       "type": "timeseries",
-      "title": "Per-container memory (cAdvisor)",
+      "title": "Per-container memory (YuPay)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
       "id": 5,
       "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
       "targets": [
         {
-          "expr": "sum by (name) (container_memory_usage_bytes{name!=\"\"})",
+          "expr": "sum by (name) (container_memory_usage_bytes{name=~\"yupay-prod-.*\"})",
           "legendFormat": "{{name}}"
         }
       ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] }
+      },
       "fieldConfig": { "defaults": { "unit": "bytes" } }
     },
     {
       "type": "timeseries",
-      "title": "Per-container CPU (cAdvisor)",
+      "title": "Per-container CPU % (YuPay)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
       "id": 6,
       "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
       "targets": [
         {
-          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name!=\"\"}[2m])) * 100",
+          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name=~\"yupay-prod-.*\"}[2m])) * 100",
           "legendFormat": "{{name}}"
         }
       ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] }
+      },
       "fieldConfig": { "defaults": { "unit": "percent" } }
     },
     {
       "type": "timeseries",
       "title": "Network I/O (host)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
       "id": 7,
       "gridPos": { "x": 0, "y": 12, "w": 12, "h": 6 },
       "targets": [
@@ -141,37 +169,63 @@
     },
     {
       "type": "timeseries",
-      "title": "Postgres connections",
+      "title": "Postgres connections by state (max 100)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
       "id": 8,
       "gridPos": { "x": 12, "y": 12, "w": 12, "h": 6 },
       "targets": [
         {
-          "expr": "pg_stat_database_numbackends{datname=\"yupay\"}",
-          "legendFormat": "connections"
-        }
-      ]
+          "expr": "sum by (state) (pg_stat_activity_count{state!=\"\"})",
+          "legendFormat": "{{state}}"
+        },
+        { "expr": "max(pg_settings_max_connections)", "legendFormat": "max_connections" }
+      ],
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["last"] } },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "max_connections" },
+            "properties": [
+              { "id": "custom.drawStyle", "value": "line" },
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [8, 6] } },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
+            ]
+          }
+        ]
+      }
     },
     {
       "type": "table",
-      "title": "Service uptime",
+      "title": "Service uptime (scrape targets)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROM}" },
       "id": 9,
       "gridPos": { "x": 0, "y": 18, "w": 24, "h": 6 },
-      "targets": [
-        {
-          "expr": "up",
-          "format": "table",
-          "instant": true
-        }
-      ],
+      "targets": [{ "expr": "up", "format": "table", "instant": true }],
       "transformations": [
         {
           "id": "organize",
           "options": {
-            "excludeByName": { "Time": true, "__name__": true, "instance": false },
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "instance": true,
+              "service": true,
+              "env": true
+            },
             "renameByName": { "job": "Service", "Value": "Up?" }
           }
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "text": "DOWN", "color": "red" } }, "type": "value" },
+            { "options": { "1": { "text": "UP", "color": "green" } }, "type": "value" }
+          ],
+          "custom": { "cellOptions": { "type": "color-background" }, "align": "left" }
+        }
+      }
     }
   ]
 }
