@@ -22,7 +22,9 @@ const YM_SNIPPET = `(function(m,e,t,r,i,k,a){
     for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
     k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
 })(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=111054393', 'ym');
-ym(111054393, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true});`;
+var _ymUrl = location.href, _ymOrder = location.pathname.indexOf('/orders/') !== -1;
+try { var _ymU = new URL(_ymUrl); _ymU.searchParams.delete('access'); _ymU.searchParams.delete('email'); _ymUrl = _ymU.toString(); } catch (e) {}
+ym(111054393, 'init', {ssr:true, webvisor:!_ymOrder, clickmap:true, ecommerce:"dataLayer", referrer: document.referrer, url: _ymUrl, accurateTrackBounce:true, trackLinks:true});`;
 
 export function YandexMetrika() {
   if (process.env.NODE_ENV !== "production") {

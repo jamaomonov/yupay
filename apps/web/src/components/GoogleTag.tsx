@@ -33,7 +33,9 @@ export function GoogleTag() {
           __html: `window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
-gtag('config', '${GA_ID}');`,
+var _gaLoc = location.href;
+try { var _gaU = new URL(_gaLoc); _gaU.searchParams.delete('access'); _gaU.searchParams.delete('email'); _gaLoc = _gaU.toString(); } catch (e) {}
+gtag('config', '${GA_ID}', { page_location: _gaLoc });`,
         }}
       />
       <Suspense fallback={null}>

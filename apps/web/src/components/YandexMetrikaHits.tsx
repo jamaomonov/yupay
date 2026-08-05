@@ -3,6 +3,8 @@
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
 
+import { scrubSearchParams } from "@/lib/scrubUrl";
+
 /**
  * Sends a Yandex.Metrika `hit` on client-side (SPA) navigations. The inline
  * counter snippet in the SSR HTML reports the first pageview via `init`; this
@@ -30,7 +32,8 @@ export function YandexMetrikaHits() {
       isFirst.current = false;
       return;
     }
-    const qs = searchParams.toString();
+    // Never report the magic-link access token / email to Metrika (see H1).
+    const qs = scrubSearchParams(searchParams.toString());
     const url = `${window.location.origin}${pathname}${qs ? `?${qs}` : ""}`;
     window.ym?.(YM_ID, "hit", url);
   }, [pathname, searchParams]);

@@ -3,6 +3,8 @@
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
 
+import { scrubSearchParams, scrubUrl } from "@/lib/scrubUrl";
+
 /**
  * Sends a GA4 `page_view` on client-side (SPA) navigations. The inline gtag
  * `config` in the SSR HTML reports the first pageview; this covers every route
@@ -30,11 +32,12 @@ export function GoogleTagPageViews() {
       isFirst.current = false;
       return;
     }
-    const qs = searchParams.toString();
+    // Never report the magic-link access token / email to GA (see H1).
+    const qs = scrubSearchParams(searchParams.toString());
     const path = `${pathname}${qs ? `?${qs}` : ""}`;
     window.gtag?.("event", "page_view", {
       page_path: path,
-      page_location: window.location.href,
+      page_location: scrubUrl(window.location.href),
       page_title: document.title,
       send_to: GA_ID,
     });
