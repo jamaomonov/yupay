@@ -46,7 +46,7 @@ admin_router = APIRouter(
 )
 
 
-async def _resolve_actor(request: Request, db: AsyncSession) -> Actor:
+async def _resolve_actor(request: Request, db: AsyncSession, *, order_id: str) -> Actor:
     auth = request.headers.get("Authorization") or ""
     scheme, _, token = auth.partition(" ")
     if scheme == "Bearer":
@@ -55,7 +55,13 @@ async def _resolve_actor(request: Request, db: AsyncSession) -> Actor:
         user = await resolve_user(db, token)
         return Actor(user_id=user.id, email=None)
     if scheme == "Guest":
-        claims = authjwt.verify(token, expected_kind="guest")
+        # Codes are bearer instruments, so a guest must present the order-scoped
+        # ``guest_order`` token that was mailed to the order's address — NOT the
+        # freely-mintable ``guest`` checkout token (which anyone who knows the
+        # email could mint). The token names the exact order it unlocks.
+        claims = authjwt.verify(token, expected_kind="guest_order")
+        if claims.order_id != order_id:
+            raise UnauthorizedError("guest token not valid for this order")
         # Header, not query param: a query param lands in Caddy / proxy
         # access logs and browser history, a header doesn't.
         email = request.headers.get("X-Guest-Email")
@@ -134,7 +140,7 @@ async def list_order_deliveries(
     request: Request,
     db: Annotated[AsyncSession, Depends(db_session)],
 ) -> DeliveryListOut:
-    actor = await _resolve_actor(request, db)
+    actor = await _resolve_actor(request, db, order_id=order_id)
     await _ensure_order_owner(db, actor=actor, order_id=order_id)
     rows = await svc.list_deliveries_for_order(db, order_id=order_id)
     return DeliveryListOut(items=[_to_customer_delivery_out(r) for r in rows])
