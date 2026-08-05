@@ -314,6 +314,14 @@ def order_delivered_email(
     if has_credited:
         body += _credited_block(credited or [])
     body += _button(href=link, label="Открыть заказ")
+    # Soft review ask: the order page already surfaces the review form, so this
+    # just nudges the buyer there — real reviews are the strongest trust signal.
+    review_href = html.escape(link, quote=True)
+    body += _paragraph(
+        f'Всё прошло гладко? <a href="{review_href}" target="_blank" '
+        f'style="color:{_LINK};text-decoration:underline;">Оцените заказ</a> — '
+        "ваш отзыв помогает другим игрокам выбрать YuPay."
+    )
     if not (has_codes or has_credited):
         body += _fallback_link(link)
 
@@ -331,6 +339,7 @@ def order_delivered_email(
         f"Заказ #{short} выполнен — YuPay\n\n"
         + "\n".join(text_lines)
         + f"\n\nОткрыть заказ: {link}\n"
+        + "Всё прошло гладко? Оцените заказ на его странице — это помогает другим игрокам.\n"
     )
 
     preheader = (

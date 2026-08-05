@@ -109,6 +109,15 @@ export default async function LocaleLayout({
     name: "YuPay",
     url: SITE,
     logo: `${SITE}/logo/icon.svg`,
+    description:
+      "Сервис пополнения игровых валют, подписок, лицензий, гифт-карт и цифровых кодов в Узбекистане, России и СНГ за сумы, по игровому ID или логину.",
+    // Entity-resolution signals: where we operate, what we accept, and in which
+    // languages — so Google and AI assistants can recognise YuPay as a
+    // legitimate, well-scoped service (trust / CITE).
+    areaServed: ["UZ", "RU", "KZ"],
+    knowsLanguage: ["ru", "uz", "en"],
+    currenciesAccepted: "UZS",
+    paymentAccepted: "Uzcard, Humo, Click, Payme, Uzum",
     sameAs: [
       "https://instagram.com/yupay.app",
       "https://t.me/yupay_channel",
