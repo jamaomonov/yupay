@@ -13,7 +13,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ApiError, apiGet, apiPost, clearTokens, getAccessToken, setTokens } from "./api";
 import {
-  isInsideTelegram,
+  launchedFromTelegram,
   maximiseTelegramViewport,
   readyTelegram,
   waitForInitData,
@@ -56,6 +56,22 @@ export interface BootstrapResult {
   error?: ApiError | Error;
 }
 
+/** What the boot gate should do given the auth outcome and launch context. */
+export type BootDecision = "ready" | "retry" | "anonymous";
+
+/**
+ * The core auth guarantee for the mini app.
+ *
+ * A user who opened the app from a Telegram client must NEVER land on it signed
+ * out — on a cold-launch race the session simply isn't ready yet, so the gate
+ * keeps retrying behind the splash instead of releasing an anonymous app (the
+ * reported bug). Only a plain browser (local dev) may fall back to anonymous.
+ */
+export function decideBoot(authed: boolean, inTelegram: boolean): BootDecision {
+  if (authed) return "ready";
+  return inTelegram ? "retry" : "anonymous";
+}
+
 /**
  * Bootstrap auth on app mount.
  *
@@ -80,10 +96,17 @@ export async function bootstrapAuth({
   if (typeof window === "undefined" || !window.Telegram) {
     return { status: "no-telegram" };
   }
-  const initData = await waitForInitData(timeoutMs ?? 2_000);
+  // Wait generously for the client to deliver initData — cold launches (esp.
+  // Android) populate it well after first paint. When we know we were opened
+  // from Telegram (launch params in the URL), wait the full window; a plain
+  // browser gets a short wait so dev preview isn't sluggish.
+  const fromTelegram = launchedFromTelegram();
+  const wait = timeoutMs ?? (fromTelegram ? 6_000 : 1_500);
+  const initData = await waitForInitData(wait);
   if (!initData) {
-    // Either not running inside Telegram, or the client never delivered initData.
-    return { status: isInsideTelegram() ? "no-init-data" : "no-telegram" };
+    // Opened from Telegram but the client never delivered initData in time →
+    // ``no-init-data`` (retryable by the gate). Otherwise a plain browser.
+    return { status: fromTelegram ? "no-init-data" : "no-telegram" };
   }
   try {
     await loginWithTelegramInitData(initData);

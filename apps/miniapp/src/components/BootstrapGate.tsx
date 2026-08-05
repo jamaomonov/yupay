@@ -16,9 +16,10 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 
 import { SplashWordmark } from "@/components/SplashWordmark";
 import { ApiError, apiGet, getAccessToken } from "@/lib/api";
-import { bootstrapAuth } from "@/lib/auth";
+import { bootstrapAuth, decideBoot } from "@/lib/auth";
 import { brandsQueryOptions, categoriesQueryOptions } from "@/lib/catalog";
 import { useT, type MessageKey } from "@/lib/i18n";
+import { launchedFromTelegram } from "@/lib/telegram";
 
 type Phase = "booting" | "ready" | "error";
 
@@ -43,8 +44,17 @@ const MIN_SPLASH_MS = 650;
  */
 const SPLASH_ANIM_MS = 1_850;
 
-/** Hard cap on the whole bootstrap. We always release after this. */
-const HARD_BOOT_TIMEOUT_MS = 8_000;
+/** Hard cap on a single bootstrap attempt. */
+const HARD_BOOT_TIMEOUT_MS = 10_000;
+
+/**
+ * When opened from Telegram but the session isn't ready yet (cold-launch race,
+ * or a transient login failure), retry silently behind the splash this many
+ * times before surfacing a manual retry button — the app is NEVER released
+ * signed out inside Telegram.
+ */
+const AUTO_RETRY_MAX = 4;
+const AUTO_RETRY_DELAY_MS = 700;
 
 /**
  * Whether the user asked the OS to minimise motion. The reveal's CSS
@@ -63,6 +73,7 @@ export function BootstrapGate({ children }: { children: ReactNode }) {
   const [error, setError] = useState<BootError | null>(null);
   const startedAt = useRef<number>(Date.now());
   const attemptRef = useRef<number>(0);
+  const autoRetryRef = useRef<number>(0);
 
   const release = useCallback(async () => {
     // First cold launch holds for the full wordmark reveal so a fast boot
@@ -84,24 +95,49 @@ export function BootstrapGate({ children }: { children: ReactNode }) {
     setStage("bootstrap.connectingTelegram");
     startedAt.current = Date.now();
 
-    // Hard timeout — release even if something is stuck so the user always
-    // gets to *some* UI instead of an infinite splash.
+    // Never release the app SIGNED OUT when we were opened from Telegram: retry
+    // silently behind the splash (cold-launch races settle within a few tries),
+    // then fall back to a manual retry button — still never an anonymous app.
+    const retryOrSurface = (err?: ApiError | Error) => {
+      if (attemptRef.current !== attempt) return;
+      if (autoRetryRef.current < AUTO_RETRY_MAX) {
+        autoRetryRef.current += 1;
+        setStage("bootstrap.connectingTelegram");
+        setTimeout(() => {
+          if (attemptRef.current === attempt) void run();
+        }, AUTO_RETRY_DELAY_MS);
+        return;
+      }
+      const detail = err instanceof ApiError ? err.detail : err?.message;
+      setError(detail ? { detail } : { key: "bootstrap.errorSession" });
+      setPhase("error"); // manual retry — but children stay unmounted
+    };
+
+    // Hard timeout — a single attempt shouldn't hang forever. A stuck attempt
+    // never reached a clean release (that clears this timer), so inside Telegram
+    // it means no fresh session → retry, never an anonymous release.
     const hardTimer = setTimeout(() => {
-      if (attemptRef.current === attempt) void release();
+      if (attemptRef.current !== attempt) return;
+      if (launchedFromTelegram()) retryOrSurface();
+      else void release();
     }, HARD_BOOT_TIMEOUT_MS);
 
     try {
-      const auth = await bootstrapAuth({ timeoutMs: 2_000 });
+      const auth = await bootstrapAuth();
       if (attemptRef.current !== attempt) return; // newer run in flight
 
-      if (auth.status === "failed") {
+      // Only a FRESH login counts as authenticated — a stale localStorage token
+      // from a past session must not release the app (it would 401 on /me and
+      // strand the user signed out, the original bug in a subtler form).
+      const decision = decideBoot(auth.status === "ok", launchedFromTelegram());
+      if (decision === "retry") {
+        // Opened from Telegram but no session yet (race or transient failure).
         clearTimeout(hardTimer);
-        const detail = auth.error instanceof ApiError ? auth.error.detail : auth.error?.message;
-        setError(detail ? { detail } : { key: "bootstrap.errorSession" });
-        setPhase("error");
+        retryOrSurface(auth.status === "failed" ? auth.error : undefined);
         return;
       }
 
+      // decision is "ready" (authenticated) or "anonymous" (plain-browser dev).
       setStage("bootstrap.loadingCatalog");
       const hasAuth = Boolean(getAccessToken());
 
@@ -128,7 +164,14 @@ export function BootstrapGate({ children }: { children: ReactNode }) {
     } catch (exc) {
       clearTimeout(hardTimer);
       if (attemptRef.current !== attempt) return;
-      const msg = exc instanceof ApiError ? exc.detail : exc instanceof Error ? exc.message : "";
+      const err = exc instanceof Error ? exc : new Error(String(exc));
+      // A thrown error inside Telegram is still retryable — don't strand the user
+      // on an error screen when the next attempt would likely succeed.
+      if (launchedFromTelegram()) {
+        retryOrSurface(err);
+        return;
+      }
+      const msg = exc instanceof ApiError ? exc.detail : err.message;
       setError(msg ? { detail: msg } : { key: "bootstrap.errorNetwork" });
       setPhase("error");
     }
@@ -142,7 +185,15 @@ export function BootstrapGate({ children }: { children: ReactNode }) {
     <>
       <AnimatePresence>
         {phase !== "ready" && (
-          <Splash phase={phase} stage={stage} error={error} onRetry={() => void run()} />
+          <Splash
+            phase={phase}
+            stage={stage}
+            error={error}
+            onRetry={() => {
+              autoRetryRef.current = 0; // a manual retry earns a fresh round of silent retries
+              void run();
+            }}
+          />
         )}
       </AnimatePresence>
       {phase === "ready" && children}

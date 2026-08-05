@@ -135,6 +135,26 @@ export function isInsideTelegram(): boolean {
 }
 
 /**
+ * Whether this document was opened by a real Telegram client (as opposed to a
+ * plain browser), knowable **synchronously even during the cold-launch race**
+ * where ``WebApp.initData`` hasn't been populated yet.
+ *
+ * Unlike ``isInsideTelegram`` (which needs initData to be ready), this also
+ * trusts the signed launch params the client puts in the URL fragment
+ * (``tgWebAppData`` / ``tgWebAppPlatform``) and a concrete ``platform``. It is
+ * the signal the bootstrap uses to GUARANTEE auth: opened-from-Telegram means
+ * we must end up authenticated, never fall back to anonymous like a browser.
+ */
+export function launchedFromTelegram(): boolean {
+  if (typeof window === "undefined") return false;
+  const wa = getWebApp();
+  if (wa?.initData && wa.initData.length > 0) return true;
+  if (wa?.platform && wa.platform !== "" && wa.platform !== "unknown") return true;
+  const params = `${window.location.hash} ${window.location.search}`;
+  return params.includes("tgWebAppData") || params.includes("tgWebAppPlatform");
+}
+
+/**
  * Open an external URL — an acquirer's checkout / pay page — in a browser,
  * leaving the Mini App (and its BackButton route stack) alive underneath.
  *
