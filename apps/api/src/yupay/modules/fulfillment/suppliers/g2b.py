@@ -132,18 +132,20 @@ class G2bFulfiller(Fulfiller):
                     artifact=None,
                     error=str(exc),
                 )
-            if result.status == "completed":
+            if result.status == "completed" and result.delivery_items:
                 return FulfillStatus(
                     outcome="succeeded",
                     artifact_kind="voucher_code",
                     artifact=_voucher_artifact(
                         mapping=mapping,
                         item=item,
-                        codes=result.delivery_items or [],
+                        codes=result.delivery_items,
                         g2b_order_id=task.external_order_id,
                     ),
                     error=None,
                 )
+            # "completed" with zero codes stays in_progress (see fulfill's guard):
+            # never deliver an empty voucher; let the poller keep trying.
             return FulfillStatus(
                 outcome="in_progress",
                 artifact_kind=None,
@@ -232,7 +234,7 @@ class G2bFulfiller(Fulfiller):
                 )
             raise FulfillerError(f"g2b purchase failed: HTTP {exc.status}") from exc
 
-        if result.status == "completed":
+        if result.status == "completed" and result.delivery_items:
             return FulfillResult(
                 outcome="succeeded",
                 external_order_id=result.g2b_order_id,
@@ -240,14 +242,30 @@ class G2bFulfiller(Fulfiller):
                 artifact=_voucher_artifact(
                     mapping=mapping,
                     item=item,
-                    codes=result.delivery_items or [],
+                    codes=result.delivery_items,
                     g2b_order_id=result.g2b_order_id,
                 ),
                 error=None,
                 extra_metadata={
                     "supplier": "g2b",
                     "kind": "voucher",
-                    "delivery_count": len(result.delivery_items or []),
+                    "delivery_count": len(result.delivery_items),
+                },
+            )
+        if result.status == "completed":
+            # "completed" but zero codes: never deliver an empty voucher — that
+            # marks the order fulfilled with ``code=""`` and no refund ever fires.
+            # Keep it in_progress so the poller retries and ops can see it.
+            return FulfillResult(
+                outcome="in_progress",
+                external_order_id=result.g2b_order_id,
+                artifact_kind=None,
+                artifact=None,
+                error=None,
+                extra_metadata={
+                    "supplier": "g2b",
+                    "kind": "voucher",
+                    "completed_without_codes": True,
                 },
             )
         if result.status == "pending":

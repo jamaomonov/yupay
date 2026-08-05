@@ -211,6 +211,50 @@ async def test_voucher_purchase_outcomes(_g2b_env: None) -> None:
     assert out.outcome == "failed"
 
 
+async def test_voucher_completed_without_codes_is_not_delivered(_g2b_env: None) -> None:
+    """A ``completed`` status carrying zero codes must NOT mark the order delivered.
+
+    G2B occasionally returns ``completed`` before the codes are attached (or with
+    an empty list on a supplier glitch). Marking that ``succeeded`` would deliver
+    an empty voucher artifact (``code=""``) to a customer who paid — the order
+    then looks fulfilled and no refund/retry ever fires. Route it to
+    ``in_progress`` so the poller keeps trying and ops can see it, never
+    ``succeeded``.
+    """
+    mapping = _mapping("voucher")
+    for empty in ([], None):
+        gw = _fulfiller(
+            _FakeClient(
+                purchase_voucher=VoucherPurchaseResult(
+                    g2b_order_id="ge", status="completed", delivery_items=empty
+                )
+            ),
+            mapping,
+        )
+        out = await gw.fulfill(
+            db=cast(Any, None), order=cast(Any, None), item=_item(), idempotency_key="ke"
+        )
+        assert out.outcome == "in_progress"
+        assert out.artifact is None
+
+
+async def test_check_status_completed_without_codes_is_not_delivered(_g2b_env: None) -> None:
+    """Same empty-codes guard on the poll path: completed-but-empty stays in_progress."""
+    mapping = _mapping("voucher")
+    task = cast(Any, SimpleNamespace(external_order_id="g1", order_item_id="oi1"))
+    db = cast(Any, _FakeDB(_item()))
+    for empty in ([], None):
+        gw = _fulfiller(
+            _FakeClient(
+                poll_voucher_delivery=VoucherDeliveryResult(status="completed", delivery_items=empty)
+            ),
+            mapping,
+        )
+        status = await gw.check_status(db=db, task=task)
+        assert status.outcome == "in_progress"
+        assert status.artifact is None
+
+
 async def test_voucher_purchase_error_mapping(_g2b_env: None) -> None:
     mapping = _mapping("voucher")
 
