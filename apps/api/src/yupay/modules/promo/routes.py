@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, status
+from fastapi import APIRouter, Depends, Header, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
@@ -12,6 +12,7 @@ from yupay.core.errors import ValidationError
 from yupay.core.idempotency import IDEMPOTENCY_HEADER, MIN_IDEMPOTENCY_KEY_LENGTH
 from yupay.modules.admin.api import require_admin
 from yupay.modules.auth.deps import current_user
+from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.promo import service as svc
 from yupay.modules.promo.schemas import (
     PromoAdminListOut,
@@ -45,10 +46,15 @@ def _require_idempotency_key(idempotency_key: str | None) -> str:
 @router.post("/redeem", response_model=PromoRedeemOut, summary="Redeem a promo code")
 async def redeem_route(
     body: PromoRedeemIn,
+    request: Request,
     db: Annotated[AsyncSession, Depends(db_session)],
     user: Annotated[User, Depends(current_user)],
     idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
 ) -> PromoRedeemOut:
+    # Per-IP throttle before the lookup so the 404 (unknown) vs 409 (real code)
+    # response can't be used to brute-force guessable/low-entropy codes. Failed
+    # guesses count too, since the guard runs ahead of the DB read.
+    await guard_ip(request, bucket="promo-redeem")
     key = _require_idempotency_key(idempotency_key)
     promo, _redemption = await svc.redeem(db, user_id=user.id, code=body.code, idempotency_key=key)
     return PromoRedeemOut(code=promo.code, amount=promo.amount, currency=promo.currency)

@@ -147,6 +147,37 @@ async def test_redeem_unknown_code_is_404(integration_client: AsyncClient) -> No
     assert r.status_code == 404, r.text
 
 
+async def test_redeem_is_ip_rate_limited(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Redemption must be per-IP throttled so an attacker can't brute-force
+    guessable codes via the 404-vs-409 oracle. The guard runs before the
+    lookup, so even unknown-code misses count toward the limit."""
+    monkeypatch.setenv("AUTH_IP_GUARD_MAX", "3")
+    from yupay.core.config import get_settings
+
+    get_settings.cache_clear()
+    token = await _login_user(integration_client, tg_id=1044)
+
+    import uuid
+
+    test_ip = f"198.51.100.{int(uuid.uuid4().hex[:2], 16) % 256}"
+    statuses = []
+    for i in range(6):
+        r = await integration_client.post(
+            "/api/v1/promo/redeem",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Idempotency-Key": f"pr-rl-{i}-padpadpadpad",
+                "X-Forwarded-For": test_ip,
+            },
+            json={"code": f"GUESS{i}"},
+        )
+        statuses.append(r.status_code)
+    assert 429 in statuses, statuses
+    get_settings.cache_clear()
+
+
 async def test_redeem_twice_conflicts_but_replays_with_same_key(
     integration_client: AsyncClient, db_session: AsyncSession
 ) -> None:
