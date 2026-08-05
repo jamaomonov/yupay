@@ -86,15 +86,23 @@ def test_presign_each_kind_has_matching_prefix(mock_s3: MagicMock) -> None:
 
 
 def test_presign_each_allowed_mime_has_an_extension(mock_s3: MagicMock) -> None:
+    # SVG is intentionally absent — it can carry <script> and would execute on
+    # the public cdn.yupay.uz origin (stored XSS), so it is no longer accepted.
     mapping = {
         "image/png": ".png",
         "image/jpeg": ".jpg",
         "image/webp": ".webp",
-        "image/svg+xml": ".svg",
     }
     for mime, ext in mapping.items():
         r = svc.presign_upload(kind="brand_logo", content_type=mime, size_bytes=1024)
         assert r.key.endswith(ext), (mime, r.key)
+
+
+def test_presign_rejects_svg_for_every_kind(mock_s3: MagicMock) -> None:
+    """SVG (scriptable, served from the public CDN) must be refused everywhere."""
+    for kind in ("brand_logo", "brand_hero", "product_image", "sku_image", "broadcast_media"):
+        with pytest.raises(ValidationError, match="not allowed"):
+            svc.presign_upload(kind=kind, content_type="image/svg+xml", size_bytes=1024)
 
 
 def test_presign_rejects_disallowed_mime(mock_s3: MagicMock) -> None:

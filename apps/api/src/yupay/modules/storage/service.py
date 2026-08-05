@@ -38,13 +38,15 @@ _MIME_TO_EXT: dict[str, str] = {
     "image/png": "png",
     "image/jpeg": "jpg",
     "image/webp": "webp",
-    "image/svg+xml": "svg",
     "image/gif": "gif",
     "video/mp4": "mp4",
     "application/pdf": "pdf",
 }
 
-_IMAGE_MIME: frozenset[str] = frozenset({"image/png", "image/jpeg", "image/webp", "image/svg+xml"})
+# Raster only. SVG is deliberately excluded: it can carry <script>/<foreignObject>
+# and would execute in the public ``cdn.yupay.uz`` origin when opened directly
+# (stored XSS). A brand logo / product image never needs a vector format.
+_IMAGE_MIME: frozenset[str] = frozenset({"image/png", "image/jpeg", "image/webp"})
 
 # Per-kind MIME allowlist. Broadcasts attach video/GIF/document in
 # addition to a plain photo; the four image-only kinds must NOT widen

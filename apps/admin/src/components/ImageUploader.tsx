@@ -39,7 +39,9 @@ interface Props {
   disabled?: boolean;
 }
 
-const ACCEPT_LIST = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
+// Raster only — SVG is scriptable and served from the public CDN origin (stored
+// XSS); the API rejects it, so don't offer it in the picker either.
+const ACCEPT_LIST = ["image/png", "image/jpeg", "image/webp"];
 const MAX_BYTES = 5 * 1024 * 1024;
 
 export function ImageUploader({ value, onChange, kind, hint, disabled }: Props) {

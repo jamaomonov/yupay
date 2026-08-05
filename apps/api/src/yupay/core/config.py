@@ -214,11 +214,12 @@ class Settings(BaseSettings):
     r2_presign_ttl_seconds: int = Field(default=300)  # 5 min — plenty for one PUT
     media_max_upload_bytes: int = Field(default=5 * 1024 * 1024)  # 5 MB
     media_allowed_mime: list[str] = Field(
+        # No image/svg+xml: SVG is scriptable and served from the public CDN
+        # origin (stored XSS). See storage.service._IMAGE_MIME.
         default_factory=lambda: [
             "image/png",
             "image/jpeg",
             "image/webp",
-            "image/svg+xml",
             "image/gif",
             "video/mp4",
             "application/pdf",
