@@ -97,6 +97,10 @@ class Settings(BaseSettings):
     jwt_access_ttl_seconds: int = Field(default=900)  # 15 min
     jwt_refresh_ttl_seconds: int = Field(default=60 * 60 * 24 * 30)  # 30 days
     jwt_guest_ttl_seconds: int = Field(default=60 * 30)  # 30 min for guest checkout
+    # Order-scoped guest access to delivered codes (magic-link in the delivered
+    # email). Longer than checkout because the buyer may open the order days
+    # later; the token unlocks only that one order's codes — see ADR-0011.
+    jwt_guest_order_ttl_seconds: int = Field(default=60 * 60 * 24 * 7)  # 7 days
     jwt_ws_ttl_seconds: int = Field(default=60)  # 60 s for WS handshake
     jwt_email_token_ttl_seconds: int = Field(default=60 * 30)  # 30 min for verify/reset links
     auth_email_pepper: str = Field(

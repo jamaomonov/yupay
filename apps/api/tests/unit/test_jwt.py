@@ -49,6 +49,19 @@ def test_mint_guest_token(settings) -> None:
     assert "orders:create" in claims.scope
 
 
+def test_mint_guest_order_token_carries_order_id(settings) -> None:
+    token = authjwt.mint_guest_order(
+        order_id="order-42", email_hash="abc123", settings=settings
+    )
+    claims = authjwt.verify(token, expected_kind="guest_order", settings=settings)
+    assert claims.kind == "guest_order"
+    assert claims.order_id == "order-42"
+    assert claims.email_hash == "abc123"
+    # It must NOT verify as the freely-mintable checkout guest kind.
+    with pytest.raises(UnauthorizedError):
+        authjwt.verify(token, expected_kind="guest", settings=settings)
+
+
 def test_verify_rejects_wrong_kind(settings) -> None:
     token = authjwt.mint_access(sub="user-1", sid="s", settings=settings)
     with pytest.raises(UnauthorizedError):

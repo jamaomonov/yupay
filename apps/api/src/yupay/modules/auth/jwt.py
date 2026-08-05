@@ -21,7 +21,9 @@ from yupay.core.ids import new_id
 
 ALG: Final[str] = "EdDSA"
 
-TokenKind = Literal["access", "refresh", "guest", "ws", "email_verify", "password_reset"]
+TokenKind = Literal[
+    "access", "refresh", "guest", "guest_order", "ws", "email_verify", "password_reset"
+]
 
 
 @dataclass(frozen=True)
@@ -38,6 +40,7 @@ class Claims:
     email_hash: str | None = None
     scope: tuple[str, ...] = ()
     channel: str | None = None
+    order_id: str | None = None
 
 
 def _settings_or(settings: Settings | None) -> Settings:
@@ -152,6 +155,31 @@ def mint_guest(
     return _encode(payload, settings=s)
 
 
+def mint_guest_order(
+    *,
+    order_id: str,
+    email_hash: str,
+    settings: Settings | None = None,
+) -> str:
+    """Issue an order-scoped guest token that unlocks one order's delivered codes.
+
+    Unlike :func:`mint_guest` (freely mintable from an email alone), this is minted
+    only server-side and carries the specific ``order_id`` it grants access to, so
+    knowing the buyer's email is not enough to read another order's codes. It rides
+    the magic link in the delivered email — see ADR-0011.
+    """
+    s = _settings_or(settings)
+    payload = _base_payload(
+        sub=f"guest:{email_hash}",
+        kind="guest_order",
+        ttl_seconds=s.jwt_guest_order_ttl_seconds,
+        settings=s,
+    )
+    payload["email_hash"] = email_hash
+    payload["order_id"] = order_id
+    return _encode(payload, settings=s)
+
+
 def mint_ws_handshake(
     *,
     sub: str,
@@ -245,4 +273,5 @@ def verify(
         email_hash=raw.get("email_hash"),
         scope=tuple(raw.get("scope", ())),
         channel=raw.get("channel"),
+        order_id=raw.get("order_id"),
     )
