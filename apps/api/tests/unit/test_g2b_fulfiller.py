@@ -42,6 +42,7 @@ class _FakeClient(G2bClient):
     def __init__(self, **canned: Any) -> None:
         super().__init__(api_key="test-key", base_url="https://g2b.test")
         self._canned = canned
+        self.game_order_kwargs: dict[str, Any] = {}
 
     def _resolve(self, name: str) -> Any:
         value = self._canned[name]
@@ -58,7 +59,8 @@ class _FakeClient(G2bClient):
     async def poll_voucher_delivery(self, *_a: Any, **_kw: Any) -> VoucherDeliveryResult:  # type: ignore[override]
         return cast(VoucherDeliveryResult, self._resolve("poll_voucher_delivery"))
 
-    async def create_game_order(self, **_kw: Any) -> GameOrderCreated:  # type: ignore[override]
+    async def create_game_order(self, **kw: Any) -> GameOrderCreated:  # type: ignore[override]
+        self.game_order_kwargs = kw
         return cast(GameOrderCreated, self._resolve("create_game_order"))
 
     async def get_game_order_status(self, **_kw: Any) -> GameOrderStatus:  # type: ignore[override]
@@ -296,9 +298,25 @@ async def test_game_order_requires_player_and_variant(_g2b_env: None) -> None:
         )
 
 
+async def test_game_order_passes_the_server_field_to_g2b(_g2b_env: None) -> None:
+    """The product's server field is keyed ``server`` (e.g. Genshin: os_euro),
+    which is what the order stores in ``fulfillment_data``. The adapter must send
+    that as G2B's ``server_id`` — reading the wrong key drops the server and G2B
+    rejects the game order with HTTP 400 (prod incident 2026-08-05)."""
+    client = _FakeClient(create_game_order=GameOrderCreated(g2b_order_id="go1", status="completed"))
+    gw = _fulfiller(client, _mapping("game"))
+    await gw.fulfill(
+        db=cast(Any, None),
+        order=cast(Any, None),
+        item=_item(player_id="719918738", server="os_euro"),
+        idempotency_key="k",
+    )
+    assert client.game_order_kwargs.get("server_id") == "os_euro"
+
+
 async def test_game_order_outcomes(_g2b_env: None) -> None:
     mapping = _mapping("game")
-    item = _item(player_id="p-1", server_id="eu", charname="hero")
+    item = _item(player_id="p-1", server="eu", charname="hero")
 
     done = _fulfiller(
         _FakeClient(create_game_order=GameOrderCreated(g2b_order_id="go1", status="completed")),

@@ -232,7 +232,9 @@ class G2bFulfiller(Fulfiller):
                     required=None,
                     source=f"g2b HTTP {exc.status}",
                 )
-            raise FulfillerError(f"g2b purchase failed: HTTP {exc.status}") from exc
+            raise FulfillerError(
+                f"g2b purchase failed: HTTP {exc.status}: {_err_body(exc)}"
+            ) from exc
 
         if result.status == "completed" and result.delivery_items:
             return FulfillResult(
@@ -299,7 +301,13 @@ class G2bFulfiller(Fulfiller):
         player_id = str(fulfillment_data.get("player_id") or "").strip()
         if not player_id:
             raise FulfillerError("order item is missing fulfillment_data.player_id required by g2b")
-        server_id = _stringify_or_none(fulfillment_data.get("server_id"))
+        # The product's server/zone field is keyed ``server`` in its form schema
+        # (e.g. Genshin: os_euro), which is what the order stores. Older data /
+        # tests may use ``server_id`` — accept both. Reading the wrong key drops
+        # the server and G2B rejects the game order with HTTP 400.
+        server_id = _stringify_or_none(
+            fulfillment_data.get("server") or fulfillment_data.get("server_id")
+        )
         charname = _stringify_or_none(fulfillment_data.get("charname"))
         catalogue_name = mapping.external_variant_id
         if not catalogue_name:
@@ -340,7 +348,9 @@ class G2bFulfiller(Fulfiller):
                     required=None,
                     source=f"g2b HTTP {exc.status}",
                 )
-            raise FulfillerError(f"g2b game order failed: HTTP {exc.status}") from exc
+            raise FulfillerError(
+                f"g2b game order failed: HTTP {exc.status}: {_err_body(exc)}"
+            ) from exc
 
         if created.status == "completed":
             return FulfillResult(
@@ -522,6 +532,15 @@ def _stringify_or_none(value: Any) -> str | None:
         return None
     s = str(value).strip()
     return s or None
+
+
+def _err_body(exc: G2bError) -> str:
+    """G2B's response body, single-lined and truncated — surfaced into the
+    ``FulfillerError`` so the admin inbox / ``last_error`` shows *why* G2B
+    rejected the call (a bare "HTTP 400" is undiagnosable). No PII: G2B error
+    bodies describe the request shape, not the buyer."""
+    body = " ".join(str(exc.body or "").split())
+    return body[:200] if body else "(no body)"
 
 
 _LOW_BALANCE_HINTS = ("insufficient", "balance", "funds", "not enough")
