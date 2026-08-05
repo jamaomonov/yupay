@@ -351,7 +351,16 @@ async def refresh_session(
     s = settings or get_settings()
     token_hash = hash_token(refresh_token)
 
-    stmt = select(AuthSession).where(AuthSession.refresh_token_hash == token_hash)
+    # FOR UPDATE closes a rotation TOCTOU: without the row lock, two requests
+    # presenting the same refresh token both read ``revoked_at IS NULL``, both
+    # pass the reuse check, and both mint a new session — defeating the ADR-0007
+    # reuse trip-wire. The lock serialises them: the loser blocks here, then
+    # sees the now-revoked row and trips reuse detection.
+    stmt = (
+        select(AuthSession)
+        .where(AuthSession.refresh_token_hash == token_hash)
+        .with_for_update()
+    )
     session_row = (await db.execute(stmt)).scalar_one_or_none()
     if session_row is None:
         raise UnauthorizedError("invalid refresh token")
