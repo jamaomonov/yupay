@@ -45,7 +45,10 @@ http://yupay.uz, http://www.yupay.uz {
 		Permissions-Policy "interest-cohort=()"
 		# ``script-src 'unsafe-inline'`` is forced by Next.js SSG: prerendered
 		# pages bake inline bootstrap scripts into static HTML, so per-request
-		# nonces are impossible and Next emits no hash manifest. Every other
+		# nonces are impossible and Next emits no hash manifest. Kept by an
+		# explicit decision (docs/decisions/0043-storefront-csp-unsafe-inline.md):
+		# no XSS sink exists, the token was moved out of localStorage, and a
+		# nonce would force dynamic rendering and regress SEO. Every other
 		# resource class is locked down so an injected payload can't load
 		# plugins, retarget <base>, post forms elsewhere, or exfiltrate to an
 		# arbitrary origin. Telegram hosts serve the Login Widget (script +
