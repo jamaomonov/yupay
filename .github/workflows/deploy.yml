@@ -75,6 +75,23 @@ jobs:
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
-            sleep 5
-            curl -fsS https://api.yupay.uz/healthz
-            curl -fsS https://api.yupay.uz/readyz
+
+            # Poll the health endpoints instead of a fixed sleep: a freshly
+            # recreated api/edge can take longer than a few seconds to serve,
+            # and a single early curl would 502 and false-fail an otherwise
+            # good deploy. Fail only after the endpoint stays unhealthy for the
+            # whole window.
+            wait_ok() {
+              url="$1"; tries="${2:-40}"; i=1
+              while [ "$i" -le "$tries" ]; do
+                if curl -fsS -o /dev/null "$url"; then
+                  echo "ok: $url (attempt $i)"; return 0
+                fi
+                sleep 3; i=$((i + 1))
+              done
+              echo "::error::$url not healthy after $((tries * 3))s"
+              curl -sS -o /dev/null -w "last status: %{http_code}\n" "$url" || true
+              return 1
+            }
+            wait_ok https://api.yupay.uz/healthz 40
+            wait_ok https://api.yupay.uz/readyz 40
