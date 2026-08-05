@@ -69,6 +69,20 @@ export function firstNonEmpty(...vals: (string | null | undefined)[]): string | 
   return undefined;
 }
 
+/**
+ * Trim a meta description to a clean SERP length. Google shows ~150–160
+ * characters, so a longer `short_description` (ours run ~450) is wasted and
+ * gets cut mid-word. Cut at the last word boundary within `max` and add an
+ * ellipsis; short strings pass through untouched.
+ */
+export function truncate(text: string, max = 155): string {
+  const s = text.trim();
+  if (s.length <= max) return s;
+  const cut = s.slice(0, max);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > 40 ? cut.slice(0, lastSpace) : cut).replace(/[\s,.;:–—-]+$/, "")}…`;
+}
+
 /** canonical + hreflang alternates (incl. x-default) for a given path. */
 export function alternates(locale: string, path = "") {
   const languages: Record<string, string> = {};

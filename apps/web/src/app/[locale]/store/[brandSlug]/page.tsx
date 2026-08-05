@@ -29,6 +29,7 @@ import {
   ogLocale,
   pathFor,
   ROBOTS,
+  truncate,
 } from "@/lib/seo";
 
 const CURRENCY = "UZS";
@@ -49,11 +50,12 @@ export async function generateMetadata({
   if (!brand) return {};
   const t = await getTranslations("web.store");
   const title = t("brandMetaTitle", { name: brand.name });
-  // short_description first: it's the ~250-char blurb that fits a Google snippet;
-  // the long description is truncated. firstNonEmpty skips the API's `""` blanks.
-  const description =
+  // short_description first (skips the API's `""` blanks), trimmed to a clean
+  // SERP length — the raw blurbs run ~450 chars and would be cut mid-word.
+  const description = truncate(
     firstNonEmpty(brand.short_description, brand.description) ??
-    t("brandMetaDescription", { name: brand.name });
+      t("brandMetaDescription", { name: brand.name }),
+  );
   const path = `/store/${brand.slug}`;
   return {
     title: { absolute: title },

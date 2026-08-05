@@ -24,6 +24,7 @@ import {
   pathFor,
   ROBOTS,
   ogLocale,
+  truncate,
 } from "@/lib/seo";
 
 const CURRENCY = "UZS";
@@ -52,7 +53,7 @@ function parseSteps(instructions: string): string[] {
  *  field that carries it (player id / login). */
 function whereToFind(products: (ProductDetail | null)[], locale: string): string | null {
   for (const p of products) {
-    const help = p?.required_fields?.[0]?.help_text;
+    const help = p?.required_fields[0]?.help_text;
     const text = pick(help, locale);
     if (text) return text;
   }
@@ -75,7 +76,7 @@ export async function generateMetadata({
   if (!brand) return {};
   const t = await getTranslations("web.store");
   const title = t("howToMetaTitle", { name: brand.name });
-  const description = t("howToMetaDescription", { name: brand.name });
+  const description = truncate(t("howToMetaDescription", { name: brand.name }));
   const path = `/store/${brand.slug}/how-to`;
   return {
     title: { absolute: title },
@@ -254,7 +255,7 @@ export default async function HowToPage({
                   <dl className="border-border divide-border/70 divide-y overflow-hidden rounded-[12px] border">
                     {p.skus.map((s) => {
                       const name = s.variable_amount
-                        ? `${s.min_amount_usd ? `$${Number(s.min_amount_usd)}` : "$1"}–${s.max_amount_usd ? `$${Number(s.max_amount_usd)}` : "$300"}`
+                        ? `${s.min_amount_usd ? `$${String(Number(s.min_amount_usd))}` : "$1"}–${s.max_amount_usd ? `$${String(Number(s.max_amount_usd))}` : "$300"}`
                         : (s.denomination ?? s.sku_code);
                       const price = s.display_price
                         ? formatUzs(locale, Math.round(Number(s.display_price.amount)))
