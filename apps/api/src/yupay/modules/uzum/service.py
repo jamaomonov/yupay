@@ -157,6 +157,11 @@ def _check_order_state(order: Order) -> None:
         raise payment_already_made()
     if order.status != "pending_payment":
         raise payment_cancelled()
+    # Uzum settles only in UZS. Reject a non-UZS order — otherwise its
+    # ``total_charged`` (e.g. RUB) would match a soum amount of the same
+    # number, letting it be paid for a fraction of the real value.
+    if order.currency != "UZS":
+        raise payment_cancelled()
 
 
 async def _load_tx(

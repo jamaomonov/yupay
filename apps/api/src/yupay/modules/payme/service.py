@@ -123,6 +123,11 @@ def _check_perform(order: Order, amount: int) -> None:
     """
     if order.status != "pending_payment":
         raise order_not_payable()
+    # Payme settles only in UZS. Reject a non-UZS order here — otherwise its
+    # ``total_charged`` (in e.g. RUB) would be matched against a soum amount of
+    # the same number, letting a RUB order be paid for a fraction in soums.
+    if order.currency != "UZS":
+        raise order_not_payable()
     if amount != _expected_tiyin(order):
         raise invalid_amount()
 

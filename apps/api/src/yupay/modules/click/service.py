@@ -97,6 +97,11 @@ def _check_order_state(order: Order) -> None:
         raise already_paid()
     if order.status != "pending_payment":
         raise transaction_cancelled()
+    # Click settles only in UZS. A non-UZS order's ``total_charged`` (e.g. RUB)
+    # must not be payable here — otherwise it could be settled with a soum
+    # amount of the same number, for a fraction of the real value.
+    if order.currency != "UZS":
+        raise transaction_cancelled()
 
 
 def _provider_for_service(service_id: int) -> str:
