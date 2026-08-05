@@ -258,6 +258,7 @@ function VariableAmountCard({
   onChange,
   onFocus,
   locale,
+  image,
   t,
 }: {
   sku: SkuOut;
@@ -265,6 +266,8 @@ function VariableAmountCard({
   onChange: (v: string) => void;
   onFocus: () => void;
   locale: string;
+  /** Product/SKU artwork shown on each preset; falls back to a blank tile. */
+  image: string | null;
   t: (key: string, values?: Record<string, string>) => string;
 }) {
   const rate = sku.display_price;
@@ -408,10 +411,23 @@ function VariableAmountCard({
               >
                 <div className="flex w-full items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span
-                      className="border-border/60 size-9 rounded-[10px] border bg-[hsl(var(--card-2))] bg-gradient-to-br from-white/[0.04] to-transparent"
-                      aria-hidden="true"
-                    />
+                    {image ? (
+                      <span className="relative size-9 shrink-0 overflow-hidden rounded-[10px]">
+                        <Image
+                          src={image}
+                          alt=""
+                          fill
+                          unoptimized
+                          sizes="36px"
+                          className="object-contain"
+                        />
+                      </span>
+                    ) : (
+                      <span
+                        className="border-border/60 size-9 rounded-[10px] border bg-[hsl(var(--card-2))] bg-gradient-to-br from-white/[0.04] to-transparent"
+                        aria-hidden="true"
+                      />
+                    )}
                     <span className="text-tx-dim font-mono text-[12px] tracking-[0.08em]">USD</span>
                   </div>
                   {amount === HIT && (
@@ -822,6 +838,7 @@ export function PurchasePanel({
                       setSkuId(variableSku.id);
                     }}
                     locale={locale}
+                    image={variableSku.image_url ?? product.image_url ?? product.brand.logo_url}
                     t={t}
                   />
                 ) : (

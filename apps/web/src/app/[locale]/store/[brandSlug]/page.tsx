@@ -258,7 +258,7 @@ export default async function BrandPage({
           <div className="relative z-10 flex min-h-[272px] flex-col justify-end gap-4 p-6 sm:p-8">
             <div className="flex items-center gap-4">
               {brand.logo_url && (
-                <span className="relative h-16 w-16 shrink-0 overflow-hidden rounded-[17px] border border-white/15 bg-black/40 shadow-[0_12px_32px_rgba(0,0,0,0.55)] backdrop-blur">
+                <span className="relative h-16 w-16 shrink-0 overflow-hidden rounded-[17px] bg-black/40 shadow-[0_12px_32px_rgba(0,0,0,0.55)] backdrop-blur">
                   <Image
                     src={brand.logo_url}
                     alt=""
