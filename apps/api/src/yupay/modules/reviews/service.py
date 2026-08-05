@@ -12,6 +12,8 @@ import base64
 from collections.abc import Sequence
 from datetime import datetime
 from decimal import Decimal
+from html.parser import HTMLParser
+from typing import overload
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -34,6 +36,43 @@ from yupay.modules.reviews.schemas import ReviewOut
 from yupay.modules.users.models import User
 
 log = get_logger("yupay.reviews.service")
+
+
+class _TextExtractor(HTMLParser):
+    """Collects only text nodes, dropping every tag and its attributes."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:
+        self._parts.append(data)
+
+    @property
+    def text(self) -> str:
+        return "".join(self._parts)
+
+
+@overload
+def _strip_html(value: str) -> str: ...
+@overload
+def _strip_html(value: None) -> None: ...
+def _strip_html(value: str | None) -> str | None:
+    """Return ``value`` with all HTML markup removed, plain text preserved.
+
+    Defense-in-depth for review body / author name served on the public brand
+    page: even though the web renders them as escaped React text, stripping tags
+    here means stored attacker markup can never become script if some future
+    component HTML-renders the field. A bare ``<`` not starting a tag (``5 < 10``)
+    survives as text.
+    """
+    if not value:
+        return value
+    parser = _TextExtractor()
+    parser.feed(value)
+    parser.close()
+    return parser.text
+
 
 _REPORT_AUTO_HIDE_THRESHOLD = 3
 _DEFAULT_LIST_LIMIT = 20
@@ -135,7 +174,7 @@ async def create_review(
         guest_email=guest_email,
         order_id=order_id,
         rating=rating,
-        body=body,
+        body=_strip_html(body),
         status="published",
         locale=locale[:3],
     )
@@ -192,7 +231,9 @@ async def list_published(
             id=r.Review.id,
             rating=r.Review.rating,
             body=r.Review.body,
-            author_name=r.display_name,
+            # Telegram display names are attacker-controlled; strip markup on the
+            # way out too (older rows were stored before write-time stripping).
+            author_name=_strip_html(r.display_name),
             created_at=r.Review.created_at,
         )
         for r in page
