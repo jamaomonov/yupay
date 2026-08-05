@@ -356,11 +356,7 @@ async def refresh_session(
     # pass the reuse check, and both mint a new session — defeating the ADR-0007
     # reuse trip-wire. The lock serialises them: the loser blocks here, then
     # sees the now-revoked row and trips reuse detection.
-    stmt = (
-        select(AuthSession)
-        .where(AuthSession.refresh_token_hash == token_hash)
-        .with_for_update()
-    )
+    stmt = select(AuthSession).where(AuthSession.refresh_token_hash == token_hash).with_for_update()
     session_row = (await db.execute(stmt)).scalar_one_or_none()
     if session_row is None:
         raise UnauthorizedError("invalid refresh token")
@@ -424,9 +420,7 @@ async def _blocklist_session_id(sid: str, *, settings: Settings) -> None:
     TTL = the access-token lifetime, so once the token would expire anyway the
     marker can disappear. Mirrors the per-``jti`` ``auth:revoked`` blocklist.
     """
-    await get_redis().set(
-        f"auth:revoked_sid:{sid}", "1", ex=settings.jwt_access_ttl_seconds
-    )
+    await get_redis().set(f"auth:revoked_sid:{sid}", "1", ex=settings.jwt_access_ttl_seconds)
 
 
 async def logout(

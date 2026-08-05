@@ -50,9 +50,7 @@ def test_mint_guest_token(settings) -> None:
 
 
 def test_mint_guest_order_token_carries_order_id(settings) -> None:
-    token = authjwt.mint_guest_order(
-        order_id="order-42", email_hash="abc123", settings=settings
-    )
+    token = authjwt.mint_guest_order(order_id="order-42", email_hash="abc123", settings=settings)
     claims = authjwt.verify(token, expected_kind="guest_order", settings=settings)
     assert claims.kind == "guest_order"
     assert claims.order_id == "order-42"

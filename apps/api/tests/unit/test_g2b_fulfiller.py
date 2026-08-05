@@ -246,7 +246,9 @@ async def test_check_status_completed_without_codes_is_not_delivered(_g2b_env: N
     for empty in ([], None):
         gw = _fulfiller(
             _FakeClient(
-                poll_voucher_delivery=VoucherDeliveryResult(status="completed", delivery_items=empty)
+                poll_voucher_delivery=VoucherDeliveryResult(
+                    status="completed", delivery_items=empty
+                )
             ),
             mapping,
         )

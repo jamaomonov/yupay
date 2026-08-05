@@ -224,9 +224,7 @@ def _guest_order_link(*, web_base: str, order_id: str, guest_email: str) -> str:
     pepper = get_settings().auth_email_pepper
     if not pepper:
         return base
-    token = authjwt.mint_guest_order(
-        order_id=order_id, email_hash=email_hash(guest_email, pepper)
-    )
+    token = authjwt.mint_guest_order(order_id=order_id, email_hash=email_hash(guest_email, pepper))
     # ``email`` rides the link so the order page can send it back as the
     # ``X-Guest-Email`` header the deliveries endpoint checks against the token's
     # hash — the same header the rest of the guest surface already uses.
