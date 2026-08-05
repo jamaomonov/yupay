@@ -219,9 +219,16 @@ async def test_error_maps_to_failed_and_flags_manual_reconciliation() -> None:
 
 
 @respx.mock
-async def test_short_give_amount_is_flagged_not_swallowed() -> None:
-    """give_amount below the promise records a discrepancy — this is how a
-    newly-introduced supplier fee surfaces before customers complain."""
+async def test_short_give_amount_is_routed_to_reconciliation_not_delivered() -> None:
+    """give_amount below the promise must NOT close the order as delivered.
+
+    Waxpeer credited less than we promised (a supplier fee we didn't account
+    for). Marking that ``succeeded`` closes the order as fine and silently
+    pockets the shortfall against the customer, who paid for the full amount.
+    The under-delivery is routed to the reconciliation inbox (outcome=failed,
+    needs_reconciliation) with no delivered receipt, so an admin tops up the
+    difference or refunds it.
+    """
     respx.post(f"{BASE}/steam-topup").mock(
         return_value=httpx.Response(
             200, json=_topup_json(status="completed", amount=10000, give_amount=9800)
@@ -234,10 +241,12 @@ async def test_short_give_amount_is_flagged_not_swallowed() -> None:
         item=_item(unit_price_usd=Decimal("10.00")),
         idempotency_key="ik-6",
     )
-    # Still delivered — the money already moved to the customer's wallet —
-    # but the shortfall must be visible, not swallowed.
-    assert result.outcome == "succeeded"
+    assert result.outcome == "failed"
+    assert result.artifact is None
     assert result.extra_metadata["give_amount_shortfall_units"] == 200
+    assert result.extra_metadata["needs_reconciliation"] is True
+    assert result.error is not None
+    assert "reconcil" in result.error.lower()
 
 
 @respx.mock

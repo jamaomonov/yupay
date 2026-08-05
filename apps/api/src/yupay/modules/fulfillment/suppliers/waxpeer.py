@@ -325,7 +325,22 @@ def _reconcile(*, item: OrderItem, topup: WaxpeerTopup) -> _Reconciled:
     artifact: dict[str, Any] | None = None
     error: str | None = None
 
-    if outcome == "succeeded":
+    if outcome == "succeeded" and shortfall > 0:
+        # Under-delivery on an otherwise-successful top-up: Waxpeer credited
+        # less than we promised the customer, who paid for the full amount.
+        # Do NOT mark the order delivered — that closes it as fine and silently
+        # pockets the shortfall against the customer. Route it to the
+        # reconciliation inbox (failed, no receipt) so an admin tops up the
+        # difference or refunds it. "failed" here does not auto-refund; it just
+        # parks the task for manual handling (see fulfillment.service).
+        outcome = "failed"
+        extra["needs_reconciliation"] = True
+        error = (
+            f"waxpeer credited {topup.give_amount_units} units but we promised "
+            f"{promised_units} (short {shortfall}); does not auto-refund — "
+            "needs manual reconciliation"
+        )
+    elif outcome == "succeeded":
         artifact_kind = "topup_receipt"
         artifact = _receipt_artifact(item=item, topup=topup)
     elif outcome == "in_progress":
