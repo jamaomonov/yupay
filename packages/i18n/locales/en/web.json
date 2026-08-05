@@ -477,6 +477,7 @@
     "guestListHint": "Orders on this device",
     "open": "Open",
     "notFound": "Order not found.",
+    "backToOrders": "My orders",
     "codesNeedAccess": "To view your codes, open the order from the email link or request a fresh link by email.",
     "sendAccessLink": "Email me the access link",
     "accessLinkSent": "Link sent — check your email.",

@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
+import { listGuestOrders } from "@/lib/guest-orders";
 import { pathFor } from "@/lib/seo";
 import { useLoginModal } from "@/store/useLoginModal";
 
@@ -47,10 +48,26 @@ export function AccountMenu({ locale }: Props) {
   if (isLoading) return null;
 
   if (!user) {
+    // Guests have no account, but their orders are remembered in this browser's
+    // localStorage (see saveGuestOrder) and /account/orders renders them. Surface
+    // a "My orders" link when any exist, so a guest who left the order page can
+    // get back to it without the delivered-email link or a typed URL.
+    const hasGuestOrders = listGuestOrders().length > 0;
     return (
-      <button type="button" onClick={openLogin} className={buttonStyles({ size: "md" })}>
-        {t("login")}
-      </button>
+      <div className="flex items-center gap-2">
+        {hasGuestOrders && (
+          <Link
+            href={pathFor(locale, "/account/orders")}
+            className={buttonStyles({ variant: "ghost", size: "md" })}
+          >
+            <Package size={16} />
+            {t("orders")}
+          </Link>
+        )}
+        <button type="button" onClick={openLogin} className={buttonStyles({ size: "md" })}>
+          {t("login")}
+        </button>
+      </div>
     );
   }
 

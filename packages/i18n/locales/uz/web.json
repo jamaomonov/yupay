@@ -477,6 +477,7 @@
     "guestListHint": "Bu qurilmadagi buyurtmalar",
     "open": "Ochish",
     "notFound": "Buyurtma topilmadi.",
+    "backToOrders": "Buyurtmalarim",
     "codesNeedAccess": "Kodlarni ko‘rish uchun buyurtmani xatdagi havola orqali oching yoki pochtaga yangi havola so‘rang.",
     "sendAccessLink": "Havolani pochtaga yuborish",
     "accessLinkSent": "Havola yuborildi — pochtangizni tekshiring.",

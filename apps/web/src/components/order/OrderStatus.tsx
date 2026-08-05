@@ -152,53 +152,66 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
     order.data.items.every((i) => i.display?.product_kind === "top_up");
 
   return (
-    <div className="border-border bg-card space-y-5 rounded-2xl border p-5 sm:p-6">
-      <div className="space-y-3">
-        <p className="text-tx-dim font-mono text-[11px] uppercase tracking-[0.14em]">
-          #{order.data.id.slice(0, 8)}
-        </p>
-        <StatusBlock status={order.data.status} isTopUp={isTopUp} />
-      </div>
-
-      <OrderSummary order={order.data} />
-
-      <OrderItems items={order.data.items} />
-
-      {status === "delivered" &&
-        canLoadCodes &&
-        deliveries.data?.items.map((d) => <ArtifactReceipt key={d.id} artifact={d.artifact} />)}
-
-      {needsAccessLink && (
-        <div className="border-border bg-bg space-y-3 rounded-xl border p-4">
-          <p className="text-tx-mute text-sm">{t("codesNeedAccess")}</p>
-          {resend.isSuccess ? (
-            <p className="text-sm text-[#3D7A00]">{t("accessLinkSent")}</p>
-          ) : (
-            <button
-              type="button"
-              onClick={() => resend.mutate()}
-              disabled={resend.isPending}
-              className={buttonStyles({ size: "sm" })}
-            >
-              {resend.isPending ? t("loading") : t("sendAccessLink")}
-            </button>
-          )}
-          {resend.isError && <p className="text-sm text-[#FF6B6B]">{t("notFound")}</p>}
+    <div className="space-y-4">
+      {/* Back to the order list — /account/orders renders the logged-in history
+          AND (for guests) this browser's local order history, so it's the right
+          target for everyone. Lets a guest who navigated away return to it. */}
+      <Link
+        href={pathFor(locale, "/account/orders")}
+        className="text-tx-mute hover:text-foreground inline-flex items-center gap-1.5 text-sm transition"
+      >
+        <span aria-hidden>←</span> {t("backToOrders")}
+      </Link>
+      <div className="border-border bg-card space-y-5 rounded-2xl border p-5 sm:p-6">
+        <div className="space-y-3">
+          <p className="text-tx-dim font-mono text-[11px] uppercase tracking-[0.14em]">
+            #{order.data.id.slice(0, 8)}
+          </p>
+          <StatusBlock status={order.data.status} isTopUp={isTopUp} />
         </div>
-      )}
 
-      {canRate && brandSlug && (
-        <Link
-          href={pathFor(locale, `/store/${brandSlug}?order=${order.data.id}#reviews`)}
-          className={buttonStyles({ size: "sm" })}
-        >
-          {tr("writeCta")}
-        </Link>
-      )}
+        <OrderSummary order={order.data} />
 
-      {status === "delivered" && !user && email && brandSlug && (
-        <GuestReviewPanel orderId={order.data.id} email={email} />
-      )}
+        <OrderItems items={order.data.items} />
+
+        {status === "delivered" &&
+          canLoadCodes &&
+          deliveries.data?.items.map((d) => <ArtifactReceipt key={d.id} artifact={d.artifact} />)}
+
+        {needsAccessLink && (
+          <div className="border-border bg-bg space-y-3 rounded-xl border p-4">
+            <p className="text-tx-mute text-sm">{t("codesNeedAccess")}</p>
+            {resend.isSuccess ? (
+              <p className="text-sm text-[#3D7A00]">{t("accessLinkSent")}</p>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  resend.mutate();
+                }}
+                disabled={resend.isPending}
+                className={buttonStyles({ size: "sm" })}
+              >
+                {resend.isPending ? t("loading") : t("sendAccessLink")}
+              </button>
+            )}
+            {resend.isError && <p className="text-sm text-[#FF6B6B]">{t("notFound")}</p>}
+          </div>
+        )}
+
+        {canRate && brandSlug && (
+          <Link
+            href={pathFor(locale, `/store/${brandSlug}?order=${order.data.id}#reviews`)}
+            className={buttonStyles({ size: "sm" })}
+          >
+            {tr("writeCta")}
+          </Link>
+        )}
+
+        {status === "delivered" && !user && email && brandSlug && (
+          <GuestReviewPanel orderId={order.data.id} email={email} />
+        )}
+      </div>
     </div>
   );
 }
