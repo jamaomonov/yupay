@@ -368,7 +368,7 @@ async def refresh_session(
     if session_row.revoked_at is not None:
         # Reuse detected — burn down the user's other sessions to limit blast radius.
         if session_row.user_id is not None:
-            await _revoke_all_for_user(db, session_row.user_id)
+            await _revoke_all_for_user(db, session_row.user_id, settings=s)
         raise UnauthorizedError("refresh token reuse detected")
 
     if session_row.expires_at <= now():
@@ -381,6 +381,8 @@ async def refresh_session(
         raise UnauthorizedError("user no longer exists")
 
     session_row.revoked_at = now()
+    # The rotated-out session's access token dies immediately, not after 15 min.
+    await _blocklist_session_id(session_row.id, settings=s)
     return await _open_session(
         db,
         user=user,
@@ -408,6 +410,25 @@ async def _blocklist_access_token(access_token: str, *, settings: Settings) -> N
     await get_redis().set(f"auth:revoked:{claims.jti}", "1", ex=ttl)
 
 
+async def _blocklist_session_id(sid: str, *, settings: Settings) -> None:
+    """Kill every outstanding access token for a revoked session immediately.
+
+    Access tokens carry ``sid`` and live up to their full lifetime (15 min)
+    independently of their session row, and were only ever checked against the
+    per-``jti`` blocklist — which is populated solely by an explicit ``logout``
+    that presents the access token. So revoking a session by any other means
+    (rotation, reuse-detection, password-reset revoke-all, logout without the
+    access token) left its access tokens usable until they expired on their own.
+
+    Drop a ``auth:revoked_sid`` marker that ``current_user`` checks per request.
+    TTL = the access-token lifetime, so once the token would expire anyway the
+    marker can disappear. Mirrors the per-``jti`` ``auth:revoked`` blocklist.
+    """
+    await get_redis().set(
+        f"auth:revoked_sid:{sid}", "1", ex=settings.jwt_access_ttl_seconds
+    )
+
+
 async def logout(
     db: AsyncSession,
     refresh_token: str,
@@ -433,10 +454,17 @@ async def logout(
         return
     if session_row.revoked_at is None:
         session_row.revoked_at = now()
+        # Kill this session's access token too, even when the caller didn't
+        # present it (cookie-only logout) — access_token above only covers the
+        # case where it was on the request.
+        await _blocklist_session_id(session_row.id, settings=s)
         await db.flush()
 
 
-async def _revoke_all_for_user(db: AsyncSession, user_id: str) -> None:
+async def _revoke_all_for_user(
+    db: AsyncSession, user_id: str, *, settings: Settings | None = None
+) -> None:
+    s = settings or get_settings()
     stmt = select(AuthSession).where(
         AuthSession.user_id == user_id,
         AuthSession.revoked_at.is_(None),
@@ -444,6 +472,8 @@ async def _revoke_all_for_user(db: AsyncSession, user_id: str) -> None:
     moment = now()
     for row in (await db.execute(stmt)).scalars():
         row.revoked_at = moment
+        # Outstanding access tokens for each revoked session die immediately.
+        await _blocklist_session_id(row.id, settings=s)
     await db.flush()
 
 
@@ -550,6 +580,13 @@ async def current_user(
     # here when the session is explicitly revoked (logout). See ``_blocklist_access_token``.
     if await get_redis().get(f"auth:revoked:{claims.jti}") is not None:
         raise UnauthorizedError("token revoked")
+    # ADR-0007 session-level revocation: a revoked session (rotation, logout,
+    # reuse-detection, password reset) blocklists its ``sid`` so its still-valid
+    # access tokens stop working at once instead of lingering up to 15 min.
+    if claims.sid is not None and (
+        await get_redis().get(f"auth:revoked_sid:{claims.sid}") is not None
+    ):
+        raise UnauthorizedError("session revoked")
     user = await get_user_by_id(db, claims.sub)
     if user is None:
         raise NotFoundError("user not found")
@@ -641,7 +678,7 @@ async def reset_password(
         raise NotFoundError("user not found")
     user.password_hash = hash_password(new_password)
     await db.flush()
-    await _revoke_all_for_user(db, user.id)
+    await _revoke_all_for_user(db, user.id, settings=s)
 
 
 __all__ = [
