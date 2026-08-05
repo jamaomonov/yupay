@@ -14,6 +14,7 @@ import html
 from collections.abc import Callable, Coroutine, Sequence
 from decimal import Decimal
 from typing import Any, Final
+from urllib.parse import quote
 
 from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -214,7 +215,7 @@ async def _send_guest_email_confirmation(
 def _guest_order_link(*, web_base: str, order_id: str, guest_email: str) -> str:
     """Order page URL carrying a magic-link ``guest_order`` access token.
 
-    The token unlocks only this order's delivered codes (see ADR-0011), so the
+    The token unlocks only this order's delivered codes (see ADR-0042), so the
     buyer can view them on the web straight from the email without the
     freely-mintable email-only guest token that anyone knowing the address could
     forge. Falls back to a plain link if the email pepper isn't configured (dev).
@@ -226,7 +227,10 @@ def _guest_order_link(*, web_base: str, order_id: str, guest_email: str) -> str:
     token = authjwt.mint_guest_order(
         order_id=order_id, email_hash=email_hash(guest_email, pepper)
     )
-    return f"{base}?access={token}"
+    # ``email`` rides the link so the order page can send it back as the
+    # ``X-Guest-Email`` header the deliveries endpoint checks against the token's
+    # hash — the same header the rest of the guest surface already uses.
+    return f"{base}?access={token}&email={quote(guest_email)}"
 
 
 async def _send_guest_email_delivered(

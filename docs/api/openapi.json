@@ -2525,6 +2525,21 @@
         "title": "ClaimOut",
         "type": "object"
       },
+      "CodeAccessIn": {
+        "description": "Request a fresh magic link to view a guest order's delivered codes.",
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "CodeAccessIn",
+        "type": "object"
+      },
       "CodeAdminListOut": {
         "properties": {
           "items": {
@@ -17831,6 +17846,52 @@
         "summary": "Get Order Route",
         "tags": [
           "orders"
+        ]
+      }
+    },
+    "/api/v1/orders/{order_id}/code-access": {
+      "post": {
+        "description": "Re-mail the order's delivered codes + a fresh access link to a guest.\n\nNon-enumerating: always ``204`` regardless of whether the order/email exists.\nThe email (with codes and the magic link) only ever goes to the order's own\naddress \u2014 never to the caller's input \u2014 so this cannot be used to exfiltrate\ncodes to an attacker-controlled address, only to re-notify the real buyer.",
+        "operationId": "request_code_access_api_v1_orders__order_id__code_access_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeAccessIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Email a guest a fresh magic link to view their delivered codes",
+        "tags": [
+          "fulfillment"
         ]
       }
     },

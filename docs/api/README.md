@@ -109,3 +109,19 @@ returns `{brand_slug: string | null, delivered: boolean, already_reviewed:
 boolean}`, letting the client gate a "rate your purchase" CTA/form without a
 failed POST. `guest_email` is a capability credential only — it is never
 returned in any reviews response body and never logged.
+
+## Guest delivered-code access (magic link)
+
+`GET /orders/{id}/deliveries` returns the order's delivered voucher/gift codes.
+A logged-in owner uses `Authorization: Bearer <access>`. A **guest** must present
+an order-scoped `guest_order` token (`Authorization: Guest <jwt>` + `X-Guest-Email`)
+— **not** the freely-mintable email-only `guest` token, which no longer unlocks
+codes. The `guest_order` token is minted server-side and delivered as the `?access=`
+param of the link in the order's delivered email; it names the exact `order_id` it
+unlocks, so knowing the buyer's email is not enough to read another order's codes.
+
+`POST /orders/{id}/code-access` (body `{email}`) re-mails a fresh magic link + the
+codes to the **order's own address**. It is **non-enumerating** (always `204`,
+per-IP `guard_ip` throttled) and never mails the caller's input, so it cannot
+exfiltrate codes to an attacker-controlled address. See
+`docs/decisions/0042-guest-code-access-magic-link.md`.

@@ -40,12 +40,13 @@ from yupay.modules.auth.api import (
 See [ADR-0007](../../../../../docs/decisions/0007-jwt-format-and-rotation.md) for the
 full spec. Summary:
 
-| Kind      | TTL     | Storage                                      | Use                              |
-| --------- | ------- | -------------------------------------------- | -------------------------------- |
-| `access`  | 15 min  | stateless JWT                                | `Authorization: Bearer <access>` |
-| `refresh` | 30 days | hash in `auth_sessions`, plaintext to client | `POST /auth/refresh`             |
-| `guest`   | 30 min  | session row in `auth_sessions(kind='guest')` | `Authorization: Guest <jwt>`     |
-| `ws`      | 60 s    | stateless JWT                                | WebSocket `Upgrade` query string |
+| Kind          | TTL     | Storage                                      | Use                                                                                                                                                                                                  |
+| ------------- | ------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `access`      | 15 min  | stateless JWT                                | `Authorization: Bearer <access>`                                                                                                                                                                     |
+| `refresh`     | 30 days | hash in `auth_sessions`, plaintext to client | `POST /auth/refresh`                                                                                                                                                                                 |
+| `guest`       | 30 min  | session row in `auth_sessions(kind='guest')` | `Authorization: Guest <jwt>` — order status/reviews. Freely mintable from an email; **does NOT unlock delivered codes.**                                                                             |
+| `guest_order` | 7 days  | stateless JWT (carries `order_id`)           | `Authorization: Guest <jwt>` for `GET /orders/{id}/deliveries` — order-scoped magic link in the delivered email. See [ADR-0042](../../../../../docs/decisions/0042-guest-code-access-magic-link.md). |
+| `ws`          | 60 s    | stateless JWT                                | WebSocket `Upgrade` query string                                                                                                                                                                     |
 
 ## HTTP surface
 
@@ -72,12 +73,18 @@ full spec. Summary:
 - `apps/api/tests/integration/test_auth_routes.py` — full HTTP flow against a real
   Postgres (testcontainers).
 
+## Revocation
+
+- **Access-token blocklist (`auth:revoked:{jti}`).** Set on explicit `logout` when the
+  request carries the access token, so it stops working immediately.
+- **Session blocklist (`auth:revoked_sid:{sid}`).** Set on every session-revocation path
+  (refresh rotation, `logout`, reuse-detection, password-reset revoke-all); `current_user`
+  checks it so a revoked session's still-valid access tokens die at once instead of
+  lingering up to 15 min. TTL = the access-token lifetime.
+
 ## What's deliberately **not** here yet
 
-- **Redis access-token revocation blocklist** (`auth:revoked:{jti}`). Refresh rotation +
-  short access TTL is enough at MVP; we'll add it when the first need arises (suspected
-  theft, admin force-logout).
-- **Email verification for guest checkout.** Per ADR-0007, guest tokens are issued
-  unverified — the downstream `orders` module is responsible for sending the receipt and
-  voucher to the supplied address.
+- **Full email verification for guest _checkout_.** Guest tokens are issued unverified at
+  checkout (the receipt/voucher goes to the supplied address). Delivered **codes** are
+  gated behind an order-scoped magic link — see [ADR-0042](../../../../../docs/decisions/0042-guest-code-access-magic-link.md).
 - **Service-to-service tokens.** Reserved for the microservice split (post-MVP).

@@ -166,7 +166,7 @@ def mint_guest_order(
     Unlike :func:`mint_guest` (freely mintable from an email alone), this is minted
     only server-side and carries the specific ``order_id`` it grants access to, so
     knowing the buyer's email is not enough to read another order's codes. It rides
-    the magic link in the delivered email — see ADR-0011.
+    the magic link in the delivered email — see ADR-0042.
     """
     s = _settings_or(settings)
     payload = _base_payload(
