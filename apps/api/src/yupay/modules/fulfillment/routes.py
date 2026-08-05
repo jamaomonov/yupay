@@ -19,6 +19,7 @@ from yupay.core.idempotency import (
 )
 from yupay.modules.admin.api import require_admin
 from yupay.modules.auth import jwt as authjwt
+from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.auth.security import email_hash
 from yupay.modules.fulfillment import service as svc
 from yupay.modules.fulfillment.schemas import (
@@ -27,6 +28,7 @@ from yupay.modules.fulfillment.schemas import (
     BulkRetryIn,
     BulkRetryOut,
     BulkRetrySkipped,
+    CodeAccessIn,
     DeliveryListOut,
     DeliveryOut,
     FulfillmentTaskListOut,
@@ -34,6 +36,7 @@ from yupay.modules.fulfillment.schemas import (
     ManualCompleteIn,
     ManualFailIn,
 )
+from yupay.modules.notifications.service import resend_guest_delivery_email
 from yupay.modules.orders.models import Order
 from yupay.modules.orders.service import Actor
 from yupay.modules.users.models import User
@@ -144,6 +147,27 @@ async def list_order_deliveries(
     await _ensure_order_owner(db, actor=actor, order_id=order_id)
     rows = await svc.list_deliveries_for_order(db, order_id=order_id)
     return DeliveryListOut(items=[_to_customer_delivery_out(r) for r in rows])
+
+
+@router.post(
+    "/{order_id}/code-access",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Email a guest a fresh magic link to view their delivered codes",
+)
+async def request_code_access(
+    order_id: str,
+    body: CodeAccessIn,
+    request: Request,
+) -> None:
+    """Re-mail the order's delivered codes + a fresh access link to a guest.
+
+    Non-enumerating: always ``204`` regardless of whether the order/email exists.
+    The email (with codes and the magic link) only ever goes to the order's own
+    address — never to the caller's input — so this cannot be used to exfiltrate
+    codes to an attacker-controlled address, only to re-notify the real buyer.
+    """
+    await guard_ip(request, bucket="code-access")
+    await resend_guest_delivery_email(order_id, str(body.email))
 
 
 # ---------- admin ----------

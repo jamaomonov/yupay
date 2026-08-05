@@ -22,6 +22,8 @@ from sqlalchemy.orm import Session, selectinload
 from yupay.core.config import get_settings
 from yupay.core.db import get_session_factory
 from yupay.core.logging import get_logger
+from yupay.modules.auth import jwt as authjwt
+from yupay.modules.auth.security import email_hash
 from yupay.modules.catalog.models import Brand, Product, Sku
 from yupay.modules.fulfillment.models import Delivery
 from yupay.modules.notifications.channels import telegram as tg
@@ -209,6 +211,24 @@ async def _send_guest_email_confirmation(
         )
 
 
+def _guest_order_link(*, web_base: str, order_id: str, guest_email: str) -> str:
+    """Order page URL carrying a magic-link ``guest_order`` access token.
+
+    The token unlocks only this order's delivered codes (see ADR-0011), so the
+    buyer can view them on the web straight from the email without the
+    freely-mintable email-only guest token that anyone knowing the address could
+    forge. Falls back to a plain link if the email pepper isn't configured (dev).
+    """
+    base = f"{web_base.rstrip('/')}/orders/{order_id}"
+    pepper = get_settings().auth_email_pepper
+    if not pepper:
+        return base
+    token = authjwt.mint_guest_order(
+        order_id=order_id, email_hash=email_hash(guest_email, pepper)
+    )
+    return f"{base}?access={token}"
+
+
 async def _send_guest_email_delivered(
     *,
     order_id: str,
@@ -236,7 +256,7 @@ async def _send_guest_email_delivered(
     """
     if not guest_email or not web_base:
         return
-    link = f"{web_base.rstrip('/')}/orders/{order_id}"
+    link = _guest_order_link(web_base=web_base, order_id=order_id, guest_email=guest_email)
     content = order_delivered_email(order_id=order_id, link=link, codes=codes, credited=credited)
     with contextlib.suppress(Exception):  # best-effort: never break the order flow
         await send_email(
@@ -359,6 +379,45 @@ async def notify_order_delivered(order_id: str) -> bool:
         body += f"\n\n<i>… и ещё {truncated}. Открой приложение, чтобы увидеть все.</i>"
 
     return await tg.send_message(bot_token=token, chat_id=chat_id, text=body)
+
+
+async def resend_guest_delivery_email(order_id: str, email: str) -> None:
+    """Re-send the delivered-email (codes + a fresh access link) to a guest.
+
+    Backs ``POST /orders/{id}/code-access``: a returning guest whose magic link
+    expired asks us to re-mail it. Non-enumerating — silently returns when the
+    order is unknown, is not a guest order matching ``email``, or has no
+    deliveries yet — so it never reveals whether an order/email exists. Codes are
+    only ever mailed to the order's own address, never to the caller's input.
+    """
+    normalised = email.strip().lower()
+    async with get_session_factory()() as db:
+        order = await _load_order(db, order_id)
+        if order is None or (order.guest_email or "").lower() != normalised:
+            return
+        guest_email = order.guest_email
+        deliveries = (
+            (
+                await db.execute(
+                    select(Delivery)
+                    .join(OrderItem, OrderItem.id == Delivery.order_item_id)
+                    .where(OrderItem.order_id == order_id)
+                    .order_by(Delivery.delivered_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    if not deliveries:
+        return
+    codes, credited = _delivery_lines_for_email(deliveries)
+    await _send_guest_email_delivered(
+        order_id=order_id,
+        guest_email=guest_email,
+        web_base=get_settings().web_base_url or None,
+        codes=codes,
+        credited=credited,
+    )
 
 
 async def notify_order_failed(order_id: str, *, reason: str | None = None) -> bool:

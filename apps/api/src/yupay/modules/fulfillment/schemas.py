@@ -5,7 +5,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+
+class CodeAccessIn(BaseModel):
+    """Request a fresh magic link to view a guest order's delivered codes."""
+
+    email: EmailStr
+
 
 TaskStatus = Literal["pending", "in_progress", "succeeded", "failed", "cancelled"]
 ArtifactKind = Literal["voucher_code", "topup_receipt", "license_key"]

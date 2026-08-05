@@ -37,7 +37,7 @@ from yupay.modules.orders.models import Order, OrderItem
 
 pytestmark = pytest.mark.asyncio
 
-GUEST_EMAIL = "buyer@yupay.test"
+GUEST_EMAIL = "buyer@example.com"
 CODE = "SECRET-CODE-XYZ"
 
 
@@ -167,6 +167,59 @@ async def test_email_mismatch_is_rejected(
 
     r = await integration_client.get(
         f"/api/v1/orders/{order_id}/deliveries",
-        headers=_guest_headers(token, email="attacker@yupay.test"),
+        headers=_guest_headers(token, email="attacker@example.com"),
     )
     assert r.status_code == 401, r.text
+
+
+async def test_code_access_resend_mails_the_order_owner(
+    integration_client: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The correct email triggers a re-send — and it goes to the ORDER's address."""
+    order_id = await _seed_delivered_guest_order(db_session)
+    sent: list[dict[str, str]] = []
+
+    async def _spy(*, to: str, subject: str, html: str, text: str) -> str:
+        sent.append({"to": to, "html": html})
+        return "m"
+
+    monkeypatch.setattr("yupay.modules.notifications.service.send_email", _spy, raising=False)
+    monkeypatch.setenv("WEB_BASE_URL", "https://yupay.uz/ru")
+    get_settings.cache_clear()
+
+    r = await integration_client.post(
+        f"/api/v1/orders/{order_id}/code-access", json={"email": GUEST_EMAIL}
+    )
+    assert r.status_code == 204, r.text
+    assert len(sent) == 1
+    assert sent[0]["to"] == GUEST_EMAIL
+    assert "?access=" in sent[0]["html"]
+    get_settings.cache_clear()
+
+
+async def test_code_access_is_non_enumerating(
+    integration_client: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A wrong email (or unknown order) still returns 204 and sends nothing —
+    so codes can never be re-mailed to an attacker-controlled address."""
+    order_id = await _seed_delivered_guest_order(db_session)
+    sent: list[str] = []
+
+    async def _spy(*, to: str, subject: str, html: str, text: str) -> str:
+        sent.append(to)
+        return "m"
+
+    monkeypatch.setattr("yupay.modules.notifications.service.send_email", _spy, raising=False)
+    monkeypatch.setenv("WEB_BASE_URL", "https://yupay.uz/ru")
+    get_settings.cache_clear()
+
+    wrong = await integration_client.post(
+        f"/api/v1/orders/{order_id}/code-access", json={"email": "attacker@example.com"}
+    )
+    unknown = await integration_client.post(
+        f"/api/v1/orders/{new_id()}/code-access", json={"email": GUEST_EMAIL}
+    )
+    assert wrong.status_code == 204
+    assert unknown.status_code == 204
+    assert sent == []
+    get_settings.cache_clear()

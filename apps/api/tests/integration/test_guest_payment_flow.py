@@ -13,7 +13,10 @@ from decimal import Decimal
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
+from yupay.core.config import get_settings
 from yupay.core.ids import new_id
+from yupay.modules.auth import jwt as authjwt
+from yupay.modules.auth.security import email_hash
 from yupay.modules.catalog.models import (
     Brand,
     BrandTranslation,
@@ -81,6 +84,14 @@ async def _guest_token(client: AsyncClient, email: str = GUEST_EMAIL) -> str:
     return r.json()["access_token"]
 
 
+def _order_access_token(order_id: str, email: str = GUEST_EMAIL) -> str:
+    """Order-scoped magic-link token — what ``/deliveries`` now requires for a
+    guest (the freely-mintable checkout token no longer unlocks codes). Minted
+    directly here to stand in for the one the delivered email carries."""
+    e_hash = email_hash(email, get_settings().auth_email_pepper)
+    return authjwt.mint_guest_order(order_id=order_id, email_hash=e_hash)
+
+
 async def _guest_order(client: AsyncClient, *, token: str, sku_id: str, tag: str) -> str:
     r = await client.post(
         "/api/v1/orders",
@@ -123,7 +134,10 @@ async def test_guest_pays_and_reads_deliveries(
 
     deliveries = await integration_client.get(
         f"/api/v1/orders/{order_id}/deliveries",
-        headers={"Authorization": f"Guest {token}", "X-Guest-Email": GUEST_EMAIL},
+        headers={
+            "Authorization": f"Guest {_order_access_token(order_id)}",
+            "X-Guest-Email": GUEST_EMAIL,
+        },
     )
     assert deliveries.status_code == 200, deliveries.text
     assert len(deliveries.json()["items"]) == 1
@@ -172,9 +186,13 @@ async def test_guest_cannot_touch_foreign_order(
     )
     assert r.status_code == 404, r.text
 
+    # Even holding a well-formed order-scoped token for THIS order (bound to the
+    # stranger's own email), the owner-check rejects them: the order belongs to
+    # a different guest_email.
+    stranger_access = _order_access_token(order_id, email=stranger_email)
     deliveries = await integration_client.get(
         f"/api/v1/orders/{order_id}/deliveries",
-        headers={"Authorization": f"Guest {stranger}", "X-Guest-Email": stranger_email},
+        headers={"Authorization": f"Guest {stranger_access}", "X-Guest-Email": stranger_email},
     )
     assert deliveries.status_code == 404, deliveries.text
 
@@ -184,16 +202,17 @@ async def test_guest_deliveries_email_guards(
 ) -> None:
     token = await _guest_token(integration_client)
     order_id = await _guest_order(integration_client, token=token, sku_id=_seed_sku, tag="05")
+    access = _order_access_token(order_id)
 
     r = await integration_client.get(
         f"/api/v1/orders/{order_id}/deliveries",
-        headers={"Authorization": f"Guest {token}"},
+        headers={"Authorization": f"Guest {access}"},
     )
     assert r.status_code == 422, r.text
 
     r = await integration_client.get(
         f"/api/v1/orders/{order_id}/deliveries",
-        headers={"Authorization": f"Guest {token}", "X-Guest-Email": "wrong@example.com"},
+        headers={"Authorization": f"Guest {access}", "X-Guest-Email": "wrong@example.com"},
     )
     assert r.status_code == 401, r.text
 
@@ -266,6 +285,6 @@ async def test_guest_deliveries_ignores_email_query_param(
 
     r = await integration_client.get(
         f"/api/v1/orders/{order_id}/deliveries?email={GUEST_EMAIL}",
-        headers={"Authorization": f"Guest {token}"},
+        headers={"Authorization": f"Guest {_order_access_token(order_id)}"},
     )
     assert r.status_code == 422, r.text

@@ -62,6 +62,37 @@ async def test_delivered_email_embeds_codes(monkeypatch: pytest.MonkeyPatch) -> 
     assert "STEAM-AAAA-BBBB" in sent[0]["text"]
 
 
+async def test_delivered_email_link_carries_order_scoped_access_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The delivered-email link embeds a guest_order token so the buyer can view
+    codes on the web without the freely-mintable email-only guest token."""
+    import re
+
+    from yupay.modules.auth import jwt as authjwt
+
+    sent: list[dict[str, str]] = []
+
+    async def _spy(*, to: str, subject: str, html: str, text: str) -> str:
+        sent.append({"html": html, "text": text})
+        return "msg_test"
+
+    monkeypatch.setattr("yupay.modules.notifications.service.send_email", _spy, raising=False)
+
+    await _send_guest_email_delivered(
+        order_id="order-xyz-1",
+        guest_email="guest@example.com",
+        web_base="https://yupay.uz/ru",
+        codes=["C1"],
+    )
+
+    assert "?access=" in sent[0]["html"]
+    m = re.search(r"access=([A-Za-z0-9._-]+)", sent[0]["text"])
+    assert m is not None, sent[0]["text"]
+    claims = authjwt.verify(m.group(1), expected_kind="guest_order")
+    assert claims.order_id == "order-xyz-1"
+
+
 @pytest.mark.asyncio
 async def test_delivery_lines_for_email_splits_codes_and_topup() -> None:
     """The extractor splits raw voucher codes from top-up 'credited' lines."""
