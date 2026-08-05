@@ -1,23 +1,25 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { clearTokens, setTokens } from "./client";
 import { getReviewEligibility, submitReview } from "./reviews";
 
 // Under vitest's default "node" environment `window` is undefined, so
 // `getAccessToken()` always returns null and these tests can't tell "no
 // Bearer" apart from "no token to begin with". jsdom gives us a real
-// `window.localStorage` so we can plant a stale Bearer token and prove that
-// the guest path (`anonymous: true`) suppresses it in favor of `Guest <token>`.
-const ACCESS_KEY = "yupay.web.access_token";
+// `window`, so `getAccessToken()` can return an in-memory token and these
+// tests prove the guest path (`anonymous: true`) suppresses it in favor of
+// `Guest <token>`. The access token lives in memory now, not localStorage.
 
 afterEach(() => {
   vi.restoreAllMocks();
   window.localStorage.clear();
+  clearTokens(); // the access token is in-memory now — reset it between tests
 });
 
 describe("getReviewEligibility (guest)", () => {
   it("sends Guest auth + X-Guest-Email and no Bearer, even with a stale access token in storage", async () => {
-    window.localStorage.setItem(ACCESS_KEY, "stale-bearer-token");
+    setTokens("stale-bearer-token");
     const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>();
     vi.stubGlobal("fetch", fetchMock);
     // mintGuestToken hits /auth/guest first:
@@ -41,7 +43,7 @@ describe("getReviewEligibility (guest)", () => {
 
 describe("submitReview (guest)", () => {
   it("sends Guest auth and no Bearer, even with a stale access token in storage", async () => {
-    window.localStorage.setItem(ACCESS_KEY, "stale-bearer-token");
+    setTokens("stale-bearer-token");
     const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>();
     vi.stubGlobal("fetch", fetchMock);
     // mintGuestToken hits /auth/guest first:

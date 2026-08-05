@@ -11,7 +11,15 @@ import {
   type ReactNode,
 } from "react";
 
-import { apiFetch, clearTokens, getAccessToken, setTokens, type Tokens } from "./client";
+import {
+  apiFetch,
+  clearTokens,
+  getAccessToken,
+  hasSessionHint,
+  refreshAccess,
+  setTokens,
+  type Tokens,
+} from "./client";
 import { listGuestOrders, removeGuestOrders } from "./guest-orders";
 
 export interface Me {
@@ -52,13 +60,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // this they diverge and React throws a hydration mismatch.
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
-    setMounted(true);
+    let cancelled = false;
+    // The access token lives in memory only, so it's gone after a reload. If a
+    // prior session hint exists, re-hydrate it from the HttpOnly refresh cookie
+    // before we let the `me` query run; no hint (anonymous) → skip the refresh
+    // call entirely. `mounted` flips only once this settles so the query's
+    // `enabled` gate sees the re-hydrated token.
+    (async () => {
+      if (!getAccessToken() && hasSessionHint()) {
+        await refreshAccess();
+      }
+      if (!cancelled) setMounted(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const meQuery = useQuery({
     queryKey: ["me"],
     queryFn: () => apiFetch<Me>("/auth/me"),
-    enabled: typeof window !== "undefined" && Boolean(getAccessToken()),
+    enabled: mounted && typeof window !== "undefined" && Boolean(getAccessToken()),
     retry: false,
     staleTime: 60_000,
   });
@@ -70,7 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setTokens(tokens.access_token);
       // Fetch /auth/me imperatively and seed the cache. `invalidateQueries`
       // would no-op here because the `me` query is still `enabled: false` (its
-      // gate was evaluated before the token landed in localStorage); fetchQuery
+      // gate was evaluated before the in-memory token was set); fetchQuery
       // ignores that gate, so `user` is populated before the caller navigates
       // to an auth-gated route.
       await qc.fetchQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/auth/me") });

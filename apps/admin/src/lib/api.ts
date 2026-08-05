@@ -1,8 +1,10 @@
 /**
  * HTTP client for the admin SPA.
  *
- * Reads/writes the access JWT from/to localStorage, attaches it as a Bearer header,
- * and surfaces 401/403/non-2xx as typed exceptions so the UI can react explicitly.
+ * Keeps the access JWT in memory (never localStorage, so an XSS payload can't
+ * read it), attaches it as a Bearer header, and surfaces 401/403/non-2xx as
+ * typed exceptions so the UI can react explicitly. The in-memory token is
+ * re-hydrated from the HttpOnly refresh cookie on boot (see the auth store).
  *
  * When a request comes back ``401`` the client transparently calls
  * ``POST /api/v1/auth/refresh`` once (the 30-day refresh token rides an HttpOnly
@@ -13,12 +15,19 @@
  * fresh rotating-refresh-token by issuing N concurrent rotates.
  */
 
-const TOKEN_KEY = "yupay.admin.access_token";
-// Legacy key: the refresh token used to be stored here. Purged on clearTokens so
-// a pre-cookie session can't leave a JS-readable 30-day token behind.
+// Non-secret hint that a session might exist, so a fresh load can decide whether
+// to attempt a silent refresh. Safe in localStorage — it's a boolean, not a token.
+const SESSION_HINT_KEY = "yupay.admin.has_session";
+// Legacy keys from when tokens were stored in localStorage — purged on clear so a
+// pre-refactor session can't leave a JS-readable access/refresh token behind.
+const LEGACY_ACCESS_KEY = "yupay.admin.access_token";
 const LEGACY_REFRESH_KEY = "yupay.admin.refresh_token";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "";
+
+// In-memory access token — never persisted, so an XSS payload can't read it out
+// of localStorage. Lost on reload; re-hydrated from the refresh cookie on boot.
+let accessToken: string | null = null;
 
 export class ApiError extends Error {
   constructor(
@@ -32,17 +41,34 @@ export class ApiError extends Error {
 }
 
 export function getAccessToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  return accessToken;
 }
 
-/** Persist the access token. The second arg is accepted for call-site compatibility
- *  (the refresh token now lives in an HttpOnly cookie) and is deliberately ignored. */
+/** Whether a prior session hint exists — gate for attempting a silent refresh. */
+export function hasSessionHint(): boolean {
+  try {
+    return localStorage.getItem(SESSION_HINT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Keep the access token in memory. The second arg is accepted for call-site
+ *  compatibility (the refresh token lives in an HttpOnly cookie) and is ignored. */
 export function setTokens(access: string, _refresh?: string | null): void {
-  localStorage.setItem(TOKEN_KEY, access);
+  accessToken = access;
+  try {
+    localStorage.setItem(SESSION_HINT_KEY, "1");
+    localStorage.removeItem(LEGACY_ACCESS_KEY);
+  } catch {
+    /* storage blocked — the in-memory token still works for this tab */
+  }
 }
 
 export function clearTokens(): void {
-  localStorage.removeItem(TOKEN_KEY);
+  accessToken = null;
+  localStorage.removeItem(SESSION_HINT_KEY);
+  localStorage.removeItem(LEGACY_ACCESS_KEY);
   localStorage.removeItem(LEGACY_REFRESH_KEY);
   // Ask the server to revoke the session and expire the HttpOnly refresh cookie —
   // JS can't delete it. Fire-and-forget: logout must never block or throw.
@@ -77,44 +103,56 @@ export function registerAuthBridge(b: AuthBridge): void {
 /** Single-flight refresh promise. ``null`` whenever no refresh is in flight. */
 let refreshInFlight: Promise<boolean> | null = null;
 
-async function refreshAccessToken(): Promise<boolean> {
-  // De-dupe concurrent callers — they all await the same promise.
-  if (refreshInFlight !== null) return refreshInFlight;
-
-  refreshInFlight = (async (): Promise<boolean> => {
-    try {
-      // The refresh token rides an HttpOnly cookie; `credentials: "include"` sends
-      // it and stores the rotated one. No token in the request body.
-      const resp = await fetch(`${apiBase}/api/v1/auth/refresh`, {
-        method: "POST",
-        credentials: "include",
-        headers: { Accept: "application/json" },
-      });
-      if (!resp.ok) {
-        // 401 / 422 / 5xx on refresh all mean "session is dead" (or no cookie).
-        // Wipe tokens so the rest of the app falls back to the login page
-        // instead of looping.
-        clearTokens();
-        bridge?.onAuthLost();
-        return false;
-      }
-      const body = (await resp.json()) as { access_token?: string };
-      if (!body.access_token) {
-        clearTokens();
-        bridge?.onAuthLost();
-        return false;
-      }
-      setTokens(body.access_token);
-      bridge?.onTokensRotated(body.access_token);
-      return true;
-    } catch {
-      // Network error: don't wipe — the user might just be offline. The
-      // outer caller will surface the original 401 to the UI.
+async function _doRefresh(): Promise<boolean> {
+  try {
+    // The refresh token rides an HttpOnly cookie; `credentials: "include"` sends
+    // it and stores the rotated one. No token in the request body.
+    const resp = await fetch(`${apiBase}/api/v1/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    });
+    if (!resp.ok) {
+      // 401 / 422 / 5xx on refresh all mean "session is dead" (or no cookie).
+      // Wipe tokens so the rest of the app falls back to the login page
+      // instead of looping.
+      clearTokens();
+      bridge?.onAuthLost();
       return false;
-    } finally {
-      refreshInFlight = null;
     }
-  })();
+    const body = (await resp.json()) as { access_token?: string };
+    if (!body.access_token) {
+      clearTokens();
+      bridge?.onAuthLost();
+      return false;
+    }
+    setTokens(body.access_token);
+    bridge?.onTokensRotated(body.access_token);
+    return true;
+  } catch {
+    // Network error: don't wipe — the user might just be offline. The
+    // outer caller will surface the original 401 to the UI.
+    return false;
+  }
+}
+
+/**
+ * Re-mint the access token from the HttpOnly refresh cookie. Serialised so our
+ * rotating refresh token is never presented twice concurrently (the server's
+ * reuse-detection would treat that as theft). In-tab: the shared
+ * `refreshInFlight` promise. Cross-tab: the Web Locks API, so a second tab waits
+ * and refreshes against the already-rotated cookie instead of racing the same one.
+ * Exported so the auth store can re-hydrate the in-memory token on app boot.
+ */
+export async function refreshAccessToken(): Promise<boolean> {
+  if (refreshInFlight !== null) return refreshInFlight;
+  const run =
+    typeof navigator !== "undefined" && navigator.locks
+      ? () => navigator.locks.request("yupay-admin-token-refresh", _doRefresh)
+      : _doRefresh;
+  refreshInFlight = Promise.resolve(run()).finally(() => {
+    refreshInFlight = null;
+  });
   return refreshInFlight;
 }
 

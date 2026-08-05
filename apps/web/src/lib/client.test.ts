@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, apiFetch, clearTokens, getAccessToken, setTokens } from "./client";
+import {
+  ApiError,
+  apiFetch,
+  clearTokens,
+  getAccessToken,
+  hasSessionHint,
+  setTokens,
+} from "./client";
 
 /** Minimal localStorage backed by a Map — client.ts only needs get/set/remove. */
 function fakeStorage() {
@@ -11,6 +18,51 @@ function fakeStorage() {
     removeItem: (k: string) => void store.delete(k),
   };
 }
+
+describe("access token storage (in-memory, XSS-safe)", () => {
+  const store = new Map<string, string>();
+  beforeEach(() => {
+    store.clear();
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => void store.set(k, v),
+        removeItem: (k: string) => void store.delete(k),
+      },
+    });
+  });
+  afterEach(() => {
+    clearTokens();
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps the access token in memory, never in web storage", () => {
+    setTokens("secret-access-jwt");
+    expect(getAccessToken()).toBe("secret-access-jwt");
+    // An XSS payload reading localStorage must not find the token anywhere.
+    expect([...store.values()].join("|")).not.toContain("secret-access-jwt");
+    expect(store.get("yupay.web.access_token")).toBeUndefined();
+  });
+
+  it("records only a non-secret session hint in localStorage", () => {
+    setTokens("secret-access-jwt");
+    expect(hasSessionHint()).toBe(true);
+    expect(store.get("yupay.web.has_session")).toBe("1");
+  });
+
+  it("clearTokens drops both the in-memory token and the hint", () => {
+    setTokens("secret-access-jwt");
+    clearTokens();
+    expect(getAccessToken()).toBeNull();
+    expect(hasSessionHint()).toBe(false);
+  });
+
+  it("purges a legacy localStorage-stored access token on set", () => {
+    store.set("yupay.web.access_token", "legacy-token");
+    setTokens("new-jwt");
+    expect(store.get("yupay.web.access_token")).toBeUndefined();
+  });
+});
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(status === 204 ? null : JSON.stringify(body), {
