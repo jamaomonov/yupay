@@ -34,6 +34,7 @@ from yupay.core.ids import new_id
 from yupay.modules.auth import service as auth_svc
 from yupay.modules.auth.models import AuthSession
 from yupay.modules.users.models import User
+from yupay.modules.users.service import get_user_by_id
 
 pytestmark = pytest.mark.asyncio
 
@@ -66,7 +67,7 @@ async def test_concurrent_refresh_same_token_rotates_once(
 
     # Hold the first refresher open in the read→write window: get_user_by_id is
     # called after the `revoked_at IS NULL` check and before the revocation write.
-    orig_get_user = auth_svc.get_user_by_id
+    orig_get_user = get_user_by_id
     first_in_window = asyncio.Event()
     release_first = asyncio.Event()
     state = {"paused": False}

@@ -222,7 +222,8 @@ async def test_voucher_completed_without_codes_is_not_delivered(_g2b_env: None) 
     ``succeeded``.
     """
     mapping = _mapping("voucher")
-    for empty in ([], None):
+    empties: list[list[str] | None] = [[], None]
+    for empty in empties:
         gw = _fulfiller(
             _FakeClient(
                 purchase_voucher=VoucherPurchaseResult(
@@ -243,7 +244,8 @@ async def test_check_status_completed_without_codes_is_not_delivered(_g2b_env: N
     mapping = _mapping("voucher")
     task = cast(Any, SimpleNamespace(external_order_id="g1", order_item_id="oi1"))
     db = cast(Any, _FakeDB(_item()))
-    for empty in ([], None):
+    empties: list[list[str] | None] = [[], None]
+    for empty in empties:
         gw = _fulfiller(
             _FakeClient(
                 poll_voucher_delivery=VoucherDeliveryResult(
