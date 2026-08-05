@@ -1,7 +1,8 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 
 import { ArtifactReceipt } from "./ArtifactReceipt";
@@ -15,7 +16,7 @@ import type { OrderOut } from "@/lib/orders-types";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { apiFetch } from "@/lib/client";
-import { mintGuestToken } from "@/lib/guest";
+import { mintGuestToken, requestCodeAccess } from "@/lib/guest";
 import { getMyReviews } from "@/lib/reviews";
 import { pathFor } from "@/lib/seo";
 import { useRealtimeStatus } from "@/store/useRealtimeStatus";
@@ -76,6 +77,23 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
   // Guest fetches wait for the token; the logged-in (no email) path never blocks.
   const authReady = !isGuest || Boolean(guestAuth);
 
+  // Delivered codes are gated behind an order-scoped magic-link token (?access=)
+  // carried by the delivered email — the freely-mintable email token above only
+  // unlocks order status, never the codes. Logged-in owners use their Bearer.
+  const access = useSearchParams().get("access");
+  const deliveryAuth =
+    isGuest && access && normalizedEmail
+      ? {
+          anonymous: true as const,
+          headers: {
+            Authorization: `Guest ${access}`,
+            "X-Guest-Email": normalizedEmail,
+          },
+        }
+      : undefined;
+  // A guest can load codes only with a valid access link; a logged-in user always can.
+  const canLoadCodes = !isGuest || Boolean(deliveryAuth);
+
   // While the WS is connected, live pushes keep the cache fresh — invalidated
   // messages already trigger a refetch, so polling is redundant. Polling is
   // the fallback for guests, disconnected sockets, and the reconnect window.
@@ -93,9 +111,18 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
 
   const deliveries = useQuery({
     queryKey: ["deliveries", orderId],
-    enabled: authReady && status === "delivered",
-    queryFn: () => apiFetch<DeliveryListOut>(`/orders/${orderId}/deliveries`, guestAuth),
+    enabled: authReady && status === "delivered" && canLoadCodes,
+    queryFn: () => apiFetch<DeliveryListOut>(`/orders/${orderId}/deliveries`, deliveryAuth),
   });
+
+  // Guest on a delivered order without a valid access link: offer to re-mail it.
+  const resend = useMutation({
+    mutationFn: () => {
+      if (!normalizedEmail) throw new Error("missing email");
+      return requestCodeAccess(orderId, normalizedEmail);
+    },
+  });
+  const needsAccessLink = isGuest && status === "delivered" && !deliveryAuth;
 
   // Fallback rate CTA: even if the delivered modal was skipped or missed, a
   // logged-in buyer who hasn't reviewed this order can rate it from here. Guests
@@ -138,7 +165,27 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
       <OrderItems items={order.data.items} />
 
       {status === "delivered" &&
+        canLoadCodes &&
         deliveries.data?.items.map((d) => <ArtifactReceipt key={d.id} artifact={d.artifact} />)}
+
+      {needsAccessLink && (
+        <div className="border-border bg-bg space-y-3 rounded-xl border p-4">
+          <p className="text-tx-mute text-sm">{t("codesNeedAccess")}</p>
+          {resend.isSuccess ? (
+            <p className="text-sm text-[#3D7A00]">{t("accessLinkSent")}</p>
+          ) : (
+            <button
+              type="button"
+              onClick={() => resend.mutate()}
+              disabled={resend.isPending}
+              className={buttonStyles({ size: "sm" })}
+            >
+              {resend.isPending ? t("loading") : t("sendAccessLink")}
+            </button>
+          )}
+          {resend.isError && <p className="text-sm text-[#FF6B6B]">{t("notFound")}</p>}
+        </div>
+      )}
 
       {canRate && brandSlug && (
         <Link
