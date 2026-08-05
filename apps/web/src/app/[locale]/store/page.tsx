@@ -115,10 +115,31 @@ export default async function StorePage({
     ],
   };
 
+  // Pillar content: a generic "how it works" + a cross-brand FAQ (with schema)
+  // turn the catalog into the topical hub the brand/guide pages hang off.
+  const steps = [1, 2, 3].map((n) => ({
+    t: t(`hubStep${String(n)}T`),
+    d: t(`hubStep${String(n)}D`),
+  }));
+  const hubFaqs = [1, 2, 3, 4, 5, 6].map((n) => ({
+    q: t(`hubFaqQ${String(n)}`),
+    a: t(`hubFaqA${String(n)}`),
+  }));
+  const faqLd = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: hubFaqs.map((f) => ({
+      "@type": "Question",
+      name: f.q,
+      acceptedAnswer: { "@type": "Answer", text: f.a },
+    })),
+  };
+
   return (
     <main className="relative min-h-screen pb-28 pt-[120px]">
       <JsonLd data={collectionLd} />
       <JsonLd data={breadcrumbLd} />
+      <JsonLd data={faqLd} />
 
       <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[420px]">
         <div className="grid-cell absolute inset-0" />
@@ -205,6 +226,62 @@ export default async function StorePage({
         ) : (
           <p className="text-tx-mute mt-10 text-base">{t("empty")}</p>
         )}
+
+        {/* How it works */}
+        <section className="mt-20">
+          <h2 className="font-display text-2xl font-bold tracking-[-0.02em]">{t("hubHowTitle")}</h2>
+          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {steps.map((s, i) => (
+              <div key={i} className="border-border bg-card rounded-[16px] border p-6">
+                <div className="bg-primary/10 text-primary flex h-9 w-9 items-center justify-center rounded-full font-mono text-[14px] font-bold">
+                  {i + 1}
+                </div>
+                <div className="font-display mt-4 text-lg font-bold">{s.t}</div>
+                <p className="text-tx-mute mt-2 text-[14px] leading-relaxed">{s.d}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Per-brand guide links — feeds the how-to pages internal link equity */}
+        {allBrands.length > 0 && (
+          <section className="mt-14">
+            <h2 className="font-display text-2xl font-bold tracking-[-0.02em]">
+              {t("hubGuidesTitle")}
+            </h2>
+            <div className="mt-6 flex flex-wrap gap-3">
+              {allBrands.map((b) => (
+                <Link
+                  key={b.slug}
+                  href={pathFor(locale, `/store/${b.slug}/how-to`)}
+                  className="border-border bg-card hover:border-border-2 text-tx-mute hover:text-foreground inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-[14px] font-medium transition"
+                >
+                  {t("hubGuideLink", { name: b.name })}
+                  <ChevronRight size={14} />
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Cross-brand FAQ (matches the FAQPage schema above) */}
+        <section className="mt-14">
+          <h2 className="font-display text-2xl font-bold tracking-[-0.02em]">{t("hubFaqTitle")}</h2>
+          <div className="border-border/70 mt-6 max-w-[820px] border-y">
+            {hubFaqs.map((f, i) => (
+              <details key={i} className="border-border/70 group border-b last:border-b-0">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-[15px] font-semibold [&::-webkit-details-marker]:hidden">
+                  {f.q}
+                  <ChevronRight
+                    size={16}
+                    className="text-tx-dim shrink-0 transition group-open:rotate-90"
+                  />
+                </summary>
+                <p className="text-tx-mute -mt-1 pb-4 pr-8 text-[15px] leading-relaxed">{f.a}</p>
+              </details>
+            ))}
+          </div>
+        </section>
       </div>
 
       <div className="mt-16">
