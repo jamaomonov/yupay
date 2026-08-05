@@ -27,3 +27,44 @@ def test_redacted_keys_includes_chat_id() -> None:
 def test_redact_pii_masks_chat_id_event() -> None:
     event = _redact_pii(None, "warning", {"event": "telegram.send.rejected", "chat_id": 123456789})
     assert event["chat_id"] == "<redacted>"
+
+
+def test_redact_pii_masks_user_id_and_pii_aliases() -> None:
+    """``user_id`` (the bot logs the Telegram user id under it) and PII-stem
+    aliases (``*email``, ``*phone``, ``*_ip``) must be redacted — the redactor
+    was exact-key only, so ``customer_email`` / ``client_ip`` slipped through."""
+    event = _redact_pii(
+        None,
+        "info",
+        {
+            "event": "bot.start",
+            "user_id": 111222333,
+            "customer_email": "a@b.com",
+            "phone_number": "+998901234567",
+            "client_ip": "203.0.113.7",
+        },
+    )
+    assert event["user_id"] == "<redacted>"
+    assert event["customer_email"] == "<redacted>"
+    assert event["phone_number"] == "<redacted>"
+    assert event["client_ip"] == "<redacted>"
+
+
+def test_redact_pii_keeps_safe_keys() -> None:
+    """Order IDs, amounts, and language/status codes are OK to log (§9) and must
+    NOT be over-redacted by the alias matching."""
+    event = _redact_pii(
+        None,
+        "info",
+        {
+            "event": "order.paid",
+            "order_id": "abc-123",
+            "amount": "5000",
+            "language_code": "ru",
+            "sku_id": "sku-9",
+        },
+    )
+    assert event["order_id"] == "abc-123"
+    assert event["amount"] == "5000"
+    assert event["language_code"] == "ru"
+    assert event["sku_id"] == "sku-9"

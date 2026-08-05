@@ -104,7 +104,9 @@ def build_dispatcher(settings: Settings) -> Dispatcher:
                 log.warning("bot.clear_blocked_failed", error=str(exc))
         log.info(
             "bot.start",
-            user_id=user.id if user else None,
+            # ``tg_user_id`` (not ``user_id``) so the redactor masks the Telegram
+            # user id — §9 forbids logging it. Both keys are now blocklisted.
+            tg_user_id=user.id if user else None,
             language_code=user.language_code if user else None,
             resolved_locale=locale,
         )

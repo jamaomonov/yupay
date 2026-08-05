@@ -28,6 +28,7 @@ REDACTED_KEYS = frozenset(
         "user_agent",
         "telegram_id",
         "tg_user_id",
+        "user_id",
         "chat_id",
         "voucher_code",
         "code",
@@ -64,11 +65,24 @@ def _redact_pii(
     _name: str,
     event_dict: MutableMapping[str, Any],
 ) -> MutableMapping[str, Any]:
-    """Replace values for any blocklisted key with ``"<redacted>"``."""
+    """Replace values for any blocklisted key with ``"<redacted>"``.
+
+    Matches the exact blocklist plus PII *stems* — any key containing ``email``
+    or ``phone``, or an IP field (``ip`` / ``*_ip``) — so aliases like
+    ``customer_email`` / ``client_ip`` are caught without a reviewer having to
+    add each variant. The stems are deliberately narrow so safe keys the app
+    logs on purpose (``order_id``, ``amount``, ``language_code``) are untouched.
+    """
     for key in list(event_dict):
-        if key.lower() in REDACTED_KEYS:
+        k = key.lower()
+        if k in REDACTED_KEYS or _is_pii_stem(k):
             event_dict[key] = "<redacted>"
     return event_dict
+
+
+def _is_pii_stem(key: str) -> bool:
+    """Whether a lowercased key looks like a PII field by stem, not exact name."""
+    return "email" in key or "phone" in key or key == "ip" or key.endswith("_ip")
 
 
 def configure_logging() -> None:
