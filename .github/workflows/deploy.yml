@@ -95,3 +95,12 @@ jobs:
             }
             wait_ok https://api.yupay.uz/healthz 40
             wait_ok https://api.yupay.uz/readyz 40
+
+            # Reclaim images this deploy replaced. Each ``pull`` of a moving tag
+            # (:main) leaves the prior image dangling; over weeks of deploys that
+            # accumulated ~140GB of untagged layers and filled the disk, which
+            # wedged Loki's ingester and stopped all logging. Dangling-only so
+            # other stacks sharing this host keep their images. Runs only after
+            # the health checks pass, so a good rollback image is never pruned
+            # out from under a failed deploy.
+            docker image prune -f

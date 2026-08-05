@@ -12,6 +12,17 @@ x-app-env: &app-env
   LOG_LEVEL: INFO
   LOG_JSON: "true"
 
+# Bound every container's json-file logs. Without this the driver keeps an
+# unbounded log per container — weeks of logs grew to hundreds of MB each,
+# helped fill the disk (which wedged Loki), and got replayed on every promtail
+# restart. Promtail already ships everything to Loki, so a small local buffer
+# is all we need. 10MB × 3 files ≈ 30MB/container max.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 # NOTE on egress: this stack previously ran on an RU cloud where Telegram's
 # IPv4 ranges were blocked, which forced an IPv6-only egress path (ULA subnet
 # + NAT66, a gai.conf that re-labels fc00::/7, and ``network_mode: host`` on
@@ -23,6 +34,7 @@ x-app-env: &app-env
 services:
   postgres:
     image: postgres:16-alpine
+    logging: *default-logging
     restart: unless-stopped
     env_file: ./secrets/postgres.env
     volumes:
@@ -38,6 +50,7 @@ services:
 
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.19.1
+    logging: *default-logging
     restart: unless-stopped
     env_file: ./secrets/postgres-exporter.env
     depends_on:
@@ -45,6 +58,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    logging: *default-logging
     restart: unless-stopped
     # requirepass: the VPS is shared with another stack and Redis holds the task
     # queue and rate-limit state, so it must not be an open door to anything that
@@ -60,6 +74,7 @@ services:
 
   redis-exporter:
     image: oliver006/redis_exporter:v1.86.0
+    logging: *default-logging
     restart: unless-stopped
     # Reads REDIS_PASSWORD straight from the shared redis.env.
     env_file: ./secrets/redis.env
@@ -77,6 +92,7 @@ services:
 
   api:
     image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-api:${IMAGE_TAG:-main}
+    logging: *default-logging
     restart: unless-stopped
     environment:
       <<: *app-env
@@ -90,6 +106,7 @@ services:
 
   worker:
     image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-worker:${IMAGE_TAG:-main}
+    logging: *default-logging
     restart: unless-stopped
     environment:
       <<: *app-env
@@ -98,6 +115,7 @@ services:
 
   scheduler:
     image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-scheduler:${IMAGE_TAG:-main}
+    logging: *default-logging
     restart: unless-stopped
     environment:
       <<: *app-env
@@ -106,6 +124,7 @@ services:
 
   bot:
     image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-bot:${IMAGE_TAG:-main}
+    logging: *default-logging
     restart: unless-stopped
     environment:
       <<: *app-env
@@ -114,22 +133,26 @@ services:
 
   web:
     image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-web:${IMAGE_TAG:-main}
+    logging: *default-logging
     restart: unless-stopped
     env_file: ./secrets/web.env
 
   miniapp:
     image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-miniapp:${IMAGE_TAG:-main}
+    logging: *default-logging
     restart: unless-stopped
     env_file: ./secrets/miniapp.env
 
   admin:
     image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-admin:${IMAGE_TAG:-main}
+    logging: *default-logging
     restart: unless-stopped
     # admin is a static Vite build served by nginx — no env file
     # because every config is baked into the build at CI time.
 
   caddy:
     image: caddy:2-alpine
+    logging: *default-logging
     restart: unless-stopped
     # GRAFANA_BASIC_AUTH_HASH lives in grafana.env — Caddy substitutes
     # it into the {$GRAFANA_BASIC_AUTH_HASH} placeholder on
@@ -154,6 +177,7 @@ services:
 
   prometheus:
     image: prom/prometheus:v3.12.0
+    logging: *default-logging
     restart: unless-stopped
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -165,6 +189,7 @@ services:
 
   node-exporter:
     image: prom/node-exporter:v1.11.1
+    logging: *default-logging
     restart: unless-stopped
     pid: host
     volumes:
@@ -178,6 +203,7 @@ services:
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.55.1
+    logging: *default-logging
     restart: unless-stopped
     volumes:
       - /:/rootfs:ro
@@ -187,6 +213,7 @@ services:
 
   grafana:
     image: grafana/grafana:13.0.2
+    logging: *default-logging
     restart: unless-stopped
     env_file: ./secrets/grafana.env
     volumes:
@@ -197,6 +224,7 @@ services:
 
   loki:
     image: grafana/loki:3.7.2
+    logging: *default-logging
     restart: unless-stopped
     command: ["-config.file=/etc/loki/loki-config.yml"]
     volumes:
@@ -205,6 +233,7 @@ services:
 
   promtail:
     image: grafana/promtail:3.6.11
+    logging: *default-logging
     restart: unless-stopped
     command: ["-config.file=/etc/promtail/promtail-config.yml"]
     volumes:
@@ -218,6 +247,7 @@ services:
 
   backup:
     image: alpine:3.20
+    logging: *default-logging
     # Long-running: run_nightly.sh sleeps until BACKUP_HOUR_UTC (default 02:00)
     # and runs pg_backup.sh daily. unless-stopped keeps the schedule alive
     # across reboots. One-off runs override the command (see `make backup`).
