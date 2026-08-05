@@ -12,6 +12,13 @@ scrape_configs:
     docker_sd_configs:
       - host: unix:///var/run/docker.sock
     relabel_configs:
+      # Docker service discovery sees EVERY container on the host. This box also
+      # runs other compose projects (e.g. streamers-parser), so without this
+      # filter their logs land in YuPay's Loki/Grafana. Keep only containers
+      # from the ``yupay-prod`` compose project.
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_project"]
+        regex: "yupay-prod"
+        action: keep
       - source_labels: ["__meta_docker_container_name"]
         regex: "/?(.*)"
         target_label: container
