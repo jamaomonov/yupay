@@ -8,6 +8,7 @@ import { STATUS_LABEL, STATUS_TONE } from "./types";
 
 import type { BroadcastListOut, BroadcastOut, BroadcastStatus } from "./types";
 
+import { CopyId } from "@/components/CopyId";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { ErrorState } from "@/components/States";
@@ -108,7 +109,7 @@ export function BroadcastsListPage() {
     {
       key: "created_by",
       header: "Автор",
-      render: (b) => <code className="text-xs">{b.created_by.slice(0, 8)}…</code>,
+      render: (b) => <CopyId value={b.created_by} className="text-xs" />,
       className: "w-28",
     },
   ];

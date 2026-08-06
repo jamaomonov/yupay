@@ -21,6 +21,7 @@ import { Link, useNavigate } from "react-router-dom";
 import type { PaymentTriageOut, PaymentTriageRow, WebhookTriageRow } from "./types";
 
 import { Badge } from "@/components/Badge";
+import { CopyId } from "@/components/CopyId";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { Tabs, type TabDescriptor } from "@/components/Tabs";
@@ -136,7 +137,7 @@ function StuckSection({
       header: "Платёж",
       render: (p) => (
         <div className="flex flex-col font-mono text-xs">
-          <span>{p.id.slice(0, 8)}…</span>
+          <CopyId value={p.id} />
           <span className="text-[var(--text-secondary)]">{p.provider}</span>
         </div>
       ),
@@ -149,6 +150,7 @@ function StuckSection({
         p.user_id ? (
           <Link
             to={`/customers/${p.user_id}`}
+            title={p.user_id}
             onClick={(e) => {
               e.stopPropagation();
             }}

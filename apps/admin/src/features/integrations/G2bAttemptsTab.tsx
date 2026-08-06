@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import type { AttemptListOut, AttemptRow } from "./types";
 
+import { CopyId } from "@/components/CopyId";
 import { DataTable, type Column } from "@/components/DataTable";
 import { Spinner } from "@/components/States";
 import { apiGet } from "@/lib/api";
@@ -71,11 +72,7 @@ export function G2bAttemptsTab({ supplier, limit = 50 }: Props) {
     {
       key: "task_id",
       header: "Задача",
-      render: (r) => (
-        <code className="font-mono text-xs text-[var(--text-secondary)]">
-          {r.task_id.slice(0, 8)}…
-        </code>
-      ),
+      render: (r) => <CopyId value={r.task_id} className="text-xs text-[var(--text-secondary)]" />,
     },
     {
       key: "payload",

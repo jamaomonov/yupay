@@ -21,6 +21,7 @@ import type {
 } from "@/features/fulfillment/types";
 import type { OrderAdminOut } from "@/features/orders/types";
 
+import { CopyId } from "@/components/CopyId";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { manualQueueQuery } from "@/features/fulfillment/inboxQueries";
@@ -64,9 +65,7 @@ export function ManualQueuePage() {
       header: "Заказ",
       render: (r) => (
         <div className="flex flex-col">
-          <span className="font-mono text-xs text-[var(--text-secondary)]">
-            {r.task.order_id.slice(0, 8)}…
-          </span>
+          <CopyId value={r.task.order_id} className="text-xs text-[var(--text-secondary)]" />
           <span className="text-xs text-[var(--text-secondary)]">
             {r.order
               ? new Date(r.order.created_at).toLocaleString("ru", {

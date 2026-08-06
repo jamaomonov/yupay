@@ -34,6 +34,7 @@ import type { PaymentAdminListOut, PaymentAdminOut } from "@/features/payments/t
 
 import { Badge } from "@/components/Badge";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { CopyId } from "@/components/CopyId";
 import { PageHeader } from "@/components/PageHeader";
 import { Spinner } from "@/components/States";
 import { StatusChip } from "@/components/StatusChip";
@@ -226,19 +227,26 @@ export function OrderDetailPage() {
         breadcrumbs={[{ label: "Заказы", to: "/orders" }, { label: `${order.id.slice(0, 8)}…` }]}
         title={`Заказ ${order.id.slice(0, 8)}…`}
         description={
-          order.user_id ? (
-            <>
-              Пользователь{" "}
-              <Link
-                to={`/customers/${order.user_id}`}
-                className="font-mono text-[var(--text-primary)] underline-offset-2 hover:underline"
-              >
-                {order.user_id.slice(0, 8)}…
-              </Link>
-            </>
-          ) : (
-            (order.guest_email ?? "Гость")
-          )
+          // The order id belongs here rather than only in the (string-typed)
+          // title: this is the id support pastes into a provider console or a
+          // ticket, so it has to be copyable in one click.
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <CopyId value={order.id} chars={13} label="id" className="text-xs" />
+            {order.user_id ? (
+              <span>
+                Пользователь{" "}
+                <Link
+                  to={`/customers/${order.user_id}`}
+                  title={order.user_id}
+                  className="font-mono text-[var(--text-primary)] underline-offset-2 hover:underline"
+                >
+                  {order.user_id.slice(0, 8)}…
+                </Link>
+              </span>
+            ) : (
+              <span>{order.guest_email ?? "Гость"}</span>
+            )}
+          </span>
         }
         actions={
           <>
@@ -742,7 +750,7 @@ function PaymentsCard({
             return (
               <li key={p.id} className="p-3 text-sm">
                 <div className="flex items-baseline justify-between gap-3">
-                  <code className="text-xs">{p.id.slice(0, 8)}…</code>
+                  <CopyId value={p.id} className="text-xs" />
                   <Badge tone={PAYMENT_STATUS_TONE[p.status]} dot>
                     {PAYMENT_STATUS_LABEL[p.status]}
                   </Badge>
@@ -843,7 +851,8 @@ function FulfillmentCard({
                   <StatusChip domain="taskStatus" value={t.status} />
                 </div>
                 <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                  item {t.order_item_id.slice(0, 8)}… · попыток {t.attempts_count}
+                  <CopyId value={t.order_item_id} label="item" className="text-xs" /> · попыток{" "}
+                  {t.attempts_count}
                 </p>
                 {t.last_error && (
                   <p className="mt-1 text-xs text-[var(--danger)]">{t.last_error}</p>

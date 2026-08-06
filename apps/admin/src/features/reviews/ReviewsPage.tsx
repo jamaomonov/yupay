@@ -9,6 +9,7 @@ import { useState } from "react";
 
 import type { AdminReview, AdminReviewList } from "./types";
 
+import { CopyId } from "@/components/CopyId";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { ErrorState } from "@/components/States";
@@ -91,8 +92,8 @@ export function ReviewsPage() {
       header: "Бренд / заказ",
       render: (r) => (
         <div className="flex flex-col font-mono text-xs text-[var(--text-secondary)]">
-          <span>{r.brand_id.slice(0, 8)}…</span>
-          <span>{r.order_id.slice(0, 8)}…</span>
+          <CopyId value={r.brand_id} />
+          <CopyId value={r.order_id} />
         </div>
       ),
     },

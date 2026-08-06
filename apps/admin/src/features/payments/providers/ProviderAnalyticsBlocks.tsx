@@ -15,6 +15,7 @@ import {
 import type { RecentPaymentOut } from "./types";
 
 import { Badge } from "@/components/Badge";
+import { CopyId } from "@/components/CopyId";
 import { DataTable, type Column } from "@/components/DataTable";
 import { STATUS_LABEL, STATUS_TONE } from "@/features/payments/types";
 import { formatMoney } from "@/lib/money";
@@ -131,7 +132,7 @@ export function RecentPaymentsBlock({ rows }: { rows: RecentPaymentOut[] }) {
       header: "ID / Order",
       render: (p) => (
         <div className="flex flex-col font-mono text-xs">
-          <span>{p.id.slice(0, 8)}…</span>
+          <CopyId value={p.id} />
           <span className="text-[var(--text-secondary)]">{p.order_id.slice(0, 8)}…</span>
         </div>
       ),

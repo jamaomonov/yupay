@@ -13,6 +13,7 @@ import {
 } from "./types";
 
 import { Badge } from "@/components/Badge";
+import { CopyId } from "@/components/CopyId";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { Pagination } from "@/components/Pagination";
@@ -167,10 +168,11 @@ export function OrdersListPage() {
       header: "ID / актёр",
       render: (o) => (
         <div className="flex flex-col font-mono text-xs">
-          <span>{o.id.slice(0, 8)}…</span>
+          <CopyId value={o.id} />
           {o.user_id ? (
             <Link
               to={`/customers/${o.user_id}`}
+              title={o.user_id}
               onClick={(e) => {
                 e.stopPropagation();
               }}

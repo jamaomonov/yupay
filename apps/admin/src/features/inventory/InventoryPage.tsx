@@ -12,6 +12,7 @@ import type {
 import type { Product, Sku } from "@/features/catalog/types";
 
 import { Badge } from "@/components/Badge";
+import { CopyId } from "@/components/CopyId";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { ErrorState } from "@/components/States";
@@ -134,7 +135,7 @@ export function InventoryPage() {
       key: "order",
       header: "Order item",
       render: (c) =>
-        c.order_item_id ? <code className="text-xs">{c.order_item_id.slice(0, 8)}…</code> : "—",
+        c.order_item_id ? <CopyId value={c.order_item_id} className="text-xs" /> : "—",
     },
     {
       key: "issued",

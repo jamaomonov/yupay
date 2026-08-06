@@ -11,6 +11,7 @@ import {
 } from "./types";
 
 import { Badge } from "@/components/Badge";
+import { CopyId } from "@/components/CopyId";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { Pagination } from "@/components/Pagination";
@@ -110,8 +111,8 @@ export function PaymentsPage() {
       header: "ID / Order",
       render: (p) => (
         <div className="flex flex-col font-mono text-xs">
-          <span>{p.id.slice(0, 8)}…</span>
-          <span className="text-[var(--text-secondary)]">order {p.order_id.slice(0, 8)}…</span>
+          <CopyId value={p.id} />
+          <CopyId value={p.order_id} label="order" className="text-[var(--text-secondary)]" />
         </div>
       ),
     },

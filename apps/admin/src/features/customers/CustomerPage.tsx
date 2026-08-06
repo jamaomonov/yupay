@@ -39,6 +39,7 @@ import {
 import type { UserAdminOut } from "@/features/users/types";
 import type { AdminUserLedgerOut, Transaction } from "@/features/wallet/types";
 
+import { CopyId } from "@/components/CopyId";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { Spinner } from "@/components/States";
@@ -390,7 +391,7 @@ function RecentOrders({
     {
       key: "id",
       header: "ID",
-      render: (o) => <span className="font-mono text-xs">{o.id.slice(0, 8)}…</span>,
+      render: (o) => <CopyId value={o.id} className="text-xs" />,
       className: "w-24",
     },
     {
@@ -444,7 +445,7 @@ function RecentPayments({
     {
       key: "id",
       header: "ID",
-      render: (p) => <span className="font-mono text-xs">{p.id.slice(0, 8)}…</span>,
+      render: (p) => <CopyId value={p.id} className="text-xs" />,
       className: "w-24",
     },
     { key: "provider", header: "Провайдер", render: (p) => p.provider, className: "w-32" },
@@ -499,7 +500,7 @@ function OpenTasks({
     {
       key: "id",
       header: "ID",
-      render: (t) => <span className="font-mono text-xs">{t.id.slice(0, 8)}…</span>,
+      render: (t) => <CopyId value={t.id} className="text-xs" />,
       className: "w-24",
     },
     { key: "supplier", header: "Поставщик", render: (t) => t.supplier, className: "w-32" },

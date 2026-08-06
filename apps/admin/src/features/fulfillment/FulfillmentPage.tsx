@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import type { TaskAdminOut, TaskListOut, TaskStatus } from "./types";
 
 import { Badge } from "@/components/Badge";
+import { CopyId } from "@/components/CopyId";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { Pagination } from "@/components/Pagination";
@@ -115,8 +116,8 @@ export function FulfillmentPage() {
       header: "Order / item",
       render: (t) => (
         <div className="flex flex-col font-mono text-xs">
-          <span>{t.order_id.slice(0, 8)}…</span>
-          <span className="text-[var(--text-secondary)]">item {t.order_item_id.slice(0, 8)}…</span>
+          <CopyId value={t.order_id} />
+          <CopyId value={t.order_item_id} label="item" className="text-[var(--text-secondary)]" />
         </div>
       ),
     },
@@ -266,9 +267,10 @@ export function FulfillmentPage() {
               <div className="mb-2 flex items-center justify-between">
                 <h3 className="text-sm font-semibold">
                   Детали задачи{" "}
-                  <code className="font-mono text-xs text-[var(--text-secondary)]">
-                    {t.id.slice(0, 8)}…
-                  </code>
+                  <CopyId
+                    value={t.id}
+                    className="text-xs font-normal text-[var(--text-secondary)]"
+                  />
                 </h3>
                 <Button
                   variant="ghost"

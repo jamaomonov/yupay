@@ -19,6 +19,7 @@ import { failedTasksQuery, selectFailedRows } from "./inboxQueries";
 
 import type { TaskAdminOut, TaskListOut } from "./types";
 
+import { CopyId } from "@/components/CopyId";
 import { DataTable, type Column } from "@/components/DataTable";
 import { ErrorState } from "@/components/States";
 import { useToast } from "@/components/Toast";
@@ -99,7 +100,7 @@ export function FailedAutomaticTab() {
     {
       key: "order",
       header: "Order",
-      render: (t) => <span className="font-mono text-xs">{t.order_id.slice(0, 8)}…</span>,
+      render: (t) => <CopyId value={t.order_id} className="text-xs" />,
       className: "w-28",
     },
     {

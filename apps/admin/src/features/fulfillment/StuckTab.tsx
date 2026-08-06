@@ -16,6 +16,7 @@ import { selectStuckRows, stuckTasksQuery } from "./inboxQueries";
 import type { TaskAdminOut, TaskListOut } from "./types";
 
 import { Badge } from "@/components/Badge";
+import { CopyId } from "@/components/CopyId";
 import { DataTable, type Column } from "@/components/DataTable";
 
 export function StuckTab() {
@@ -29,7 +30,7 @@ export function StuckTab() {
     {
       key: "order",
       header: "Order",
-      render: (t) => <span className="font-mono text-xs">{t.order_id.slice(0, 8)}…</span>,
+      render: (t) => <CopyId value={t.order_id} className="text-xs" />,
       className: "w-28",
     },
     {
