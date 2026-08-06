@@ -301,19 +301,9 @@ export default function OrderSuccess() {
       className="space-y-4 pb-6"
     >
       <header className="flex items-center gap-3 px-4 pt-3">
-        <button
-          onClick={() => {
-            setLocation("/history");
-          }}
-          className="flex size-9 items-center justify-center rounded-xl"
-          style={{
-            background: "hsl(var(--card))",
-            border: "1px solid hsl(var(--border))",
-          }}
-          aria-label={t("common.back")}
-        >
-          <ArrowLeft size={15} className="text-white/60" />
-        </button>
+        {/* Telegram's BackButton covers this route and returns where the
+            buyer came from; this one always went to History, even for someone
+            who had just arrived from checkout. */}
         <div className="min-w-0 flex-1">
           <p className="text-[10px] uppercase tracking-[0.08em] text-white/35">
             {t("success.orderLabel")}

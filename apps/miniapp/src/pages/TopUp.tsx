@@ -40,7 +40,7 @@ import {
 } from "@/lib/orders";
 import { ACQUIRER_BY_METHOD, PAYMENT_METHODS, PROVIDER_BY_METHOD } from "@/lib/payment-methods";
 import { getRecentFulfillment, rememberFulfillment } from "@/lib/recent-checkout";
-import { isInsideTelegram, openExternalLink, setClosingConfirmation } from "@/lib/telegram";
+import { haptic, isInsideTelegram, openExternalLink, setClosingConfirmation } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { cn } from "@/lib/utils";
 import { amountError, parseAmount } from "@/lib/variable-amount";
@@ -480,6 +480,7 @@ export default function TopUp() {
     : t("topup.noAccount");
 
   const handlePayment = async () => {
+    haptic("press");
     if (!activePkg) {
       toast({
         title: t("topup.pickPackageTitle"),
@@ -876,6 +877,7 @@ export default function TopUp() {
                     active={selectedPkg === pkg.id}
                     fallbackImage={productImage}
                     onSelect={() => {
+                      haptic("select");
                       setSelectedPkg(pkg.id);
                     }}
                   />

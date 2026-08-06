@@ -117,7 +117,9 @@ function SearchResultCard({ game, index }: { game: Game; index: number }) {
           {game.name}
         </p>
         <p className="text-body-faint mt-0.5 text-xs">
-          {game.maintenance ? t("home.maintenance") : game.publisher}
+          <span className="line-clamp-1">
+            {game.maintenance ? t("home.maintenance") : game.publisher}
+          </span>
         </p>
       </div>
       <span className="text-body-faint flex-shrink-0 rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-medium">
@@ -176,7 +178,9 @@ export default function Home() {
     const q = search.toLowerCase().trim();
     if (!q) return [];
     return games.filter(
-      (g) => g.name.toLowerCase().includes(q) || g.publisher.toLowerCase().includes(q),
+      // Name only: `publisher` used to hold the brand's SEO paragraph, so a
+      // query like "оплата" matched the entire catalogue at once.
+      (g) => g.name.toLowerCase().includes(q),
     );
   }, [search, games]);
 

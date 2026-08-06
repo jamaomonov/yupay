@@ -1,7 +1,6 @@
 import { motion } from "framer-motion";
-import { ArrowLeft, Shield, Wallet as WalletIcon } from "lucide-react";
+import { Shield, Wallet as WalletIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useLocation } from "wouter";
 
 import { useToast } from "@/hooks/use-toast";
 import { useMe } from "@/lib/auth";
@@ -36,7 +35,6 @@ const DEFAULT_METHOD_ID = PAYMENT_METHODS[0]?.id ?? "click";
 export default function WalletTopUp() {
   const { t, locale } = useT();
   useDocumentTitle(t("walletTopUp.title"));
-  const [, setLocation] = useLocation();
   const me = useMe();
   const toast = useToast();
 
@@ -104,18 +102,10 @@ export default function WalletTopUp() {
     >
       {/* Top bar */}
       <div className="flex items-center justify-between px-4 pb-3 pt-4">
-        <button
-          type="button"
-          onClick={() => {
-            setLocation("/wallet");
-          }}
-          className="bg-card border-border flex h-9 w-9 items-center justify-center rounded-full border"
-          aria-label={t("walletTopUp.backToWallet")}
-        >
-          <ArrowLeft size={16} className="text-white/70" />
-        </button>
+        {/* No in-page back arrow: Telegram's own BackButton is already shown
+            on this route and pops real history, while this one jumped to a
+            fixed destination — two arrows, two different results. */}
         <h1 className="text-base font-bold text-white">{t("walletTopUp.title")}</h1>
-        <div className="w-9" />
       </div>
 
       {/* Amount card */}

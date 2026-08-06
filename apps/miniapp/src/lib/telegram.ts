@@ -124,6 +124,28 @@ declare global {
   }
 }
 
+/**
+ * Tactile feedback.
+ *
+ * The cheapest signal that this is an app rather than a page — and it was
+ * called exactly once in the whole Mini App (copying a Telegram id), so the
+ * moments that actually carry meaning (choosing a pack, paying, a resolved
+ * nickname, a delivered order) were silent. No-ops wherever the client doesn't
+ * support it.
+ */
+export function haptic(kind: "select" | "press" | "ok" | "error"): void {
+  const hf = getWebApp()?.HapticFeedback;
+  if (!hf) return;
+  try {
+    if (kind === "select") hf.selectionChanged?.();
+    else if (kind === "press") hf.impactOccurred?.("medium");
+    else if (kind === "ok") hf.notificationOccurred?.("success");
+    else hf.notificationOccurred?.("error");
+  } catch {
+    /* not supported */
+  }
+}
+
 export function getWebApp(): TelegramWebApp | null {
   if (typeof window === "undefined") return null;
   return window.Telegram?.WebApp ?? null;

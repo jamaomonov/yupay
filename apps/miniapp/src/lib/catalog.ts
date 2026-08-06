@@ -120,7 +120,12 @@ function brandToGame(b: BrandApi, locale = "ru"): Game {
   return {
     id: b.slug,
     name: b.name,
-    publisher: b.short_description ?? "",
+    // `short_description` is the SEO paragraph (250+ chars for the flagship
+    // brands, straight from the seeds). It is not a publisher, and the UI slots
+    // it where "Tencent Games" belongs — clipped and uppercased. Keep the slot
+    // empty rather than filling it with marketing copy; callers already fall
+    // back to "YuPay".
+    publisher: (b.short_description ?? "").length > 40 ? "" : (b.short_description ?? ""),
     category: bucketCategory(b.category_slug),
     category_slug: b.category_slug,
     // ``appIcon`` is the square brand mark — the icon tiles on Home, recent
