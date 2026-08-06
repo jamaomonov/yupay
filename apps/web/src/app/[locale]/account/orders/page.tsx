@@ -10,6 +10,8 @@ import type { OrderListOut } from "@/lib/orders-types";
 
 import { GuestOrdersList } from "@/components/order/GuestOrdersList";
 import { OrderCard } from "@/components/order/OrderCard";
+import { OrderListSkeleton } from "@/components/order/OrderCardSkeleton";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { apiFetch } from "@/lib/client";
@@ -46,7 +48,10 @@ export default function OrdersPage({ params }: { params: Promise<{ locale: strin
   if (authLoading) {
     return (
       <main className="mx-auto max-w-[640px] px-4 pb-24 pt-[120px]">
-        <p className="text-tx-dim text-sm">{t("loading")}</p>
+        {/* Auth resolves before we even know which list to render — show the
+            heading + card placeholders so the page doesn't flash empty. */}
+        <Skeleton className="mb-6 h-9 w-48 rounded-lg" />
+        <OrderListSkeleton />
       </main>
     );
   }
@@ -68,7 +73,7 @@ export default function OrdersPage({ params }: { params: Promise<{ locale: strin
     <main className="mx-auto max-w-[640px] px-4 pb-24 pt-[120px]">
       <h1 className="font-display mb-6 text-3xl font-bold tracking-[-0.02em]">{t("title")}</h1>
 
-      {orders.isLoading && <p className="text-tx-dim text-sm">{t("listLoading")}</p>}
+      {orders.isLoading && <OrderListSkeleton />}
 
       {orders.isError && <p className="text-sm text-red-400">{t("listError")}</p>}
 

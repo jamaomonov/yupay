@@ -1,13 +1,19 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { KeyRound } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
+import { useEffect, useRef } from "react";
 
 import { ArtifactReceipt } from "./ArtifactReceipt";
 import { GuestReviewPanel } from "./GuestReviewPanel";
+import { OrderIdChip } from "./OrderIdChip";
 import { OrderItems } from "./OrderItems";
+import { OrderLoadError } from "./OrderLoadError";
+import { isTrackedStatus, OrderProgress } from "./OrderProgress";
+import { OrderStatusSkeleton } from "./OrderStatusSkeleton";
 import { OrderSummary } from "./OrderSummary";
 import { StatusBlock } from "./StatusBlock";
 
@@ -124,6 +130,18 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
   });
   const needsAccessLink = isGuest && status === "delivered" && !deliveryAuth;
 
+  // The order page live-updates (WS + polling), so a guest can be sitting on it
+  // the moment fulfilment completes. Bring the "get your codes" action into
+  // view once — without this the block appears below the fold and the customer
+  // just sees "Delivered" with no codes and no obvious next step.
+  const accessBlockRef = useRef<HTMLDivElement | null>(null);
+  const scrolledToAccess = useRef(false);
+  useEffect(() => {
+    if (!needsAccessLink || scrolledToAccess.current) return;
+    scrolledToAccess.current = true;
+    accessBlockRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [needsAccessLink]);
+
   // Fallback rate CTA: even if the delivered modal was skipped or missed, a
   // logged-in buyer who hasn't reviewed this order can rate it from here. Guests
   // can't review, so the query only runs for a signed-in user on a delivered order.
@@ -136,10 +154,20 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
   // Waiting on the guest token counts as loading too — the order query
   // stays disabled (and so `order.isLoading` false) until it resolves.
   if (order.isLoading || (isGuest && guestToken.isPending)) {
-    return <p className="text-tx-mute">{t("loading")}</p>;
+    return <OrderStatusSkeleton />;
   }
   if (guestToken.isError || order.isError || !order.data) {
-    return <p className="text-[#FF6B6B]">{t("notFound")}</p>;
+    return (
+      <OrderLoadError
+        locale={locale}
+        onRetry={() => {
+          // Re-mint the guest token too: an expired/rejected one is a common
+          // cause here, and refetching only the order would fail the same way.
+          void guestToken.refetch();
+          void order.refetch();
+        }}
+      />
+    );
   }
 
   const brandSlug = order.data.items[0]?.display?.brand_slug ?? null;
@@ -164,10 +192,15 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
       </Link>
       <div className="border-border bg-card space-y-5 rounded-2xl border p-5 sm:p-6">
         <div className="space-y-3">
-          <p className="text-tx-dim font-mono text-[11px] uppercase tracking-[0.14em]">
-            #{order.data.id.slice(0, 8)}
-          </p>
+          <OrderIdChip orderId={order.data.id} />
           <StatusBlock status={order.data.status} isTopUp={isTopUp} />
+          {/* Timeline only for the happy path — see OrderProgress on why a
+              refunded/failed order gets the status hero alone. */}
+          {isTrackedStatus(order.data.status) && (
+            <div className="border-border/70 border-t pt-4">
+              <OrderProgress status={order.data.status} isTopUp={isTopUp} />
+            </div>
+          )}
         </div>
 
         <OrderSummary order={order.data} />
@@ -179,8 +212,20 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
           deliveries.data?.items.map((d) => <ArtifactReceipt key={d.id} artifact={d.artifact} />)}
 
         {needsAccessLink && (
-          <div className="border-border bg-bg space-y-3 rounded-xl border p-4">
-            <p className="text-tx-mute text-sm">{t("codesNeedAccess")}</p>
+          <div
+            ref={accessBlockRef}
+            // Accented (not the neutral card tone): this is the one action left
+            // between the customer and the goods they paid for, and it used to
+            // read as a footnote under the item list.
+            className="border-primary/35 bg-primary/[0.06] space-y-3 rounded-xl border p-4"
+          >
+            <div className="flex items-start gap-2.5">
+              <KeyRound size={18} className="text-primary mt-0.5 shrink-0" aria-hidden="true" />
+              <div className="min-w-0 space-y-1">
+                <p className="text-foreground text-sm font-semibold">{t("codesReadyTitle")}</p>
+                <p className="text-tx-mute text-sm leading-snug">{t("codesNeedAccess")}</p>
+              </div>
+            </div>
             {resend.isSuccess ? (
               <p className="text-sm text-[#3D7A00]">{t("accessLinkSent")}</p>
             ) : (
@@ -195,7 +240,8 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
                 {resend.isPending ? t("loading") : t("sendAccessLink")}
               </button>
             )}
-            {resend.isError && <p className="text-sm text-[#FF6B6B]">{t("notFound")}</p>}
+            {/* A send failure is not a missing order — say what actually went wrong. */}
+            {resend.isError && <p className="text-sm text-[#FF6B6B]">{t("accessLinkFailed")}</p>}
           </div>
         )}
 

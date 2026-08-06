@@ -4,6 +4,8 @@ import { Check, Copy, Gift } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
+import { toast } from "@/store/useToast";
+
 /**
  * Top-level artifact keys the API's customer-facing whitelist ever emits
  * (mirrors `_CUSTOMER_SAFE_ARTIFACT_KEYS` in `fulfillment/routes.py`). This is
@@ -54,12 +56,20 @@ function CopyChip({ value }: { value: string }) {
   const t = useTranslations("web.orders");
   const [copied, setCopied] = useState(false);
   const onCopy = () => {
-    void navigator.clipboard.writeText(value).then(() => {
-      setCopied(true);
-      setTimeout(() => {
-        setCopied(false);
-      }, 1500);
-    });
+    void navigator.clipboard
+      .writeText(value)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => {
+          setCopied(false);
+        }, 1500);
+      })
+      .catch(() => {
+        // Clipboard writes reject on an insecure origin, when permission is
+        // denied, or on some in-app browsers. Without this the tap looked like
+        // it did nothing at all — surface it and tell the user to copy by hand.
+        toast.error(t("copyFailed"));
+      });
   };
   return (
     <button

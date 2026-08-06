@@ -8,6 +8,7 @@ import type { GuestOrder } from "@/lib/guest-orders";
 import type { OrderOut } from "@/lib/orders-types";
 
 import { OrderCard } from "@/components/order/OrderCard";
+import { OrderCardSkeleton } from "@/components/order/OrderCardSkeleton";
 import { apiFetch } from "@/lib/client";
 import { mintGuestToken } from "@/lib/guest";
 import { pathFor } from "@/lib/seo";
@@ -85,16 +86,5 @@ export function GuestOrderCard({ entry, locale }: { entry: GuestOrder; locale: s
 
   // Loading (token mint or order fetch in flight) — a skeleton matching the
   // real card's shape so the list doesn't jump once data lands.
-  return (
-    <div
-      className="border-border bg-card flex items-center gap-3 rounded-2xl border p-3.5"
-      aria-hidden="true"
-    >
-      <span className="bg-muted h-11 w-11 shrink-0 animate-pulse rounded-xl" />
-      <div className="min-w-0 flex-1 space-y-2">
-        <span className="bg-muted block h-3.5 w-2/5 animate-pulse rounded" />
-        <span className="bg-muted block h-3 w-1/4 animate-pulse rounded" />
-      </div>
-    </div>
-  );
+  return <OrderCardSkeleton />;
 }

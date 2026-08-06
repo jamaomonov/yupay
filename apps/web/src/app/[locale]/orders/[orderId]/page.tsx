@@ -1,10 +1,10 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useTranslations } from "next-intl";
 import { Suspense, use } from "react";
 
 import { OrderStatus } from "@/components/order/OrderStatus";
+import { OrderStatusSkeleton } from "@/components/order/OrderStatusSkeleton";
 
 function OrderPageInner({ orderId }: { orderId: string }) {
   const rawEmail = useSearchParams().get("email");
@@ -14,10 +14,11 @@ function OrderPageInner({ orderId }: { orderId: string }) {
 
 export default function OrderPage({ params }: { params: Promise<{ orderId: string }> }) {
   const { orderId } = use(params);
-  const t = useTranslations("web.orders");
   return (
     <main className="mx-auto max-w-[560px] px-4 pb-16 pt-[120px]">
-      <Suspense fallback={<p className="text-tx-mute">{t("loading")}</p>}>
+      {/* Same skeleton the component uses for its own loading state, so the
+          Suspense boundary and the data fetch look like one continuous load. */}
+      <Suspense fallback={<OrderStatusSkeleton />}>
         <OrderPageInner orderId={orderId} />
       </Suspense>
     </main>

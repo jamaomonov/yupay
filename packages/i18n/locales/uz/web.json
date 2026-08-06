@@ -532,7 +532,21 @@
       "note": "Izoh",
       "fulfillment_data": "Sizning maʼlumotlaringiz",
       "deliveredNote": "Buyurtma yetkazib berildi."
-    }
+    },
+    "copyFailed": "Nusxa olinmadi — belgilab, qo‘lda nusxa oling.",
+    "accessLinkFailed": "Havola yuborilmadi. Yana urinib ko‘ring.",
+    "copyOrderId": "Buyurtma raqamidan nusxa olish",
+    "orderIdCopied": "Buyurtma raqami nusxalandi",
+    "notFoundHelp": "Xatdagi havolani tekshiring yoki sahifani yangilang — buyurtma hali yuklanmagan bo‘lishi mumkin.",
+    "retry": "Yangilash",
+    "progress": {
+      "label": "Buyurtma jarayoni",
+      "paid": "To‘landi",
+      "fulfilling": "Beriladi",
+      "delivered": "Yetkazildi",
+      "credited": "Hisobga o‘tdi"
+    },
+    "codesReadyTitle": "Buyurtma tayyor — kodlar tayyor"
   },
   "brandReviews": {
     "title": "Sharhlar",

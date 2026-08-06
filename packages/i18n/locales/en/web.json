@@ -532,7 +532,21 @@
       "note": "Note",
       "fulfillment_data": "Your details",
       "deliveredNote": "Order delivered."
-    }
+    },
+    "copyFailed": "Couldn’t copy — select and copy manually.",
+    "accessLinkFailed": "Couldn’t send the link. Please try again.",
+    "copyOrderId": "Copy order number",
+    "orderIdCopied": "Order number copied",
+    "notFoundHelp": "Check the link from your email or refresh — the order may not have loaded yet.",
+    "retry": "Retry",
+    "progress": {
+      "label": "Order progress",
+      "paid": "Paid",
+      "fulfilling": "Fulfilling",
+      "delivered": "Delivered",
+      "credited": "Credited"
+    },
+    "codesReadyTitle": "Order complete — your codes are ready"
   },
   "brandReviews": {
     "title": "Reviews",
