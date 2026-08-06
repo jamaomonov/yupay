@@ -66,6 +66,34 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
+/** Key holding when the wordmark reveal last played in full. */
+const REVEAL_SEEN_KEY = "yupay.splash.revealedAt";
+/** Show the full reveal at most this often. */
+const REVEAL_EVERY_MS = 24 * 60 * 60 * 1_000;
+
+/**
+ * Whether this launch gets the full wordmark reveal.
+ *
+ * A Telegram WebView rarely survives being closed, so almost every open is a
+ * cold one — holding the splash for the whole reveal each time charges ~1.2s of
+ * silence to someone who only came back to check an order. The reveal is worth
+ * showing, just not several times a day: play it once per day and let every
+ * other launch fall back to the anti-flash minimum.
+ */
+function shouldPlayReveal(): boolean {
+  if (prefersReducedMotion()) return false;
+  try {
+    const last = Number(window.localStorage.getItem(REVEAL_SEEN_KEY) ?? 0);
+    if (Date.now() - last < REVEAL_EVERY_MS) return false;
+    window.localStorage.setItem(REVEAL_SEEN_KEY, String(Date.now()));
+    return true;
+  } catch {
+    // Storage blocked (private mode / strict WebView) — treat as "not seen
+    // recently"; a played reveal is a better failure than a broken boot.
+    return true;
+  }
+}
+
 export function BootstrapGate({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const [phase, setPhase] = useState<Phase>("booting");
@@ -80,8 +108,7 @@ export function BootstrapGate({ children }: { children: ReactNode }) {
     // doesn't truncate it mid-slide; the splash only mounts (and the CSS
     // animation only plays) once per launch, so a retry after an error has
     // nothing left to show and falls back to the anti-flash minimum.
-    const floor =
-      attemptRef.current <= 1 && !prefersReducedMotion() ? SPLASH_ANIM_MS : MIN_SPLASH_MS;
+    const floor = attemptRef.current <= 1 && shouldPlayReveal() ? SPLASH_ANIM_MS : MIN_SPLASH_MS;
     const elapsed = Date.now() - startedAt.current;
     const wait = Math.max(0, floor - elapsed);
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
