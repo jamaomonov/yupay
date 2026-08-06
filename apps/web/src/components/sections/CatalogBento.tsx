@@ -1,8 +1,8 @@
 import { ArrowRight } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
+import { BrandTile } from "@/components/store/BrandTile";
 import { getBrands, type BrandSummary } from "@/lib/catalog";
 import { pathFor } from "@/lib/seo";
 
@@ -16,74 +16,8 @@ import { pathFor } from "@/lib/seo";
  */
 const MAX = 9;
 
-function BentoCard({
-  brand,
-  locale,
-  featured,
-  maintenanceLabel,
-}: {
-  brand: BrandSummary;
-  locale: string;
-  featured: boolean;
-  maintenanceLabel: string;
-}) {
-  const img = brand.hero_image_url ?? brand.logo_url;
-  const accent = brand.accent_color ?? "#AAFF33";
-  return (
-    <Link
-      href={pathFor(locale, `/store/${brand.slug}`)}
-      className={`border-border hover:border-primary/30 focus-visible:ring-primary group relative isolate overflow-hidden rounded-xl border transition hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset ${
-        featured ? "h-[300px] md:col-span-2 md:row-span-2 md:h-auto" : "h-[240px] md:h-auto"
-      }`}
-    >
-      {img ? (
-        <Image
-          src={img}
-          alt={brand.name}
-          fill
-          unoptimized
-          sizes={featured ? "(max-width: 768px) 100vw, 540px" : "(max-width: 768px) 100vw, 270px"}
-          className="object-cover transition duration-500 group-hover:scale-[1.04]"
-        />
-      ) : (
-        <div
-          aria-hidden
-          className="absolute inset-0"
-          style={{ background: `linear-gradient(135deg, ${accent}55, #0A0D1A)` }}
-        />
-      )}
-      <div className="absolute inset-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.9)_0%,rgba(0,0,0,0.45)_45%,transparent_80%)]" />
-
-      {brand.maintenance && (
-        <span className="absolute left-4 top-4 z-10 inline-flex rounded-md bg-black/60 px-2 py-1 text-[10px] font-black uppercase tracking-[0.06em] text-white backdrop-blur">
-          {maintenanceLabel}
-        </span>
-      )}
-
-      <div className="absolute inset-x-5 bottom-5 z-10">
-        <div className="flex items-end justify-between gap-3">
-          <div
-            className="font-display font-extrabold leading-none tracking-[-0.025em] text-white [text-shadow:0_2px_10px_rgba(0,0,0,0.6)]"
-            style={{ fontSize: featured ? 48 : 26 }}
-          >
-            {brand.name}
-          </div>
-          <div className="border-white/18 group-hover:bg-primary flex h-10 w-10 shrink-0 items-center justify-center rounded-[11px] border bg-black/45 backdrop-blur transition">
-            <ArrowRight
-              size={16}
-              strokeWidth={2.4}
-              className="group-hover:text-primary-foreground text-white transition"
-            />
-          </div>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
 export async function CatalogBento({ locale }: { locale: string }) {
   const t = await getTranslations("web.catalog");
-  const ts = await getTranslations("web.store");
 
   let all: BrandSummary[] = [];
   try {
@@ -126,19 +60,18 @@ export async function CatalogBento({ locale }: { locale: string }) {
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:auto-rows-[300px] md:grid-cols-3">
-          <BentoCard
+          <BrandTile
             brand={feature}
             locale={locale}
-            featured
-            maintenanceLabel={ts("maintenance")}
+            variant="feature"
+            className="h-[300px] md:col-span-2 md:row-span-2 md:h-auto"
           />
           {rest.map((brand) => (
-            <BentoCard
+            <BrandTile
               key={brand.slug}
               brand={brand}
               locale={locale}
-              featured={false}
-              maintenanceLabel={ts("maintenance")}
+              className="h-[240px] md:h-auto"
             />
           ))}
         </div>

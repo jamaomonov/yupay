@@ -8,7 +8,7 @@ import type { Metadata } from "next";
 
 import { JsonLd } from "@/components/JsonLd";
 import { TrustBand } from "@/components/sections/TrustBand";
-import { BrandCard } from "@/components/store/BrandCard";
+import { BrandTile } from "@/components/store/BrandTile";
 import { routing } from "@/i18n/routing";
 import { getBrands, getCategories, type BrandSummary, type CategoryOut } from "@/lib/catalog";
 import { alternates, GEO_META, localeUrl, ogLocale, pathFor, ROBOTS } from "@/lib/seo";
@@ -224,7 +224,7 @@ export default async function StorePage({
         {brands.length > 0 ? (
           <div className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {brands.map((brand) => (
-              <BrandCard key={brand.slug} brand={brand} locale={locale} />
+              <BrandTile key={brand.slug} brand={brand} locale={locale} className="h-[240px]" />
             ))}
           </div>
         ) : (
