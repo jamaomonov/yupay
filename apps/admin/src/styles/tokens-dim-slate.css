@@ -38,10 +38,19 @@
   --border-strong: #d8dee8;
   --border-subtle: #f1f4f8;
 
-  /* ---------- Text ---------- */
+  /* ---------- Text ----------
+   * Every level here carries body text somewhere, so every level clears WCAG
+   * AA (4.5:1) against the *darkest* light surface it can land on — --bg-base
+   * #eef1f6, not just white. Measured: primary 12.97, secondary 5.48,
+   * tertiary 4.51. The previous values failed: secondary sat at 4.20 and
+   * tertiary at 2.26, which is what made the sidebar's section captions
+   * ("КАТАЛОГ") barely legible. Ratios are tight between secondary and
+   * tertiary because there is only so much room above 4.5 — the levels stay
+   * distinguishable through size and weight, as they already did.
+   */
   --text-primary: #1f2937;
-  --text-secondary: #64748b;
-  --text-tertiary: #94a3b8;
+  --text-secondary: #556274;
+  --text-tertiary: #616f84;
   --text-disabled: #cbd5e1;
   --text-on-accent: #ffffff;
 
@@ -110,10 +119,14 @@
   --border-strong: #444c56;
   --border-subtle: #2a3038;
 
-  /* ---------- Text ---------- */
+  /* ---------- Text ----------
+   * Same AA rule as the light theme, measured against --bg-surface-2 #353b43,
+   * the lightest dark surface (a raised card is where dark-theme contrast is
+   * worst). Was: secondary 4.09, tertiary 2.46 — both failing.
+   */
   --text-primary: #e6edf3;
-  --text-secondary: #909dab;
-  --text-tertiary: #6e7681;
+  --text-secondary: #aab5c0;
+  --text-tertiary: #99a5b2;
   --text-disabled: #4b5563;
   --text-on-accent: #1e1b4b; /* dark text on the lifted indigo button */
 

@@ -228,6 +228,7 @@ export function AuditPage() {
             />
           </div>
           <Select
+            aria-label="Сколько событий загружать"
             value={limit}
             onChange={(e) => {
               setLimit(Number(e.target.value));

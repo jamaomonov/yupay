@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Select } from "@yupay/ui";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 
 import type {
   BulkUploadOut,
@@ -29,6 +29,9 @@ const STATES: { value: CodeState | ""; label: string }[] = [
 ];
 
 export function InventoryPage() {
+  // Ties each filter's visible <label> to its control; a plain sibling
+  // label names nothing for a screen reader.
+  const fieldId = useId();
   const qc = useQueryClient();
   const [skuId, setSkuId] = useState<string>("");
   const [state, setState] = useState<CodeState | "">("");
@@ -160,8 +163,14 @@ export function InventoryPage() {
 
       <section className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
-          <label className="text-xs font-medium uppercase text-[var(--text-secondary)]">SKU</label>
+          <label
+            htmlFor={`${fieldId}-f0`}
+            className="text-xs font-medium uppercase text-[var(--text-secondary)]"
+          >
+            SKU
+          </label>
           <Select
+            id={`${fieldId}-f0`}
             value={skuId}
             onChange={(e) => {
               setSkuId(e.target.value);
@@ -228,10 +237,14 @@ export function InventoryPage() {
       {skuId && (
         <section>
           <div className="mb-3 flex items-center gap-3">
-            <label className="text-xs font-medium uppercase text-[var(--text-secondary)]">
+            <label
+              htmlFor={`${fieldId}-f1`}
+              className="text-xs font-medium uppercase text-[var(--text-secondary)]"
+            >
               Фильтр
             </label>
             <Select
+              id={`${fieldId}-f1`}
               value={state}
               onChange={(e) => {
                 setState(e.target.value as CodeState | "");

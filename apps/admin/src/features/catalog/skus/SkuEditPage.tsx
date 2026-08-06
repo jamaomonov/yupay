@@ -683,6 +683,7 @@ export function SkuEditPage() {
                 {overrides.fields.map((field, idx) => (
                   <li key={field.id} className="flex items-center gap-2">
                     <Select
+                      aria-label="Валюта переопределения цены"
                       {...form.register(`price_overrides.${idx}.currency`)}
                       containerClassName="w-24"
                       className="font-medium"

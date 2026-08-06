@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input, Select } from "@yupay/ui";
 import { ScrollText, Search } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { AMOUNT_ERROR_TEXT, parseAdjustAmount, type ParsedAmount } from "./parseAmount";
@@ -87,6 +87,9 @@ export function WalletPage() {
 // ---------- lookup tab ----------
 
 function LookupTab() {
+  // Ties each filter's visible <label> to its control; a plain sibling
+  // label names nothing for a screen reader.
+  const fieldId = useId();
   const qc = useQueryClient();
   const toast = useToast();
   const [pendingAdjust, setPendingAdjust] = useState<ParsedAmount | null>(null);
@@ -284,8 +287,14 @@ function LookupTab() {
             </p>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
               <div>
-                <label className="text-xs uppercase text-[var(--text-secondary)]">Счёт</label>
+                <label
+                  htmlFor={`${fieldId}-f0`}
+                  className="text-xs uppercase text-[var(--text-secondary)]"
+                >
+                  Счёт
+                </label>
                 <Select
+                  id={`${fieldId}-f0`}
                   value={adjustKind}
                   onChange={(e) => {
                     setAdjustKind(e.target.value as (typeof ADJUST_KINDS)[number]["value"]);
@@ -300,8 +309,14 @@ function LookupTab() {
                 </Select>
               </div>
               <div>
-                <label className="text-xs uppercase text-[var(--text-secondary)]">Валюта</label>
+                <label
+                  htmlFor={`${fieldId}-f1`}
+                  className="text-xs uppercase text-[var(--text-secondary)]"
+                >
+                  Валюта
+                </label>
                 <Select
+                  id={`${fieldId}-f1`}
                   value={adjustCurrency}
                   onChange={(e) => {
                     setAdjustCurrency(e.target.value as AdjustCurrency);
@@ -328,10 +343,14 @@ function LookupTab() {
                 />
               </div>
               <div>
-                <label className="text-xs uppercase text-[var(--text-secondary)]">
+                <label
+                  htmlFor={`${fieldId}-f2`}
+                  className="text-xs uppercase text-[var(--text-secondary)]"
+                >
                   Причина (preset)
                 </label>
                 <Select
+                  id={`${fieldId}-f2`}
                   value={reasonPreset}
                   onChange={(e) => {
                     setReasonPreset(e.target.value as (typeof REASON_PRESETS)[number]["code"]);
@@ -429,6 +448,9 @@ function LookupTab() {
 // ---------- mine tab ----------
 
 function MineTab() {
+  // Ties each filter's visible <label> to its control; a plain sibling
+  // label names nothing for a screen reader.
+  const fieldId = useId();
   const [scope, setScope] = useState<"me" | "all">("me");
 
   const q = useQuery<AdjustmentsListOut>({
@@ -448,8 +470,11 @@ function MineTab() {
           правил» или быстрого аудита коллеги.
         </p>
         <div className="flex items-center gap-2 text-sm">
-          <label className="text-[var(--text-secondary)]">Видимость:</label>
+          <label htmlFor={`${fieldId}-f3`} className="text-[var(--text-secondary)]">
+            Видимость:
+          </label>
           <Select
+            id={`${fieldId}-f3`}
             value={scope}
             onChange={(e) => {
               setScope(e.target.value as "me" | "all");

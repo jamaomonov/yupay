@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input, Select } from "@yupay/ui";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import {
   type PaymentAdminListOut,
@@ -42,6 +42,9 @@ interface SimulateBody {
 }
 
 export function PaymentsPage() {
+  // Ties each filter's visible <label> to its control; a plain sibling
+  // label names nothing for a screen reader.
+  const fieldId = useId();
   const qc = useQueryClient();
   const toast = useToast();
   const [orderId, setOrderId] = useState("");
@@ -234,8 +237,14 @@ export function PaymentsPage() {
           />
         </div>
         <div>
-          <label className="text-xs uppercase text-[var(--text-secondary)]">Провайдер</label>
+          <label
+            htmlFor={`${fieldId}-f0`}
+            className="text-xs uppercase text-[var(--text-secondary)]"
+          >
+            Провайдер
+          </label>
           <Select
+            id={`${fieldId}-f0`}
             value={provider}
             onChange={(e) => {
               setProvider(e.target.value);
@@ -251,8 +260,14 @@ export function PaymentsPage() {
           </Select>
         </div>
         <div>
-          <label className="text-xs uppercase text-[var(--text-secondary)]">Статус</label>
+          <label
+            htmlFor={`${fieldId}-f1`}
+            className="text-xs uppercase text-[var(--text-secondary)]"
+          >
+            Статус
+          </label>
           <Select
+            id={`${fieldId}-f1`}
             value={status}
             onChange={(e) => {
               setStatus(e.target.value as PaymentStatus | "");

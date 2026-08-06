@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input, Select } from "@yupay/ui";
 import { ExternalLink, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import type { TaskAdminOut, TaskListOut, TaskStatus } from "./types";
 
@@ -44,6 +44,9 @@ const ROUTES: { value: string; label: string }[] = [
 ];
 
 export function FulfillmentPage() {
+  // Ties each filter's visible <label> to its control; a plain sibling
+  // label names nothing for a screen reader.
+  const fieldId = useId();
   const qc = useQueryClient();
   const toast = useToast();
   const [orderId, setOrderId] = useState("");
@@ -206,8 +209,14 @@ export function FulfillmentPage() {
           />
         </div>
         <div>
-          <label className="text-xs uppercase text-[var(--text-secondary)]">Маршрут</label>
+          <label
+            htmlFor={`${fieldId}-f0`}
+            className="text-xs uppercase text-[var(--text-secondary)]"
+          >
+            Маршрут
+          </label>
           <Select
+            id={`${fieldId}-f0`}
             value={supplier}
             onChange={(e) => {
               setSupplier(e.target.value);
@@ -223,8 +232,14 @@ export function FulfillmentPage() {
           </Select>
         </div>
         <div>
-          <label className="text-xs uppercase text-[var(--text-secondary)]">Статус</label>
+          <label
+            htmlFor={`${fieldId}-f1`}
+            className="text-xs uppercase text-[var(--text-secondary)]"
+          >
+            Статус
+          </label>
           <Select
+            id={`${fieldId}-f1`}
             value={status}
             onChange={(e) => {
               setStatus(e.target.value as TaskStatus | "");

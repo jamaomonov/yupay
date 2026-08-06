@@ -246,6 +246,7 @@ export function WebhooksPage() {
 
       <section className="mb-5 flex flex-wrap items-center gap-3">
         <Select
+          aria-label="Фильтр по провайдеру"
           value={provider}
           onChange={(e) => {
             setProvider(e.target.value);
@@ -259,6 +260,7 @@ export function WebhooksPage() {
           ))}
         </Select>
         <Select
+          aria-label="Фильтр по статусу подписи"
           value={sig}
           onChange={(e) => {
             setSig(e.target.value as "all" | "ok" | "bad");

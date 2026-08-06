@@ -332,6 +332,7 @@ export function OrdersListPage() {
           )}
         </div>
         <Select
+          aria-label="Фильтр по статусу заказа"
           value={status}
           onChange={(e) => {
             applyFilters({ status: e.target.value });
