@@ -175,7 +175,7 @@ function CheckablePlayerField({
   return (
     <div>
       <FieldLabel label={label} required={required} htmlFor={fieldId} />
-      <div className="flex items-center gap-2.5">
+      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
         <div className="relative min-w-0 flex-1">
           <input
             id={fieldId}
@@ -210,7 +210,11 @@ function CheckablePlayerField({
           type="button"
           disabled={!enabled || state.phase === "loading"}
           onClick={() => void onCheck()}
-          className="border-primary/35 bg-primary/[0.12] text-primary hover:bg-primary/20 inline-flex h-[46px] shrink-0 items-center justify-center gap-2 rounded-[12px] border px-5 text-[14px] font-semibold transition disabled:pointer-events-none disabled:opacity-40"
+          // Neutral on purpose: this is advisory (a failed lookup never blocks
+          // checkout), and in lime it read as the main action while the real
+          // CTA below sat dimmed. The green confirmation pill still marks a
+          // successful check.
+          className="border-border-2 text-tx-mute hover:border-tx-dim hover:text-foreground hover:bg-muted inline-flex h-[46px] shrink-0 items-center justify-center gap-2 rounded-[12px] border px-5 text-[14px] font-semibold transition disabled:pointer-events-none disabled:opacity-40"
         >
           {state.phase === "loading" && <Loader2 size={16} className="animate-spin" />}
           {state.phase === "loading" ? t("checking") : t("check")}
@@ -439,12 +443,14 @@ function VariableAmountCard({
         </div>
       </div>
 
-      {/* quick-pick preset grid — hidden on phones (below sm) so the custom
-          amount input + slider is the single, uncluttered way to choose; the
-          presets return as a convenience on wider screens. */}
+      {/* Quick picks. They used to be hidden below `sm` to keep the phone
+          layout uncluttered — but that removed the fastest path on the device
+          where it matters most and left a 16px slider spanning $1–$300 (about
+          one pixel per dollar) as the only alternative to typing. Phones get
+          the first three; wider screens get all of them. */}
       {PRESETS.length > 0 && (
-        <div className="hidden gap-3 p-5 sm:grid sm:grid-cols-3">
-          {PRESETS.map((amount) => {
+        <div className="grid grid-cols-3 gap-3 p-5">
+          {PRESETS.map((amount, i) => {
             const active = parsed === amount;
             return (
               <button
@@ -455,6 +461,8 @@ function VariableAmountCard({
                   pick(amount);
                 }}
                 className={`focus-visible:ring-primary focus-visible:ring-offset-bg relative flex flex-col items-start gap-3 rounded-[16px] border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                  i > 2 ? "hidden sm:flex" : ""
+                } ${
                   active
                     ? "border-primary bg-primary/[0.06]"
                     : "border-border bg-card hover:border-border-2"
@@ -942,10 +950,19 @@ export function PurchasePanel({
                               />
                             )}
                           </span>
-                          <span className="font-display text-[15px] font-bold leading-tight tracking-[-0.01em]">
+                          {/* The price is what a buyer scans a 12-card grid for; it used to be
+                              12px muted mono under a 15px bold name. Names also
+                              clamp to two lines, so "Advanced Battle Pass
+                              Activation Card" no longer makes its row 370px tall
+                              while "100 Bonds" makes the next one 250px, which
+                              left the prices at different heights per row. */}
+                          <span
+                            title={sku.denomination ?? sku.sku_code}
+                            className="font-display line-clamp-2 min-h-[2.4em] text-[14px] font-semibold leading-tight tracking-[-0.01em]"
+                          >
                             {sku.denomination ?? sku.sku_code}
                           </span>
-                          <span className="text-tx-mute font-mono text-[12px]">
+                          <span className="text-foreground font-mono text-[13.5px] font-semibold tabular-nums">
                             {skuPrice(locale, sku)}
                           </span>
                         </button>

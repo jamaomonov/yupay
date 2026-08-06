@@ -1,4 +1,4 @@
-import { ChevronRight, Clock, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ChevronRight, Clock, ShieldCheck } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -261,7 +261,11 @@ export default async function BrandPage({
               background: "linear-gradient(0deg, hsl(var(--bg)) 0%, hsl(var(--bg)/0.05) 58%)",
             }}
           />
-          <div className="relative z-10 flex min-h-[272px] flex-col justify-end gap-4 p-6 sm:p-8">
+          {/* `min-h` only from `sm`: on a 390px phone the hero plus the SEO
+              paragraph pushed the first denomination past the fold — a buyer
+              who arrived from search for prices got a paragraph they had
+              already read in the snippet. */}
+          <div className="relative z-10 flex flex-col justify-end gap-4 p-6 sm:min-h-[272px] sm:p-8">
             <div className="flex items-center gap-4">
               {brand.logo_url && (
                 <span className="relative h-16 w-16 shrink-0 overflow-hidden rounded-[17px] bg-black/40 shadow-[0_12px_32px_rgba(0,0,0,0.55)] backdrop-blur">
@@ -282,7 +286,7 @@ export default async function BrandPage({
             </div>
             {/* Short description — normal sentence case, muted, tight measure. */}
             {brand.short_description && (
-              <p className="max-w-[58ch] text-pretty text-[15px] leading-[1.55] text-white/75">
+              <p className="line-clamp-2 max-w-[58ch] text-pretty text-[15px] leading-[1.55] text-white/75 sm:line-clamp-none">
                 {brand.short_description}
               </p>
             )}
@@ -306,7 +310,15 @@ export default async function BrandPage({
                 </>
               )}
               <HighlightChips items={highlights} />
-              {brand.maintenance && <Chip>{t("maintenance")}</Chip>}
+              {/* Amber, not the neutral feature-chip treatment it shared with
+                  "0% комиссии" — this one means the buyer may reach checkout
+                  and fail there. */}
+              {brand.maintenance && (
+                <span className="inline-flex items-center gap-2 rounded-full border border-amber-400/50 bg-amber-400/10 px-3.5 py-2 text-[12px] font-semibold text-amber-300">
+                  <AlertTriangle size={13} aria-hidden />
+                  {t("maintenance")}
+                </span>
+              )}
             </div>
           </div>
         </div>
