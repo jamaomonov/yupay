@@ -340,5 +340,6 @@
   "topup.confirmAttest": "Я проверил(а) данные в игре — они указаны верно.",
   "topup.confirmCta": "Всё верно, оплатить",
   "topup.confirmCancel": "Изменить",
-  "home.recentTitle": "Купить снова"
+  "home.recentTitle": "Купить снова",
+  "topup.fillFieldCta": "Укажите {field}"
 }

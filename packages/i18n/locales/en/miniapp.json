@@ -340,5 +340,6 @@
   "topup.confirmAttest": "I've checked these details in-game and they are correct.",
   "topup.confirmCta": "All correct, pay",
   "topup.confirmCancel": "Edit",
-  "home.recentTitle": "Buy again"
+  "home.recentTitle": "Buy again",
+  "topup.fillFieldCta": "Enter {field}"
 }

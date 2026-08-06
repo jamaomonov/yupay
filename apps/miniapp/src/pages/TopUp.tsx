@@ -454,9 +454,6 @@ export default function TopUp() {
   const variableAmountReady =
     !isVariableSelected ||
     (activePkg?.ratePerDollar !== null && parsedAmount !== null && variableAmountErr === null);
-  // One expression for the CTA's disabled state, used by both its styling and
-  // its own `disabled` — spelled out three times, they drifted apart easily.
-  const payDisabled = isProcessing || !insideTelegram || !variableAmountReady || !activePkg;
   // Human-readable reason the CTA is disabled — reused for both the toast
   // (belt-and-suspenders guard in handlePayment) and the button label itself,
   // so the customer sees *why* right on the button, same as the existing
@@ -491,6 +488,18 @@ export default function TopUp() {
     const v = fulfillment[f.key];
     return !v || v.trim().length === 0;
   })?.key;
+
+  // One expression for the CTA's disabled state, used by both its styling and
+  // its own `disabled` — spelled out three times, they drifted apart easily.
+  // `missingFieldKey` belongs here: without it the button stayed lime and
+  // enabled with no game id typed, opened the confirmation dialog on an
+  // incomplete order, and only rejected it afterwards with a toast.
+  const payDisabled =
+    isProcessing ||
+    !insideTelegram ||
+    !variableAmountReady ||
+    !activePkg ||
+    Boolean(missingFieldKey);
   const firstFieldLabel =
     requiredFields[0]?.label?.[locale] ?? requiredFields[0]?.label?.ru ?? t("topup.fieldFallback");
   const fillingHint = accountRequired
@@ -1138,17 +1147,28 @@ export default function TopUp() {
                 ? t("topup.availableInTg")
                 : !activePkg
                   ? t("topup.pickPackageBody")
-                  : (variableAmountReason ?? (
-                      <>
-                        {/* The total belongs on the button. The summary card that
+                  : missingFieldKey
+                    ? // Name the field rather than a bare "заполните поле": with
+                      // two fields (id + server) the buyer would have to guess
+                      // which one is missing.
+                      t("topup.fillFieldCta", {
+                        field: pickLocalized(
+                          requiredFields.find((f) => f.key === missingFieldKey)?.label,
+                          locale,
+                          missingFieldKey,
+                        ),
+                      })
+                    : (variableAmountReason ?? (
+                        <>
+                          {/* The total belongs on the button. The summary card that
                       carries it sits below the payment methods and the trust
                       row — roughly 1300px down on a 12-denomination game — so
                       the thumb reaches "Оплатить" long before the eye reaches
                       the price, and the next screen is the acquirer's. */}
-                        {t("topup.pay")} · {formatMoney(finalPrice, priceCode)}
-                        <ChevronRight size={18} strokeWidth={2.5} />
-                      </>
-                    ))}
+                          {t("topup.pay")} · {formatMoney(finalPrice, priceCode)}
+                          <ChevronRight size={18} strokeWidth={2.5} />
+                        </>
+                      ))}
           </motion.button>
         )}
       </div>
