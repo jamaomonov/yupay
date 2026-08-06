@@ -69,13 +69,17 @@ export function AuthForm({
         <input
           type="email"
           id="auth-email"
+          aria-invalid={errors.email ? true : undefined}
+          aria-describedby={errors.email ? "auth-email-error" : undefined}
           autoComplete="email"
           aria-required="true"
           {...register("email")}
           className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
         />
         {errors.email && (
-          <span className="mt-1 block text-xs text-[#FF6B6B]">{t("emailInvalid")}</span>
+          <span id="auth-email-error" className="mt-1 block text-xs text-[#FF6B6B]">
+            {t("emailInvalid")}
+          </span>
         )}
       </label>
       <label className="block">
@@ -83,13 +87,17 @@ export function AuthForm({
         <input
           type="password"
           id="auth-password"
+          aria-invalid={errors.password ? true : undefined}
+          aria-describedby={errors.password ? "auth-password-error" : undefined}
           autoComplete={mode === "login" ? "current-password" : "new-password"}
           aria-required="true"
           {...register("password")}
           className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
         />
         {errors.password && (
-          <span className="mt-1 block text-xs text-[#FF6B6B]">{t("passwordShort")}</span>
+          <span id="auth-password-error" className="mt-1 block text-xs text-[#FF6B6B]">
+            {t("passwordShort")}
+          </span>
         )}
       </label>
       {mode === "register" && (
@@ -100,13 +108,17 @@ export function AuthForm({
           <input
             type="password"
             id="auth-confirm-password"
+            aria-invalid={errors.confirmPassword ? true : undefined}
+            aria-describedby={errors.confirmPassword ? "auth-confirm-password-error" : undefined}
             autoComplete="new-password"
             aria-required="true"
             {...register("confirmPassword")}
             className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
           />
           {errors.confirmPassword && (
-            <span className="mt-1 block text-xs text-[#FF6B6B]">{t("passwordMismatch")}</span>
+            <span id="auth-confirm-password-error" className="mt-1 block text-xs text-[#FF6B6B]">
+              {t("passwordMismatch")}
+            </span>
           )}
         </label>
       )}
@@ -114,7 +126,11 @@ export function AuthForm({
       <button type="submit" disabled={isSubmitting} className={buttonStyles({ size: "lg" })}>
         {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : t(mode)}
       </button>
-      {error && <p className="text-center text-[13px] text-[#FF6B6B]">{error}</p>}
+      {error && (
+        <p role="alert" className="text-center text-[13px] text-[#FF6B6B]">
+          {error}
+        </p>
+      )}
 
       <div className="text-tx-mute flex justify-between text-[13px]">
         {mode === "login" ? (

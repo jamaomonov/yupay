@@ -364,6 +364,8 @@ function VariableAmountCard({
                 </span>
                 <input
                   id={amountId}
+                  aria-invalid={errorMessage ? true : undefined}
+                  aria-describedby={errorMessage ? `${amountId}-error` : undefined}
                   type="text"
                   inputMode="decimal"
                   value={value}
@@ -425,7 +427,14 @@ function VariableAmountCard({
               <p className="text-tx-dim -mt-1 text-[12px] leading-[17px]">{t("feeNote")}</p>
             </dl>
           </div>
-          {errorMessage && <p className="mt-3 text-[12px] text-[#FF6B6B]">{errorMessage}</p>}
+          {/* Tied to the input: a rejected amount that only exists as loose text
+              below the card is invisible to anyone who reached the field by
+              keyboard or screen reader. */}
+          {errorMessage && (
+            <p id={`${amountId}-error`} className="mt-3 text-[12px] text-[#FF6B6B]">
+              {errorMessage}
+            </p>
+          )}
         </div>
       </div>
 
@@ -1124,7 +1133,8 @@ export function PurchasePanel({
                 The one place this was ever written was a post-checkout screen
                 that production never reaches (a real acquirer redirects
                 immediately). */}
-            {canPay && !loading && !error && (
+            {/* `canPay` already excludes the loading state. */}
+            {canPay && !error && (
               <p className="text-tx-dim mt-2.5 text-center text-[12px] leading-[17px]">
                 {t("afterPayNote")}
               </p>
