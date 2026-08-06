@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input } from "@yupay/ui";
 import { ScrollText, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
+import { AMOUNT_ERROR_TEXT, parseAdjustAmount, type ParsedAmount } from "./parseAmount";
 import { UserPicker } from "./UserPicker";
 
 import type {
@@ -14,6 +15,7 @@ import type {
 } from "./types";
 import type { UserAdminOut } from "@/features/users/types";
 
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusChip } from "@/components/StatusChip";
@@ -87,6 +89,8 @@ export function WalletPage() {
 function LookupTab() {
   const qc = useQueryClient();
   const toast = useToast();
+  const [pendingAdjust, setPendingAdjust] = useState<ParsedAmount | null>(null);
+  const idemKeyRef = useRef<string>("");
   const [searchParams] = useSearchParams();
   // Customer 360 deep-links here via /wallet?user_id=<uuid>; pre-fill
   // the lookup so the operator does not have to copy-paste the id.
@@ -129,6 +133,7 @@ function LookupTab() {
   const adjustMutation = useMutation<Transaction, ApiError, AdjustBody>({
     mutationFn: (body) => apiPost<Transaction>("/api/v1/admin/wallet/adjust", body),
     onSuccess: () => {
+      setPendingAdjust(null);
       toast.success("Транзакция записана в ledger.");
       setAdjustAmount("");
       setReasonDetail("");
@@ -144,13 +149,19 @@ function LookupTab() {
     setActiveUserId(userIdInput.trim());
   };
 
+  const finalReason = reasonDetail.trim()
+    ? `${reasonPreset}: ${reasonDetail.trim()}`
+    : reasonPreset;
+
+  /** Validate the form and, if it holds, open the confirmation step. */
   const submitAdjust = () => {
     if (!activeUserId) {
       toast.error("Сначала найди пользователя.");
       return;
     }
-    if (!adjustAmount.trim()) {
-      toast.error("Введи сумму.");
+    const parsed = parseAdjustAmount(adjustAmount);
+    if (typeof parsed === "string") {
+      toast.error(AMOUNT_ERROR_TEXT[parsed]);
       return;
     }
     // OTHER must have a free-text explanation; other presets may stand
@@ -159,16 +170,22 @@ function LookupTab() {
       toast.error("Для «Другое» нужны детали (≥ 4 символа).");
       return;
     }
-    const finalReason = reasonDetail.trim()
-      ? `${reasonPreset}: ${reasonDetail.trim()}`
-      : reasonPreset;
+    // One key per confirmed submission, not per click: the previous
+    // `crypto.randomUUID()` inside `mutate` meant a double-click wrote the
+    // ledger twice, which is exactly what an idempotency key exists to stop.
+    idemKeyRef.current = `admin-adjust-${crypto.randomUUID()}`;
+    setPendingAdjust(parsed);
+  };
+
+  const confirmAdjust = () => {
+    if (!pendingAdjust) return;
     adjustMutation.mutate({
       user_id: activeUserId,
       kind: adjustKind,
       currency: adjustCurrency.toUpperCase(),
-      amount: adjustAmount.trim(),
+      amount: pendingAdjust.value,
       reason: finalReason,
-      idempotency_key: `admin-adjust-${crypto.randomUUID()}`,
+      idempotency_key: idemKeyRef.current,
     });
   };
 
@@ -377,6 +394,33 @@ function LookupTab() {
         <div className="rounded-lg border bg-[var(--bg-surface)] p-10 text-center text-sm text-[var(--text-secondary)] shadow-[var(--shadow-sm)]">
           Введи user_id, чтобы посмотреть счета и историю.
         </div>
+      )}
+      {/* Manual adjustments mint or claw back real balance, so the numbers get
+          read back before anything is written — the direction especially, since
+          a stray minus used to become a silent clawback. */}
+      {pendingAdjust && (
+        <ConfirmDialog
+          title={pendingAdjust.isDebit ? "Списать с баланса?" : "Зачислить на баланс?"}
+          tone={pendingAdjust.isDebit ? "danger" : "default"}
+          confirmLabel={pendingAdjust.isDebit ? "Списать" : "Зачислить"}
+          busy={adjustMutation.isPending}
+          onCancel={() => {
+            setPendingAdjust(null);
+          }}
+          onConfirm={confirmAdjust}
+        >
+          <p>
+            {pendingAdjust.isDebit ? "Спишется" : "Зачислится"}{" "}
+            <strong className="text-[var(--text-primary)]">
+              {pendingAdjust.absolute} {adjustCurrency.toUpperCase()}
+            </strong>{" "}
+            на счёт <code className="font-mono text-xs">{adjustKind}</code> пользователя{" "}
+            <code className="font-mono text-xs">{activeUserId}</code>.
+          </p>
+          <p className="mt-2">
+            Причина: <span className="text-[var(--text-primary)]">{finalReason}</span>
+          </p>
+        </ConfirmDialog>
       )}
     </div>
   );
