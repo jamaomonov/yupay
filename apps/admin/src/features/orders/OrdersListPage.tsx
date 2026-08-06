@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input } from "@yupay/ui";
+import { Button, Input, Select } from "@yupay/ui";
 import { Ban, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -330,19 +330,19 @@ export function OrdersListPage() {
             </p>
           )}
         </div>
-        <select
+        <Select
           value={status}
           onChange={(e) => {
             applyFilters({ status: e.target.value });
           }}
-          className="h-10 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
+          containerClassName="w-auto"
         >
           {STATUS_FILTERS.map((s) => (
             <option key={s.value} value={s.value}>
               {s.label}
             </option>
           ))}
-        </select>
+        </Select>
       </section>
 
       <section className="mb-5 flex flex-wrap items-center gap-3">

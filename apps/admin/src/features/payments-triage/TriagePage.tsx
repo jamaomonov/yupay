@@ -30,6 +30,7 @@ import { type ApiError, apiGet } from "@/lib/api";
 import { formatMoney } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
 import { numberCodec, useSearchParamsState } from "@/lib/useSearchParamsState";
+import { Select } from "@yupay/ui";
 
 type TriageTab = "stuck" | "webhooks";
 
@@ -197,19 +198,19 @@ function StuckSection({
         </p>
         <label className="flex items-center gap-2 text-sm">
           <span className="text-[var(--text-secondary)]">Порог:</span>
-          <select
+          <Select
             value={threshold.toString()}
             onChange={(e) => {
               onThresholdChange(Number(e.target.value));
             }}
-            className="h-9 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 text-sm"
+            containerClassName="w-auto"
           >
             {THRESHOLDS.map((m) => (
               <option key={m} value={m.toString()}>
                 ≥ {m.toString()} мин
               </option>
             ))}
-          </select>
+          </Select>
         </label>
       </div>
 

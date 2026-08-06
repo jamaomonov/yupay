@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input } from "@yupay/ui";
+import { Button, Input, Select } from "@yupay/ui";
 import { ScrollText, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -285,35 +285,35 @@ function LookupTab() {
             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
               <div>
                 <label className="text-xs uppercase text-[var(--text-secondary)]">Счёт</label>
-                <select
+                <Select
                   value={adjustKind}
                   onChange={(e) => {
                     setAdjustKind(e.target.value as (typeof ADJUST_KINDS)[number]["value"]);
                   }}
-                  className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
+                  containerClassName="mt-1 w-full"
                 >
                   {ADJUST_KINDS.map((k) => (
                     <option key={k.value} value={k.value}>
                       {k.label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
               <div>
                 <label className="text-xs uppercase text-[var(--text-secondary)]">Валюта</label>
-                <select
+                <Select
                   value={adjustCurrency}
                   onChange={(e) => {
                     setAdjustCurrency(e.target.value as AdjustCurrency);
                   }}
-                  className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
+                  containerClassName="mt-1 w-full"
                 >
                   {ADJUST_CURRENCIES.map((c) => (
                     <option key={c.value} value={c.value}>
                       {c.label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
               <div>
                 <label className="text-xs uppercase text-[var(--text-secondary)]">Сумма</label>
@@ -331,19 +331,19 @@ function LookupTab() {
                 <label className="text-xs uppercase text-[var(--text-secondary)]">
                   Причина (preset)
                 </label>
-                <select
+                <Select
                   value={reasonPreset}
                   onChange={(e) => {
                     setReasonPreset(e.target.value as (typeof REASON_PRESETS)[number]["code"]);
                   }}
-                  className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
+                  containerClassName="mt-1 w-full"
                 >
                   {REASON_PRESETS.map((r) => (
                     <option key={r.code} value={r.code}>
                       {r.label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
               <div className="md:col-span-4">
                 <label className="text-xs uppercase text-[var(--text-secondary)]">
@@ -449,16 +449,16 @@ function MineTab() {
         </p>
         <div className="flex items-center gap-2 text-sm">
           <label className="text-[var(--text-secondary)]">Видимость:</label>
-          <select
+          <Select
             value={scope}
             onChange={(e) => {
               setScope(e.target.value as "me" | "all");
             }}
-            className="h-10 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3"
+            containerClassName="w-auto"
           >
             <option value="me">Только мои</option>
             <option value="all">Все админы</option>
-          </select>
+          </Select>
         </div>
       </header>
 

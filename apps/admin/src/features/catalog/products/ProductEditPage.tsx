@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input } from "@yupay/ui";
+import { Button, Input, Select } from "@yupay/ui";
 import { Trash2 } from "lucide-react";
 import { useEffect } from "react";
 import { Controller, useForm, useFieldArray } from "react-hook-form";
@@ -172,26 +172,20 @@ export function ProductEditPage() {
             <Input {...form.register("slug")} placeholder="pubg-uc" />
           </Field>
           <Field label="Brand" error={form.formState.errors.brand_id?.message}>
-            <select
-              {...form.register("brand_id")}
-              className="flex h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
-            >
+            <Select {...form.register("brand_id")} containerClassName="w-full">
               <option value="">— Выбери —</option>
               {brandsQuery.data?.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.translations.find((t) => t.locale === "ru")?.name ?? b.slug}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
           <Field label="Тип">
-            <select
-              {...form.register("kind")}
-              className="flex h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
-            >
+            <Select {...form.register("kind")} containerClassName="w-full">
               <option value="top_up">top_up (прямое пополнение)</option>
               <option value="voucher">voucher (код)</option>
-            </select>
+            </Select>
           </Field>
           <Field label="Supplier hint">
             <Input {...form.register("supplier_hint")} placeholder="codashop / kupikod" />

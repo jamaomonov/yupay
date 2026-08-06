@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input } from "@yupay/ui";
+import { Button, Input, Select } from "@yupay/ui";
 import { useState } from "react";
 
 import {
@@ -235,37 +235,37 @@ export function PaymentsPage() {
         </div>
         <div>
           <label className="text-xs uppercase text-[var(--text-secondary)]">Провайдер</label>
-          <select
+          <Select
             value={provider}
             onChange={(e) => {
               setProvider(e.target.value);
               setOffset(0);
             }}
-            className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
+            containerClassName="mt-1 w-full"
           >
             {PROVIDERS.map((p) => (
               <option key={p} value={p}>
                 {p || "Все"}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div>
           <label className="text-xs uppercase text-[var(--text-secondary)]">Статус</label>
-          <select
+          <Select
             value={status}
             onChange={(e) => {
               setStatus(e.target.value as PaymentStatus | "");
               setOffset(0);
             }}
-            className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
+            containerClassName="mt-1 w-full"
           >
             {STATUSES.map((s) => (
               <option key={s.value} value={s.value}>
                 {s.label}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       </section>
 

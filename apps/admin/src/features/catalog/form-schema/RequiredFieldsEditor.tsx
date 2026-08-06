@@ -5,7 +5,7 @@
  * resulting array is form-state under the parent's `required_fields` name.
  */
 
-import { Button, Input } from "@yupay/ui";
+import { Button, Input, Select } from "@yupay/ui";
 import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { type Control, type UseFormRegister, useFieldArray, useWatch } from "react-hook-form";
@@ -110,16 +110,13 @@ function FieldRow({
               <Input {...register(`${path}.key`)} placeholder="player_id" />
             </Labeled>
             <Labeled label="Type">
-              <select
-                {...register(`${path}.type`)}
-                className="h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
-              >
+              <Select {...register(`${path}.type`)} containerClassName="w-full">
                 {FIELD_TYPES.map((t) => (
                   <option key={t} value={t}>
                     {t}
                   </option>
                 ))}
-              </select>
+              </Select>
             </Labeled>
             <Labeled label="Required">
               <input type="checkbox" {...register(`${path}.required`)} />

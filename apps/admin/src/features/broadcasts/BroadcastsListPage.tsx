@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Button } from "@yupay/ui";
+import { Button, Select } from "@yupay/ui";
 import { Plus } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -25,9 +25,6 @@ const STATUS_FILTERS: { value: BroadcastStatus | ""; label: string }[] = [
   { value: "failed", label: STATUS_LABEL.failed },
   { value: "canceled", label: STATUS_LABEL.canceled },
 ];
-
-const SELECT_CLASS =
-  "flex h-10 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm";
 
 function fmtDate(iso: string): string {
   return new Intl.DateTimeFormat("ru", { dateStyle: "medium", timeStyle: "short" }).format(
@@ -132,20 +129,20 @@ export function BroadcastsListPage() {
       />
 
       <section className="max-w-xs">
-        <select
-          className={SELECT_CLASS}
+        <Select
           value={status}
           onChange={(e) => {
             setStatus(e.target.value as BroadcastStatus | "");
           }}
           aria-label="Фильтр по статусу"
+          containerClassName="w-auto"
         >
           {STATUS_FILTERS.map((f) => (
             <option key={f.value} value={f.value}>
               {f.label}
             </option>
           ))}
-        </select>
+        </Select>
       </section>
 
       {listQuery.isError ? (

@@ -1,6 +1,6 @@
 /** Import a single G2B game → Brand + Product + SKUs + mappings. */
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Button } from "@yupay/ui";
+import { Button, Select } from "@yupay/ui";
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -201,13 +201,13 @@ export function GameImportPage() {
           <div className="mt-3">
             <Field label="Бренд">
               {({ inputProps }) => (
-                <select
+                <Select
                   {...inputProps}
                   value={brandId}
                   onChange={(e) => {
                     setBrandId(e.target.value);
                   }}
-                  className="h-9 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 text-sm"
+                  containerClassName="w-full"
                 >
                   <option value="">— выбери —</option>
                   {(brands.data ?? []).map((b) => (
@@ -215,7 +215,7 @@ export function GameImportPage() {
                       {b.translations.find((t) => t.locale === "ru")?.name ?? b.slug}
                     </option>
                   ))}
-                </select>
+                </Select>
               )}
             </Field>
           </div>
@@ -253,13 +253,13 @@ export function GameImportPage() {
             </Field>
             <Field label="Категория">
               {({ inputProps }) => (
-                <select
+                <Select
                   {...inputProps}
                   value={categoryId}
                   onChange={(e) => {
                     setCategoryId(e.target.value);
                   }}
-                  className="h-9 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 text-sm"
+                  containerClassName="w-full"
                 >
                   <option value="">— выбери —</option>
                   {(categories.data ?? []).map((c) => (
@@ -267,7 +267,7 @@ export function GameImportPage() {
                       {c.translations.find((t) => t.locale === "ru")?.name ?? c.slug}
                     </option>
                   ))}
-                </select>
+                </Select>
               )}
             </Field>
           </>

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Button, Input } from "@yupay/ui";
+import { Button, Input, Select } from "@yupay/ui";
 import {
   Activity,
   AlertTriangle,
@@ -226,18 +226,18 @@ export function AuditPage() {
               className="pl-9 text-xs"
             />
           </div>
-          <select
+          <Select
             value={limit}
             onChange={(e) => {
               setLimit(Number(e.target.value));
             }}
-            className="h-10 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
+            containerClassName="w-auto"
           >
             <option value={50}>50 событий</option>
             <option value={100}>100</option>
             <option value={200}>200</option>
             <option value={500}>500</option>
-          </select>
+          </Select>
         </div>
       </section>
 

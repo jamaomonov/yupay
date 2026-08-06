@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input } from "@yupay/ui";
+import { Button, Input, Select } from "@yupay/ui";
 import { Plus, Trash2, Wand2 } from "lucide-react";
 import { useEffect, useMemo } from "react";
 import { Controller, useForm, useFieldArray } from "react-hook-form";
@@ -466,11 +466,7 @@ export function SkuEditPage() {
             error={form.formState.errors.product_id?.message}
             help="К какому бренд-продукту относится этот SKU."
           >
-            <select
-              {...form.register("product_id")}
-              disabled={!isNew}
-              className="flex h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm disabled:opacity-60"
-            >
+            <Select {...form.register("product_id")} disabled={!isNew} containerClassName="w-full">
               <option value="">— Выбери продукт —</option>
               {productsQuery.data?.map((p) => {
                 const brand = brandById.get(p.brand_id);
@@ -483,7 +479,7 @@ export function SkuEditPage() {
                   </option>
                 );
               })}
-            </select>
+            </Select>
             {!isNew && (
               <p className="mt-1 text-xs text-[var(--text-secondary)]">
                 Продукт у существующего SKU поменять нельзя — удали и создай заново.
@@ -496,16 +492,13 @@ export function SkuEditPage() {
               <Input {...form.register("denomination")} placeholder="60 UC" />
             </Field>
             <Field label="Регион" help="GLOBAL — продаётся везде.">
-              <select
-                {...form.register("region")}
-                className="flex h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
-              >
+              <Select {...form.register("region")} containerClassName="w-full">
                 {REGION_PRESETS.map((r) => (
                   <option key={r.value} value={r.value}>
                     {r.label}
                   </option>
                 ))}
-              </select>
+              </Select>
             </Field>
           </div>
 
@@ -689,16 +682,17 @@ export function SkuEditPage() {
               <ul className="space-y-2">
                 {overrides.fields.map((field, idx) => (
                   <li key={field.id} className="flex items-center gap-2">
-                    <select
+                    <Select
                       {...form.register(`price_overrides.${idx}.currency`)}
-                      className="h-9 w-24 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 text-sm font-medium"
+                      containerClassName="w-24"
+                      className="font-medium"
                     >
                       {CURRENCIES.map((c) => (
                         <option key={c} value={c}>
                           {c}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                     <Input
                       {...form.register(`price_overrides.${idx}.price`)}
                       inputMode="decimal"

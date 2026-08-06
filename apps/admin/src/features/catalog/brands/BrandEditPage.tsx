@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input } from "@yupay/ui";
+import { Button, Input, Select } from "@yupay/ui";
 import { Trash2 } from "lucide-react";
 import { useEffect } from "react";
 import { Controller, useForm, useFieldArray } from "react-hook-form";
@@ -223,17 +223,14 @@ export function BrandEditPage() {
             <Input {...form.register("slug")} placeholder="pubg-mobile" />
           </Field>
           <Field label="Категория" error={form.formState.errors.category_id?.message}>
-            <select
-              {...form.register("category_id")}
-              className="flex h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
-            >
+            <Select {...form.register("category_id")} containerClassName="w-full">
               <option value="">— Выбери —</option>
               {categoriesQuery.data?.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.translations.find((t) => t.locale === "ru")?.name ?? c.slug}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
           <Field label="Логотип">
             <Controller

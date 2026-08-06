@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input } from "@yupay/ui";
+import { Button, Input, Select } from "@yupay/ui";
 import { Ban } from "lucide-react";
 import { useState } from "react";
 
@@ -30,9 +30,6 @@ interface PromoListOut {
 }
 
 const CURRENCIES = ["UZS", "RUB", "USD", "USDT"] as const;
-
-const SELECT_CLASS =
-  "flex h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm";
 
 function fmtDate(iso: string): string {
   return new Intl.DateTimeFormat("ru", { dateStyle: "medium", timeStyle: "short" }).format(
@@ -210,19 +207,19 @@ export function PromoPage() {
 
         <label className="flex flex-col gap-1 lg:col-span-1">
           <span className="text-sm font-medium">Валюта</span>
-          <select
-            className={SELECT_CLASS}
+          <Select
             value={currency}
             onChange={(e) => {
               setCurrency(e.target.value);
             }}
+            containerClassName="w-full"
           >
             {CURRENCIES.map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
 
         <label className="flex flex-col gap-1 lg:col-span-2">

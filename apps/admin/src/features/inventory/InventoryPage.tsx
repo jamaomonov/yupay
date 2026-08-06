@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button } from "@yupay/ui";
+import { Button, Select } from "@yupay/ui";
 import { useMemo, useState } from "react";
 
 import type {
@@ -161,12 +161,12 @@ export function InventoryPage() {
       <section className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
           <label className="text-xs font-medium uppercase text-[var(--text-secondary)]">SKU</label>
-          <select
+          <Select
             value={skuId}
             onChange={(e) => {
               setSkuId(e.target.value);
             }}
-            className="mt-1 h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
+            containerClassName="mt-1 w-full"
           >
             <option value="">— Выбрать —</option>
             {skusQuery.data?.map((sku) => {
@@ -181,7 +181,7 @@ export function InventoryPage() {
                 </option>
               );
             })}
-          </select>
+          </Select>
         </div>
 
         {skuId && countsQuery.data && <CountsCard counts={countsQuery.data} />}
@@ -231,19 +231,19 @@ export function InventoryPage() {
             <label className="text-xs font-medium uppercase text-[var(--text-secondary)]">
               Фильтр
             </label>
-            <select
+            <Select
               value={state}
               onChange={(e) => {
                 setState(e.target.value as CodeState | "");
               }}
-              className="h-9 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
+              containerClassName="w-auto"
             >
               {STATES.map((s) => (
                 <option key={s.value} value={s.value}>
                   {s.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           {/* "Загрузи первые" on a failed fetch invites re-uploading a batch that
               is already in the warehouse — show the failure instead. */}

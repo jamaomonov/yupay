@@ -15,7 +15,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input } from "@yupay/ui";
+import { Button, Input, Select } from "@yupay/ui";
 import { X } from "lucide-react";
 import { useId, useMemo, useRef, useState } from "react";
 
@@ -404,34 +404,34 @@ function CompleteForm({
     <form className="space-y-4" onSubmit={handleSubmit}>
       <div className="grid grid-cols-2 gap-3">
         <FormField label="Тип артефакта">
-          <select
+          <Select
             value={kind}
             onChange={(e) => {
               setKind(e.target.value as ArtifactKind);
             }}
-            className="flex h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
+            containerClassName="w-full"
           >
             {Object.entries(ARTIFACT_KIND_LABEL).map(([v, label]) => (
               <option key={v} value={v}>
                 {label}
               </option>
             ))}
-          </select>
+          </Select>
         </FormField>
         <FormField label="Канал доставки">
-          <select
+          <Select
             value={channel}
             onChange={(e) => {
               setChannel(e.target.value as DeliveryChannel);
             }}
-            className="flex h-10 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
+            containerClassName="w-full"
           >
             {CHANNELS.map((c) => (
               <option key={c.value} value={c.value}>
                 {c.label}
               </option>
             ))}
-          </select>
+          </Select>
         </FormField>
       </div>
 

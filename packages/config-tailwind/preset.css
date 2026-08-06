@@ -3,6 +3,14 @@
 @import "tailwindcss";
 @import "./tokens.css";
 
+/* Tailwind v4 discovers sources by walking the importing app's tree, skipping
+   node_modules — where pnpm puts the workspace symlink to @yupay/ui. Without
+   this, any utility used *only* inside a shared component is silently absent
+   from the build: Select rendered with no padding and no appearance-none until
+   this line existed, and Input's focus ring survived only because the app's
+   own source happened to use the same classes. */
+@source "../ui/src";
+
 @layer base {
   :root {
     color-scheme: light dark;

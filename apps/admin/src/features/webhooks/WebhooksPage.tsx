@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button } from "@yupay/ui";
+import { Button, Select } from "@yupay/ui";
 import { CheckCheck, CheckCircle2, RotateCcw, ShieldAlert } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -244,32 +244,32 @@ export function WebhooksPage() {
       </section>
 
       <section className="mb-5 flex flex-wrap items-center gap-3">
-        <select
+        <Select
           value={provider}
           onChange={(e) => {
             setProvider(e.target.value);
           }}
-          className="h-10 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
+          containerClassName="w-auto"
         >
           {PROVIDERS.map((p) => (
             <option key={p.value} value={p.value}>
               {p.label || "Все провайдеры"}
             </option>
           ))}
-        </select>
-        <select
+        </Select>
+        <Select
           value={sig}
           onChange={(e) => {
             setSig(e.target.value as "all" | "ok" | "bad");
           }}
-          className="h-10 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm"
+          containerClassName="w-auto"
         >
           {SIG_OPTIONS.map((s) => (
             <option key={s.value} value={s.value}>
               {s.label}
             </option>
           ))}
-        </select>
+        </Select>
         <label className="inline-flex items-center gap-2 text-sm text-[var(--text-secondary)]">
           <input
             type="checkbox"
