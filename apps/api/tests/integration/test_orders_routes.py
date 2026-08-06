@@ -1000,3 +1000,61 @@ async def test_admin_mark_failed_guards_and_cascades(
         f"/api/v1/admin/orders/{order_id}/fail", headers=admin_h, json={"reason": "again"}
     )
     assert repeat.status_code == 409, repeat.text
+
+
+async def test_admin_orders_search_is_server_side(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_pubg: dict[str, str],
+) -> None:
+    """`q` filters in the database, not in the page the client happens to hold.
+
+    The list is paginated, so a client-side filter can only ever search the rows
+    already downloaded — looking up an order id from page 1 while sitting on
+    page 3 found nothing. It also makes the total honest: the count reflects the
+    search, so "N из M" describes the query rather than the page.
+    """
+    user_token = await _login_user(integration_client, tg_id=81)
+    admin_token = await _login_user(integration_client, tg_id=82)
+    await _grant_admin(db_session, tg_id=82)
+    admin_h = {"Authorization": f"Bearer {admin_token}"}
+
+    create = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {user_token}",
+            "Idempotency-Key": "admin-search-kkkkkkkkkkkk",
+        },
+        json={
+            "currency": "USD",
+            "items": [
+                {
+                    "sku_id": _seed_pubg["sku_id"],
+                    "qty": 1,
+                    "fulfillment_data": {"player_id": "909090", "server": "as"},
+                }
+            ],
+        },
+    )
+    assert create.status_code == 201, create.text
+    order_id = create.json()["id"]
+
+    # Exact id.
+    by_id = await integration_client.get(f"/api/v1/admin/orders?q={order_id}", headers=admin_h)
+    assert by_id.status_code == 200, by_id.text
+    assert [o["id"] for o in by_id.json()["items"]] == [order_id]
+    assert by_id.json()["total"] == 1
+
+    # Id prefix — what an operator actually pastes from the truncated column.
+    by_prefix = await integration_client.get(
+        f"/api/v1/admin/orders?q={order_id[:8]}", headers=admin_h
+    )
+    assert order_id in [o["id"] for o in by_prefix.json()["items"]]
+
+    # A search that matches nothing returns an honest empty page.
+    empty = await integration_client.get(
+        "/api/v1/admin/orders?q=definitely-not-here", headers=admin_h
+    )
+    assert empty.status_code == 200, empty.text
+    assert empty.json()["items"] == []
+    assert empty.json()["total"] == 0

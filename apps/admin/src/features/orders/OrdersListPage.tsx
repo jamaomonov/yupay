@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input } from "@yupay/ui";
 import { Ban, Search } from "lucide-react";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import {
@@ -23,6 +23,8 @@ import { qk } from "@/lib/queryKeys";
 import { numberCodec, useSearchParamsState } from "@/lib/useSearchParamsState";
 
 const PAGE_SIZE = 50;
+/** Mirrors the server's floor: below this a search can only match noise. */
+const MIN_SEARCH_LEN = 3;
 
 const STATUS_FILTERS: { value: OrderStatus | ""; label: string }[] = [
   { value: "", label: "Все" },
@@ -49,7 +51,7 @@ export function OrdersListPage() {
   // the first with a stale snapshot. `offset` alone still uses its own setter
   // since paging never touches another filter in the same handler.
   const [status] = useSearchParamsState<OrderStatus | "">("status", "");
-  const [query, setQuery] = useSearchParamsState("q", "");
+  const [query] = useSearchParamsState("q", "");
   const [offset, setOffset] = useSearchParamsState("offset", 0, numberCodec);
   // Plain `YYYY-MM-DD` from <input type="date">; converted to ISO
   // day-boundary instants before hitting the API (see `toSinceIso`/`toUntilIso`).
@@ -61,7 +63,7 @@ export function OrdersListPage() {
   // to page 0 in a single URL update — see the comment above for why this
   // can't be three separate `useSearchParamsState` setter calls.
   const applyFilters = useCallback(
-    (patch: Partial<{ status: string; from: string; to: string }>) => {
+    (patch: Partial<{ status: string; q: string; from: string; to: string }>) => {
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
@@ -78,17 +80,47 @@ export function OrdersListPage() {
     [setSearchParams],
   );
 
+  // The URL owns the search term (shareable view, survives reload), but an
+  // input wired straight to it would re-query on every keystroke. `draft` is
+  // local and syncs into the URL after a pause; `appliedRef` tracks the last
+  // value that crossed between the two, so a back/forward navigation flows
+  // back into the input instead of being immediately overwritten by it.
+  const [draft, setDraft] = useState(query);
+  const appliedRef = useRef(query);
+
+  useEffect(() => {
+    if (query === appliedRef.current) return;
+    appliedRef.current = query;
+    setDraft(query);
+  }, [query]);
+
+  useEffect(() => {
+    if (draft === appliedRef.current) return;
+    // Below the server's minimum the search can only return nothing, which
+    // reads as "no such order" rather than "keep typing" — so hold it back.
+    if (draft.trim() && draft.trim().length < MIN_SEARCH_LEN) return;
+    const timer = setTimeout(() => {
+      appliedRef.current = draft;
+      applyFilters({ q: draft.trim() });
+    }, 350);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [draft, applyFilters]);
+
   const ordersQuery = useQuery<OrderAdminListOut>({
     queryKey: [
       ...qk.orders({ status: status || null }),
       "page",
       offset,
+      query || null,
       dateFrom || null,
       dateTo || null,
     ],
     queryFn: () => {
       const params = new URLSearchParams();
       if (status) params.set("status_filter", status);
+      if (query.trim()) params.set("q", query.trim());
       const since = toSinceIso(dateFrom);
       if (since) params.set("since", since);
       const until = toUntilIso(dateTo);
@@ -107,17 +139,10 @@ export function OrdersListPage() {
     },
   });
 
-  const rows = ordersQuery.data?.items ?? [];
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
-      (o) =>
-        o.id.toLowerCase().includes(q) ||
-        (o.user_id ?? "").toLowerCase().includes(q) ||
-        (o.guest_email ?? "").toLowerCase().includes(q),
-    );
-  }, [rows, query]);
+  // Memoised so the empty-array fallback doesn't produce a new identity on
+  // every render and re-run the two derived tallies below for nothing.
+  const rows = useMemo(() => ordersQuery.data?.items ?? [], [ordersQuery.data]);
+  const total = ordersQuery.data?.total ?? 0;
 
   const counters = useMemo(() => {
     const c: Partial<Record<OrderStatus, number>> = {};
@@ -186,7 +211,7 @@ export function OrdersListPage() {
                 className="flex size-7 flex-shrink-0 items-center justify-center rounded border border-[var(--border-default)] text-[10px] font-bold text-[var(--text-secondary)]"
                 style={{ background: "var(--bg-muted)" }}
               >
-                {(first.brand_name?.[0] ?? "?").toUpperCase()}
+                {(first.brand_name[0] ?? "?").toUpperCase()}
               </div>
             )}
             <div className="min-w-0">
@@ -267,28 +292,41 @@ export function OrdersListPage() {
         actions={<SaveSegmentButton />}
       />
 
+      {/* "Всего" is the server's count for the current filter; the three
+          breakdown tiles are computed from the rows on screen, so they say so
+          — an operator reading "3 ждут оплаты" as a global figure would draw
+          the wrong conclusion on page 4 of 40. */}
       <section className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatCard label="Всего" value={rows.length} accent />
+        <StatCard label="Всего по фильтру" value={total} accent />
         <StatCard
-          label="Ждут оплаты"
+          label="Ждут оплаты (на странице)"
           value={counters.pending_payment ?? 0}
           tone={counters.pending_payment ? "warn" : "muted"}
         />
-        <StatCard label="В работе" value={(counters.paid ?? 0) + (counters.fulfilling ?? 0)} />
-        <StatCard label="Доставлено" value={counters.delivered ?? 0} />
+        <StatCard
+          label="В работе (на странице)"
+          value={(counters.paid ?? 0) + (counters.fulfilling ?? 0)}
+        />
+        <StatCard label="Доставлено (на странице)" value={counters.delivered ?? 0} />
       </section>
 
       <section className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-3">
         <div className="relative md:col-span-2">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--text-secondary)]" />
           <Input
-            value={query}
+            value={draft}
             onChange={(e) => {
-              setQuery(e.target.value);
+              setDraft(e.target.value);
             }}
-            placeholder="Поиск по order_id / user_id / email…"
+            placeholder="Поиск по всей базе: order_id / user_id / email…"
+            aria-label="Поиск заказов"
             className="pl-9"
           />
+          {draft.trim().length > 0 && draft.trim().length < MIN_SEARCH_LEN && (
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">
+              Минимум {MIN_SEARCH_LEN} символа.
+            </p>
+          )}
         </div>
         <select
           value={status}
@@ -344,12 +382,9 @@ export function OrdersListPage() {
         )}
       </section>
 
-      {/* The Input setter is wired to the local search-param state; the controlled `query`
-          string also flows back through the URL so admins can share their working view. */}
-
       {Object.keys(totalCharged).length > 0 && (
         <p className="mb-3 text-xs text-[var(--text-secondary)]">
-          Сумма по списку:{" "}
+          Сумма на этой странице:{" "}
           {Object.entries(totalCharged)
             .map(([cur, v]) => formatMoney(v, cur))
             .join(" · ")}
@@ -359,7 +394,7 @@ export function OrdersListPage() {
       {ordersQuery.isError && <p className="text-sm text-[var(--danger)]">Не удалось загрузить.</p>}
 
       <DataTable
-        rows={filtered}
+        rows={rows}
         columns={columns}
         rowKey={(o) => o.id}
         loading={ordersQuery.isPending}

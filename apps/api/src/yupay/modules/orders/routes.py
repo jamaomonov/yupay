@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Request, status
+from fastapi import APIRouter, Depends, Header, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
@@ -201,6 +201,7 @@ async def admin_list_orders(
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
     status_filter: Annotated[str | None, "status"] = None,
+    q: Annotated[str | None, Query(max_length=200)] = None,
     since: datetime | None = None,
     until: datetime | None = None,
     limit: int = 50,
@@ -210,11 +211,15 @@ async def admin_list_orders(
 
     ``since``/``until`` are inclusive bounds on ``Order.created_at``, ISO 8601
     query params (matching the audit feed's convention — see
-    ``modules/audit/routes.py``).
+    ``modules/audit/routes.py``). ``q`` matches an order id (full or prefix),
+    an owner's user id, or a guest email; it filters in the database so a
+    result on page 7 is still findable from page 1, and ``total`` describes
+    the search rather than the page.
     """
     orders, total = await svc.list_orders_admin(
         db,
         status_filter=status_filter,
+        q=q,
         since=since,
         until=until,
         limit=max(1, min(limit, 500)),
