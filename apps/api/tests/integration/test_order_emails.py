@@ -237,3 +237,42 @@ async def test_email_send_error_is_swallowed(monkeypatch: pytest.MonkeyPatch) ->
         guest_email="guest@example.com",
         web_base="https://yupay.uz/ru",
     )
+
+
+@pytest.mark.asyncio
+async def test_confirmation_link_lets_the_guest_back_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The confirmation email's link must authenticate its recipient.
+
+    This is the email a guest gets right after paying, and the only artefact
+    they keep once the tab is closed. The order page identifies a guest solely
+    from the query string — it mints a ``Guest`` token from ``email`` (see
+    ``OrderStatus.tsx``) — so a bare ``/orders/{id}`` link arrives with no
+    credentials, the API answers 401 and the buyer reads "Заказ не найден"
+    moments after money left their card.
+    """
+    from yupay.core.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("AUTH_EMAIL_PEPPER", "pepper-for-the-confirmation-link-test")
+    sent: list[dict[str, str]] = []
+
+    async def _spy(*, to: str, subject: str, html: str, text: str) -> str:
+        sent.append({"to": to, "html": html, "text": text})
+        return "msg_test"
+
+    monkeypatch.setattr("yupay.modules.notifications.service.send_email", _spy, raising=False)
+
+    await _send_guest_email_confirmation(
+        order_id="abcdef1234",
+        guest_email="guest@example.com",
+        web_base="https://yupay.uz/ru",
+    )
+    get_settings.cache_clear()
+
+    assert len(sent) == 1
+    body = sent[0]["html"] + sent[0]["text"]
+    assert "/orders/abcdef1234" in body
+    # The address the page sends back as X-Guest-Email, url-encoded.
+    assert "email=guest%40example.com" in body
+    # And the magic-link token, so the codes open without re-typing anything.
+    assert "access=" in body

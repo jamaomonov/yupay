@@ -224,6 +224,10 @@ def order_confirmation_email(*, order_id: str, link: str) -> EmailContent:
         )
         + _button(href=link, label="Открыть заказ")
         + _fallback_link(link)
+        # A guest buyer keeps nothing else: no account, and the browser tab is
+        # usually gone. Say plainly that this letter is the key, so it doesn't
+        # get deleted along with the rest of the promo mail.
+        + _paragraph("Сохраните это письмо — по ссылке выше вы откроете заказ с любого устройства.")
     )
     return EmailContent(
         subject=f"Заказ #{short} принят — YuPay",
@@ -235,7 +239,8 @@ def order_confirmation_email(*, order_id: str, link: str) -> EmailContent:
         text=(
             f"Заказ #{short} принят — YuPay\n\n"
             f"Мы приняли ваш заказ #{short} и готовим его к выдаче.\n"
-            f"Статус заказа: {link}\n"
+            f"Статус заказа: {link}\n\n"
+            "Сохраните это письмо — по ссылке выше вы откроете заказ с любого устройства.\n"
         ),
     )
 

@@ -201,7 +201,12 @@ async def _send_guest_email_confirmation(
     """
     if not guest_email or not web_base:
         return
-    link = f"{web_base.rstrip('/')}/orders/{order_id}"
+    # The same magic link the delivered email carries. A bare ``/orders/{id}``
+    # arrives with no credentials: the order page recognises a guest only by the
+    # ``email`` query param (it mints a Guest token from it), so without one the
+    # API answers 401 and the buyer reads "Заказ не найден" moments after paying
+    # — on the one artefact they keep after closing the tab.
+    link = _guest_order_link(web_base=web_base, order_id=order_id, guest_email=guest_email)
     content = order_confirmation_email(order_id=order_id, link=link)
     with contextlib.suppress(Exception):  # best-effort: never break the order flow
         await send_email(
