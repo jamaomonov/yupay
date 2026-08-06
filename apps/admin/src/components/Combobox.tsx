@@ -179,7 +179,7 @@ export function Combobox<T>({
   }, [value, renderSelected]);
 
   const activeOptionId = items[activeIndex]
-    ? `${listboxId}-opt-${keyFor(items[activeIndex] as T)}`
+    ? `${listboxId}-opt-${keyFor(items[activeIndex])}`
     : undefined;
 
   return (

@@ -8,7 +8,9 @@ import { SUPPLIER_LABELS, type CatalogEntry, type SupplierMapping } from "./type
 
 import { DataTable } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
+import { ErrorState } from "@/components/States";
 import { apiGet } from "@/lib/api";
+import { extractApiMessage } from "@/lib/apiError";
 import { qk } from "@/lib/queryKeys";
 import { useDebouncedValue } from "@/lib/useDebouncedValue";
 
@@ -68,48 +70,56 @@ export function SupplierCatalogPage() {
         />
       </label>
 
-      <DataTable
-        rows={games.data?.items ?? []}
-        rowKey={(r) => r.external_id}
-        loading={games.isLoading}
-        busy={games.isFetching}
-        ariaLabel="Каталог игр поставщика"
-        empty="Каталог пуст. Сначала синхронизируйте каталог на странице поставщика."
-        columns={[
-          {
-            key: "title",
-            header: "Игра",
-            render: (r) => <span className="font-medium">{r.title}</span>,
-          },
-          {
-            key: "code",
-            header: "game_code",
-            render: (r) => <code className="font-mono text-xs">{r.external_id}</code>,
-          },
-          {
-            key: "status",
-            header: "",
-            render: (r) =>
-              imported.has(r.external_id) ? (
-                <span className="rounded bg-[var(--bg-accent-soft)] px-2 py-0.5 text-xs text-[var(--accent)]">
-                  импортирована
-                </span>
-              ) : null,
-          },
-          {
-            key: "action",
-            header: "",
-            render: (r) => (
-              <Link
-                to={`/integrations/${slug}/catalog/${encodeURIComponent(r.external_id)}`}
-                className="inline-flex items-center gap-1 text-sm font-medium text-[var(--accent)] hover:underline"
-              >
-                <Database className="size-4" /> Импортировать →
-              </Link>
-            ),
-          },
-        ]}
-      />
+      {games.isError ? (
+        <ErrorState
+          description={extractApiMessage(games.error)}
+          onRetry={() => void games.refetch()}
+          retryPending={games.isFetching}
+        />
+      ) : (
+        <DataTable
+          rows={games.data?.items ?? []}
+          rowKey={(r) => r.external_id}
+          loading={games.isLoading}
+          busy={games.isFetching}
+          ariaLabel="Каталог игр поставщика"
+          empty="Каталог пуст. Сначала синхронизируйте каталог на странице поставщика."
+          columns={[
+            {
+              key: "title",
+              header: "Игра",
+              render: (r) => <span className="font-medium">{r.title}</span>,
+            },
+            {
+              key: "code",
+              header: "game_code",
+              render: (r) => <code className="font-mono text-xs">{r.external_id}</code>,
+            },
+            {
+              key: "status",
+              header: "",
+              render: (r) =>
+                imported.has(r.external_id) ? (
+                  <span className="rounded bg-[var(--bg-accent-soft)] px-2 py-0.5 text-xs text-[var(--accent)]">
+                    импортирована
+                  </span>
+                ) : null,
+            },
+            {
+              key: "action",
+              header: "",
+              render: (r) => (
+                <Link
+                  to={`/integrations/${slug}/catalog/${encodeURIComponent(r.external_id)}`}
+                  className="inline-flex items-center gap-1 text-sm font-medium text-[var(--accent)] hover:underline"
+                >
+                  <Database className="size-4" /> Импортировать →
+                </Link>
+              ),
+            },
+          ]}
+        />
+      )}
     </div>
   );
 }

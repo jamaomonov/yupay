@@ -234,6 +234,8 @@ export function OrderDetailPage() {
         <aside className="space-y-6">
           <PaymentsCard
             payments={payments}
+            failed={paymentsQuery.isError}
+            onRetryLoad={() => void paymentsQuery.refetch()}
             refunding={refund.isPending}
             onRefund={(p) => {
               const reason = window.prompt(
@@ -251,6 +253,8 @@ export function OrderDetailPage() {
             }}
             onManualDeliver={setManualDeliverFor}
             retryingId={retryTask.isPending ? retryTask.variables : null}
+            failed={tasksQuery.isError}
+            onRetryLoad={() => void tasksQuery.refetch()}
           />
         </aside>
       </div>
@@ -474,14 +478,38 @@ function Timeline({ events, status }: { events: OrderEventOut[]; status: OrderSt
   );
 }
 
+/** Compact in-card failure notice — a full ErrorState would dwarf these
+ *  sidebar cards, but silence would read as "there is nothing here". */
+function CardLoadError({ onRetry, what }: { onRetry?: (() => void) | undefined; what: string }) {
+  return (
+    <div role="alert" className="p-4 text-sm">
+      <p className="text-[var(--danger)]">Не удалось загрузить {what}.</p>
+      {onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="mt-1 text-xs text-[var(--text-secondary)] underline-offset-2 hover:text-[var(--text-primary)] hover:underline"
+        >
+          Повторить
+        </button>
+      )}
+    </div>
+  );
+}
+
 function PaymentsCard({
   payments,
   onRefund,
   refunding,
+  failed,
+  onRetryLoad,
 }: {
   payments: PaymentAdminOut[];
   onRefund: (payment: PaymentAdminOut) => void;
   refunding: boolean;
+  /** The payments query failed — "no payments" would be a lie mid-support-call. */
+  failed?: boolean | undefined;
+  onRetryLoad?: (() => void) | undefined;
 }) {
   return (
     <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]">
@@ -489,7 +517,9 @@ function PaymentsCard({
         <CreditCard className="size-4 text-[var(--text-secondary)]" />
         <h2 className="text-sm font-semibold">Платежи ({payments.length})</h2>
       </header>
-      {payments.length === 0 ? (
+      {failed ? (
+        <CardLoadError onRetry={onRetryLoad} what="платежи" />
+      ) : payments.length === 0 ? (
         <p className="p-4 text-sm text-[var(--text-secondary)]">Платежей по заказу пока нет.</p>
       ) : (
         <ul className="divide-y">
@@ -549,11 +579,16 @@ function FulfillmentCard({
   onRetry,
   onManualDeliver,
   retryingId,
+  failed,
+  onRetryLoad,
 }: {
   tasks: TaskAdminOut[];
   onRetry: (taskId: string) => void;
   onManualDeliver: (task: TaskAdminOut) => void;
   retryingId: string | null;
+  /** The task query failed — do not claim the saga never started. */
+  failed?: boolean | undefined;
+  onRetryLoad?: (() => void) | undefined;
 }) {
   return (
     <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]">
@@ -561,7 +596,9 @@ function FulfillmentCard({
         <Truck className="size-4 text-[var(--text-secondary)]" />
         <h2 className="text-sm font-semibold">Фулфилмент ({tasks.length})</h2>
       </header>
-      {tasks.length === 0 ? (
+      {failed ? (
+        <CardLoadError onRetry={onRetryLoad} what="задачи" />
+      ) : tasks.length === 0 ? (
         <p className="p-4 text-sm text-[var(--text-secondary)]">Задач саги ещё не запущено.</p>
       ) : (
         <ul className="divide-y">

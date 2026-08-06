@@ -14,7 +14,9 @@ import type { Product, Sku } from "@/features/catalog/types";
 import { Badge } from "@/components/Badge";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
+import { ErrorState } from "@/components/States";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
+import { extractApiMessage } from "@/lib/apiError";
 import { qk } from "@/lib/queryKeys";
 
 const STATES: { value: CodeState | ""; label: string }[] = [
@@ -242,12 +244,24 @@ export function InventoryPage() {
               ))}
             </select>
           </div>
-          <DataTable
-            rows={codesQuery.data?.items ?? []}
-            columns={columns}
-            rowKey={(c) => c.id}
-            empty="Кодов нет. Загрузи первые сверху."
-          />
+          {/* "Загрузи первые" on a failed fetch invites re-uploading a batch that
+              is already in the warehouse — show the failure instead. */}
+          {codesQuery.isError ? (
+            <ErrorState
+              description={extractApiMessage(codesQuery.error)}
+              onRetry={() => void codesQuery.refetch()}
+              retryPending={codesQuery.isFetching}
+            />
+          ) : (
+            <DataTable
+              rows={codesQuery.data?.items ?? []}
+              columns={columns}
+              rowKey={(c) => c.id}
+              loading={codesQuery.isLoading}
+              busy={codesQuery.isFetching}
+              empty="Кодов нет. Загрузи первые сверху."
+            />
+          )}
         </section>
       )}
 

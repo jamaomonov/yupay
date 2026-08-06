@@ -13,8 +13,10 @@ import { SUPPLIER_LABELS, type SupplierMapping, type SupplierMappingListOut } fr
 
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
+import { ErrorState } from "@/components/States";
 import { useToast } from "@/components/Toast";
 import { ApiError, apiDelete, apiGet } from "@/lib/api";
+import { extractApiMessage } from "@/lib/apiError";
 import { qk } from "@/lib/queryKeys";
 
 export function MappingsPage() {
@@ -184,15 +186,23 @@ export function MappingsPage() {
         </span>
       </div>
 
-      <DataTable
-        rows={listing.data?.items ?? []}
-        columns={columns}
-        rowKey={(r) => `${r.sku_id}-${r.supplier_slug}`}
-        loading={listing.isLoading}
-        busy={listing.isFetching}
-        empty="Маппингов нет. Создайте первый, чтобы заказы на этот SKU начали идти через поставщика."
-        ariaLabel="Маппинги SKU"
-      />
+      {listing.isError ? (
+        <ErrorState
+          description={extractApiMessage(listing.error)}
+          onRetry={() => void listing.refetch()}
+          retryPending={listing.isFetching}
+        />
+      ) : (
+        <DataTable
+          rows={listing.data?.items ?? []}
+          columns={columns}
+          rowKey={(r) => `${r.sku_id}-${r.supplier_slug}`}
+          loading={listing.isLoading}
+          busy={listing.isFetching}
+          empty="Маппингов нет. Создайте первый, чтобы заказы на этот SKU начали идти через поставщика."
+          ariaLabel="Маппинги SKU"
+        />
+      )}
     </div>
   );
 }

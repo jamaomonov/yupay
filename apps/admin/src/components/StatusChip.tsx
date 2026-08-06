@@ -17,11 +17,11 @@
 
 import { Badge } from "./Badge";
 
+import { STATUS_LABEL as ORDER_LABEL, STATUS_TONE as ORDER_TONE } from "@/features/orders/types";
 import {
   STATUS_LABEL as PAYMENT_LABEL,
   STATUS_TONE as PAYMENT_TONE,
 } from "@/features/payments/types";
-import { STATUS_LABEL as ORDER_LABEL, STATUS_TONE as ORDER_TONE } from "@/features/orders/types";
 
 export interface StatusMeta {
   label: string;

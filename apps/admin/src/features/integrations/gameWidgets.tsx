@@ -205,6 +205,7 @@ export function PlayerChecker({ gameCode }: { gameCode: string | null }) {
   const [serverId, setServerId] = useState("");
   const [charname, setCharname] = useState("");
   const [result, setResult] = useState<CheckPlayerResult | null>(null);
+  const [checkFailed, setCheckFailed] = useState(false);
 
   const check = useMutation<CheckPlayerResult>({
     mutationFn: () =>
@@ -217,10 +218,16 @@ export function PlayerChecker({ gameCode }: { gameCode: string | null }) {
         },
       ),
     onSuccess: (data) => {
+      setCheckFailed(false);
       setResult(data);
     },
     onError: () => {
-      setResult({ valid: false, name: null, openid: null, reason: "сеть/ошибка запроса" });
+      // Don't fabricate a verdict: "the check didn't run" and "this player does
+      // not exist" are opposite conclusions, and this widget exists precisely to
+      // tell them apart. Faking `valid: false` made a network blip look like a
+      // bad player id.
+      setResult(null);
+      setCheckFailed(true);
     },
   });
 
@@ -297,6 +304,14 @@ export function PlayerChecker({ gameCode }: { gameCode: string | null }) {
             >
               {check.isPending ? "Спрашиваем G2B…" : "Проверить"}
             </Button>
+            {checkFailed && (
+              <span
+                role="alert"
+                className="inline-flex items-center gap-1.5 rounded-full bg-[var(--bg-muted)] px-2.5 py-0.5 text-xs font-medium text-[var(--text-secondary)]"
+              >
+                Проверка не выполнена — повторите
+              </span>
+            )}
             {result && <ResultBadge result={result} />}
           </div>
         </div>

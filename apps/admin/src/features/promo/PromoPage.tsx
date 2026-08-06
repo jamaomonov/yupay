@@ -5,8 +5,10 @@ import { useState } from "react";
 
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
+import { ErrorState } from "@/components/States";
 import { useToast } from "@/components/Toast";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
+import { extractApiMessage } from "@/lib/apiError";
 import { formatMoney } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
 
@@ -266,15 +268,23 @@ export function PromoPage() {
         </div>
       </form>
 
-      <DataTable
-        rows={items}
-        columns={columns}
-        rowKey={(p) => p.id}
-        loading={listQuery.isLoading}
-        empty="Кодов пока нет — выпустите первый выше."
-        ariaLabel="Промокоды"
-        busy={listQuery.isFetching}
-      />
+      {listQuery.isError ? (
+        <ErrorState
+          description={extractApiMessage(listQuery.error)}
+          onRetry={() => void listQuery.refetch()}
+          retryPending={listQuery.isFetching}
+        />
+      ) : (
+        <DataTable
+          rows={items}
+          columns={columns}
+          rowKey={(p) => p.id}
+          loading={listQuery.isLoading}
+          empty="Кодов пока нет — выпустите первый выше."
+          ariaLabel="Промокоды"
+          busy={listQuery.isFetching}
+        />
+      )}
     </div>
   );
 }

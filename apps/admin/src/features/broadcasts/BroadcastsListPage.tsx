@@ -10,7 +10,9 @@ import type { BroadcastListOut, BroadcastOut, BroadcastStatus } from "./types";
 
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
+import { ErrorState } from "@/components/States";
 import { apiGet } from "@/lib/api";
+import { extractApiMessage } from "@/lib/apiError";
 import { qk } from "@/lib/queryKeys";
 
 const STATUS_FILTERS: { value: BroadcastStatus | ""; label: string }[] = [
@@ -145,16 +147,24 @@ export function BroadcastsListPage() {
         </select>
       </section>
 
-      <DataTable
-        rows={items}
-        columns={columns}
-        rowKey={(b) => b.id}
-        loading={listQuery.isLoading}
-        empty="Рассылок пока нет — создайте первую выше."
-        ariaLabel="Рассылки"
-        busy={listQuery.isFetching}
-        onRowClick={(b) => navigate(`/broadcasts/${b.id}`)}
-      />
+      {listQuery.isError ? (
+        <ErrorState
+          description={extractApiMessage(listQuery.error)}
+          onRetry={() => void listQuery.refetch()}
+          retryPending={listQuery.isFetching}
+        />
+      ) : (
+        <DataTable
+          rows={items}
+          columns={columns}
+          rowKey={(b) => b.id}
+          loading={listQuery.isLoading}
+          empty="Рассылок пока нет — создайте первую выше."
+          ariaLabel="Рассылки"
+          busy={listQuery.isFetching}
+          onRowClick={(b) => navigate(`/broadcasts/${b.id}`)}
+        />
+      )}
     </div>
   );
 }

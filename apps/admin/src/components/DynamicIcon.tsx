@@ -7,8 +7,8 @@
  */
 
 import * as LucideIcons from "lucide-react";
-import type { LucideIcon as LucideIconType } from "lucide-react";
 
+import type { LucideIcon as LucideIconType } from "lucide-react";
 import type { ReactNode } from "react";
 
 interface Props {

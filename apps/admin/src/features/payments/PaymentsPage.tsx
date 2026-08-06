@@ -14,9 +14,11 @@ import { Badge } from "@/components/Badge";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { Pagination } from "@/components/Pagination";
+import { ErrorState } from "@/components/States";
 import { useToast } from "@/components/Toast";
 import { SaveSegmentButton } from "@/features/segments/SaveSegmentButton";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
+import { extractApiMessage } from "@/lib/apiError";
 import { formatMoney } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
 import { useSearchParamsState } from "@/lib/useSearchParamsState";
@@ -266,13 +268,21 @@ export function PaymentsPage() {
         </div>
       </section>
 
-      <DataTable
-        rows={listQuery.data?.items ?? []}
-        columns={columns}
-        rowKey={(p) => p.id}
-        loading={listQuery.isPending}
-        empty="Платежей нет."
-      />
+      {listQuery.isError ? (
+        <ErrorState
+          description={extractApiMessage(listQuery.error)}
+          onRetry={() => void listQuery.refetch()}
+          retryPending={listQuery.isFetching}
+        />
+      ) : (
+        <DataTable
+          rows={listQuery.data?.items ?? []}
+          columns={columns}
+          rowKey={(p) => p.id}
+          loading={listQuery.isPending}
+          empty="Платежей нет."
+        />
+      )}
 
       <Pagination
         total={listQuery.data?.total ?? 0}

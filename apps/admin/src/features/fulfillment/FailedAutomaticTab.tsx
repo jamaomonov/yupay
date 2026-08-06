@@ -20,6 +20,7 @@ import { failedTasksQuery, selectFailedRows } from "./inboxQueries";
 import type { TaskAdminOut, TaskListOut } from "./types";
 
 import { DataTable, type Column } from "@/components/DataTable";
+import { ErrorState } from "@/components/States";
 import { useToast } from "@/components/Toast";
 import { type ApiError, apiPost } from "@/lib/api";
 import { extractApiMessage } from "@/lib/apiError";
@@ -208,15 +209,27 @@ export function FailedAutomaticTab() {
         </div>
       </div>
 
-      <DataTable
-        rows={rows}
-        columns={columns}
-        rowKey={(t) => t.id}
-        empty="Нет failed-задач — всё хорошо."
-        onRowClick={(t) => {
-          void navigate(`/orders/${t.order_id}`);
-        }}
-      />
+      {/* A failed request must not render as "all good" on the very screen whose
+          job is to surface failures. */}
+      {query.isError ? (
+        <ErrorState
+          description={extractApiMessage(query.error)}
+          onRetry={() => void query.refetch()}
+          retryPending={query.isFetching}
+        />
+      ) : (
+        <DataTable
+          rows={rows}
+          columns={columns}
+          rowKey={(t) => t.id}
+          loading={query.isLoading}
+          busy={query.isFetching}
+          empty="Нет failed-задач — всё хорошо."
+          onRowClick={(t) => {
+            void navigate(`/orders/${t.order_id}`);
+          }}
+        />
+      )}
 
       {forceCompleteFor && (
         <ForceCompleteModal
