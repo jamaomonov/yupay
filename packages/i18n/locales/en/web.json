@@ -479,11 +479,11 @@
     "body": {
       "pending_payment": "Waiting for your payment.",
       "paid": "Payment received — preparing your order.",
-      "fulfilling": "Payment accepted. We're delivering your order — usually automatic and quick. Support is on standby if anything's off.",
+      "fulfilling": "Payment accepted, we're delivering your order. This usually takes 1–5 minutes. If nothing arrives within 15, message us — the order number is already filled in.",
       "fulfilled": "Your order is ready.",
       "delivered": "Delivered. Your items are below.",
       "deliveredTopup": "Credited. Details below.",
-      "failed": "Something went wrong. Our team is on it — contact support if you need help.",
+      "failed": "The order didn't go through. Your money returns to the card you paid with. We'll decide within 24 hours — you don't have to do anything, but message us if you'd like to speed it up.",
       "cancelled": "This order was cancelled.",
       "expired": "This order expired before payment.",
       "refunded": "This order was refunded.",
@@ -515,7 +515,8 @@
       "delivered": "Delivered",
       "credited": "Credited"
     },
-    "codesReadyTitle": "Order complete — your codes are ready"
+    "codesReadyTitle": "Order complete — your codes are ready",
+    "supportCta": "Message support"
   },
   "brandReviews": {
     "title": "Reviews",

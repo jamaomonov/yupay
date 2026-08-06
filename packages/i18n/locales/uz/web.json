@@ -479,11 +479,11 @@
     "body": {
       "pending_payment": "Toʻlovingizni kutmoqdamiz.",
       "paid": "Toʻlov qabul qilindi — buyurtmangizni tayyorlamoqdamiz.",
-      "fulfilling": "Toʻlov qabul qilindi. Buyurtmangizni yetkazmoqdamiz — odatda avtomatik va tez. Agar biror narsa notoʻgʻri ketsa, qoʻllab-quvvatlash xizmati tayyor.",
+      "fulfilling": "Toʻlov qabul qilindi, buyurtmani yetkazmoqdamiz. Odatda bu 1–5 daqiqa oladi. Agar 15 daqiqada hech narsa kelmasa — bizga yozing, buyurtma raqami allaqachon kiritilgan.",
       "fulfilled": "Buyurtmangiz tayyor.",
       "delivered": "Yetkazildi. Mahsulotlaringiz quyida.",
       "deliveredTopup": "Oʻtkazildi. Tafsilotlar quyida.",
-      "failed": "Nimadir notoʻgʻri ketdi. Jamoamiz masalani hal qilmoqda — yordam kerak boʻlsa, qoʻllab-quvvatlashga murojaat qiling.",
+      "failed": "Buyurtma bajarilmadi. Pul toʻlagan kartangizga qaytadi. Qaror 24 soat ichida qabul qilinadi — hech narsa qilmasangiz ham boʻladi, tezlashtirmoqchi boʻlsangiz bizga yozing.",
       "cancelled": "Bu buyurtma bekor qilindi.",
       "expired": "Bu buyurtma toʻlovdan oldin muddati oʻtdi.",
       "refunded": "Bu buyurtma boʻyicha mablagʻ qaytarildi.",
@@ -515,7 +515,8 @@
       "delivered": "Yetkazildi",
       "credited": "Hisobga o‘tdi"
     },
-    "codesReadyTitle": "Buyurtma tayyor — kodlar tayyor"
+    "codesReadyTitle": "Buyurtma tayyor — kodlar tayyor",
+    "supportCta": "Qoʻllab-quvvatlashga yozish"
   },
   "brandReviews": {
     "title": "Sharhlar",

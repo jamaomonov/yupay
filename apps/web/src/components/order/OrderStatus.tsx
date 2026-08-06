@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { KeyRound } from "lucide-react";
+import { KeyRound, MessageCircle } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
@@ -29,6 +29,13 @@ import { useRealtimeStatus } from "@/store/useRealtimeStatus";
 
 /** Statuses that mean the order is still moving — keep polling. */
 const IN_MOTION = new Set(["pending_payment", "paid", "fulfilling", "fulfilled"]);
+
+/**
+ * Statuses where a buyer may need a human: money has left the card and the
+ * goods have not arrived, or the order failed outright. A delivered order does
+ * not need the prompt — it has its codes.
+ */
+const SUPPORT_STATUSES = new Set(["pending_payment", "paid", "fulfilling", "failed"]);
 
 interface DeliveryOut {
   id: string;
@@ -243,6 +250,24 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
             {/* A send failure is not a missing order — say what actually went wrong. */}
             {resend.isError && <p className="text-sm text-[#FF6B6B]">{t("accessLinkFailed")}</p>}
           </div>
+        )}
+
+        {/* Support, where the worry actually happens. The floating help pill is
+            desktop-only on purpose (it would collide with the mobile pay bar),
+            and this page had no support link at all — while its own copy said
+            "поддержка на связи" and "обратитесь в поддержку", which were words
+            rather than anything tappable. The order number rides the deep link
+            so the first message already carries it. */}
+        {status && SUPPORT_STATUSES.has(status) && (
+          <a
+            href={`https://t.me/yupay_support?text=${encodeURIComponent(`Заказ #${order.data.id.slice(0, 8)}`)}`}
+            target="_blank"
+            rel="noreferrer noopener"
+            className={buttonStyles({ variant: "ghost", size: "sm" })}
+          >
+            <MessageCircle size={15} strokeWidth={2.2} aria-hidden />
+            {t("supportCta")}
+          </a>
         )}
 
         {canRate && brandSlug && (
