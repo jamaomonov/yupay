@@ -17,6 +17,7 @@ import { useEffect, useState } from "react";
 
 import type { TaskAdminOut } from "./types";
 
+import { useToast } from "@/components/Toast";
 import { api, ApiError } from "@/lib/api";
 
 type ArtifactKind = "voucher_code" | "topup_receipt" | "license_key";
@@ -34,6 +35,7 @@ const DEFAULT_ARTIFACT: Record<ArtifactKind, string> = {
 };
 
 export function ForceCompleteModal({ task, onClose, onCompleted }: Props) {
+  const toast = useToast();
   // Default the artifact_kind to whatever the supplier branch implies —
   // voucher → voucher_code, game → topup_receipt. Admin can still flip.
   const inferred: ArtifactKind = task.supplier === "g2b" ? "topup_receipt" : "voucher_code";
@@ -94,6 +96,7 @@ export function ForceCompleteModal({ task, onClose, onCompleted }: Props) {
           proof_url: proofUrl.trim() || null,
         }),
       });
+      toast.success("Задача закрыта вручную, доставка записана");
       onCompleted();
     } catch (err) {
       if (err instanceof ApiError) {

@@ -32,12 +32,14 @@ import { Badge } from "@/components/Badge";
 import { PageHeader } from "@/components/PageHeader";
 import { Spinner } from "@/components/States";
 import { StatusChip } from "@/components/StatusChip";
+import { useToast } from "@/components/Toast";
 import { ForceCompleteModal } from "@/features/fulfillment/ForceCompleteModal";
 import {
   STATUS_LABEL as PAYMENT_STATUS_LABEL,
   STATUS_TONE as PAYMENT_STATUS_TONE,
 } from "@/features/payments/types";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
+import { extractApiMessage } from "@/lib/apiError";
 import { formatMoney, formatMoneyValue } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
 
@@ -51,6 +53,7 @@ export function OrderDetailPage() {
   const qc = useQueryClient();
   const orderId = params.id ?? "";
   const [manualDeliverFor, setManualDeliverFor] = useState<TaskAdminOut | null>(null);
+  const toast = useToast();
 
   const orderQuery = useQuery<OrderAdminOut>({
     queryKey: qk.order(orderId),
@@ -82,7 +85,11 @@ export function OrderDetailPage() {
   const cancel = useMutation<OrderAdminOut, ApiError>({
     mutationFn: () => apiPost<OrderAdminOut>(`/api/v1/admin/orders/${orderId}/cancel`, {}),
     onSuccess: () => {
+      toast.success("Заказ отменён");
       void qc.invalidateQueries({ queryKey: ["admin", "orders"] });
+    },
+    onError: (err) => {
+      toast.error(extractApiMessage(err));
     },
   });
 
@@ -94,9 +101,13 @@ export function OrderDetailPage() {
         { "Idempotency-Key": crypto.randomUUID() },
       ),
     onSuccess: () => {
+      toast.success("Возврат оформлен");
       void qc.invalidateQueries({ queryKey: ["admin", "orders"] });
       void qc.invalidateQueries({ queryKey: ["admin", "payments"] });
       void qc.invalidateQueries({ queryKey: qk.order(orderId) });
+    },
+    onError: (err) => {
+      toast.error(extractApiMessage(err));
     },
   });
 
@@ -107,9 +118,13 @@ export function OrderDetailPage() {
     mutationFn: (reason) =>
       apiPost<OrderAdminOut>(`/api/v1/admin/orders/${orderId}/fail`, { reason }),
     onSuccess: () => {
+      toast.success("Заказ закрыт как проблемный");
       void qc.invalidateQueries({ queryKey: ["admin", "orders"] });
       void qc.invalidateQueries({ queryKey: qk.order(orderId) });
       void qc.invalidateQueries({ queryKey: ["admin", "fulfillment"] });
+    },
+    onError: (err) => {
+      toast.error(extractApiMessage(err));
     },
   });
 
@@ -120,8 +135,12 @@ export function OrderDetailPage() {
     mutationFn: (taskId) =>
       apiPost<TaskAdminOut>(`/api/v1/admin/fulfillment/tasks/${taskId}/retry`, {}),
     onSuccess: () => {
+      toast.success("Задача отправлена на повтор");
       void qc.invalidateQueries({ queryKey: ["admin", "fulfillment"] });
       void qc.invalidateQueries({ queryKey: qk.order(orderId) });
+    },
+    onError: (err) => {
+      toast.error(extractApiMessage(err));
     },
   });
 

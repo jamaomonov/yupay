@@ -17,14 +17,14 @@ import { ArrowRight, Boxes, Hand, Sparkles, Truck, Warehouse } from "lucide-reac
 import { useEffect, useMemo, useState } from "react";
 
 import type { SourcingDecisionOut, SourcingMode, SourcingRuleListOut } from "./types";
+import type { SkuPickerRow, SupplierMappingListOut } from "@/features/integrations/types";
 
 import { Badge } from "@/components/Badge";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
-import { SkuPicker } from "@/features/integrations/pickers";
-import type { SkuPickerRow, SupplierMappingListOut } from "@/features/integrations/types";
-import { type ApiError, api, apiGet } from "@/lib/api";
 import { useToast } from "@/components/Toast";
+import { SkuPicker } from "@/features/integrations/pickers";
+import { type ApiError, api, apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
 // Suppliers that make sense as a ``force_supplier`` target today.

@@ -31,7 +31,9 @@ import type { TaskAdminOut } from "@/features/fulfillment/types";
 import type { OrderAdminOut } from "@/features/orders/types";
 
 import { Field } from "@/components/Field";
+import { useToast } from "@/components/Toast";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
+import { extractApiMessage } from "@/lib/apiError";
 import { qk } from "@/lib/queryKeys";
 import { useDialog } from "@/lib/useDialog";
 
@@ -50,6 +52,7 @@ const CHANNELS: { value: DeliveryChannel; label: string }[] = [
 
 export function ManualTaskModal({ task, onClose }: Props) {
   const qc = useQueryClient();
+  const toast = useToast();
   const [tab, setTab] = useState<Tab>("complete");
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const titleId = useId();
@@ -75,10 +78,16 @@ export function ManualTaskModal({ task, onClose }: Props) {
     mutationFn: (body) =>
       apiPost<TaskAdminOut>(`/api/v1/admin/fulfillment/tasks/${task.id}/complete`, body),
     onSuccess: () => {
+      // Goods just went to a customer — closing the modal in silence left the
+      // operator unsure whether it landed.
+      toast.success("Заказ выдан, доставка записана");
       void qc.invalidateQueries({ queryKey: qk.manualQueue() });
       void qc.invalidateQueries({ queryKey: qk.fulfillmentTasks({}) });
       void qc.invalidateQueries({ queryKey: qk.order(task.order_id) });
       onClose();
+    },
+    onError: (err) => {
+      toast.error(extractApiMessage(err));
     },
   });
 
@@ -86,10 +95,14 @@ export function ManualTaskModal({ task, onClose }: Props) {
     mutationFn: (body) =>
       apiPost<TaskAdminOut>(`/api/v1/admin/fulfillment/tasks/${task.id}/fail`, body),
     onSuccess: () => {
+      toast.success("Задача отклонена");
       void qc.invalidateQueries({ queryKey: qk.manualQueue() });
       void qc.invalidateQueries({ queryKey: qk.fulfillmentTasks({}) });
       void qc.invalidateQueries({ queryKey: qk.order(task.order_id) });
       onClose();
+    },
+    onError: (err) => {
+      toast.error(extractApiMessage(err));
     },
   });
 

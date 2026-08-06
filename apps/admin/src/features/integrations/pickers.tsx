@@ -8,12 +8,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Box, Boxes, Gamepad2 } from "lucide-react";
 import { useState } from "react";
 
+import type { CatalogEntry, CatalogListOut, SkuPickerRow } from "./types";
+
 import { Combobox } from "@/components/Combobox";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { useDebouncedValue } from "@/lib/useDebouncedValue";
-
-import type { CatalogEntry, CatalogListOut, SkuPickerRow } from "./types";
 
 // ---------------------------------------------------------------------------
 // SKU picker
@@ -187,7 +187,7 @@ function CatalogRow({
 }) {
   const raw = entry.raw;
   const imageUrl = typeof raw.image_url === "string" ? raw.image_url : null;
-  const stock = typeof raw.stock === "number" ? (raw.stock as number) : null;
+  const stock = typeof raw.stock === "number" ? raw.stock : null;
   const unitPrice =
     typeof raw.unit_price === "number" || typeof raw.unit_price === "string"
       ? String(raw.unit_price)

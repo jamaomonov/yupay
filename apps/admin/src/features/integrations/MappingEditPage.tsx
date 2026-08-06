@@ -19,13 +19,9 @@ import { Check, CircleDot, ShoppingCart, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { PageHeader } from "@/components/PageHeader";
-import { useToast } from "@/components/Toast";
-import { ApiError, api, apiGet } from "@/lib/api";
-import { qk } from "@/lib/queryKeys";
-
 import { DenomPicker, PlayerChecker, RequiredFieldsHint } from "./gameWidgets";
 import { CatalogPicker, SkuPicker } from "./pickers";
+
 import type {
   CatalogEntry,
   MappingKind,
@@ -33,6 +29,11 @@ import type {
   SupplierMapping,
   SupplierMappingUpsertResult,
 } from "./types";
+
+import { PageHeader } from "@/components/PageHeader";
+import { useToast } from "@/components/Toast";
+import { ApiError, api, apiGet } from "@/lib/api";
+import { qk } from "@/lib/queryKeys";
 
 const SUPPLIER_SLUG = "g2b";
 

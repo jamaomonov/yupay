@@ -15,10 +15,10 @@ import { Button, Input } from "@yupay/ui";
 import { AlertCircle, CheckCircle2, ChevronDown, ChevronUp, ScanFace } from "lucide-react";
 import { useState } from "react";
 
+import type { CheckPlayerResult, GameDenomList, GameDenomRow, GameFields } from "./types";
+
 import { apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
-
-import type { CheckPlayerResult, GameDenomList, GameDenomRow, GameFields } from "./types";
 
 // ---------------------------------------------------------------------------
 // Denom picker

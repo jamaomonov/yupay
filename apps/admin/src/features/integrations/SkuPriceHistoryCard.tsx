@@ -11,11 +11,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { TrendingDown, TrendingUp } from "lucide-react";
 
+import type { PriceHistoryListOut, PricePoint } from "./types";
+
 import { Sparkline } from "@/components/Sparkline";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
-
-import type { PriceHistoryListOut, PricePoint } from "./types";
 
 interface Props {
   skuId: string;

@@ -9,13 +9,13 @@ import { Button } from "@yupay/ui";
 import { Plus, Trash2 } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 
+import { SUPPLIER_LABELS, type SupplierMapping, type SupplierMappingListOut } from "./types";
+
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/components/Toast";
 import { ApiError, apiDelete, apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
-
-import { SUPPLIER_LABELS, type SupplierMapping, type SupplierMappingListOut } from "./types";
 
 export function MappingsPage() {
   const [params, setParams] = useSearchParams();

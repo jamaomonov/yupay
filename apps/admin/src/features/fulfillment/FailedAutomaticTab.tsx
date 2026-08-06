@@ -20,7 +20,9 @@ import { failedTasksQuery, selectFailedRows } from "./inboxQueries";
 import type { TaskAdminOut, TaskListOut } from "./types";
 
 import { DataTable, type Column } from "@/components/DataTable";
+import { useToast } from "@/components/Toast";
 import { type ApiError, apiPost } from "@/lib/api";
+import { extractApiMessage } from "@/lib/apiError";
 
 const LOW_BALANCE_ERROR = "supplier_low_balance";
 
@@ -31,9 +33,9 @@ interface BulkRetryResponse {
 
 export function FailedAutomaticTab() {
   const qc = useQueryClient();
+  const toast = useToast();
   const navigate = useNavigate();
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [feedback, setFeedback] = useState<string | null>(null);
   const [forceCompleteFor, setForceCompleteFor] = useState<TaskAdminOut | null>(null);
 
   // Query + predicate come from ``inboxQueries`` so the Inbox tab badge counts
@@ -50,12 +52,15 @@ export function FailedAutomaticTab() {
       const skippedN = data.skipped.length;
       const parts = [`Перезапущено: ${retriedN.toString()}`];
       if (skippedN > 0) parts.push(`пропущено: ${skippedN.toString()}`);
-      setFeedback(parts.join(" · "));
+      // Toast rather than a bare <p>: bulk-retry spends supplier balance, so the
+      // outcome needs the toast region's role="alert", not a line the operator
+      // may have already scrolled past.
+      toast.success(parts.join(" · "));
       setSelected(new Set());
       void qc.invalidateQueries({ queryKey: ["admin", "fulfillment"] });
     },
     onError: (err) => {
-      setFeedback(`Ошибка: ${err.message}`);
+      toast.error(extractApiMessage(err));
     },
   });
 
@@ -202,8 +207,6 @@ export function FailedAutomaticTab() {
           </Button>
         </div>
       </div>
-
-      {feedback && <p className="mb-3 text-sm text-[var(--text-primary)]">{feedback}</p>}
 
       <DataTable
         rows={rows}

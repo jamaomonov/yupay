@@ -6,12 +6,12 @@
 
 import { useQuery } from "@tanstack/react-query";
 
+import type { AttemptListOut, AttemptRow } from "./types";
+
 import { DataTable, type Column } from "@/components/DataTable";
 import { Spinner } from "@/components/States";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
-
-import type { AttemptListOut, AttemptRow } from "./types";
 
 interface Props {
   supplier: string;

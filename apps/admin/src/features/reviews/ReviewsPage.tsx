@@ -4,7 +4,7 @@
  * reviews publish immediately; this is where an operator pulls abusive ones.
  */
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import type { AdminReview, AdminReviewList } from "./types";
@@ -13,7 +13,9 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { ErrorState } from "@/components/States";
 import { StatusChip, localizeStatus } from "@/components/StatusChip";
-import { apiGet, apiPost } from "@/lib/api";
+import { useToast } from "@/components/Toast";
+import { type ApiError, apiGet, apiPost } from "@/lib/api";
+import { extractApiMessage } from "@/lib/apiError";
 
 type StatusFilter = "all" | "published" | "hidden" | "removed";
 
@@ -27,8 +29,17 @@ function idemHeaders(): Record<string, string> {
   return { "Idempotency-Key": crypto.randomUUID() };
 }
 
+type ModerateAction = "hide" | "unhide" | "remove";
+
+const MODERATE_DONE: Record<ModerateAction, string> = {
+  hide: "Отзыв скрыт",
+  unhide: "Отзыв возвращён на витрину",
+  remove: "Отзыв удалён",
+};
+
 export function ReviewsPage() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [status, setStatus] = useState<StatusFilter>("all");
   const [reported, setReported] = useState(false);
 
@@ -43,10 +54,21 @@ export function ReviewsPage() {
     refetchInterval: 30_000,
   });
 
-  async function moderate(id: string, action: "hide" | "unhide" | "remove") {
-    await apiPost(`/api/v1/admin/reviews/${id}/${action}`, {}, idemHeaders());
-    await qc.invalidateQueries({ queryKey: ["admin", "reviews"] });
-  }
+  // A plain async function swallowed every failure into an unhandled rejection:
+  // hiding or deleting a review looked identical whether it worked or 500'd.
+  // useMutation gives the operator a result and a pending state to key off.
+  const moderate = useMutation<void, ApiError, { id: string; action: ModerateAction }>({
+    mutationFn: async ({ id, action }) => {
+      await apiPost(`/api/v1/admin/reviews/${id}/${action}`, {}, idemHeaders());
+    },
+    onSuccess: (_data, { action }) => {
+      toast.success(MODERATE_DONE[action]);
+      void qc.invalidateQueries({ queryKey: ["admin", "reviews"] });
+    },
+    onError: (err) => {
+      toast.error(extractApiMessage(err));
+    },
+  });
 
   const columns: Column<AdminReview>[] = [
     {
@@ -99,7 +121,10 @@ export function ReviewsPage() {
             <button
               type="button"
               className="text-amber-400 hover:underline"
-              onClick={() => void moderate(r.id, "hide")}
+              onClick={() => {
+                moderate.mutate({ id: r.id, action: "hide" });
+              }}
+              disabled={moderate.isPending}
             >
               Скрыть
             </button>
@@ -107,7 +132,10 @@ export function ReviewsPage() {
             <button
               type="button"
               className="text-emerald-400 hover:underline"
-              onClick={() => void moderate(r.id, "unhide")}
+              onClick={() => {
+                moderate.mutate({ id: r.id, action: "unhide" });
+              }}
+              disabled={moderate.isPending}
             >
               Вернуть
             </button>
@@ -116,7 +144,11 @@ export function ReviewsPage() {
             <button
               type="button"
               className="text-red-400 hover:underline"
-              onClick={() => void moderate(r.id, "remove")}
+              onClick={() => {
+                if (!confirm("Удалить отзыв? Он исчезнет с витрины бренда.")) return;
+                moderate.mutate({ id: r.id, action: "remove" });
+              }}
+              disabled={moderate.isPending}
             >
               Удалить
             </button>
