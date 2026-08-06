@@ -8,9 +8,13 @@ import {
   Clock,
   Coins,
   CreditCard,
+  AlertTriangle,
   Package,
+  PackageCheck,
+  RefreshCw,
   Truck,
 } from "lucide-react";
+import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import {
@@ -28,6 +32,7 @@ import { Badge } from "@/components/Badge";
 import { PageHeader } from "@/components/PageHeader";
 import { Spinner } from "@/components/States";
 import { StatusChip } from "@/components/StatusChip";
+import { ForceCompleteModal } from "@/features/fulfillment/ForceCompleteModal";
 import {
   STATUS_LABEL as PAYMENT_STATUS_LABEL,
   STATUS_TONE as PAYMENT_STATUS_TONE,
@@ -36,11 +41,16 @@ import { type ApiError, apiGet, apiPost } from "@/lib/api";
 import { formatMoney, formatMoneyValue } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
 
+/** Statuses where "close as failed" is offered — mirrors the server guard
+ *  (`orders.service._FAILABLE_STATUSES`): money in, goods not out. */
+const FAILABLE = new Set<OrderStatus>(["paid", "fulfilling", "fulfilled"]);
+
 export function OrderDetailPage() {
   const params = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const orderId = params.id ?? "";
+  const [manualDeliverFor, setManualDeliverFor] = useState<TaskAdminOut | null>(null);
 
   const orderQuery = useQuery<OrderAdminOut>({
     queryKey: qk.order(orderId),
@@ -86,6 +96,31 @@ export function OrderDetailPage() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin", "orders"] });
       void qc.invalidateQueries({ queryKey: ["admin", "payments"] });
+      void qc.invalidateQueries({ queryKey: qk.order(orderId) });
+    },
+  });
+
+  // Close a paid order that can't be delivered. The server refuses this before
+  // payment (use cancel) and after delivery (use refund), and cancels open
+  // fulfilment tasks so a failed order can't still hand out codes.
+  const markFailed = useMutation<OrderAdminOut, ApiError, string>({
+    mutationFn: (reason) =>
+      apiPost<OrderAdminOut>(`/api/v1/admin/orders/${orderId}/fail`, { reason }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["admin", "orders"] });
+      void qc.invalidateQueries({ queryKey: qk.order(orderId) });
+      void qc.invalidateQueries({ queryKey: ["admin", "fulfillment"] });
+    },
+  });
+
+  // Re-run a stuck/failed supplier task in place — the first thing to try when
+  // an order is stuck in `fulfilling`, and previously only reachable from the
+  // separate Fulfilment screen.
+  const retryTask = useMutation<TaskAdminOut, ApiError, string>({
+    mutationFn: (taskId) =>
+      apiPost<TaskAdminOut>(`/api/v1/admin/fulfillment/tasks/${taskId}/retry`, {}),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["admin", "fulfillment"] });
       void qc.invalidateQueries({ queryKey: qk.order(orderId) });
     },
   });
@@ -145,6 +180,25 @@ export function OrderDetailPage() {
                 {cancel.isPending ? "Отменяем…" : "Отменить"}
               </Button>
             )}
+            {/* Paid but undeliverable. Not offered on `delivered` — the customer
+                already has the goods, so the correct reversal is a refund. */}
+            {FAILABLE.has(order.status) && (
+              <Button
+                variant="danger"
+                onClick={() => {
+                  const reason = prompt(
+                    "Почему заказ не может быть выполнен?\n" +
+                      "Причина попадёт в историю заказа. Деньги НЕ возвращаются — " +
+                      "для возврата используйте «Вернуть» в блоке платежей.",
+                  );
+                  if (reason && reason.trim().length >= 3) markFailed.mutate(reason.trim());
+                }}
+                disabled={markFailed.isPending}
+              >
+                <AlertTriangle className="size-4" />
+                {markFailed.isPending ? "Закрываем…" : "Отметить проблемным"}
+              </Button>
+            )}
           </>
         }
       />
@@ -171,9 +225,32 @@ export function OrderDetailPage() {
               refund.mutate({ id: p.id, reason: reason.trim() });
             }}
           />
-          <FulfillmentCard tasks={tasks} />
+          <FulfillmentCard
+            tasks={tasks}
+            onRetry={(taskId) => {
+              retryTask.mutate(taskId);
+            }}
+            onManualDeliver={setManualDeliverFor}
+            retryingId={retryTask.isPending ? retryTask.variables : null}
+          />
         </aside>
       </div>
+
+      {/* Attaches a real Delivery (codes / receipt) and walks the order to
+          `delivered` — the safe counterpart to a manual status change. */}
+      {manualDeliverFor && (
+        <ForceCompleteModal
+          task={manualDeliverFor}
+          onClose={() => {
+            setManualDeliverFor(null);
+          }}
+          onCompleted={() => {
+            setManualDeliverFor(null);
+            void qc.invalidateQueries({ queryKey: ["admin", "fulfillment"] });
+            void qc.invalidateQueries({ queryKey: qk.order(orderId) });
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -438,7 +515,27 @@ function PaymentsCard({
   );
 }
 
-function FulfillmentCard({ tasks }: { tasks: TaskAdminOut[] }) {
+/**
+ * Fulfilment tasks for this order, with the two recovery actions inline.
+ *
+ * These used to live only on the separate Fulfilment screen, so fixing a stuck
+ * order meant leaving the order you were looking at. Retry re-runs the supplier
+ * call; "Выдать вручную" attaches a real artifact (codes / receipt) and walks
+ * the order to `delivered` — that is the safe way to hand over goods by hand,
+ * as opposed to flipping the order status, which would leave the customer on a
+ * "delivered" order with nothing to show.
+ */
+function FulfillmentCard({
+  tasks,
+  onRetry,
+  onManualDeliver,
+  retryingId,
+}: {
+  tasks: TaskAdminOut[];
+  onRetry: (taskId: string) => void;
+  onManualDeliver: (task: TaskAdminOut) => void;
+  retryingId: string | null;
+}) {
   return (
     <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]">
       <header className="flex items-center gap-2 border-b px-4 py-3">
@@ -449,18 +546,53 @@ function FulfillmentCard({ tasks }: { tasks: TaskAdminOut[] }) {
         <p className="p-4 text-sm text-[var(--text-secondary)]">Задач саги ещё не запущено.</p>
       ) : (
         <ul className="divide-y">
-          {tasks.map((t) => (
-            <li key={t.id} className="p-3 text-sm">
-              <div className="flex items-baseline justify-between gap-3">
-                <code className="text-xs">{t.supplier}</code>
-                <StatusChip domain="taskStatus" value={t.status} />
-              </div>
-              <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                item {t.order_item_id.slice(0, 8)}… · попыток {t.attempts_count}
-              </p>
-              {t.last_error && <p className="mt-1 text-xs text-[var(--danger)]">{t.last_error}</p>}
-            </li>
-          ))}
+          {tasks.map((t) => {
+            const retryable = t.status === "failed" || t.status === "pending";
+            const deliverable = t.status !== "succeeded" && t.status !== "cancelled";
+            return (
+              <li key={t.id} className="p-3 text-sm">
+                <div className="flex items-baseline justify-between gap-3">
+                  <code className="text-xs">{t.supplier}</code>
+                  <StatusChip domain="taskStatus" value={t.status} />
+                </div>
+                <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                  item {t.order_item_id.slice(0, 8)}… · попыток {t.attempts_count}
+                </p>
+                {t.last_error && (
+                  <p className="mt-1 text-xs text-[var(--danger)]">{t.last_error}</p>
+                )}
+                {(retryable || deliverable) && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {retryable && (
+                      <Button
+                        variant="ghost"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => {
+                          onRetry(t.id);
+                        }}
+                        disabled={retryingId === t.id}
+                      >
+                        <RefreshCw className="size-3.5" />
+                        {retryingId === t.id ? "Повтор…" : "Повторить"}
+                      </Button>
+                    )}
+                    {deliverable && (
+                      <Button
+                        variant="ghost"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => {
+                          onManualDeliver(t);
+                        }}
+                      >
+                        <PackageCheck className="size-3.5" />
+                        Выдать вручную
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 OrderStatus = Literal[
     "pending_payment",
@@ -139,6 +139,24 @@ class OrderAdminOut(OrderOut):
     # still render. Email format is enforced at write time (``OrderCreate``).
     guest_email: str | None
     events: list[OrderEventOut]
+
+
+class OrderFailIn(BaseModel):
+    """Body for the admin "close this order as failed" action."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Required and non-blank: the reason lands on the order timeline and is the
+    # only record of why a paid order was closed without delivery.
+    reason: str = Field(..., min_length=3, max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def _not_blank(cls, v: str) -> str:
+        cleaned = v.strip()
+        if len(cleaned) < 3:
+            raise ValueError("reason must be at least 3 non-blank characters")
+        return cleaned
 
 
 class OrderAdminListOut(BaseModel):

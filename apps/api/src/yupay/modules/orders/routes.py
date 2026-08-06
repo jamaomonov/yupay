@@ -26,6 +26,7 @@ from yupay.modules.orders.schemas import (
     OrderAdminListOut,
     OrderAdminOut,
     OrderCreate,
+    OrderFailIn,
     OrderListOut,
     OrderOut,
 )
@@ -242,4 +243,24 @@ async def admin_cancel_order(
     """Admin-initiated cancellation. Only valid from ``pending_payment``."""
     actor_id = admin.id if admin.id != DEV_ADMIN_ID else "dev_admin"
     order = await svc.cancel_order_admin(db, order_id, admin_id=actor_id)
+    return _to_admin_order_out(order)
+
+
+@admin_router.post("/{order_id}/fail", response_model=OrderAdminOut)
+async def admin_mark_order_failed(
+    order_id: str,
+    body: OrderFailIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+) -> OrderAdminOut:
+    """Close a paid-but-undeliverable order as ``failed`` (reason required).
+
+    The only manual status change exposed to admins, and deliberately a narrow
+    one: legal from ``paid``/``fulfilling``/``fulfilled`` only. Before payment
+    use ``/cancel``; after delivery the customer already holds the goods, so
+    the correct action is a refund. Cancels open fulfilment tasks and pending
+    payments — see ``orders.service.mark_order_failed_admin``. Moves no money.
+    """
+    actor_id = admin.id if admin.id != DEV_ADMIN_ID else "dev_admin"
+    order = await svc.mark_order_failed_admin(db, order_id, admin_id=actor_id, reason=body.reason)
     return _to_admin_order_out(order)

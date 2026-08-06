@@ -894,3 +894,109 @@ async def test_expire_stale_orders_service_batch_flips_pending(
     )
     assert r.status_code == 200
     assert r.json()["status"] == "pending_payment"
+
+
+async def test_admin_mark_failed_guards_and_cascades(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_pubg: dict[str, str],
+) -> None:
+    """Admin can close a paid-but-undeliverable order as ``failed``.
+
+    The safe manual transition: it needs a reason, is refused before payment
+    (that is ``cancel``) and after delivery (that is a refund — the customer
+    already holds the goods), and it stops any in-flight fulfilment so a
+    "failed" order can't still hand out codes.
+    """
+    user_token = await _login_user(integration_client, tg_id=71)
+    admin_token = await _login_user(integration_client, tg_id=72)
+    await _grant_admin(db_session, tg_id=72)
+    admin_h = {"Authorization": f"Bearer {admin_token}"}
+
+    create = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {user_token}",
+            "Idempotency-Key": "admin-fail-order-jjjjjjjjjj",
+        },
+        json={
+            "currency": "USD",
+            "items": [
+                {
+                    "sku_id": _seed_pubg["sku_id"],
+                    "qty": 1,
+                    "fulfillment_data": {"player_id": "777777", "server": "as"},
+                }
+            ],
+        },
+    )
+    assert create.status_code == 201, create.text
+    order_id = create.json()["id"]
+
+    # Before payment the correct action is cancel, not fail.
+    too_early = await integration_client.post(
+        f"/api/v1/admin/orders/{order_id}/fail",
+        headers=admin_h,
+        json={"reason": "supplier outage"},
+    )
+    assert too_early.status_code == 409, too_early.text
+
+    intent = await integration_client.post(
+        "/api/v1/payments/intents",
+        headers={
+            "Authorization": f"Bearer {user_token}",
+            "Idempotency-Key": "admin-fail-intent-jjjjjjjjjj",
+        },
+        json={"order_id": order_id, "provider": "mock"},
+    )
+    assert intent.status_code == 201, intent.text
+    wh = await integration_client.post(
+        "/api/v1/webhooks/payments/mock",
+        content=json.dumps(
+            {
+                "event_id": "evt_admin_fail_001",
+                "payment_id": intent.json()["external_id"],
+                "outcome": "succeeded",
+            }
+        ),
+        headers={"content-type": "application/json"},
+    )
+    assert wh.status_code == 200, wh.text
+
+    # A reason is mandatory — "who closed this and why" must be answerable.
+    no_reason = await integration_client.post(
+        f"/api/v1/admin/orders/{order_id}/fail", headers=admin_h, json={"reason": "  "}
+    )
+    assert no_reason.status_code == 422, no_reason.text
+
+    failed = await integration_client.post(
+        f"/api/v1/admin/orders/{order_id}/fail",
+        headers=admin_h,
+        json={"reason": "supplier can't deliver this SKU"},
+    )
+    assert failed.status_code == 200, failed.text
+    assert failed.json()["status"] == "failed"
+
+    # The reason is on the audit trail, attributed to the admin.
+    detail = await integration_client.get(f"/api/v1/admin/orders/{order_id}", headers=admin_h)
+    events = detail.json()["events"]
+    ev = next(e for e in events if e["kind"] == "order.failed")
+    assert ev["payload"]["reason"] == "supplier can't deliver this SKU"
+    assert ev["actor"].startswith("admin:")
+
+    # No open fulfilment task survives a failed order. Assert a task actually
+    # existed first — `all()` over an empty list would pass vacuously and prove
+    # nothing about the cascade.
+    tasks = await integration_client.get(
+        f"/api/v1/admin/fulfillment/tasks?order_id={order_id}&limit=50", headers=admin_h
+    )
+    assert tasks.status_code == 200, tasks.text
+    task_items = tasks.json()["items"]
+    assert task_items, "payment should have started a fulfilment task to cascade over"
+    assert all(t["status"] not in ("pending", "in_progress") for t in task_items)
+
+    # Terminal already — repeating is refused rather than re-firing the cascade.
+    repeat = await integration_client.post(
+        f"/api/v1/admin/orders/{order_id}/fail", headers=admin_h, json={"reason": "again"}
+    )
+    assert repeat.status_code == 409, repeat.text

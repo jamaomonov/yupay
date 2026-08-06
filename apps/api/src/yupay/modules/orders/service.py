@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Any
+from typing import Any, Final
 
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
@@ -673,6 +673,76 @@ async def list_orders_admin(
 
 async def get_order_admin(db: AsyncSession, order_id: str) -> Order:
     return await _load_order(db, order_id)
+
+
+#: Statuses a support agent may close as ``failed`` by hand: the customer has
+#: paid but the goods never reached them. Deliberately excludes
+#: ``pending_payment`` (that is ``cancel_order_admin`` — nothing was charged)
+#: and ``delivered`` (the customer holds the goods; reversing that is a refund,
+#: which moves real money through ``payments.refund_admin``).
+_FAILABLE_STATUSES: Final[frozenset[str]] = frozenset({"paid", "fulfilling", "fulfilled"})
+
+
+async def mark_order_failed_admin(
+    db: AsyncSession, order_id: str, *, admin_id: str, reason: str
+) -> Order:
+    """Close a paid-but-undeliverable order as ``failed``.
+
+    The one manual status change we expose. It is intent-based rather than a
+    free-form status setter because order status drives money and goods: a raw
+    write could mark an order ``delivered`` without ever creating a
+    ``Delivery`` (customer sees "delivered", gets no codes), or ``paid`` with
+    no payment row (the fulfilment saga starts from the payment path, so the
+    order would simply stall). Here the state is only ever moved *backwards*
+    into a terminal failure, and the cascade below keeps the invariants:
+
+    * open fulfilment tasks are cancelled, so a "failed" order cannot still
+      hand out codes a moment later;
+    * pending / requires_action payments are closed, so nothing lingers in the
+      payments triage queue with no customer behind it.
+
+    Money is **not** moved: a refund is a separate, explicit admin action.
+
+    Args:
+        db: Async session.
+        order_id: Order to close.
+        admin_id: Acting admin, recorded on the audit event.
+        reason: Why it was closed. Required — "who failed this and why" has to
+            be answerable from the order timeline alone.
+
+    Raises:
+        NotFoundError: Unknown order.
+        ConflictError: Order is not in a status this action may close.
+    """
+    order = await _load_order(db, order_id)
+    if order.status not in _FAILABLE_STATUSES:
+        raise ConflictError(
+            "cannot mark order failed in current status",
+            extra={"status": order.status, "allowed": sorted(_FAILABLE_STATUSES)},
+        )
+
+    moment = now()
+    order.status = "failed"
+    order.updated_at = moment
+    db.add(
+        OrderEvent(
+            id=new_id(),
+            order_id=order_id,
+            kind="order.failed",
+            payload={"by": "admin", "reason": reason},
+            actor=f"admin:{admin_id}",
+        )
+    )
+    await _cascade_cancel_open_payments(
+        db, order_id=order_id, reason="order_failed", actor=f"admin:{admin_id}"
+    )
+    # Lazy import avoids the orders.service ↔ fulfillment.service cycle.
+    from yupay.modules.fulfillment import service as fulfillment_svc
+
+    await fulfillment_svc.cancel_open_tasks_for_order(db, order_id=order_id, reason="order_failed")
+    await db.flush()
+    await _publish_status_changed(order)
+    return order
 
 
 async def cancel_order_admin(db: AsyncSession, order_id: str, *, admin_id: str) -> Order:

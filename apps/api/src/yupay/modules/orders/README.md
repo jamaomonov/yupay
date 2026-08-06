@@ -31,20 +31,22 @@ from yupay.modules.orders.api import (
     create_order, get_order_for_actor,           # service fns
     list_orders_for_actor,
     cancel_order_admin, get_order_admin, list_orders_admin,
+    mark_order_failed_admin,
     router, admin_router,                        # FastAPI
 )
 ```
 
 ## HTTP surface
 
-| Method | Path                               | Auth                      | Purpose                                               |
-| ------ | ---------------------------------- | ------------------------- | ----------------------------------------------------- |
-| `POST` | `/api/v1/orders`                   | Bearer or Guest           | Create order. Requires `Idempotency-Key` (≥16 chars). |
-| `GET`  | `/api/v1/orders/{id}`              | Bearer or Guest+`?email=` | Owner-only detail. 404 on mismatch.                   |
-| `GET`  | `/api/v1/orders`                   | Bearer                    | List my orders (DESC, capped at 50).                  |
-| `GET`  | `/api/v1/admin/orders`             | admin role                | All orders, optional `status` filter.                 |
-| `GET`  | `/api/v1/admin/orders/{id}`        | admin role                | Detail with full event log.                           |
-| `POST` | `/api/v1/admin/orders/{id}/cancel` | admin role                | Only valid from `pending_payment`.                    |
+| Method | Path                               | Auth                      | Purpose                                                                                                                                                              |
+| ------ | ---------------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST` | `/api/v1/orders`                   | Bearer or Guest           | Create order. Requires `Idempotency-Key` (≥16 chars).                                                                                                                |
+| `GET`  | `/api/v1/orders/{id}`              | Bearer or Guest+`?email=` | Owner-only detail. 404 on mismatch.                                                                                                                                  |
+| `GET`  | `/api/v1/orders`                   | Bearer                    | List my orders (DESC, capped at 50).                                                                                                                                 |
+| `GET`  | `/api/v1/admin/orders`             | admin role                | All orders, optional `status` filter.                                                                                                                                |
+| `GET`  | `/api/v1/admin/orders/{id}`        | admin role                | Detail with full event log.                                                                                                                                          |
+| `POST` | `/api/v1/admin/orders/{id}/cancel` | admin role                | Only valid from `pending_payment`.                                                                                                                                   |
+| `POST` | `/api/v1/admin/orders/{id}/fail`   | admin role                | Close a paid-but-undeliverable order. Body `{reason}` (required). Only from `paid`/`fulfilling`/`fulfilled`; cascades open tasks + pending payments. Moves no money. |
 
 ## FSM
 

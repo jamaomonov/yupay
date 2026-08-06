@@ -4850,6 +4850,23 @@
         "title": "OrderEventOut",
         "type": "object"
       },
+      "OrderFailIn": {
+        "additionalProperties": false,
+        "description": "Body for the admin \"close this order as failed\" action.",
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "OrderFailIn",
+        "type": "object"
+      },
       "OrderItemAdminOut": {
         "description": "Admin view of an order line \u2014 adds the internal supplier order id.",
         "properties": {
@@ -14164,6 +14181,75 @@
           }
         },
         "summary": "Admin Cancel Order",
+        "tags": [
+          "admin:orders"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/{order_id}/fail": {
+      "post": {
+        "description": "Close a paid-but-undeliverable order as ``failed`` (reason required).\n\nThe only manual status change exposed to admins, and deliberately a narrow\none: legal from ``paid``/``fulfilling``/``fulfilled`` only. Before payment\nuse ``/cancel``; after delivery the customer already holds the goods, so\nthe correct action is a refund. Cancels open fulfilment tasks and pending\npayments \u2014 see ``orders.service.mark_order_failed_admin``. Moves no money.",
+        "operationId": "admin_mark_order_failed_api_v1_admin_orders__order_id__fail_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderFailIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderAdminOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Mark Order Failed",
         "tags": [
           "admin:orders"
         ]
