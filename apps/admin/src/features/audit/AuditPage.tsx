@@ -20,6 +20,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { PageHeader } from "@/components/PageHeader";
+import { StatCard } from "@/components/StatCard";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { useSearchParamsState } from "@/lib/useSearchParamsState";
@@ -167,7 +168,7 @@ export function AuditPage() {
         <StatCard label="Актёров" value={stats.actorsCount} />
         <StatCard
           label="Активность"
-          render={hourlyHistogram.length === 0 ? null : <Sparkline values={hourlyHistogram} />}
+          value={hourlyHistogram.length === 0 ? "—" : <Sparkline values={hourlyHistogram} />}
         />
       </section>
 
@@ -367,35 +368,6 @@ function TargetLink({ kind, id }: { kind: string; id: string }) {
     );
   }
   return <code className="text-[var(--text-primary)]">{shortened}</code>;
-}
-
-function StatCard({
-  label,
-  value,
-  accent,
-  render,
-}: {
-  label: string;
-  value?: number;
-  accent?: boolean;
-  render?: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
-      {render ?? (
-        <div
-          className={`text-2xl font-semibold ${
-            accent ? "text-[var(--accent)]" : "text-[var(--text-primary)]"
-          }`}
-        >
-          {value ?? 0}
-        </div>
-      )}
-      <div className="mt-1 text-xs uppercase tracking-wide text-[var(--text-secondary)]">
-        {label}
-      </div>
-    </div>
-  );
 }
 
 function Sparkline({ values }: { values: number[] }) {

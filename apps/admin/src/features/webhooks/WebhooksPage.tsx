@@ -7,6 +7,7 @@ import { Badge } from "@/components/Badge";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/components/Toast";
+import { StatCard } from "@/components/StatCard";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
@@ -335,24 +336,6 @@ function PayloadPreview({ row }: { row: WebhookOut }) {
 function formatApiError(err: ApiError): string {
   const body = err.body as { detail?: string; title?: string } | null;
   return body?.detail ?? body?.title ?? err.message;
-}
-
-function StatCard({
-  label,
-  value,
-  tone = "default",
-}: {
-  label: string;
-  value: number;
-  tone?: "default" | "warn" | "muted";
-}) {
-  const valueCls = tone === "warn" ? "text-[var(--danger)]" : "text-[var(--text-primary)]";
-  return (
-    <div className="rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
-      <div className={`text-2xl font-semibold ${valueCls}`}>{value}</div>
-      <div className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">{label}</div>
-    </div>
-  );
 }
 
 function formatDate(iso: string): string {

@@ -8,6 +8,7 @@ import type { Brand, Product, Sku } from "../types";
 
 import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/components/Toast";
+import { StatCard } from "@/components/StatCard";
 import { type ApiError, apiDelete, apiPatch, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
@@ -491,30 +492,6 @@ function Toggle({
         }`}
       />
     </button>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  accent,
-  tone = "default",
-}: {
-  label: string;
-  value: number;
-  accent?: boolean;
-  tone?: "default" | "warn" | "muted";
-}) {
-  const valueCls = accent
-    ? "text-[var(--accent)]"
-    : tone === "warn"
-      ? "text-[var(--danger)]"
-      : "text-[var(--text-primary)]";
-  return (
-    <div className="rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
-      <div className={`text-2xl font-semibold ${valueCls}`}>{value}</div>
-      <div className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">{label}</div>
-    </div>
   );
 }
 

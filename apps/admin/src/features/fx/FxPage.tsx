@@ -5,6 +5,7 @@ import { RefreshCw } from "lucide-react";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { Spinner } from "@/components/States";
+import { StatCard } from "@/components/StatCard";
 import { ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
@@ -141,15 +142,6 @@ export function FxPage() {
         Кэш TTL: fresh — 15 минут, stale — 24 часа. Обычный GET читает кэш и провайдера не дёргает.
         Refresh сбрасывает fresh-копию для каждой пары и форсит сетевой запрос.
       </p>
-    </div>
-  );
-}
-
-function StatCard({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
-      <div className={`text-2xl font-semibold ${mono ? "font-mono" : ""}`}>{value}</div>
-      <div className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">{label}</div>
     </div>
   );
 }

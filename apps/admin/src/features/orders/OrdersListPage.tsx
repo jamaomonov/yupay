@@ -17,6 +17,7 @@ import { CopyId } from "@/components/CopyId";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { Pagination } from "@/components/Pagination";
+import { StatCard } from "@/components/StatCard";
 import { SaveSegmentButton } from "@/features/segments/SaveSegmentButton";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
 import { formatMoney } from "@/lib/money";
@@ -419,30 +420,6 @@ function StatusBadge({ status }: { status: OrderStatus }) {
     <Badge tone={STATUS_TONE[status]} dot>
       {STATUS_LABEL[status]}
     </Badge>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  accent,
-  tone = "default",
-}: {
-  label: string;
-  value: number;
-  accent?: boolean;
-  tone?: "default" | "warn" | "muted";
-}) {
-  const valueCls = accent
-    ? "text-[var(--accent)]"
-    : tone === "warn"
-      ? "text-[var(--danger)]"
-      : "text-[var(--text-primary)]";
-  return (
-    <div className="rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
-      <div className={`text-2xl font-semibold ${valueCls}`}>{value}</div>
-      <div className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">{label}</div>
-    </div>
   );
 }
 
