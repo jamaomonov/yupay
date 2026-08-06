@@ -1119,6 +1119,17 @@ export function PurchasePanel({
               <p className="text-tx-dim mt-2.5 text-center text-[12px]">{payHint}</p>
             )}
 
+            {/* A guest has no account to come back to, and the next screen is
+                the acquirer's — say what happens after it, before they leave.
+                The one place this was ever written was a post-checkout screen
+                that production never reaches (a real acquirer redirects
+                immediately). */}
+            {canPay && !loading && !error && (
+              <p className="text-tx-dim mt-2.5 text-center text-[12px] leading-[17px]">
+                {t("afterPayNote")}
+              </p>
+            )}
+
             {error && <p className="mt-3 text-center text-[13px] text-[#FF6B6B]">{error}</p>}
 
             <div className="border-border/70 text-tx-mute mt-5 flex items-start gap-2.5 border-t pt-5 text-[12px] leading-relaxed">

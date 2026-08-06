@@ -36,7 +36,7 @@
     "ctaTelegram": "Open in Telegram",
     "chip1": "No fee on top",
     "chip2": "Pay with Click · Payme · Uzum",
-    "chip3": "Refund within 24 h"
+    "chip3": "Not credited — money back"
   },
   "catalog": {
     "eyebrow": "Catalog",
@@ -173,7 +173,7 @@
     "selectPack": "Pick a pack above",
     "payHintEmail": "Enter an email for the receipt",
     "payHintFields": "Fill in the top-up details",
-    "emailLabel": "Email for the receipt",
+    "emailLabel": "Email — your receipt and order link go here",
     "emailPlaceholder": "you@example.com",
     "check": "Check",
     "checking": "Checking…",
@@ -260,7 +260,8 @@
     "hubFaqA5": "There is no service commission on top of your amount — 0%. Our margin is in the conversion rate, and the total to pay is shown in advance.",
     "hubFaqQ6": "Is topping up by ID safe?",
     "hubFaqA6": "Yes. Only your public player ID or login is needed; you never share a password. Check that the ID is correct before paying.",
-    "feeNote": "Our margin is built into the rate — there is no separate fee on top. The total is locked in when you pay."
+    "feeNote": "Our margin is built into the rate — there is no separate fee on top. The total is locked in when you pay.",
+    "afterPayNote": "After payment we bring you back to the order page. The link also arrives by email."
   },
   "how": {
     "eyebrow": "Flow",
@@ -288,8 +289,8 @@
     "methodsNote": "Click, Payme and Uzum",
     "guaranteeValue": "24",
     "guaranteeSuffix": "h",
-    "guaranteeLabel": "Refund guarantee",
-    "guaranteeNote": "not credited — refunded"
+    "guaranteeLabel": "Decision on a claim",
+    "guaranteeNote": "not credited — we refund"
   },
   "showcase": {
     "eyebrow": "The app",
@@ -442,8 +443,8 @@
     "empty": "No orders yet.",
     "toCatalog": "Browse catalog",
     "guestListTitle": "Your orders",
-    "guestListEmpty": "No orders on this device yet.",
-    "guestListHint": "Orders on this device",
+    "guestListEmpty": "No orders in this browser. If you ordered from another device, open the link from your email.",
+    "guestListHint": "Orders placed in this browser. The rest are in your email link.",
     "open": "Open",
     "notFound": "Order not found.",
     "backToOrders": "My orders",

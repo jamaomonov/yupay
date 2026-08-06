@@ -36,7 +36,7 @@
     "ctaTelegram": "Telegramda ochish",
     "chip1": "Ustiga komissiyasiz",
     "chip2": "Click · Payme · Uzum bilan toʻlov",
-    "chip3": "24 soat ichida qaytarish"
+    "chip3": "Tushmadi — pulni qaytaramiz"
   },
   "catalog": {
     "eyebrow": "Katalog",
@@ -173,7 +173,7 @@
     "selectPack": "Yuqoridan paket tanlang",
     "payHintEmail": "Chek uchun email kiriting",
     "payHintFields": "Toʻldirish maʼlumotlarini kiriting",
-    "emailLabel": "Chek uchun email",
+    "emailLabel": "Email — chek va buyurtma havolasi shu yerga keladi",
     "emailPlaceholder": "you@example.com",
     "check": "Tekshirish",
     "checking": "Tekshirilmoqda…",
@@ -260,7 +260,8 @@
     "hubFaqA5": "Summa ustiga xizmat komissiyasi yoʻq — 0%. Marjamiz konvertatsiya kursida, toʻlov summasi oldindan koʻrinadi.",
     "hubFaqQ6": "ID boʻyicha toʻldirish xavfsizmi?",
     "hubFaqA6": "Ha. Faqat ochiq oʻyin IDsi yoki login kerak; parol berish shart emas. Toʻlovdan oldin ID toʻgʻri ekanini tekshiring.",
-    "feeNote": "Bizning ustamamiz kursga kiritilgan — ustiga alohida yigʻim yoʻq. Yakuniy summa toʻlov paytida qayd etiladi."
+    "feeNote": "Bizning ustamamiz kursga kiritilgan — ustiga alohida yigʻim yoʻq. Yakuniy summa toʻlov paytida qayd etiladi.",
+    "afterPayNote": "Toʻlovdan soʻng sizni buyurtma sahifasiga qaytaramiz. Havola pochtangizga ham keladi."
   },
   "how": {
     "eyebrow": "Flow",
@@ -288,8 +289,8 @@
     "methodsNote": "Click, Payme va Uzum",
     "guaranteeValue": "24",
     "guaranteeSuffix": "soat",
-    "guaranteeLabel": "Qaytarish kafolati",
-    "guaranteeNote": "tushmasa — qaytaramiz"
+    "guaranteeLabel": "Murojaat boʻyicha qaror",
+    "guaranteeNote": "tushmadi — pulni qaytaramiz"
   },
   "showcase": {
     "eyebrow": "Ilova",
@@ -442,8 +443,8 @@
     "empty": "Hozircha buyurtmalar yoʻq.",
     "toCatalog": "Katalogga oʻtish",
     "guestListTitle": "Buyurtmalaringiz",
-    "guestListEmpty": "Bu qurilmada hozircha buyurtmalar yoʻq.",
-    "guestListHint": "Bu qurilmadagi buyurtmalar",
+    "guestListEmpty": "Bu brauzerda buyurtmalar yoʻq. Boshqa qurilmadan buyurtma bergan boʻlsangiz, xatdagi havolani oching.",
+    "guestListHint": "Shu brauzerda rasmiylashtirilgan buyurtmalar. Qolganlari — xatdagi havola orqali.",
     "open": "Ochish",
     "notFound": "Buyurtma topilmadi.",
     "backToOrders": "Buyurtmalarim",
