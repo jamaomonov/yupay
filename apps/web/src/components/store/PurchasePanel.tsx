@@ -496,20 +496,18 @@ export function PurchasePanel({
 }) {
   const t = useTranslations("web.store");
   const { user } = useAuth();
-  // Anchor the default on a mid-tier pack, not the cheapest, and badge it as
-  // the recommended "Хит" — a default nudge on grids with several packs. Only
-  // applies to a fixed-denomination primary product with 3+ SKUs; a
-  // variable-amount product (Steam) or a 1–2 SKU brand gets no badge and falls
-  // back to the first SKU.
+  // Nothing is preselected on a grid the buyer still has to choose from. The
+  // panel used to open on the middle SKU — `floor(len/2)`, i.e. a position in
+  // the list, not a popularity — so a PUBG visitor's first number was "Ваш
+  // заказ 449 632 UZS" sitting next to a "от 12 609 UZS" chip, an anchor 36×
+  // the entry price. A product with a single SKU, or a variable-amount one
+  // (Steam, where the SKU carries the amount field), has nothing to choose and
+  // stays selected.
   const primarySkus = products[0]?.skus ?? [];
   const primaryIsVariable =
     primarySkus.length > 0 && primarySkus.every((s) => s.variable_amount ?? false);
-  const recommendedSkuId =
-    !primaryIsVariable && primarySkus.length >= 3
-      ? primarySkus[Math.floor(primarySkus.length / 2)]?.id
-      : undefined;
   const [skuId, setSkuId] = useState<string | undefined>(
-    recommendedSkuId ?? products[0]?.skus[0]?.id,
+    primaryIsVariable || primarySkus.length === 1 ? primarySkus[0]?.id : undefined,
   );
   const [form, setForm] = useState<Record<string, string>>({});
   const [email, setEmail] = useState("");
@@ -879,7 +877,6 @@ export function PurchasePanel({
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                     {product.skus.map((sku) => {
                       const active = sku.id === skuId;
-                      const recommended = sku.id === recommendedSkuId;
                       const img = sku.image_url ?? product.image_url;
                       return (
                         <button
@@ -895,11 +892,6 @@ export function PurchasePanel({
                               : "border-border bg-card hover:border-border-2"
                           }`}
                         >
-                          {recommended && (
-                            <span className="bg-primary text-primary-foreground absolute right-2 top-2 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.06em]">
-                              {t("popular")}
-                            </span>
-                          )}
                           <span className="relative h-12 w-12 overflow-hidden rounded-[10px]">
                             {img && (
                               <Image
@@ -1144,20 +1136,40 @@ export function PurchasePanel({
         >
           <div className="mx-auto flex max-w-[1200px] items-center justify-between gap-4">
             <div className="min-w-0">
-              <div className="text-tx-mute text-[11px] font-semibold">{t("summaryTitle")}</div>
+              {/* When the order can't be paid yet, this line says what is
+                  missing instead of a generic caption — the same reason the
+                  real button already shows below the form. */}
+              <div className="text-tx-mute truncate text-[11px] font-semibold">
+                {canPay || !payHint ? t("summaryTitle") : payHint}
+              </div>
               <div className="font-display truncate text-lg font-bold leading-tight">
                 {priceUnavailable ? "—" : selectedPriceLabel}
               </div>
             </div>
+            {/* The bar used to paint a full-lime "Оплатить" whichever state the
+                form was in, while the actual pay button below sat dimmed. The
+                loudest element on the screen promised payment and then merely
+                scrolled — read as a failed charge. It now looks like what it
+                does: pays when it can, otherwise takes you to the form. */}
             <button
               type="button"
               onClick={() => {
                 if (canPay) void pay();
                 else asideRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
               }}
-              className={buttonStyles({ size: "lg", className: "shrink-0" })}
+              className={buttonStyles({
+                size: "lg",
+                variant: canPay ? "primary" : "ghost",
+                className: "shrink-0",
+              })}
             >
-              {loading ? <Loader2 size={18} className="animate-spin" /> : t("pay")}
+              {loading ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : canPay ? (
+                t("pay")
+              ) : (
+                t("goToPay")
+              )}
             </button>
           </div>
         </div>
