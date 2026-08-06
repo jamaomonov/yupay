@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/sheet";
 import { useT } from "@/lib/i18n";
 import { canCheck, IDLE, runPlayerCheck, type CheckState } from "@/lib/player-check-state";
+import { haptic } from "@/lib/telegram";
 
 /** Picks the active-locale value out of a server-provided multilingual map,
  *  falling back to the first available translation, then to ``fallback``. */
@@ -119,13 +120,16 @@ function DynamicField({
         {hasHelp && (
           <button
             type="button"
+            // Invisible padding rather than a bigger chip: this is the only
+            // hint telling a newcomer where to find their game id, and at
+            // ~24px it was under any reasonable thumb target.
             onClick={() => {
               setHelpOpen(true);
             }}
             aria-label={t("field.whereToFindLabel", { label })}
             aria-controls={helpId}
             aria-expanded={helpOpen}
-            className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-opacity active:opacity-70"
+            className="relative flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-opacity after:absolute after:-inset-2.5 after:content-[''] active:opacity-70"
             style={{
               background: "hsl(var(--primary) / 0.12)",
               border: "1px solid hsl(var(--primary) / 0.35)",
@@ -221,7 +225,12 @@ function TextLikeField({
     const serverId = checkConfig?.server_field
       ? (allValues[checkConfig.server_field] ?? null)
       : null;
-    setCheck(await runPlayerCheck(productId, { playerId: value, serverId }));
+    const result = await runPlayerCheck(productId, { playerId: value, serverId });
+    // A resolved nickname is the strongest "we see your account" signal in the
+    // flow; a rejection is the cheapest moment to catch a typo. Both deserve
+    // the same tactile confirmation a native app would give.
+    if (result.phase === "done") haptic(result.result.status === "valid" ? "ok" : "error");
+    setCheck(result);
   };
 
   const handleChange = (v: string) => {

@@ -1,4 +1,4 @@
-import { Wallet as WalletIcon } from "lucide-react";
+import { User, Wallet as WalletIcon } from "lucide-react";
 import { Link } from "wouter";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -98,7 +98,15 @@ export function Header() {
               />
             )}
             <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">
-              {(user?.display_name?.[0] ?? "?").toUpperCase()}
+              {/* A "?" in the top-right corner reads as "help", not as
+                  "profile", and the tile changed between screens as the remote
+                  avatar arrived. An initial when we know the name, a person
+                  glyph when we don't. */}
+              {user?.display_name ? (
+                user.display_name[0]?.toUpperCase()
+              ) : (
+                <User size={14} aria-hidden />
+              )}
             </AvatarFallback>
           </Avatar>
         </Link>

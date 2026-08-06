@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   CheckCircle2,
   Clock3,
+  ExternalLink,
   Receipt,
   RotateCcw,
   Star,
@@ -18,6 +19,7 @@ import { Link, useLocation } from "wouter";
 import type { Locale } from "@yupay/i18n";
 
 import { ReviewsSheet } from "@/components/ReviewsSheet";
+import { BOT_LINK } from "@/lib/bot-link";
 import { SafeImage } from "@/components/ui/safe-image";
 import { useMe } from "@/lib/auth";
 import { useT, useLocale, type MessageKey } from "@/lib/i18n";
@@ -93,6 +95,16 @@ export default function History() {
           <div className="text-sm">
             <p className="font-semibold text-yellow-200">{t("common.openInTelegram")}</p>
             <p className="mt-1 text-xs text-yellow-100/70">{t("history.authHint")}</p>
+            {BOT_LINK && (
+              <a
+                href={BOT_LINK}
+                className="mt-2.5 inline-flex items-center gap-1.5 text-[12px] font-semibold transition-opacity active:opacity-70"
+                style={{ color: "hsl(var(--primary))" }}
+              >
+                {t("common.openBot")}
+                <ExternalLink size={11} />
+              </a>
+            )}
           </div>
         </div>
       )}

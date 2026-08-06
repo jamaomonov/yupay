@@ -1,6 +1,5 @@
 import { motion } from "framer-motion";
 import {
-  ArrowLeft,
   Check,
   ChevronRight,
   Clock,
@@ -22,6 +21,7 @@ import { ReviewsSheet } from "@/components/ReviewsSheet";
 import { SafeImage } from "@/components/ui/safe-image";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { BOT_LINK } from "@/lib/bot-link";
 import { ApiError } from "@/lib/api";
 import { useMe } from "@/lib/auth";
 import {
@@ -89,10 +89,7 @@ const DEFAULT_PAYMENT_METHOD = PAYMENT_METHODS[0]?.id ?? "click";
 // When the user opens the miniapp in a plain browser we can't take payment
 // (auth is bound to Telegram initData). Deep-link them back into the bot
 // rather than letting them fill the whole form and bouncing at submit.
-const BOT_USERNAME = (
-  (import.meta.env.VITE_TELEGRAM_BOT_USERNAME as string | undefined) ?? ""
-).replace(/^@/, "");
-const TELEGRAM_DEEP_LINK = BOT_USERNAME ? `https://t.me/${BOT_USERNAME}` : null;
+const TELEGRAM_DEEP_LINK = BOT_LINK;
 
 /** Sentinel for "pay from wallet balance" — handled by its own card, not part
  *  of the shared acquirer grid. The backend provider slug is ``wallet``. */
@@ -1334,13 +1331,8 @@ function PageSkeleton({ onBack }: { onBack: () => void }) {
     <div className="pb-32">
       <div className="relative h-56 overflow-hidden bg-gradient-to-br from-slate-800 to-slate-950">
         <div className="absolute left-4 top-12 z-10">
-          <button
-            onClick={onBack}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/50 backdrop-blur-md"
-            aria-label={t("common.back")}
-          >
-            <ArrowLeft size={16} className="text-white" />
-          </button>
+          {/* No arrow in the skeleton either: Telegram already shows its
+              BackButton on this route. */}
         </div>
       </div>
       <div className="space-y-4 px-4 pt-5">
