@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 PaymentStatus = Literal[
     "pending",
@@ -101,6 +101,30 @@ class RefundIn(BaseModel):
 
     amount: Decimal | None = None
     reason: str | None = Field(default=None, max_length=500)
+
+
+class SettleIn(BaseModel):
+    """Body of admin's ``POST /admin/payments/{id}/settle``.
+
+    Both fields are mandatory: this endpoint asserts money arrived without a
+    provider saying so, and the audit trail is only worth anything if it records
+    *why* and *against which provider transaction*.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(..., min_length=3, max_length=500)
+    #: The transaction id from the acquirer's own console — the evidence the
+    #: operator actually verified the charge before claiming it landed.
+    provider_reference: str = Field(..., min_length=3, max_length=128)
+
+    @field_validator("reason", "provider_reference")
+    @classmethod
+    def _not_blank(cls, v: str) -> str:
+        cleaned = v.strip()
+        if len(cleaned) < 3:
+            raise ValueError("must be at least 3 non-blank characters")
+        return cleaned
 
 
 class PaymentWebhookOut(BaseModel):

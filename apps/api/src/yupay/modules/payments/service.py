@@ -719,6 +719,89 @@ async def _apply_refund_reversal(
         await _publish_status_changed(order)
 
 
+async def settle_admin(
+    db: AsyncSession,
+    *,
+    payment_id: str,
+    admin_id: str,
+    reason: str,
+    provider_reference: str,
+) -> Payment:
+    """Mark a stuck payment as received, on an operator's word.
+
+    For the one case the automated path can't cover: the acquirer charged the
+    customer but its callback never arrived, so the order would sit in
+    ``pending_payment`` until it expires. Everything else in the system treats
+    "payment succeeded" as something only a provider may assert, and this is the
+    single deliberate exception — so it is fenced accordingly:
+
+    * legal only from ``pending`` / ``requires_action``; a settled, cancelled or
+      refunded payment is refused rather than silently re-run;
+    * ``provider_reference`` is required — the transaction id from the acquirer's
+      own console. It is the evidence that a human actually verified the charge,
+      and it lands in the audit trail so the claim can be re-checked later;
+    * the settlement funnels through :func:`settle_provider_payment`, i.e. the
+      same ``_mark_payment_succeeded`` chokepoint a real webhook uses, so the
+      order transition and the fulfilment kickoff cannot diverge from the
+      automated path.
+
+    Note this *does* start fulfilment: real goods, real supplier balance.
+
+    Raises:
+        NotFoundError: unknown payment.
+        ConflictError: payment is not awaiting settlement.
+    """
+    # FOR UPDATE so the status guard below is atomic against a real webhook
+    # landing at the same moment — otherwise both could pass the check and the
+    # order would be settled twice.
+    payment = (
+        await db.execute(select(Payment).where(Payment.id == payment_id).with_for_update())
+    ).scalar_one_or_none()
+    if payment is None:
+        raise NotFoundError("payment not found")
+    if payment.status not in ("pending", "requires_action"):
+        raise ConflictError(
+            "payment is not awaiting settlement",
+            extra={"status": payment.status},
+        )
+
+    db.add(
+        PaymentAttempt(
+            id=new_id(),
+            payment_id=payment.id,
+            kind="settle",
+            status="ok",
+            payload={
+                "reason": reason,
+                "provider_reference": provider_reference,
+                "by": f"admin:{admin_id}",
+            },
+        )
+    )
+    db.add(
+        OrderEvent(
+            id=new_id(),
+            order_id=payment.order_id,
+            kind="admin.payment_settled",
+            payload={
+                "payment_id": payment.id,
+                "provider": payment.provider,
+                "provider_reference": provider_reference,
+                "reason": reason,
+            },
+            actor=f"admin:{admin_id}",
+        )
+    )
+    # Same chokepoint a provider webhook uses — payment → succeeded, order →
+    # paid, fulfilment kicked off. The external event id records that this was
+    # a human decision, not a callback.
+    await settle_provider_payment(
+        db, payment=payment, external_event_id=f"admin-settle:{provider_reference}"
+    )
+    await db.flush()
+    return payment
+
+
 async def refund_admin(
     db: AsyncSession,
     *,

@@ -7611,6 +7611,30 @@
         "title": "SetProviderStateIn",
         "type": "object"
       },
+      "SettleIn": {
+        "additionalProperties": false,
+        "description": "Body of admin's ``POST /admin/payments/{id}/settle``.\n\nBoth fields are mandatory: this endpoint asserts money arrived without a\nprovider saying so, and the audit trail is only worth anything if it records\n*why* and *against which provider transaction*.",
+        "properties": {
+          "provider_reference": {
+            "maxLength": 128,
+            "minLength": 3,
+            "title": "Provider Reference",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "provider_reference"
+        ],
+        "title": "SettleIn",
+        "type": "object"
+      },
       "SimulateWebhookIn": {
         "additionalProperties": false,
         "description": "Body of admin's ``POST /admin/payments/{id}/simulate-webhook``.",
@@ -14892,6 +14916,91 @@
           }
         },
         "summary": "Admin-initiated refund (full or partial)",
+        "tags": [
+          "admin:payments"
+        ]
+      }
+    },
+    "/api/v1/admin/payments/{payment_id}/settle": {
+      "post": {
+        "description": "Settle a payment the acquirer charged but never called back about.\n\nAsserts \"money arrived\" on an operator's word, which is why it demands a\nreason **and** the provider's own transaction id, refuses anything not in\n``pending``/``requires_action``, and records both on the order timeline.\nStarts fulfilment \u2014 see ``payments.service.settle_admin``.",
+        "operationId": "admin_settle_payment_api_v1_admin_payments__payment_id__settle_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "payment_id",
+            "required": true,
+            "schema": {
+              "title": "Payment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentAdminOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mark a stuck payment as received (lost provider webhook)",
         "tags": [
           "admin:payments"
         ]

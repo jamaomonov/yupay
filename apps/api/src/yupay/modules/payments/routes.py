@@ -40,6 +40,7 @@ from yupay.modules.payments.schemas import (
     ProviderStatusOut,
     RefundIn,
     SetProviderStateIn,
+    SettleIn,
     SimulateWebhookIn,
     WebhookResolveIn,
 )
@@ -318,6 +319,36 @@ async def admin_simulate_webhook(
     if get_settings().is_prod:
         raise HTTPException(status_code=403, detail="simulate-webhook is dev-only")
     payment = await svc.simulate_webhook(db, payment_id=payment_id, outcome=body.outcome)
+    return PaymentAdminOut.model_validate(payment)
+
+
+@admin_router.post(
+    "/{payment_id}/settle",
+    response_model=PaymentAdminOut,
+    summary="Mark a stuck payment as received (lost provider webhook)",
+)
+async def admin_settle_payment(
+    payment_id: str,
+    body: SettleIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
+) -> PaymentAdminOut:
+    """Settle a payment the acquirer charged but never called back about.
+
+    Asserts "money arrived" on an operator's word, which is why it demands a
+    reason **and** the provider's own transaction id, refuses anything not in
+    ``pending``/``requires_action``, and records both on the order timeline.
+    Starts fulfilment — see ``payments.service.settle_admin``.
+    """
+    _require_idempotency_key(idempotency_key)
+    payment = await svc.settle_admin(
+        db,
+        payment_id=payment_id,
+        admin_id=admin.id,
+        reason=body.reason,
+        provider_reference=body.provider_reference,
+    )
     return PaymentAdminOut.model_validate(payment)
 
 

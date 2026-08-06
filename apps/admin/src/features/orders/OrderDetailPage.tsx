@@ -9,6 +9,7 @@ import {
   Coins,
   CreditCard,
   AlertTriangle,
+  CheckCircle2,
   Eye,
   KeyRound,
   Mail,
@@ -17,7 +18,7 @@ import {
   RefreshCw,
   Truck,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import {
@@ -32,6 +33,7 @@ import type { DeliveryListOut, TaskAdminOut, TaskListOut } from "@/features/fulf
 import type { PaymentAdminListOut, PaymentAdminOut } from "@/features/payments/types";
 
 import { Badge } from "@/components/Badge";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { PageHeader } from "@/components/PageHeader";
 import { Spinner } from "@/components/States";
 import { StatusChip } from "@/components/StatusChip";
@@ -104,6 +106,34 @@ export function OrderDetailPage() {
     onSuccess: () => {
       toast.success("Письмо с выдачей отправлено на адрес заказа");
       void qc.invalidateQueries({ queryKey: qk.order(orderId) });
+    },
+    onError: (err) => {
+      toast.error(extractApiMessage(err));
+    },
+  });
+
+  // Manual settlement asserts "money arrived" without a provider saying so, so
+  // the operator has to supply the acquirer's own transaction id as evidence.
+  const [settleFor, setSettleFor] = useState<PaymentAdminOut | null>(null);
+  const [settleReason, setSettleReason] = useState("");
+  const [settleRef, setSettleRef] = useState("");
+  const settleIdemRef = useRef<string>("");
+
+  const settle = useMutation<PaymentAdminOut, ApiError, { id: string }>({
+    mutationFn: ({ id }) =>
+      apiPost<PaymentAdminOut>(
+        `/api/v1/admin/payments/${id}/settle`,
+        { reason: settleReason.trim(), provider_reference: settleRef.trim() },
+        { "Idempotency-Key": settleIdemRef.current },
+      ),
+    onSuccess: () => {
+      setSettleFor(null);
+      setSettleReason("");
+      setSettleRef("");
+      toast.success("Платёж отмечен оплаченным, выдача запущена");
+      void qc.invalidateQueries({ queryKey: ["admin", "payments"] });
+      void qc.invalidateQueries({ queryKey: qk.order(orderId) });
+      void qc.invalidateQueries({ queryKey: ["admin", "fulfillment"] });
     },
     onError: (err) => {
       toast.error(extractApiMessage(err));
@@ -265,6 +295,15 @@ export function OrderDetailPage() {
             failed={paymentsQuery.isError}
             onRetryLoad={() => void paymentsQuery.refetch()}
             refunding={refund.isPending}
+            settling={settle.isPending}
+            onSettle={(p) => {
+              // One key per opened dialog — a double-click on confirm must not
+              // settle twice.
+              settleIdemRef.current = `admin-settle-${crypto.randomUUID()}`;
+              setSettleReason("");
+              setSettleRef("");
+              setSettleFor(p);
+            }}
             onRefund={(p) => {
               const reason = window.prompt(
                 `Возврат ${formatMoney(p.amount, p.currency)} (${p.provider}). Причина:`,
@@ -298,6 +337,50 @@ export function OrderDetailPage() {
           />
         </aside>
       </div>
+
+      {settleFor && (
+        <ConfirmDialog
+          title="Отметить платёж оплаченным?"
+          tone="danger"
+          confirmLabel="Отметить оплаченным"
+          busy={settle.isPending}
+          onCancel={() => {
+            setSettleFor(null);
+          }}
+          onConfirm={() => {
+            if (settleReason.trim().length < 3 || settleRef.trim().length < 3) return;
+            settle.mutate({ id: settleFor.id });
+          }}
+        >
+          <p>
+            Это утверждает, что деньги пришли, <strong>без подтверждения провайдера</strong>, и
+            запускает выдачу товара. Указывайте номер транзакции из консоли эквайера — он попадёт в
+            историю заказа.
+          </p>
+          <label className="mt-3 block text-xs uppercase text-[var(--text-secondary)]">
+            Номер транзакции у провайдера
+            <input
+              value={settleRef}
+              onChange={(e) => {
+                setSettleRef(e.target.value);
+              }}
+              placeholder="например: CLICK-99887"
+              className="mt-1 h-9 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm text-[var(--text-primary)]"
+            />
+          </label>
+          <label className="mt-2 block text-xs uppercase text-[var(--text-secondary)]">
+            Причина
+            <input
+              value={settleReason}
+              onChange={(e) => {
+                setSettleReason(e.target.value);
+              }}
+              placeholder="вебхук не дошёл, оплата видна в консоли"
+              className="mt-1 h-9 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm text-[var(--text-primary)]"
+            />
+          </label>
+        </ConfirmDialog>
+      )}
 
       {/* Attaches a real Delivery (codes / receipt) and walks the order to
           `delivered` — the safe counterpart to a manual status change. */}
@@ -628,12 +711,16 @@ function PaymentsCard({
   payments,
   onRefund,
   refunding,
+  onSettle,
+  settling,
   failed,
   onRetryLoad,
 }: {
   payments: PaymentAdminOut[];
   onRefund: (payment: PaymentAdminOut) => void;
   refunding: boolean;
+  onSettle: (payment: PaymentAdminOut) => void;
+  settling: boolean;
   /** The payments query failed — "no payments" would be a lie mid-support-call. */
   failed?: boolean | undefined;
   onRetryLoad?: (() => void) | undefined;
@@ -680,6 +767,23 @@ function PaymentsCard({
                     className="mt-2"
                   >
                     Возврат
+                  </Button>
+                )}
+                {/* The acquirer charged but never called back — the order would
+                    otherwise sit unpaid until it expires. */}
+                {(p.status === "pending" || p.status === "requires_action") && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      onSettle(p);
+                    }}
+                    disabled={settling}
+                    className="mt-2"
+                  >
+                    <CheckCircle2 className="size-3.5" />
+                    Отметить оплаченным
                   </Button>
                 )}
               </li>
