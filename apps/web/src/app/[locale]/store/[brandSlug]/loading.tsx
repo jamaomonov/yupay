@@ -21,10 +21,10 @@ export default async function BrandLoading() {
         <div className="mt-10 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_380px]">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {Array.from({ length: 6 }, (_, i) => (
-              <Skeleton key={i} className="h-[132px] rounded-[14px]" />
+              <Skeleton key={i} className="h-[132px] rounded-lg" />
             ))}
           </div>
-          <Skeleton className="h-[420px] rounded-[20px]" />
+          <Skeleton className="h-[420px] rounded-xl" />
         </div>
       </div>
     </main>

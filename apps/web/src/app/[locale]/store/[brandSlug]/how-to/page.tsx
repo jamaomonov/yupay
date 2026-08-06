@@ -256,7 +256,7 @@ export default async function HowToPage({
                   {products.length > 1 && (
                     <div className="text-tx-mute mb-2 text-sm font-semibold">{p.name}</div>
                   )}
-                  <dl className="border-border divide-border/70 divide-y overflow-hidden rounded-[12px] border">
+                  <dl className="border-border divide-border/70 rounded-btn divide-y overflow-hidden border">
                     {p.skus.map((s) => {
                       const name = s.variable_amount
                         ? `${s.min_amount_usd ? `$${String(Number(s.min_amount_usd))}` : "$1"}–${s.max_amount_usd ? `$${String(Number(s.max_amount_usd))}` : "$300"}`
@@ -305,14 +305,14 @@ export default async function HowToPage({
         )}
 
         {/* CTA back to the money page */}
-        <div className="border-border bg-card mt-14 flex flex-col items-start gap-4 rounded-[18px] border bg-[linear-gradient(135deg,hsl(var(--card)),hsl(var(--bg)))] p-7 sm:flex-row sm:items-center sm:justify-between">
+        <div className="border-border bg-card mt-14 flex flex-col items-start gap-4 rounded-xl border bg-[linear-gradient(135deg,hsl(var(--card)),hsl(var(--bg)))] p-7 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="font-display text-lg font-bold tracking-[-0.02em]">{brand.name}</div>
             {intro && <div className="text-tx-mute mt-1 max-w-[46ch] text-[13px]">{intro}</div>}
           </div>
           <Link
             href={pathFor(locale, moneyPath)}
-            className="bg-primary text-primary-foreground inline-flex shrink-0 items-center gap-2 rounded-[12px] px-6 py-3 text-[15px] font-bold transition hover:brightness-110"
+            className="bg-primary text-primary-foreground rounded-btn inline-flex shrink-0 items-center gap-2 px-6 py-3 text-[15px] font-bold transition hover:brightness-110"
           >
             {t("guideCtaButton", { name: brand.name })}
             <ChevronRight size={18} />

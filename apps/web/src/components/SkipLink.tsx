@@ -12,7 +12,7 @@ export async function SkipLink() {
   return (
     <a
       href="#main-content"
-      className="bg-primary text-primary-foreground sr-only rounded-md px-4 py-2 text-sm font-semibold focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[200] focus:shadow-lg"
+      className="bg-primary text-primary-foreground rounded-btn sr-only px-4 py-2 text-sm font-semibold focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[200] focus:shadow-lg"
     >
       {t("skipToContent")}
     </a>

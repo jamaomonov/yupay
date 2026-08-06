@@ -52,7 +52,7 @@ export async function CatalogBento({ locale }: { locale: string }) {
           </div>
           <Link
             href={pathFor(locale, "/store")}
-            className="border-border-2 text-foreground hover:border-tx-dim hover:bg-muted hidden h-[44px] items-center gap-2 rounded-[12px] border px-5 text-sm font-semibold transition sm:inline-flex"
+            className="border-border-2 text-foreground hover:border-tx-dim hover:bg-muted rounded-btn hidden h-[44px] items-center gap-2 border px-5 text-sm font-semibold transition sm:inline-flex"
           >
             {t("viewAll")}
             <ArrowRight size={14} strokeWidth={2.4} />
@@ -80,7 +80,7 @@ export async function CatalogBento({ locale }: { locale: string }) {
             desktop-only to keep the heading row uncluttered on phones). */}
         <Link
           href={pathFor(locale, "/store")}
-          className="border-border-2 text-foreground hover:border-tx-dim hover:bg-muted mt-4 flex h-[48px] items-center justify-center gap-2 rounded-[12px] border text-sm font-semibold transition sm:hidden"
+          className="border-border-2 text-foreground hover:border-tx-dim hover:bg-muted rounded-btn mt-4 flex h-[48px] items-center justify-center gap-2 border text-sm font-semibold transition sm:hidden"
         >
           {t("viewAll")}
           <ArrowRight size={14} strokeWidth={2.4} />

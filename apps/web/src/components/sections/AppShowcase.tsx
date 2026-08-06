@@ -58,7 +58,7 @@ export async function AppShowcase() {
                     key={key}
                     className="border-border/70 bg-card/40 hover:border-primary/30 hover:bg-card/70 flex items-start gap-4 rounded-2xl border p-4 transition"
                   >
-                    <span className="border-primary/25 bg-primary/10 mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] border">
+                    <span className="border-primary/25 bg-primary/10 rounded-btn mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center border">
                       <Icon size={18} className="text-primary" />
                     </span>
                     <div>

@@ -71,7 +71,7 @@ export function LocaleSwitcher() {
         }}
         aria-haspopup="true"
         aria-expanded={open}
-        className="border-border bg-muted text-tx-mute hover:bg-card-2 hover:text-foreground flex h-11 items-center gap-2 rounded-[10px] border px-3 text-xs font-semibold uppercase tracking-wider transition"
+        className="border-border bg-muted text-tx-mute hover:bg-card-2 hover:text-foreground rounded-btn flex h-11 items-center gap-2 border px-3 text-xs font-semibold uppercase tracking-wider transition"
       >
         <Image
           src={FLAGS[current]}

@@ -124,7 +124,7 @@ function CheckablePlayerField({
     return (
       <div>
         <FieldLabel label={label} required={required} />
-        <div className="flex items-center gap-2.5 rounded-[12px] border border-emerald-500/40 bg-emerald-500/[0.06] py-1.5 pl-1.5 pr-4">
+        <div className="rounded-btn flex items-center gap-2.5 border border-emerald-500/40 bg-emerald-500/[0.06] py-1.5 pl-1.5 pr-4">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
             <Check size={17} strokeWidth={3} />
           </span>
@@ -149,7 +149,7 @@ function CheckablePlayerField({
     return (
       <div>
         <FieldLabel label={label} required={required} />
-        <div className="flex items-center gap-2.5 rounded-[12px] border border-red-500/40 bg-red-500/[0.06] py-1.5 pl-1.5 pr-4">
+        <div className="rounded-btn flex items-center gap-2.5 border border-red-500/40 bg-red-500/[0.06] py-1.5 pl-1.5 pr-4">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-500/15 text-red-400">
             <X size={17} strokeWidth={3} />
           </span>
@@ -190,7 +190,7 @@ function CheckablePlayerField({
             onChange={(e) => {
               onChange(e.target.value);
             }}
-            className={`border-border-2 bg-card focus:border-primary/60 placeholder:text-tx-dim h-[46px] w-full rounded-[12px] border pl-4 text-[15px] outline-none transition ${help ? "pr-11" : "pr-4"}`}
+            className={`border-border-2 bg-card focus:border-primary/60 placeholder:text-tx-dim rounded-btn h-[46px] w-full border pl-4 text-[15px] outline-none transition ${help ? "pr-11" : "pr-4"}`}
           />
           {help && (
             <button
@@ -214,7 +214,7 @@ function CheckablePlayerField({
           // checkout), and in lime it read as the main action while the real
           // CTA below sat dimmed. The green confirmation pill still marks a
           // successful check.
-          className="border-border-2 text-tx-mute hover:border-tx-dim hover:text-foreground hover:bg-muted inline-flex h-[46px] shrink-0 items-center justify-center gap-2 rounded-[12px] border px-5 text-[14px] font-semibold transition disabled:pointer-events-none disabled:opacity-40"
+          className="border-border-2 text-tx-mute hover:border-tx-dim hover:text-foreground hover:bg-muted rounded-btn inline-flex h-[46px] shrink-0 items-center justify-center gap-2 border px-5 text-[14px] font-semibold transition disabled:pointer-events-none disabled:opacity-40"
         >
           {state.phase === "loading" && <Loader2 size={16} className="animate-spin" />}
           {state.phase === "loading" ? t("checking") : t("check")}
@@ -309,7 +309,7 @@ function VariableAmountCard({
   const rate = sku.display_price;
   if (!rate) {
     return (
-      <div className="border-border bg-card text-tx-mute rounded-[14px] border border-dashed p-6 text-center text-sm">
+      <div className="border-border bg-card text-tx-mute rounded-lg border border-dashed p-6 text-center text-sm">
         {t("priceUnavailable")}
       </div>
     );
@@ -346,7 +346,7 @@ function VariableAmountCard({
   const rateLine = t("ratePerDollar", { rate: formatUzs(locale, Math.round(rateUzs)) });
 
   return (
-    <div className="border-border overflow-hidden rounded-[18px] border bg-[linear-gradient(135deg,hsl(var(--card)),hsl(var(--bg)))]">
+    <div className="border-border overflow-hidden rounded-xl border bg-[linear-gradient(135deg,hsl(var(--card)),hsl(var(--bg)))]">
       {/* header band: title + subtitle */}
       <div className="border-border/70 border-b p-5">
         <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t("amountTitle")}</h2>
@@ -356,14 +356,14 @@ function VariableAmountCard({
       {/* custom amount first — stays neutral; the selected preset (or nothing)
           carries the lime accent, never this block */}
       <div className="p-5 pb-0">
-        <div className="border-border bg-card rounded-[16px] border p-5">
+        <div className="border-border bg-card rounded-lg border p-5">
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {/* left: label + input + slider */}
             <div className="lg:border-border/70 lg:border-r lg:pr-6">
               <label htmlFor={amountId} className="text-tx-mute mb-2 block text-[13px]">
                 {t("amountOwn")}
               </label>
-              <div className="border-border bg-bg focus-within:border-primary flex items-center gap-2 rounded-[12px] border px-3.5 transition">
+              <div className="border-border bg-bg focus-within:border-primary rounded-btn flex items-center gap-2 border px-3.5 transition">
                 <span className="text-tx-dim text-[18px] font-bold" aria-hidden="true">
                   $
                 </span>
@@ -463,7 +463,7 @@ function VariableAmountCard({
                 onClick={() => {
                   pick(amount);
                 }}
-                className={`focus-visible:ring-primary focus-visible:ring-offset-bg relative flex flex-col items-start gap-3 rounded-[16px] border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                className={`focus-visible:ring-primary focus-visible:ring-offset-bg relative flex flex-col items-start gap-3 rounded-lg border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
                   i > 2 ? "hidden sm:flex" : ""
                 } ${
                   active
@@ -474,7 +474,7 @@ function VariableAmountCard({
                 <div className="flex w-full items-center justify-between">
                   <div className="flex items-center gap-2">
                     {image ? (
-                      <span className="relative size-9 shrink-0 overflow-hidden rounded-[10px]">
+                      <span className="rounded-btn relative size-9 shrink-0 overflow-hidden">
                         <Image
                           src={image}
                           alt=""
@@ -486,7 +486,7 @@ function VariableAmountCard({
                       </span>
                     ) : (
                       <span
-                        className="border-border/60 size-9 rounded-[10px] border bg-[hsl(var(--card-2))] bg-gradient-to-br from-white/[0.04] to-transparent"
+                        className="border-border/60 rounded-btn size-9 border bg-[hsl(var(--card-2))] bg-gradient-to-br from-white/[0.04] to-transparent"
                         aria-hidden="true"
                       />
                     )}
@@ -935,13 +935,13 @@ export function PurchasePanel({
                           onClick={() => {
                             setSkuId(sku.id);
                           }}
-                          className={`focus-visible:ring-primary focus-visible:ring-offset-bg relative flex flex-col items-start gap-2 rounded-[14px] border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                          className={`focus-visible:ring-primary focus-visible:ring-offset-bg relative flex flex-col items-start gap-2 rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
                             active
                               ? "border-primary bg-primary/10"
                               : "border-border bg-card hover:border-border-2"
                           }`}
                         >
-                          <span className="relative h-12 w-12 overflow-hidden rounded-[10px]">
+                          <span className="rounded-btn relative h-12 w-12 overflow-hidden">
                             {img && (
                               <Image
                                 src={img}
@@ -1020,7 +1020,7 @@ export function PurchasePanel({
                 onChange={(e) => {
                   setEmail(e.target.value);
                 }}
-                className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
+                className="border-border bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition"
               />
             </label>
 
@@ -1057,7 +1057,7 @@ export function PurchasePanel({
                           onChange={(e) => {
                             setForm((s) => ({ ...s, [f.key]: e.target.value }));
                           }}
-                          className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
+                          className="border-border bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition"
                         >
                           <option value="">—</option>
                           {f.options?.map((o) => (
@@ -1077,7 +1077,7 @@ export function PurchasePanel({
                           onChange={(e) => {
                             setForm((s) => ({ ...s, [f.key]: e.target.value }));
                           }}
-                          className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
+                          className="border-border bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition"
                         />
                       )}
                       {f.help_text && (
@@ -1094,7 +1094,7 @@ export function PurchasePanel({
                 {t("paymentTitle")}
               </span>
               {!anyMethodVisible && (
-                <p className="border-border bg-card text-tx-dim rounded-[12px] border px-3 py-3 text-[13px]">
+                <p className="border-border bg-card text-tx-dim rounded-btn border px-3 py-3 text-[13px]">
                   {t("paymentNone")}
                 </p>
               )}
@@ -1117,7 +1117,7 @@ export function PurchasePanel({
                       onClick={() => {
                         setMethodId(m.id);
                       }}
-                      className={`focus-visible:ring-primary focus-visible:ring-offset-bg flex flex-col items-center justify-center gap-1 rounded-[12px] border px-3 py-3 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
+                      className={`focus-visible:ring-primary focus-visible:ring-offset-bg rounded-btn flex flex-col items-center justify-center gap-1 border px-3 py-3 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
                         disabled
                           ? "border-border bg-card"
                           : active

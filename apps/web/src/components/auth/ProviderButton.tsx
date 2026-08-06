@@ -22,7 +22,7 @@ export function ProviderButton({ label, icon, surface, onClick, soon }: Provider
       disabled={soon}
       aria-disabled={soon}
       onClick={soon ? undefined : onClick}
-      className={`relative flex h-[52px] items-center justify-center gap-2.5 rounded-[14px] px-4 text-[15px] font-semibold transition ${surface} ${
+      className={`relative flex h-[52px] items-center justify-center gap-2.5 rounded-lg px-4 text-[15px] font-semibold transition ${surface} ${
         soon ? "cursor-not-allowed opacity-55" : "hover:brightness-110"
       }`}
     >

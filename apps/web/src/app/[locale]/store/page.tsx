@@ -236,7 +236,7 @@ export default async function StorePage({
           <h2 className="font-display text-2xl font-bold tracking-[-0.02em]">{t("hubHowTitle")}</h2>
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
             {steps.map((s, i) => (
-              <div key={i} className="border-border bg-card rounded-[16px] border p-6">
+              <div key={i} className="border-border bg-card rounded-lg border p-6">
                 <div className="bg-primary/10 text-primary flex h-9 w-9 items-center justify-center rounded-full font-mono text-[14px] font-bold">
                   {i + 1}
                 </div>

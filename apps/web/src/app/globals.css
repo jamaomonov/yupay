@@ -29,12 +29,15 @@
   --font-display: var(--app-font-display);
   --font-mono: var(--app-font-mono);
 
-  --radius-sm: 0.4rem;
-  --radius-md: 0.625rem;
-  --radius-btn: 0.75rem; /* 12px — canonical button/pill radius */
-  --radius-lg: 0.875rem;
-  --radius-xl: 1.25rem; /* 20px — card radius */
-  --radius-2xl: 1.75rem; /* 28px — panel radius */
+  /* Four steps, and every rounded corner in the app uses one of them. The
+     tokens existed before but components mostly wrote arbitrary pixel values —
+     fourteen distinct radii, so no nested pair ever satisfied "inner = outer −
+     padding" and the corners visibly drifted. `rounded-full` (pills, avatars)
+     stands outside the scale. */
+  --radius-btn: 0.75rem; /* 12px — buttons, inputs, small controls */
+  --radius-lg: 0.875rem; /* 14px — chips, inner blocks, small cards */
+  --radius-xl: 1.25rem; /* 20px — cards and panels */
+  --radius-2xl: 1.75rem; /* 28px — hero and large panels */
 }
 
 :root {

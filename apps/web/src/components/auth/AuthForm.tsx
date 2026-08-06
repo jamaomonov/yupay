@@ -74,7 +74,7 @@ export function AuthForm({
           autoComplete="email"
           aria-required="true"
           {...register("email")}
-          className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
+          className="border-border bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition"
         />
         {errors.email && (
           <span id="auth-email-error" className="mt-1 block text-xs text-[#FF6B6B]">
@@ -92,7 +92,7 @@ export function AuthForm({
           autoComplete={mode === "login" ? "current-password" : "new-password"}
           aria-required="true"
           {...register("password")}
-          className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
+          className="border-border bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition"
         />
         {errors.password && (
           <span id="auth-password-error" className="mt-1 block text-xs text-[#FF6B6B]">
@@ -113,7 +113,7 @@ export function AuthForm({
             autoComplete="new-password"
             aria-required="true"
             {...register("confirmPassword")}
-            className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
+            className="border-border bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition"
           />
           {errors.confirmPassword && (
             <span id="auth-confirm-password-error" className="mt-1 block text-xs text-[#FF6B6B]">

@@ -79,7 +79,7 @@ function ResetInner() {
             }}
             minLength={8}
             required
-            className="border-border bg-card focus:border-primary h-[46px] w-full rounded-[12px] border px-3.5 text-[15px] outline-none transition"
+            className="border-border bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition"
           />
         </label>
 

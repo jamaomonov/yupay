@@ -223,7 +223,7 @@ export default async function BrandPage({
         {/* hero banner — mirrors the design reference: the brand image bleeds
             in from the right while a left-to-right scrim keeps the copy
             readable; content is bottom-aligned over it. */}
-        <div className="border-border bg-card relative overflow-hidden rounded-[22px] border">
+        <div className="border-border bg-card relative overflow-hidden rounded-xl border">
           {heroImg ? (
             <Image
               src={heroImg}
@@ -268,7 +268,7 @@ export default async function BrandPage({
           <div className="relative z-10 flex flex-col justify-end gap-4 p-6 sm:min-h-[272px] sm:p-8">
             <div className="flex items-center gap-4">
               {brand.logo_url && (
-                <span className="relative h-16 w-16 shrink-0 overflow-hidden rounded-[17px] bg-black/40 shadow-[0_12px_32px_rgba(0,0,0,0.55)] backdrop-blur">
+                <span className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-black/40 shadow-[0_12px_32px_rgba(0,0,0,0.55)] backdrop-blur">
                   <Image
                     src={brand.logo_url}
                     alt=""

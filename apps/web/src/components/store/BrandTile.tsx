@@ -69,7 +69,7 @@ export async function BrandTile({
       <div className="absolute inset-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.9)_0%,rgba(0,0,0,0.45)_45%,transparent_80%)]" />
 
       {brand.maintenance && (
-        <span className="absolute left-4 top-4 z-10 inline-flex rounded-md bg-black/60 px-2 py-1 text-[10px] font-black uppercase tracking-[0.06em] text-white backdrop-blur">
+        <span className="rounded-btn absolute left-4 top-4 z-10 inline-flex bg-black/60 px-2 py-1 text-[10px] font-black uppercase tracking-[0.06em] text-white backdrop-blur">
           {ts("maintenance")}
         </span>
       )}
