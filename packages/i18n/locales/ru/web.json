@@ -2,7 +2,12 @@
   "common": {
     "localeRu": "Русский",
     "localeEn": "English",
-    "localeUz": "Oʻzbekcha"
+    "localeUz": "Oʻzbekcha",
+    "loadingTitle": "Загружаем…",
+    "errorTitle": "Страница не загрузилась",
+    "errorBody": "Что-то пошло не так на нашей стороне. Попробуйте обновить — если не поможет, напишите нам.",
+    "errorRetry": "Обновить",
+    "errorHome": "На главную"
   },
   "notFound": {
     "title": "Страница не найдена",

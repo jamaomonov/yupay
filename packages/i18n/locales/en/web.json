@@ -2,7 +2,12 @@
   "common": {
     "localeRu": "Русский",
     "localeEn": "English",
-    "localeUz": "Oʻzbekcha"
+    "localeUz": "Oʻzbekcha",
+    "loadingTitle": "Loading…",
+    "errorTitle": "This page didn't load",
+    "errorBody": "Something broke on our side. Try again — if it keeps happening, message us.",
+    "errorRetry": "Try again",
+    "errorHome": "Go home"
   },
   "notFound": {
     "title": "Page not found",

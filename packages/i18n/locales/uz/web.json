@@ -2,7 +2,12 @@
   "common": {
     "localeRu": "Русский",
     "localeEn": "English",
-    "localeUz": "Oʻzbekcha"
+    "localeUz": "Oʻzbekcha",
+    "loadingTitle": "Yuklanmoqda…",
+    "errorTitle": "Sahifa yuklanmadi",
+    "errorBody": "Bizning tomonda nimadir buzildi. Yangilab koʻring — yordam bermasa, bizga yozing.",
+    "errorRetry": "Yangilash",
+    "errorHome": "Bosh sahifaga"
   },
   "notFound": {
     "title": "Sahifa topilmadi",
