@@ -47,8 +47,14 @@
   --border-2: 232 36% 23%; /* #242952 */
 
   --foreground: 0 0% 100%;
-  --tx-mute: 222 33% 70%; /* #9DA8C8 */
-  --tx-dim: 226 17% 50%; /* #6B7395 */
+  --tx-mute: 222 33% 70%; /* #9DA8C8 — 7.4:1 on --muted, the darkest surface */
+  /* Was 50% (#6B7395), which cleared WCAG AA on none of the four surfaces
+     below — 4.26 on --bg down to 3.78 on --muted, against a 4.5 floor. It
+     paints the checkout field labels, footer column headings, breadcrumbs and
+     the "Технические работы" badge, so the failure was everywhere at once
+     (304 occurrences across 30 pages, measured in a browser). 55% is the first
+     step that clears all four; 54% still falls short on --muted at 4.41. */
+  --tx-dim: 226 17% 55%; /* #7982A0 */
 
   /* Electric lime — primary accent. */
   --primary: 80 100% 60%; /* #AAFF33 */
