@@ -23,6 +23,7 @@ import type { OrderAdminOut } from "@/features/orders/types";
 
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
+import { manualQueueQuery } from "@/features/fulfillment/inboxQueries";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
@@ -33,14 +34,8 @@ interface QueueRow {
 }
 
 export function ManualQueuePage() {
-  const tasksQuery = useQuery<FulfillmentTaskListOut>({
-    queryKey: qk.manualQueue(),
-    queryFn: () =>
-      apiGet<FulfillmentTaskListOut>(
-        "/api/v1/admin/fulfillment/tasks?supplier=manual&status_filter=in_progress&order=oldest&limit=200",
-      ),
-    refetchInterval: 15_000,
-  });
+  // Shared with the Inbox badge — see ``fulfillment/inboxQueries``.
+  const tasksQuery = useQuery<FulfillmentTaskListOut>(manualQueueQuery);
 
   const tasks = tasksQuery.data?.items ?? [];
 

@@ -11,31 +11,19 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { selectStuckRows, stuckTasksQuery } from "./inboxQueries";
+
 import type { TaskAdminOut, TaskListOut } from "./types";
 
 import { Badge } from "@/components/Badge";
 import { DataTable, type Column } from "@/components/DataTable";
-import { apiGet } from "@/lib/api";
-import { qk } from "@/lib/queryKeys";
-
-const STUCK_AFTER_MS = 30 * 60_000;
 
 export function StuckTab() {
   const navigate = useNavigate();
-  const query = useQuery<TaskListOut>({
-    queryKey: [...qk.fulfillmentTasks({ status: "in_progress" }), "stuck"],
-    queryFn: () =>
-      apiGet<TaskListOut>(
-        "/api/v1/admin/fulfillment/tasks?status_filter=in_progress&order=oldest&limit=200",
-      ),
-    refetchInterval: 30_000,
-  });
+  // Shared with the Inbox badge — see ``inboxQueries``.
+  const query = useQuery<TaskListOut>(stuckTasksQuery);
 
-  const stuck = useMemo(() => {
-    const rows = query.data?.items ?? [];
-    const cutoff = Date.now() - STUCK_AFTER_MS;
-    return rows.filter((t) => new Date(t.created_at).getTime() < cutoff);
-  }, [query.data]);
+  const stuck = useMemo(() => selectStuckRows(query.data), [query.data]);
 
   const columns: Column<TaskAdminOut>[] = [
     {

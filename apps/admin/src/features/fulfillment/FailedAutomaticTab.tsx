@@ -15,11 +15,12 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { ForceCompleteModal } from "./ForceCompleteModal";
+import { failedTasksQuery, selectFailedRows } from "./inboxQueries";
+
 import type { TaskAdminOut, TaskListOut } from "./types";
 
 import { DataTable, type Column } from "@/components/DataTable";
-import { type ApiError, apiGet, apiPost } from "@/lib/api";
-import { qk } from "@/lib/queryKeys";
+import { type ApiError, apiPost } from "@/lib/api";
 
 const LOW_BALANCE_ERROR = "supplier_low_balance";
 
@@ -35,21 +36,11 @@ export function FailedAutomaticTab() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [forceCompleteFor, setForceCompleteFor] = useState<TaskAdminOut | null>(null);
 
-  const query = useQuery<TaskListOut>({
-    queryKey: [...qk.fulfillmentTasks({ status: "failed" }), "no-manual"],
-    queryFn: () =>
-      apiGet<TaskListOut>(
-        "/api/v1/admin/fulfillment/tasks?status_filter=failed&order=oldest&limit=200",
-      ),
-    refetchInterval: 30_000,
-  });
+  // Query + predicate come from ``inboxQueries`` so the Inbox tab badge counts
+  // exactly the rows rendered here (manual tasks live in their own tab).
+  const query = useQuery<TaskListOut>(failedTasksQuery);
 
-  const rows = useMemo(
-    // Manual tasks land in the dedicated tab; here we focus on automatic
-    // failures where retry makes sense.
-    () => (query.data?.items ?? []).filter((t) => t.supplier !== "manual"),
-    [query.data],
-  );
+  const rows = useMemo(() => selectFailedRows(query.data), [query.data]);
 
   const bulkRetry = useMutation<BulkRetryResponse, ApiError, string[]>({
     mutationFn: (ids) =>

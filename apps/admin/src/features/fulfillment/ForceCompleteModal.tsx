@@ -15,9 +15,9 @@ import { Button, Input } from "@yupay/ui";
 import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { api, ApiError } from "@/lib/api";
-
 import type { TaskAdminOut } from "./types";
+
+import { api, ApiError } from "@/lib/api";
 
 type ArtifactKind = "voucher_code" | "topup_receipt" | "license_key";
 

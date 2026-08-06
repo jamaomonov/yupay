@@ -12,18 +12,22 @@ interface Props {
 }
 
 export function Pagination({ total, limit, offset, onPageChange, pageSizeLabel }: Props) {
-  if (total <= limit) return null;
   const from = total === 0 ? 0 : offset + 1;
   const to = Math.min(offset + limit, total);
   const canPrev = offset > 0;
   const canNext = to < total;
+  // The count stays visible even when everything fits on one page: after
+  // filtering, "12 из 12" is the only confirmation the operator has that the
+  // filter did what they meant. Hiding it (the previous `total <= limit` early
+  // return) removed the feedback exactly when the result set was small.
+  const showControls = canPrev || canNext;
   return (
     <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-[var(--text-secondary)]">
       <span>
         {from}–{to} из {total}
         {pageSizeLabel ? ` · ${pageSizeLabel}` : ""}
       </span>
-      <div className="flex gap-2">
+      <div className={showControls ? "flex gap-2" : "hidden"}>
         <Button
           variant="secondary"
           size="sm"
