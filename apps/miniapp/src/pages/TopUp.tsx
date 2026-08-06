@@ -436,6 +436,9 @@ export default function TopUp() {
   const variableAmountReady =
     !isVariableSelected ||
     (activePkg?.ratePerDollar !== null && parsedAmount !== null && variableAmountErr === null);
+  // One expression for the CTA's disabled state, used by both its styling and
+  // its own `disabled` — spelled out three times, they drifted apart easily.
+  const payDisabled = isProcessing || !insideTelegram || !variableAmountReady || !activePkg;
   // Human-readable reason the CTA is disabled — reused for both the toast
   // (belt-and-suspenders guard in handlePayment) and the button label itself,
   // so the customer sees *why* right on the button, same as the existing
@@ -1065,22 +1068,21 @@ export default function TopUp() {
             <Send size={16} />
             {t("topup.openInTgCta")}
           </motion.a>
-        ) : activePkg ? (
+        ) : (
+          /* The button is always on screen. It used to render `null` until a
+             denomination was picked — which is the default state of every game
+             with fixed packs, so the key conversion screen opened with no goal
+             visible at all. Disabled-with-the-reason is the pattern this file
+             already uses for a missing variable amount. */
           <motion.button
             whileTap={{ scale: 0.97 }}
             onClick={handlePayment}
-            disabled={isProcessing || !insideTelegram || !variableAmountReady}
+            disabled={payDisabled}
             className="flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-base font-bold tracking-wide transition-all"
             style={{
-              background:
-                isProcessing || !insideTelegram || !variableAmountReady
-                  ? "hsl(var(--primary) / 0.45)"
-                  : "hsl(var(--primary))",
+              background: payDisabled ? "hsl(var(--primary) / 0.45)" : "hsl(var(--primary))",
               color: "#000",
-              boxShadow:
-                isProcessing || !insideTelegram || !variableAmountReady
-                  ? "none"
-                  : "0 0 16px hsl(var(--primary) / 0.25)",
+              boxShadow: payDisabled ? "none" : "0 0 16px hsl(var(--primary) / 0.25)",
             }}
             data-testid="btn-pay"
           >
@@ -1088,14 +1090,21 @@ export default function TopUp() {
               ? t("topup.processingBtn")
               : !insideTelegram
                 ? t("topup.availableInTg")
-                : (variableAmountReason ?? (
-                    <>
-                      {t("topup.pay")}
-                      <ChevronRight size={18} strokeWidth={2.5} />
-                    </>
-                  ))}
+                : !activePkg
+                  ? t("topup.pickPackageBody")
+                  : (variableAmountReason ?? (
+                      <>
+                        {/* The total belongs on the button. The summary card that
+                      carries it sits below the payment methods and the trust
+                      row — roughly 1300px down on a 12-denomination game — so
+                      the thumb reaches "Оплатить" long before the eye reaches
+                      the price, and the next screen is the acquirer's. */}
+                        {t("topup.pay")} · {formatMoney(finalPrice, priceCode)}
+                        <ChevronRight size={18} strokeWidth={2.5} />
+                      </>
+                    ))}
           </motion.button>
-        ) : null}
+        )}
       </div>
     </>
   );
