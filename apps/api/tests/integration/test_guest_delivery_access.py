@@ -110,6 +110,39 @@ async def _seed_delivered_guest_order(db: AsyncSession) -> str:
     return order.id
 
 
+async def _admin_headers(client: AsyncClient, db: AsyncSession, *, tg_id: int) -> dict[str, str]:
+    """Log a Telegram user in and grant them admin — returns Bearer headers."""
+    import hashlib
+    import hmac
+    import json as _json
+    import time
+    from urllib.parse import urlencode
+
+    from sqlalchemy import select, update
+    from yupay.modules.users.models import TelegramLink, User
+
+    fields = {
+        "user": _json.dumps({"id": tg_id, "first_name": "A"}, separators=(",", ":")),
+        "auth_date": str(int(time.time())),
+    }
+    data = "\n".join(f"{k}={v}" for k, v in sorted(fields.items())).encode()
+    secret = hmac.new(b"WebAppData", b"123456:TEST", hashlib.sha256).digest()
+    init = urlencode({**fields, "hash": hmac.new(secret, data, hashlib.sha256).hexdigest()})
+    login = await client.post("/api/v1/auth/telegram/webapp", json={"init_data": init})
+    assert login.status_code == 200, login.text
+
+    user_id = (
+        await db.execute(
+            select(User.id)
+            .join(TelegramLink, TelegramLink.user_id == User.id)
+            .where(TelegramLink.tg_user_id == tg_id)
+        )
+    ).scalar_one()
+    await db.execute(update(User).where(User.id == user_id).values(roles=["admin"]))
+    await db.commit()
+    return {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+
 def _guest_headers(token: str, email: str = GUEST_EMAIL) -> dict[str, str]:
     return {"Authorization": f"Guest {token}", "X-Guest-Email": email}
 
@@ -222,4 +255,95 @@ async def test_code_access_is_non_enumerating(
     assert wrong.status_code == 204
     assert unknown.status_code == 204
     assert sent == []
+    get_settings.cache_clear()
+
+
+async def test_admin_can_read_delivered_codes_and_it_is_audited(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Support needs to see the code the customer got — and that access is logged.
+
+    Codes are bearer instruments, so reading them is a privileged action: the
+    endpoint is admin-only, returns the FULL artifact (internal fields included,
+    unlike the customer view), and records who looked on the order timeline.
+    """
+    import hashlib
+    import hmac
+    import json as _json
+    import time
+    from urllib.parse import urlencode
+
+    from sqlalchemy import select, update
+    from yupay.modules.users.models import TelegramLink, User
+
+    order_id = await _seed_delivered_guest_order(db_session)
+
+    # Anonymous callers get nothing.
+    anon = await integration_client.get(f"/api/v1/admin/orders/{order_id}/deliveries")
+    assert anon.status_code in (401, 403), anon.text
+
+    # Log in a user, then grant admin.
+    tg_id = 8801
+    # WebApp initData signing: HMAC(key=HMAC("WebAppData", bot_token), data).
+    fields = {
+        "user": _json.dumps({"id": tg_id, "first_name": "A"}, separators=(",", ":")),
+        "auth_date": str(int(time.time())),
+    }
+    data = "\n".join(f"{k}={v}" for k, v in sorted(fields.items())).encode()
+    secret = hmac.new(b"WebAppData", b"123456:TEST", hashlib.sha256).digest()
+    init = urlencode({**fields, "hash": hmac.new(secret, data, hashlib.sha256).hexdigest()})
+    login = await integration_client.post("/api/v1/auth/telegram/webapp", json={"init_data": init})
+    assert login.status_code == 200, login.text
+    token = login.json()["access_token"]
+
+    user_id = (
+        await db_session.execute(
+            select(User.id)
+            .join(TelegramLink, TelegramLink.user_id == User.id)
+            .where(TelegramLink.tg_user_id == tg_id)
+        )
+    ).scalar_one()
+    await db_session.execute(update(User).where(User.id == user_id).values(roles=["admin"]))
+    await db_session.commit()
+    admin_h = {"Authorization": f"Bearer {token}"}
+
+    r = await integration_client.get(f"/api/v1/admin/orders/{order_id}/deliveries", headers=admin_h)
+    assert r.status_code == 200, r.text
+    items = r.json()["items"]
+    assert items, "the seeded order has one delivery"
+    # Full artifact: the customer view whitelists keys, the admin view must not.
+    assert items[0]["artifact"]["code"] == CODE
+
+    # The look-up is on the order timeline, attributed to the admin.
+    detail = await integration_client.get(f"/api/v1/admin/orders/{order_id}", headers=admin_h)
+    assert detail.status_code == 200, detail.text
+    kinds = [e["kind"] for e in detail.json()["events"]]
+    assert "admin.deliveries_viewed" in kinds, kinds
+
+
+async def test_admin_resend_delivery_email_goes_to_the_order_address(
+    integration_client: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Support can re-send the delivered email; it can only reach the buyer."""
+    order_id = await _seed_delivered_guest_order(db_session)
+    admin_h = await _admin_headers(integration_client, db_session, tg_id=8802)
+
+    sent: list[str] = []
+
+    async def _spy(*, to: str, subject: str, html: str, text: str) -> str:
+        sent.append(to)
+        return "m"
+
+    monkeypatch.setattr("yupay.modules.notifications.service.send_email", _spy, raising=False)
+    monkeypatch.setenv("WEB_BASE_URL", "https://yupay.uz/ru")
+    get_settings.cache_clear()
+
+    r = await integration_client.post(
+        f"/api/v1/admin/orders/{order_id}/resend-delivery-email", headers=admin_h
+    )
+    assert r.status_code == 204, r.text
+    assert sent == [GUEST_EMAIL]
+
+    detail = await integration_client.get(f"/api/v1/admin/orders/{order_id}", headers=admin_h)
+    assert "admin.delivery_email_resent" in [e["kind"] for e in detail.json()["events"]]
     get_settings.cache_clear()

@@ -37,3 +37,18 @@ export interface TaskListOut {
   items: TaskAdminOut[];
   total: number;
 }
+
+/** A delivered artifact as the ADMIN sees it — unfiltered, unlike the
+ *  customer view which whitelists artifact keys. */
+export interface DeliveryOut {
+  id: string;
+  order_item_id: string;
+  channel: string;
+  artifact_kind: string;
+  artifact: Record<string, unknown>;
+  delivered_at: string;
+}
+
+export interface DeliveryListOut {
+  items: DeliveryOut[];
+}

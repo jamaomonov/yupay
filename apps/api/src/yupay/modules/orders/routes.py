@@ -15,12 +15,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.api.v1.deps import db_session
 from yupay.core.errors import UnauthorizedError, ValidationError
 from yupay.core.idempotency import IDEMPOTENCY_HEADER, MIN_IDEMPOTENCY_KEY_LENGTH
+from yupay.core.ids import new_id
 from yupay.modules.admin.api import require_admin
 from yupay.modules.auth.deps import current_user
 from yupay.modules.auth.dev_login import DEV_ADMIN_ID
 from yupay.modules.auth.jwt import verify as verify_jwt
+from yupay.modules.fulfillment.schemas import DeliveryListOut, DeliveryOut
 from yupay.modules.orders import service as svc
-from yupay.modules.orders.models import Order
+from yupay.modules.orders.models import Order, OrderEvent
 from yupay.modules.orders.schemas import (
     ClaimOut,
     OrderAdminListOut,
@@ -244,6 +246,64 @@ async def admin_cancel_order(
     actor_id = admin.id if admin.id != DEV_ADMIN_ID else "dev_admin"
     order = await svc.cancel_order_admin(db, order_id, admin_id=actor_id)
     return _to_admin_order_out(order)
+
+
+@admin_router.get("/{order_id}/deliveries", response_model=DeliveryListOut)
+async def admin_list_order_deliveries(
+    order_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+) -> DeliveryListOut:
+    """Delivered artifacts (codes / receipts) for an order — support's answer to
+    "the code doesn't work".
+
+    Returns the artifact unfiltered, unlike the customer route: an operator
+    reconciling with a supplier needs the internal fields. Because a voucher
+    code is a bearer instrument, the read is written to the order timeline with
+    the acting admin (``admin.deliveries_viewed``).
+    """
+    # Lazy import: orders.service <-> fulfillment.service is a known cycle.
+    from yupay.modules.fulfillment import service as fulfillment_svc
+
+    actor_id = admin.id if admin.id != DEV_ADMIN_ID else "dev_admin"
+    rows = await fulfillment_svc.list_deliveries_for_order_admin(
+        db, order_id=order_id, admin_id=actor_id
+    )
+    return DeliveryListOut(items=[DeliveryOut.model_validate(r) for r in rows])
+
+
+@admin_router.post("/{order_id}/resend-delivery-email", status_code=status.HTTP_204_NO_CONTENT)
+async def admin_resend_delivery_email(
+    order_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+) -> None:
+    """Re-send the delivered email (codes + magic link) to the order's address.
+
+    For the support case "I never got the email". The mail can only go to the
+    address stored on the order — never to an address the caller supplies — so
+    this cannot be used to redirect someone's codes. Recorded on the order
+    timeline; a no-op (still 204) when the order has no guest email or nothing
+    has been delivered yet.
+    """
+    from yupay.modules.notifications.service import resend_guest_delivery_email
+
+    order = await svc.get_order_admin(db, order_id)
+    actor_id = admin.id if admin.id != DEV_ADMIN_ID else "dev_admin"
+    if not order.guest_email:
+        # Registered buyers get their codes in-app; there is no address to mail.
+        return
+    db.add(
+        OrderEvent(
+            id=new_id(),
+            order_id=order_id,
+            kind="admin.delivery_email_resent",
+            payload={},
+            actor=f"admin:{actor_id}",
+        )
+    )
+    await db.flush()
+    await resend_guest_delivery_email(order_id, order.guest_email)
 
 
 @admin_router.post("/{order_id}/fail", response_model=OrderAdminOut)

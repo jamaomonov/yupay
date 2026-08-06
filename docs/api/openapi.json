@@ -14186,6 +14186,65 @@
         ]
       }
     },
+    "/api/v1/admin/orders/{order_id}/deliveries": {
+      "get": {
+        "description": "Delivered artifacts (codes / receipts) for an order \u2014 support's answer to\n\"the code doesn't work\".\n\nReturns the artifact unfiltered, unlike the customer route: an operator\nreconciling with a supplier needs the internal fields. Because a voucher\ncode is a bearer instrument, the read is written to the order timeline with\nthe acting admin (``admin.deliveries_viewed``).",
+        "operationId": "admin_list_order_deliveries_api_v1_admin_orders__order_id__deliveries_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin List Order Deliveries",
+        "tags": [
+          "admin:orders"
+        ]
+      }
+    },
     "/api/v1/admin/orders/{order_id}/fail": {
       "post": {
         "description": "Close a paid-but-undeliverable order as ``failed`` (reason required).\n\nThe only manual status change exposed to admins, and deliberately a narrow\none: legal from ``paid``/``fulfilling``/``fulfilled`` only. Before payment\nuse ``/cancel``; after delivery the customer already holds the goods, so\nthe correct action is a refund. Cancels open fulfilment tasks and pending\npayments \u2014 see ``orders.service.mark_order_failed_admin``. Moves no money.",
@@ -14250,6 +14309,58 @@
           }
         },
         "summary": "Admin Mark Order Failed",
+        "tags": [
+          "admin:orders"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/{order_id}/resend-delivery-email": {
+      "post": {
+        "description": "Re-send the delivered email (codes + magic link) to the order's address.\n\nFor the support case \"I never got the email\". The mail can only go to the\naddress stored on the order \u2014 never to an address the caller supplies \u2014 so\nthis cannot be used to redirect someone's codes. Recorded on the order\ntimeline; a no-op (still 204) when the order has no guest email or nothing\nhas been delivered yet.",
+        "operationId": "admin_resend_delivery_email_api_v1_admin_orders__order_id__resend_delivery_email_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Resend Delivery Email",
         "tags": [
           "admin:orders"
         ]

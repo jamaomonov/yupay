@@ -980,6 +980,35 @@ async def list_deliveries_for_order(db: AsyncSession, *, order_id: str) -> list[
     return list((await db.execute(stmt)).scalars().all())
 
 
+async def list_deliveries_for_order_admin(
+    db: AsyncSession, *, order_id: str, admin_id: str
+) -> list[Delivery]:
+    """Delivered artifacts for an order, for support — and an audit trail.
+
+    Support cannot answer "the code doesn't work" without seeing the code that
+    was actually issued, but a voucher code is a bearer instrument: whoever
+    reads it can redeem it. So every read is recorded on the order timeline
+    with the acting admin, making "who looked at this customer's codes" a
+    question the audit feed can answer.
+
+    Unlike the customer-facing route this returns the artifact **unfiltered** —
+    the internal fields (upstream order id, source, inventory row) are exactly
+    what an operator needs when reconciling with a supplier.
+    """
+    deliveries = await list_deliveries_for_order(db, order_id=order_id)
+    db.add(
+        OrderEvent(
+            id=new_id(),
+            order_id=order_id,
+            kind="admin.deliveries_viewed",
+            payload={"count": len(deliveries)},
+            actor=f"admin:{admin_id}",
+        )
+    )
+    await db.flush()
+    return deliveries
+
+
 async def list_tasks_admin(
     db: AsyncSession,
     *,

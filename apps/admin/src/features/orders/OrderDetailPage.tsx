@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { Button } from "@yupay/ui";
 import {
   ArrowLeft,
@@ -9,6 +9,9 @@ import {
   Coins,
   CreditCard,
   AlertTriangle,
+  Eye,
+  KeyRound,
+  Mail,
   Package,
   PackageCheck,
   RefreshCw,
@@ -25,7 +28,7 @@ import {
   STATUS_TONE,
 } from "./types";
 
-import type { TaskAdminOut, TaskListOut } from "@/features/fulfillment/types";
+import type { DeliveryListOut, TaskAdminOut, TaskListOut } from "@/features/fulfillment/types";
 import type { PaymentAdminListOut, PaymentAdminOut } from "@/features/payments/types";
 
 import { Badge } from "@/components/Badge";
@@ -53,6 +56,10 @@ export function OrderDetailPage() {
   const qc = useQueryClient();
   const orderId = params.id ?? "";
   const [manualDeliverFor, setManualDeliverFor] = useState<TaskAdminOut | null>(null);
+  // Codes stay hidden until the operator asks: they are bearer instruments, the
+  // fetch is what gets audited server-side, and nobody wants them on screen
+  // during a screen-share.
+  const [codesRevealed, setCodesRevealed] = useState(false);
   const toast = useToast();
 
   const orderQuery = useQuery<OrderAdminOut>({
@@ -80,6 +87,27 @@ export function OrderDetailPage() {
     enabled: Boolean(orderId),
     queryFn: () =>
       apiGet<TaskListOut>(`/api/v1/admin/fulfillment/tasks?order_id=${orderId}&limit=50`),
+  });
+
+  const deliveriesQuery = useQuery<DeliveryListOut>({
+    queryKey: ["admin", "orders", orderId, "deliveries"],
+    enabled: codesRevealed,
+    // Every fetch writes an audit event server-side, so don't re-poll silently.
+    staleTime: Infinity,
+    queryFn: () => apiGet<DeliveryListOut>(`/api/v1/admin/orders/${orderId}/deliveries`),
+  });
+
+  const resendEmail = useMutation<void, ApiError>({
+    mutationFn: async () => {
+      await apiPost(`/api/v1/admin/orders/${orderId}/resend-delivery-email`, {});
+    },
+    onSuccess: () => {
+      toast.success("Письмо с выдачей отправлено на адрес заказа");
+      void qc.invalidateQueries({ queryKey: qk.order(orderId) });
+    },
+    onError: (err) => {
+      toast.error(extractApiMessage(err));
+    },
   });
 
   const cancel = useMutation<OrderAdminOut, ApiError>({
@@ -245,6 +273,18 @@ export function OrderDetailPage() {
               if (reason === null) return;
               refund.mutate({ id: p.id, reason: reason.trim() });
             }}
+          />
+          <DeliveriesCard
+            revealed={codesRevealed}
+            onReveal={() => {
+              setCodesRevealed(true);
+            }}
+            query={deliveriesQuery}
+            onResend={() => {
+              resendEmail.mutate();
+            }}
+            resending={resendEmail.isPending}
+            canResend={Boolean(order.guest_email)}
           />
           <FulfillmentCard
             tasks={tasks}
@@ -474,6 +514,93 @@ function Timeline({ events, status }: { events: OrderEventOut[]; status: OrderSt
         <CircleDot className="size-3" />
         Текущий статус: <StatusBadge status={status} />
       </footer>
+    </div>
+  );
+}
+
+/**
+ * What the customer actually received — the answer to "the code doesn't work".
+ *
+ * Codes are bearer instruments, so they are not rendered until the operator
+ * clicks: the reveal is the moment the server records who looked
+ * (`admin.deliveries_viewed`), and it keeps secrets off the screen during
+ * screen-shares. "Отправить письмо повторно" re-mails the delivered email to
+ * the order's own address (never an address typed here).
+ */
+function DeliveriesCard({
+  revealed,
+  onReveal,
+  query,
+  onResend,
+  resending,
+  canResend,
+}: {
+  revealed: boolean;
+  onReveal: () => void;
+  query: UseQueryResult<DeliveryListOut>;
+  onResend: () => void;
+  resending: boolean;
+  canResend: boolean;
+}) {
+  return (
+    <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]">
+      <header className="flex items-center gap-2 border-b px-4 py-3">
+        <KeyRound className="size-4 text-[var(--text-secondary)]" />
+        <h2 className="text-sm font-semibold">Выдача</h2>
+      </header>
+
+      <div className="space-y-3 p-3 text-sm">
+        {!revealed && (
+          <>
+            <p className="text-[var(--text-secondary)]">
+              Коды скрыты. Просмотр записывается в историю заказа.
+            </p>
+            <Button variant="ghost" className="h-7 px-2 text-xs" onClick={onReveal}>
+              <Eye className="size-3.5" />
+              Показать выдачу
+            </Button>
+          </>
+        )}
+
+        {revealed && query.isLoading && <p className="text-[var(--text-secondary)]">Загружаем…</p>}
+
+        {revealed && query.isError && (
+          <CardLoadError onRetry={() => void query.refetch()} what="выдачу" />
+        )}
+
+        {revealed && query.data?.items.length === 0 && (
+          <p className="text-[var(--text-secondary)]">Пока ничего не выдано.</p>
+        )}
+
+        {revealed &&
+          query.data?.items.map((d) => (
+            <div key={d.id} className="rounded-md border border-[var(--border-default)] p-2.5">
+              <div className="mb-1 flex items-baseline justify-between gap-2">
+                <code className="text-xs text-[var(--text-secondary)]">{d.artifact_kind}</code>
+                <span className="text-xs text-[var(--text-secondary)]">
+                  {new Date(d.delivered_at).toLocaleString("ru")}
+                </span>
+              </div>
+              {/* The raw artifact: internal fields (source, upstream id) are
+                  exactly what reconciliation with a supplier needs. */}
+              <pre className="overflow-x-auto whitespace-pre-wrap break-all text-xs text-[var(--text-primary)]">
+                {JSON.stringify(d.artifact, null, 2)}
+              </pre>
+            </div>
+          ))}
+
+        {canResend && (
+          <Button
+            variant="ghost"
+            className="h-7 px-2 text-xs"
+            onClick={onResend}
+            disabled={resending}
+          >
+            <Mail className="size-3.5" />
+            {resending ? "Отправляем…" : "Отправить письмо повторно"}
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
