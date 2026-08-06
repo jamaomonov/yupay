@@ -86,7 +86,7 @@
   "trust": {
     "speed": {
       "title": "Avtomatik tushadi",
-      "sub": "Toʻlovdan keyin avtomatik"
+      "sub": "Odatda toʻlovdan keyin 1–5 daqiqa"
     },
     "noPassword": {
       "title": "Parolsiz",
@@ -177,7 +177,7 @@
     "amountTitle": "Toʻldirish summasi",
     "payTitle": "Toʻlov va yetkazib berish",
     "ctaNote": "Rasmiylashtirish Telegram-botda — roʻyxatdan oʻtmasdan, Click, Payme yoki Uzum bilan toʻlang. Avtomatik tushadi.",
-    "securityNote": "Ommaviy ID orqali tushadi — akkaunt paroli kerak emas.",
+    "securityNote": "Hisob maʼlumotlari boʻyicha tushiriladi — parol kerak emas va biz uni soʻramaymiz.",
     "detailsTitle": "Qayerga tushirish",
     "summaryTitle": "Sizning buyurtmangiz",
     "selectPack": "Yuqoridan paket tanlang",
@@ -201,7 +201,7 @@
     "orderStatus": "Buyurtma holati",
     "orderLabel": "Buyurtma",
     "commissionChip": "Komissiya {pct}% dan",
-    "etaChip": "Avtomatik tushadi",
+    "etaChip": "1–5 daqiqada tushadi",
     "securityChip": "Parolsiz",
     "brandMetaTitle": "{name} — Oʻzbekistonda toʻldirish | yupay",
     "brandMetaDescription": "{name} ni ID orqali toʻldiring, avtomatik tushadi. Narxlar soʻmda, Click, Payme yoki Uzum bilan toʻlang. Parolsiz — yupay.",
@@ -278,7 +278,8 @@
     "confirmAttest": "Maʼlumotlarni oʻyinda tekshirdim — ular toʻgʻri.",
     "confirmCta": "Hammasi toʻgʻri, toʻlash",
     "confirmCancel": "Oʻzgartirish",
-    "confirmItem": "Mahsulot"
+    "confirmItem": "Mahsulot",
+    "payErrorSupportWord": "qoʻllab-quvvatlashga"
   },
   "how": {
     "eyebrow": "Flow",
@@ -333,11 +334,11 @@
     "offerCaption": "doimiy yordam"
   },
   "footer": {
-    "tagline": "Oʻyinlar va obunalar uchun bir lahzali toʻldirish. Parol yoʻq, faqat ID.",
+    "tagline": "Oʻyin va obunalarni bir zumda toʻldirish. ID orqali, parolsiz.",
     "followUs": "Bizni kuzating",
     "productTitle": "Mahsulot",
     "helpTitle": "Yordam",
-    "legalTitle": "Yuridik",
+    "legalTitle": "Hujjatlar",
     "usTitle": "Biz",
     "prices": "Narxlar",
     "refunds": "Qaytarishlar",
@@ -416,7 +417,7 @@
       "sections": [
         {
           "h": "Qachon qaytarish mumkin",
-          "p": "Agar buyurtma bajarilmagan boʻlsa (mahsulot tushmagan) va bajarib boʻlmasa, mablagʻni qaytaramiz yoki yupay hamyoniga oʻtkazamiz."
+          "p": "Agar buyurtma bajarilmagan boʻlsa (mahsulot tushmagan) va bajarib boʻlmasa, pulni toʻlov qilingan kartaning oʻziga qaytaramiz. YuPay hamyoniga faqat oʻzingiz xohlasangiz oʻtkazamiz — bu tezroq."
         },
         {
           "h": "Qachon qaytarish mumkin emas",

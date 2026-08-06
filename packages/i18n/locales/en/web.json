@@ -86,7 +86,7 @@
   "trust": {
     "speed": {
       "title": "Automatic crediting",
-      "sub": "Automatic after payment"
+      "sub": "Usually 1–5 minutes after payment"
     },
     "noPassword": {
       "title": "No password handover",
@@ -177,7 +177,7 @@
     "amountTitle": "Top-up amount",
     "payTitle": "Payment & delivery",
     "ctaNote": "Checkout happens in the Telegram bot — no signup, pay with Click, Payme or Uzum. Auto-credit.",
-    "securityNote": "Credited by your public ID — no account password required.",
+    "securityNote": "We credit using your account details — no password needed, and we never ask for one.",
     "detailsTitle": "Where to credit",
     "summaryTitle": "Your order",
     "selectPack": "Pick a pack above",
@@ -194,14 +194,14 @@
     "paymentMaintenance": "Under maintenance",
     "paymentNone": "No payment methods available",
     "pay": "Pay",
-    "payError": "Couldn't create the order. Try again or contact support.",
+    "payError": "Couldn't create the order. Try again, or message support.",
     "successTitle": "Order created",
     "successNote": "Continue to payment to finish. The receipt will be emailed to you.",
     "goToPay": "Continue to payment",
     "orderStatus": "Order status",
     "orderLabel": "Order",
     "commissionChip": "Commission from {pct}%",
-    "etaChip": "Credited automatically",
+    "etaChip": "Credited in 1–5 minutes",
     "securityChip": "No password",
     "brandMetaTitle": "{name} top-up in Uzbekistan | yupay",
     "brandMetaDescription": "Top up {name} by ID, credited automatically. Prices in som, pay with Click, Payme or Uzum. No password handover — yupay.",
@@ -278,7 +278,8 @@
     "confirmAttest": "I've checked these details in-game and they are correct.",
     "confirmCta": "All correct, pay",
     "confirmCancel": "Edit",
-    "confirmItem": "Item"
+    "confirmItem": "Item",
+    "payErrorSupportWord": "support"
   },
   "how": {
     "eyebrow": "Flow",
@@ -333,7 +334,7 @@
     "offerCaption": "support, always on"
   },
   "footer": {
-    "tagline": "Instant top-ups for games and subscriptions. No passwords, ID-only.",
+    "tagline": "Instant top-ups for games and subscriptions. By ID, no passwords.",
     "followUs": "Follow us",
     "productTitle": "Product",
     "helpTitle": "Help",
@@ -416,7 +417,7 @@
       "sections": [
         {
           "h": "When a refund is possible",
-          "p": "If an order was not fulfilled (goods not credited) and cannot be fulfilled, we refund the money or credit it to your yupay wallet."
+          "p": "If an order was not fulfilled (the item was not credited) and cannot be, we refund to the same card you paid with. We credit the YuPay wallet instead only if you ask us to — it is faster that way."
         },
         {
           "h": "When a refund is not possible",

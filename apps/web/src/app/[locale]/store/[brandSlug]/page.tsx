@@ -205,14 +205,14 @@ export default async function BrandPage({
         >
           <Link
             href={pathFor(locale)}
-            className="hover:text-tx-mute inline-flex items-center py-1.5 transition"
+            className="hover:text-tx-mute inline-flex items-center py-2.5 transition"
           >
             {t("breadcrumbHome")}
           </Link>
           <ChevronRight size={12} />
           <Link
             href={pathFor(locale, "/store")}
-            className="hover:text-tx-mute inline-flex items-center py-1.5 transition"
+            className="hover:text-tx-mute inline-flex items-center py-2.5 transition"
           >
             {t("breadcrumbStore")}
           </Link>

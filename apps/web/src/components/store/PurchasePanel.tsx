@@ -398,7 +398,10 @@ function VariableAmountCard({
                   pick(Number(e.target.value));
                 }}
                 aria-label={t("amountOwn")}
-                className="mt-4 w-full"
+                // 16px tall by default — about one pixel per dollar across
+                // $1–$300, which is a hard target for a thumb. The track keeps
+                // its look; the control gets height to grab.
+                className="mt-4 h-7 w-full cursor-pointer"
                 style={{ accentColor: "hsl(var(--primary))" }}
               />
               <div className="text-tx-dim mt-1.5 flex justify-between text-[12px]">
@@ -1181,8 +1184,38 @@ export function PurchasePanel({
               </p>
             )}
 
-            {error && <p className="mt-3 text-center text-[13px] text-[#FF6B6B]">{error}</p>}
+            {error && (
+              <p className="mt-3 text-center text-[13px] text-[#FF6B6B]">
+                {/* "напишите в поддержку" was plain text — advice with nothing
+                    to act on. Link the word in place when the message contains
+                    it; any other error renders unchanged. */}
+                {(() => {
+                  const word = t("payErrorSupportWord");
+                  const [before, after] = error.split(word);
+                  if (after === undefined) return error;
+                  return (
+                    <>
+                      {before}
+                      <a
+                        href="https://t.me/yupay_support"
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="underline underline-offset-2"
+                      >
+                        {word}
+                      </a>
+                      {after}
+                    </>
+                  );
+                })()}
+              </p>
+            )}
 
+            {/* Says "данным аккаунта" rather than naming the field. It used
+                to claim "по публичному ID" everywhere, which contradicted the
+                Steam form asking for a login — and interpolating the label
+                instead produced "по Логин Steam", because a Russian
+                prepositional phrase needs a case the label doesn't carry. */}
             <div className="border-border/70 text-tx-mute mt-5 flex items-start gap-2.5 border-t pt-5 text-[12px] leading-relaxed">
               {t("securityNote")}
             </div>
