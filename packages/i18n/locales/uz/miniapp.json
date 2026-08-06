@@ -332,5 +332,12 @@
   "reviews.rateCta": "Baholash",
   "orderResult.deliveredTitle": "Toʻldirish muvaffaqiyatli",
   "orderResult.deliveredBody": "Buyurtmangiz yetkazildi. Balansingizni yoki olingan kodni tekshiring.",
-  "orderResult.rateCta": "Baholash"
+  "orderResult.rateCta": "Baholash",
+  "topup.confirmTitle": "Toʻlovdan oldin tekshiring",
+  "topup.confirmTotal": "Toʻlovga",
+  "topup.confirmItem": "Mahsulot",
+  "topup.confirmWarning": "Toʻlovdan keyin maʼlumotlarni oʻzgartirib boʻlmaydi — toʻldirish koʻrsatilgan hisobga tushadi.",
+  "topup.confirmAttest": "Maʼlumotlarni oʻyinda tekshirdim — ular toʻgʻri.",
+  "topup.confirmCta": "Hammasi toʻgʻri, toʻlash",
+  "topup.confirmCancel": "Oʻzgartirish"
 }

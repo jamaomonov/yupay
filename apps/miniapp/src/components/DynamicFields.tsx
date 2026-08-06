@@ -25,7 +25,7 @@ import { canCheck, IDLE, runPlayerCheck, type CheckState } from "@/lib/player-ch
 
 /** Picks the active-locale value out of a server-provided multilingual map,
  *  falling back to the first available translation, then to ``fallback``. */
-function pickLocalized(
+export function pickLocalized(
   map: Record<string, string> | null | undefined,
   locale: Locale,
   fallback = "",

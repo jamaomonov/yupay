@@ -332,5 +332,12 @@
   "reviews.rateCta": "Rate",
   "orderResult.deliveredTitle": "Top-up successful",
   "orderResult.deliveredBody": "Your order has been delivered. Check your balance or the code you received.",
-  "orderResult.rateCta": "Rate"
+  "orderResult.rateCta": "Rate",
+  "topup.confirmTitle": "Check before you pay",
+  "topup.confirmTotal": "Total",
+  "topup.confirmItem": "Item",
+  "topup.confirmWarning": "These details can't be changed after payment — the top-up goes to the account shown.",
+  "topup.confirmAttest": "I've checked these details in-game and they are correct.",
+  "topup.confirmCta": "All correct, pay",
+  "topup.confirmCancel": "Edit"
 }

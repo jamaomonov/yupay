@@ -16,7 +16,8 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useParams } from "wouter";
 
-import { DynamicFields } from "@/components/DynamicFields";
+import { ConfirmPaymentDialog } from "@/components/ConfirmPaymentDialog";
+import { DynamicFields, pickLocalized } from "@/components/DynamicFields";
 import { ReviewsSheet } from "@/components/ReviewsSheet";
 import { SafeImage } from "@/components/ui/safe-image";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -308,6 +309,10 @@ export default function TopUp() {
   // so we don't carry a stale player_id into a fresh order by surprise.
   const [suggestions, setSuggestions] = useState<Record<string, string>>({});
   const [selectedPkg, setSelectedPkg] = useState<string>("");
+  // Confirmation before an irreversible payment. Declared here with the other
+  // hooks — the component has early returns further down, and a `useState`
+  // below one of them is a conditional hook.
+  const [confirmOpen, setConfirmOpen] = useState(false);
   // The dollar amount typed for a variable-amount product. Raw string, not a
   // number — see ``@/lib/variable-amount`` for parsing/validation.
   const [amountInput, setAmountInput] = useState<string>("");
@@ -479,8 +484,25 @@ export default function TopUp() {
     ? t("topup.fillingHint", { field: firstFieldLabel })
     : t("topup.noAccount");
 
+  // A field the supplier can verify (`check`) has already resolved to a
+  // nickname in place. Where none can be verified, the dialog is the only
+  // place a typo is still catchable, so it asks for an explicit attestation.
+  const hasVerifiableField = requiredFields.some((f) => Boolean(f.check));
+
+  const confirmRows = [
+    {
+      label: t("topup.confirmItem"),
+      value: [game?.name, activePkg?.label].filter(Boolean).join(" · "),
+    },
+    ...requiredFields
+      .filter((f) => (fulfillment[f.key] ?? "").trim() !== "")
+      .map((f) => ({
+        label: pickLocalized(f.label, locale, f.key),
+        value: fulfillment[f.key] ?? "",
+      })),
+  ];
+
   const handlePayment = async () => {
-    haptic("press");
     if (!activePkg) {
       toast({
         title: t("topup.pickPackageTitle"),
@@ -1078,7 +1100,10 @@ export default function TopUp() {
              already uses for a missing variable amount. */
           <motion.button
             whileTap={{ scale: 0.97 }}
-            onClick={handlePayment}
+            onClick={() => {
+              haptic("press");
+              setConfirmOpen(true);
+            }}
             disabled={payDisabled}
             className="flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-base font-bold tracking-wide transition-all"
             style={{
@@ -1108,6 +1133,18 @@ export default function TopUp() {
           </motion.button>
         )}
       </div>
+
+      <ConfirmPaymentDialog
+        open={confirmOpen}
+        rows={confirmRows}
+        total={formatMoney(finalPrice, priceCode)}
+        needsAttestation={!hasVerifiableField}
+        onOpenChange={setConfirmOpen}
+        onConfirm={() => {
+          setConfirmOpen(false);
+          void handlePayment();
+        }}
+      />
     </>
   );
 }

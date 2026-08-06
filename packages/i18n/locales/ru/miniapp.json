@@ -332,5 +332,12 @@
   "reviews.rateCta": "Оценить",
   "orderResult.deliveredTitle": "Пополнение успешно",
   "orderResult.deliveredBody": "Ваш заказ доставлен. Проверьте баланс или полученный код.",
-  "orderResult.rateCta": "Оценить"
+  "orderResult.rateCta": "Оценить",
+  "topup.confirmTitle": "Проверьте перед оплатой",
+  "topup.confirmTotal": "К оплате",
+  "topup.confirmItem": "Товар",
+  "topup.confirmWarning": "После оплаты изменить данные нельзя — пополнение уйдёт на указанный аккаунт.",
+  "topup.confirmAttest": "Я проверил(а) данные в игре — они указаны верно.",
+  "topup.confirmCta": "Всё верно, оплатить",
+  "topup.confirmCancel": "Изменить"
 }
