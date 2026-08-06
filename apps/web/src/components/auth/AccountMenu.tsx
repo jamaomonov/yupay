@@ -45,7 +45,10 @@ export function AccountMenu({ locale }: Props) {
 
   // isLoading stays true on the server + first client render (AuthProvider gates
   // it on `mounted`), so this matches between SSR and hydration.
-  if (isLoading) return null;
+  // Reserve the geometry instead of rendering nothing: returning null left the
+  // header's right side empty until auth resolved, then inserted a 44px button
+  // and shoved the burger sideways — on every page load.
+  if (isLoading) return <div className="h-11 w-[92px]" aria-hidden />;
 
   if (!user) {
     // Guests have no account, but their orders are remembered in this browser's
@@ -64,7 +67,16 @@ export function AccountMenu({ locale }: Props) {
             {t("orders")}
           </Link>
         )}
-        <button type="button" onClick={openLogin} className={buttonStyles({ size: "md" })}>
+        {/* Ghost, as this file's own docstring has always said. In primary it
+            was the single filled lime control on all 30 pages — the loudest
+            thing on the site pointed at authentication, on a storefront whose
+            checkout is deliberately guest-friendly, and on a brand page it
+            competed with the lime "Оплатить" at the bottom. */}
+        <button
+          type="button"
+          onClick={openLogin}
+          className={buttonStyles({ variant: "ghost", size: "md" })}
+        >
           {t("login")}
         </button>
       </div>

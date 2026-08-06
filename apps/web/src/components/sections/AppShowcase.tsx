@@ -22,7 +22,7 @@ export async function AppShowcase() {
   const t = await getTranslations("web.showcase");
 
   return (
-    <section className="py-24">
+    <section className="py-16 sm:py-24">
       <div className="mx-auto max-w-[1280px] px-6 sm:px-10">
         <div className="border-border relative overflow-hidden rounded-2xl border bg-[radial-gradient(120%_120%_at_85%_0%,hsl(var(--card)),hsl(var(--bg))_60%)] px-6 py-14 sm:px-12 sm:py-16">
           {/* atmosphere */}
@@ -85,7 +85,7 @@ export async function AppShowcase() {
             </div>
 
             {/* ── RIGHT: three-screen podium ── */}
-            <div className="relative mx-auto h-[460px] w-full max-w-[620px] sm:h-[540px]">
+            <div className="relative mx-auto aspect-[4/3] w-full max-w-[620px] sm:aspect-auto sm:h-[540px]">
               {/* stage glow grounding the devices */}
               <div
                 aria-hidden

@@ -6,6 +6,7 @@ import { LocaleSwitcher } from "./LocaleSwitcher";
 import { MobileNav } from "./MobileNav";
 import { Wordmark } from "./Wordmark";
 
+import { buttonStyles } from "@/lib/button";
 import { pathFor } from "@/lib/seo";
 
 /**
@@ -57,6 +58,12 @@ export async function Header({ locale }: { locale: string }) {
 
         {/* Desktop controls */}
         <div className="hidden items-center gap-2.5 md:flex">
+          {/* The one filled control in the header belongs to the action that
+              earns money. This is what the docstrings in Header/MobileNav have
+              described all along; the code had it on "Войти" instead. */}
+          <Link href={pathFor(locale, "/store")} className={buttonStyles({ size: "md" })}>
+            {t("topUp")}
+          </Link>
           <LocaleSwitcher />
           <AccountMenu locale={locale} />
         </div>

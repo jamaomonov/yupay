@@ -14,14 +14,14 @@ const STEPS: { n: string; titleKey: string; subKey: string }[] = [
 export async function HowItWorks() {
   const t = await getTranslations("web.how");
   return (
-    <section id="how" className="scroll-mt-[88px] py-28">
+    <section id="how" className="scroll-mt-[88px] py-16 sm:py-24 lg:py-28">
       <div className="mx-auto max-w-[1200px] px-6 sm:px-10">
         <div className="grid grid-cols-1 gap-12 md:grid-cols-[auto_1fr] md:gap-[70px]">
           <div className="md:sticky md:top-[110px] md:self-start">
             <div className="text-primary font-mono text-xs font-semibold uppercase tracking-[0.16em]">
               [ 02 / {t("eyebrow")} ]
             </div>
-            <h2 className="font-display mt-3 max-w-[480px] text-[clamp(2.2rem,4vw,3.4rem)] font-extrabold leading-[0.95] tracking-[-0.04em] [overflow-wrap:anywhere]">
+            <h2 className="font-display mt-3 max-w-[480px] text-balance text-[clamp(1.9rem,4vw,3.4rem)] font-extrabold leading-[0.95] tracking-[-0.04em] [overflow-wrap:break-word]">
               <span className="block">{t("titleLine1")}</span>
               <span className="block">{t("titleLine2")}</span>
               <span className="text-primary block">{t("titleLine3")}</span>

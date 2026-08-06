@@ -55,11 +55,6 @@ export async function BrandCard({ brand, locale }: { brand: BrandSummary; locale
             <span className="font-semibold text-white/55">({brand.rating.count})</span>
           </div>
         )}
-        {brand.short_description && (
-          <div className="mb-1 line-clamp-1 text-[11px] font-bold uppercase tracking-[0.1em] text-white/65">
-            {brand.short_description}
-          </div>
-        )}
         <div className="flex items-end justify-between gap-3">
           <div className="font-display text-[24px] font-extrabold leading-none tracking-[-0.025em] text-white">
             {brand.name}

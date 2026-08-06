@@ -61,11 +61,6 @@ function BentoCard({
       )}
 
       <div className="absolute inset-x-5 bottom-5 z-10">
-        {brand.short_description && (
-          <div className="mb-1.5 line-clamp-1 text-[11px] font-bold uppercase tracking-[0.1em] text-white/80 [text-shadow:0_1px_6px_rgba(0,0,0,0.7)]">
-            {brand.short_description}
-          </div>
-        )}
         <div className="flex items-end justify-between gap-3">
           <div
             className="font-display font-extrabold leading-none tracking-[-0.025em] text-white [text-shadow:0_2px_10px_rgba(0,0,0,0.6)]"
@@ -109,7 +104,7 @@ export async function CatalogBento({ locale }: { locale: string }) {
   if (!feature) return null;
 
   return (
-    <section id="catalog" className="relative scroll-mt-[88px] py-28">
+    <section id="catalog" className="relative scroll-mt-[88px] py-16 sm:py-24 lg:py-28">
       <div className="mx-auto max-w-[1200px] px-6 sm:px-10">
         <div className="mb-14 flex items-end justify-between gap-6">
           <div>
