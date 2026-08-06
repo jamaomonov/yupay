@@ -339,5 +339,6 @@
   "topup.confirmWarning": "These details can't be changed after payment — the top-up goes to the account shown.",
   "topup.confirmAttest": "I've checked these details in-game and they are correct.",
   "topup.confirmCta": "All correct, pay",
-  "topup.confirmCancel": "Edit"
+  "topup.confirmCancel": "Edit",
+  "home.recentTitle": "Buy again"
 }

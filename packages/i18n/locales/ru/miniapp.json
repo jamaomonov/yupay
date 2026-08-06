@@ -339,5 +339,6 @@
   "topup.confirmWarning": "После оплаты изменить данные нельзя — пополнение уйдёт на указанный аккаунт.",
   "topup.confirmAttest": "Я проверил(а) данные в игре — они указаны верно.",
   "topup.confirmCta": "Всё верно, оплатить",
-  "topup.confirmCancel": "Изменить"
+  "topup.confirmCancel": "Изменить",
+  "home.recentTitle": "Купить снова"
 }

@@ -350,7 +350,13 @@ export default function TopUp() {
       if (only && selectedPkg !== only.id) setSelectedPkg(only.id);
       return;
     }
-    if (!selectedPkg) return;
+    if (!selectedPkg) {
+      // "Купить снова" arrives with ?sku=… — the one case where preselecting
+      // is what the buyer asked for, rather than an anchor we chose for them.
+      const wanted = new URLSearchParams(window.location.search).get("sku");
+      if (wanted && packages.some((p) => p.id === wanted)) setSelectedPkg(wanted);
+      return;
+    }
     if (!packages.some((p) => p.id === selectedPkg)) {
       setSelectedPkg("");
     }
@@ -598,7 +604,13 @@ export default function TopUp() {
       // Remember the fulfilment payload only after the order was accepted by
       // the API — no point caching a half-typed player_id that came back
       // 400. Subsequent visits to this brand pick it back up automatically.
-      if (gameId) rememberFulfillment(gameId, fulfillmentData);
+      if (gameId) {
+        rememberFulfillment(
+          gameId,
+          fulfillmentData,
+          activePkg ? { id: activePkg.id, label: activePkg.label } : undefined,
+        );
+      }
       if (result.payment.intent_url && result.payment.provider !== "mock") {
         toast({
           title: t("topup.redirecting"),

@@ -20,6 +20,12 @@ export interface RecentFulfillment {
   brand_slug: string;
   fulfillment_data: Record<string, string>;
   updated_at: number; // ms epoch
+  /** Last denomination bought, so "купить снова" can preselect it. Optional:
+   *  entries written before this existed simply don't have it. */
+  sku_id?: string;
+  /** Its label at the time ("660 UC"). Display only — the price is looked up
+   *  fresh, because it moves with FX. */
+  sku_label?: string;
 }
 
 type Store = Record<string, RecentFulfillment>;
@@ -74,22 +80,46 @@ export function getRecentFulfillment(
   return store[brandSlug] ?? null;
 }
 
-export function rememberFulfillment(brandSlug: string, data: Record<string, unknown>): void {
-  if (!brandSlug || Object.keys(data).length === 0) return;
+export function rememberFulfillment(
+  brandSlug: string,
+  data: Record<string, unknown>,
+  pack?: { id: string; label: string },
+): void {
+  if (!brandSlug) return;
+  // A variable-amount brand (Steam) has no fulfilment fields at all, but the
+  // repeat purchase is still worth remembering, so an empty `data` with a pack
+  // is allowed through.
+  if (Object.keys(data).length === 0 && !pack) return;
   // Sanitise: only persist string scalars. Other shapes are surely not
   // meaningful "remember this" values (and shouldn't bloat localStorage).
   const cleaned: Record<string, string> = {};
   for (const [k, v] of Object.entries(data)) {
     if (typeof v === "string" && v.trim().length > 0) cleaned[k] = v.trim();
   }
-  if (Object.keys(cleaned).length === 0) return;
+  if (Object.keys(cleaned).length === 0 && !pack) return;
   const store = readStore();
   store[brandSlug] = {
     brand_slug: brandSlug,
     fulfillment_data: cleaned,
     updated_at: Date.now(),
+    ...(pack ? { sku_id: pack.id, sku_label: pack.label } : {}),
   };
   writeStore(store);
+}
+
+/**
+ * Most recent purchases, newest first.
+ *
+ * Topping up a game is a repeat purchase on a short cycle, but a returning
+ * buyer walked the same path as a first-time one: find the icon, open it, pick
+ * the pack, fill the id again. Everything needed to skip that was already
+ * being stored — it just had no reader.
+ */
+export function listRecent(limit = 3): RecentFulfillment[] {
+  return Object.values(readStore())
+    .filter((e) => Boolean(e.sku_id))
+    .sort((a, b) => b.updated_at - a.updated_at)
+    .slice(0, limit);
 }
 
 export function forgetFulfillment(brandSlug: string): void {
