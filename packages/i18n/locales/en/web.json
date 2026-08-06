@@ -28,7 +28,8 @@
     "skipToContent": "Skip to content",
     "primaryLabel": "Main navigation",
     "footerLabel": "Footer navigation",
-    "breadcrumbLabel": "Breadcrumb"
+    "breadcrumbLabel": "Breadcrumb",
+    "closeMenu": "Close menu"
   },
   "hero": {
     "badge": "Games & subscriptions · 1 hub",

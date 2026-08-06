@@ -28,7 +28,8 @@
     "skipToContent": "Kontentga oʻtish",
     "primaryLabel": "Asosiy navigatsiya",
     "footerLabel": "Pastki qism navigatsiyasi",
-    "breadcrumbLabel": "Yoʻl xaritasi"
+    "breadcrumbLabel": "Yoʻl xaritasi",
+    "closeMenu": "Menyuni yopish"
   },
   "hero": {
     "badge": "Oʻyin va obunalar · 1 markaz",

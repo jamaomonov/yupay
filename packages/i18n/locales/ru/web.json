@@ -28,7 +28,8 @@
     "skipToContent": "Перейти к содержимому",
     "primaryLabel": "Основная навигация",
     "footerLabel": "Навигация в подвале",
-    "breadcrumbLabel": "Хлебные крошки"
+    "breadcrumbLabel": "Хлебные крошки",
+    "closeMenu": "Закрыть меню"
   },
   "hero": {
     "badge": "Игры и подписки · 1 центр",

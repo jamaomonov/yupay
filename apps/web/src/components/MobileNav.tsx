@@ -75,18 +75,22 @@ export function MobileNav() {
         onClick={() => {
           setOpen((v) => !v);
         }}
-        aria-label={t("openMenu")}
+        aria-label={open ? t("closeMenu") : t("openMenu")}
         aria-expanded={open}
+        aria-controls="mobile-nav-sheet"
         className="border-border bg-muted text-tx-mute flex h-11 w-11 items-center justify-center rounded-[10px] border"
       >
         {open ? <X size={18} /> : <Menu size={18} />}
       </button>
 
       {open && (
+        /* A disclosure, not a dialog. It was labelled `aria-modal` without
+           moving focus, trapping it or restoring it — and the sheet starts
+           below the 72px header, so the toggle stayed visible and clickable
+           while `aria-modal` hid it from assistive tech. `aria-expanded` +
+           `aria-controls` on the toggle describe what actually happens. */
         <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={t("openMenu")}
+          id="mobile-nav-sheet"
           className="anim-sheet-in bg-bg fixed inset-x-0 top-[72px] z-50 h-[calc(100dvh-72px)] overflow-y-auto"
         >
           <div className="mx-auto max-w-[1200px] px-6 py-5">
@@ -133,7 +137,8 @@ export function MobileNav() {
                   onClick={() => {
                     pickLocale(l.code);
                   }}
-                  className={`flex-1 rounded-[10px] border py-2.5 text-sm font-semibold transition ${
+                  aria-current={l.code === current ? "true" : undefined}
+                  className={`flex-1 rounded-[10px] border py-3 text-sm font-semibold transition ${
                     l.code === current
                       ? "border-primary bg-primary/10 text-primary"
                       : "border-border bg-muted text-tx-mute"

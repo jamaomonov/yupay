@@ -2,7 +2,8 @@
 
 import { Check } from "lucide-react";
 import Image from "next/image";
-import { usePathname, useRouter } from "next/navigation";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 
@@ -23,7 +24,6 @@ const FLAGS: Record<AppLocale, string> = {
 };
 
 export function LocaleSwitcher() {
-  const router = useRouter();
   const pathname = usePathname();
   const current = useLocale() as AppLocale;
   const t = useTranslations("web.common");
@@ -36,20 +36,30 @@ export function LocaleSwitcher() {
     const onDown = (e: MouseEvent) => {
       if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    const onFocusIn = (e: FocusEvent) => {
+      // Tabbing out of the group closes it — otherwise a keyboard user leaves
+      // an open menu floating behind them.
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
     document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("focusin", onFocusIn);
     return () => {
       document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("focusin", onFocusIn);
     };
   }, [open]);
 
-  const pick = (next: AppLocale) => {
-    setOpen(false);
-    if (next === current) return;
-    // Rewrite the leading ``/<locale>`` segment in the current path. ``as-needed``
-    // routing means the default locale may not be present in the URL — we
-    // strip whatever's there and prepend the chosen one explicitly.
+  // Rewrite the leading ``/<locale>`` segment in the current path. ``as-needed``
+  // routing means the default locale may not be present in the URL — we strip
+  // whatever's there and prepend the chosen one explicitly.
+  const hrefFor = (next: AppLocale) => {
     const stripped = pathname.replace(/^\/(ru|en|uz)(?=\/|$)/, "") || "/";
-    router.push(`/${next}${stripped === "/" ? "" : stripped}`);
+    return `/${next}${stripped === "/" ? "" : stripped}`;
   };
 
   return (
@@ -59,7 +69,7 @@ export function LocaleSwitcher() {
         onClick={() => {
           setOpen((v) => !v);
         }}
-        aria-haspopup="listbox"
+        aria-haspopup="true"
         aria-expanded={open}
         className="border-border bg-muted text-tx-mute hover:bg-card-2 hover:text-foreground flex h-11 items-center gap-2 rounded-[10px] border px-3 text-xs font-semibold uppercase tracking-wider transition"
       >
@@ -73,21 +83,25 @@ export function LocaleSwitcher() {
         {current}
       </button>
       {open && (
-        <ul
-          role="listbox"
-          className="border-border bg-card/95 absolute right-0 top-11 z-40 min-w-[10rem] overflow-hidden rounded-xl border p-1 shadow-2xl backdrop-blur-xl"
-        >
+        /* Plain links, not a listbox. The previous markup claimed
+           `role="listbox"` with `role="option"` buttons nested inside `<li>`
+           — which breaks the required parent/child relationship — and shipped
+           none of the keyboard behaviour that role promises: no arrows, no
+           Home/End, no aria-activedescendant, and Escape did nothing. Changing
+           language is a navigation, so a list of links says exactly what it is,
+           works without JS, and is indexable. */
+        <ul className="border-border bg-card/95 absolute right-0 top-11 z-40 min-w-[10rem] overflow-hidden rounded-xl border p-1 shadow-2xl backdrop-blur-xl">
           {routing.locales.map((loc) => {
             const isActive = loc === current;
             return (
               <li key={loc}>
-                <button
-                  type="button"
+                <Link
+                  href={hrefFor(loc)}
+                  hrefLang={loc}
+                  aria-current={isActive ? "true" : undefined}
                   onClick={() => {
-                    pick(loc);
+                    setOpen(false);
                   }}
-                  role="option"
-                  aria-selected={isActive}
                   className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition ${
                     isActive
                       ? "bg-card-2 text-foreground"
@@ -105,7 +119,7 @@ export function LocaleSwitcher() {
                     {t(LOCALE_LABEL_KEY[loc])}
                   </span>
                   {isActive && <Check size={14} className="text-primary" />}
-                </button>
+                </Link>
               </li>
             );
           })}
