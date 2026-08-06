@@ -446,14 +446,15 @@ function VariableAmountCard({
         </div>
       </div>
 
-      {/* Quick picks. They used to be hidden below `sm` to keep the phone
-          layout uncluttered — but that removed the fastest path on the device
-          where it matters most and left a 16px slider spanning $1–$300 (about
-          one pixel per dollar) as the only alternative to typing. Phones get
-          the first three; wider screens get all of them. */}
+      {/* Quick picks, from `sm` up only. They were briefly shown on phones too,
+          on the argument that hiding them removed the fastest path — but on a
+          390px screen the three cards are as tall as the amount field itself,
+          duplicate what the input and slider already do, and push the order
+          summary a screen further down. The slider is 28px tall now, so the
+          input is not the only alternative to typing. */}
       {PRESETS.length > 0 && (
-        <div className="grid grid-cols-3 gap-3 p-5">
-          {PRESETS.map((amount, i) => {
+        <div className="hidden gap-3 p-5 sm:grid sm:grid-cols-3">
+          {PRESETS.map((amount) => {
             const active = parsed === amount;
             return (
               <button
@@ -464,8 +465,6 @@ function VariableAmountCard({
                   pick(amount);
                 }}
                 className={`focus-visible:ring-primary focus-visible:ring-offset-bg relative flex flex-col items-start gap-3 rounded-lg border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
-                  i > 2 ? "hidden sm:flex" : ""
-                } ${
                   active
                     ? "border-primary bg-primary/[0.06]"
                     : "border-border bg-card hover:border-border-2"
