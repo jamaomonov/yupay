@@ -52,6 +52,7 @@ import {
   canShareToStory,
   getHomeScreenStatus,
   openExternalLink,
+  setClosingConfirmation,
   shareToStory,
 } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -206,6 +207,20 @@ export default function OrderSuccess() {
       void qc.invalidateQueries({ queryKey: ["wallet"] });
     }
   }, [order?.status, qc]);
+
+  // Guard the window that actually matters. Checkout turns the confirmation on
+  // for the few hundred milliseconds of its own request and back off in
+  // `finally` — correctly, because that path navigates to the acquirer rather
+  // than closing. The risk starts afterwards: the buyer is back in Telegram
+  // with the order still unpaid, the payment possibly in flight, and one stray
+  // swipe-down closes the app.
+  useEffect(() => {
+    if (order?.status !== "pending_payment") return;
+    setClosingConfirmation(true);
+    return () => {
+      setClosingConfirmation(false);
+    };
+  }, [order?.status]);
 
   const deliveriesQuery = useDeliveries(orderId, order?.status);
   const deliveries = deliveriesQuery.data ?? [];
