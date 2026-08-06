@@ -65,7 +65,11 @@ export function ManualQueuePage() {
       header: "Заказ",
       render: (r) => (
         <div className="flex flex-col">
-          <CopyId value={r.task.order_id} className="text-xs text-[var(--text-secondary)]" />
+          <CopyId
+            value={r.task.order_id}
+            to={`/orders/${r.task.order_id}`}
+            className="text-xs text-[var(--text-secondary)]"
+          />
           <span className="text-xs text-[var(--text-secondary)]">
             {r.order
               ? new Date(r.order.created_at).toLocaleString("ru", {

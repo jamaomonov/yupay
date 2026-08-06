@@ -391,7 +391,7 @@ function RecentOrders({
     {
       key: "id",
       header: "ID",
-      render: (o) => <CopyId value={o.id} className="text-xs" />,
+      render: (o) => <CopyId value={o.id} to={`/orders/${o.id}`} className="text-xs" />,
       className: "w-24",
     },
     {
@@ -445,6 +445,8 @@ function RecentPayments({
     {
       key: "id",
       header: "ID",
+      // There is no payment detail page; the payment's order is the useful
+      // destination, and /payments filters by order_id rather than payment id.
       render: (p) => <CopyId value={p.id} className="text-xs" />,
       className: "w-24",
     },

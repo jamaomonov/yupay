@@ -74,7 +74,9 @@ export function AuditPage() {
     () => Object.fromEntries(SOURCES.map((s) => [s.key, true])) as Record<Source, boolean>,
   );
   const [actor, setActor] = useState("");
-  const [target, setTarget] = useState("");
+  // URL-bound so an order or payment page can link straight to "everything
+  // that happened to this id" (ADR-0017), and so the view stays shareable.
+  const [target, setTarget] = useSearchParamsState("target", "");
   const [limit, setLimit] = useState(100);
   const [expanded, setExpanded] = useState<string | null>(null);
   // URL-bound so the sidebar's "Действия админов" link can pre-filter the feed

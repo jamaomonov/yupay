@@ -106,7 +106,9 @@ export function BroadcastsListPage() {
     {
       key: "created_by",
       header: "Автор",
-      render: (b) => <CopyId value={b.created_by} className="text-xs" />,
+      render: (b) => (
+        <CopyId value={b.created_by} to={`/customers/${b.created_by}`} className="text-xs" />
+      ),
       className: "w-28",
     },
   ];

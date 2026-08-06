@@ -10,6 +10,7 @@
 
 import { Check, Copy } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 
 interface CopyIdProps {
   /** The full identifier. Never truncate before passing it in. */
@@ -18,6 +19,12 @@ interface CopyIdProps {
   chars?: number;
   /** Rendered before the id, e.g. "user" or "order". */
   label?: string;
+  /**
+   * Where this id lives. When given, the id itself becomes a link and copying
+   * moves to a button beside it — an id that names a row somewhere else should
+   * take you there, and a button nested inside a link is invalid HTML anyway.
+   */
+  to?: string;
   className?: string;
 }
 
@@ -58,7 +65,7 @@ async function writeToClipboard(text: string): Promise<boolean> {
   }
 }
 
-export function CopyId({ value, chars = 8, label, className = "" }: CopyIdProps) {
+export function CopyId({ value, chars = 8, label, to, className = "" }: CopyIdProps) {
   const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -92,16 +99,8 @@ export function CopyId({ value, chars = 8, label, className = "" }: CopyIdProps)
       ? `${value} — скопировать не удалось, выдели вручную`
       : `${value} — скопировать`;
 
-  return (
-    <button
-      type="button"
-      onClick={copy}
-      title={title}
-      aria-label={`Скопировать ${label ? `${label} ` : ""}${value}`}
-      className={`group inline-flex max-w-full items-center gap-1 font-mono text-inherit underline-offset-2 hover:underline ${className}`}
-    >
-      {label && <span className="text-[var(--text-secondary)]">{label}</span>}
-      <span className="truncate">{shown}</span>
+  const feedback = (
+    <>
       {state === "copied" ? (
         <Check className="size-3 flex-shrink-0 text-[var(--success,var(--accent))]" aria-hidden />
       ) : (
@@ -112,6 +111,49 @@ export function CopyId({ value, chars = 8, label, className = "" }: CopyIdProps)
       )}
       {state === "copied" && <span className="sr-only">Скопировано</span>}
       {state === "failed" && <span className="sr-only">Скопировать не удалось</span>}
+    </>
+  );
+
+  if (to) {
+    return (
+      <span className={`group inline-flex max-w-full items-center gap-1 font-mono ${className}`}>
+        {label && <span className="text-[var(--text-secondary)]">{label}</span>}
+        <Link
+          to={to}
+          title={value}
+          onClick={(event) => {
+            // The row underneath is clickable too; without this, following the
+            // link would also fire the row's own navigation.
+            event.stopPropagation();
+          }}
+          className="truncate underline-offset-2 hover:underline"
+        >
+          {shown}
+        </Link>
+        <button
+          type="button"
+          onClick={copy}
+          title={title}
+          aria-label={`Скопировать ${label ? `${label} ` : ""}${value}`}
+          className="inline-flex flex-shrink-0 items-center"
+        >
+          {feedback}
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      title={title}
+      aria-label={`Скопировать ${label ? `${label} ` : ""}${value}`}
+      className={`group inline-flex max-w-full items-center gap-1 font-mono text-inherit underline-offset-2 hover:underline ${className}`}
+    >
+      {label && <span className="text-[var(--text-secondary)]">{label}</span>}
+      <span className="truncate">{shown}</span>
+      {feedback}
     </button>
   );
 }

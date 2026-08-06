@@ -92,8 +92,8 @@ export function ReviewsPage() {
       header: "Бренд / заказ",
       render: (r) => (
         <div className="flex flex-col font-mono text-xs text-[var(--text-secondary)]">
-          <CopyId value={r.brand_id} />
-          <CopyId value={r.order_id} />
+          <CopyId value={r.brand_id} to={`/brands/${r.brand_id}`} />
+          <CopyId value={r.order_id} to={`/orders/${r.order_id}`} />
         </div>
       ),
     },

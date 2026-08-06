@@ -47,7 +47,9 @@ export function PaymentsPage() {
   const fieldId = useId();
   const qc = useQueryClient();
   const toast = useToast();
-  const [orderId, setOrderId] = useState("");
+  // URL-bound so an order page can link to its own payments (ADR-0017); the
+  // filter used to be reachable only by pasting a UUID into the box.
+  const [orderId, setOrderId] = useSearchParamsState("order_id", "");
   const [provider, setProvider] = useState("");
   // Status comes from the URL so Dashboard alert cards can deep-link straight to e.g.
   // ``/payments?status=pending`` (ADR-0017).
@@ -115,7 +117,12 @@ export function PaymentsPage() {
       render: (p) => (
         <div className="flex flex-col font-mono text-xs">
           <CopyId value={p.id} />
-          <CopyId value={p.order_id} label="order" className="text-[var(--text-secondary)]" />
+          <CopyId
+            value={p.order_id}
+            label="order"
+            to={`/orders/${p.order_id}`}
+            className="text-[var(--text-secondary)]"
+          />
         </div>
       ),
     },

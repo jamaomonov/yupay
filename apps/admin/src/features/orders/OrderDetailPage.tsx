@@ -293,13 +293,14 @@ export function OrderDetailPage() {
         <section className="space-y-6 lg:col-span-2">
           <SummaryCard order={order} />
           <ItemsCard order={order} />
-          <Timeline events={order.events} status={order.status} />
+          <Timeline events={order.events} status={order.status} orderId={order.id} />
         </section>
 
         {/* ----- right column: payments + fulfillment ----- */}
         <aside className="space-y-6">
           <PaymentsCard
             payments={payments}
+            orderId={order.id}
             failed={paymentsQuery.isError}
             onRetryLoad={() => void paymentsQuery.refetch()}
             refunding={refund.isPending}
@@ -552,13 +553,29 @@ function ItemsCard({ order }: { order: OrderAdminOut }) {
   );
 }
 
-function Timeline({ events, status }: { events: OrderEventOut[]; status: OrderStatus }) {
+function Timeline({
+  events,
+  status,
+  orderId,
+}: {
+  events: OrderEventOut[];
+  status: OrderStatus;
+  orderId: string;
+}) {
   const ordered = [...events].sort((a, b) => a.created_at.localeCompare(b.created_at));
   return (
     <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]">
       <header className="flex items-center gap-2 border-b px-4 py-3">
         <Clock className="size-4 text-[var(--text-secondary)]" />
         <h2 className="text-sm font-semibold">Хронология ({ordered.length})</h2>
+        {/* The order's own events; the audit feed also carries the payment,
+            webhook and fulfilment events that reference this id. */}
+        <Link
+          to={`/audit?target=${orderId}`}
+          className="ml-auto text-xs text-[var(--text-secondary)] underline-offset-2 hover:text-[var(--text-primary)] hover:underline"
+        >
+          Полный аудит →
+        </Link>
       </header>
       {ordered.length === 0 ? (
         <p className="p-4 text-sm text-[var(--text-secondary)]">Событий ещё нет.</p>
@@ -717,6 +734,7 @@ function CardLoadError({ onRetry, what }: { onRetry?: (() => void) | undefined; 
 
 function PaymentsCard({
   payments,
+  orderId,
   onRefund,
   refunding,
   onSettle,
@@ -725,6 +743,7 @@ function PaymentsCard({
   onRetryLoad,
 }: {
   payments: PaymentAdminOut[];
+  orderId: string;
   onRefund: (payment: PaymentAdminOut) => void;
   refunding: boolean;
   onSettle: (payment: PaymentAdminOut) => void;
@@ -738,6 +757,15 @@ function PaymentsCard({
       <header className="flex items-center gap-2 border-b px-4 py-3">
         <CreditCard className="size-4 text-[var(--text-secondary)]" />
         <h2 className="text-sm font-semibold">Платежи ({payments.length})</h2>
+        {/* Attempts, webhooks and refunds live on the payments page; this card
+            only summarises them. Support following a failed charge had to go
+            there and paste the order id by hand. */}
+        <Link
+          to={`/payments?order_id=${orderId}`}
+          className="ml-auto text-xs text-[var(--text-secondary)] underline-offset-2 hover:text-[var(--text-primary)] hover:underline"
+        >
+          В разделе платежей →
+        </Link>
       </header>
       {failed ? (
         <CardLoadError onRetry={onRetryLoad} what="платежи" />

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import { CopyId } from "./CopyId";
@@ -63,5 +64,22 @@ describe("CopyId", () => {
     render(<CopyId value="abc" />);
     expect(screen.getByRole("button")).toHaveTextContent("abc");
     expect(screen.getByRole("button")).not.toHaveTextContent("…");
+  });
+
+  it("links the id where it lives, and keeps copying available beside it", () => {
+    const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+
+    render(
+      <MemoryRouter>
+        <CopyId value={FULL} to={`/orders/${FULL}`} />
+      </MemoryRouter>,
+    );
+
+    // An id that names a row elsewhere should take you there...
+    expect(screen.getByRole("link")).toHaveAttribute("href", `/orders/${FULL}`);
+    // ...without losing the ability to paste it into a ticket.
+    fireEvent.click(screen.getByRole("button"));
+    expect(writeText).toHaveBeenCalledWith(FULL);
   });
 });

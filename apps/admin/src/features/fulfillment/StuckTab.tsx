@@ -30,7 +30,7 @@ export function StuckTab() {
     {
       key: "order",
       header: "Order",
-      render: (t) => <CopyId value={t.order_id} className="text-xs" />,
+      render: (t) => <CopyId value={t.order_id} to={`/orders/${t.order_id}`} className="text-xs" />,
       className: "w-28",
     },
     {
