@@ -22,6 +22,7 @@ import { SafeImage } from "@/components/ui/safe-image";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { BOT_LINK } from "@/lib/bot-link";
+import { getBrandShape, rememberBrandShape } from "@/lib/brand-shape";
 import { ApiError } from "@/lib/api";
 import { useMe } from "@/lib/auth";
 import {
@@ -250,6 +251,14 @@ export default function TopUp() {
   // on the SKU.
   const isVariableProduct = packages.length > 0 && packages.every((p) => p.variableAmount);
 
+  // Cache it so the next visit's skeleton promises the right form (see
+  // lib/brand-shape.ts) — the flag only becomes knowable after the SKUs load,
+  // which is after the placeholder has already been drawn.
+  useEffect(() => {
+    if (packages.length === 0) return;
+    rememberBrandShape(gameId, isVariableProduct ? "amount" : "packages");
+  }, [gameId, packages.length, isVariableProduct]);
+
   const me = useMe();
   const checkout = useCheckout();
   const isProcessing = checkout.isPending;
@@ -368,6 +377,7 @@ export default function TopUp() {
   if (gamesQuery.isLoading || brandQuery.isLoading) {
     return (
       <PageSkeleton
+        slug={gameId}
         onBack={() => {
           setLocation("/");
         }}
@@ -872,7 +882,7 @@ export default function TopUp() {
               sub={t("topup.creditWithinMinutes")}
             />
 
-            {productQuery.isLoading && <PackagesSkeleton />}
+            {productQuery.isLoading && <PackagesSkeleton shape={getBrandShape(gameId)} />}
             {!productQuery.isLoading && packages.length === 0 && (
               <p className="rounded-2xl border border-dashed border-white/10 p-6 text-center text-sm text-white/40">
                 {t("topup.noPositions")}
@@ -1325,7 +1335,7 @@ function VariableAmountPanel({
 }
 
 // ─── Loading skeletons ────────────────────────────────────────────────────────
-function PageSkeleton({ onBack }: { onBack: () => void }) {
+function PageSkeleton({ onBack, slug }: { onBack: () => void; slug: string | undefined }) {
   const { t } = useT();
   return (
     <div className="pb-32">
@@ -1337,13 +1347,34 @@ function PageSkeleton({ onBack }: { onBack: () => void }) {
       </div>
       <div className="space-y-4 px-4 pt-5">
         <Skeleton className="h-12 w-full" />
-        <PackagesSkeleton />
+        <PackagesSkeleton shape={getBrandShape(slug)} />
       </div>
     </div>
   );
 }
 
-function PackagesSkeleton() {
+/**
+ * Placeholder for the choice step.
+ *
+ * A skeleton is a promise about the form that is loading, so it follows the
+ * brand's remembered shape: a grid of denomination cards, or the single amount
+ * field a variable-amount product (Steam) resolves into. On a first visit
+ * nothing is remembered and the grid is the safe default — six of seven brands
+ * use it.
+ */
+function PackagesSkeleton({ shape }: { shape: "packages" | "amount" | null }) {
+  if (shape === "amount") {
+    return (
+      <div className="space-y-2.5">
+        <Skeleton className="h-16 w-full rounded-2xl" />
+        <div className="grid grid-cols-3 gap-2.5">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-11 rounded-xl" />
+          ))}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="grid grid-cols-2 gap-2.5">
       {[0, 1, 2, 3].map((i) => (
