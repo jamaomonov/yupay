@@ -5,7 +5,7 @@ import { ArrowUpRight, Check, Info, Loader2, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { WhereToFindModal } from "./WhereToFindModal";
 
@@ -98,6 +98,10 @@ function CheckablePlayerField({
     setHelpOpen(false);
   }, []);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Ties the visible caption to the input; without it the field announces as
+  // an unnamed "edit text" and the checkout cannot be completed by voice or
+  // screen reader.
+  const fieldId = useId();
   useEffect(() => {
     setState(IDLE);
   }, [value]);
@@ -169,10 +173,11 @@ function CheckablePlayerField({
   // Idle / loading / our-or-provider fault: show the input + check button.
   return (
     <div>
-      <FieldLabel label={label} required={required} />
+      <FieldLabel label={label} required={required} htmlFor={fieldId} />
       <div className="flex items-center gap-2.5">
         <div className="relative min-w-0 flex-1">
           <input
+            id={fieldId}
             ref={inputRef}
             type="text"
             inputMode={inputMode}
@@ -235,12 +240,37 @@ function CheckablePlayerField({
   );
 }
 
-function FieldLabel({ label, required }: { label: string; required: boolean }) {
-  return (
-    <span className="text-tx-dim mb-2 block text-[12px] font-semibold uppercase tracking-[0.08em]">
+/**
+ * Caption above a checkout field.
+ *
+ * `htmlFor` turns it into a real `<label>`. Without it this stays a `<span>`,
+ * which is correct for the two states where it captions a resolved-nickname
+ * pill rather than an input — a `<label>` pointing at nothing is worse than
+ * none. The input states must always pass it: a field announced as "edit text"
+ * with no name is a field a screen-reader user cannot fill in.
+ */
+function FieldLabel({
+  label,
+  required,
+  htmlFor,
+}: {
+  label: string;
+  required: boolean;
+  htmlFor?: string;
+}) {
+  const className = "text-tx-dim mb-2 block text-[12px] font-semibold uppercase tracking-[0.08em]";
+  const content = (
+    <>
       {label}
       {required && <span className="text-primary"> *</span>}
-    </span>
+    </>
+  );
+  return htmlFor ? (
+    <label htmlFor={htmlFor} className={className}>
+      {content}
+    </label>
+  ) : (
+    <span className={className}>{content}</span>
   );
 }
 
@@ -270,6 +300,7 @@ function VariableAmountCard({
   image: string | null;
   t: (key: string, values?: Record<string, string>) => string;
 }) {
+  const amountId = useId();
   const rate = sku.display_price;
   if (!rate) {
     return (
@@ -324,12 +355,15 @@ function VariableAmountCard({
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {/* left: label + input + slider */}
             <div className="lg:border-border/70 lg:border-r lg:pr-6">
-              <span className="text-tx-mute mb-2 block text-[13px]">{t("amountOwn")}</span>
+              <label htmlFor={amountId} className="text-tx-mute mb-2 block text-[13px]">
+                {t("amountOwn")}
+              </label>
               <div className="border-border bg-bg focus-within:border-primary flex items-center gap-2 rounded-[12px] border px-3.5 transition">
                 <span className="text-tx-dim text-[18px] font-bold" aria-hidden="true">
                   $
                 </span>
                 <input
+                  id={amountId}
                   type="text"
                   inputMode="decimal"
                   value={value}
