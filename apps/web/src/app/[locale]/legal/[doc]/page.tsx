@@ -54,12 +54,16 @@ export default async function LegalPage({
   if (!isDoc(doc)) notFound();
   setRequestLocale(locale);
   const t = await getTranslations("web.legal");
+  const tn = await getTranslations("web.nav");
   const sections = t.raw(`${doc}.sections`) as Section[];
 
   return (
     <main className="relative min-h-screen pb-28 pt-[120px]">
       <div className="mx-auto max-w-[760px] px-6 sm:px-10">
-        <nav className="text-tx-dim mb-7 flex items-center gap-1.5 font-mono text-[11px]">
+        <nav
+          aria-label={tn("breadcrumbLabel")}
+          className="text-tx-dim mb-7 flex items-center gap-1.5 font-mono text-[11px]"
+        >
           <Link href={pathFor(locale)} className="hover:text-tx-mute transition">
             {t("home")}
           </Link>

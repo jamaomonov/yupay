@@ -74,6 +74,13 @@
 }
 
 @layer base {
+  html {
+    /* The header is fixed at 72px. Without this, anything reached by an
+       in-page anchor — or by tabbing back up the page — lands underneath it
+       (WCAG 2.4.11 Focus Not Obscured). */
+    scroll-padding-top: 88px;
+  }
+
   html,
   body {
     background-color: hsl(var(--bg));

@@ -17,13 +17,13 @@ export async function Header({ locale }: { locale: string }) {
   const t = await getTranslations("web.nav");
 
   return (
-    <nav className="border-border/60 bg-bg/70 fixed inset-x-0 top-0 z-50 h-[72px] border-b backdrop-blur-xl">
+    <header className="border-border/60 bg-bg/70 fixed inset-x-0 top-0 z-50 h-[72px] border-b backdrop-blur-xl">
       <div className="mx-auto flex h-full max-w-[1200px] items-center justify-between px-6 sm:px-10">
         <Link href={pathFor(locale)} aria-label="yupay" className="flex items-center">
           <Wordmark />
         </Link>
 
-        <div className="hidden items-center gap-8 md:flex">
+        <nav aria-label={t("primaryLabel")} className="hidden items-center gap-8 md:flex">
           <Link
             href={pathFor(locale, "/store")}
             className="text-tx-mute hover:text-foreground text-sm font-medium transition"
@@ -53,7 +53,7 @@ export async function Header({ locale }: { locale: string }) {
           >
             {t("support")}
           </a>
-        </div>
+        </nav>
 
         {/* Desktop controls */}
         <div className="hidden items-center gap-2.5 md:flex">
@@ -64,6 +64,6 @@ export async function Header({ locale }: { locale: string }) {
         {/* Mobile controls */}
         <MobileNav />
       </div>
-    </nav>
+    </header>
   );
 }

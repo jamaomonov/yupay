@@ -24,7 +24,11 @@
     "orders": "Buyurtmalarim",
     "logout": "Chiqish",
     "menu": "Akkaunt menyusi",
-    "openMenu": "Menyuni ochish"
+    "openMenu": "Menyuni ochish",
+    "skipToContent": "Kontentga oʻtish",
+    "primaryLabel": "Asosiy navigatsiya",
+    "footerLabel": "Pastki qism navigatsiyasi",
+    "breadcrumbLabel": "Yoʻl xaritasi"
   },
   "hero": {
     "badge": "Oʻyin va obunalar · 1 markaz",

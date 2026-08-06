@@ -108,6 +108,7 @@ export default async function HowToPage({
   const brand = await getBrandDetail(brandSlug, locale, CURRENCY);
   if (!brand) notFound();
   const t = await getTranslations("web.store");
+  const tn = await getTranslations("web.nav");
 
   const products = await Promise.all(
     (brand.products ?? []).map((p) => getProductDetail(p.slug, locale, CURRENCY)),
@@ -173,7 +174,10 @@ export default async function HowToPage({
       <JsonLd data={breadcrumbLd} />
 
       <article className="mx-auto max-w-[820px] px-6 sm:px-10">
-        <nav className="text-tx-dim mb-6 flex flex-wrap items-center gap-x-1.5 font-mono text-[11px]">
+        <nav
+          aria-label={tn("breadcrumbLabel")}
+          className="text-tx-dim mb-6 flex flex-wrap items-center gap-x-1.5 font-mono text-[11px]"
+        >
           <Link
             href={pathFor(locale)}
             className="hover:text-tx-mute inline-flex items-center py-1.5"

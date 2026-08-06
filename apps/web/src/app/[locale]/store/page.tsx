@@ -60,6 +60,7 @@ export default async function StorePage({
   setRequestLocale(locale);
   const { cat } = await searchParams;
   const t = await getTranslations("web.store");
+  const tn = await getTranslations("web.nav");
 
   // Fetch the whole catalog once; filter in-render by the ?cat= segment so the
   // page stays server-rendered per URL without an extra round-trip.
@@ -150,7 +151,10 @@ export default async function StorePage({
       </div>
 
       <div className="mx-auto max-w-[1200px] px-6 sm:px-10">
-        <nav className="text-tx-dim mb-7 flex items-center gap-1.5 font-mono text-[11px]">
+        <nav
+          aria-label={tn("breadcrumbLabel")}
+          className="text-tx-dim mb-7 flex items-center gap-1.5 font-mono text-[11px]"
+        >
           <Link href={pathFor(locale)} className="hover:text-tx-mute transition">
             {t("breadcrumbHome")}
           </Link>

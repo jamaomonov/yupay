@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
+import { useId } from "react";
 
 import { Wordmark } from "./Wordmark";
 
@@ -46,9 +47,9 @@ export async function Footer({ locale }: { locale: string }) {
             <p className="text-tx-mute mt-5 max-w-[300px] text-sm leading-relaxed">
               {t("tagline")}
             </p>
-            <h4 className="text-tx-dim mb-3 mt-6 font-mono text-[11px] font-bold uppercase tracking-[0.16em]">
+            <p className="text-tx-dim mb-3 mt-6 font-mono text-[11px] font-bold uppercase tracking-[0.16em]">
               {t("followUs")}
-            </h4>
+            </p>
             <div className="flex items-center gap-3">
               {SOCIALS.map(({ href, label, src }) => (
                 <a
@@ -154,14 +155,20 @@ export async function Footer({ locale }: { locale: string }) {
 }
 
 function FooterCol({ title, children }: { title: string; children: React.ReactNode }) {
+  // `useId` rather than a slug of the title: the caption is translated, and an
+  // id built from it would change per locale.
+  const headingId = useId();
   return (
-    <div>
-      <h4 className="text-tx-dim mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.16em]">
+    <nav aria-labelledby={headingId}>
+      <p
+        id={headingId}
+        className="text-tx-dim mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.16em]"
+      >
         {title}
-      </h4>
+      </p>
       {/* Rows are 44px-tall tap targets (min-h), so no extra gap between them. */}
       <div className="flex flex-col">{children}</div>
-    </div>
+    </nav>
   );
 }
 

@@ -87,6 +87,7 @@ export default async function BrandPage({
 
   const t = await getTranslations("web.store");
   const t2 = await getTranslations("web.brandReviews");
+  const tn = await getTranslations("web.nav");
 
   const products = (
     await Promise.all((brand.products ?? []).map((p) => getProductDetail(p.slug, locale, CURRENCY)))
@@ -198,7 +199,10 @@ export default async function BrandPage({
       {faqLd && <JsonLd data={faqLd} />}
 
       <div className="mx-auto max-w-[1100px] px-6 sm:px-10">
-        <nav className="text-tx-dim mb-6 flex flex-wrap items-center gap-x-1.5 font-mono text-[11px]">
+        <nav
+          aria-label={tn("breadcrumbLabel")}
+          className="text-tx-dim mb-6 flex flex-wrap items-center gap-x-1.5 font-mono text-[11px]"
+        >
           <Link
             href={pathFor(locale)}
             className="hover:text-tx-mute inline-flex items-center py-1.5 transition"

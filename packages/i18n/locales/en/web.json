@@ -24,7 +24,11 @@
     "orders": "My orders",
     "logout": "Sign out",
     "menu": "Account menu",
-    "openMenu": "Open menu"
+    "openMenu": "Open menu",
+    "skipToContent": "Skip to content",
+    "primaryLabel": "Main navigation",
+    "footerLabel": "Footer navigation",
+    "breadcrumbLabel": "Breadcrumb"
   },
   "hero": {
     "badge": "Games & subscriptions · 1 hub",

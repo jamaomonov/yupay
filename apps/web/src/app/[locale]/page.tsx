@@ -15,7 +15,10 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
   setRequestLocale(locale);
 
   return (
-    <>
+    // Every other route wraps its content in <main>; this one returned a bare
+    // fragment, so the home page had no content landmark at all — and it is the
+    // page a skip-link has to land on.
+    <main id="main-content">
       <Hero locale={locale} />
       <Ticker />
       <TrustBand />
@@ -25,6 +28,6 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
       <AppShowcase />
       <MetricsBand />
       <CtaBand locale={locale} />
-    </>
+    </main>
   );
 }

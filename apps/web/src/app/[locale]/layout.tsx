@@ -11,6 +11,7 @@ import { LoginModal } from "@/components/auth/LoginModal";
 import { Footer } from "@/components/Footer";
 import { GoogleTag } from "@/components/GoogleTag";
 import { Header } from "@/components/Header";
+import { SkipLink } from "@/components/SkipLink";
 import { JsonLd } from "@/components/JsonLd";
 import { OrderDeliveredModal } from "@/components/order/OrderDeliveredModal";
 import { SupportFab } from "@/components/SupportFab";
@@ -139,7 +140,10 @@ export default async function LocaleLayout({
   };
 
   return (
-    <html lang={locale} className={`${sans.variable} ${display.variable} ${mono.variable}`}>
+    <html
+      lang={locale === "uz" ? "uz-Latn" : locale}
+      className={`${sans.variable} ${display.variable} ${mono.variable}`}
+    >
       <body className="bg-bg text-foreground min-h-screen font-sans antialiased">
         <JsonLd data={organizationLd} />
         <JsonLd data={websiteLd} />
@@ -147,6 +151,10 @@ export default async function LocaleLayout({
         <YandexMetrika />
         <NextIntlClientProvider locale={locale} messages={messages}>
           <Providers>
+            {/* First focusable element on every page: the header plus the
+                21-link footer sit between the top of the document and the
+                content, and there was no way past them by keyboard. */}
+            <SkipLink />
             <Header locale={locale} />
             {children}
             <Footer locale={locale} />
