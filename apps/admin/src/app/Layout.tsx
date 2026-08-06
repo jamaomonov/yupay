@@ -1,8 +1,12 @@
 /** App-shell: collapsible sidebar + topbar + outlet.
  *
- * - md+: sidebar is a fixed-width column, always visible.
- * - <md: sidebar slides in over the content as a drawer, toggled by the
+ * - lg+: sidebar is a fixed-width column, always visible.
+ * - <lg: sidebar slides in over the content as a drawer, toggled by the
  *   hamburger button in the topbar. The drawer auto-closes on route change.
+ *
+ * The split is at lg, not md: the sidebar is 260px, so on a 768px tablet it
+ * took a third of the screen and left the orders table 460px to work in — the
+ * tables here are wide, and a permanently-visible nav is not worth that.
  */
 
 import { Button } from "@yupay/ui";
@@ -146,6 +150,22 @@ export function Layout() {
     setSearchOpen(false);
   }, [location.pathname]);
 
+  // The drawer only exists below lg. If the window grows past that while it is
+  // open, the sidebar turns back into a static column but `drawerOpen` would
+  // stay true — leaving the body scroll-locked on a desktop layout with no
+  // visible drawer to close.
+  useEffect(() => {
+    const wide = window.matchMedia("(min-width: 1024px)");
+    const sync = () => {
+      if (wide.matches) setDrawerOpen(false);
+    };
+    sync();
+    wide.addEventListener("change", sync);
+    return () => {
+      wide.removeEventListener("change", sync);
+    };
+  }, []);
+
   // Keep body from scrolling under the drawer on small screens.
   useEffect(() => {
     if (drawerOpen) {
@@ -176,8 +196,8 @@ export function Layout() {
         className={[
           "fixed inset-y-0 left-0 z-40 flex h-screen flex-col border-r border-[var(--border-default)] bg-[var(--bg-sidebar)]",
           "transition-transform duration-200 ease-out",
-          "md:static md:translate-x-0",
-          drawerOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
+          "lg:static lg:translate-x-0",
+          drawerOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         ].join(" ")}
         style={{ width: "var(--sidebar-width)" }}
       >
@@ -191,7 +211,7 @@ export function Layout() {
             onClick={() => {
               setDrawerOpen(false);
             }}
-            className="rounded-md p-1 text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] md:hidden"
+            className="rounded-md p-1 text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] lg:hidden"
             aria-label="Закрыть меню"
           >
             <X className="size-4" />
@@ -254,7 +274,7 @@ export function Layout() {
             setDrawerOpen(false);
           }}
           aria-label="Закрыть меню"
-          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
         />
       )}
 
@@ -266,7 +286,7 @@ export function Layout() {
               onClick={() => {
                 setDrawerOpen(true);
               }}
-              className="rounded-md p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] md:hidden"
+              className="rounded-md p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] lg:hidden"
               aria-label="Открыть меню"
             >
               <Menu className="size-5" />
