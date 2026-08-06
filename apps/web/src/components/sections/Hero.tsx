@@ -61,9 +61,13 @@ export async function Hero({ locale }: { locale: string }) {
               lower-friction, higher-retention surface on phones, where a deep
               link is one tap) and is the bold primary on mobile. On desktop,
               opening Telegram is more friction than just browsing the web
-              store, so the catalog leads and Telegram is the ghost secondary. */}
+              store, so the catalog leads and Telegram is the ghost secondary.
+              The split is at `md` (768) because that is where "phone" ends —
+              it used to sit at `lg`, which handed tablets and any laptop in a
+              narrow window the phone treatment, i.e. a primary button that
+              leaves the site. */}
           <div className="mt-8">
-            <div className="flex flex-col gap-3.5 sm:flex-row sm:items-center lg:hidden">
+            <div className="flex flex-col gap-3.5 sm:flex-row sm:items-center md:hidden">
               <a
                 href={TELEGRAM_MINIAPP_URL}
                 target="_blank"
@@ -85,7 +89,7 @@ export async function Hero({ locale }: { locale: string }) {
                 {t("ctaPrimary")}
               </Link>
             </div>
-            <div className="hidden items-center gap-3.5 lg:flex">
+            <div className="hidden items-center gap-3.5 md:flex">
               <Link
                 href={pathFor(locale, "/store")}
                 className={buttonStyles({ size: "lg", className: "group" })}

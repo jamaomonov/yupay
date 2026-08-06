@@ -98,10 +98,13 @@ export async function CatalogBento({ locale }: { locale: string }) {
   }
   if (all.length === 0) return null;
 
-  // Render the largest multiple of three (capped) so the bento fills cleanly;
-  // fall back to whatever exists when there are fewer than three brands.
-  const clean = all.length >= 3 ? Math.min(Math.floor(all.length / 3) * 3, MAX) : all.length;
-  const brands = all.slice(0, clean);
+  // Show every brand up to the cap, even when the last row comes out short.
+  // Rounding down to a multiple of three filled the grid neatly and silently
+  // dropped the tail: at seven brands it rendered six, and the one it cut was
+  // Steam — the product with its own dedicated section higher up the same
+  // page, promoted there with a "Пополнить Steam" button. A ragged last row
+  // costs less than a flagship that cannot be reached from the catalogue block.
+  const brands = all.slice(0, MAX);
   const [feature, ...rest] = brands;
   if (!feature) return null;
 
