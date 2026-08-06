@@ -117,7 +117,7 @@
   "topup.methodUnavailableTitle": "To'lov usuli mavjud emas",
   "topup.methodUnavailableBody": "Bu usul vaqtincha o'chiq. Boshqasini tanlang.",
   "topup.insufficientTitle": "Balansda yetarli emas",
-  "topup.insufficientBody": "{amount} yetishmaydi. Hamyonni to'ldiring yoki boshqa usulni tanlang.",
+  "topup.insufficientBody": "{amount} yetishmaydi. Boshqa to'lov usulini tanlang.",
   "topup.redirecting": "To'lovga yo'naltirilmoqda",
   "topup.paidFromBalance": "Balansdan to'landi",
   "topup.orderCreated": "Buyurtma yaratildi",

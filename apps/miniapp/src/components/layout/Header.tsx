@@ -1,4 +1,4 @@
-import { Plus, Wallet as WalletIcon } from "lucide-react";
+import { Wallet as WalletIcon } from "lucide-react";
 import { Link } from "wouter";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -83,15 +83,6 @@ export function Header() {
                 +{extraCount.toString()}
               </span>
             )}
-          </Link>
-          <Link
-            href="/wallet/topup"
-            className="flex w-9 items-center justify-center transition-colors"
-            style={{ background: "hsl(var(--primary))", color: "#000" }}
-            aria-label={t("header.topUp")}
-            data-testid="header-topup"
-          >
-            <Plus size={16} strokeWidth={3} />
           </Link>
         </div>
 

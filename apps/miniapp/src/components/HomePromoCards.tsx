@@ -20,6 +20,8 @@ interface PromoCard {
   imageAltKey: MessageKey;
   testId: string;
   imageClassName: string;
+  /** Destination is a "скоро" screen — say so on the tile, before the tap. */
+  soon?: boolean;
 }
 
 const CARDS: PromoCard[] = [
@@ -39,6 +41,10 @@ const CARDS: PromoCard[] = [
     image: sellSkinsImg,
     imageAltKey: "home.promo.skins.alt",
     testId: "promo-skins",
+    // The market isn't live: /cs2-market is a "скоро" screen. Half of the two
+    // most prominent tiles on the home screen led there with no warning, so a
+    // new user's first tap had even odds of landing on an empty page.
+    soon: true,
     imageClassName: "-bottom-4 -right-5 h-[142px] max-w-none w-[145%]",
   },
 ];
@@ -72,6 +78,15 @@ export function HomePromoCards() {
               className="pointer-events-none absolute -bottom-6 -right-5 h-28 w-28 rounded-full blur-2xl"
               style={{ background: "hsl(var(--primary) / 0.34)" }}
             />
+
+            {card.soon && (
+              <span
+                className="absolute right-2.5 top-2.5 z-20 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide"
+                style={{ background: "hsl(var(--surface-2))", color: "rgba(255,255,255,0.72)" }}
+              >
+                {t("cs2.soonBadge")}
+              </span>
+            )}
 
             <div className="relative z-10 min-w-0 max-w-[76%] pr-0.5">
               <p className="text-[12px] font-bold leading-snug tracking-tight text-white">

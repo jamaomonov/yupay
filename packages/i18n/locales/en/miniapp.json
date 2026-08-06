@@ -117,7 +117,7 @@
   "topup.methodUnavailableTitle": "Payment method unavailable",
   "topup.methodUnavailableBody": "This method is temporarily off. Choose another.",
   "topup.insufficientTitle": "Not enough on balance",
-  "topup.insufficientBody": "{amount} short. Top up your wallet or choose another method.",
+  "topup.insufficientBody": "{amount} short. Choose another payment method.",
   "topup.redirecting": "Redirecting to payment",
   "topup.paidFromBalance": "Paid from balance",
   "topup.orderCreated": "Order created",

@@ -117,7 +117,7 @@
   "topup.methodUnavailableTitle": "Способ оплаты недоступен",
   "topup.methodUnavailableBody": "Этот метод временно отключён. Выберите другой.",
   "topup.insufficientTitle": "На балансе недостаточно",
-  "topup.insufficientBody": "Не хватает {amount}. Пополни кошелёк или выбери другой способ.",
+  "topup.insufficientBody": "Не хватает {amount}. Выберите другой способ оплаты.",
   "topup.redirecting": "Перенаправляем на оплату",
   "topup.paidFromBalance": "Оплачено с баланса",
   "topup.orderCreated": "Заказ создан",
