@@ -627,7 +627,13 @@ export function PurchasePanel({
       break;
     }
   }
-  const fields: FormField[] = selProduct?.required_fields ?? [];
+  // The account fields belong to the brand's catalogue, not to the price the
+  // buyer happens to pick — so they render from the first product until a
+  // selection narrows it down. Hanging them off `selProduct` alone meant that
+  // removing the default denomination also hid the "ID игрока" field until
+  // something was chosen, turning one form into two sequential steps.
+  const fieldsProduct = selProduct ?? products[0];
+  const fields: FormField[] = fieldsProduct?.required_fields ?? [];
   const label = (m: Record<string, string> | null | undefined): string =>
     (m && (m[locale] ?? m.ru ?? Object.values(m)[0])) ?? "";
 
@@ -1027,10 +1033,10 @@ export function PurchasePanel({
             {fields.length > 0 && (
               <div className="mt-5 flex flex-col gap-4">
                 {fields.map((f) =>
-                  f.check && selProduct ? (
+                  f.check && fieldsProduct ? (
                     <CheckablePlayerField
                       key={f.key}
-                      productId={selProduct.id}
+                      productId={fieldsProduct.id}
                       label={label(f.label)}
                       value={form[f.key] ?? ""}
                       onChange={(v) => {
