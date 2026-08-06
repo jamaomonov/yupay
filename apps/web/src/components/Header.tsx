@@ -36,12 +36,15 @@ export async function Header({ locale }: { locale: string }) {
           >
             {t("how")}
           </a>
-          <a
-            href={`${pathFor(locale)}#reviews`}
+          {/* The catalogue, not a home-page anchor: `#reviews` is only ever
+              rendered on a brand page, so this link used to do nothing at all.
+              Brand cards carry real ratings (drawn only when count > 0). */}
+          <Link
+            href={pathFor(locale, "/store")}
             className="text-tx-mute hover:text-foreground text-sm font-medium transition"
           >
             {t("reviews")}
-          </a>
+          </Link>
           <a
             href="https://t.me/yupay_support"
             target="_blank"

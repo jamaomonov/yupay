@@ -291,38 +291,6 @@
     "guaranteeLabel": "Гарантия возврата",
     "guaranteeNote": "не зачислили — вернём"
   },
-  "reviews": {
-    "eyebrow": "Отзывы",
-    "titleLine1": "Что говорят",
-    "titleLine2": "геймеры.",
-    "score": "4.9/5",
-    "reviewCount": "8 247 отзывов",
-    "alex": {
-      "quote": "Пополнял Стим КЗ — деньги пришли за минуту, цены реально ниже чем у других. Кучу таких сайтов перепробовал, тут самые чёткие ребята.",
-      "name": "Alex_Pro",
-      "meta": "Steam · 2 года с нами"
-    },
-    "mage": {
-      "quote": "Луна пришла моментально! Удобно что можно по UID пополнять, без входа в аккаунт.",
-      "name": "MageGamer",
-      "meta": "Genshin Impact"
-    },
-    "vova": {
-      "quote": "Был вопрос по оплате, саппорт ответил за 30 секунд. Респект.",
-      "name": "Vova_CS2",
-      "meta": "Valorant · Steam"
-    },
-    "chicken": {
-      "quote": "UC залетели за 47 секунд. Всё чисто, без заморочек.",
-      "name": "iLoveChicken",
-      "meta": "PUBG Mobile"
-    },
-    "zero": {
-      "quote": "Уже третий раз продлеваю через yupay. Стабильно, без сюрпризов.",
-      "name": "ZeroTwo",
-      "meta": "Genshin Impact"
-    }
-  },
   "showcase": {
     "eyebrow": "Приложение",
     "titleLine1": "Не сайт ради сайта —",

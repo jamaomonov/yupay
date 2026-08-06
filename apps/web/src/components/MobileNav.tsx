@@ -97,9 +97,9 @@ export function MobileNav() {
               <a href={`${pathFor(current)}#how`} onClick={close} className={linkClass}>
                 {t("how")}
               </a>
-              <a href={`${pathFor(current)}#reviews`} onClick={close} className={linkClass}>
+              <Link href={pathFor(current, "/store")} onClick={close} className={linkClass}>
                 {t("reviews")}
-              </a>
+              </Link>
               <a
                 href="https://t.me/yupay_support"
                 target="_blank"

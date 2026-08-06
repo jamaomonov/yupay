@@ -291,38 +291,6 @@
     "guaranteeLabel": "Qaytarish kafolati",
     "guaranteeNote": "tushmasa — qaytaramiz"
   },
-  "reviews": {
-    "eyebrow": "Sharhlar",
-    "titleLine1": "Geymerlar",
-    "titleLine2": "nima deyishadi.",
-    "score": "4.9/5",
-    "reviewCount": "8 247 sharh",
-    "alex": {
-      "quote": "Steam KZ ni toʻldirdim — pul bir daqiqada keldi, narxlar rostan boshqalardan past. Koʻp shunday saytlarni sinab koʻrdim — bu yerda eng oddiy ishlaydi.",
-      "name": "Alex_Pro",
-      "meta": "Steam · 2 yildan beri"
-    },
-    "mage": {
-      "quote": "Kristallar bir lahzada keldi! UID orqali toʻldirish — akkauntga kirmaslik qulay.",
-      "name": "MageGamer",
-      "meta": "Genshin Impact"
-    },
-    "vova": {
-      "quote": "Toʻlov haqida savol bor edi — yordam 30 soniyada javob berdi. Respect.",
-      "name": "Vova_CS2",
-      "meta": "Valorant · Steam"
-    },
-    "chicken": {
-      "quote": "UC 47 soniyada tushdi. Hammasi toza, muammosiz.",
-      "name": "iLoveChicken",
-      "meta": "PUBG Mobile"
-    },
-    "zero": {
-      "quote": "Yupay orqali uchinchi marta uzaytirdim. Barqaror, kutilmagan holatsiz.",
-      "name": "ZeroTwo",
-      "meta": "Genshin Impact"
-    }
-  },
   "showcase": {
     "eyebrow": "Ilova",
     "titleLine1": "Shunchaki sayt emas —",

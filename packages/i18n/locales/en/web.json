@@ -291,38 +291,6 @@
     "guaranteeLabel": "Refund guarantee",
     "guaranteeNote": "not credited — refunded"
   },
-  "reviews": {
-    "eyebrow": "Reviews",
-    "titleLine1": "What gamers",
-    "titleLine2": "are saying.",
-    "score": "4.9/5",
-    "reviewCount": "8,247 reviews",
-    "alex": {
-      "quote": "Topped up Steam KZ — money landed in a minute, prices really are lower than the others. Tried plenty of these sites; these guys are the cleanest.",
-      "name": "Alex_Pro",
-      "meta": "Steam · 2 years with us"
-    },
-    "mage": {
-      "quote": "Crystals showed up instantly. Love that you can top up by UID without logging in.",
-      "name": "MageGamer",
-      "meta": "Genshin Impact"
-    },
-    "vova": {
-      "quote": "Had a question about payment — support replied in 30 seconds. Respect.",
-      "name": "Vova_CS2",
-      "meta": "Valorant · Steam"
-    },
-    "chicken": {
-      "quote": "UC dropped in 47 seconds. No hassle, no mess.",
-      "name": "iLoveChicken",
-      "meta": "PUBG Mobile"
-    },
-    "zero": {
-      "quote": "Third renewal through yupay. Steady, no surprises.",
-      "name": "ZeroTwo",
-      "meta": "Genshin Impact"
-    }
-  },
   "showcase": {
     "eyebrow": "The app",
     "titleLine1": "Not a site for show —",
