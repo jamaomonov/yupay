@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 
+import { ConfirmPurchaseModal } from "./ConfirmPurchaseModal";
 import { WhereToFindModal } from "./WhereToFindModal";
 
 import type { FormField, ProductDetail, SkuOut } from "@/lib/catalog";
@@ -708,6 +709,27 @@ export function PurchasePanel({
   // card/hint, never glued onto "Оплатить" or the mobile summary line.
   const priceUnavailable = selSkuVariable && variableRate === null;
 
+  // Nothing in the flow ever asked the buyer to look at what they typed before
+  // the money left. `pay()` redirects to the acquirer on the next line, and a
+  // mistyped game id is unrecoverable — the refund policy says so.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // A product whose fields the supplier can verify (`f.check`) has already had
+  // the id resolved to a nickname. Where it cannot — Free Fire and Genshin,
+  // where the supplier reports "no validation required" — the dialog is the
+  // only place a typo can still be caught, so it asks the buyer to attest.
+  const hasVerifiableField = fields.some((f) => Boolean(f.check));
+
+  const confirmRows = [
+    {
+      label: t("confirmItem"),
+      value: [selProduct?.name, selSku?.denomination].filter(Boolean).join(" · "),
+    },
+    ...fields
+      .filter((f) => (form[f.key]?.trim() ?? "") !== "")
+      .map((f) => ({ label: label(f.label), value: form[f.key] ?? "" })),
+  ];
+
   async function pay() {
     if (!selSku || !canPay) return;
     setLoading(true);
@@ -1107,7 +1129,9 @@ export function PurchasePanel({
             <button
               type="button"
               disabled={!canPay}
-              onClick={() => void pay()}
+              onClick={() => {
+                setConfirmOpen(true);
+              }}
               className={buttonStyles({ size: "lg", className: "mt-6 w-full" })}
             >
               {loading ? (
@@ -1153,6 +1177,25 @@ export function PurchasePanel({
         {children && <div className="lg:col-start-1 lg:row-start-2">{children}</div>}
       </div>
 
+      <ConfirmPurchaseModal
+        open={confirmOpen}
+        title={t("confirmTitle")}
+        rows={confirmRows}
+        totalLabel={t("confirmTotal")}
+        totalValue={selectedPriceLabel}
+        warning={t("confirmWarning")}
+        attestation={hasVerifiableField ? undefined : t("confirmAttest")}
+        confirmLabel={t("confirmCta")}
+        cancelLabel={t("confirmCancel")}
+        onConfirm={() => {
+          setConfirmOpen(false);
+          void pay();
+        }}
+        onClose={() => {
+          setConfirmOpen(false);
+        }}
+      />
+
       {/* Mobile sticky checkout bar — brings the total + pay CTA up so the
           customer doesn't scroll past the whole form. Pays when ready, else
           jumps to the form (which shows what's still missing). */}
@@ -1182,7 +1225,7 @@ export function PurchasePanel({
             <button
               type="button"
               onClick={() => {
-                if (canPay) void pay();
+                if (canPay) setConfirmOpen(true);
                 else asideRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
               }}
               className={buttonStyles({

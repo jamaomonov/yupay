@@ -261,7 +261,14 @@
     "hubFaqQ6": "ID boʻyicha toʻldirish xavfsizmi?",
     "hubFaqA6": "Ha. Faqat ochiq oʻyin IDsi yoki login kerak; parol berish shart emas. Toʻlovdan oldin ID toʻgʻri ekanini tekshiring.",
     "feeNote": "Bizning ustamamiz kursga kiritilgan — ustiga alohida yigʻim yoʻq. Yakuniy summa toʻlov paytida qayd etiladi.",
-    "afterPayNote": "Toʻlovdan soʻng sizni buyurtma sahifasiga qaytaramiz. Havola pochtangizga ham keladi."
+    "afterPayNote": "Toʻlovdan soʻng sizni buyurtma sahifasiga qaytaramiz. Havola pochtangizga ham keladi.",
+    "confirmTitle": "Toʻlovdan oldin tekshiring",
+    "confirmTotal": "Toʻlovga",
+    "confirmWarning": "Toʻlovdan keyin maʼlumotlarni oʻzgartirib boʻlmaydi — toʻldirish koʻrsatilgan hisobga tushadi.",
+    "confirmAttest": "Maʼlumotlarni oʻyinda tekshirdim — ular toʻgʻri.",
+    "confirmCta": "Hammasi toʻgʻri, toʻlash",
+    "confirmCancel": "Oʻzgartirish",
+    "confirmItem": "Mahsulot"
   },
   "how": {
     "eyebrow": "Flow",

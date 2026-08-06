@@ -261,7 +261,14 @@
     "hubFaqQ6": "Is topping up by ID safe?",
     "hubFaqA6": "Yes. Only your public player ID or login is needed; you never share a password. Check that the ID is correct before paying.",
     "feeNote": "Our margin is built into the rate — there is no separate fee on top. The total is locked in when you pay.",
-    "afterPayNote": "After payment we bring you back to the order page. The link also arrives by email."
+    "afterPayNote": "After payment we bring you back to the order page. The link also arrives by email.",
+    "confirmTitle": "Check before you pay",
+    "confirmTotal": "Total",
+    "confirmWarning": "These details can't be changed after payment — the top-up goes to the account shown.",
+    "confirmAttest": "I've checked these details in-game and they are correct.",
+    "confirmCta": "All correct, pay",
+    "confirmCancel": "Edit",
+    "confirmItem": "Item"
   },
   "how": {
     "eyebrow": "Flow",
