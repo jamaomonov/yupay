@@ -34,7 +34,7 @@
     "ctaPrimary": "Katalogni ochish",
     "ctaSecondary": "Qanday ishlaydi",
     "ctaTelegram": "Telegramda ochish",
-    "chip1": "Steam uchun 0% komissiya",
+    "chip1": "Ustiga komissiyasiz",
     "chip2": "Click · Payme · Uzum bilan toʻlov",
     "chip3": "24 soat ichida qaytarish"
   },
@@ -94,7 +94,7 @@
   "steamZero": {
     "eyebrow": "Steam · Oʻzbekiston",
     "title": "Steam hisobini 0% komissiya bilan toʻldiring",
-    "subtitle": "Click, Payme va Uzum orqali soʻmda toʻlang. Qancha toʻlasangiz, Steam hisobiga shuncha tushadi — yashirin toʻlovlarsiz.",
+    "subtitle": "Click, Payme va Uzum orqali soʻmda toʻlang. Qancha toʻlasangiz, Steam hisobiga shuncha tushadi — ustiga alohida yigʻim yoʻq.",
     "payLabel": "Soʻmda toʻlov",
     "chipSpeed": "Darhol",
     "chipNoPassword": "Parolsiz",
@@ -259,7 +259,8 @@
     "hubFaqQ5": "Komissiya bormi?",
     "hubFaqA5": "Summa ustiga xizmat komissiyasi yoʻq — 0%. Marjamiz konvertatsiya kursida, toʻlov summasi oldindan koʻrinadi.",
     "hubFaqQ6": "ID boʻyicha toʻldirish xavfsizmi?",
-    "hubFaqA6": "Ha. Faqat ochiq oʻyin IDsi yoki login kerak; parol berish shart emas. Toʻlovdan oldin ID toʻgʻri ekanini tekshiring."
+    "hubFaqA6": "Ha. Faqat ochiq oʻyin IDsi yoki login kerak; parol berish shart emas. Toʻlovdan oldin ID toʻgʻri ekanini tekshiring.",
+    "feeNote": "Bizning ustamamiz kursga kiritilgan — ustiga alohida yigʻim yoʻq. Yakuniy summa toʻlov paytida qayd etiladi."
   },
   "how": {
     "eyebrow": "Flow",

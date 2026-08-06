@@ -34,7 +34,7 @@
     "ctaPrimary": "Browse catalog",
     "ctaSecondary": "How it works",
     "ctaTelegram": "Open in Telegram",
-    "chip1": "0% fee on Steam",
+    "chip1": "No fee on top",
     "chip2": "Pay with Click · Payme · Uzum",
     "chip3": "Refund within 24 h"
   },
@@ -94,7 +94,7 @@
   "steamZero": {
     "eyebrow": "Steam · Uzbekistan",
     "title": "0% fee on Steam top-ups",
-    "subtitle": "Pay in so‘m via Click, Payme and Uzum. What you pay is what lands on your Steam balance — no hidden fees.",
+    "subtitle": "Pay in so‘m via Click, Payme and Uzum. What you pay is what lands on your Steam balance — no separate fee on top.",
     "payLabel": "Pay in so‘m",
     "chipSpeed": "Instant",
     "chipNoPassword": "No password",
@@ -259,7 +259,8 @@
     "hubFaqQ5": "Is there a commission?",
     "hubFaqA5": "There is no service commission on top of your amount — 0%. Our margin is in the conversion rate, and the total to pay is shown in advance.",
     "hubFaqQ6": "Is topping up by ID safe?",
-    "hubFaqA6": "Yes. Only your public player ID or login is needed; you never share a password. Check that the ID is correct before paying."
+    "hubFaqA6": "Yes. Only your public player ID or login is needed; you never share a password. Check that the ID is correct before paying.",
+    "feeNote": "Our margin is built into the rate — there is no separate fee on top. The total is locked in when you pay."
   },
   "how": {
     "eyebrow": "Flow",

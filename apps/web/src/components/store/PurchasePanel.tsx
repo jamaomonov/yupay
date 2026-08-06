@@ -416,6 +416,13 @@ function VariableAmountCard({
                   ${min} — ${max}
                 </dd>
               </div>
+              {/* "Комиссия 0%" is true — nothing is taken off the top-up — but
+                  it sits next to a rate the buyer can compare against their
+                  banking app in ten seconds. Saying where the margin actually
+                  is, right here at the decision, beats having it discovered.
+                  The same explanation existed only inside a collapsed FAQ on
+                  /store. */}
+              <p className="text-tx-dim -mt-1 text-[12px] leading-[17px]">{t("feeNote")}</p>
             </dl>
           </div>
           {errorMessage && <p className="mt-3 text-[12px] text-[#FF6B6B]">{errorMessage}</p>}

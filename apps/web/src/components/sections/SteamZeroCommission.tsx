@@ -62,7 +62,12 @@ function accentZero(title: string) {
  *
  * Business truth encoded in the copy (see i18n `web.steamZero`): 0% means no
  * service fee on top of the 1:1 amount — what the customer pays is what
- * lands on the Steam balance. Never claim an "official rate" here.
+ * lands on the Steam balance. Never claim an "official rate" here, and never
+ * imply the displayed rate matches the central bank's: the margin lives in the
+ * rate, which is why the copy no longer says "без скрытых сборов" and why the
+ * amount card on the brand page states plainly where the margin sits
+ * (`store.feeNote`). A buyer compares against their banking app in seconds;
+ * being the one who told them is the whole point.
  */
 export async function SteamZeroCommission({ locale }: { locale: string }) {
   const t = await getTranslations("web.steamZero");
