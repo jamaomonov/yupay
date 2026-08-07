@@ -16,6 +16,7 @@ import { SkipLink } from "@/components/SkipLink";
 import { SupportFab } from "@/components/SupportFab";
 import { YandexMetrika } from "@/components/YandexMetrika";
 import { routing } from "@/i18n/routing";
+import { apiPreconnectOrigin } from "@/lib/preconnect";
 import { alternates, localeUrl, ogLocale, ROBOTS, SITE } from "@/lib/seo";
 
 import "../globals.css";
@@ -138,11 +139,20 @@ export default async function LocaleLayout({
     url: SITE,
   };
 
+  // Opened while the document is still parsing, so the first API call doesn't
+  // pay for the handshake itself. `crossOrigin="anonymous"` is not decoration:
+  // the connection pool is keyed by credentials mode, and the call this hint
+  // exists for — GET /payments/providers on every product page — is a plain
+  // cross-origin fetch that sends none. A credentialed hint would sit unused
+  // beside a second connection.
+  const apiOrigin = apiPreconnectOrigin(SITE);
+
   return (
     <html
       lang={locale === "uz" ? "uz-Latn" : locale}
       className={`${sans.variable} ${display.variable} ${mono.variable}`}
     >
+      {apiOrigin && <link rel="preconnect" href={apiOrigin} crossOrigin="anonymous" />}
       <body className="bg-bg text-foreground min-h-screen font-sans antialiased">
         <JsonLd data={organizationLd} />
         <JsonLd data={websiteLd} />
