@@ -9,7 +9,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -17,25 +17,12 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from yupay.api.v1 import router as v1_router
+from yupay.core.client_ip import client_ip as _client_ip
 from yupay.core.config import Settings, get_settings
 from yupay.core.db import dispose_engine
 from yupay.core.errors import AppError, app_error_handler
 from yupay.core.logging import configure_logging, get_logger
 from yupay.core.redis import close_redis
-
-
-def _client_ip(request: Request) -> str:
-    """Rate-limit key: the client IP as seen by Caddy.
-
-    In prod the API sits behind Caddy, which appends the real client to
-    ``X-Forwarded-For`` — the direct peer is always the proxy, so the first
-    entry is the customer. The API port is not exposed publicly (compose), so
-    the header can't be spoofed around the proxy.
-    """
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
 
 
 def _build_limiter(settings: Settings) -> Limiter:

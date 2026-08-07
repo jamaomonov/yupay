@@ -11,22 +11,16 @@ import contextlib
 
 from fastapi import Request
 
+from yupay.core.client_ip import client_ip
 from yupay.core.config import get_settings
 from yupay.core.errors import RateLimitedError
 from yupay.core.redis import get_redis
 
 
-def _client_ip(request: Request) -> str:
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
-
-
 async def guard_ip(request: Request, *, bucket: str) -> None:
     """Increment a per-IP counter; raise ``RateLimitedError`` past the threshold."""
     settings = get_settings()
-    ip = _client_ip(request)
+    ip = client_ip(request)
     key = f"auth:ipguard:{bucket}:{ip}"
     redis = get_redis()
     count = 0
