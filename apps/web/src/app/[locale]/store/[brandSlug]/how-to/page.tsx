@@ -120,7 +120,13 @@ export default async function HowToPage({
   const steps = instructions ? parseSteps(instructions) : [];
   const findId = whereToFind(products, locale);
   const faqs = brand.faqs ?? [];
-  const priced = products.filter((p): p is ProductDetail => p !== null && p.skus.length > 0);
+  // Each row below is a term/value pair. A SKU the API priced as null would
+  // render as a lone <dt>: an incomplete <dl> group, and a line that says
+  // nothing under a "Цены" heading. Drop those, then drop products left empty.
+  const priced = products
+    .filter((p): p is ProductDetail => p !== null)
+    .map((p) => ({ ...p, skus: p.skus.filter((s) => s.display_price) }))
+    .filter((p) => p.skus.length > 0);
   const moneyPath = `/store/${brand.slug}`;
 
   // Structured data: a HowTo (when we could split steps) + FAQPage + breadcrumb.
@@ -270,7 +276,7 @@ export default async function HowToPage({
                           className="flex items-center justify-between gap-4 px-4 py-2.5 text-[14px]"
                         >
                           <dt className="text-tx-mute">{name}</dt>
-                          {price && <dd className="font-mono font-semibold">{price}</dd>}
+                          <dd className="font-mono font-semibold">{price}</dd>
                         </div>
                       );
                     })}

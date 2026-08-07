@@ -412,29 +412,35 @@ function VariableAmountCard({
             </div>
 
             {/* right: rate / fee / limit */}
-            <dl className="flex flex-col justify-center gap-3 text-[14px]">
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-tx-mute">{t("rateLabel")}</dt>
-                <dd className="font-mono font-semibold">{rateLine}</dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-tx-mute">{t("feeLabel")}</dt>
-                <dd className="text-primary font-mono font-bold">0%</dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-tx-mute">{t("limitLabel")}</dt>
-                <dd className="font-mono font-semibold">
-                  ${min} — ${max}
-                </dd>
-              </div>
+            <div className="flex flex-col justify-center gap-3 text-[14px]">
+              <dl className="flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-tx-mute">{t("rateLabel")}</dt>
+                  <dd className="font-mono font-semibold">{rateLine}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-tx-mute">{t("feeLabel")}</dt>
+                  <dd className="text-primary font-mono font-bold">0%</dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-tx-mute">{t("limitLabel")}</dt>
+                  <dd className="font-mono font-semibold">
+                    ${min} — ${max}
+                  </dd>
+                </div>
+              </dl>
               {/* "Комиссия 0%" is true — nothing is taken off the top-up — but
                   it sits next to a rate the buyer can compare against their
                   banking app in ten seconds. Saying where the margin actually
                   is, right here at the decision, beats having it discovered.
                   The same explanation existed only inside a collapsed FAQ on
-                  /store. */}
+                  /store.
+                  It lives outside the <dl>: it is prose about the list, not a
+                  term or a definition, and a <p> child makes the whole
+                  description list invalid — assistive tech and agent crawlers
+                  then drop the rate/fee/limit rows entirely. */}
               <p className="text-tx-dim -mt-1 text-[12px] leading-[17px]">{t("feeNote")}</p>
-            </dl>
+            </div>
           </div>
           {/* Tied to the input: a rejected amount that only exists as loose text
               below the card is invisible to anyone who reached the field by

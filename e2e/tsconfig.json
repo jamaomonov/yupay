@@ -1,5 +1,12 @@
 {
   "extends": "@yupay/config-tsconfig/base.json",
-  "compilerOptions": { "noEmit": true, "types": ["node", "@playwright/test"] },
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node", "@playwright/test"],
+    // page.evaluate() callbacks are serialised and run inside the browser, so
+    // specs legitimately reference DOM globals. Without these libs `document`
+    // resolves to an error type and every access through it goes unchecked.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
   "include": ["tests/**/*", "playwright.config.ts"]
 }
