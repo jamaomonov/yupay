@@ -4,6 +4,8 @@
  * project switches to ``@hey-api/openapi-ts``.
  */
 
+import type { UserAdminOut } from "@/features/users/types";
+
 export type RiskFlag = "no_email" | "no_telegram" | "fresh_account" | "many_failed_payments";
 
 export interface TelegramLinkOut {
@@ -16,19 +18,13 @@ export interface TelegramLinkOut {
   last_seen_at: string;
 }
 
-export interface CustomerUserOut {
-  id: string;
-  email: string | null;
-  locale: string;
-  display_currency: string;
-  display_name: string | null;
-  photo_url: string | null;
-  roles: string[];
-  created_at: string;
-  updated_at: string;
-  deleted_at: string | null;
-  telegram_link: TelegramLinkOut | null;
-}
+/**
+ * The overview endpoint serves the very same `UserAdminOut` the users API does
+ * (see `admin/schemas.py`), so this is an alias rather than a second
+ * declaration. It used to be a hand-copied duplicate and had already drifted —
+ * the ban fields existed on the wire and were invisible to this page.
+ */
+export type CustomerUserOut = UserAdminOut;
 
 export interface CustomerOrderSummary {
   id: string;

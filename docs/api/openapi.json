@@ -1014,6 +1014,26 @@
         "title": "BalanceOut",
         "type": "object"
       },
+      "BanUserIn": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /admin/users/{id}/ban``.\n\nThe reason is optional but strongly encouraged: it is the only thing that\nwill explain the suspension to whoever looks at the account in six months,\nincluding the admin who created it.",
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "BanUserIn",
+        "type": "object"
+      },
       "BrandCreate": {
         "additionalProperties": false,
         "description": "Body of ``POST /admin/catalog/brands``.",
@@ -9359,6 +9379,40 @@
       "UserAdminOut": {
         "description": "Admin-side user record with telegram and lifecycle fields.",
         "properties": {
+          "ban_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ban Reason"
+          },
+          "banned_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banned At"
+          },
+          "banned_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banned By"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -16715,6 +16769,75 @@
         ]
       }
     },
+    "/api/v1/admin/users/{user_id}/ban": {
+      "post": {
+        "description": "Ban a customer.\n\nTakes effect on the account's next request: ``auth.current_user`` re-reads\nthe flag every time, so an access token minted seconds ago stops working.\nGuest checkout under the same email is refused too \u2014 see ADR-0045 for what\na ban does and, just as importantly, what it does not do.",
+        "operationId": "admin_ban_user_api_v1_admin_users__user_id__ban_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BanUserIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserAdminOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Suspend an account",
+        "tags": [
+          "admin:users"
+        ]
+      }
+    },
     "/api/v1/admin/users/{user_id}/roles": {
       "patch": {
         "operationId": "admin_set_user_roles_api_v1_admin_users__user_id__roles_patch",
@@ -16778,6 +16901,65 @@
           }
         },
         "summary": "Replace a user's role list (empty list = demote to plain user)",
+        "tags": [
+          "admin:users"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{user_id}/unban": {
+      "post": {
+        "description": "Restore access. Idempotent on an account that is not banned.",
+        "operationId": "admin_unban_user_api_v1_admin_users__user_id__unban_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserAdminOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lift a suspension",
         "tags": [
           "admin:users"
         ]

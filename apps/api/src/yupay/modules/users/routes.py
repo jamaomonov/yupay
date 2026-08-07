@@ -22,6 +22,7 @@ from yupay.modules.auth.deps import current_user
 from yupay.modules.users import service as svc
 from yupay.modules.users.models import User
 from yupay.modules.users.schemas import (
+    BanUserIn,
     UpdateMeIn,
     UserAdminListOut,
     UserAdminOut,
@@ -106,4 +107,41 @@ async def admin_set_user_roles(
     _admin: Annotated[User, Depends(require_admin)],
 ) -> UserAdminOut:
     user = await svc.set_user_roles(db, user_id, roles=body.roles)
+    return UserAdminOut.model_validate(user)
+
+
+@admin_router.post(
+    "/{user_id}/ban",
+    response_model=UserAdminOut,
+    summary="Suspend an account",
+)
+async def admin_ban_user(
+    user_id: str,
+    body: BanUserIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+) -> UserAdminOut:
+    """Ban a customer.
+
+    Takes effect on the account's next request: ``auth.current_user`` re-reads
+    the flag every time, so an access token minted seconds ago stops working.
+    Guest checkout under the same email is refused too — see ADR-0045 for what
+    a ban does and, just as importantly, what it does not do.
+    """
+    user = await svc.ban_user(db, user_id, by_admin_id=admin.id, reason=body.reason)
+    return UserAdminOut.model_validate(user)
+
+
+@admin_router.post(
+    "/{user_id}/unban",
+    response_model=UserAdminOut,
+    summary="Lift a suspension",
+)
+async def admin_unban_user(
+    user_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+) -> UserAdminOut:
+    """Restore access. Idempotent on an account that is not banned."""
+    user = await svc.unban_user(db, user_id)
     return UserAdminOut.model_validate(user)

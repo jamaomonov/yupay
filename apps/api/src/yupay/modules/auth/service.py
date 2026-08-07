@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.config import Settings, get_settings
 from yupay.core.errors import (
+    AccountSuspendedError,
     ConflictError,
     EmailUnverifiedError,
     ForbiddenError,
@@ -88,7 +89,16 @@ async def _open_session(
     ip_hash: str | None = None,
     ua_hash: str | None = None,
 ) -> SessionTokens:
-    """Create a fresh ``auth_sessions`` row and mint matching access + refresh."""
+    """Create a fresh ``auth_sessions`` row and mint matching access + refresh.
+
+    Every way into an account converges here — password, both Telegram flows,
+    dev login, and refresh rotation — which makes it the one place worth
+    checking the ban. Handing a suspended account a token that ``current_user``
+    would reject on the next call is worse than refusing here: the customer sees
+    a working login followed by a broken app, instead of being told why.
+    """
+    if user.banned_at is not None:
+        raise AccountSuspendedError("this account has been suspended")
     refresh = new_refresh_token()
     session_id = new_id()
     session = AuthSession(
@@ -584,6 +594,12 @@ async def current_user(
     user = await get_user_by_id(db, claims.sub)
     if user is None:
         raise NotFoundError("user not found")
+    # Checked here rather than by revoking sessions on ban: this is the single
+    # gate every authenticated request already passes through, so a ban takes
+    # effect on the customer's very next call — including with an access token
+    # minted seconds earlier. One mechanism, nothing to keep in sync (ADR-0045).
+    if user.banned_at is not None:
+        raise AccountSuspendedError("this account has been suspended")
     return user
 
 

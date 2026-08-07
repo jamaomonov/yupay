@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Header, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
-from yupay.core.errors import UnauthorizedError, ValidationError
+from yupay.core.errors import AccountSuspendedError, UnauthorizedError, ValidationError
 from yupay.core.idempotency import IDEMPOTENCY_HEADER, MIN_IDEMPOTENCY_KEY_LENGTH
 from yupay.core.ids import new_id
 from yupay.modules.admin.api import require_admin
@@ -35,6 +35,7 @@ from yupay.modules.orders.schemas import (
 )
 from yupay.modules.orders.service import Actor, build_item_display, succeeded_provider_for
 from yupay.modules.users.models import User
+from yupay.modules.users.service import is_email_banned
 
 
 def _attach_displays(order_out: OrderOut, order: Order, locale: str = "ru") -> None:
@@ -100,6 +101,12 @@ async def _resolve_actor(
         expected = email_hash(normalised, get_settings().auth_email_pepper)
         if claims.email_hash != expected:
             raise UnauthorizedError("guest token / email mismatch")
+        # Guest checkout creates no user row, so without this a suspended
+        # customer walks straight past the ban by not logging in. It closes the
+        # door on the banned identity, not on the person — another address still
+        # works, and ADR-0045 says so rather than implying otherwise.
+        if await is_email_banned(db, normalised):
+            raise AccountSuspendedError("this account has been suspended")
         return Actor(user_id=None, email=normalised)
 
     raise UnauthorizedError("invalid authorization scheme")

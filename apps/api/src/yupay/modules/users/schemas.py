@@ -84,6 +84,9 @@ class UserAdminOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None
+    banned_at: datetime | None = None
+    ban_reason: str | None = None
+    banned_by: str | None = None
     telegram_link: TelegramLinkOut | None
 
     _coerce_roles = field_validator("roles", mode="before")(_coerce_roles)
@@ -94,6 +97,19 @@ class UserAdminListOut(BaseModel):
 
     items: list[UserAdminOut]
     total: int
+
+
+class BanUserIn(BaseModel):
+    """Body of ``POST /admin/users/{id}/ban``.
+
+    The reason is optional but strongly encouraged: it is the only thing that
+    will explain the suspension to whoever looks at the account in six months,
+    including the admin who created it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str | None = Field(default=None, max_length=500)
 
 
 class UserRolesIn(BaseModel):

@@ -12,12 +12,18 @@ export interface UserAdminOut {
   id: string;
   email: string | null;
   locale: string;
+  display_currency: string;
   display_name: string | null;
   photo_url: string | null;
   roles: string[];
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+  /** Set = the account is suspended. A timestamp rather than a flag so the
+   *  admin can see since when without opening the audit trail. */
+  banned_at: string | null;
+  ban_reason: string | null;
+  banned_by: string | null;
   telegram_link: TelegramLinkOut | null;
 }
 

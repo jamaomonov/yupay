@@ -15,6 +15,7 @@ import { Button } from "@yupay/ui";
 import {
   AlertTriangle,
   ArrowUpRight,
+  Ban,
   CalendarClock,
   Globe,
   Mail,
@@ -90,6 +91,27 @@ export function CustomerPage() {
     },
   });
 
+  // Ban / unban. Two endpoints rather than one toggle with a boolean: the
+  // admin's intent is unambiguous at the call site, and an accidental replay
+  // of "ban" cannot be read as "unban".
+  const setBan = useMutation<UserAdminOut, ApiError, string | null>({
+    mutationFn: (reason) =>
+      reason === null
+        ? api<UserAdminOut>(`/api/v1/admin/users/${userId}/unban`, { method: "POST" })
+        : api<UserAdminOut>(`/api/v1/admin/users/${userId}/ban`, {
+            method: "POST",
+            body: JSON.stringify({ reason: reason || null }),
+          }),
+    onSuccess: (updated) => {
+      toast.success(updated.banned_at ? "Доступ заблокирован." : "Доступ восстановлен.");
+      void qc.invalidateQueries({ queryKey: qk.customerOverview(userId) });
+      void qc.invalidateQueries({ queryKey: ["admin", "users"] });
+    },
+    onError: (err) => {
+      toast.error(formatApiError(err));
+    },
+  });
+
   if (query.isError) {
     const status = query.error.status;
     return (
@@ -120,6 +142,7 @@ export function CustomerPage() {
     void navigate(`/orders/${orderId}`);
   };
   const isAdmin = data.user.roles.includes("admin");
+  const isBanned = data.user.banned_at !== null;
   return (
     <div className="space-y-4">
       <nav
@@ -163,6 +186,20 @@ export function CustomerPage() {
               setRoles.mutate(next);
             }}
             rolePending={setRoles.isPending}
+            onToggleBan={() => {
+              const name = data.user.display_name ?? data.user.email ?? data.user.id.slice(0, 8);
+              if (isBanned) {
+                if (!window.confirm(`Разблокировать ${name}?`)) return;
+                setBan.mutate(null);
+                return;
+              }
+              // Prompt, not confirm: the reason is the only thing that will
+              // explain this suspension to whoever opens the account later.
+              const reason = window.prompt(`Заблокировать ${name}. Причина:`, "");
+              if (reason === null) return;
+              setBan.mutate(reason.trim());
+            }}
+            banPending={setBan.isPending}
           />
           <WalletBalances balances={data.wallet_balances} />
           <WalletHistory
@@ -180,16 +217,21 @@ function UserHeader({
   data,
   onToggleAdmin,
   rolePending,
+  onToggleBan,
+  banPending,
 }: {
   data: CustomerOverviewOut;
   onToggleAdmin: () => void;
   rolePending: boolean;
+  onToggleBan: () => void;
+  banPending: boolean;
 }) {
   const u = data.user;
   const tg = u.telegram_link;
   const initials = (u.display_name ?? u.email ?? "??").slice(0, 2).toUpperCase();
   const telegramUrl = tg?.tg_username ? `https://t.me/${tg.tg_username}` : null;
   const isAdmin = u.roles.includes("admin");
+  const isBanned = u.banned_at !== null;
 
   return (
     <header className="rounded-lg border bg-[var(--bg-surface)] p-5 shadow-[var(--shadow-sm)]">
@@ -333,6 +375,43 @@ function UserHeader({
           {rolePending ? "Сохраняем…" : isAdmin ? "Снять админа" : "Выдать админа"}
         </Button>
       </div>
+
+      {/* Suspension. Its own row rather than sharing the roles one: banning cuts
+          a paying customer off from the service, and a button that consequential
+          should not sit inches from an unrelated toggle. An admin cannot be
+          banned (the API refuses), so the control is hidden rather than shown
+          only to fail. */}
+      {!isAdmin && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-subtle)] pt-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <Ban
+              className={
+                isBanned ? "size-4 text-[var(--danger)]" : "size-4 text-[var(--text-secondary)]"
+              }
+              aria-hidden
+            />
+            <div className="min-w-0">
+              <span className="text-sm font-medium">
+                {isBanned ? "Доступ заблокирован" : "Доступ к сервису"}
+              </span>
+              {isBanned && (
+                <p className="mt-0.5 truncate text-xs text-[var(--text-secondary)]">
+                  {formatDate(u.banned_at ?? "")}
+                  {u.ban_reason ? ` · ${u.ban_reason}` : ""}
+                </p>
+              )}
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant={isBanned ? "primary" : "danger"}
+            disabled={banPending}
+            onClick={onToggleBan}
+          >
+            {banPending ? "Сохраняем…" : isBanned ? "Разблокировать" : "Заблокировать"}
+          </Button>
+        </div>
+      )}
     </header>
   );
 }

@@ -69,6 +69,20 @@ class EmailUnverifiedError(AppError):
     title = "Email not verified"
 
 
+class AccountSuspendedError(AppError):
+    """The account has been banned by an administrator.
+
+    403 and not 401 on purpose: both frontends treat 401 as "the session
+    expired" and answer it by refreshing, which for a banned account would loop
+    and then log the customer out with no explanation at all. A distinct
+    ``type_uri`` lets the storefront say what actually happened.
+    """
+
+    status_code = 403
+    type_uri = "https://app.yupay.uz/errors/account-suspended"
+    title = "Account suspended"
+
+
 class RateLimitedError(AppError):
     """Request rate limit exceeded — client should slow down."""
 

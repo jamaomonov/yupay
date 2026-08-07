@@ -33,6 +33,10 @@ supplier (`source`) and internal/external ids (`external_id`,
 `amount_units`) are never exposed to the customer — admins see the full row via
 `/admin/fulfillment`.
 
+**Ban reason.** `users.ban_reason` is admin-authored free text about a customer.
+It is returned only on admin routes, never to the customer or to any public
+surface, and is cleared when the suspension is lifted (ADR-0045).
+
 ## What we never log
 
 - Email values

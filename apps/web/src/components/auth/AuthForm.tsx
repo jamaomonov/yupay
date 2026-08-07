@@ -11,6 +11,7 @@ import { z } from "zod";
 import { TelegramLoginButton } from "./TelegramLoginButton";
 
 import { buttonStyles } from "@/lib/button";
+import { ApiError } from "@/lib/client";
 import { pathFor } from "@/lib/seo";
 
 const baseSchema = z.object({
@@ -58,7 +59,14 @@ export function AuthForm({
         setError(null);
         try {
           await onSubmit(v);
-        } catch {
+        } catch (err) {
+          // A suspended account must not be told "wrong email or password":
+          // the customer would conclude they mistyped it and go round the
+          // password-reset loop instead of contacting support.
+          if (err instanceof ApiError && err.type?.endsWith("/account-suspended")) {
+            setError(t("suspendedError"));
+            return;
+          }
           setError(t(mode === "login" ? "loginError" : "registerError"));
         }
       })}

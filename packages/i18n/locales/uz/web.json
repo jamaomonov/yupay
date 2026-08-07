@@ -125,6 +125,7 @@
     "confirmPassword": "Parolni tasdiqlang",
     "passwordMismatch": "Parollar mos kelmadi",
     "loginError": "Elektron pochta yoki parol notoʻgʻri",
+    "suspendedError": "Akkaunt vaqtincha bloklangan. Bu xato deb hisoblasangiz, qoʻllab-quvvatlash xizmatiga yozing.",
     "registerError": "Akkaunt yaratib boʻlmadi. Qayta urinib koʻring.",
     "verifyRequiredTitle": "Elektron pochtangizni tasdiqlang",
     "verifyRequiredBody": "{email} manziliga havola yubordik. Roʻyxatdan oʻtishni yakunlash uchun uni bosing.",

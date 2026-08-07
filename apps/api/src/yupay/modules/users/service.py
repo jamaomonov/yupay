@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from yupay.core.clock import now
-from yupay.core.errors import NotFoundError
+from yupay.core.errors import NotFoundError, ValidationError
 from yupay.core.ids import new_id
 from yupay.modules.auth.telegram import TelegramUser
 from yupay.modules.users.models import TelegramLink, User
@@ -136,6 +136,67 @@ async def get_user_admin(session: AsyncSession, user_id: str) -> User:
     if row is None:
         raise NotFoundError("user not found")
     return row
+
+
+async def ban_user(
+    session: AsyncSession, user_id: str, *, by_admin_id: str, reason: str | None = None
+) -> User:
+    """Suspend an account. Idempotent — re-banning refreshes reason and actor.
+
+    Two guards, both about not letting the tool turn on its operators: an admin
+    cannot ban themselves (the obvious way to lose the only admin account), and
+    cannot ban another admin (a fight between two admins should be settled in
+    the database by a human, not by whoever clicks first).
+
+    Sessions are left alone deliberately. ``auth.current_user`` re-reads the ban
+    on every authenticated request, so access dies at once anyway; revoking
+    sessions here would add a second mechanism to keep in sync for no gain.
+    """
+    user = await get_user_admin(session, user_id)
+    if user.id == by_admin_id:
+        raise ValidationError("an admin cannot ban themselves")
+    if "admin" in (user.roles or []):
+        raise ValidationError(
+            "cannot ban an admin — remove the admin role first",
+            extra={"user_id": user_id},
+        )
+    user.banned_at = now()
+    user.ban_reason = (reason or "").strip()[:500] or None
+    user.banned_by = by_admin_id
+    user.updated_at = now()
+    await session.flush()
+    return user
+
+
+async def unban_user(session: AsyncSession, user_id: str) -> User:
+    """Lift a suspension. Idempotent — unbanning an active account is a no-op.
+
+    Clears the reason and actor along with the timestamp: keeping them would
+    leave a record that reads like an active ban to anyone scanning the row.
+    """
+    user = await get_user_admin(session, user_id)
+    user.banned_at = None
+    user.ban_reason = None
+    user.banned_by = None
+    user.updated_at = now()
+    await session.flush()
+    return user
+
+
+async def is_email_banned(session: AsyncSession, email: str) -> bool:
+    """Whether ``email`` belongs to a suspended account.
+
+    Guest checkout creates no user row, so a ban would otherwise be lifted by
+    simply not logging in. This closes that door for the banned identity — not
+    for the person, who can use another address. See ADR-0045: a ban stops an
+    account, and pretending otherwise is how a control becomes theatre.
+    """
+    stmt = select(User.id).where(
+        User.email == email.strip().lower(),
+        User.banned_at.is_not(None),
+        User.deleted_at.is_(None),
+    )
+    return (await session.execute(stmt)).first() is not None
 
 
 # Roles we accept on a user record. Anything else is rejected at the route layer.

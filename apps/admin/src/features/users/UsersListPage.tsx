@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Button, Input } from "@yupay/ui";
-import { ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { Ban, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -105,8 +105,16 @@ export function UsersListPage() {
     {
       key: "roles",
       header: "Роли",
+      // A suspension outranks the role badge here: an operator scanning the
+      // list needs to know the account is cut off before anything else about
+      // it, and a banned account has no role worth showing alongside.
       render: (u) =>
-        u.roles.length === 0 ? (
+        u.banned_at !== null ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-[var(--danger-soft)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[var(--danger-fg)]">
+            <Ban className="size-3" aria-hidden />
+            Заблокирован
+          </span>
+        ) : u.roles.length === 0 ? (
           <span className="text-xs text-[var(--text-secondary)]">user</span>
         ) : (
           <div className="flex flex-wrap gap-1">

@@ -50,6 +50,17 @@ class User(Base):
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # --- Ban (ADR-0045) ---
+    # A timestamp rather than a boolean: "since when" is the first thing asked
+    # when a customer disputes a suspension, and it costs nothing to keep.
+    banned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ban_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Who pressed the button. A ban cuts off a paying customer, so it should
+    # never be an anonymous act. SET NULL: the record outlives the admin account.
+    banned_by: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
     telegram_link: Mapped[TelegramLink | None] = relationship(
         back_populates="user",
         uselist=False,
