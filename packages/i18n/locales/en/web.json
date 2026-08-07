@@ -385,16 +385,20 @@
     },
     "privacy": {
       "title": "Privacy Policy",
-      "updated": "June 2026",
+      "updated": "August 2026",
       "intro": "We collect the minimum data needed to fulfil your order and never sell it to third parties.",
       "sections": [
         {
           "h": "What we collect",
-          "p": "Email (for the receipt and order status), the game ID or account identifier, and payment data. Card details are handled by the payment provider — we do not store them."
+          "p": "Email (for the receipt and order status), the game ID or account identifier, and payment data. Card details are handled by the payment provider — we do not store them. When you place an order we also record technical details of the request: IP address, browser information, timezone, language and screen size."
         },
         {
           "h": "How we use it",
           "p": "Only to fulfil the order, provide support and send the receipt. We do not share data for advertising."
+        },
+        {
+          "h": "Why we keep technical data",
+          "p": "The IP address and browser details are stored alongside the order so we can confirm it was genuine if the cardholder disputes the payment. Our payment providers require this: without such records a dispute is decided against us automatically. The data is visible to administrators only, is never used for advertising, and is deleted automatically 600 days after the order."
         },
         {
           "h": "Sharing",

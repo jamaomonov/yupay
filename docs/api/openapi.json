@@ -2525,6 +2525,50 @@
         "title": "ClaimOut",
         "type": "object"
       },
+      "ClientHints": {
+        "additionalProperties": false,
+        "description": "Passive signals a browser can report about itself.\n\nEvery field is optional and every field is caller-supplied, so nothing here\nis proof on its own \u2014 it is corroboration, and it is bounded in length so a\ncrafted payload cannot use the evidence table as storage. Deliberately no\ncanvas/font/audio probing: those identify a device across sites, which is a\ndifferent (and consent-bearing) activity from describing this one request.",
+        "properties": {
+          "locale": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          },
+          "screen": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Screen"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "title": "ClientHints",
+        "type": "object"
+      },
       "CodeAccessIn": {
         "description": "Request a fresh magic link to view a guest order's delivered codes.",
         "properties": {
@@ -3334,6 +3378,86 @@
           "cost_usdt"
         ],
         "title": "DenomImportIn",
+        "type": "object"
+      },
+      "EvidencePackOut": {
+        "description": "What gets handed to the acquirer when a transaction is disputed.\n\nShaped for that use: the capture, plus the order's full timeline, so the\nanswer to \"when was this delivered and to whom\" is one request rather than\nan admin stitching screens together against a 5-day clock.",
+        "properties": {
+          "capture": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderEvidenceOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "delivered_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivered At"
+          },
+          "order_id": {
+            "title": "Order Id",
+            "type": "string"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "timeline": {
+            "items": {
+              "$ref": "#/components/schemas/yupay__modules__evidence__schemas__OrderEventOut"
+            },
+            "title": "Timeline",
+            "type": "array"
+          },
+          "total_charged": {
+            "title": "Total Charged",
+            "type": "string"
+          }
+        },
+        "required": [
+          "order_id",
+          "status",
+          "total_charged",
+          "currency",
+          "created_at",
+          "paid_at",
+          "delivered_at",
+          "capture",
+          "timeline"
+        ],
+        "title": "EvidencePackOut",
         "type": "object"
       },
       "FaqCreate": {
@@ -4636,7 +4760,7 @@
           },
           "events": {
             "items": {
-              "$ref": "#/components/schemas/OrderEventOut"
+              "$ref": "#/components/schemas/yupay__modules__orders__schemas__OrderEventOut"
             },
             "title": "Events",
             "type": "array"
@@ -4777,6 +4901,16 @@
         "additionalProperties": false,
         "description": "Body of ``POST /api/v1/orders``.",
         "properties": {
+          "client_hints": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClientHints"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "currency": {
             "default": "USD",
             "maxLength": 8,
@@ -4812,10 +4946,10 @@
         "title": "OrderCreate",
         "type": "object"
       },
-      "OrderEventOut": {
-        "description": "One audit row.",
+      "OrderEvidenceOut": {
+        "description": "Admin-only view of one order's capture. Never returned on public routes.",
         "properties": {
-          "actor": {
+          "accept_language": {
             "anyOf": [
               {
                 "type": "string"
@@ -4824,30 +4958,60 @@
                 "type": "null"
               }
             ],
-            "title": "Actor"
+            "title": "Accept Language"
+          },
+          "client_hints": {
+            "additionalProperties": true,
+            "title": "Client Hints",
+            "type": "object"
           },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
             "type": "string"
           },
-          "kind": {
-            "title": "Kind",
+          "ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip"
+          },
+          "order_id": {
+            "title": "Order Id",
             "type": "string"
           },
-          "payload": {
-            "additionalProperties": true,
-            "title": "Payload",
-            "type": "object"
+          "purge_after": {
+            "format": "date-time",
+            "title": "Purge After",
+            "type": "string"
+          },
+          "user_agent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Agent"
           }
         },
         "required": [
-          "kind",
-          "payload",
-          "actor",
-          "created_at"
+          "order_id",
+          "ip",
+          "user_agent",
+          "accept_language",
+          "client_hints",
+          "created_at",
+          "purge_after"
         ],
-        "title": "OrderEventOut",
+        "title": "OrderEvidenceOut",
         "type": "object"
       },
       "OrderFailIn": {
@@ -9548,6 +9712,82 @@
           "signature_ok"
         ],
         "title": "WebhookTriageRow",
+        "type": "object"
+      },
+      "yupay__modules__evidence__schemas__OrderEventOut": {
+        "description": "One entry of the order's own timeline, replayed into the pack.",
+        "properties": {
+          "actor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          }
+        },
+        "required": [
+          "kind",
+          "actor",
+          "created_at",
+          "payload"
+        ],
+        "title": "OrderEventOut",
+        "type": "object"
+      },
+      "yupay__modules__orders__schemas__OrderEventOut": {
+        "description": "One audit row.",
+        "properties": {
+          "actor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          }
+        },
+        "required": [
+          "kind",
+          "payload",
+          "actor",
+          "created_at"
+        ],
+        "title": "OrderEventOut",
         "type": "object"
       }
     }
@@ -14283,6 +14523,65 @@
         "summary": "Admin List Order Deliveries",
         "tags": [
           "admin:orders"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/{order_id}/evidence": {
+      "get": {
+        "description": "Return the capture plus the order's full timeline.",
+        "operationId": "admin_order_evidence_api_v1_admin_orders__order_id__evidence_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidencePackOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Chargeback evidence pack for one order (admin)",
+        "tags": [
+          "admin:evidence"
         ]
       }
     },

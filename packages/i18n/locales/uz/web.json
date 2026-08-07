@@ -385,16 +385,20 @@
     },
     "privacy": {
       "title": "Maxfiylik siyosati",
-      "updated": "2026-yil iyun",
+      "updated": "2026-yil avgust",
       "intro": "Buyurtmani bajarish uchun zarur boʻlgan minimal maʼlumotni yigʻamiz va uni uchinchi shaxslarga sotmaymiz.",
       "sections": [
         {
           "h": "Qanday maʼlumot yigʻamiz",
-          "p": "Email (chek va buyurtma holati uchun), oʻyin ID yoki akkaunt identifikatori va toʻlov maʼlumotlari. Karta rekvizitlarini toʻlov provayderi qayta ishlaydi — biz ularni saqlamaymiz."
+          "p": "Email (chek va buyurtma holati uchun), oʻyin ID yoki akkaunt identifikatori va toʻlov maʼlumotlari. Karta rekvizitlarini toʻlov provayderi qayta ishlaydi — biz ularni saqlamaymiz. Buyurtma rasmiylashtirilganda soʻrovning texnik maʼlumotlarini ham qayd etamiz: IP-manzil, brauzer haqidagi maʼlumot, vaqt mintaqasi, til va ekran oʻlchami."
         },
         {
           "h": "Qanday foydalanamiz",
           "p": "Faqat buyurtmani bajarish, qoʻllab-quvvatlash va chek yuborish uchun. Maʼlumotlarni reklama maqsadida bermaymiz."
+        },
+        {
+          "h": "Texnik maʼlumotlarni nima uchun saqlaymiz",
+          "p": "IP-manzil va brauzer maʼlumotlari buyurtma bilan birga saqlanadi — toʻlovni karta egasi bahsga qoʻysa, buyurtma haqiqiyligini tasdiqlash uchun. Buni toʻlov tashkilotlarining qoidalari talab qiladi: bunday dalillarsiz bahs avtomatik ravishda bizning foydamizga hal qilinmaydi. Bu maʼlumotlar faqat administratorlarga koʻrinadi, reklama uchun ishlatilmaydi va buyurtmadan 600 kun oʻtgach avtomatik oʻchiriladi."
         },
         {
           "h": "Uzatish",

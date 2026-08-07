@@ -15,6 +15,7 @@ import type { FormField, ProductDetail, SkuOut } from "@/lib/catalog";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { getAccessToken } from "@/lib/client";
+import { collectClientHints } from "@/lib/client-hints";
 import { mintGuestToken } from "@/lib/guest";
 import { saveGuestOrder } from "@/lib/guest-orders";
 import { isOptimizable } from "@/lib/image";
@@ -792,9 +793,16 @@ export function PurchasePanel({
         fulfillment_data: form,
         ...(selSkuVariable && parsedAmount !== null ? { amount_usd: parsedAmount.toFixed(2) } : {}),
       };
-      const orderBody = isLoggedIn
-        ? { currency: "UZS", items: [orderItem] }
-        : { currency: "UZS", guest_email: email, items: [orderItem] };
+      // Collected at submit, not at mount: the value that matters is the one in
+      // force when the purchase was made. Omitted entirely when the browser
+      // yields nothing, so the server stores {} rather than a bag of nulls.
+      const hints = collectClientHints();
+      const orderBody = {
+        currency: "UZS",
+        items: [orderItem],
+        ...(isLoggedIn ? {} : { guest_email: email }),
+        ...(hints ? { client_hints: hints } : {}),
+      };
 
       const ord = await fetch(`${API}/api/v1/orders`, {
         method: "POST",

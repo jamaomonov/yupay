@@ -155,6 +155,18 @@ class Settings(BaseSettings):
     )
     auth_ip_guard_window_seconds: int = Field(default=60)
 
+    # --- Chargeback evidence (ADR-0044) ---
+    evidence_retention_days: int = Field(
+        default=600,
+        description=(
+            "Days an order's request-context capture is kept before the purge job "
+            "deletes it. Payme's Общие условия п. 6.3.2 require transaction documents "
+            "for 540 days; the extra 60 absorb a late dispute landing on day 539 and "
+            "the days it then takes to answer. Raising this extends how long unhashed "
+            "IPs live — see ADR-0044 before changing it."
+        ),
+    )
+
     # Public URL of the miniapp — embedded into the inline ``WebAppInfo``
     # button the bot attaches to /start. Falls back to the dev Caddy host
     # when unset so a fresh checkout boots without env tweaks.

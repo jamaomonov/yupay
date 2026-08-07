@@ -20,6 +20,7 @@ from yupay.modules.admin.api import require_admin
 from yupay.modules.auth.deps import current_user
 from yupay.modules.auth.dev_login import DEV_ADMIN_ID
 from yupay.modules.auth.jwt import verify as verify_jwt
+from yupay.modules.evidence.service import capture_for_order
 from yupay.modules.fulfillment.schemas import DeliveryListOut, DeliveryOut
 from yupay.modules.orders import service as svc
 from yupay.modules.orders.models import Order, OrderEvent
@@ -128,6 +129,15 @@ async def create_order_route(
         body,
         actor=actor,
         idempotency_key=idempotency_key,
+    )
+    # After the order exists, so the capture can never be the reason a sale
+    # fails; idempotent, so a retried Idempotency-Key keeps the original
+    # context rather than overwriting it with the retry's. See ADR-0044.
+    await capture_for_order(
+        db,
+        order_id=order.id,
+        request=request,
+        hints=body.client_hints,
     )
     return _to_order_out(order)
 

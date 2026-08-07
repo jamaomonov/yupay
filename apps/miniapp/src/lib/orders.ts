@@ -10,6 +10,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tansta
 
 import { ApiError, apiGet, apiPost, newIdempotencyKey } from "./api";
 import { useMe } from "./auth";
+import { collectClientHints } from "./client-hints";
 import { getActiveLocale, translate, translatePlural } from "./i18n/core";
 import { isAppActive } from "./telegram";
 
@@ -272,10 +273,14 @@ export async function performCheckout(
       });
     }
   }
+  // Collected at submit so the record reflects the moment of purchase, and
+  // omitted entirely when the webview yields nothing (ADR-0044).
+  const hints = collectClientHints();
   const order = await apiPost<OrderOut>(
     "/api/v1/orders",
     {
       currency,
+      ...(hints ? { client_hints: hints } : {}),
       items: [
         {
           sku_id: skuId,

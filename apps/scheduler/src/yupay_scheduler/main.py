@@ -38,6 +38,7 @@ from yupay_scheduler.jobs import (
     expire_orders,
     g2b_reconcile,
     payme_timeout,
+    purge_evidence,
     recompute_review_stats,
     refresh_supplier_prices,
     uzum_timeout,
@@ -60,6 +61,7 @@ def build_scheduler() -> AsyncIOScheduler:
     expire_orders.register(scheduler)
     g2b_reconcile.register(scheduler)
     payme_timeout.register(scheduler)
+    purge_evidence.register(scheduler)
     recompute_review_stats.register(scheduler)
     refresh_supplier_prices.register(scheduler)
     uzum_timeout.register(scheduler)

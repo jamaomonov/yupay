@@ -15,6 +15,7 @@ from yupay.modules.broadcasts.api import admin_router as broadcasts_admin_router
 from yupay.modules.catalog.admin_routes import router as catalog_admin_router
 from yupay.modules.catalog.api import router as catalog_router
 from yupay.modules.click.api import router as click_router
+from yupay.modules.evidence.api import admin_router as evidence_admin_router
 from yupay.modules.fulfillment.api import admin_router as fulfillment_admin_router
 from yupay.modules.fulfillment.api import router as fulfillment_router
 from yupay.modules.fx.api import admin_router as fx_admin_router
@@ -50,6 +51,7 @@ router.include_router(audit_admin_router)
 router.include_router(broadcasts_admin_router)
 router.include_router(catalog_router)
 router.include_router(catalog_admin_router)
+router.include_router(evidence_admin_router)
 router.include_router(fulfillment_router)
 router.include_router(fulfillment_admin_router)
 router.include_router(fx_router)

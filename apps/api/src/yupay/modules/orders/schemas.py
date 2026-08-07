@@ -8,6 +8,11 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+# Imported from ``schemas`` rather than the module's ``api`` on purpose: ``api``
+# pulls in ``routes``, and a schema module reaching for a router is how import
+# cycles start. ``ClientHints`` is a leaf value object either way.
+from yupay.modules.evidence.schemas import ClientHints
+
 OrderStatus = Literal[
     "pending_payment",
     "paid",
@@ -45,6 +50,10 @@ class OrderCreate(BaseModel):
     items: list[OrderItemIn] = Field(min_length=1, max_length=20)
     # Required for guest checkout; ignored when the caller is an authenticated user.
     guest_email: EmailStr | None = None
+    # Passive browser signals kept for chargeback defence (ADR-0044). Optional
+    # on purpose: a client that sends nothing still gets to buy, it just leaves
+    # a thinner record behind.
+    client_hints: ClientHints | None = None
 
 
 class OrderItemDisplay(BaseModel):
