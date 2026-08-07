@@ -27,6 +27,9 @@ export function PhoneShowcase() {
         width={2000}
         height={1964}
         priority
+        // Measured as the LCP element of the home page. `priority` does not set
+        // the request priority on its own — see the note on the brand hero.
+        fetchPriority="high"
         sizes="(max-width: 768px) 92vw, 580px"
         className="relative h-auto w-full drop-shadow-[0_45px_90px_rgba(0,0,0,0.6)]"
       />

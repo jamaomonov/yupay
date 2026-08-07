@@ -231,6 +231,12 @@ export default async function BrandPage({
               alt={brand.name}
               fill
               priority
+              // `priority` alone does not raise the request's priority: in Next
+              // 15 it only disables lazy loading and emits the preload, and the
+              // preload copies `fetchPriority` straight from this prop. Without
+              // it the LCP image queues behind the fonts and scripts already in
+              // flight — which is exactly what Lighthouse reports here.
+              fetchPriority="high"
               unoptimized={!isOptimizable(heroImg)}
               sizes="(max-width: 1024px) 100vw, 1040px"
               className="object-cover"
