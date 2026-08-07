@@ -19,6 +19,7 @@ import { Stars } from "@/components/store/Stars";
 import { WriteReviewPanel } from "@/components/store/WriteReviewPanel";
 import { routing } from "@/i18n/routing";
 import { getBrandDetail, getBrandSlugs, getProductDetail, type ProductDetail } from "@/lib/catalog";
+import { isOptimizable } from "@/lib/image";
 import { getBrandReviews, type ReviewPage } from "@/lib/reviews";
 import {
   alternates,
@@ -31,7 +32,6 @@ import {
   ROBOTS,
   truncate,
 } from "@/lib/seo";
-import { isOptimizable } from "@/lib/image";
 
 const CURRENCY = "UZS";
 

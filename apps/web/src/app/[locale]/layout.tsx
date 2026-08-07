@@ -9,11 +9,10 @@ import type { Metadata } from "next";
 
 import { LoginModal } from "@/components/auth/LoginModal";
 import { Footer } from "@/components/Footer";
-import { GoogleTag } from "@/components/GoogleTag";
 import { Header } from "@/components/Header";
-import { SkipLink } from "@/components/SkipLink";
 import { JsonLd } from "@/components/JsonLd";
 import { OrderDeliveredModal } from "@/components/order/OrderDeliveredModal";
+import { SkipLink } from "@/components/SkipLink";
 import { SupportFab } from "@/components/SupportFab";
 import { YandexMetrika } from "@/components/YandexMetrika";
 import { routing } from "@/i18n/routing";
@@ -147,7 +146,6 @@ export default async function LocaleLayout({
       <body className="bg-bg text-foreground min-h-screen font-sans antialiased">
         <JsonLd data={organizationLd} />
         <JsonLd data={websiteLd} />
-        <GoogleTag />
         <YandexMetrika />
         <NextIntlClientProvider locale={locale} messages={messages}>
           <Providers>

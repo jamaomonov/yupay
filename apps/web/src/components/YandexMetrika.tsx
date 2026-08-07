@@ -15,8 +15,14 @@ import { YandexMetrikaHits } from "./YandexMetrikaHits";
  * SPA route changes are tracked by <YandexMetrikaHits> (the `init` here only
  * reports the first pageview). Rendered only in production so local dev / preview
  * traffic never reaches the live counter; the <noscript> pixel covers no-JS.
+ *
+ * `dataLayer` is declared here because `ecommerce:"dataLayer"` names the array
+ * the counter watches. It used to be created as a side effect of the Google tag
+ * snippet, which has since been removed; nothing pushes ecommerce events yet, so
+ * the array stays empty, but the counter no longer depends on a deleted script.
  */
-const YM_SNIPPET = `(function(m,e,t,r,i,k,a){
+const YM_SNIPPET = `window.dataLayer = window.dataLayer || [];
+(function(m,e,t,r,i,k,a){
     m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
     m[i].l=1*new Date();
     for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
