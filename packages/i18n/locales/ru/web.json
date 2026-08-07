@@ -545,6 +545,7 @@
     "writeCta": "Оценить покупку",
     "formTitle": "Ваш отзыв",
     "ratingLabel": "Ваша оценка",
+    "ratingAria": "Рейтинг {value, number} из 5",
     "commentLabel": "Комментарий (необязательно)",
     "submit": "Отправить",
     "submitting": "Отправка…",

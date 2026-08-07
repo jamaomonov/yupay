@@ -410,7 +410,11 @@ export default async function BrandPage({
                       <span className="text-[14px] font-semibold">
                         {r.author_name ?? t2("anonymous")}
                       </span>
-                      <Stars value={r.rating} size={13} />
+                      <Stars
+                        value={r.rating}
+                        size={13}
+                        label={t2("ratingAria", { value: r.rating })}
+                      />
                     </div>
                     {r.body && (
                       <p className="text-tx-mute mt-2 whitespace-pre-line text-[14px] leading-relaxed">

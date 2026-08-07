@@ -16,7 +16,7 @@ export async function RatingChip({ stats }: { stats: ReviewStats }) {
   const t = await getTranslations("web.brandReviews");
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/40 px-3 py-1.5 text-[12px] font-semibold text-white backdrop-blur">
-      <Stars value={stats.avg} size={13} />
+      <Stars value={stats.avg} size={13} label={t("ratingAria", { value: stats.avg })} />
       <span>{stats.avg.toFixed(1)}</span>
       <span className="text-white/60">· {t("count", { count: stats.count })}</span>
     </span>

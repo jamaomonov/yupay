@@ -33,7 +33,7 @@ export async function RatingSummary({ stats }: { stats: ReviewStats }) {
         <div className="font-display text-[42px] font-extrabold leading-none">
           {stats.avg.toFixed(1)}
         </div>
-        <Stars value={stats.avg} size={16} />
+        <Stars value={stats.avg} size={16} label={t("ratingAria", { value: stats.avg })} />
         <div className="text-tx-mute text-[12px]">{t("count", { count: stats.count })}</div>
       </div>
       <div className="flex min-w-[200px] max-w-[340px] flex-1 flex-col gap-1.5">

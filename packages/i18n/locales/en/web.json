@@ -545,6 +545,7 @@
     "writeCta": "Rate your purchase",
     "formTitle": "Your review",
     "ratingLabel": "Your rating",
+    "ratingAria": "Rated {value, number} out of 5",
     "commentLabel": "Comment (optional)",
     "submit": "Submit",
     "submitting": "Submitting…",

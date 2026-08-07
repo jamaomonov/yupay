@@ -545,6 +545,7 @@
     "writeCta": "Xaridni baholang",
     "formTitle": "Sizning sharhingiz",
     "ratingLabel": "Bahoyingiz",
+    "ratingAria": "Reyting: 5 dan {value, number}",
     "commentLabel": "Izoh (ixtiyoriy)",
     "submit": "Yuborish",
     "submitting": "Yuborilmoqda…",
