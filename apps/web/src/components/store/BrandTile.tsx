@@ -5,6 +5,7 @@ import { getTranslations } from "next-intl/server";
 
 import type { BrandSummary } from "@/lib/catalog";
 
+import { isOptimizable } from "@/lib/image";
 import { pathFor } from "@/lib/seo";
 
 /**
@@ -51,7 +52,7 @@ export async function BrandTile({
           src={img}
           alt={brand.name}
           fill
-          unoptimized
+          unoptimized={!isOptimizable(img)}
           sizes={
             featured
               ? "(max-width: 768px) 100vw, 540px"

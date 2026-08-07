@@ -31,6 +31,7 @@ import {
   ROBOTS,
   truncate,
 } from "@/lib/seo";
+import { isOptimizable } from "@/lib/image";
 
 const CURRENCY = "UZS";
 
@@ -230,7 +231,7 @@ export default async function BrandPage({
               alt={brand.name}
               fill
               priority
-              unoptimized
+              unoptimized={!isOptimizable(heroImg)}
               sizes="(max-width: 1024px) 100vw, 1040px"
               className="object-cover"
               style={{ objectPosition: "50% 30%", opacity: 0.6 }}
@@ -274,7 +275,7 @@ export default async function BrandPage({
                     alt=""
                     width={64}
                     height={64}
-                    unoptimized
+                    unoptimized={!isOptimizable(brand.logo_url)}
                     className="h-full w-full object-cover"
                   />
                 </span>

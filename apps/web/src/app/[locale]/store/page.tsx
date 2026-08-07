@@ -187,7 +187,6 @@ export default async function StorePage({
                 title={p.name}
                 width={p.w}
                 height={p.h}
-                unoptimized
                 style={{ maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto" }}
                 className="object-contain"
               />

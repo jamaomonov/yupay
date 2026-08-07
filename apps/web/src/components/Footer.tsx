@@ -60,14 +60,7 @@ export async function Footer({ locale }: { locale: string }) {
                   aria-label={label}
                   className="-m-1.5 flex h-11 w-11 items-center justify-center opacity-90 transition hover:opacity-100"
                 >
-                  <Image
-                    src={src}
-                    alt={label}
-                    width={32}
-                    height={32}
-                    unoptimized
-                    className="h-8 w-8"
-                  />
+                  <Image src={src} alt={label} width={32} height={32} className="h-8 w-8" />
                 </a>
               ))}
             </div>
@@ -129,7 +122,6 @@ export async function Footer({ locale }: { locale: string }) {
                     title={p.name}
                     width={p.w}
                     height={p.h}
-                    unoptimized
                     style={{ maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto" }}
                     className="object-contain"
                   />

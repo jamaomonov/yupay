@@ -192,7 +192,6 @@ export async function SteamZeroCommission({ locale }: { locale: string }) {
                     title={p.alt}
                     width={p.w}
                     height={p.h}
-                    unoptimized
                     style={{ maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto" }}
                     className="object-contain"
                   />

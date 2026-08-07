@@ -8,6 +8,7 @@ import { useTranslations } from "next-intl";
 
 import type { OrderOut } from "@/lib/orders-types";
 
+import { isOptimizable } from "@/lib/image";
 import { isTopUpOrder, orderSubtitle, orderTitle, STATUS_CLS } from "@/lib/order-display";
 
 /**
@@ -50,7 +51,14 @@ export function OrderCard({
     >
       <span className="bg-muted relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl">
         {img ? (
-          <Image src={img} alt="" fill unoptimized sizes="44px" className="object-contain" />
+          <Image
+            src={img}
+            alt=""
+            fill
+            unoptimized={!isOptimizable(img)}
+            sizes="44px"
+            className="object-contain"
+          />
         ) : (
           <Receipt size={18} className="text-tx-dim" aria-hidden="true" />
         )}

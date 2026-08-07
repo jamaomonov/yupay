@@ -17,6 +17,7 @@ import { buttonStyles } from "@/lib/button";
 import { getAccessToken } from "@/lib/client";
 import { mintGuestToken } from "@/lib/guest";
 import { saveGuestOrder } from "@/lib/guest-orders";
+import { isOptimizable } from "@/lib/image";
 import {
   methodVisibility,
   providerStatusMap,
@@ -478,7 +479,7 @@ function VariableAmountCard({
                           src={image}
                           alt=""
                           fill
-                          unoptimized
+                          unoptimized={!isOptimizable(image)}
                           sizes="36px"
                           className="object-contain"
                         />
@@ -952,7 +953,7 @@ export function PurchasePanel({
                                 src={img}
                                 alt=""
                                 fill
-                                unoptimized
+                                unoptimized={!isOptimizable(img)}
                                 sizes="48px"
                                 className="object-contain"
                               />
@@ -1136,7 +1137,6 @@ export function PurchasePanel({
                         title={m.name}
                         width={m.w}
                         height={m.h}
-                        unoptimized
                         style={{ width: "auto", height: 20 }}
                         className="object-contain"
                       />
