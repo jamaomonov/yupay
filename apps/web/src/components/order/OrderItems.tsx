@@ -6,6 +6,8 @@ import { useLocale, useTranslations } from "next-intl";
 
 import type { OrderItemOut } from "@/lib/orders-types";
 
+import { isOptimizable } from "@/lib/image";
+
 /** Decimal-safe line total in USD major units ("11.30" × qty), computed in
  *  integer cents so 0.1 × 3 never drifts to 0.30000000000000004. */
 function lineTotalUsd(item: OrderItemOut): string {
@@ -61,6 +63,9 @@ function ItemThumb({ item }: { item: OrderItemOut }) {
         alt=""
         width={44}
         height={44}
+        // Same rule as the rest of the catalogue art: this thumbnail can point
+        // at a third-party host, and this call site never had the guard.
+        unoptimized={!isOptimizable(d.image_url)}
         className="border-border size-11 shrink-0 rounded-lg border object-cover"
       />
     );
