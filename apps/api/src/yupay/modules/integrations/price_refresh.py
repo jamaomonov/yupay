@@ -83,7 +83,7 @@ async def refresh_all_mappings(*, supplier_slug: str | None = None) -> PriceRefr
         moved += 1
         if await _should_alert(outcome.old_cost, outcome.new_cost, threshold):
             text = _format_alert(mapping=mapping, outcome=outcome)
-            if await notifications.send_admin_alert(text):
+            if await notifications.send_admin_alert(text, kind="price_change"):
                 alerts += 1
 
     # Proactive low-balance warning. Independent of whether any
@@ -145,7 +145,7 @@ async def _maybe_warn_low_balance() -> None:  # noqa: PLR0911 -- discriminated s
         f"Порог: <b>${threshold:.2f}</b>\n"
         "Пополни счёт у G2B заранее, чтобы клиенты не зависли в «обработке»."
     )
-    await notifications.send_admin_alert(text)
+    await notifications.send_admin_alert(text, kind="supplier_balance_low")
 
 
 async def _should_alert(

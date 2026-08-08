@@ -640,6 +640,35 @@ async def claim_orders_for_user(db: AsyncSession, *, user: User) -> int:
     return result.rowcount or 0  # type: ignore[attr-defined]
 
 
+#: An order that is paid but not yet delivered is normal for a minute or two.
+#: Past this it means something needs a human — a supplier failure, an exhausted
+#: balance, a task that was never created at all.
+STUCK_STATUSES: Final[frozenset[str]] = frozenset({"paid", "fulfilling", "fulfilled"})
+
+
+async def list_stuck_paid_orders(db: AsyncSession, *, older_than_minutes: int) -> list[Order]:
+    """Orders the customer has paid for and still has not received.
+
+    Deliberately keyed on the ORDER, not on a failed fulfillment task. A task
+    that failed is only one way to get here: the July-23 order on production had
+    no task at all, so a task-shaped query would have reported all clear while a
+    paid customer waited. Anything that has taken the money and not delivered
+    belongs in this list, whatever the reason.
+    """
+    cutoff = now() - timedelta(minutes=older_than_minutes)
+    stmt = (
+        select(Order)
+        .where(
+            Order.status.in_(STUCK_STATUSES),
+            Order.delivered_at.is_(None),
+            Order.paid_at.is_not(None),
+            Order.paid_at <= cutoff,
+        )
+        .order_by(Order.paid_at)
+    )
+    return list((await db.execute(stmt)).unique().scalars().all())
+
+
 def _admin_search_clause(q: str) -> ColumnElement[bool] | None:
     """Build the ``q`` predicate for the admin order list, or None if unusable.
 
@@ -945,5 +974,6 @@ __all__ = [
     "get_order_for_actor",
     "list_orders_admin",
     "list_orders_for_actor",
+    "list_stuck_paid_orders",
     "succeeded_provider_for",
 ]

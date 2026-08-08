@@ -31,7 +31,9 @@ async def test_low_balance_alert_escapes_html_in_supplier_fields(
 
     captured: list[str] = []
 
-    async def _fake_send_admin_alert(text: str) -> bool:
+    async def _fake_send_admin_alert(text: str, *, kind: str = "") -> bool:
+        # ``kind`` labels the alert type in the ops log; this test only cares
+        # about the text, but the stub must accept the real signature.
         captured.append(text)
         return True
 

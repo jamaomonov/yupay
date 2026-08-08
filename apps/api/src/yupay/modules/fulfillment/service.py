@@ -605,7 +605,7 @@ async def _maybe_alert_low_balance(
         f"<i>Задача: {task.id[:8]}… · клиент видит «в обработке».</i>\n"
         f"Пополни счёт и нажми «Повторить» в Fulfilment Inbox."
     )
-    await notifications.send_admin_alert(text)
+    await notifications.send_admin_alert(text, kind="supplier_low_balance")
 
 
 async def _set_redis_dedupe(key: str, *, ttl_seconds: int) -> bool:

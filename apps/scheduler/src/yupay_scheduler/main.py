@@ -41,6 +41,7 @@ from yupay_scheduler.jobs import (
     purge_evidence,
     recompute_review_stats,
     refresh_supplier_prices,
+    stuck_orders,
     uzum_timeout,
     waxpeer_reconcile,
 )
@@ -64,6 +65,7 @@ def build_scheduler() -> AsyncIOScheduler:
     purge_evidence.register(scheduler)
     recompute_review_stats.register(scheduler)
     refresh_supplier_prices.register(scheduler)
+    stuck_orders.register(scheduler)
     uzum_timeout.register(scheduler)
     waxpeer_reconcile.register(scheduler)
     return scheduler

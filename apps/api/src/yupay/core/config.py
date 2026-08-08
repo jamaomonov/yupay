@@ -155,6 +155,24 @@ class Settings(BaseSettings):
     )
     auth_ip_guard_window_seconds: int = Field(default=60)
 
+    # --- Stuck-order watchdog (ADR-0046) ---
+    stuck_order_alert_after_minutes: int = Field(
+        default=15,
+        description=(
+            "How long an order may sit paid-but-undelivered before it is alerted on. "
+            "Normal automatic delivery is 1-5 minutes, so 15 is well clear of the happy "
+            "path while still catching a failure the same hour it happens."
+        ),
+    )
+    stuck_order_alert_repeat_hours: int = Field(
+        default=4,
+        description=(
+            "How often an already-alerted stuck order is raised again while it stays "
+            "unresolved. A single alert is how an order sat for a day: one message "
+            "arrives, is missed or forgotten, and nothing ever asks again."
+        ),
+    )
+
     # --- Chargeback evidence (ADR-0044) ---
     evidence_retention_days: int = Field(
         default=600,

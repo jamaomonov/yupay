@@ -19,30 +19,44 @@ from yupay.modules.notifications.channels import telegram as tg
 log = get_logger("yupay.notifications.alerts")
 
 
-async def send_admin_alert(text: str) -> bool:
+async def send_admin_alert(text: str, *, kind: str = "unspecified") -> bool:
     """Fire-and-forget message to the ops admin chat.
 
     Returns ``True`` on a successful Telegram delivery, ``False`` when
     the bot isn't configured or the upstream rejected the call. Never
     raises — callers are usually scheduler jobs that must not crash.
+
+    Every outcome is logged at INFO, including success. That is not noise:
+    without it, "no alert arrived" is indistinguishable from "no alert was
+    ever sent", and after an incident there is no way to tell which. The
+    unconfigured branch used to log at DEBUG, which prod (LOG_LEVEL=INFO)
+    silently discarded — the one case where silence was most misleading.
+
+    ``kind`` is a short label for the alert type so the log can be filtered
+    per alert rather than per line.
     """
     settings = get_settings()
     token = settings.tg_alert_bot_token
     chat_id_raw = settings.tg_alert_chat_id
     if not token or not chat_id_raw:
-        log.debug("alerts.skip", reason="not configured")
+        log.warning("alerts.not_configured", kind=kind)
         return False
     try:
         chat_id = int(chat_id_raw.strip())
     except ValueError:
-        log.warning("alerts.invalid_chat_id", value=chat_id_raw)
+        log.warning("alerts.invalid_chat_id", kind=kind)
         return False
-    return await tg.send_message(
+    delivered = await tg.send_message(
         bot_token=token,
         chat_id=chat_id,
         text=text,
         parse_mode="HTML",
     )
+    if delivered:
+        log.info("alerts.delivered", kind=kind)
+    else:
+        log.warning("alerts.delivery_failed", kind=kind)
+    return delivered
 
 
 __all__ = ["send_admin_alert"]
