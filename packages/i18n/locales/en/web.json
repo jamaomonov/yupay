@@ -345,6 +345,7 @@
     "refunds": "Refunds",
     "status": "Status page",
     "terms": "Terms",
+    "agreement": "Terms of use",
     "privacy": "Privacy",
     "imprint": "Imprint",
     "careers": "Careers",
@@ -397,6 +398,61 @@
         {
           "h": "Disputes",
           "p": "Disputes are settled by negotiation first — write to support@yupay.uz. Failing agreement, a dispute is resolved in accordance with the law of the Republic of Uzbekistan."
+        }
+      ]
+    },
+    "agreement": {
+      "title": "Terms of use",
+      "updated": "August 2026",
+      "intro": "These terms govern your use of the YuPay service: the website, the Telegram app and the bot. The terms of purchase are set out separately, in the public offer. By using the service you accept these terms.",
+      "sections": [
+        {
+          "h": "Who may use the service",
+          "p": "The service is for people aged 18 or over with the legal capacity to enter into contracts. If you are under 18, use the service only with the consent of a parent or other legal representative and with their means of payment. One person uses one account."
+        },
+        {
+          "h": "Your details and access",
+          "p": "You are responsible for keeping access to your account safe and for what is done under it. By entering a game ID or other details you confirm you are entitled to use them. We never ask for your game account password — a request in our name is fraud; tell us about it."
+        },
+        {
+          "h": "What is not allowed",
+          "p": "Paying for orders with someone else's or stolen means of payment. Giving knowingly false information about yourself. Using the service to launder proceeds of crime or for any other unlawful purpose. Circumventing limits and restrictions, including by creating multiple accounts. Using automated tools to place orders or harvest site data. Reselling goods received in breach of the rights holders' rules."
+        },
+        {
+          "h": "Checks and requests for information",
+          "p": "Where a transaction raises reasonable doubt, we may pause it and ask you to confirm the payer's identity or the right to use the payment instrument. This is required by our agreements with the payment organisations and is an anti-fraud measure. Until you reply the order stays unfulfilled; if confirmation is not provided, we refund by the method the payment was made."
+        },
+        {
+          "h": "Suspension and blocking",
+          "p": "We may restrict or end access to the service for breach of these terms, on reasonable indications of fraud or use of someone else's payment instrument, where requested confirmations are not provided, and at the demand of an authorised state body. We tell you about a block and its reason using the contacts you gave us. A block does not affect orders already paid and fulfilled: access to goods you received is kept. If you believe a block is wrong, write to support@yupay.uz and we will look at it."
+        },
+        {
+          "h": "Refusing an order",
+          "p": "We may decline to fulfil a particular order — including where the item is unavailable from the supplier, where there has been a technical or pricing error, and in the cases above. On refusal the amount paid is refunded in full, in the manner and within the time stated in the offer."
+        },
+        {
+          "h": "Payment disputes",
+          "p": "If something is wrong with an order, write to us first — almost everything is settled within one business day. Raising a dispute with your bank without contacting support removes our ability to look into it and may lead to access being restricted. This does not limit your rights as a consumer or prevent you approaching your card issuer."
+        },
+        {
+          "h": "Liability",
+          "p": "The service is provided as is. We are not responsible for the acts of game platforms and publishers, including account bans and changes to game rules, nor for interruptions caused by matters outside our control. Our liability for a given order is limited to its amount. This clause does not limit liability that the law does not allow to be limited."
+        },
+        {
+          "h": "Force majeure",
+          "p": "We are not liable for failures caused by circumstances beyond reasonable control: outages at payment systems and suppliers, restrictions imposed by state bodies, failures of communications and power, and other extraordinary events."
+        },
+        {
+          "h": "Service content",
+          "p": "The text, design, code and other elements of the site and apps belong to us. Game and platform trademarks belong to their owners and are used solely to identify what a product works with. Copying service content for commercial use without our consent is not permitted."
+        },
+        {
+          "h": "Changes to these terms",
+          "p": "We may change these terms. A new version takes effect when published on this page; the date of the last update is shown at the top. Continuing to use the service after a change means you accept the new version. Orders already paid are governed by the terms in force when they were paid."
+        },
+        {
+          "h": "Governing law",
+          "p": "These terms are governed by the law of the Republic of Uzbekistan. Disputes are settled by negotiation and, failing agreement, in the manner established by the law of the Republic of Uzbekistan. Where language versions differ, the Russian version prevails."
         }
       ]
     },
@@ -465,7 +521,7 @@
         },
         {
           "h": "Contact",
-          "p": "Email: support@yupay.uz — the main channel for claims and formal notices. Telegram support: @yupay_support. We reply within one business day."
+          "p": "Email: support@yupay.uz — the main channel for claims and formal notices. Telegram support: @yupay_support. We reply within one business day. Phone: +998 99 844 65 73."
         },
         {
           "h": "Legal status",

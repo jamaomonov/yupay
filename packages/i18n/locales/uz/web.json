@@ -345,6 +345,7 @@
     "refunds": "Qaytarishlar",
     "status": "Tizim holati",
     "terms": "Shartlar",
+    "agreement": "Shartnoma",
     "privacy": "Maxfiylik",
     "imprint": "Rekvizitlar",
     "careers": "Karyera",
@@ -397,6 +398,61 @@
         {
           "h": "Nizolar",
           "p": "Barcha nizolar avval muzokaralar yoʻli bilan hal qilinadi — support@yupay.uz manziliga yozing. Kelishuvga erishilmasa, nizo Oʻzbekiston Respublikasi qonunchiligiga muvofiq koʻrib chiqiladi."
+        }
+      ]
+    },
+    "agreement": {
+      "title": "Foydalanuvchi shartnomasi",
+      "updated": "2026-yil avgust",
+      "intro": "Ushbu shartnoma YuPay xizmatidan — sayt, Telegram ilovasi va botdan — foydalanishni tartibga soladi. Xarid shartlari alohida, ommaviy ofertada bayon etilgan. Xizmatdan foydalanishni boshlash orqali siz ushbu shartnomani qabul qilasiz.",
+      "sections": [
+        {
+          "h": "Kim foydalanishi mumkin",
+          "p": "Xizmat 18 yoshga toʻlgan va bitim tuzishga layoqatli shaxslar uchun moʻljallangan. Agar 18 yoshga toʻlmagan boʻlsangiz, xizmatdan faqat ota-onangiz yoki boshqa qonuniy vakillaringiz roziligi va ularning toʻlov vositalari bilan foydalaning. Bir kishi bitta akkauntdan foydalanadi."
+        },
+        {
+          "h": "Maʼlumotlaringiz va kirish",
+          "p": "Akkauntingizga kirishni saqlash va u orqali qilingan harakatlar uchun siz javobgarsiz. Oʻyin identifikatori yoki boshqa maʼlumotlarni kiritar ekansiz, ularni tasarruf etishga haqli ekaningizni tasdiqlaysiz. Biz hech qachon oʻyin akkauntingiz parolini soʻramaymiz — bizning nomimizdan kelgan bunday soʻrov firibgarlikdir, bizga xabar bering."
+        },
+        {
+          "h": "Nima taqiqlanadi",
+          "p": "Buyurtmalarni oʻzgalarning yoki oʻgʻirlangan toʻlov vositalari bilan toʻlash. Oʻzingiz haqingizda ataylab yolgʻon maʼlumot berish. Xizmatdan jinoiy yoʻl bilan olingan daromadlarni legallashtirish yoki boshqa noqonuniy maqsadlarda foydalanish. Belgilangan cheklov va limitlarni, jumladan bir nechta akkaunt yaratish orqali, chetlab oʻtish. Buyurtma berish yoki sayt maʼlumotlarini yigʻish uchun avtomatlashtirilgan vositalardan foydalanish. Olingan tovarlarni huquq egalari qoidalarini chetlab qayta sotish."
+        },
+        {
+          "h": "Tekshiruvlar va maʼlumot soʻrash",
+          "p": "Agar operatsiya asosli shubha tugʻdirsa, uni bajarishni toʻxtatib turishga va toʻlovchining shaxsini yoki toʻlov vositasidan foydalanish huquqini tasdiqlashni soʻrashga haqlimiz. Bu toʻlov tashkilotlari bilan shartnomalarimiz talabi va firibgarlikka qarshi chora. Javob olinmaguncha buyurtma bajarilmagan holatda qoladi; tasdiq taqdim etilmasa, pulni toʻlov qilingan usulda qaytaramiz."
+        },
+        {
+          "h": "Kirishni toʻxtatib turish va bloklash",
+          "p": "Ushbu shartnoma buzilganda, firibgarlik yoki oʻzganing toʻlov vositasidan foydalanish asosli belgilari boʻlganda, soʻralgan tasdiqlar taqdim etilmaganda, shuningdek vakolatli organlar talabiga koʻra xizmatga kirishni cheklash yoki toʻxtatishga haqlimiz. Bloklash va uning sababi haqida siz koʻrsatgan kontaktlar orqali xabar beramiz. Bloklash allaqachon toʻlangan va bajarilgan buyurtmalarga taʼsir qilmaydi: olingan tovarlarga kirish saqlanadi. Agar bloklashni xato deb hisoblasangiz — support@yupay.uz manziliga yozing, murojaatni koʻrib chiqamiz."
+        },
+        {
+          "h": "Buyurtmani bajarishdan bosh tortish",
+          "p": "Aniq bir buyurtmani bajarishdan bosh tortishga haqlimiz — jumladan tovar yetkazib beruvchida mavjud boʻlmaganda, texnik yoki narx xatosi boʻlganda, shuningdek yuqorida tavsiflangan hollarda. Bosh tortilganda toʻlangan summa ofertada koʻrsatilgan tartib va muddatlarda toʻliq qaytariladi."
+        },
+        {
+          "h": "Toʻlovlarni bahslashtirish",
+          "p": "Buyurtma bilan muammo yuzaga kelsa, avval bizga yozing — deyarli hamma narsa bir ish kunida hal boʻladi. Qoʻllab-quvvatlashga murojaat qilmasdan bank bilan bahs boshlash bizni tushunib olish imkonidan mahrum qiladi va kirishni cheklashga olib kelishi mumkin. Bu sizning isteʼmolchi huquqlaringizni cheklamaydi va karta emitentiga murojaat qilishga toʻsqinlik qilmaydi."
+        },
+        {
+          "h": "Javobgarlik",
+          "p": "Xizmat «qanday boʻlsa, shundayligicha» taqdim etiladi. Oʻyin platformalari va noshirlarining harakatlari, jumladan akkauntlarni bloklash va oʻyin qoidalarini oʻzgartirish uchun, shuningdek bizning nazoratimizdan tashqari sabablarga koʻra uzilishlar uchun javob bermaymiz. Aniq buyurtma boʻyicha javobgarligimiz uning summasi bilan cheklanadi. Ushbu band qonunchilikka koʻra cheklab boʻlmaydigan javobgarlikni cheklamaydi."
+        },
+        {
+          "h": "Yengib boʻlmas kuch holatlari",
+          "p": "Yengib boʻlmas kuch holatlari — toʻlov tizimlari va yetkazib beruvchilardagi uzilishlar, davlat organlari cheklovlari, aloqa va elektr taʼminotidagi avariyalar, boshqa favqulodda hodisalar — tufayli majburiyatlar bajarilmaganligi uchun javob bermaymiz."
+        },
+        {
+          "h": "Xizmat mazmuni",
+          "p": "Sayt va ilovalarning matnlari, dizayni, dasturiy kodi va boshqa elementlari bizga tegishli. Oʻyin va platformalarning tovar belgilari ularning egalariga tegishli va faqat tovar nimaga mos kelishini koʻrsatish uchun ishlatiladi. Xizmat mazmunini tijorat maqsadida bizning roziligimizsiz nusxalash taqiqlanadi."
+        },
+        {
+          "h": "Shartnomani oʻzgartirish",
+          "p": "Ushbu shartnomani oʻzgartirishga haqlimiz. Yangi tahrir ushbu sahifada joylashtirilgan paytdan kuchga kiradi; oxirgi yangilanish sanasi yuqorida koʻrsatilgan. Oʻzgarishlardan keyin xizmatdan foydalanishda davom etsangiz, yangi tahrirni qabul qilgan hisoblanasiz. Allaqachon toʻlangan buyurtmalarga toʻlov paytida amalda boʻlgan shartlar qoʻllaniladi."
+        },
+        {
+          "h": "Qoʻllaniladigan huquq",
+          "p": "Ushbu shartnomaga Oʻzbekiston Respublikasi qonunchiligi qoʻllaniladi. Nizolar muzokaralar yoʻli bilan, kelishuvga erishilmasa — Oʻzbekiston Respublikasi qonunchiligida belgilangan tartibda hal qilinadi. Til versiyalari oʻrtasida tafovut boʻlsa, rus tilidagi versiya ustunlikka ega."
         }
       ]
     },
@@ -465,7 +521,7 @@
         },
         {
           "h": "Biz bilan bogʻlanish",
-          "p": "Elektron pochta: support@yupay.uz — daʼvolar va rasmiy murojaatlar uchun asosiy kanal. Telegram qoʻllab-quvvatlash: @yupay_support. Bir ish kuni ichida javob beramiz."
+          "p": "Elektron pochta: support@yupay.uz — daʼvolar va rasmiy murojaatlar uchun asosiy kanal. Telegram qoʻllab-quvvatlash: @yupay_support. Bir ish kuni ichida javob beramiz. Telefon: +998 99 844 65 73."
         },
         {
           "h": "Huquqiy maqom",

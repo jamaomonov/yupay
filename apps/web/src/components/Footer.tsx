@@ -91,6 +91,7 @@ export async function Footer({ locale }: { locale: string }) {
 
           <FooterCol title={t("legalTitle")}>
             <FooterLink href={pathFor(locale, "/legal/terms")}>{t("terms")}</FooterLink>
+            <FooterLink href={pathFor(locale, "/legal/agreement")}>{t("agreement")}</FooterLink>
             <FooterLink href={pathFor(locale, "/legal/privacy")}>{t("privacy")}</FooterLink>
             <FooterLink href={pathFor(locale, "/legal/imprint")}>{t("imprint")}</FooterLink>
           </FooterCol>

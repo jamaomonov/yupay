@@ -9,7 +9,10 @@ import type { Metadata } from "next";
 import { routing } from "@/i18n/routing";
 import { alternates, ogLocale, pathFor, ROBOTS } from "@/lib/seo";
 
-const DOCS = ["terms", "privacy", "refunds", "imprint"] as const;
+// "agreement" governs use of the service; "terms" is the sales offer. Two
+// documents on purpose — a ban needs a published basis, and that basis has
+// no place in a contract about buying a specific item.
+const DOCS = ["terms", "agreement", "privacy", "refunds", "imprint"] as const;
 type Doc = (typeof DOCS)[number];
 
 interface Section {
