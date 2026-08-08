@@ -358,29 +358,45 @@
     "updatedLabel": "Yangilangan:",
     "backToStore": "← Katalogga",
     "terms": {
-      "title": "Foydalanish shartlari",
-      "updated": "2026-yil iyun",
-      "intro": "yupay dan foydalanib, ushbu shartlarga rozilik bildirasiz. yupay — mustaqil raqamli toʻldirish xizmati va Valve, Tencent, Riot, miHoYo hamda boshqa huquq egalari bilan bogʻliq emas.",
+      "title": "Ommaviy oferta",
+      "updated": "2026-yil avgust",
+      "intro": "Ushbu hujjat ommaviy oferta — quyidagi shartlar asosida raqamli tovarlarni sotish shartnomasini tuzish taklifi. Buyurtma berish orqali siz bu shartlarni toʻliq qabul qilasiz.",
       "sections": [
         {
-          "h": "Nimani sotamiz",
-          "p": "yupay raqamli mahsulotlarni qayta sotadi: ichki oʻyin valyutasi, hamyon toʻldirish va obunalar. Tushirish siz koʻrsatgan ommaviy ID yoki akkauntga amalga oshiriladi — akkaunt parolini soʻramaymiz."
+          "h": "Sotuvchi kim",
+          "p": "YTT OMONOV JAMSHID IBROHIM OʻGʻLI (savdo nomi YuPay), STIR (JShShIR) 50304056560048. Toʻliq rekvizitlar va bogʻlanish usullari «Rekvizitlar» sahifasida."
         },
         {
-          "h": "Buyurtma va toʻlov",
-          "p": "Buyurtma roʻyxatdan oʻtmasdan rasmiylashtiriladi. Toʻlov — karta, Click, Payme yoki Uzum. Narx toʻlov paytida qatʼiylanadi; tushadigan yakuniy summani toʻlovdan oldin koʻrasiz."
+          "h": "Biz nima sotamiz",
+          "p": "Raqamli tovarlar: oʻyin ichidagi valyuta, oʻyin hamyonlarini toʻldirish, obunalar va faollashtirish kodlari. Tovar jismoniy tashuvchisiz — siz koʻrsatgan oʻyin identifikatoriga oʻtkazish yoki kod berish yoʻli bilan topshiriladi. Biz bu tovarlarni qayta sotamiz va ularning noshiri emasmiz."
         },
         {
-          "h": "Bajarilishi",
-          "p": "Aksariyat buyurtmalar avtomatik bajariladi. ID va akkaunt maʼlumotlari toʻgʻriligi uchun siz javobgarsiz; notoʻgʻri ID ga tushirilgan mablagʻ qaytarilmaydi."
+          "h": "Shartnoma qanday tuziladi",
+          "p": "Shartnoma buyurtma toʻlangan paytdan tuzilgan hisoblanadi. Toʻlovdan oldin siz soʻmdagi yakuniy summani va buyurtma tarkibini koʻrasiz; toʻlov tugmasini bosish ushbu ofertani qabul qilish hisoblanadi. Toʻlovni yakunlamaslik orqali qabulni istalgan vaqtda qaytarib olishingiz mumkin. Toʻlanmagan buyurtma toʻlov muddati tugagach avtomatik bekor qilinadi."
+        },
+        {
+          "h": "Narx va toʻlov",
+          "p": "Narxlar Oʻzbekiston soʻmida va barcha soliqlarni oʻz ichiga oladi. Kurs buyurtma rasmiylashtirilganda qayd etiladi, yakuniy summa toʻlovdan oldin koʻrinadi. Summa ustidan alohida komissiya olmaymiz — ustamamiz narxga kiritilgan. Toʻlov Uzcard va Humo kartalari bilan Click, Payme yoki Uzum orqali. Toʻlovdan soʻng fiskal chek shakllanadi."
+        },
+        {
+          "h": "Buyurtmani bajarish",
+          "p": "Aksariyat buyurtmalar toʻlov tasdiqlangach 1–5 daqiqada avtomatik bajariladi. Oʻyin identifikatori va akkaunt maʼlumotlarining toʻgʻriligi uchun siz javobgarsiz: notoʻgʻri koʻrsatilgan maʼlumotlar boʻyicha oʻtkazilgan tovar lozim darajada topshirilgan hisoblanadi va qaytarilmaydi. Bajarish kechiksa, buyurtma holati xatdagi havola orqali va «Mening buyurtmalarim» boʻlimida koʻrinadi."
+        },
+        {
+          "h": "Pulni qaytarish",
+          "p": "Agar buyurtma bajarilmagan va bajarib boʻlmaydigan boʻlsa, toʻlangan summani qaytarish kelishilgan paytdan 5 (besh) ish kuni ichida qaytaramiz. Qaytarish toʻlov qilingan usulning oʻzida amalga oshiriladi. Qaytarish bilan bogʻliq xarajatlarni biz koʻtaramiz. Batafsil — «Qaytarish» sahifasida."
+        },
+        {
+          "h": "Shartlarni oʻzgartirish",
+          "p": "Biz ushbu ofertani oʻzgartirishga haqlimiz. Yangi tahrir ushbu sahifada joylashtirilgan paytdan kuchga kiradi; oxirgi yangilanish sanasi yuqorida koʻrsatilgan. Allaqachon rasmiylashtirilgan buyurtmalarga toʻlov paytida amalda boʻlgan tahrir qoʻllaniladi. Toʻlovdan keyin aniq buyurtma shartlarini oʻzgartirish faqat tomonlar kelishuvi bilan mumkin."
         },
         {
           "h": "Javobgarlik",
-          "p": "yupay oʻyin platformalari tomonidagi bloklash va cheklovlar uchun javob bermaydi. Xizmat «boricha» taqdim etiladi."
+          "p": "Oʻyin platformalari va noshirlarining harakatlari, jumladan akkauntlarni bloklash va cheklashlar uchun, shuningdek akkauntingizga uchinchi shaxslarga ruxsat berganingiz oqibatlari uchun javob bermaymiz. Biz hech qachon oʻyin akkauntingiz parolini soʻramaymiz."
         },
         {
-          "h": "Aloqa",
-          "p": "Savollar — Telegramdagi qoʻllab-quvvatlashga: @yupay_support."
+          "h": "Nizolar",
+          "p": "Barcha nizolar avval muzokaralar yoʻli bilan hal qilinadi — support@yupay.uz manziliga yozing. Kelishuvga erishilmasa, nizo Oʻzbekiston Respublikasi qonunchiligiga muvofiq koʻrib chiqiladi."
         }
       ]
     },
@@ -416,44 +432,44 @@
       ]
     },
     "refunds": {
-      "title": "Qaytarishlar",
-      "updated": "2026-yil iyun",
-      "intro": "Raqamli mahsulotlar boʻyicha qaytarish imkoniyati ularning tabiati sababli cheklangan.",
+      "title": "Qaytarish",
+      "updated": "2026-yil avgust",
+      "intro": "Qachon pulni qaytaramiz, qancha muddatda va buning uchun nima kerak.",
       "sections": [
         {
-          "h": "Qachon qaytarish mumkin",
-          "p": "Agar buyurtma bajarilmagan boʻlsa (mahsulot tushmagan) va bajarib boʻlmasa, pulni toʻlov qilingan kartaning oʻziga qaytaramiz. YuPay hamyoniga faqat oʻzingiz xohlasangiz oʻtkazamiz — bu tezroq."
+          "h": "Qaytarish qachon mumkin",
+          "p": "Buyurtma bajarilmagan va bajarib boʻlmaydigan boʻlsa — masalan, tovar yetkazib beruvchida mavjud emas. Pul toʻliq qaytariladi."
         },
         {
-          "h": "Qachon qaytarish mumkin emas",
-          "p": "Muvaffaqiyatli tushirilgandan soʻng, shuningdek ID yoki akkaunt sizning aybingiz bilan notoʻgʻri kiritilgan boʻlsa."
+          "h": "Qachon mumkin emas",
+          "p": "Tovar oʻtkazilgandan keyin: raqamli tovar topshirilgan va uni qaytarib olib boʻlmaydi. Shuningdek, oʻyin identifikatori yoki akkaunt maʼlumotlari sizning aybingiz bilan notoʻgʻri koʻrsatilgan boʻlsa — tovar siz bergan maʼlumotlar boʻyicha allaqachon topshirilgan."
         },
         {
-          "h": "Muddatlar",
-          "p": "Murojaat boʻyicha qaror — 24 soat ichida. Asl toʻlov usuliga qaytarish — toʻlov provayderi muddatlari boʻyicha."
+          "h": "Muddat",
+          "p": "Murojaat boʻyicha qaror — bir ish kuni ichida. Qaytarish kelishilgan paytdan 5 (besh) ish kuni ichida, toʻlov qilingan usulning oʻzida amalga oshiriladi. Xarajatlarni biz koʻtaramiz. Kartaga tushishi bankingiz tomonida qoʻshimcha vaqt olishi mumkin."
         },
         {
-          "h": "Qanday soʻrash mumkin",
-          "p": "Telegramdagi qoʻllab-quvvatlashga yozing va buyurtma raqamini koʻrsating."
+          "h": "Qanday soʻrash kerak",
+          "p": "support@yupay.uz manziliga yoki Telegramda @yupay_support ga buyurtma raqamini koʻrsatib yozing. Elektron pochta orqali murojaat sanani qayd etadi — muddat oʻshandan hisoblanadi."
         }
       ]
     },
     "imprint": {
       "title": "Rekvizitlar",
-      "updated": "2026-yil iyun",
-      "intro": "yupay xizmati operatori.",
+      "updated": "2026-yil avgust",
+      "intro": "Oferta yuborgan sotuvchi haqida maʼlumot.",
       "sections": [
         {
-          "h": "Operator",
-          "p": "yupay — Oʻzbekiston va MDH uchun oʻyin va raqamli obunalarni toʻldirish xizmati."
+          "h": "Sotuvchi",
+          "p": "YTT OMONOV JAMSHID IBROHIM OʻGʻLI, savdo nomi — YuPay. STIR (JShShIR): 50304056560048. Oʻzbekiston Respublikasida roʻyxatdan oʻtgan yakka tartibdagi tadbirkor."
         },
         {
-          "h": "Aloqa",
-          "p": "Qoʻllab-quvvatlash: Telegram @yupay_support. Email: support@yupay.uz."
+          "h": "Biz bilan bogʻlanish",
+          "p": "Elektron pochta: support@yupay.uz — daʼvolar va rasmiy murojaatlar uchun asosiy kanal. Telegram qoʻllab-quvvatlash: @yupay_support. Bir ish kuni ichida javob beramiz."
         },
         {
-          "h": "Huquqiy holat",
-          "p": "Raqamli mahsulotlarning mustaqil reselleri. Valve, Tencent, Riot, miHoYo va boshqa huquq egalari bilan bogʻliq emas. Toʻliq yuridik rekvizitlar soʻrov boʻyicha taqdim etiladi."
+          "h": "Huquqiy maqom",
+          "p": "Raqamli tovarlarning mustaqil qayta sotuvchisi. Valve, Tencent, Riot Games, miHoYo va boshqa huquq egalarining rasmiy vakili emas va ular bilan aloqador emas; ularning tovar belgilari faqat tovar nimaga mos kelishini koʻrsatish uchun ishlatiladi."
         }
       ]
     }

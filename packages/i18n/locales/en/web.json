@@ -358,29 +358,45 @@
     "updatedLabel": "Updated:",
     "backToStore": "← Back to catalog",
     "terms": {
-      "title": "Terms of Service",
-      "updated": "June 2026",
-      "intro": "By using yupay you agree to these terms. yupay is an independent digital top-up service and is not affiliated with Valve, Tencent, Riot, miHoYo or other rights holders.",
+      "title": "Public offer",
+      "updated": "August 2026",
+      "intro": "This document is a public offer — a proposal to enter into a contract for the sale of digital goods on the terms below. Placing an order means you accept them in full.",
       "sections": [
         {
-          "h": "What we sell",
-          "p": "yupay resells digital goods: in-game currency, wallet top-ups and subscriptions. Credit is delivered to the public ID or account you provide — we never ask for your account password."
+          "h": "Who the seller is",
+          "p": "YTT OMONOV JAMSHID IBROHIM OʻGʻLI (trading as YuPay), Tax ID (PINFL) 50304056560048. Full details and contact channels are on the Legal details page."
         },
         {
-          "h": "Orders and payment",
-          "p": "Orders are placed without signup. Pay by card, Click, Payme or Uzum. The price is locked at payment time; you see the net amount to be credited before you pay."
+          "h": "What we sell",
+          "p": "Digital goods: in-game currency, game wallet top-ups, subscriptions and activation codes. Goods are supplied without a physical medium — credited to the game ID you provide, or issued as a code. We resell these goods and are not their publisher."
+        },
+        {
+          "h": "How the contract is formed",
+          "p": "The contract is concluded when the order is paid. Before payment you see the final amount in som and what the order contains; pressing the pay button is acceptance of this offer. You may withdraw acceptance any time before payment simply by not completing it. An unpaid order is cancelled automatically once its payment window elapses."
+        },
+        {
+          "h": "Price and payment",
+          "p": "Prices are in Uzbek som and include all taxes. The rate is fixed when the order is placed and the final amount is shown before payment. We charge no separate fee on top — our margin is already in the price. Payment by Uzcard and Humo through Click, Payme or Uzum. A fiscal receipt is issued after payment."
         },
         {
           "h": "Fulfilment",
-          "p": "Most orders are fulfilled automatically. You are responsible for the accuracy of the ID and account details; a credit sent to a wrong ID is non-refundable."
+          "p": "Most orders are fulfilled automatically within 1–5 minutes of payment confirmation. You are responsible for the accuracy of the game ID and other account details: goods credited to details you entered incorrectly count as properly delivered and are not refundable. If fulfilment is delayed, the order status is available from the link in your email and under My orders."
+        },
+        {
+          "h": "Refunds",
+          "p": "If an order has not been and cannot be fulfilled, we return the amount paid within 5 (five) business days of the refund being agreed. Refunds are made by the same method the payment was made. We bear the costs of the refund. See the Refunds page for detail."
+        },
+        {
+          "h": "Changes to these terms",
+          "p": "We may change this offer. A new version takes effect when published on this page; the date of the last update is shown at the top. Orders already placed are governed by the version in force when they were paid. Changing the terms of a specific order after payment requires agreement between both parties."
         },
         {
           "h": "Liability",
-          "p": "yupay is not responsible for bans or restrictions imposed by game platforms. The service is provided \"as is\"."
+          "p": "We are not responsible for the acts of game platforms and publishers, including account bans and restrictions, nor for the consequences of you giving third parties access to your account. We never ask for your game account password."
         },
         {
-          "h": "Contact",
-          "p": "Questions — support on Telegram: @yupay_support."
+          "h": "Disputes",
+          "p": "Disputes are settled by negotiation first — write to support@yupay.uz. Failing agreement, a dispute is resolved in accordance with the law of the Republic of Uzbekistan."
         }
       ]
     },
@@ -417,43 +433,43 @@
     },
     "refunds": {
       "title": "Refunds",
-      "updated": "June 2026",
-      "intro": "Refunds on digital goods are limited by their nature.",
+      "updated": "August 2026",
+      "intro": "When we refund, how long it takes, and what you need to do.",
       "sections": [
         {
           "h": "When a refund is possible",
-          "p": "If an order was not fulfilled (the item was not credited) and cannot be, we refund to the same card you paid with. We credit the YuPay wallet instead only if you ask us to — it is faster that way."
+          "p": "When an order has not been and cannot be fulfilled — for example, the item is unavailable from the supplier. The amount is refunded in full."
         },
         {
-          "h": "When a refund is not possible",
-          "p": "After a successful credit, or if the ID or account were entered incorrectly through your own fault."
+          "h": "When it is not",
+          "p": "Once the goods have been credited: a digital good has been delivered and cannot be taken back. Also where the game ID or account details were entered incorrectly by you — the goods have already been delivered to the details you gave."
         },
         {
           "h": "Timing",
-          "p": "We decide on a request within 24 hours. A refund to the original payment method follows the payment provider's timelines."
+          "p": "We decide on a request within one business day. The refund is made within 5 (five) business days of being agreed, by the same method the payment was made. We bear the costs. Your bank may need additional time to post it to the card."
         },
         {
-          "h": "How to request",
-          "p": "Contact support on Telegram and include your order number."
+          "h": "How to request one",
+          "p": "Write to support@yupay.uz or Telegram @yupay_support with your order number. Email fixes the date the clock starts from."
         }
       ]
     },
     "imprint": {
-      "title": "Imprint",
-      "updated": "June 2026",
-      "intro": "Operator of the yupay service.",
+      "title": "Legal details",
+      "updated": "August 2026",
+      "intro": "Details of the seller making this offer.",
       "sections": [
         {
-          "h": "Operator",
-          "p": "yupay — a top-up service for games and digital subscriptions for Uzbekistan and the CIS."
+          "h": "Seller",
+          "p": "YTT OMONOV JAMSHID IBROHIM OʻGʻLI, trading as YuPay. Tax ID (PINFL): 50304056560048. Sole proprietor registered in the Republic of Uzbekistan."
         },
         {
           "h": "Contact",
-          "p": "Support: Telegram @yupay_support. Email: support@yupay.uz."
+          "p": "Email: support@yupay.uz — the main channel for claims and formal notices. Telegram support: @yupay_support. We reply within one business day."
         },
         {
           "h": "Legal status",
-          "p": "Independent reseller of digital goods. Not affiliated with Valve, Tencent, Riot, miHoYo or other rights holders. Full legal details are available on request."
+          "p": "An independent reseller of digital goods. Not an official representative of and not affiliated with Valve, Tencent, Riot Games, miHoYo or any other rights holder; their trademarks are used solely to identify what a product works with."
         }
       ]
     }
