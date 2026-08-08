@@ -12360,6 +12360,65 @@
         ]
       }
     },
+    "/api/v1/admin/fulfillment/orders/{order_id}/release": {
+      "post": {
+        "description": "Start fulfilment for an order held for manual review (ADR-0047).\n\nThe same call the payment webhook would have made had the order not been\nheld, which is why nothing special has to be undone: the hold is the absence\nof this call, not a state to reverse. ``start_for_order`` is idempotent, so\na double click cannot deliver twice.",
+        "operationId": "admin_release_held_order_api_v1_admin_fulfillment_orders__order_id__release_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FulfillmentTaskListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Release Held Order",
+        "tags": [
+          "admin:fulfillment"
+        ]
+      }
+    },
     "/api/v1/admin/fulfillment/tasks": {
       "get": {
         "operationId": "admin_list_tasks_api_v1_admin_fulfillment_tasks_get",

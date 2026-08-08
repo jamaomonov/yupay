@@ -324,10 +324,19 @@ async def _mark_payment_succeeded(
         # Synchronous saga (ADR-0013). Will move to an outbox/Dramatiq actor once
         # the worker is wired up — the public service signature stays the same.
         from yupay.modules.fulfillment import service as fulfillment_svc
+        from yupay.modules.orders.risk import hold_for_review, review_reason
 
         await db.flush()
         await _publish_status_changed(order)
-        await fulfillment_svc.start_for_order(db, order_id=order.id)
+        # The one place worth asking "should a human look first". Delivery is
+        # irreversible — an issued code or a credited game balance cannot be
+        # taken back — while a hold costs one click to release. The order stays
+        # ``paid`` either way; only the saga is withheld (ADR-0047).
+        reason = review_reason(order)
+        if reason is None:
+            await fulfillment_svc.start_for_order(db, order_id=order.id)
+        else:
+            await hold_for_review(db, order=order, reason=reason)
 
         # No "payment received" Telegram push — the only customer-facing
         # notification is the delivery one (``notify_order_delivered``,

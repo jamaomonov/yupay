@@ -155,6 +155,18 @@ class Settings(BaseSettings):
     )
     auth_ip_guard_window_seconds: int = Field(default=60)
 
+    # --- Manual review of large orders (ADR-0047) ---
+    manual_review_threshold_usd: Decimal = Field(
+        default=Decimal("40"),
+        description=(
+            "Orders at or above this amount are held after payment instead of being "
+            "fulfilled automatically. Denominated in USD because `orders.total_usd` is "
+            "stable while the som amount moves with the rate. Default 40 ≈ 550 000 UZS: "
+            "the median order is about $1 and the 90th percentile about $11, so this "
+            "catches outliers without touching ordinary traffic. Set to 0 to disable."
+        ),
+    )
+
     # --- Stuck-order watchdog (ADR-0046) ---
     stuck_order_alert_after_minutes: int = Field(
         default=15,

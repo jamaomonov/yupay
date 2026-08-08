@@ -297,6 +297,30 @@ async def admin_cancel_task(
 
 
 @admin_router.post(
+    "/orders/{order_id}/release",
+    response_model=FulfillmentTaskListOut,
+    status_code=status.HTTP_200_OK,
+)
+async def admin_release_held_order(
+    order_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+) -> FulfillmentTaskListOut:
+    """Start fulfilment for an order held for manual review (ADR-0047).
+
+    The same call the payment webhook would have made had the order not been
+    held, which is why nothing special has to be undone: the hold is the absence
+    of this call, not a state to reverse. ``start_for_order`` is idempotent, so
+    a double click cannot deliver twice.
+    """
+    tasks = await svc.start_for_order(db, order_id=order_id)
+    return FulfillmentTaskListOut(
+        items=[FulfillmentTaskOut.model_validate(t) for t in tasks],
+        total=len(tasks),
+    )
+
+
+@admin_router.post(
     "/tasks/bulk-retry",
     response_model=BulkRetryOut,
     status_code=status.HTTP_200_OK,
