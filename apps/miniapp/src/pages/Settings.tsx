@@ -6,13 +6,10 @@ import {
   ChevronRight,
   Copy,
   ExternalLink,
-  FileText,
   Info,
   Languages,
   LifeBuoy,
   LogOut,
-  RefreshCcw,
-  Shield,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -25,7 +22,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useLogout, useMe } from "@/lib/auth";
 import { useLocale, useT } from "@/lib/i18n";
 import { useUpdateLocale } from "@/lib/i18n/use-update-locale";
-import { confirmNatively, getWebApp } from "@/lib/telegram";
+import { legalUrl } from "@/lib/legal";
+import { confirmNatively, getWebApp, openExternalLink } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
 // Language autonyms — shown in their own language regardless of UI locale,
@@ -58,13 +56,21 @@ const SUPPORT_URL =
   (import.meta.env.VITE_SUPPORT_URL as string | undefined) ?? "https://t.me/yupay_support";
 const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "0.1.0";
 
-// Legal doc URLs — surfaced only when set so we don't ship rows that link
-// to drafts or 404s. Operators flip them on by populating the env vars at
-// build time (see infra/docker/miniapp.Dockerfile).
-const TERMS_URL = import.meta.env.VITE_TERMS_URL as string | undefined;
-const PRIVACY_URL = import.meta.env.VITE_PRIVACY_URL as string | undefined;
-const REFUND_URL = import.meta.env.VITE_REFUND_URL as string | undefined;
-const HAS_LEGAL_DOCS = Boolean(TERMS_URL || PRIVACY_URL || REFUND_URL);
+/**
+ * Legal documents, in the order a customer looks for them: the agreement that
+ * governs use of the service, the privacy policy, then everything else — the
+ * offer, refund terms and seller details — behind the index.
+ *
+ * These used to be three env-gated rows in a card, and the env vars were never
+ * set in production, so the section shipped invisible for the whole of the
+ * app's life. Naming the documents in code removes the way that fails, and the
+ * index means adding a sixth document doesn't need a Mini App release.
+ */
+const LEGAL_LINKS = [
+  { doc: "agreement", key: "settings.agreement" },
+  { doc: "privacy", key: "settings.privacy" },
+  { doc: undefined, key: "settings.allDocs" },
+] as const;
 
 const COMPANY_NAME = import.meta.env.VITE_COMPANY_NAME as string | undefined;
 const COMPANY_REGISTRATION = import.meta.env.VITE_COMPANY_REGISTRATION as string | undefined;
@@ -245,48 +251,6 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* Legal docs — hidden when no URL configured so we don't ship
-          dead links during the pre-launch period. */}
-      {HAS_LEGAL_DOCS && (
-        <div className="space-y-1.5">
-          <p className="text-muted-foreground mb-2 px-1 text-[11px] font-bold uppercase tracking-[0.08em]">
-            {t("settings.sectionDocs")}
-          </p>
-          <div className="bg-card border-border overflow-hidden rounded-3xl border">
-            {TERMS_URL && (
-              <SettingsRow
-                icon={FileText}
-                iconClass="text-blue-400"
-                label={t("settings.terms")}
-                onClick={() => window.open(TERMS_URL, "_blank", "noopener")}
-                chevron={<ExternalLink size={14} className="text-muted-foreground/50" />}
-                last={!PRIVACY_URL && !REFUND_URL}
-              />
-            )}
-            {PRIVACY_URL && (
-              <SettingsRow
-                icon={Shield}
-                iconClass="text-emerald-400"
-                label={t("settings.privacy")}
-                onClick={() => window.open(PRIVACY_URL, "_blank", "noopener")}
-                chevron={<ExternalLink size={14} className="text-muted-foreground/50" />}
-                last={!REFUND_URL}
-              />
-            )}
-            {REFUND_URL && (
-              <SettingsRow
-                icon={RefreshCcw}
-                iconClass="text-amber-400"
-                label={t("settings.refund")}
-                onClick={() => window.open(REFUND_URL, "_blank", "noopener")}
-                chevron={<ExternalLink size={14} className="text-muted-foreground/50" />}
-                last
-              />
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Logout */}
       {user && (
         <button
@@ -306,6 +270,38 @@ export default function Settings() {
           {t("settings.logout")}
         </button>
       )}
+
+      {/* Quiet links at the foot of the page rather than a settings card.
+          Nobody opens this screen looking for the offer — they go looking once
+          something has already gone wrong, and then they scroll to the bottom.
+          Outside the `user &&` above on purpose: a guest needs the documents
+          more than a signed-in customer does. */}
+      <nav
+        aria-label={t("settings.legalLabel")}
+        className="flex flex-col items-center gap-2.5 pb-1 pt-2"
+      >
+        {LEGAL_LINKS.map(({ doc, key }) => {
+          const href = legalUrl(locale, doc);
+          return (
+            <a
+              key={key}
+              href={href}
+              // A real href — so it reads as a link, survives a long-press, and
+              // still works outside Telegram — but the tap goes through the
+              // native bridge. A plain target="_blank" inside the WebView is
+              // treated as in-place navigation and replaces the Mini App.
+              onClick={(e) => {
+                e.preventDefault();
+                openExternalLink(href);
+              }}
+              className="text-muted-foreground/60 hover:text-foreground text-[13px] transition-colors"
+              data-testid={`legal-${doc ?? "index"}`}
+            >
+              {t(key)}
+            </a>
+          );
+        })}
+      </nav>
 
       {/* Language picker sheet */}
       <Sheet open={langOpen} onOpenChange={setLangOpen}>
