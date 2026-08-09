@@ -303,6 +303,13 @@ class Sku(Base):
     image_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    # How many codes the supplier still holds. NULL means "not tracked" — every
+    # game top-up, and voucher lines the supplier reports as unlimited. Zero
+    # means out of stock. Refreshed by the scheduler; see ``in_stock``.
+    supplier_stock: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    supplier_stock_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )
@@ -312,6 +319,10 @@ class Sku(Base):
 
     __table_args__ = (
         CheckConstraint("price_usd > 0", name="ck_skus_price_positive"),
+        CheckConstraint(
+            "supplier_stock IS NULL OR supplier_stock >= 0",
+            name="ck_skus_supplier_stock_non_negative",
+        ),
         CheckConstraint(
             "cost_usdt IS NULL OR cost_usdt > 0",
             name="ck_skus_cost_usdt_positive",
@@ -331,6 +342,18 @@ class Sku(Base):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
+
+    @property
+    def in_stock(self) -> bool:
+        """Whether this variant can still be sold.
+
+        The single place the NULL-means-untracked convention is interpreted, so
+        the storefront DTO, the checkout guard and the admin all agree. Note it
+        says nothing about ``active``: an operator switching a SKU off and a
+        supplier running dry are different facts, and collapsing them would lose
+        the operator's intent the next time stock is refreshed.
+        """
+        return self.supplier_stock is None or self.supplier_stock > 0
 
 
 class SkuPrice(Base):

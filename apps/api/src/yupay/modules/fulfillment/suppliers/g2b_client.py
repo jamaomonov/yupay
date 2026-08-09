@@ -361,6 +361,25 @@ class G2bClient:
             return [it for it in items if isinstance(it, dict)]
         return []
 
+    async def fetch_product(self, product_id: str) -> dict[str, Any] | None:
+        """One voucher product by id, or None if G2B no longer lists it.
+
+        The stock refresh needs a handful of specific products, and the paginated
+        list is ~12 800 rows deep — 129 requests to find ten. This is one request
+        each. A 404 means the product was withdrawn upstream, which the caller
+        treats as "no stock" rather than as an error worth alerting on.
+        """
+        try:
+            resp = await self._request("GET", f"/products/{product_id}")
+        except G2bError as exc:
+            if exc.status == 404:
+                return None
+            raise
+        body = resp.json()
+        # Flat object, or wrapped the way the list endpoint wraps its rows.
+        item = body.get("product") or body.get("data") or body
+        return item if isinstance(item, dict) else None
+
     async def fetch_games(self) -> list[dict[str, Any]]:
         resp = await self._request("GET", "/games")
         body = resp.json()

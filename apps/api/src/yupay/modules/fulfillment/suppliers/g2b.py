@@ -65,6 +65,15 @@ class G2bFulfiller(Fulfiller):
         # from settings each call so a hot-reloaded key is picked up.
         self._client_override = client
 
+    def client_for_reads(self) -> G2bClient:
+        """A client for read-only catalogue calls made outside fulfilment.
+
+        The stock refresh lives in ``integrations`` but the credentials and
+        retry policy belong here, so it borrows a client instead of building a
+        second one from settings and drifting apart from this adapter.
+        """
+        return self._client()
+
     def _client(self) -> G2bClient:
         if self._client_override is not None:
             return self._client_override

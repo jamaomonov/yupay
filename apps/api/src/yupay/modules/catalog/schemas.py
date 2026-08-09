@@ -172,6 +172,14 @@ class SkuOut(BaseModel):
     variable_amount: bool = False
     min_amount_usd: Decimal | None = None
     max_amount_usd: Decimal | None = None
+    # Boolean, never the count. How many codes a supplier is holding is not the
+    # customer's business: the number moves without warning as other resellers
+    # draw on the same pool, so "3 left" is a promise we cannot keep. Defaults
+    # to True so an older client that does not know the field still sells.
+    in_stock: bool = Field(
+        default=True,
+        description="False when the supplier has no codes left. The count itself is not exposed.",
+    )
     display_price: PriceOut | None = Field(
         default=None,
         description="Localised price. Returned only when the request specifies a currency.",

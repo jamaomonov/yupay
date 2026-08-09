@@ -202,6 +202,12 @@ def _sku_is_buyable(sku: Sku) -> bool:
     brand = product.brand if product is not None else None
     return bool(
         sku.active
+        # Supplier stock, for gift cards and vouchers: real codes in someone
+        # else's warehouse, and G2B reports plenty of lines at zero. Checked
+        # here rather than only in the storefront because the count moves
+        # between the page render and the pay button, and taking money for a
+        # code that no longer exists costs a manual refund.
+        and sku.in_stock
         and product is not None
         and product.active
         and brand
