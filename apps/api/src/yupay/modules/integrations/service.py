@@ -194,6 +194,7 @@ async def _import_denomination(
     denom: DenomImportIn,
     margin_percent: Decimal,
     admin_id: str,
+    sort_order: int,
 ) -> None:
     """Create one SKU + its G2B 'game' mapping. Caller pre-filters skips."""
     from yupay.modules.catalog import admin_schemas as catalog_schemas
@@ -215,6 +216,12 @@ async def _import_denomination(
             region=denom.region,
             price_usd=price,
             cost_usdt=denom.cost_usdt,
+            # Position in the request. Left unset, every SKU of an imported game
+            # landed on the column default of 0 and the storefront rendered the
+            # denominations in whatever order the database happened to return —
+            # which is how a "55 / 3688 / 165" ladder happens. The operator's
+            # ordering is the only intent available here, so it is the one used.
+            sort_order=sort_order,
         ),
     )
     await upsert_mapping(
@@ -300,7 +307,10 @@ async def import_game(
 
     created_skus = 0
     skipped: list[str] = []
-    for d in payload.denominations:
+    # Enumerated over the request, not over the created rows: a skipped
+    # duplicate still consumes its position, so the ones that are created keep
+    # the spacing the operator asked for instead of closing up around the gap.
+    for position, d in enumerate(payload.denominations):
         if d.sku_code in existing:
             skipped.append(d.sku_code)
             continue
@@ -311,6 +321,7 @@ async def import_game(
             denom=d,
             margin_percent=payload.margin_percent,
             admin_id=admin_id,
+            sort_order=position,
         )
         created_skus += 1
 

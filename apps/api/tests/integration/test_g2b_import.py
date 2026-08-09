@@ -95,6 +95,11 @@ async def test_import_new_brand_creates_everything(db_session: AsyncSession) -> 
     assert by_code["g2b-pubg-60"].price_usd == Decimal("1.02")
     assert by_code["g2b-pubg-60"].cost_usdt == Decimal("0.85")
     assert by_code["g2b-pubg-300"].price_usd == Decimal("5.99")
+    # Denominations keep the order they were requested in. Every SKU used to
+    # land on the column default of 0, which left the storefront's ladder to
+    # whatever order the database returned.
+    assert by_code["g2b-pubg-60"].sort_order == 0
+    assert by_code["g2b-pubg-300"].sort_order == 1
 
     mappings = (
         (
@@ -162,6 +167,13 @@ async def test_reimport_skips_existing_sku(db_session: AsyncSession) -> None:
     result = await svc.import_game(db_session, payload, admin_id="a")
     assert result.skipped == ["g2b-pubg-60"]
     assert result.created_skus == 1
+
+    # A skipped duplicate still consumes its position, so the SKU that was
+    # created keeps the slot the operator gave it rather than sliding to 0.
+    created = (
+        await db_session.execute(select(Sku).where(Sku.sku_code == "g2b-pubg-1800"))
+    ).scalar_one()
+    assert created.sort_order == 1
 
 
 async def test_duplicate_brand_slug_raises_conflict(db_session: AsyncSession) -> None:
