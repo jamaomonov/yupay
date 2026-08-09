@@ -267,7 +267,6 @@
   "settings.agreement": "Terms of use",
   "settings.privacy": "Privacy policy",
   "settings.allDocs": "All documents",
-  "settings.logout": "Sign out",
   "settings.aboutVersion": "Version",
   "settings.companySince": "Operating since {year}",
   "settings.aboutBlurb": "YuPay — game top-ups, vouchers and subscriptions. Proprietary license; code in a private repo.",
@@ -310,7 +309,6 @@
     "many": "{count} items",
     "other": "{count} items"
   },
-  "settings.logoutConfirm": "Log out of your account?",
   "success.addToHome": "Add to home screen",
   "success.share": "Share",
   "success.shareStoryText": "Topped up {game} in a couple of minutes — YuPay",

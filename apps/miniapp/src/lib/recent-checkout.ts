@@ -9,8 +9,13 @@
  * The store is intentionally tiny:
  *   - 1 entry per brand
  *   - capped at 32 brands total (LRU eviction by updated_at)
- *   - cleared by ``useLogout`` so a shared device doesn't leak the last
- *     player_id to the next Telegram user.
+ *
+ * Nothing clears it. This module has never exported a way to, and the sign-out
+ * that was supposed to trigger one is gone — the Mini App session comes from
+ * Telegram's `initData`, so there was nothing for a customer to sign out of.
+ * On a shared phone the previous Telegram user's last player_id is therefore
+ * still offered as a suggestion. Only ever a suggestion: it is public account
+ * data, pre-filled into a field, not a credential.
  */
 
 const STORAGE_KEY = "yupay.miniapp.recent_fulfillment_v1";

@@ -267,7 +267,6 @@
   "settings.agreement": "Foydalanuvchi shartnomasi",
   "settings.privacy": "Maxfiylik siyosati",
   "settings.allDocs": "Barcha hujjatlar",
-  "settings.logout": "Chiqish",
   "settings.aboutVersion": "Versiya",
   "settings.companySince": "{year}-yildan beri ishlaymiz",
   "settings.aboutBlurb": "YuPay — o'yinlarni to'ldirish, vaucherlar va obunalar. Litsenziya — xususiy; kod yopiq repozitoriyda.",
@@ -310,7 +309,6 @@
     "many": "{count} ta pozitsiya",
     "other": "{count} ta pozitsiya"
   },
-  "settings.logoutConfirm": "Hisobdan chiqasizmi?",
   "success.addToHome": "Bosh ekranga",
   "success.share": "Ulashish",
   "success.shareStoryText": "{game} bir necha daqiqada toʻldirildi — YuPay",

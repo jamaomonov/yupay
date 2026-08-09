@@ -267,7 +267,6 @@
   "settings.agreement": "Пользовательское соглашение",
   "settings.privacy": "Политика конфиденциальности",
   "settings.allDocs": "Все документы",
-  "settings.logout": "Выйти из аккаунта",
   "settings.aboutVersion": "Версия",
   "settings.companySince": "Работаем с {year} года",
   "settings.aboutBlurb": "YuPay — пополнение игр, ваучеры и подписки. Лицензия — проприетарная; код в приватном репо.",
@@ -310,7 +309,6 @@
     "many": "{count} позиций",
     "other": "{count} позиций"
   },
-  "settings.logoutConfirm": "Выйти из аккаунта?",
   "success.addToHome": "На главный экран",
   "success.share": "Поделиться",
   "success.shareStoryText": "Пополнил {game} за пару минут — YuPay",

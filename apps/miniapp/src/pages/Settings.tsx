@@ -9,7 +9,6 @@ import {
   Info,
   Languages,
   LifeBuoy,
-  LogOut,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -19,11 +18,11 @@ import uzFlag from "@/assets/flags/uz.png";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
-import { useLogout, useMe } from "@/lib/auth";
+import { useMe } from "@/lib/auth";
 import { useLocale, useT } from "@/lib/i18n";
 import { useUpdateLocale } from "@/lib/i18n/use-update-locale";
 import { legalUrl } from "@/lib/legal";
-import { confirmNatively, getWebApp, openExternalLink } from "@/lib/telegram";
+import { getWebApp, openExternalLink } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
 // Language autonyms — shown in their own language regardless of UI locale,
@@ -83,7 +82,6 @@ export default function Settings() {
   const updateLocale = useUpdateLocale();
   useDocumentTitle(t("settings.title"));
   const me = useMe();
-  const logout = useLogout();
   const user = me.data;
   const { toast } = useToast();
 
@@ -251,31 +249,16 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* Logout */}
-      {user && (
-        <button
-          onClick={() => {
-            void (async () => {
-              // Native prompt on clients that have one; older clients get the
-              // old straight-through behaviour rather than a web modal.
-              const ok = await confirmNatively(t("settings.logoutConfirm"));
-              if (ok === false) return;
-              logout.mutate();
-            })();
-          }}
-          className="text-muted-foreground hover:text-destructive flex w-full items-center justify-center gap-2 py-3.5 text-sm font-medium transition-colors"
-          data-testid="btn-logout"
-        >
-          <LogOut size={15} />
-          {t("settings.logout")}
-        </button>
-      )}
+      {/* No sign-out. The session is not something the customer holds — it is
+          derived from the `initData` Telegram signs on every launch, so
+          clearing it just re-authenticates the same account on the next open.
+          The button offered an exit that led straight back in. */}
 
       {/* Quiet links at the foot of the page rather than a settings card.
           Nobody opens this screen looking for the offer — they go looking once
           something has already gone wrong, and then they scroll to the bottom.
-          Outside the `user &&` above on purpose: a guest needs the documents
-          more than a signed-in customer does. */}
+          Shown to guests too: a guest needs the documents more than a
+          signed-in customer does. */}
       <nav
         aria-label={t("settings.legalLabel")}
         className="flex flex-col items-center gap-2.5 pb-1 pt-2"
