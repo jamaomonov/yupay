@@ -7,25 +7,19 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { Metadata } from "next";
 
 import { routing } from "@/i18n/routing";
-import { alternates, ogLocale, pathFor, ROBOTS } from "@/lib/seo";
-
 // "agreement" governs use of the service; "terms" is the sales offer. Two
 // documents on purpose — a ban needs a published basis, and that basis has
 // no place in a contract about buying a specific item.
-const DOCS = ["terms", "agreement", "privacy", "refunds", "imprint"] as const;
-type Doc = (typeof DOCS)[number];
+import { isLegalDoc, LEGAL_DOCS } from "@/lib/legal";
+import { alternates, ogLocale, pathFor, ROBOTS } from "@/lib/seo";
 
 interface Section {
   h: string;
   p: string;
 }
 
-function isDoc(value: string): value is Doc {
-  return (DOCS as readonly string[]).includes(value);
-}
-
 export function generateStaticParams() {
-  return DOCS.map((doc) => ({ doc }));
+  return LEGAL_DOCS.map((doc) => ({ doc }));
 }
 
 export async function generateMetadata({
@@ -34,7 +28,7 @@ export async function generateMetadata({
   params: Promise<{ locale: string; doc: string }>;
 }): Promise<Metadata> {
   const { locale, doc } = await params;
-  if (!hasLocale(routing.locales, locale) || !isDoc(doc)) return {};
+  if (!hasLocale(routing.locales, locale) || !isLegalDoc(doc)) return {};
   setRequestLocale(locale);
   const t = await getTranslations("web.legal");
   const title = t(`${doc}.title`);
@@ -54,7 +48,7 @@ export default async function LegalPage({
   params: Promise<{ locale: string; doc: string }>;
 }) {
   const { locale, doc } = await params;
-  if (!isDoc(doc)) notFound();
+  if (!isLegalDoc(doc)) notFound();
   setRequestLocale(locale);
   const t = await getTranslations("web.legal");
   const tn = await getTranslations("web.nav");
@@ -69,6 +63,13 @@ export default async function LegalPage({
         >
           <Link href={pathFor(locale)} className="hover:text-tx-mute transition">
             {t("home")}
+          </Link>
+          <ChevronRight size={12} />
+          {/* Through the index, not straight to the leaf: it makes the hierarchy
+              real for a reader and gives the hub the inbound links it needs to
+              be crawled as a page rather than a dead end. */}
+          <Link href={pathFor(locale, "/legal")} className="hover:text-tx-mute transition">
+            {t("index.title")}
           </Link>
           <ChevronRight size={12} />
           <span className="text-tx-mute">{t(`${doc}.title`)}</span>

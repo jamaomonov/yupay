@@ -3,6 +3,7 @@ import { LOCALES } from "@yupay/i18n";
 import type { MetadataRoute } from "next";
 
 import { getBrandSlugs } from "@/lib/catalog";
+import { LEGAL_DOCS } from "@/lib/legal";
 import { localeUrl } from "@/lib/seo";
 
 /**
@@ -44,7 +45,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.6,
       changeFrequency: "monthly" as const,
     })),
-    ...["terms", "privacy", "refunds", "imprint"].map((doc) => ({
+    // Driven off LEGAL_DOCS rather than a second hand-written list: the
+    // previous copy here was missing `agreement`, so the document was linked
+    // from the footer and routed by the app but never offered to a crawler.
+    { path: "/legal", priority: 0.3, changeFrequency: "monthly" },
+    ...LEGAL_DOCS.map((doc) => ({
       path: `/legal/${doc}`,
       priority: 0.3,
       changeFrequency: "monthly" as const,

@@ -348,6 +348,7 @@
     "agreement": "Terms of use",
     "privacy": "Privacy",
     "imprint": "Imprint",
+    "allDocs": "All documents",
     "careers": "Careers",
     "copyright": "© {year} yupay",
     "disclaimer": "Not affiliated with Valve, Tencent, Riot or miHoYo.",
@@ -358,6 +359,10 @@
     "home": "Home",
     "updatedLabel": "Updated:",
     "backToStore": "← Back to catalog",
+    "index": {
+      "title": "Legal",
+      "intro": "The public offer, terms of use, privacy policy, refund terms and seller details — all in one place."
+    },
     "terms": {
       "title": "Public offer",
       "updated": "August 2026",

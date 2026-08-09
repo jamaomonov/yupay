@@ -348,6 +348,7 @@
     "agreement": "Shartnoma",
     "privacy": "Maxfiylik",
     "imprint": "Rekvizitlar",
+    "allDocs": "Barcha hujjatlar",
     "careers": "Karyera",
     "copyright": "© {year} yupay",
     "disclaimer": "Valve, Tencent, Riot yoki miHoYo bilan bogʻliq emas.",
@@ -358,6 +359,10 @@
     "home": "Bosh sahifa",
     "updatedLabel": "Yangilangan:",
     "backToStore": "← Katalogga",
+    "index": {
+      "title": "Hujjatlar",
+      "intro": "Ommaviy oferta, foydalanuvchi shartnomasi, maxfiylik siyosati, qaytarish shartlari va sotuvchi rekvizitlari — barchasi bir joyda."
+    },
     "terms": {
       "title": "Ommaviy oferta",
       "updated": "2026-yil avgust",
