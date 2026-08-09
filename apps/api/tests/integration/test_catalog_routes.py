@@ -338,6 +338,32 @@ async def test_product_detail_carries_brand_and_form(
     assert body["required_fields"][0]["type"] == "text"
 
 
+async def test_product_detail_reports_supplier_stock(
+    integration_client: AsyncClient, db_session: AsyncSession, _seed_one
+) -> None:
+    """`in_stock` must follow the column, and the count must never ship.
+
+    Regression: `SkuOut` is built field by field rather than from the ORM
+    object, so adding `in_stock` with a default of True left every SKU
+    permanently in stock — the field was present, plausible, and wrong. Only a
+    test that empties a real row catches that.
+    """
+    await db_session.execute(
+        update(Sku).where(Sku.sku_code == "pubg-uc-60-tr").values(supplier_stock=0)
+    )
+    await db_session.commit()
+
+    r = await integration_client.get("/api/v1/catalog/products/pubg-uc")
+    assert r.status_code == 200, r.text
+    skus = {s["sku_code"]: s for s in r.json()["skus"]}
+
+    assert skus["pubg-uc-60-tr"]["in_stock"] is False
+    # Untracked (NULL) stays sellable — that is every game top-up.
+    assert skus["pubg-uc-300-tr"]["in_stock"] is True
+    # The number itself is nobody's business but ours.
+    assert "supplier_stock" not in skus["pubg-uc-60-tr"]
+
+
 async def test_product_detail_with_currency_override(
     integration_client: AsyncClient, _seed_one
 ) -> None:

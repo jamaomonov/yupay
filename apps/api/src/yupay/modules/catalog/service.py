@@ -498,6 +498,7 @@ async def get_product_by_slug(
                 variable_amount=sku.variable_amount,
                 min_amount_usd=sku.min_amount_usd,
                 max_amount_usd=sku.max_amount_usd,
+                in_stock=sku.in_stock,
                 display_price=display,
             )
         )
@@ -554,6 +555,7 @@ async def get_sku_by_id(
         variable_amount=sku.variable_amount,
         min_amount_usd=sku.min_amount_usd,
         max_amount_usd=sku.max_amount_usd,
+        in_stock=sku.in_stock,
         display_price=display,
     )
 
