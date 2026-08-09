@@ -170,8 +170,6 @@ async def test_sweep_without_a_registered_adapter_is_a_no_op(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """No G2B key configured — the job must be quiet, not crash the scheduler."""
-    monkeypatch.setattr(
-        "yupay.modules.fulfillment.suppliers.REGISTRY", {}, raising=False
-    )
+    monkeypatch.setattr("yupay.modules.fulfillment.suppliers.REGISTRY", {}, raising=False)
     report = await mod.refresh_voucher_stock()
     assert report.checked == 0
