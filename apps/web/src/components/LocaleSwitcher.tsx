@@ -8,6 +8,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 
 import { routing, type AppLocale } from "@/i18n/routing";
+import { pathFor } from "@/lib/seo";
 
 const LOCALE_LABEL_KEY: Record<AppLocale, "localeRu" | "localeEn" | "localeUz"> = {
   ru: "localeRu",
@@ -55,11 +56,12 @@ export function LocaleSwitcher() {
   }, [open]);
 
   // Rewrite the leading ``/<locale>`` segment in the current path. ``as-needed``
-  // routing means the default locale may not be present in the URL — we strip
-  // whatever's there and prepend the chosen one explicitly.
+  // routing means the default locale has NO prefix, so switching to it must
+  // produce the bare path — ``/ru/...`` only 308-redirects there, and making a
+  // deliberate click cost a round trip is a small waste we can just not have.
   const hrefFor = (next: AppLocale) => {
     const stripped = pathname.replace(/^\/(ru|en|uz)(?=\/|$)/, "") || "/";
-    return `/${next}${stripped === "/" ? "" : stripped}`;
+    return pathFor(next, stripped === "/" ? "" : stripped);
   };
 
   return (

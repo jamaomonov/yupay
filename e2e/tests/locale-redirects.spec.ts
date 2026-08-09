@@ -54,17 +54,6 @@ test("the default-locale prefix redirects permanently", async ({ playwright, bas
   }
 });
 
-test("language detection stays a temporary redirect", async ({ playwright, baseURL }) => {
-  const { status } = await probe(
-    () => playwright.request.newContext(contextOptions(baseURL, "en-US,en;q=0.9")),
-    "/store/steam",
-  );
-  // 200 or 307 are both fine depending on whether locale detection is on. What
-  // must never happen is a PERMANENT redirect, which would pin one visitor's
-  // language onto a URL everyone shares.
-  expect([200, 307]).toContain(status);
-});
-
 test("a first-time visitor gets each locale served directly", async ({ playwright, baseURL }) => {
   for (const [path, lang] of [
     ["/store/steam", "ru-RU"],
@@ -76,5 +65,23 @@ test("a first-time visitor gets each locale served directly", async ({ playwrigh
       path,
     );
     expect(status, `${path} must be served directly`).toBe(200);
+  }
+});
+
+test("the canonical URL serves the same page to every language", async ({
+  playwright,
+  baseURL,
+}) => {
+  // The reason locale detection is off. This URL is published as the Russian
+  // page in hreflang and as its own canonical; if an English browser gets a
+  // redirect here, the canonical serves content to some visitors and a detour
+  // to others, and someone arriving from a Russian search result lands on a
+  // page that was never in the results.
+  for (const lang of ["en-US,en;q=0.9", "uz-UZ", "ru-RU", "de-DE"]) {
+    const { status } = await probe(
+      () => playwright.request.newContext(contextOptions(baseURL, lang)),
+      "/store/steam",
+    );
+    expect(status, `Accept-Language: ${lang} must be served the canonical`).toBe(200);
   }
 });
