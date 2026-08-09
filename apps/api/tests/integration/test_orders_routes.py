@@ -327,6 +327,73 @@ async def test_create_order_missing_required_field(
     assert "player_id" in r.text
 
 
+async def test_create_order_refuses_a_sold_out_sku(
+    integration_client: AsyncClient, db_session: AsyncSession, _seed_pubg: dict[str, str]
+) -> None:
+    """Checkout must refuse a SKU the supplier has run out of.
+
+    The storefront greys these out, but brand pages are ISR at 300s and the
+    count moves without warning as other resellers draw on the same pool — so
+    there is a real window where a customer can press Pay on a card the page
+    still believes is full. Taking the money for a code we cannot deliver costs
+    a manual refund, so the guard has to live here rather than only in the UI.
+    """
+    await db_session.execute(
+        update(Sku).where(Sku.id == _seed_pubg["sku_id"]).values(supplier_stock=0)
+    )
+    await db_session.commit()
+
+    token = await _login_user(integration_client, tg_id=21)
+    r = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "sold-out-dddddddddddddd",
+        },
+        json={
+            "currency": "USD",
+            "items": [
+                {
+                    "sku_id": _seed_pubg["sku_id"],
+                    "qty": 1,
+                    "fulfillment_data": {"player_id": "123456", "server": "as"},
+                }
+            ],
+        },
+    )
+    assert r.status_code == 422, r.text
+    assert _seed_pubg["sku_id"] in r.text
+
+
+async def test_create_order_allows_untracked_stock(
+    integration_client: AsyncClient, _seed_pubg: dict[str, str]
+) -> None:
+    """NULL stock is "not tracked", not "empty" — every game top-up carries it.
+
+    The companion to the test above: read the wrong way round, the same guard
+    would refuse the entire catalog.
+    """
+    token = await _login_user(integration_client, tg_id=22)
+    r = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "untracked-stock-eeeeee",
+        },
+        json={
+            "currency": "USD",
+            "items": [
+                {
+                    "sku_id": _seed_pubg["sku_id"],
+                    "qty": 1,
+                    "fulfillment_data": {"player_id": "123456", "server": "as"},
+                }
+            ],
+        },
+    )
+    assert r.status_code == 201, r.text
+
+
 async def test_create_order_pattern_violation(
     integration_client: AsyncClient, _seed_pubg: dict[str, str]
 ) -> None:
