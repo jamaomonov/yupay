@@ -56,6 +56,9 @@ interface SkuApi {
   variable_amount?: boolean;
   min_amount_usd?: string | null;
   max_amount_usd?: string | null;
+  // Gift cards are finite: the supplier holds real codes and runs out. Same
+  // stale-API caveat as above — absent means sellable, never the reverse.
+  in_stock?: boolean;
   display_price: PriceOut | null;
 }
 
@@ -194,6 +197,9 @@ export interface Package {
    *  never fall back to a price of zero/one. Always `null` for a
    *  fixed-price SKU. */
   ratePerDollar: { amount: number; currency: string } | null;
+  /** False only when the supplier has run out. A missing field on an older
+   *  API reads as in stock — an absent flag must not empty the shelf. */
+  inStock: boolean;
 }
 
 function skuToPackage(sku: SkuApi): Package {
@@ -218,6 +224,7 @@ function skuToPackage(sku: SkuApi): Package {
     minAmountUsd: sku.min_amount_usd != null ? Number.parseFloat(sku.min_amount_usd) : null,
     maxAmountUsd: sku.max_amount_usd != null ? Number.parseFloat(sku.max_amount_usd) : null,
     ratePerDollar: variableAmount ? displayPrice : null,
+    inStock: sku.in_stock !== false,
   };
 }
 

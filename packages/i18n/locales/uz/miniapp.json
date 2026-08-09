@@ -140,6 +140,7 @@
   "topup.noPositions": "Bu mahsulotda hozircha faol pozitsiyalar yo'q. Keyinroq qayting.",
   "topup.paymentMethod": "To'lov usuli",
   "topup.paymentSafe": "Xavfsiz, karta ma'lumotlarisiz",
+  "topup.outOfStock": "Mavjud emas",
   "topup.soon": "Tez orada",
   "topup.trustNoPassword": "Parolsiz — faqat akkauntning ochiq ma'lumotlari",
   "topup.trustEncrypted": "Shifrlangan to'lovlar va kodlarni xavfsiz yetkazish",

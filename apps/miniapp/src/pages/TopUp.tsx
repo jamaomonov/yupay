@@ -68,6 +68,8 @@ interface Package {
   /** Localised price of one dollar. `null` means the FX trust gate rejected
    *  the live rate — not sellable right now, never a price of zero. */
   ratePerDollar: { amount: number; currency: string } | null;
+  /** False only when the supplier has run out of codes. */
+  inStock: boolean;
 }
 
 function adaptPackage(api: ApiPackage): Package {
@@ -82,6 +84,7 @@ function adaptPackage(api: ApiPackage): Package {
     minAmountUsd: api.minAmountUsd,
     maxAmountUsd: api.maxAmountUsd,
     ratePerDollar: api.ratePerDollar,
+    inStock: api.inStock,
   };
 }
 
@@ -1201,10 +1204,18 @@ function PackageCard({
   onSelect: () => void;
 }) {
   const { t } = useT();
+  // Gift cards run out. A sold-out card stays on the grid rather than
+  // disappearing — a denomination that vanishes between visits reads as a
+  // pricing change, while a dimmed one reads as "come back later".
+  const soldOut = !pkg.inStock;
   return (
     <button
       onClick={onSelect}
-      className="relative rounded-2xl p-3.5 text-left transition-all duration-150"
+      disabled={soldOut}
+      aria-disabled={soldOut}
+      className={`relative rounded-2xl p-3.5 text-left transition-all duration-150 ${
+        soldOut ? "cursor-not-allowed opacity-45" : ""
+      }`}
       style={{
         background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
         border: active ? "1.5px solid hsl(var(--primary) / 0.8)" : "1px solid hsl(var(--border))",
@@ -1241,7 +1252,9 @@ function PackageCard({
         </p>
       )}
 
-      <p className="text-sm font-bold text-white">{formatMoney(pkg.price, pkg.priceCode)}</p>
+      <p className="text-sm font-bold text-white">
+        {soldOut ? t("topup.outOfStock") : formatMoney(pkg.price, pkg.priceCode)}
+      </p>
     </button>
   );
 }

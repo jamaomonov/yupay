@@ -140,6 +140,7 @@
   "topup.noPositions": "This product has no active items yet. Check back later.",
   "topup.paymentMethod": "Payment method",
   "topup.paymentSafe": "Secure, no card details shared",
+  "topup.outOfStock": "Out of stock",
   "topup.soon": "Soon",
   "topup.trustNoPassword": "No password needed — only public account data",
   "topup.trustEncrypted": "Encrypted payments and secure code delivery",

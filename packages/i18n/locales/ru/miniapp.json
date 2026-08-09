@@ -140,6 +140,7 @@
   "topup.noPositions": "У этого продукта пока нет активных позиций. Загляни позже.",
   "topup.paymentMethod": "Способ оплаты",
   "topup.paymentSafe": "Безопасно, без передачи карт",
+  "topup.outOfStock": "Нет в наличии",
   "topup.soon": "Скоро",
   "topup.trustNoPassword": "Без передачи пароля — только публичные данные аккаунта",
   "topup.trustEncrypted": "Шифрованные платежи и безопасная выдача кодов",
