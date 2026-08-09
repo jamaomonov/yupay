@@ -8068,6 +8068,12 @@
             ],
             "title": "Image Url"
           },
+          "in_stock": {
+            "default": true,
+            "description": "False when the supplier has no codes left. The count itself is not exposed.",
+            "title": "In Stock",
+            "type": "boolean"
+          },
           "max_amount_usd": {
             "anyOf": [
               {

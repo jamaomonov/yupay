@@ -68,19 +68,25 @@ def normalise_stock(raw: Any) -> int | None:
     return None if value < 0 else value
 
 
-async def refresh_voucher_stock() -> StockRefreshReport:
+async def refresh_voucher_stock(*, client: Any | None = None) -> StockRefreshReport:
     """Pull stock for every active voucher mapping and persist it.
 
     Returns a per-run summary. Alerts on the *transition* into out-of-stock
     only — a SKU that has been empty for a week should not re-alert every hour.
-    """
-    from yupay.modules.fulfillment.suppliers import REGISTRY
-    from yupay.modules.fulfillment.suppliers.g2b import G2bFulfiller
 
-    fulfiller = REGISTRY.get("g2b")
-    if not isinstance(fulfiller, G2bFulfiller):
-        log.info("stock_refresh.skipped", reason="g2b adapter not registered")
-        return StockRefreshReport()
+    ``client`` is injectable for tests, mirroring how ``G2bFulfiller`` takes one;
+    in production it is borrowed from the registered adapter so credentials and
+    retry policy stay in one place.
+    """
+    if client is None:
+        from yupay.modules.fulfillment.suppliers import REGISTRY
+        from yupay.modules.fulfillment.suppliers.g2b import G2bFulfiller
+
+        fulfiller = REGISTRY.get("g2b")
+        if not isinstance(fulfiller, G2bFulfiller):
+            log.info("stock_refresh.skipped", reason="g2b adapter not registered")
+            return StockRefreshReport()
+        client = fulfiller.client_for_reads()
 
     factory = get_session_factory()
     async with factory() as session:
@@ -96,7 +102,6 @@ async def refresh_voucher_stock() -> StockRefreshReport:
         targets = [(str(sku_id), str(external_id)) for sku_id, external_id in rows]
 
     checked = updated = out = errors = 0
-    client = fulfiller.client_for_reads()
     for sku_id, external_id in targets:
         checked += 1
         try:

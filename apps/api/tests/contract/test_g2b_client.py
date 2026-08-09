@@ -275,3 +275,51 @@ async def test_check_player_400_without_verdict_raises() -> None:
             game_code="pubgm", player_id="9", server_id=None, charname=None
         )
     assert excinfo.value.status == 400
+
+
+@respx.mock
+async def test_fetch_product_reads_stock() -> None:
+    """The stock sweep's read path. Flat object, as G2B actually answers."""
+    respx.get("https://g2b.test/v1/products/107").mock(
+        return_value=httpx.Response(
+            200,
+            json={"id": 107, "title": "800 Robux Global", "unit_price": 9, "stock": 422},
+        )
+    )
+    got = await _client().fetch_product("107")
+    assert got is not None
+    assert got["stock"] == 422
+    assert got["unit_price"] == 9
+
+
+@respx.mock
+async def test_fetch_product_unwraps_a_wrapped_body() -> None:
+    """Tolerated for the same reason ``fetch_products`` tolerates it: the list
+    endpoint wraps its rows, and nothing documents that the detail one will not."""
+    respx.get("https://g2b.test/v1/products/93").mock(
+        return_value=httpx.Response(200, json={"product": {"id": 93, "stock": 3}})
+    )
+    got = await _client().fetch_product("93")
+    assert got == {"id": 93, "stock": 3}
+
+
+@respx.mock
+async def test_fetch_product_404_is_not_an_error() -> None:
+    """A withdrawn product is an answer, not a fault — the caller turns None
+    into "no stock" rather than alerting on it."""
+    respx.get("https://g2b.test/v1/products/99999999").mock(
+        return_value=httpx.Response(404, json={"message": "not found"})
+    )
+    assert await _client().fetch_product("99999999") is None
+
+
+@respx.mock
+async def test_fetch_product_other_errors_still_raise() -> None:
+    """Only 404 is swallowed. A 500 must not read as "the product is gone",
+    or one bad afternoon at the supplier would empty the shelf — it propagates
+    as the transport failure it is, and the sweep counts it as an error."""
+    respx.get("https://g2b.test/v1/products/107").mock(
+        return_value=httpx.Response(500, text="boom")
+    )
+    with pytest.raises(UpstreamUnavailableError):
+        await _client(max_retries=0).fetch_product("107")
