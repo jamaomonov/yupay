@@ -187,6 +187,7 @@
     "emailLabel": "Email — сюда придёт чек и ссылка на заказ",
     "emailPlaceholder": "you@example.com",
     "check": "Проверить",
+    "outOfStock": "Нет в наличии",
     "checking": "Проверяем…",
     "checkNickname": "Ник: {name}",
     "checkFailed": "Не удалось проверить",

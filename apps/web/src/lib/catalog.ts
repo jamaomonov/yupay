@@ -76,6 +76,10 @@ export interface SkuOut {
   variable_amount?: boolean;
   min_amount_usd?: string | null;
   max_amount_usd?: string | null;
+  // Gift cards are finite: the supplier holds real codes and runs out. Optional
+  // and defaulted to sellable at every use site, because a build prerendering
+  // against the older deployed API would otherwise grey out the whole catalog.
+  in_stock?: boolean;
   display_price: PriceOut | null;
 }
 

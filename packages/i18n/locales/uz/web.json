@@ -187,6 +187,7 @@
     "emailLabel": "Email — chek va buyurtma havolasi shu yerga keladi",
     "emailPlaceholder": "you@example.com",
     "check": "Tekshirish",
+    "outOfStock": "Mavjud emas",
     "checking": "Tekshirilmoqda…",
     "checkNickname": "Nik: {name}",
     "checkFailed": "Tekshirib boʻlmadi",

@@ -541,9 +541,14 @@ export function PurchasePanel({
   const primarySkus = products[0]?.skus ?? [];
   const primaryIsVariable =
     primarySkus.length > 0 && primarySkus.every((s) => s.variable_amount ?? false);
-  const [skuId, setSkuId] = useState<string | undefined>(
-    primaryIsVariable || primarySkus.length === 1 ? primarySkus[0]?.id : undefined,
-  );
+  const [skuId, setSkuId] = useState<string | undefined>(() => {
+    // Auto-select only when there is nothing to choose. A single sold-out SKU
+    // must not become the selection: the panel would look ready to pay and
+    // then fail at the button, since the API refuses out-of-stock lines.
+    if (!(primaryIsVariable || primarySkus.length === 1)) return undefined;
+    const only = primarySkus[0];
+    return only && only.in_stock !== false ? only.id : undefined;
+  });
   const [form, setForm] = useState<Record<string, string>>({});
   const [email, setEmail] = useState("");
   // The dollar amount typed for a variable-amount SKU. Raw string, not a
@@ -947,18 +952,25 @@ export function PurchasePanel({
                     {product.skus.map((sku) => {
                       const active = sku.id === skuId;
                       const img = sku.image_url ?? product.image_url;
+                      // Gift cards run out. `in_stock` is absent on an older
+                      // API, so anything but an explicit `false` stays sellable
+                      // — a missing field must never empty the shelf.
+                      const soldOut = sku.in_stock === false;
                       return (
                         <button
                           key={sku.id}
                           type="button"
                           aria-pressed={active}
+                          disabled={soldOut}
                           onClick={() => {
                             setSkuId(sku.id);
                           }}
                           className={`focus-visible:ring-primary focus-visible:ring-offset-bg relative flex flex-col items-start gap-2 rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
-                            active
-                              ? "border-primary bg-primary/10"
-                              : "border-border bg-card hover:border-border-2"
+                            soldOut
+                              ? "border-border bg-card cursor-not-allowed opacity-45"
+                              : active
+                                ? "border-primary bg-primary/10"
+                                : "border-border bg-card hover:border-border-2"
                           }`}
                         >
                           <span className="rounded-btn relative h-12 w-12 overflow-hidden">
@@ -986,7 +998,7 @@ export function PurchasePanel({
                             {sku.denomination ?? sku.sku_code}
                           </span>
                           <span className="text-foreground font-mono text-[13.5px] font-semibold tabular-nums">
-                            {skuPrice(locale, sku)}
+                            {soldOut ? t("outOfStock") : skuPrice(locale, sku)}
                           </span>
                         </button>
                       );

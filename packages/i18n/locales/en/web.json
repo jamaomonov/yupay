@@ -187,6 +187,7 @@
     "emailLabel": "Email — your receipt and order link go here",
     "emailPlaceholder": "you@example.com",
     "check": "Check",
+    "outOfStock": "Out of stock",
     "checking": "Checking…",
     "checkNickname": "Nickname: {name}",
     "checkFailed": "Could not verify",
