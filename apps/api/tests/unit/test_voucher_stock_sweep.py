@@ -90,7 +90,9 @@ def _harness(monkeypatch: pytest.MonkeyPatch) -> Any:
         alerts.append(kind)
         return True
 
-    monkeypatch.setattr(mod.notifications, "send_admin_alert", _capture)
+    # Patched by path: `notifications` is a module alias inside stock_refresh,
+    # which mypy does not treat as an attribute of it.
+    monkeypatch.setattr("yupay.modules.notifications.api.send_admin_alert", _capture, raising=False)
 
     def _install(targets: list[tuple[str, str]], skus: list[Sku]) -> dict[str, Any]:
         state: dict[str, Any] = {
