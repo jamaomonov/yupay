@@ -6,12 +6,17 @@
  * and renders the latest 30 points as a Sparkline.
  *
  * Hidden entirely when the SKU has no history — operators looking at a
- * fresh SKU shouldn't see an empty chart they have to interpret. */
+ * fresh SKU shouldn't see an empty chart they have to interpret. The full,
+ * unclipped history (up to the server's 500-point ceiling) lives behind the
+ * "Вся история" button in {@link SkuPriceHistoryModal}. */
 
 import { useQuery } from "@tanstack/react-query";
-import { TrendingDown, TrendingUp } from "lucide-react";
+import { History, TrendingDown, TrendingUp } from "lucide-react";
+import { useState } from "react";
 
-import type { PriceHistoryListOut, PricePoint } from "./types";
+import { SkuPriceHistoryModal } from "./SkuPriceHistoryModal";
+
+import type { PriceHistoryListOut } from "./types";
 
 import { Sparkline } from "@/components/Sparkline";
 import { apiGet } from "@/lib/api";
@@ -19,9 +24,11 @@ import { qk } from "@/lib/queryKeys";
 
 interface Props {
   skuId: string;
+  skuCode: string;
 }
 
-export function SkuPriceHistoryCard({ skuId }: Props) {
+export function SkuPriceHistoryCard({ skuId, skuCode }: Props) {
+  const [modalOpen, setModalOpen] = useState(false);
   const query = useQuery<PriceHistoryListOut>({
     queryKey: qk.skuPriceHistory(skuId),
     queryFn: () =>
@@ -80,16 +87,26 @@ export function SkuPriceHistoryCard({ skuId }: Props) {
         </div>
       </div>
 
-      <details>
-        <summary className="cursor-pointer text-xs text-[var(--text-secondary)]">
-          Показать все точки
-        </summary>
-        <ul className="mt-2 max-h-56 divide-y divide-[var(--border-subtle)] overflow-y-auto rounded border border-[var(--border-subtle)]">
-          {items.map((p) => (
-            <HistoryRow key={p.id} point={p} />
-          ))}
-        </ul>
-      </details>
+      <button
+        type="button"
+        onClick={() => {
+          setModalOpen(true);
+        }}
+        className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+      >
+        <History className="size-3.5" aria-hidden />
+        Вся история
+      </button>
+
+      {modalOpen && (
+        <SkuPriceHistoryModal
+          skuId={skuId}
+          skuCode={skuCode}
+          onClose={() => {
+            setModalOpen(false);
+          }}
+        />
+      )}
     </section>
   );
 }
@@ -111,21 +128,6 @@ function DeltaBadge({ delta, trendUp }: { delta: number; trendUp: boolean }) {
       {sign}
       {delta.toFixed(2)}%
     </span>
-  );
-}
-
-function HistoryRow({ point }: { point: PricePoint }) {
-  const prev = point.previous_cost_usdt ? Number.parseFloat(point.previous_cost_usdt) : null;
-  const curr = Number.parseFloat(point.cost_usdt);
-  const delta = prev !== null && prev !== 0 ? ((curr - prev) / prev) * 100 : null;
-  return (
-    <li className="flex items-center justify-between gap-3 px-3 py-1.5 text-xs">
-      <span className="text-[var(--text-secondary)]">{formatDate(point.captured_at)}</span>
-      <code className="font-mono">${curr.toFixed(4)}</code>
-      <span className="w-24 text-right text-[var(--text-tertiary)]">
-        {delta === null ? "первая запись" : `${delta > 0 ? "+" : ""}${delta.toFixed(2)}%`}
-      </span>
-    </li>
   );
 }
 

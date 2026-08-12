@@ -651,7 +651,9 @@ export function SkuEditPage() {
             variableAmount={watchedVariableAmount}
           />
 
-          {!isNew && params.id && <SkuPriceHistoryCard skuId={params.id} />}
+          {!isNew && params.id && (
+            <SkuPriceHistoryCard skuId={params.id} skuCode={watchedSkuCode} />
+          )}
 
           <section className="rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
             <div className="mb-3 flex items-baseline justify-between">

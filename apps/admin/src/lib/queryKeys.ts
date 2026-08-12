@@ -133,6 +133,8 @@ export const qk = {
   g2bGameFields: (gameCode: string) =>
     ["admin", "integrations", "g2b", "games", gameCode, "fields"] as const,
   skuPriceHistory: (skuId: string) => ["admin", "integrations", "price-history", skuId] as const,
+  skuPriceHistoryFull: (skuId: string) =>
+    ["admin", "integrations", "price-history", skuId, "full"] as const,
 
   // payments
   payments: (filters: {
