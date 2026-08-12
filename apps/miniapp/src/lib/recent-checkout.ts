@@ -112,21 +112,6 @@ export function rememberFulfillment(
   writeStore(store);
 }
 
-/**
- * Most recent purchases, newest first.
- *
- * Topping up a game is a repeat purchase on a short cycle, but a returning
- * buyer walked the same path as a first-time one: find the icon, open it, pick
- * the pack, fill the id again. Everything needed to skip that was already
- * being stored — it just had no reader.
- */
-export function listRecent(limit = 3): RecentFulfillment[] {
-  return Object.values(readStore())
-    .filter((e) => Boolean(e.sku_id))
-    .sort((a, b) => b.updated_at - a.updated_at)
-    .slice(0, limit);
-}
-
 export function forgetFulfillment(brandSlug: string): void {
   const store = readStore();
   if (!(brandSlug in store)) return;

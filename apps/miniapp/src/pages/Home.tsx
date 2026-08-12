@@ -6,7 +6,6 @@ import { Link } from "wouter";
 import type { Game } from "@/lib/constants-types";
 
 import { HomePromoCards } from "@/components/HomePromoCards";
-import { listRecent } from "@/lib/recent-checkout";
 import { SafeImage } from "@/components/ui/safe-image";
 import { useCategoriesList, useGames } from "@/lib/catalog";
 import { CATEGORY_LABELS } from "@/lib/constants";
@@ -151,18 +150,6 @@ export default function Home() {
   const gamesQuery = useGames();
   const games = gamesQuery.data ?? [];
 
-  // Only brands that still exist in the catalogue, carrying their current name
-  // rather than whatever was stored months ago.
-  const recent = useMemo(
-    () =>
-      listRecent(3)
-        .map((entry) => {
-          const game = games.find((g) => g.id === entry.brand_slug);
-          return game ? { ...entry, name: game.name } : null;
-        })
-        .filter((x): x is (typeof x & { name: string }) & object => x !== null),
-    [games],
-  );
   const categoriesQuery = useCategoriesList();
   const apiCategories = categoriesQuery.data ?? [];
   // Only show category chips that actually have at least one brand attached —
@@ -235,35 +222,6 @@ export default function Home() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* ── Buy again ── */}
-      {/* Topping up is a repeat purchase on a short cycle, but a returning
-          buyer walked exactly the same path as a first-timer: find the icon,
-          open it, pick the pack, retype the id. Everything needed to skip that
-          was already in localStorage after the first checkout — it just had no
-          reader. */}
-      {recent.length > 0 && !searchOpen && (
-        <div className="px-4 pt-1">
-          <p className="mb-2 text-sm font-semibold text-white">{t("home.recentTitle")}</p>
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {recent.map((r) => (
-              <Link
-                key={r.brand_slug}
-                href={`/topup/${r.brand_slug}?sku=${encodeURIComponent(r.sku_id ?? "")}`}
-                className="border-border bg-card flex shrink-0 items-center gap-2 rounded-2xl border px-3 py-2.5 active:opacity-70"
-              >
-                <span className="min-w-0">
-                  <span className="block truncate text-[13px] font-semibold text-white">
-                    {r.name}
-                  </span>
-                  <span className="text-body-faint block truncate text-[11px]">{r.sku_label}</span>
-                </span>
-                <RotateCcw size={14} className="text-primary shrink-0" aria-hidden />
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* ── Category row + search ── */}
       <div className="px-4">
