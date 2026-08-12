@@ -2,7 +2,6 @@ import { motion } from "framer-motion";
 import {
   Check,
   ChevronRight,
-  Clock,
   ExternalLink,
   Package as PackageIcon,
   RotateCcw,
@@ -11,6 +10,7 @@ import {
   ShieldCheck,
   Star,
   Wallet as WalletIcon,
+  Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useParams } from "wouter";
@@ -228,8 +228,6 @@ export default function TopUp() {
   const brandQuery = useBrandSummary(gameId);
   const products = brandQuery.data?.products ?? [];
 
-  useDocumentTitle(game ? t("topup.docTitleNamed", { game: game.name }) : t("topup.docTitle"));
-
   // The currently picked product within the brand (PUBG UC vs Royale Pass …).
   const [reviewsOpen, setReviewsOpen] = useState(false);
   const [selectedProductSlug, setSelectedProductSlug] = useState<string>("");
@@ -243,6 +241,16 @@ export default function TopUp() {
   const productQuery = useProductWithSkus(selectedProductSlug || undefined, currency);
   const requiredFields = productQuery.data?.product.required_fields ?? [];
   const productImage = productQuery.data?.product.image_url ?? null;
+  // A gift card is a purchase, not a top-up: there's no account being
+  // credited, only a code or activation link handed over after payment.
+  // Drives every "пополнение/зачисление"-flavoured string on this page.
+  const isVoucher = productQuery.data?.product.kind === "voucher";
+
+  useDocumentTitle(
+    game
+      ? t(isVoucher ? "topup.docTitleNamedVoucher" : "topup.docTitleNamed", { game: game.name })
+      : t("topup.docTitle"),
+  );
   const packages: Package[] = useMemo(
     () => (productQuery.data?.packages ?? []).map(adaptPackage),
     [productQuery.data],
@@ -701,7 +709,7 @@ export default function TopUp() {
           <div className="from-background via-background/40 absolute inset-0 bg-gradient-to-t to-black/20" />
 
           <div className="absolute bottom-0 left-0 right-0 z-10 flex items-end gap-3 px-4 pb-4">
-            <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-2xl border border-white/15 shadow-xl">
+            <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-2xl shadow-xl">
               {game.appIcon ? (
                 <SafeImage
                   src={game.appIcon}
@@ -732,7 +740,8 @@ export default function TopUp() {
                 {game.name}
               </h1>
               <div className="mt-0.5 flex items-center gap-3">
-                {/* Single honest signal: typical delivery time. The 4.9 star
+                {/* Single honest signal: fulfilment is automated (supplier API
+                    or the code warehouse), not a promised ETA. The 4.9 star
                     rating that used to live here was hardcoded with no count
                     behind it — pulled per the audit ("trust gaps · present
                     but unearned"). When real review data lands, add a count
@@ -744,9 +753,9 @@ export default function TopUp() {
                     border: "1px solid hsl(var(--primary) / 0.3)",
                   }}
                 >
-                  <Clock size={10} className="text-primary" />
+                  <Zap size={10} className="text-primary" />
                   <span className="text-primary text-[10px] font-semibold">
-                    {t("topup.deliveryTime")}
+                    {t(isVoucher ? "topup.autoIssue" : "topup.autoCredit")}
                   </span>
                 </div>
                 {brandQuery.data?.rating && brandQuery.data.rating.count > 0 && (
@@ -906,8 +915,8 @@ export default function TopUp() {
           <div>
             <Step
               n={accountRequired ? 2 : 1}
-              title={t("topup.howMuch")}
-              sub={t("topup.creditWithinMinutes")}
+              title={t(isVoucher ? "topup.pickDenomination" : "topup.howMuch")}
+              sub={t(isVoucher ? "topup.voucherDeliveryNote" : "topup.creditWithinMinutes")}
             />
 
             {productQuery.isLoading && <PackagesSkeleton shape={getBrandShape(gameId)} />}
@@ -1184,7 +1193,12 @@ export default function TopUp() {
         open={confirmOpen}
         rows={confirmRows}
         total={formatMoney(finalPrice, priceCode)}
-        needsAttestation={!hasVerifiableField}
+        warning={t(accountRequired ? "topup.confirmWarning" : "topup.confirmWarningVoucher")}
+        // A field-less product (a gift card) has nothing to attest to — the
+        // old `!hasVerifiableField` alone was true for it too (`.some()` on
+        // an empty array), which blocked checkout on a checkbox that
+        // referenced an account field the buyer never saw.
+        needsAttestation={accountRequired && !hasVerifiableField}
         onOpenChange={setConfirmOpen}
         onConfirm={() => {
           setConfirmOpen(false);

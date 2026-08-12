@@ -28,6 +28,7 @@ export function ConfirmPaymentDialog({
   open,
   rows,
   total,
+  warning,
   needsAttestation,
   onConfirm,
   onOpenChange,
@@ -35,6 +36,9 @@ export function ConfirmPaymentDialog({
   open: boolean;
   rows: ConfirmRow[];
   total: string;
+  /** Caller picks the wording — a top-up warns the account can't be changed
+   *  after payment, a gift card has no account to get that warning wrong. */
+  warning: string;
   needsAttestation: boolean;
   onConfirm: () => void;
   onOpenChange: (next: boolean) => void;
@@ -72,7 +76,7 @@ export function ConfirmPaymentDialog({
           </div>
         </dl>
 
-        <p className="text-[12px] leading-snug text-white/55">{t("topup.confirmWarning")}</p>
+        <p className="text-[12px] leading-snug text-white/55">{warning}</p>
 
         {needsAttestation && (
           <label className="border-border bg-card flex items-start gap-2.5 rounded-xl border p-3 text-[12px] leading-snug text-white/80">

@@ -118,3 +118,29 @@ it("disables Pay when no payment provider is active", async () => {
   // handler instead, which is unrelated to this fix).
   expect(screen.getByRole("button", { name: /^pay ·/i })).toBeDisabled();
 });
+
+it("does not block checkout on an attestation checkbox for a gift card with no account fields", async () => {
+  // `hasVerifiableField = fields.some(...)` is `false` on an EMPTY array too,
+  // which used to read as "needs attestation" and rendered a checkbox
+  // referencing an account field the buyer never saw — for a gift card
+  // (kind: "voucher", no required_fields) there's nothing to attest to.
+  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  const product: ProductDetail = { ...makeProduct(), kind: "voucher" };
+
+  render(<PurchasePanel products={[product]} locale="ru" />);
+
+  fireEvent.change(screen.getByPlaceholderText("emailPlaceholder"), {
+    target: { value: "buyer@example.com" },
+  });
+
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: /^pay ·/i })).not.toBeDisabled();
+  });
+  fireEvent.click(screen.getByRole("button", { name: /^pay ·/i }));
+
+  expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "confirmCta" })).not.toBeDisabled();
+  // The voucher-flavoured warning, not the top-up "goes to the account shown" one.
+  expect(screen.getByText("confirmWarningVoucher")).toBeInTheDocument();
+});

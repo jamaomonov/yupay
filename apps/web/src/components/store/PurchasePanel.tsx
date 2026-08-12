@@ -646,6 +646,10 @@ export function PurchasePanel({
   // something was chosen, turning one form into two sequential steps.
   const fieldsProduct = selProduct ?? products[0];
   const fields: FormField[] = fieldsProduct?.required_fields ?? [];
+  // A gift card has no account field at all — the "зачисление на аккаунт"
+  // copy (and the attestation checkbox below) only make sense when there's
+  // one to fill in.
+  const accountRequired = fields.length > 0;
   const label = (m: Record<string, string> | null | undefined): string =>
     (m && (m[locale] ?? m.ru ?? Object.values(m)[0])) ?? "";
 
@@ -1248,7 +1252,7 @@ export function PurchasePanel({
                 instead produced "по Логин Steam", because a Russian
                 prepositional phrase needs a case the label doesn't carry. */}
             <div className="border-border/70 text-tx-mute mt-5 flex items-start gap-2.5 border-t pt-5 text-[12px] leading-relaxed">
-              {t("securityNote")}
+              {accountRequired ? t("securityNote") : t("securityNoteVoucher")}
             </div>
           </div>
         </aside>
@@ -1264,8 +1268,12 @@ export function PurchasePanel({
         rows={confirmRows}
         totalLabel={t("confirmTotal")}
         totalValue={selectedPriceLabel}
-        warning={t("confirmWarning")}
-        attestation={hasVerifiableField ? undefined : t("confirmAttest")}
+        warning={accountRequired ? t("confirmWarning") : t("confirmWarningVoucher")}
+        // A field-less product (a gift card) has nothing to attest to — the
+        // old `!hasVerifiableField` alone was true for it too (`.some()` on
+        // an empty array), which blocked checkout on a checkbox that
+        // referenced an account field the buyer never saw.
+        attestation={accountRequired && !hasVerifiableField ? t("confirmAttest") : undefined}
         confirmLabel={t("confirmCta")}
         cancelLabel={t("confirmCancel")}
         onConfirm={() => {
