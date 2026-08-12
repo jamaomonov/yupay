@@ -118,6 +118,7 @@ def build_item_display(item: OrderItem, *, locale: str = "ru") -> OrderItemDispl
         denomination=sku.denomination,
         region=sku.region,
         image_url=sku.image_url or (product.image_url if product is not None else None),
+        variable_amount=sku.variable_amount,
     )
 
 

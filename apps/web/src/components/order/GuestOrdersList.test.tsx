@@ -86,6 +86,7 @@ function makeOrder(): OrderOut {
           denomination: "100 UC",
           region: "GLOBAL",
           image_url: null,
+          variable_amount: false,
         },
       },
     ],

@@ -722,7 +722,16 @@ function ItemCard({
       <AnimatePresence>
         {delivery ? (
           isTopUp ? (
-            <TopUpReceipt delivery={delivery} fulfillmentData={item.fulfillment_data} />
+            <TopUpReceipt
+              delivery={delivery}
+              fulfillmentData={item.fulfillment_data}
+              // A variable-amount SKU's own `denomination` is a generic
+              // "Любая сумма" label — `unit_price_usd` on this item IS the
+              // dollar amount the customer chose to credit (see
+              // `OrderItemDisplay.variable_amount` on the API), and is the
+              // only place that amount is ever shown to them.
+              creditedUsd={display?.variable_amount ? item.unit_price_usd : null}
+            />
           ) : (
             <ArtifactBlock delivery={delivery} />
           )
@@ -769,9 +778,14 @@ function labelForField(key: string): string {
 function TopUpReceipt({
   delivery,
   fulfillmentData,
+  creditedUsd,
 }: {
   delivery: DeliveryOut;
   fulfillmentData: Record<string, unknown>;
+  /** The dollar amount credited, for a variable-amount SKU (Steam wallet).
+   *  `null` for a fixed-denomination top-up — its package name already says
+   *  what was bought, so repeating the USD unit price would just be noise. */
+  creditedUsd: string | null;
 }) {
   const { t } = useT();
   // Prefer the snapshot stored in the artifact (frozen at fulfilment time),
@@ -810,7 +824,7 @@ function TopUpReceipt({
         </span>
       </div>
 
-      {entries.length > 0 && (
+      {(creditedUsd !== null || entries.length > 0) && (
         <div
           className="space-y-1.5 rounded-xl p-3"
           style={{
@@ -818,6 +832,14 @@ function TopUpReceipt({
             border: "1px solid hsl(var(--border))",
           }}
         >
+          {creditedUsd !== null && (
+            <div className="flex items-baseline justify-between gap-3 text-xs">
+              <span className="text-white/50">{t("success.creditedAmount")}</span>
+              <span className="text-right font-mono font-semibold text-white">
+                ${Number.parseFloat(creditedUsd).toFixed(2)}
+              </span>
+            </div>
+          )}
           {entries.map(([key, value]) => (
             <div key={key} className="flex items-baseline justify-between gap-3 text-xs">
               <span className="text-white/50">{labelForField(key)}</span>

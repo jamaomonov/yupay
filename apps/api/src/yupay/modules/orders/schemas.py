@@ -75,6 +75,12 @@ class OrderItemDisplay(BaseModel):
     denomination: str | None
     region: str | None
     image_url: str | None
+    # A variable-amount SKU's ``denomination`` is a generic label ("Любая
+    # сумма"), not the amount the customer actually bought — the client needs
+    # this flag to know when ``OrderItemOut.unit_price_usd`` (which for a
+    # variable line *is* the chosen dollar amount, see
+    # ``_resolve_line_unit_price``) is worth surfacing as "credited".
+    variable_amount: bool
 
 
 class OrderItemOut(BaseModel):

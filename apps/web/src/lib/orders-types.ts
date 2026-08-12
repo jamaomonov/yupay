@@ -8,6 +8,7 @@ export interface OrderItemDisplay {
   denomination: string | null;
   region: string | null;
   image_url: string | null;
+  variable_amount: boolean;
 }
 
 export interface OrderItemOut {

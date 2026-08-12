@@ -204,6 +204,10 @@ async def test_variable_sku_prices_from_the_amount(
     assert Decimal(body["total_charged"]) == Decimal("140400")
     assert Decimal(body["total_usd"]) == Decimal("10")
     assert Decimal(body["items"][0]["unit_price_usd"]) == Decimal("10")
+    # The client's only way to tell "this $10 is the credited amount" apart
+    # from "this $10 is a catalog price shown for context" — a fixed SKU's
+    # denomination already says what was bought, a variable one's doesn't.
+    assert body["items"][0]["display"]["variable_amount"] is True
 
 
 async def test_uzs_total_is_rounded_to_whole_sum(
@@ -474,6 +478,7 @@ async def test_fixed_sku_checkout_uses_the_guarded_fx_rate(
     # Audit trail: the order binds the exact snapshot the guarded rate came
     # from, same as any other FX-priced order.
     assert body["fx_snapshot_id"] is not None
+    assert body["items"][0]["display"]["variable_amount"] is False
 
 
 async def test_fixed_sku_checkout_fails_closed_on_a_rejected_rate(

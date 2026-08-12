@@ -41,6 +41,7 @@ function display(over: Partial<OrderItemDisplay>): OrderItemDisplay {
     denomination: null,
     region: null,
     image_url: null,
+    variable_amount: true,
     ...over,
   };
 }
@@ -89,7 +90,11 @@ it("humanizes an unknown checkout field name", () => {
 });
 
 it("prefers a fixed denomination over the USD amount", () => {
-  wrap(<OrderItems items={[item({ display: display({ denomination: "820 UC" }) })]} />);
+  wrap(
+    <OrderItems
+      items={[item({ display: display({ denomination: "820 UC", variable_amount: false }) })]}
+    />,
+  );
   expect(screen.getByText("Steam · 820 UC")).toBeInTheDocument();
   expect(screen.queryByText(/\$11\.30/)).not.toBeInTheDocument();
 });

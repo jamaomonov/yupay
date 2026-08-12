@@ -16,21 +16,15 @@ function lineTotalUsd(item: OrderItemOut): string {
 }
 
 /** Brand · amount/denomination. A variable-amount top-up (Steam wallet) stores a
- *  digit-free placeholder denomination ("Любая сумма" / "Any amount") that tells
- *  the customer nothing — for those the "·" segment becomes the credited USD
- *  amount, so the line reads "Steam · $11.30". A denomination that names a real
- *  quantity ("60 UC", "820 UC") always has a digit and is kept verbatim ("PUBG
- *  Mobile · 60 UC"). Region is appended when present. */
+ *  placeholder denomination ("Любая сумма" / "Any amount") that tells the
+ *  customer nothing — for those the "·" segment becomes the credited USD
+ *  amount, so the line reads "Steam · $11.30". A fixed denomination ("60 UC",
+ *  "820 UC") is kept verbatim ("PUBG Mobile · 60 UC"). Region is appended
+ *  when present. */
 function itemHeadline(item: OrderItemOut, locale: string): string {
   const d = item.display;
   if (!d) return item.sku_id;
-  // A real denomination names a quantity and contains a digit; the variable
-  // placeholder ("Любая сумма") does not — locale-robust, no string matching.
-  const hasFixedDenomination = !!d.denomination && /\d/.test(d.denomination);
-  const amount =
-    d.product_kind === "top_up" && !hasFixedDenomination
-      ? formatMoney(lineTotalUsd(item), "USD", locale)
-      : null;
+  const amount = d.variable_amount ? formatMoney(lineTotalUsd(item), "USD", locale) : null;
   const middle = amount ?? d.denomination ?? d.product_name;
   const parts = [d.brand_name, middle, d.region ?? undefined].filter(Boolean);
   return parts.join(" · ");

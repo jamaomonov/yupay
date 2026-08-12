@@ -5173,6 +5173,10 @@
           "sku_code": {
             "title": "Sku Code",
             "type": "string"
+          },
+          "variable_amount": {
+            "title": "Variable Amount",
+            "type": "boolean"
           }
         },
         "required": [
@@ -5184,7 +5188,8 @@
           "sku_code",
           "denomination",
           "region",
-          "image_url"
+          "image_url",
+          "variable_amount"
         ],
         "title": "OrderItemDisplay",
         "type": "object"

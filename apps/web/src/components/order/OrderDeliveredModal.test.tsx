@@ -62,6 +62,7 @@ function makeOrder(brandSlug: string): OrderOut {
           denomination: "$10",
           region: null,
           image_url: null,
+          variable_amount: false,
         },
       },
     ],

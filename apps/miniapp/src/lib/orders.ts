@@ -40,6 +40,11 @@ export interface OrderItemDisplay {
   denomination: string | null;
   region: string | null;
   image_url: string | null;
+  // A variable-amount SKU's `denomination` is a generic label ("Любая
+  // сумма"), not the amount the customer bought — when this is true,
+  // `OrderItemOut.unit_price_usd` on the same item *is* the credited USD
+  // amount (see `_resolve_line_unit_price` on the API) and is worth showing.
+  variable_amount: boolean;
 }
 
 export interface OrderItemOut {
