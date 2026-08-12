@@ -850,7 +850,11 @@ export default function TopUp() {
                           : "1px solid hsl(var(--border))",
                       }}
                     >
-                      <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-black/30">
+                      <div
+                        className={`flex h-6 w-6 flex-shrink-0 items-center justify-center overflow-hidden rounded-md ${
+                          p.image_url ? "" : "bg-black/30"
+                        }`}
+                      >
                         {p.image_url ? (
                           <SafeImage
                             src={p.image_url}
@@ -1261,17 +1265,12 @@ function PackageCard({
 
 function PackageThumb({ pkg, fallback }: { pkg: Package; fallback: string | null }) {
   const src = pkg.imageUrl ?? fallback;
-  if (src) {
-    return (
-      <div className="h-9 w-9 flex-shrink-0 overflow-hidden rounded-xl bg-black/30">
-        <SafeImage src={src} className="h-full w-full object-cover" />
-      </div>
-    );
-  }
   // No image — show a small chip with whatever non-numeric part of the
-  // denomination we have (e.g. "UC", "VP", "1 мес").
+  // denomination we have (e.g. "UC", "VP", "1 мес"). Also doubles as the
+  // SafeImage fallback below, so a broken URL degrades to this instead of a
+  // blank square now that the wrapper no longer carries its own background.
   const tag = pkg.label.replace(/^[\s\d.,]+/, "").trim() || "—";
-  return (
+  const tagChip = (
     <div
       className="flex h-9 w-9 items-center justify-center rounded-xl text-[10px] font-bold text-black"
       style={{ background: "hsl(var(--primary))" }}
@@ -1279,6 +1278,14 @@ function PackageThumb({ pkg, fallback }: { pkg: Package; fallback: string | null
       {tag.slice(0, 4).toUpperCase()}
     </div>
   );
+  if (src) {
+    return (
+      <div className="h-9 w-9 flex-shrink-0 overflow-hidden rounded-xl">
+        <SafeImage src={src} className="h-full w-full object-cover" fallback={tagChip} />
+      </div>
+    );
+  }
+  return tagChip;
 }
 
 // ─── Variable-amount panel (Steam wallet top-up) ──────────────────────────────
