@@ -202,9 +202,7 @@ def _format_alert(*, mapping: object, outcome: object) -> str:
     margin = getattr(outcome, "margin_percent", None)
     price_line = ""
     if new_price is not None:
-        price_line = (
-            f"\nЦена USD: ${old_price} → <b>${new_price}</b> (наценка {margin}% сохранена)"
-        )
+        price_line = f"\nЦена USD: ${old_price} → <b>${new_price}</b> (наценка {margin}% сохранена)"
 
     return (
         f"<b>💰 Цена поставщика изменилась</b>\n"
