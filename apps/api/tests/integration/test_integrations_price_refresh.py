@@ -90,7 +90,14 @@ async def _login_admin(client: AsyncClient, db: AsyncSession, tg_id: int) -> str
     return token
 
 
-async def _seed_sku(db: AsyncSession, slug_suffix: str, initial_cost: str | None = None) -> str:
+async def _seed_sku(
+    db: AsyncSession,
+    slug_suffix: str,
+    initial_cost: str | None = None,
+    *,
+    price_usd: str = "1.00",
+    margin_percent: str | None = None,
+) -> str:
     category = Category(
         id=new_id(),
         slug=f"cat-{slug_suffix}",
@@ -122,8 +129,9 @@ async def _seed_sku(db: AsyncSession, slug_suffix: str, initial_cost: str | None
         sku_code=f"sk-{slug_suffix}",
         denomination="60",
         region="WW",
-        price_usd=Decimal("1.00"),
+        price_usd=Decimal(price_usd),
         cost_usdt=Decimal(initial_cost) if initial_cost else None,
+        margin_percent=Decimal(margin_percent) if margin_percent else None,
         sort_order=10,
         active=True,
     )
@@ -263,6 +271,89 @@ async def test_refresh_all_noop_when_price_unchanged(
         .all()
     )
     assert history == []
+
+
+@respx.mock
+async def test_refresh_recomputes_price_from_saved_margin(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """A SKU with a saved margin gets price_usd re-derived alongside
+    cost_usdt — the protection the feature exists for: cost jumps from
+    $10 to $13, and a 20% margin on file means the shelf price follows
+    to $15.60 instead of sitting frozen at the old $12 (which would be
+    below the new cost)."""
+    sku_id = await _seed_sku(
+        db_session,
+        slug_suffix="margin-protect",
+        initial_cost="10.00",
+        price_usd="12.00",
+        margin_percent="20",
+    )
+    await _seed_mapping(db_session, sku_id=sku_id, game_code="pubgm", denom="60")
+
+    respx.get(f"{G2B_BASE}/games/pubgm/catalogue").mock(
+        return_value=httpx.Response(
+            200,
+            json={"catalogues": [{"id": 1, "name": "60", "amount": 13.00}]},
+        )
+    )
+    tg_route = respx.post(f"https://api.telegram.org/bot{ALERT_BOT_TOKEN}/sendMessage").mock(
+        return_value=httpx.Response(200, json={"ok": True})
+    )
+
+    from yupay.modules.integrations.price_refresh import refresh_all_mappings
+
+    report = await refresh_all_mappings()
+    assert report.moved == 1
+    assert report.alerts_sent == 1
+
+    sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
+    assert sku.cost_usdt == Decimal("13.00")
+    assert sku.price_usd == Decimal("15.60")
+
+    sent = json.loads(tg_route.calls.last.request.content)
+    assert "Цена USD" in sent["text"]
+    assert "$15.60" in sent["text"]
+    assert "наценка 20" in sent["text"]
+
+
+@respx.mock
+async def test_refresh_leaves_price_alone_without_a_saved_margin(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """No margin on file → cost_usdt still updates (pre-existing behaviour),
+    but price_usd is left exactly as an admin set it — never silently
+    changed for a SKU nobody has ever attached a margin to."""
+    sku_id = await _seed_sku(
+        db_session,
+        slug_suffix="no-margin",
+        initial_cost="10.00",
+        price_usd="12.00",
+    )
+    await _seed_mapping(db_session, sku_id=sku_id, game_code="pubgm", denom="60")
+
+    respx.get(f"{G2B_BASE}/games/pubgm/catalogue").mock(
+        return_value=httpx.Response(
+            200,
+            json={"catalogues": [{"id": 1, "name": "60", "amount": 13.00}]},
+        )
+    )
+    tg_route = respx.post(f"https://api.telegram.org/bot{ALERT_BOT_TOKEN}/sendMessage").mock(
+        return_value=httpx.Response(200, json={"ok": True})
+    )
+
+    from yupay.modules.integrations.price_refresh import refresh_all_mappings
+
+    await refresh_all_mappings()
+
+    sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
+    assert sku.cost_usdt == Decimal("13.00")
+    assert sku.price_usd == Decimal("12.00")
+
+    sent = json.loads(tg_route.calls.last.request.content)
+    assert "Цена USD" not in sent["text"]
 
 
 # ---------- admin endpoints ----------

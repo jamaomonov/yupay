@@ -309,6 +309,11 @@ class SkuCreate(BaseModel):
     # Supplier wholesale cost in USDT (we pay vendors in USDT). Optional
     # so legacy SKUs can be edited before this field is filled in.
     cost_usdt: Decimal | None = Field(default=None, gt=0)
+    # The margin price_usd is meant to hold above cost_usdt — see
+    # ``Sku.margin_percent``. ``gt=-100`` mirrors
+    # ``ck_skus_margin_percent_above_minus_100``: below that, the implied
+    # price_usd hits zero or goes negative.
+    margin_percent: Decimal | None = Field(default=None, gt=-100)
     # Variable-amount (Steam wallet-style) SKUs: the customer picks the
     # amount at checkout, so price_usd is a placeholder and these three
     # drive the actual price. See ``ck_skus_variable_amount_complete``.
@@ -361,6 +366,7 @@ class SkuUpdate(BaseModel):
     region: str | None = Field(default=None, max_length=8)
     price_usd: Decimal | None = Field(default=None, gt=0)
     cost_usdt: Decimal | None = Field(default=None, gt=0)
+    margin_percent: Decimal | None = Field(default=None, gt=-100)
     variable_amount: bool | None = None
     min_amount_usd: Decimal | None = Field(default=None, gt=0)
     max_amount_usd: Decimal | None = Field(default=None, gt=0)
@@ -452,8 +458,10 @@ class AdminSkuOut(BaseModel):
     region: str | None
     price_usd: Decimal
     cost_usdt: Decimal | None
+    margin_percent: Decimal | None
     # Admin-only: never add these to the public SkuOut in schemas.py.
-    # rate_multiplier especially — it's the margin.
+    # rate_multiplier especially — it's the margin (for variable-amount
+    # SKUs; margin_percent above is the fixed-price equivalent).
     variable_amount: bool
     min_amount_usd: Decimal | None
     max_amount_usd: Decimal | None

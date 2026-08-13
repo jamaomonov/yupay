@@ -11,7 +11,11 @@ health probes, and supplier-cost refresh. Supplier adapter code itself lives in
 - Own `sku_supplier_mapping` and `supplier_catalog_cache`.
 - Serve the admin CRUD over mappings and the cached supplier catalog.
 - Refresh `Sku.cost_usdt` from the supplier (on upsert and via the hourly
-  `refresh-all-prices` job — the single source of cost truth).
+  `refresh-all-prices` job — the single source of cost truth). When the SKU
+  has a saved `margin_percent`, a cost move also re-derives `price_usd`
+  (`catalog.admin_service.set_sku_cost_usdt`) so a SKU nobody is actively
+  re-pricing never starts selling below cost — see
+  [ADR-0050](../../../../../../docs/decisions/0050-sku-margin-percent.md).
 - Probe supplier connectivity (`GET /{slug}/health`).
 - **Import** a G2B game into the catalog (Brand + Product + SKUs + mappings).
 

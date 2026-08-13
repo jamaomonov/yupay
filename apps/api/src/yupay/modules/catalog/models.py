@@ -300,6 +300,14 @@ class Sku(Base):
     max_amount_usd: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
     # Margin: the customer-facing rate is the market rate times this.
     rate_multiplier: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    # The margin this SKU is meant to hold above cost_usdt: price_usd =
+    # cost_usdt * (1 + margin_percent / 100). Not just a UI convenience —
+    # the hourly supplier price-refresh (integrations.price_refresh) reads
+    # it to re-derive price_usd whenever cost_usdt moves, so a SKU nobody
+    # is actively watching never quietly starts selling below cost. NULL
+    # means no margin is on file yet; refresh then updates cost_usdt only,
+    # exactly as before this column existed.
+    margin_percent: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
     image_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
@@ -326,6 +334,13 @@ class Sku(Base):
         CheckConstraint(
             "cost_usdt IS NULL OR cost_usdt > 0",
             name="ck_skus_cost_usdt_positive",
+        ),
+        # > -100, not >= 0: a markdown is still a valid margin (price below
+        # cost, deliberately) — only -100 or lower makes price_usd hit zero
+        # or go negative, which ck_skus_price_positive already forbids.
+        CheckConstraint(
+            "margin_percent IS NULL OR margin_percent > -100",
+            name="ck_skus_margin_percent_above_minus_100",
         ),
         CheckConstraint(
             "NOT variable_amount OR ("

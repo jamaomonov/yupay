@@ -192,6 +192,20 @@ def _format_alert(*, mapping: object, outcome: object) -> str:
 
     variant_line = f" · <code>{html.escape(str(variant))}</code>" if variant else ""
     old_str = f"${old}" if old is not None else "—"
+
+    # Only present when the SKU had a saved margin, so price_usd moved
+    # alongside cost_usdt — see CostRefreshOutcome / set_sku_cost_usdt. A
+    # SKU with no margin on file gets no price line, same as it got no
+    # price change.
+    old_price = getattr(outcome, "old_price", None)
+    new_price = getattr(outcome, "new_price", None)
+    margin = getattr(outcome, "margin_percent", None)
+    price_line = ""
+    if new_price is not None:
+        price_line = (
+            f"\nЦена USD: ${old_price} → <b>${new_price}</b> (наценка {margin}% сохранена)"
+        )
+
     return (
         f"<b>💰 Цена поставщика изменилась</b>\n"
         f"Поставщик: <code>{supplier}</code> · <code>{kind}</code>\n"
@@ -199,6 +213,7 @@ def _format_alert(*, mapping: object, outcome: object) -> str:
         f"SKU: <code>{sku_id}</code>\n"
         f"Было: {old_str} → Стало: <b>${new}</b>"
         f"{delta_line}"
+        f"{price_line}"
     )
 
 

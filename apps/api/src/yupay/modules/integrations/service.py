@@ -426,7 +426,10 @@ class CostRefreshOutcome:
 
     ``updated`` reflects whether ``Sku.cost_usdt`` actually changed.
     ``reason`` is populated whenever ``updated`` is false to give the
-    admin UI / scheduler logs something to surface.
+    admin UI / scheduler logs something to surface. ``old_price``/
+    ``new_price``/``margin_percent`` are populated only when the SKU had a
+    saved margin, so ``price_usd`` was re-derived alongside the cost —
+    see ``catalog.admin_service.set_sku_cost_usdt``.
     """
 
     updated: bool
@@ -434,6 +437,9 @@ class CostRefreshOutcome:
     new_cost: Any | None = None
     source: str | None = None
     reason: str | None = None
+    old_price: Any | None = None
+    new_price: Any | None = None
+    margin_percent: Any | None = None
 
 
 async def refresh_sku_cost_for_mapping(  # noqa: PLR0911, PLR0912 -- discriminated outcome reads clearer than nested branches
@@ -526,12 +532,15 @@ async def refresh_sku_cost_for_mapping(  # noqa: PLR0911, PLR0912 -- discriminat
         )
 
     try:
-        previous = await catalog_svc.set_sku_cost_usdt(db, sku_id=mapping.sku_id, new_cost=new_cost)
+        cost_update = await catalog_svc.set_sku_cost_usdt(
+            db, sku_id=mapping.sku_id, new_cost=new_cost
+        )
     except Exception as exc:  # noqa: BLE001
         return CostRefreshOutcome(
             updated=False, reason=f"не удалось записать cost_usdt: {exc!s}"[:200]
         )
 
+    previous = cost_update.previous_cost
     moved = previous != new_cost
     if record_history and moved:
         db.add(
@@ -553,6 +562,9 @@ async def refresh_sku_cost_for_mapping(  # noqa: PLR0911, PLR0912 -- discriminat
         old_cost=previous,
         new_cost=new_cost,
         source=source,
+        old_price=cost_update.previous_price,
+        new_price=cost_update.new_price,
+        margin_percent=cost_update.margin_percent,
     )
 
 

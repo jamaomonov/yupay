@@ -558,6 +558,66 @@ async def test_create_and_update_variable_amount_sku_round_trip(
     assert patched["rate_multiplier"] is None
 
 
+async def test_create_and_update_sku_persists_margin_percent(
+    integration_client: AsyncClient, _admin_headers: dict[str, str]
+) -> None:
+    """margin_percent round-trips through create and PATCH — this is what
+    the supplier price-refresh job reads back to re-derive price_usd when
+    cost_usdt moves on its own (integrations.price_refresh)."""
+    product_id = await _create_product_for_sku(
+        integration_client, _admin_headers, suffix="margin-roundtrip"
+    )
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/skus",
+        headers=_admin_headers,
+        json={
+            "product_id": product_id,
+            "sku_code": "margin-roundtrip-sku",
+            "price_usd": "12",
+            "cost_usdt": "10",
+            "margin_percent": "20",
+        },
+    )
+    assert r.status_code == 201, r.text
+    sku = r.json()
+    sku_id = sku["id"]
+    assert sku["margin_percent"] == "20"
+
+    r = await integration_client.patch(
+        f"/api/v1/admin/catalog/skus/{sku_id}",
+        headers=_admin_headers,
+        json={"margin_percent": "25"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["margin_percent"] == "25"
+
+    # Never exposed on the public read side — same as cost_usdt/rate_multiplier.
+    r = await integration_client.get(f"/api/v1/catalog/skus/{sku_id}")
+    assert r.status_code == 200, r.text
+    assert "margin_percent" not in r.json()
+
+
+async def test_margin_percent_at_or_below_minus_100_is_rejected(
+    integration_client: AsyncClient, _admin_headers: dict[str, str]
+) -> None:
+    """A margin that would zero out or invert price_usd is a 422 at the
+    schema layer, before it ever reaches the DB's own check constraint."""
+    product_id = await _create_product_for_sku(
+        integration_client, _admin_headers, suffix="margin-floor"
+    )
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/skus",
+        headers=_admin_headers,
+        json={
+            "product_id": product_id,
+            "sku_code": "margin-floor-sku",
+            "price_usd": "12",
+            "margin_percent": "-100",
+        },
+    )
+    assert r.status_code == 422, r.text
+
+
 async def test_update_variable_amount_sku_missing_bounds_returns_422(
     integration_client: AsyncClient, _admin_headers: dict[str, str]
 ) -> None:

@@ -6,7 +6,8 @@ admin surface auditable in one place.
 
 from __future__ import annotations
 
-from decimal import Decimal
+from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
@@ -379,22 +380,53 @@ async def list_all_skus(db: AsyncSession, *, product_id: str | None = None) -> l
     return list((await db.execute(stmt)).scalars().all())
 
 
+def _price_from_margin(cost_usdt: Decimal, margin_percent: Decimal) -> Decimal:
+    """price = cost × (1 + margin / 100), rounded to cents (half-up).
+
+    Duplicated from (rather than imported off) ``integrations.service.
+    _sell_price`` — that module already imports from ``catalog`` for the
+    G2B game-import flow, and importing back would cycle. Three lines;
+    both call sites round the same way on purpose.
+    """
+    return (cost_usdt * (Decimal(1) + margin_percent / Decimal(100))).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+
+@dataclass(frozen=True)
+class CostUpdateResult:
+    """Return of :func:`set_sku_cost_usdt` — what changed and why.
+
+    ``previous_price``/``new_price``/``margin_percent`` are populated only
+    when the SKU had a saved margin *and* the cost actually moved — that's
+    the case this exists for: re-deriving price_usd so a SKU nobody is
+    actively watching never quietly starts selling below cost. A SKU with
+    no saved margin gets only its cost updated, exactly as before this
+    existed.
+    """
+
+    previous_cost: Decimal | None
+    previous_price: Decimal | None = None
+    new_price: Decimal | None = None
+    margin_percent: Decimal | None = None
+
+
 async def set_sku_cost_usdt(
     db: AsyncSession,
     *,
     sku_id: str,
     new_cost: Decimal,
-) -> Decimal | None:
-    """Replace ``Sku.cost_usdt`` and return the previous value (or ``None``
-    when this is the first time we're recording the cost).
-
-    Returns ``new_cost`` itself when nothing changed so callers don't have
-    to handle a "noop" sentinel — the truthy old/new comparison is
-    delegated to the caller.
+) -> CostUpdateResult:
+    """Replace ``Sku.cost_usdt`` and, when a margin is on file, re-derive
+    ``price_usd`` from it so the sale price tracks the new cost.
 
     Refuses to write a non-positive cost; mirrors the
     ``ck_skus_cost_usdt_positive`` check at the DB layer with a clearer
-    error than an ``IntegrityError`` rollback.
+    error than an ``IntegrityError`` rollback. A margin that would imply a
+    non-positive price (only reachable below -100%, which the schema and
+    DB constraint already refuse to store) is defensively skipped rather
+    than written — cost still updates, price is left alone, same as a SKU
+    with no margin at all.
     """
     if new_cost <= 0:
         raise ConflictError(
@@ -404,11 +436,28 @@ async def set_sku_cost_usdt(
     sku = (await db.execute(select(Sku).where(Sku.id == sku_id))).scalar_one_or_none()
     if sku is None:
         raise NotFoundError("sku not found")
-    previous = sku.cost_usdt
+    previous_cost = sku.cost_usdt
     sku.cost_usdt = new_cost
+
+    previous_price: Decimal | None = None
+    new_price: Decimal | None = None
+    margin: Decimal | None = None
+    if sku.margin_percent is not None and previous_cost != new_cost:
+        candidate = _price_from_margin(new_cost, sku.margin_percent)
+        if candidate > 0:
+            previous_price = sku.price_usd
+            sku.price_usd = candidate
+            new_price = candidate
+            margin = sku.margin_percent
+
     sku.updated_at = now()
     await db.flush()
-    return previous
+    return CostUpdateResult(
+        previous_cost=previous_cost,
+        previous_price=previous_price,
+        new_price=new_price,
+        margin_percent=margin,
+    )
 
 
 async def search_skus_for_picker(
@@ -478,6 +527,7 @@ async def create_sku(db: AsyncSession, body: SkuCreate) -> Sku:
         region=body.region,
         price_usd=body.price_usd,
         cost_usdt=body.cost_usdt,
+        margin_percent=body.margin_percent,
         variable_amount=body.variable_amount,
         min_amount_usd=body.min_amount_usd,
         max_amount_usd=body.max_amount_usd,
@@ -505,6 +555,7 @@ async def update_sku(db: AsyncSession, sku_id: str, body: SkuUpdate) -> Sku:
         "region",
         "price_usd",
         "cost_usdt",
+        "margin_percent",
         "image_url",
         "sort_order",
         "active",

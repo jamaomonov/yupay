@@ -654,6 +654,18 @@
             ],
             "title": "Image Url"
           },
+          "margin_percent": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margin Percent"
+          },
           "max_amount_usd": {
             "anyOf": [
               {
@@ -738,6 +750,7 @@
           "region",
           "price_usd",
           "cost_usdt",
+          "margin_percent",
           "variable_amount",
           "min_amount_usd",
           "max_amount_usd",
@@ -7924,6 +7937,22 @@
             ],
             "title": "Image Url"
           },
+          "margin_percent": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": -100.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margin Percent"
+          },
           "max_amount_usd": {
             "anyOf": [
               {
@@ -8357,6 +8386,22 @@
               }
             ],
             "title": "Image Url"
+          },
+          "margin_percent": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": -100.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margin Percent"
           },
           "max_amount_usd": {
             "anyOf": [
