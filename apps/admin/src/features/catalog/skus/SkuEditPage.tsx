@@ -1,8 +1,8 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input, Select } from "@yupay/ui";
-import { Plus, Trash2, Wand2 } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { Eye, Plus, Trash2, Wand2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { Controller, useForm, useFieldArray } from "react-hook-form";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { z } from "zod";
@@ -39,6 +39,23 @@ const priceOverrideSchema = z.object({
 const _amountPattern = /^(\d+(\.\d{1,6})?)?$/;
 const _multiplierPattern = /^(\d+(\.\d{1,4})?)?$/;
 
+/** margin% = (price − cost) / cost × 100, rounded to 2 decimals — matches the
+ *  sell-price formula already used by the G2B import wizard
+ *  (`DenominationTable.sellPrice`), just solved for the other variable. Empty
+ *  string whenever either input is missing/non-numeric, so a half-typed cost
+ *  or price never freezes a stale margin on screen. `Math.round(...) / 100`
+ *  drops floating-point noise (e.g. 19.999999999998) before it's shown. */
+function marginFromCostAndPrice(
+  costStr: string | null | undefined,
+  priceStr: string | null | undefined,
+): string {
+  const cost = Number.parseFloat(costStr ?? "");
+  const price = Number.parseFloat(priceStr ?? "");
+  if (Number.isNaN(cost) || cost <= 0 || Number.isNaN(price)) return "";
+  const margin = Math.round(((price - cost) / cost) * 100 * 100) / 100;
+  return margin.toString();
+}
+
 const skuSchema = z
   .object({
     product_id: z.string().min(1, "Выбери продукт"),
@@ -63,6 +80,16 @@ const skuSchema = z
     cost_usdt: z
       .string()
       .regex(/^(\d+(\.\d{1,6})?)?$/, "число > 0 либо пусто")
+      .optional()
+      .nullable(),
+    // The margin price_usd is meant to hold above cost_usdt — persisted so
+    // the supplier price-refresh job can re-derive price_usd when
+    // cost_usdt moves on its own. Matches the DB's 4-decimal precision and
+    // >-100 bound (a markdown is a valid margin; -100 or below would zero
+    // out or invert the implied price).
+    margin_percent: z
+      .string()
+      .regex(/^-?(\d+(\.\d{1,4})?)?$/, "число > -100 либо пусто")
       .optional()
       .nullable(),
     // Steam-wallet-style SKUs: the customer picks the amount at checkout.
@@ -143,6 +170,7 @@ const EMPTY: FormValues = {
   // positive value before submit for non-variable-amount SKUs.
   price_usd: "",
   cost_usdt: "",
+  margin_percent: "",
   variable_amount: false,
   min_amount_usd: "",
   max_amount_usd: "",
@@ -160,6 +188,7 @@ interface SkuCreateBody {
   region: string | null;
   price_usd: string;
   cost_usdt: string | null;
+  margin_percent: string | null;
   variable_amount: boolean;
   min_amount_usd: string | null;
   max_amount_usd: string | null;
@@ -176,6 +205,7 @@ interface SkuPatchBody {
   region: string | null;
   price_usd: string;
   cost_usdt: string | null;
+  margin_percent: string | null;
   variable_amount: boolean;
   min_amount_usd: string | null;
   max_amount_usd: string | null;
@@ -265,6 +295,13 @@ export function SkuEditPage() {
       region: existing.region ?? "GLOBAL",
       price_usd: existing.price_usd,
       cost_usdt: existing.cost_usdt ?? "",
+      // Legacy SKUs saved before this field existed have no margin on
+      // file yet — fall back to whatever their current price/cost ratio
+      // implies, so the field isn't blank without reason. Saving from
+      // there is what actually records it for the price-refresh job to
+      // use; opening the page alone doesn't write anything.
+      margin_percent:
+        existing.margin_percent ?? marginFromCostAndPrice(existing.cost_usdt, existing.price_usd),
       variable_amount: existing.variable_amount,
       min_amount_usd: existing.min_amount_usd ?? "",
       max_amount_usd: existing.max_amount_usd ?? "",
@@ -294,9 +331,47 @@ export function SkuEditPage() {
   const watchedDenom = form.watch("denomination");
   const watchedRegion = form.watch("region");
   const watchedPriceUsd = form.watch("price_usd");
+  const watchedCostUsdt = form.watch("cost_usdt");
   const watchedSkuCode = form.watch("sku_code");
   const watchedVariableAmount = form.watch("variable_amount");
   const watchedRateMultiplier = form.watch("rate_multiplier");
+
+  const costNum = Number.parseFloat(watchedCostUsdt ?? "");
+  const hasValidCost = !Number.isNaN(costNum) && costNum > 0;
+
+  // Margin drives price_usd (cost stays put); price_usd and cost_usdt each
+  // drive margin (the other of the pair stays put) — the operator can edit
+  // any one of the three and the remaining relationship stays consistent.
+  // margin_percent is a real form field now (not local state): it's what
+  // gets persisted for the supplier price-refresh job to read back later.
+  const priceReg = form.register("price_usd");
+  const costReg = form.register("cost_usdt");
+  const marginReg = form.register("margin_percent");
+
+  const onPriceUsdChange = (e: ChangeEvent<HTMLInputElement>) => {
+    void priceReg.onChange(e);
+    form.setValue("margin_percent", marginFromCostAndPrice(watchedCostUsdt, e.target.value), {
+      shouldDirty: true,
+    });
+  };
+
+  const onCostUsdtChange = (e: ChangeEvent<HTMLInputElement>) => {
+    void costReg.onChange(e);
+    form.setValue("margin_percent", marginFromCostAndPrice(e.target.value, watchedPriceUsd), {
+      shouldDirty: true,
+    });
+  };
+
+  const onMarginPercentChange = (e: ChangeEvent<HTMLInputElement>) => {
+    void marginReg.onChange(e);
+    const margin = Number.parseFloat(e.target.value);
+    if (!hasValidCost || Number.isNaN(margin)) return;
+    const price = costNum * (1 + margin / 100);
+    form.setValue("price_usd", (Math.round(price * 100) / 100).toFixed(2), {
+      shouldValidate: true,
+      shouldDirty: true,
+    });
+  };
 
   // "≈ 14 040 сум за $1" — the resulting customer-facing rate, so the
   // operator sees what their margin actually means in money, not a bare
@@ -339,6 +414,7 @@ export function SkuEditPage() {
   const save = useMutation<Sku, ApiError, FormValues>({
     mutationFn: async (values) => {
       const costNorm = values.cost_usdt?.trim() || null;
+      const marginNorm = values.margin_percent?.trim() || null;
       // price_usd is meaningless for a variable-amount SKU — the real price
       // is computed at checkout from the customer's chosen amount, the FX
       // rate, and rate_multiplier. The field is hidden in that case (and
@@ -365,6 +441,7 @@ export function SkuEditPage() {
           region: values.region?.trim() || null,
           price_usd: priceUsd,
           cost_usdt: costNorm,
+          margin_percent: marginNorm,
           variable_amount: values.variable_amount,
           min_amount_usd: minAmountNorm,
           max_amount_usd: maxAmountNorm,
@@ -385,6 +462,7 @@ export function SkuEditPage() {
         region: values.region?.trim() || null,
         price_usd: priceUsd,
         cost_usdt: costNorm,
+        margin_percent: marginNorm,
         variable_amount: values.variable_amount,
         min_amount_usd: minAmountNorm,
         max_amount_usd: maxAmountNorm,
@@ -527,7 +605,7 @@ export function SkuEditPage() {
             </div>
           </Field>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             {!watchedVariableAmount && (
               <Field
                 label="Цена USD (retail)"
@@ -537,10 +615,16 @@ export function SkuEditPage() {
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-[var(--text-secondary)]">$</span>
                   <Input
-                    {...form.register("price_usd")}
+                    {...priceReg}
+                    onChange={onPriceUsdChange}
                     inputMode="decimal"
                     placeholder="0.85"
                     className="font-mono"
+                  />
+                  <PriceFxPreview
+                    priceUsd={watchedPriceUsd ?? ""}
+                    rates={ratesQuery.data?.rates ?? []}
+                    overrides={form.watch("price_overrides")}
                   />
                 </div>
               </Field>
@@ -553,13 +637,31 @@ export function SkuEditPage() {
               <div className="flex items-center gap-2">
                 <span className="text-sm text-[var(--text-secondary)]">₮</span>
                 <Input
-                  {...form.register("cost_usdt")}
+                  {...costReg}
+                  onChange={onCostUsdtChange}
                   inputMode="decimal"
                   placeholder="0.60"
                   className="font-mono"
                 />
               </div>
             </Field>
+            {hasValidCost && !watchedVariableAmount && (
+              <Field
+                label="Наценка, %"
+                help="Цена USD = cost × (1 + наценка / 100). Меняешь любое из трёх — остальные пересчитываются."
+              >
+                <div className="flex items-center gap-2">
+                  <Input
+                    {...marginReg}
+                    onChange={onMarginPercentChange}
+                    inputMode="decimal"
+                    placeholder="20"
+                    className="font-mono"
+                  />
+                  <span className="text-sm text-[var(--text-secondary)]">%</span>
+                </div>
+              </Field>
+            )}
           </div>
 
           <div className="rounded-md border border-[var(--border-default)] bg-[var(--bg-muted)] p-3">
@@ -799,6 +901,127 @@ function PricePreview({
         </div>
       )}
     </section>
+  );
+}
+
+/** Toggle button on "Цена USD" that opens a dropdown converting it into every
+ *  currency the FX service quotes against USD — same list `FxPage` shows,
+ *  reused here so an operator can sanity-check a retail price without
+ *  leaving the SKU form. A currency with a price override shows that
+ *  override instead of the FX conversion — the override is what checkout
+ *  actually charges, so converting past it would preview a number no
+ *  customer will ever see. */
+function PriceFxPreview({
+  priceUsd,
+  rates,
+  overrides,
+}: {
+  priceUsd: string;
+  rates: FxRateOut[];
+  overrides: { currency: string; price: string }[];
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (wrapRef.current && e.target instanceof Node && !wrapRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("mousedown", onClick);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onClick);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const usdNum = Number.parseFloat(priceUsd);
+  const hasUsd = !Number.isNaN(usdNum) && usdNum > 0;
+
+  const overrideByCurrency = new Map(
+    overrides
+      .filter((o) => o.currency.trim().length >= 3 && Number.parseFloat(o.price) > 0)
+      .map((o) => [o.currency.toUpperCase(), Number.parseFloat(o.price)]),
+  );
+
+  const rows: { currency: string; value: number; isOverride: boolean }[] = hasUsd
+    ? [
+        { currency: "USD", value: usdNum, isOverride: false },
+        ...rates.map((r) => {
+          const override = overrideByCurrency.get(r.quote.toUpperCase());
+          return {
+            currency: r.quote,
+            value: override ?? usdNum * Number.parseFloat(r.rate),
+            isOverride: override !== undefined,
+          };
+        }),
+      ]
+    : [];
+
+  return (
+    <div ref={wrapRef} className="relative flex-shrink-0">
+      <button
+        type="button"
+        onClick={() => {
+          setOpen((v) => !v);
+        }}
+        disabled={!hasUsd}
+        aria-label="Превью цены в других валютах"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        title="Превью в других валютах"
+        className="inline-flex size-10 flex-shrink-0 items-center justify-center rounded-md border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <Eye className="size-4" />
+      </button>
+
+      {open && (
+        <div
+          role="dialog"
+          aria-label="Цены в других валютах"
+          // `left-0`, not `right-0`: this button sits in the leftmost of the
+          // three price/cost/margin columns, so a right-aligned panel opened
+          // into the sidebar instead of the page.
+          className="absolute left-0 top-full z-50 mt-2 w-64 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-3 shadow-[var(--shadow-md)]"
+        >
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-secondary)]">
+            ${usdNum.toFixed(2)} в других валютах
+          </p>
+          {rows.length <= 1 ? (
+            <p className="text-xs text-[var(--text-secondary)]">Курсы ещё загружаются.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {rows.map((r) => (
+                <li key={r.currency} className="flex items-center justify-between gap-2 text-sm">
+                  <span className="font-medium text-[var(--text-secondary)]">
+                    {r.currency.toUpperCase()}
+                    {r.isOverride && (
+                      <span className="ml-1.5 rounded bg-[var(--bg-muted)] px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">
+                        override
+                      </span>
+                    )}
+                  </span>
+                  <span className="font-mono font-semibold">
+                    {r.value.toLocaleString("ru-RU", {
+                      maximumFractionDigits: r.value >= 1000 ? 0 : 2,
+                    })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-2 text-[10px] text-[var(--text-tertiary)]">
+            Оценочно по текущему курсу FX. Override берётся вместо конвертации.
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 

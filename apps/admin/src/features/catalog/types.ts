@@ -107,6 +107,11 @@ export interface Sku {
    *  UZS-price calculation and per-SKU margin reporting. Nullable for
    *  legacy SKUs created before the field existed. */
   cost_usdt: string | null;
+  /** The margin price_usd is meant to hold above cost_usdt — the supplier
+   *  price-refresh job re-derives price_usd from this whenever cost_usdt
+   *  moves, so a SKU nobody is actively re-pricing never quietly starts
+   *  selling below cost. Null means no margin is on file yet. */
+  margin_percent: string | null;
   /** Steam-wallet-style SKUs: the customer picks the amount at checkout, so
    *  `price_usd` is a placeholder and these four drive the real price. */
   variable_amount: boolean;
