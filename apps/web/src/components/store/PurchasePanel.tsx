@@ -248,6 +248,106 @@ function CheckablePlayerField({
 }
 
 /**
+ * A plain (non-checkable) required field — text/email/number input or a
+ * select. `help_text` used to render as an always-visible paragraph under
+ * the control; it's now a "Где найти?" pill next to the label that opens
+ * the same `WhereToFindModal` the checkable id field uses, so a select like
+ * "Сервер" doesn't push three lines of copy under every field on the page.
+ */
+function PlainField({
+  type,
+  required,
+  value,
+  onChange,
+  labelText,
+  placeholder,
+  help,
+  options,
+  t,
+}: {
+  type: FormField["type"];
+  required: boolean;
+  value: string;
+  onChange: (v: string) => void;
+  labelText: string;
+  placeholder: string;
+  help: string | null;
+  options: { value: string; text: string }[];
+  t: (key: string, values?: Record<string, string>) => string;
+}) {
+  const [helpOpen, setHelpOpen] = useState(false);
+  const fieldId = useId();
+
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <label htmlFor={fieldId} className="text-tx-mute text-[13px] font-semibold">
+          {labelText}
+          {required && <span className="text-primary"> *</span>}
+        </label>
+        {help && (
+          <button
+            type="button"
+            onClick={() => {
+              setHelpOpen(true);
+            }}
+            aria-haspopup="dialog"
+            className="text-tx-dim hover:text-primary inline-flex shrink-0 items-center gap-1 text-[12px] font-medium transition"
+          >
+            <Info size={12} />
+            {t("whereToFindGeneric")}
+          </button>
+        )}
+      </div>
+      {type === "select" ? (
+        <select
+          id={fieldId}
+          required={required}
+          aria-required={required}
+          value={value}
+          onChange={(e) => {
+            onChange(e.target.value);
+          }}
+          className="border-border bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition"
+        >
+          <option value="">—</option>
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.text}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          id={fieldId}
+          type={type === "number" ? "text" : type}
+          inputMode={type === "number" ? "numeric" : undefined}
+          required={required}
+          aria-required={required}
+          value={value}
+          placeholder={placeholder}
+          onChange={(e) => {
+            onChange(e.target.value);
+          }}
+          className="border-border bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition"
+        />
+      )}
+      {help && (
+        <WhereToFindModal
+          open={helpOpen}
+          title={t("whereToFindTitle", { label: labelText })}
+          body={help}
+          closeLabel={t("close")}
+          onClose={() => {
+            setHelpOpen(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
  * Caption above a checkout field.
  *
  * `htmlFor` turns it into a real `<label>`. Without it this stays a `<span>`,
@@ -1080,46 +1180,22 @@ export function PurchasePanel({
                       t={t}
                     />
                   ) : (
-                    <label key={f.key} className="block">
-                      <span className="text-tx-mute mb-1.5 block text-[13px] font-semibold">
-                        {label(f.label)}
-                        {f.required && <span className="text-primary"> *</span>}
-                      </span>
-                      {f.type === "select" ? (
-                        <select
-                          required={f.required}
-                          aria-required={f.required}
-                          value={form[f.key] ?? ""}
-                          onChange={(e) => {
-                            setForm((s) => ({ ...s, [f.key]: e.target.value }));
-                          }}
-                          className="border-border bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition"
-                        >
-                          <option value="">—</option>
-                          {f.options?.map((o) => (
-                            <option key={o.value} value={o.value}>
-                              {label(o.label)}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input
-                          type={f.type === "number" ? "text" : f.type}
-                          inputMode={f.type === "number" ? "numeric" : undefined}
-                          required={f.required}
-                          aria-required={f.required}
-                          value={form[f.key] ?? ""}
-                          placeholder={label(f.placeholder)}
-                          onChange={(e) => {
-                            setForm((s) => ({ ...s, [f.key]: e.target.value }));
-                          }}
-                          className="border-border bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition"
-                        />
-                      )}
-                      {f.help_text && (
-                        <span className="text-tx-dim mt-1 block text-xs">{label(f.help_text)}</span>
-                      )}
-                    </label>
+                    <PlainField
+                      key={f.key}
+                      type={f.type}
+                      required={f.required}
+                      value={form[f.key] ?? ""}
+                      onChange={(v) => {
+                        setForm((s) => ({ ...s, [f.key]: v }));
+                      }}
+                      labelText={label(f.label)}
+                      placeholder={label(f.placeholder)}
+                      help={f.help_text ? label(f.help_text) : null}
+                      options={
+                        f.options?.map((o) => ({ value: o.value, text: label(o.label) })) ?? []
+                      }
+                      t={t}
+                    />
                   ),
                 )}
               </div>

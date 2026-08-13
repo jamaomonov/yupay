@@ -144,3 +144,32 @@ it("does not block checkout on an attestation checkbox for a gift card with no a
   // The voucher-flavoured warning, not the top-up "goes to the account shown" one.
   expect(screen.getByText("confirmWarningVoucher")).toBeInTheDocument();
 });
+
+it("hides a plain field's help text behind a button instead of always showing it", async () => {
+  // A field with no `check` (e.g. the miHoYo titles, or a plain "Сервер"
+  // select) used to dump help_text as an always-visible paragraph under the
+  // control. It should only appear once the "Где найти?" pill is clicked.
+  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  const helpCopy = "Сервер виден на экране входа рядом с именем аккаунта.";
+  const product: ProductDetail = {
+    ...makeProduct(),
+    required_fields: [
+      {
+        key: "server",
+        label: { ru: "Сервер" },
+        type: "select",
+        required: true,
+        help_text: { ru: helpCopy },
+        options: [{ value: "europe", label: { ru: "Europe" } }],
+      },
+    ],
+  };
+
+  render(<PurchasePanel products={[product]} locale="ru" />);
+
+  expect(screen.queryByText(helpCopy)).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "whereToFindGeneric" }));
+
+  expect(await screen.findByText(helpCopy)).toBeInTheDocument();
+});

@@ -226,6 +226,8 @@
     "checkRetry": "Retry",
     "playerIdPlaceholder": "Enter player ID",
     "whereToFind": "Where to find the ID",
+    "whereToFindGeneric": "Where to find it",
+    "whereToFindTitle": "Where to find {label}",
     "amountLabel": "Amount in dollars",
     "amountPlaceholder": "e.g. 10",
     "amountRequired": "Enter an amount",

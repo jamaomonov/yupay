@@ -226,6 +226,8 @@
     "checkRetry": "Повторить",
     "playerIdPlaceholder": "Введите ID игрока",
     "whereToFind": "Где найти ID",
+    "whereToFindGeneric": "Где найти?",
+    "whereToFindTitle": "Где найти «{label}»",
     "amountLabel": "Сумма в долларах",
     "amountPlaceholder": "Например, 10",
     "amountRequired": "Введите сумму",
