@@ -48,14 +48,23 @@ def _make_async_url(container: PostgresContainer) -> str:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _apply_migrations(_pg_container: PostgresContainer) -> None:
+def _apply_migrations(_pg_container: PostgresContainer, worker_id: str) -> None:
     """Point Settings + Alembic at the container and run migrations once."""
     url = _make_async_url(_pg_container)
     os.environ["DATABASE_URL"] = url
     # Point at the dev Redis exposed by docker-compose (the `.env` default uses the
     # docker-internal hostname which is unreachable from the host). Tests that need
     # full isolation use `fakeredis` at the call site; the rest hit this real instance.
-    os.environ["REDIS_URL"] = "redis://localhost:6379/0"
+    #
+    # Redis itself isn't per-worker like the Postgres container above — it's one
+    # shared instance (GH Actions `services:` / local docker-compose) — so under
+    # pytest-xdist every worker would otherwise share DB 0 and `_reset_realtime_redis`
+    # below (autouse, runs before every test) would `flushdb()` another worker's
+    # in-flight test out from under it. `worker_id` is pytest-xdist's built-in fixture
+    # ("master" outside xdist, "gw0"/"gw1"/... under it) — give each worker its own
+    # logical Redis DB (0-15) instead.
+    db_index = int(worker_id[2:]) % 16 if worker_id.startswith("gw") else 0
+    os.environ["REDIS_URL"] = f"redis://localhost:6379/{db_index}"
     cfg.get_settings.cache_clear()
 
     api_dir = Path(__file__).resolve().parents[2]

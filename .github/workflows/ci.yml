@@ -65,16 +65,10 @@ jobs:
     name: Test Python
     runs-on: ubuntu-latest
     services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: yupay_app
-          POSTGRES_PASSWORD: yupay_app
-          POSTGRES_DB: yupay_test
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd="pg_isready -U yupay_app"
-          --health-interval=5s --health-timeout=3s --health-retries=10
+      # Only Redis is a GH-managed service — the integration suite brings its
+      # own Postgres via testcontainers (one per xdist worker, see
+      # apps/api/tests/integration/conftest.py), so a `postgres:` service here
+      # would start a container nothing ever connects to.
       redis:
         image: redis:7-alpine
         ports: ["6379:6379"]
@@ -83,7 +77,6 @@ jobs:
           --health-interval=5s --health-timeout=3s --health-retries=10
     env:
       ENVIRONMENT: test
-      DATABASE_URL: postgresql+asyncpg://yupay_app:yupay_app@localhost:5432/yupay_test
       REDIS_URL: redis://localhost:6379/0
       # sys.monitoring tracer — pytest-cov ignores the ``core`` config key,
       # so the env var does the forcing. See [tool.coverage.run] for why.
@@ -101,7 +94,13 @@ jobs:
       # per-module ratchet (scripts/check_module_coverage.py) holds the same
       # line for the critical modules (payments / wallet / fulfillment /
       # inventory / supplier adapters; target 95%).
-      - run: uv run pytest --cov=apps --cov-report=xml --cov-report=json --cov-fail-under=90
+      #
+      # `-n auto` (pytest-xdist) spreads the ~1,300 tests across the runner's
+      # cores — each worker gets its own testcontainers Postgres and its own
+      # Redis logical DB (see conftest.py), so this needed the isolation fix
+      # there before it was safe to turn on. pytest-cov combines the workers'
+      # coverage data automatically; no separate merge step needed.
+      - run: uv run pytest -n auto --cov=apps --cov-report=xml --cov-report=json --cov-fail-under=90
       - run: uv run python scripts/check_module_coverage.py coverage.json
 
   test-ts:
