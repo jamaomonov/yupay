@@ -192,6 +192,7 @@
     "checking": "Проверяем…",
     "checkNickname": "Ник: {name}",
     "checkFailed": "Не удалось проверить",
+    "checkNeedsServer": "Сначала укажите «{label}»",
     "checkNotFound": "Игрок с таким ID не найден",
     "paymentTitle": "Способ оплаты",
     "paymentMaintenance": "Технические работы",

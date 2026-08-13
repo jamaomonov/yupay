@@ -192,6 +192,7 @@
     "checking": "Checking…",
     "checkNickname": "Nickname: {name}",
     "checkFailed": "Could not verify",
+    "checkNeedsServer": "Enter {label} first",
     "checkNotFound": "Player not found",
     "paymentTitle": "Payment method",
     "paymentMaintenance": "Under maintenance",

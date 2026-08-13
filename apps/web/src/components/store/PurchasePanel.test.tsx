@@ -173,3 +173,50 @@ it("hides a plain field's help text behind a button instead of always showing it
 
   expect(await screen.findByText(helpCopy)).toBeInTheDocument();
 });
+
+it("disables the check button and explains why until the paired server field is filled in", async () => {
+  // check.server_field names a sibling field (MLBB's "server") — G2B needs
+  // both together, so an id-only lookup against an empty server used to
+  // silently misfire instead of being blocked with an explanation.
+  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  const product: ProductDetail = {
+    ...makeProduct(),
+    required_fields: [
+      {
+        key: "player_id",
+        label: { ru: "ID игрока" },
+        type: "text",
+        required: true,
+        pattern: "^[0-9]{5,20}$",
+        check: { provider: "g2b", server_field: "server" },
+      },
+      {
+        key: "server",
+        label: { ru: "ID сервера" },
+        type: "text",
+        required: true,
+      },
+    ],
+  };
+
+  render(<PurchasePanel products={[product]} locale="ru" />);
+
+  // Let the async provider-status fetch settle before touching state, so its
+  // resolution isn't left dangling outside act() by the rest of this test.
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
+  });
+
+  fireEvent.change(screen.getByPlaceholderText("playerIdPlaceholder"), {
+    target: { value: "51234567" },
+  });
+
+  const checkBtn = screen.getByRole("button", { name: "check" });
+  expect(checkBtn).toBeDisabled();
+  expect(screen.getByText("checkNeedsServer")).toBeInTheDocument();
+
+  fireEvent.change(screen.getByLabelText("ID сервера *"), { target: { value: "19450" } });
+
+  expect(checkBtn).not.toBeDisabled();
+  expect(screen.queryByText("checkNeedsServer")).not.toBeInTheDocument();
+});

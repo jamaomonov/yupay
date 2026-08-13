@@ -46,6 +46,7 @@
   "field.checking": "Проверяем…",
   "field.checkNickname": "Ник: {name}",
   "field.checkFailed": "Не удалось проверить",
+  "field.checkNeedsServer": "Сначала укажите «{label}»",
   "field.checkNotFound": "Игрок с таким ID не найден",
   "field.checkEdit": "Изменить",
   "field.checkRetry": "Повторить",

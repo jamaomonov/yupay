@@ -76,6 +76,7 @@ function CheckablePlayerField({
   pattern,
   required,
   serverId,
+  serverLabel,
   help,
   placeholder,
   t,
@@ -87,6 +88,10 @@ function CheckablePlayerField({
   pattern?: string | null | undefined;
   required: boolean;
   serverId: string | null;
+  /** The sibling server field's own label (e.g. "ID сервера"), present only
+   *  when `check.server_field` names one — doubles as "server is required
+   *  for this check" and as the text for the "fill it in first" hint below. */
+  serverLabel: string | null;
   help: string | null;
   placeholder: string;
   t: (key: string, values?: Record<string, string>) => string;
@@ -108,7 +113,11 @@ function CheckablePlayerField({
   useEffect(() => {
     setState(IDLE);
   }, [value]);
-  const enabled = canCheck(value, pattern);
+  const idOk = canCheck(value, pattern);
+  const enabled = canCheck(value, pattern, { required: serverLabel !== null, id: serverId });
+  // A valid id sitting next to an empty server field would otherwise just
+  // disable the button with no explanation — say what's missing.
+  const missingServer = idOk && serverLabel !== null && (serverId ?? "").trim().length === 0;
 
   async function onCheck() {
     setState({ phase: "loading" });
@@ -241,6 +250,11 @@ function CheckablePlayerField({
           >
             {t("checkRetry")}
           </button>
+        </p>
+      )}
+      {missingServer && (
+        <p className="text-tx-dim mt-2 px-1 text-[13px]">
+          {t("checkNeedsServer", { label: serverLabel })}
         </p>
       )}
     </div>
@@ -1175,6 +1189,12 @@ export function PurchasePanel({
                       pattern={f.pattern}
                       required={f.required}
                       serverId={f.check.server_field ? (form[f.check.server_field] ?? null) : null}
+                      serverLabel={
+                        f.check.server_field
+                          ? label(fields.find((x) => x.key === f.check?.server_field)?.label) ||
+                            null
+                          : null
+                      }
                       help={f.help_text ? label(f.help_text) : null}
                       placeholder={f.placeholder ? label(f.placeholder) : t("playerIdPlaceholder")}
                       t={t}

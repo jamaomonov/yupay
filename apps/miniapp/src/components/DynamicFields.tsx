@@ -54,22 +54,35 @@ export function DynamicFields({
   onChange,
   suggestions,
 }: DynamicFieldsProps) {
+  const { locale } = useT();
   if (fields.length === 0) return null;
   return (
     <div className="space-y-3">
-      {fields.map((field) => (
-        <DynamicField
-          key={field.key}
-          productId={productId}
-          field={field}
-          value={values[field.key] ?? ""}
-          allValues={values}
-          suggestion={suggestions?.[field.key] ?? null}
-          onChange={(v) => {
-            onChange(field.key, v);
-          }}
-        />
-      ))}
+      {fields.map((field) => {
+        // Present only when `check.server_field` names a sibling — doubles
+        // as "server is required for this check" and as the hint text.
+        const serverLabel = field.check?.server_field
+          ? pickLocalized(
+              fields.find((f) => f.key === field.check?.server_field)?.label,
+              locale,
+              field.check.server_field,
+            )
+          : null;
+        return (
+          <DynamicField
+            key={field.key}
+            productId={productId}
+            field={field}
+            value={values[field.key] ?? ""}
+            allValues={values}
+            serverLabel={serverLabel}
+            suggestion={suggestions?.[field.key] ?? null}
+            onChange={(v) => {
+              onChange(field.key, v);
+            }}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -79,6 +92,7 @@ function DynamicField({
   field,
   value,
   allValues,
+  serverLabel,
   onChange,
   suggestion,
 }: {
@@ -86,6 +100,7 @@ function DynamicField({
   field: FormField;
   value: string;
   allValues: Record<string, string>;
+  serverLabel: string | null;
   onChange: (v: string) => void;
   suggestion: string | null;
 }) {
@@ -157,6 +172,7 @@ function DynamicField({
           field={field}
           value={value}
           allValues={allValues}
+          serverLabel={serverLabel}
           onChange={onChange}
           placeholder={placeholder}
           fieldId={fieldId}
@@ -187,6 +203,7 @@ function TextLikeField({
   field,
   value,
   allValues,
+  serverLabel,
   onChange,
   placeholder,
   fieldId,
@@ -197,6 +214,10 @@ function TextLikeField({
   field: FormField;
   value: string;
   allValues: Record<string, string>;
+  /** The sibling server field's own label, present only when `check.server_field`
+   *  names one — doubles as "server is required for this check" and as the
+   *  text for the "fill it in first" hint below the Проверить button. */
+  serverLabel: string | null;
   onChange: (v: string) => void;
   placeholder: string;
   fieldId: string;
@@ -218,13 +239,18 @@ function TextLikeField({
   useEffect(() => {
     setCheck(IDLE);
   }, [value]);
-  const canRunCheck = canCheck(value, field.pattern);
+  const serverId = checkConfig?.server_field ? (allValues[checkConfig.server_field] ?? null) : null;
+  const idOk = canCheck(value, field.pattern);
+  const canRunCheck = canCheck(value, field.pattern, {
+    required: serverLabel !== null,
+    id: serverId,
+  });
+  // A valid id sitting next to an empty server field would otherwise just
+  // disable the button with no explanation — say what's missing.
+  const missingServer = idOk && serverLabel !== null && (serverId ?? "").trim().length === 0;
 
   const handleCheck = async () => {
     setCheck({ phase: "loading" });
-    const serverId = checkConfig?.server_field
-      ? (allValues[checkConfig.server_field] ?? null)
-      : null;
     const result = await runPlayerCheck(productId, { playerId: value, serverId });
     // A resolved nickname is the strongest "we see your account" signal in the
     // flow; a rejection is the cheapest moment to catch a typo. Both deserve
@@ -364,6 +390,11 @@ function TextLikeField({
           >
             {t("field.checkRetry")}
           </button>
+        </p>
+      )}
+      {missingServer && (
+        <p className="mt-1.5 px-1 text-[12px] text-white/40">
+          {t("field.checkNeedsServer", { label: serverLabel })}
         </p>
       )}
       {showSuggestion && (

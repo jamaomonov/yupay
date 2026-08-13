@@ -192,6 +192,7 @@
     "checking": "Tekshirilmoqda…",
     "checkNickname": "Nik: {name}",
     "checkFailed": "Tekshirib boʻlmadi",
+    "checkNeedsServer": "Avval «{label}»ni kiriting",
     "checkNotFound": "Oʻyinchi topilmadi",
     "paymentTitle": "Toʻlov usuli",
     "paymentMaintenance": "Texnik ishlar",

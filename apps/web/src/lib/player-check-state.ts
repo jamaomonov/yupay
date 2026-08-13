@@ -14,17 +14,26 @@ export const IDLE: CheckState = { phase: "idle" };
 
 /** Whether the check button is enabled: value non-empty and, if a pattern is
  *  provided, the value matches it. A malformed server-supplied pattern must
- *  never block the user, so treat a bad regex as "allow". */
-export function canCheck(value: string, pattern?: string | null): boolean {
+ *  never block the user, so treat a bad regex as "allow". When the field's
+ *  `check.server_field` names a sibling (e.g. MLBB's "server"), G2B needs
+ *  both values together — an id-only lookup against the wrong server just
+ *  returns a false "not found" — so `server.required` also gates the button
+ *  on that sibling being filled in. */
+export function canCheck(
+  value: string,
+  pattern?: string | null,
+  server?: { required: boolean; id: string | null | undefined } | null,
+): boolean {
   const v = value.trim();
   if (v.length === 0) return false;
   if (pattern) {
     try {
-      return new RegExp(pattern).test(v);
+      if (!new RegExp(pattern).test(v)) return false;
     } catch {
-      return true;
+      // malformed server-supplied pattern must never block the user
     }
   }
+  if (server?.required && (server.id ?? "").trim().length === 0) return false;
   return true;
 }
 

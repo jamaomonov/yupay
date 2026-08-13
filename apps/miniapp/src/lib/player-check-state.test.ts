@@ -9,6 +9,16 @@ describe("canCheck", () => {
     expect(canCheck("abc", "^[0-9]{6,15}$")).toBe(false));
   test("true when pattern matches", () => expect(canCheck("51234567", "^[0-9]{6,15}$")).toBe(true));
   test("malformed pattern does not block the user", () => expect(canCheck("x", "([")).toBe(true));
+  test("true when server not required, even with no id", () =>
+    expect(canCheck("51234567", null, { required: false, id: null })).toBe(true));
+  test("false when server required and empty", () =>
+    expect(canCheck("51234567", null, { required: true, id: "" })).toBe(false));
+  test("false when server required and null", () =>
+    expect(canCheck("51234567", null, { required: true, id: null })).toBe(false));
+  test("true when server required and filled in", () =>
+    expect(canCheck("51234567", null, { required: true, id: "19450" })).toBe(true));
+  test("still false on a blank id even with a filled-in server", () =>
+    expect(canCheck("   ", null, { required: true, id: "19450" })).toBe(false));
 });
 
 describe("runPlayerCheck", () => {

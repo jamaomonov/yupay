@@ -46,6 +46,7 @@
   "field.checking": "Tekshirilmoqda…",
   "field.checkNickname": "Nik: {name}",
   "field.checkFailed": "Tekshirib bo'lmadi",
+  "field.checkNeedsServer": "Avval «{label}»ni kiriting",
   "field.checkNotFound": "Oʻyinchi topilmadi",
   "field.checkEdit": "Tahrirlash",
   "field.checkRetry": "Qayta urinish",
