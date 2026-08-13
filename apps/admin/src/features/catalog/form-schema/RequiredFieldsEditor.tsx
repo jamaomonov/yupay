@@ -8,20 +8,27 @@
 import { Button, Input, Select } from "@yupay/ui";
 import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { type Control, type UseFormRegister, useFieldArray, useWatch } from "react-hook-form";
+import {
+  type Control,
+  type UseFormRegister,
+  type UseFormSetValue,
+  useFieldArray,
+  useWatch,
+} from "react-hook-form";
 
 import type { FieldType, FormField } from "../types";
 
 interface Props {
   control: Control<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   register: UseFormRegister<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  setValue: UseFormSetValue<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   name: string;
 }
 
 const FIELD_TYPES: FieldType[] = ["text", "email", "number", "select"];
 const LOCALES = ["ru", "en", "uz"] as const;
 
-export function RequiredFieldsEditor({ control, register, name }: Props) {
+export function RequiredFieldsEditor({ control, register, setValue, name }: Props) {
   const { fields, append, remove } = useFieldArray({ control, name });
 
   return (
@@ -33,6 +40,7 @@ export function RequiredFieldsEditor({ control, register, name }: Props) {
           name={name}
           control={control}
           register={register}
+          setValue={setValue}
           onRemove={() => {
             remove(idx);
           }}
@@ -65,18 +73,21 @@ function FieldRow({
   name,
   control,
   register,
+  setValue,
   onRemove,
 }: {
   index: number;
   name: string;
   control: Control<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   register: UseFormRegister<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  setValue: UseFormSetValue<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   onRemove: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const path = `${name}.${index.toString()}`;
   const type = useWatch({ control, name: `${path}.type` }) as FieldType | undefined;
   const key = useWatch({ control, name: `${path}.key` }) as string | undefined;
+  const check = useWatch({ control, name: `${path}.check` }) as FormField["check"] | undefined;
 
   return (
     <div className="rounded-md border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]">
@@ -178,6 +189,35 @@ function FieldRow({
           {type === "select" && (
             <OptionsEditor name={`${path}.options`} control={control} register={register} />
           )}
+
+          {/* G2B's checkPlayerId is real for some games and a rubber stamp for
+              others — it answered "valid" for a random id on every miHoYo
+              title we tested (Genshin, Honkai: Star Rail), so wiring this up
+              there shows a verification that verifies nothing. Confirm live
+              against the real API for the specific game before enabling. */}
+          <div className="rounded-md border bg-[var(--bg-muted)] p-3">
+            <label className="flex items-center gap-2 text-xs font-medium uppercase text-[var(--text-secondary)]">
+              <input
+                type="checkbox"
+                checked={Boolean(check)}
+                onChange={(e) => {
+                  setValue(
+                    `${path}.check`,
+                    e.target.checked ? { provider: "g2b", server_field: null } : null,
+                    { shouldDirty: true },
+                  );
+                }}
+              />
+              Живая проверка ID через G2B (checkPlayerId)
+            </label>
+            {check && (
+              <div className="mt-2">
+                <Labeled label="Ключ соседнего поля с сервером (если есть)">
+                  <Input {...register(`${path}.check.server_field`)} placeholder="server" />
+                </Labeled>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -67,6 +67,18 @@ export interface FormOption {
   label: Record<string, string>;
 }
 
+/** Opts a field into a live "Проверить" lookup against the supplier before
+ *  checkout — see `FieldCheck` on the API. `server_field` names the sibling
+ *  field (e.g. `server`) whose value is sent alongside this one; leave unset
+ *  when the game needs only the id. Not every supplier's check is honest:
+ *  G2B rubber-stamps any input as valid for miHoYo titles (Genshin, Honkai
+ *  Star Rail) — confirm live against the real API before wiring this up on
+ *  a new game, a "valid" that verifies nothing is worse than no checker. */
+export interface FieldCheck {
+  provider: "g2b" | "waxpeer";
+  server_field?: string | null;
+}
+
 export interface FormField {
   key: string;
   label: Record<string, string>;
@@ -76,6 +88,7 @@ export interface FormField {
   help_text?: Record<string, string> | null;
   pattern?: string | null;
   options?: FormOption[] | null;
+  check?: FieldCheck | null;
 }
 
 export interface Product {

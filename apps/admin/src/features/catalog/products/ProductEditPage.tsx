@@ -20,6 +20,15 @@ const LOCALES = ["ru", "en", "uz"] as const;
 
 const localeMap = z.record(z.string(), z.string());
 const formOption = z.object({ value: z.string().min(1), label: localeMap });
+// Mirrors the API's FieldCheck — omitting a key here doesn't leave it
+// untouched, it DELETES it: zod strips properties a schema doesn't declare,
+// so a product with G2B verification wired up used to lose it silently the
+// first time anyone saved this form for an unrelated reason (see the
+// mobile-legends/magic-chess-gogo incident this was written to fix).
+const fieldCheck = z.object({
+  provider: z.enum(["g2b", "waxpeer"]),
+  server_field: z.string().optional().nullable(),
+});
 const formField = z.object({
   key: z.string().min(1),
   label: localeMap,
@@ -29,6 +38,7 @@ const formField = z.object({
   help_text: localeMap.optional().nullable(),
   pattern: z.string().optional().nullable(),
   options: z.array(formOption).optional().nullable(),
+  check: fieldCheck.optional().nullable(),
 });
 
 const translationSchema = z.object({
@@ -242,6 +252,8 @@ export function ProductEditPage() {
           control={form.control as any}
           /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
           register={form.register as any}
+          /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+          setValue={form.setValue as any}
           name="required_fields"
         />
       </section>
