@@ -2,6 +2,8 @@ import { Suspense } from "react";
 
 import { YandexMetrikaHits } from "./YandexMetrikaHits";
 
+import { SENSITIVE_PARAMS } from "@/lib/scrubUrl";
+
 /**
  * Yandex.Metrika counter for the public storefront (id 111054393).
  *
@@ -21,6 +23,14 @@ import { YandexMetrikaHits } from "./YandexMetrikaHits";
  * snippet, which has since been removed; nothing pushes ecommerce events yet, so
  * the array stays empty, but the counter no longer depends on a deleted script.
  */
+/** `searchParams.delete('x')` for every sensitive param, built from the shared
+ *  list so the first-pageview URL and the SPA-hit URL can never scrub different
+ *  sets — the drift that leaked verify/reset tokens to Metrika. JSON.stringify
+ *  keeps the names safely quoted inside the inline script. */
+const SCRUB_CALLS = SENSITIVE_PARAMS.map(
+  (p) => `_ymU.searchParams.delete(${JSON.stringify(p)});`,
+).join(" ");
+
 const YM_SNIPPET = `window.dataLayer = window.dataLayer || [];
 (function(m,e,t,r,i,k,a){
     m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
@@ -29,7 +39,7 @@ const YM_SNIPPET = `window.dataLayer = window.dataLayer || [];
     k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
 })(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=111054393', 'ym');
 var _ymUrl = location.href, _ymOrder = location.pathname.indexOf('/orders/') !== -1;
-try { var _ymU = new URL(_ymUrl); _ymU.searchParams.delete('access'); _ymU.searchParams.delete('email'); _ymUrl = _ymU.toString(); } catch (e) {}
+try { var _ymU = new URL(_ymUrl); ${SCRUB_CALLS} _ymUrl = _ymU.toString(); } catch (e) {}
 ym(111054393, 'init', {ssr:true, webvisor:!_ymOrder, clickmap:true, ecommerce:"dataLayer", referrer: document.referrer, url: _ymUrl, accurateTrackBounce:true, trackLinks:true});`;
 
 export function YandexMetrika() {

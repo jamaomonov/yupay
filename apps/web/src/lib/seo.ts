@@ -25,6 +25,19 @@ export const ROBOTS: Metadata["robots"] = {
   "max-video-preview": -1,
 };
 
+/**
+ * Signed-in / transactional areas: account, order tracking, auth links.
+ *
+ * `ROBOTS` above is set on the locale layout, so *every* route inherited
+ * `index: true` — Yandex duly crawled `/account/orders`, `/orders/{id}` and
+ * even `/auth/verify?token=…`. Nothing leaks (those pages render client-side
+ * and the API answers 401 without credentials), but a personal URL has no
+ * business in a search index, and thin skeleton pages drag on how a crawler
+ * rates the rest of the site. Segments opt in by re-exporting this from their
+ * own layout, which overrides the inherited value.
+ */
+export const NOINDEX: Metadata["robots"] = { index: false, follow: false };
+
 const OG_LOCALE: Record<string, string> = {
   ru: "ru_RU",
   en: "en_US",

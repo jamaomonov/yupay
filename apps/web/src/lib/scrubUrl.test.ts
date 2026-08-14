@@ -11,6 +11,18 @@ describe("scrubUrl", () => {
     expect(out).not.toContain("eyJ");
   });
 
+  // Yandex's crawl log showed `/en/auth/verify?token=eyJhbGciOi…`: Metrika had
+  // reported the email link verbatim, so the crawler went and fetched it. The
+  // same param carries the password-reset token.
+  it("removes the verify / reset token from an email link", () => {
+    expect(scrubUrl("https://yupay.uz/en/auth/verify?token=eyJhbGciOi.jwt.sig")).toBe(
+      "https://yupay.uz/en/auth/verify",
+    );
+    expect(scrubUrl("https://yupay.uz/ru/auth/reset?token=eyJhbGciOi.jwt.sig")).toBe(
+      "https://yupay.uz/ru/auth/reset",
+    );
+  });
+
   it("keeps non-sensitive params intact", () => {
     const out = scrubUrl("https://yupay.uz/ru/store?ref=tg&access=secret");
     expect(out).toBe("https://yupay.uz/ru/store?ref=tg");
@@ -26,11 +38,11 @@ describe("scrubUrl", () => {
 });
 
 describe("scrubSearchParams", () => {
-  it("drops access + email, keeps the rest", () => {
-    expect(scrubSearchParams("access=x&email=y&page=2")).toBe("page=2");
+  it("drops access + email + token, keeps the rest", () => {
+    expect(scrubSearchParams("access=x&email=y&token=z&page=2")).toBe("page=2");
   });
 
   it("returns empty when only sensitive params are present", () => {
-    expect(scrubSearchParams("access=x&email=y")).toBe("");
+    expect(scrubSearchParams("access=x&email=y&token=z")).toBe("");
   });
 });

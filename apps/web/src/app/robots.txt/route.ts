@@ -31,7 +31,19 @@ const AI_CRAWLERS = [
   "Meta-ExternalAgent",
 ];
 
-const DISALLOW = ["/api/", "/admin/"];
+/**
+ * `/auth/` is disallowed rather than merely `noindex`ed because there the goal
+ * is that a crawler never *fetches* the URL at all: the verify / reset links
+ * carry a single-use token in the query string, and a bot that renders JS would
+ * spend it, leaving the real recipient with a dead link. The wildcard twin
+ * covers the locale prefixes (`/en/auth/`, `/uz/auth/`) — ru has none.
+ *
+ * `/account/` and `/orders/` are deliberately NOT listed: they are private, but
+ * they are handled with `noindex` (see `lib/seo.ts`), which requires the page to
+ * stay crawlable. Blocking them here instead would leave any already-indexed URL
+ * stuck in the index with the directive unread.
+ */
+const DISALLOW = ["/api/", "/admin/", "/auth/", "*/auth/"];
 
 /** One robots.txt group: its user-agent lines, access rules, and content signal. */
 function group(agents: string[]): string {
