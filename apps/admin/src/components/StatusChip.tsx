@@ -51,6 +51,7 @@ function fromLabelTone<K extends string>(
 const EVENT_KIND: Record<string, StatusMeta> = {
   "order.created": { label: "Заказ создан", tone: MUTED },
   "order.paid": { label: "Оплачен", tone: INFO },
+  "order.held_for_review": { label: "На проверке", tone: WARNING },
   "order.fulfilling": { label: "Выдаётся", tone: ACCENT },
   "order.delivered": { label: "Доставлен", tone: SUCCESS },
   "order.cancelled": { label: "Отменён", tone: MUTED },

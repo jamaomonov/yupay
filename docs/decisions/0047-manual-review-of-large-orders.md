@@ -59,6 +59,11 @@ not a review.
   it honestly is. The hold is the _absence_ of a call, not a state to reverse:
   releasing it is `POST /admin/fulfillment/orders/{id}/release`, the same
   idempotent `start_for_order` the webhook skipped.
+- The operator reaches that release from the order page itself: a held order is
+  invisible on the Fulfilment screen (it has no task to list) and reads as an
+  ordinary `paid` order everywhere else, so the order detail page keys a banner
+  off the `order.held_for_review` event and puts the release behind a confirm.
+  Without it the alert names an order the admin panel offers no way to act on.
 - Threshold is **$40** by default, denominated in USD against `orders.total_usd`
   because the som figure moves with the rate. `0` disables the rule without a
   deploy. Comparison is `>=`: setting the limit to 40 means 40 is big enough to

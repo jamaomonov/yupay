@@ -187,6 +187,28 @@ export function OrderDetailPage() {
     },
   });
 
+  // Release an order the risk rules held before fulfilment ever started
+  // (ADR-0047). This is the same call the payment webhook would have made had
+  // the order not been held, so nothing has to be undone — the hold is the
+  // absence of this call, not a state to reverse. `start_for_order` is
+  // idempotent, so a double click cannot deliver twice.
+  const [confirmRelease, setConfirmRelease] = useState(false);
+
+  const release = useMutation<TaskListOut, ApiError>({
+    mutationFn: () =>
+      apiPost<TaskListOut>(`/api/v1/admin/fulfillment/orders/${orderId}/release`, {}),
+    onSuccess: () => {
+      setConfirmRelease(false);
+      toast.success("Выдача запущена");
+      void qc.invalidateQueries({ queryKey: qk.order(orderId) });
+      void qc.invalidateQueries({ queryKey: ["admin", "fulfillment"] });
+      void qc.invalidateQueries({ queryKey: ["admin", "orders"] });
+    },
+    onError: (err) => {
+      toast.error(extractApiMessage(err));
+    },
+  });
+
   // Re-run a stuck/failed supplier task in place — the first thing to try when
   // an order is stuck in `fulfilling`, and previously only reachable from the
   // separate Fulfilment screen.
@@ -220,6 +242,15 @@ export function OrderDetailPage() {
   const order = orderQuery.data;
   const payments = paymentsQuery.data?.items ?? [];
   const tasks = tasksQuery.data?.items ?? [];
+
+  // A held order deliberately keeps status `paid` and grows no fulfilment task
+  // (ADR-0047), so it is invisible on the Fulfilment screen and indistinguishable
+  // from a just-paid one by status alone — the event is the only marker. Tasks
+  // existing means it was already released, so the banner retires itself.
+  const heldForReview =
+    order.status === "paid" &&
+    tasks.length === 0 &&
+    order.events.some((e) => e.kind === "order.held_for_review");
 
   return (
     <div>
@@ -287,6 +318,38 @@ export function OrderDetailPage() {
           </>
         }
       />
+
+      {/* The whole point of the hold is that a human looks before the goods
+          leave, so this sits above the fold rather than as one more button in
+          the header: the operator arrives here from a Telegram alert and needs
+          to see *why* nothing happened, not hunt for the release. */}
+      {heldForReview && (
+        <div
+          role="alert"
+          className="border-[var(--warning-fg)]/40 mb-6 flex flex-wrap items-start gap-3 rounded-lg border bg-[var(--warning-soft)] p-4"
+        >
+          <AlertTriangle className="mt-0.5 size-5 shrink-0 text-[var(--warning-fg)]" />
+          <div className="min-w-[16rem] flex-1">
+            <h2 className="text-sm font-semibold text-[var(--warning-fg)]">
+              Заказ на проверке — выдача не запускалась
+            </h2>
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">
+              Оплата прошла, но сумма не ниже порога ручной проверки, поэтому товар автоматически не
+              выдан. Проверьте плательщика, затем выдайте товар — или верните деньги в блоке
+              платежей.
+            </p>
+          </div>
+          <Button
+            onClick={() => {
+              setConfirmRelease(true);
+            }}
+            disabled={release.isPending}
+          >
+            <PackageCheck className="size-4" />
+            {release.isPending ? "Запускаем…" : "Выдать"}
+          </Button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* ----- left column: summary + timeline ----- */}
@@ -388,6 +451,26 @@ export function OrderDetailPage() {
               className="mt-1 h-9 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 text-sm text-[var(--text-primary)]"
             />
           </label>
+        </ConfirmDialog>
+      )}
+
+      {confirmRelease && (
+        <ConfirmDialog
+          title="Запустить выдачу?"
+          tone="danger"
+          confirmLabel="Выдать"
+          busy={release.isPending}
+          onCancel={() => {
+            setConfirmRelease(false);
+          }}
+          onConfirm={() => {
+            release.mutate();
+          }}
+        >
+          <p>
+            Товар уйдёт покупателю, и <strong>отменить выдачу уже нельзя</strong> — вернуть можно
+            будет только деньги. Убедитесь, что плательщик проверен.
+          </p>
         </ConfirmDialog>
       )}
 
