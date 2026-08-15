@@ -18,17 +18,50 @@
 # One block for all five hostnames: the upstream (the YuPay stack's Caddy)
 # re-routes by Host, and Caddy forwards the original Host header untouched.
 # Certificates are issued per-hostname via HTTP-01 on :80.
-yupay.uz, www.yupay.uz, app.yupay.uz, admin.yupay.uz, api.yupay.uz, grafana.yupay.uz {
-	# Overwrite, do not append. Caddy's default is to append the peer to any
-	# inbound X-Forwarded-For, but the API trusts the *first* entry of that
-	# chain as the client (see ``_client_ip`` in bootstrap.py, which feeds both
-	# the slowapi rate limiter and the auth IP guard). Appending would let a
-	# caller send their own X-Forwarded-For and pick whatever IP they like,
-	# spoofing their way around both. Clients reach these hostnames directly —
-	# there is no upstream proxy whose header we'd be discarding.
-	reverse_proxy yupay-caddy:80 {
-		header_up X-Forwarded-For {remote_host}
+#
+# Whatever the path in, exactly one X-Forwarded-For value reaches the stack: the
+# real client. The API trusts the *first* entry of that chain (``_client_ip`` in
+# bootstrap.py, which feeds the slowapi rate limiter, the auth IP guard and the
+# Payme webhook allowlist in Caddyfile.prod), so an appended chain would let a
+# caller pick whatever IP they like and spoof past all three.
+#
+# Where that value comes from depends on who the peer is, which is why the two
+# handles below exist rather than one blanket rewrite:
+#
+#   * Direct client  — the peer IS the client, so {remote_host} is the truth and
+#     any inbound X-Forwarded-For is attacker-controlled and must be discarded.
+#   * Via Cloudflare — the peer is a Cloudflare edge, so {remote_host} would
+#     replace the real client with a Cloudflare address: every visitor would
+#     share a handful of IPs (breaking rate limiting) and genuine Payme calls
+#     would fail the 185.234.113.0/28 allowlist with a 403. Cloudflare's own
+#     CF-Connecting-IP carries the client, and it is trustworthy precisely
+#     because the matcher below has already established the peer is Cloudflare.
+#
+# Both handles are always present, so the hostnames work whether their DNS
+# records are proxied ("orange cloud") or DNS-only — flipping that switch needs
+# no deploy, and a flip in either direction can't strand us.
+#
+# CF ranges are from https://www.cloudflare.com/ips-v4 + ips-v6 (fetched
+# 2026-08-15). They change rarely; if Cloudflare adds a range, a client arriving
+# over it simply falls through to the direct handle and is seen as its edge IP.
+(yupay_upstream) {
+	@cloudflare remote_ip 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+
+	handle @cloudflare {
+		reverse_proxy yupay-caddy:80 {
+			header_up X-Forwarded-For {http.request.header.Cf-Connecting-Ip}
+		}
 	}
+
+	handle {
+		reverse_proxy yupay-caddy:80 {
+			header_up X-Forwarded-For {remote_host}
+		}
+	}
+}
+
+yupay.uz, www.yupay.uz, app.yupay.uz, admin.yupay.uz, api.yupay.uz, grafana.yupay.uz {
+	import yupay_upstream
 }
 
 # ---------- streamers-parser ----------

@@ -166,3 +166,41 @@ stack's Caddy.
 | Certificate errors after a redeploy        | `edge_caddy-data` was pruned; re-issue and mind the LE rate limit                                                                                           |
 | Rate limits triggering for unrelated users | `trusted_proxies` missing — every request looks like it comes from the edge                                                                                 |
 | Telegram calls time out                    | An IPv6 workaround crept back in. This host has **no** global IPv6 and reaches Telegram over IPv4 — see [telegram-connectivity](./telegram-connectivity.md) |
+
+## Putting YuPay behind Cloudflare
+
+On 2026-08-15 every YuPay hostname went unreachable **from Uzbekistan** while the
+box itself was healthy: `marketing.kolikosoft.com` on the same VPS kept serving,
+because it is fronted by Cloudflare and its visitors never touch the OVH IP.
+Ours resolved straight to `152.228.137.175`, so a broken UZ↔OVH transit took the
+storefront down — and, worse, took Payme's webhooks with it, which surfaced to
+customers as «нет ответа от поставщика» on real payments.
+
+The domain's DNS already lives at Cloudflare, so the switch is per-record
+("proxied" / orange cloud) and needs no deploy. What it _does_ need is that the
+edge already knows how to read the client IP from behind Cloudflare — that is
+the two-`handle` split in `infra/edge/Caddyfile`, which works in both states, so
+records can be flipped either way at any time.
+
+**Flip the record only after confirming these, or payments break differently:**
+
+| Cloudflare setting   | Required value                     | Why                                                                                                                              |
+| -------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| SSL/TLS mode         | **Full (strict)**                  | The origin serves a real Let's Encrypt cert. "Flexible" makes CF talk cleartext to an HTTPS origin and loops the redirect        |
+| Bot Fight Mode / WAF | **no challenge on `api.yupay.uz`** | A challenge page returned to Payme/Click/Uzum is an unanswered webhook. Add a skip rule for `/api/v1/payments/*` before flipping |
+| Caching              | leave API uncached                 | CF caches by extension by default, so JSON is untouched — but do not add a blanket cache rule on `api.`                          |
+| WebSockets           | on (default)                       | `wss://api.yupay.uz` carries order status                                                                                        |
+
+Verify after flipping — the Payme allowlist in `Caddyfile.prod` is the canary,
+since it 403s the moment the client IP stops being the real one:
+
+```bash
+# real client IP must survive the extra hop, not become a Cloudflare address
+curl -sI https://api.yupay.uz/healthz
+docker compose -f docker-compose.prod.yml logs caddy --tail 50 | grep -i 'client_ip\|403'
+```
+
+A 403 on `/api/v1/payments/payme/merchant` for a genuine Payme call means
+`CF-Connecting-IP` is not reaching the stack: check that the request arrived over
+a Cloudflare range the edge matcher knows (ranges are pinned in the Caddyfile and
+do drift — refresh from `https://www.cloudflare.com/ips-v4`).
