@@ -70,7 +70,25 @@ jobs:
             # (see ADR-0030). It is idempotent and must be up before the app
             # stack registers its ``yupay-caddy`` alias on the network.
             docker network inspect yupay-edge >/dev/null 2>&1 || docker network create yupay-edge
-            docker compose -f infra/edge/docker-compose.yml up -d
+
+            # Its Caddyfile is a single-FILE bind mount, so the container holds
+            # the inode it was created with. ``git checkout`` above replaces the
+            # file rather than editing it in place, which means a plain
+            # ``up -d`` (nothing in the compose spec changed) leaves the edge
+            # serving the OLD config indefinitely — an edge routing fix would
+            # deploy silently as a no-op. Recreating is the only thing that
+            # re-resolves the mount, but it drops :80/:443 for a few seconds
+            # for BOTH stacks on this box, so do it only when the file actually
+            # differs from what the container has. A missing container (first
+            # run) fails the exec and correctly takes the recreate branch.
+            EDGE_WANT="$(sha256sum infra/edge/Caddyfile | cut -d' ' -f1)"
+            EDGE_HAVE="$(docker exec edge-caddy sha256sum /etc/caddy/Caddyfile 2>/dev/null | cut -d' ' -f1 || true)"
+            if [ "$EDGE_WANT" = "$EDGE_HAVE" ]; then
+              docker compose -f infra/edge/docker-compose.yml up -d
+            else
+              echo "edge Caddyfile changed ($EDGE_HAVE -> $EDGE_WANT); recreating"
+              docker compose -f infra/edge/docker-compose.yml up -d --force-recreate
+            fi
 
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
