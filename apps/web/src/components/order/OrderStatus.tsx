@@ -145,8 +145,14 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
   const scrolledToAccess = useRef(false);
   useEffect(() => {
     if (!needsAccessLink || scrolledToAccess.current) return;
+    // The block is suppressed on a pure top-up (there are no codes to fetch),
+    // so `needsAccessLink` alone doesn't mean it rendered. Latch the flag only
+    // once we've actually scrolled, or a genuinely-present block appearing
+    // later would find the one-shot already spent.
+    const el = accessBlockRef.current;
+    if (!el) return;
     scrolledToAccess.current = true;
-    accessBlockRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [needsAccessLink]);
 
   // Fallback rate CTA: even if the delivered modal was skipped or missed, a
@@ -218,7 +224,15 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
           canLoadCodes &&
           deliveries.data?.items.map((d) => <ArtifactReceipt key={d.id} artifact={d.artifact} />)}
 
-        {needsAccessLink && (
+        {/* Never on a pure top-up: the money is already on the account and
+            `ArtifactReceipt` only ever renders real deliverables (code / key /
+            pin / serial — a top-up's login is deliberately excluded there), so
+            it returns null for one. Offering "коды готовы" here sent the buyer
+            to request an email, open the link, and find an empty page — a dead
+            end that reads as a code we owe them and never sent. A mixed cart
+            still shows it: `isTopUp` requires *every* item to be a top-up, and
+            the voucher lines in it do have codes to fetch. */}
+        {needsAccessLink && !isTopUp && (
           <div
             ref={accessBlockRef}
             // Accented (not the neutral card tone): this is the one action left
