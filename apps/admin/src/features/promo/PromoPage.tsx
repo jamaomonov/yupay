@@ -4,6 +4,7 @@ import { Ban } from "lucide-react";
 import { useState } from "react";
 
 import { DataTable, type Column } from "@/components/DataTable";
+import { MoneyInput } from "@/components/MoneyInput";
 import { PageHeader } from "@/components/PageHeader";
 import { ErrorState } from "@/components/States";
 import { useToast } from "@/components/Toast";
@@ -192,17 +193,7 @@ export function PromoPage() {
       >
         <label className="flex flex-col gap-1 lg:col-span-1">
           <span className="text-sm font-medium">Номинал *</span>
-          <Input
-            type="number"
-            inputMode="decimal"
-            min="0"
-            step="any"
-            value={amount}
-            placeholder="10000"
-            onChange={(e) => {
-              setAmount(e.target.value);
-            }}
-          />
+          <MoneyInput value={amount} onChange={setAmount} placeholder="10 000" />
         </label>
 
         <label className="flex flex-col gap-1 lg:col-span-1">

@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/components/Toast";
 import { StatCard } from "@/components/StatCard";
 import { type ApiError, apiDelete, apiPatch, apiGet, apiPost } from "@/lib/api";
+import { formatMoney } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
 
 interface GroupedProduct {
@@ -418,7 +419,7 @@ function SkuRow({
               <span
                 key={o.currency}
                 className="rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-1.5 py-0.5 font-mono text-[10px]"
-                title={`${o.price} ${o.currency}`}
+                title={formatMoney(o.price, o.currency)}
               >
                 {o.currency}
               </span>

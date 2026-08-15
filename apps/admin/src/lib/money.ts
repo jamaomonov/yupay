@@ -57,3 +57,39 @@ export function formatMoneyValue(amount: string | number, currency: string): str
 export function formatMoney(amount: string | number, currency: string): string {
   return `${formatMoneyValue(amount, currency)} ${currency}`;
 }
+
+/** Matches the grouping separator `Intl.NumberFormat("ru-RU")` itself uses
+ *  (U+00A0, not a plain space) — see `formatMoneyValue` above — so a money
+ *  input reads identically to a settled money display right next to it. */
+const GROUP_SEPARATOR = " ";
+
+/**
+ * Group the integer-part digits of an amount an operator is *mid-typing*,
+ * e.g. ``"12000000"`` → ``"12 000 000"``. Unlike `formatMoneyValue`, this
+ * formats whatever has been typed so far — a bare sign, a trailing decimal
+ * point, an empty string — without forcing a fixed decimal count or a
+ * canonical separator, so it's safe to run on every keystroke of a money
+ * input (see `MoneyInput`). The decimal separator and fractional digits, if
+ * any, pass through untouched: existing parsers (`parseAdjustAmount`, the
+ * price-override schema) already accept both `,` and `.`.
+ */
+export function groupAmountInput(raw: string): string {
+  const sign = raw.startsWith("-") ? "-" : "";
+  const unsigned = sign ? raw.slice(1) : raw;
+  const sepIndex = unsigned.search(/[.,]/);
+  const intPart = sepIndex === -1 ? unsigned : unsigned.slice(0, sepIndex);
+  const tail = sepIndex === -1 ? "" : unsigned.slice(sepIndex);
+  const digits = intPart.replace(/\D/g, "");
+  const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, GROUP_SEPARATOR);
+  return `${sign}${grouped}${tail}`;
+}
+
+/**
+ * Inverse of `groupAmountInput` — strips the grouping whitespace an operator
+ * may have typed (or that live-formatting inserted), leaving the raw string
+ * existing parsers already expect. `\s` covers the NBSP/narrow-NBSP variants
+ * alongside a plain space.
+ */
+export function ungroupAmountInput(display: string): string {
+  return display.replace(/\s/g, "");
+}

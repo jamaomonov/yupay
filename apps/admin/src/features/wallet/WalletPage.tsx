@@ -17,6 +17,7 @@ import type { UserAdminOut } from "@/features/users/types";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DataTable, type Column } from "@/components/DataTable";
+import { MoneyInput } from "@/components/MoneyInput";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusChip } from "@/components/StatusChip";
 import { Tabs, type TabDescriptor } from "@/components/Tabs";
@@ -332,13 +333,10 @@ function LookupTab() {
               </div>
               <div>
                 <label className="text-xs uppercase text-[var(--text-secondary)]">Сумма</label>
-                <Input
+                <MoneyInput
                   value={adjustAmount}
-                  onChange={(e) => {
-                    setAdjustAmount(e.target.value);
-                  }}
-                  inputMode="decimal"
-                  placeholder="5.00 или -3.50"
+                  onChange={setAdjustAmount}
+                  placeholder="5 000 000 или -350 000"
                   className="mt-1 font-mono"
                 />
               </div>
@@ -431,7 +429,7 @@ function LookupTab() {
           <p>
             {pendingAdjust.isDebit ? "Спишется" : "Зачислится"}{" "}
             <strong className="text-[var(--text-primary)]">
-              {pendingAdjust.absolute} {adjustCurrency.toUpperCase()}
+              {formatMoney(pendingAdjust.absolute, adjustCurrency)}
             </strong>{" "}
             на счёт <code className="font-mono text-xs">{adjustKind}</code> пользователя{" "}
             <code className="font-mono text-xs">{activeUserId}</code>.
