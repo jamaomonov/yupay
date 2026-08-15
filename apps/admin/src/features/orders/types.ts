@@ -6,9 +6,11 @@ export type OrderStatus =
   | "fulfilling"
   | "fulfilled"
   | "delivered"
+  | "failed"
   | "cancelled"
   | "expired"
-  | "refunded";
+  | "refunded"
+  | "partially_refunded";
 
 export interface OrderItemDisplay {
   brand_slug: string;
@@ -69,9 +71,11 @@ export const STATUS_LABEL: Record<OrderStatus, string> = {
   fulfilling: "В работе",
   fulfilled: "Готов",
   delivered: "Доставлен",
+  failed: "Проблемный",
   cancelled: "Отменён",
   expired: "Истёк",
   refunded: "Возврат",
+  partially_refunded: "Частичный возврат",
 };
 
 export const STATUS_TONE: Record<OrderStatus, string> = {
@@ -80,7 +84,9 @@ export const STATUS_TONE: Record<OrderStatus, string> = {
   fulfilling: "bg-[var(--bg-accent-soft)] text-[var(--accent-soft-fg)]",
   fulfilled: "bg-[var(--success-soft)] text-[var(--success-fg)]",
   delivered: "bg-[var(--success-soft)] text-[var(--success-fg)]",
+  failed: "bg-[var(--danger-soft)] text-[var(--danger-fg)]",
   cancelled: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
   expired: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
   refunded: "bg-[var(--danger-soft)] text-[var(--danger-fg)]",
+  partially_refunded: "bg-[var(--info-soft)] text-[var(--info-fg)]",
 };

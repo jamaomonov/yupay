@@ -35,9 +35,11 @@ const STATUS_FILTERS: { value: OrderStatus | ""; label: string }[] = [
   { value: "fulfilling", label: "В работе" },
   { value: "fulfilled", label: "Готов" },
   { value: "delivered", label: "Доставлен" },
+  { value: "failed", label: "Проблемный" },
   { value: "cancelled", label: "Отменён" },
   { value: "expired", label: "Истёк" },
   { value: "refunded", label: "Возврат" },
+  { value: "partially_refunded", label: "Частичный возврат" },
 ];
 
 export function OrdersListPage() {

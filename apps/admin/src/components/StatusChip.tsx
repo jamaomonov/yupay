@@ -54,6 +54,7 @@ const EVENT_KIND: Record<string, StatusMeta> = {
   "order.held_for_review": { label: "На проверке", tone: WARNING },
   "order.fulfilling": { label: "Выдаётся", tone: ACCENT },
   "order.delivered": { label: "Доставлен", tone: SUCCESS },
+  "order.failed": { label: "Отмечен проблемным", tone: DANGER },
   "order.cancelled": { label: "Отменён", tone: MUTED },
   "order.expired": { label: "Истёк", tone: MUTED },
   "payments.cascaded_cancel": { label: "Платежи отменены каскадом", tone: MUTED },
