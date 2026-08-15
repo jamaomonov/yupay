@@ -10,11 +10,23 @@ liability, not a safeguard.
 Why the FIRST entry of ``X-Forwarded-For`` can be trusted:
 
 The shared edge proxy is the only hop in front of this app and it *overwrites*
-the header with the real peer address rather than appending to it
-(``header_up X-Forwarded-For {remote_host}`` in ``infra/edge/Caddyfile``), so a
-caller cannot inject their own chain and pick an address. The app's own port is
-not published, so no request reaches FastAPI around that proxy. If the edge is
-ever changed to append instead of overwrite, this function starts returning
+the header rather than appending to it (``infra/edge/Caddyfile``), so a caller
+cannot inject their own chain and pick an address. The app's own port is not
+published, so no request reaches FastAPI around that proxy.
+
+What it overwrites the header *with* depends on who the peer is, and the edge
+decides that — not this function:
+
+* a direct client is its own peer, so the value is ``{remote_host}``;
+* behind Cloudflare (which YuPay hostnames were moved to on 2026-08-15, after a
+  broken UZ↔OVH transit made the origin address unreachable from Uzbekistan and
+  took Payme's webhooks down with it) the peer is a Cloudflare edge, so the
+  value is ``CF-Connecting-IP`` — and that header is only trusted because the
+  edge has already matched the peer against Cloudflare's published ranges.
+
+Either way exactly one value arrives and it is the real client. If the edge is
+ever changed to append instead of overwrite, or to read CF-Connecting-IP without
+first proving the peer is Cloudflare, this function starts returning
 attacker-controlled data and BOTH the guards and the evidence become worthless
 — that config comment and this one are load-bearing together.
 """

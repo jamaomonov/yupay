@@ -121,15 +121,20 @@ http://api.yupay.uz {
 	#
 	# yupay-caddy never sees Payme's real socket peer: the shared edge
 	# proxy (infra/edge/Caddyfile) sits in front of every YuPay hostname
-	# and forwards here over the ``yupay-edge`` network. That edge is NOT
-	# Cloudflare for YuPay — "Clients reach these hostnames directly" per
-	# infra/edge/Caddyfile — and it overwrites X-Forwarded-For with the
-	# real peer address before forwarding. Combined with the
-	# ``trusted_proxies static private_ranges`` global option above,
+	# and forwards here over the ``yupay-edge`` network, overwriting
+	# X-Forwarded-For with the real client before it does. Combined with
+	# the ``trusted_proxies static private_ranges`` global option above,
 	# ``client_ip`` resolves to that real address; ``remote_ip`` would only
 	# ever see the edge container's own private IP and would 403 every
 	# genuine Payme call. Use ``client_ip`` (Caddy >= 2.7), not
 	# ``remote_ip``, for this allowlist.
+	#
+	# Since 2026-08-15 these hostnames are proxied by Cloudflare, so the
+	# edge derives that value from CF-Connecting-IP when the peer is a
+	# Cloudflare range and from the peer itself otherwise — see the two
+	# handles there. This matcher is the canary for that wiring: if the
+	# edge ever hands us a Cloudflare address instead of the client, every
+	# genuine Payme webhook 403s here and payments stop.
 	@paymeMerchantBlocked {
 		path /api/v1/payments/payme/merchant
 		not client_ip 185.234.113.0/28
