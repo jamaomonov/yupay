@@ -5,6 +5,12 @@ export interface ProviderDisplay {
   nameKey?: string;
   /** Public path to a logo asset, when one exists. */
   logo?: string;
+  /** The asset's intrinsic pixel size. These logos are wordmarks with wildly
+   *  different aspect ratios (3.9:1 to 2.5:1), so a renderer needs the real
+   *  ratio to scale one by height without squashing it — see the same pairing
+   *  in `PurchasePanel`'s METHODS. */
+  logoWidth?: number;
+  logoHeight?: number;
 }
 
 /**
@@ -90,11 +96,11 @@ export function paymentProviderDisplay(provider: string | null): ProviderDisplay
   switch (provider) {
     case "click":
     case "click_miniapp":
-      return { name: "Click", logo: "/payment/click.svg" };
+      return { name: "Click", logo: "/payment/click.svg", logoWidth: 157, logoHeight: 40 };
     case "payme":
-      return { name: "Payme", logo: "/payment/payme.png" };
+      return { name: "Payme", logo: "/payment/payme.png", logoWidth: 454, logoHeight: 179 };
     case "uzum":
-      return { name: "Uzum", logo: "/payment/uzum.png" };
+      return { name: "Uzum", logo: "/payment/uzum.png", logoWidth: 506, logoHeight: 148 };
     case "octo":
       return { name: "Octo" };
     case "wallet":

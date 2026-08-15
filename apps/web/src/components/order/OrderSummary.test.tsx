@@ -50,5 +50,18 @@ function wrap(ui: ReactNode) {
 it("shows the total paid in the order currency and the provider", () => {
   wrap(<OrderSummary order={order} />);
   expect(screen.getByText("$10.00")).toBeInTheDocument();
-  expect(screen.getByText("Click")).toBeInTheDocument();
+  // The acquirer's logo is a wordmark, so it carries the name on its own and
+  // the text beside it was the word "Click" printed twice. It has to keep
+  // announcing itself though — that is what makes dropping the visible copy
+  // safe, so assert the accessible name rather than the removed text.
+  expect(screen.getByRole("img", { name: "Click" })).toBeInTheDocument();
+  expect(screen.queryByText("Click")).not.toBeInTheDocument();
+});
+
+it("keeps the label for a provider that has no logo", () => {
+  // Wallet, Octo and any unrecognised slug ship no asset. Suppressing the text
+  // for them too would leave an empty pill with nothing in it at all.
+  wrap(<OrderSummary order={{ ...order, payment_provider: "wallet" }} />);
+  expect(screen.getByText("Balance")).toBeInTheDocument();
+  expect(screen.queryByRole("img")).not.toBeInTheDocument();
 });

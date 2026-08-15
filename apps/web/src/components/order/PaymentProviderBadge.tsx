@@ -13,15 +13,26 @@ export function PaymentProviderBadge({ provider }: { provider: string | null }) 
   return (
     <span className="border-border-2 bg-muted text-foreground rounded-btn inline-flex items-center gap-1.5 border px-2 py-1 text-[13px] font-medium">
       {display.logo ? (
+        // The logo IS the name — every acquirer's asset is a wordmark, so
+        // pairing it with the text spelled "Click" twice. Scaled by height with
+        // the width left to the intrinsic ratio: these assets run from 3.9:1 to
+        // 2.5:1, and the old fixed 16x16 box squashed the wordmark into an
+        // illegible smudge. `alt` keeps the name available to screen readers,
+        // which is the only reason dropping the visible text is safe.
         <Image
           src={display.logo}
           alt={label}
-          width={16}
-          height={16}
-          className="h-4 w-4 object-contain"
+          title={label}
+          width={display.logoWidth ?? 16}
+          height={display.logoHeight ?? 16}
+          style={{ width: "auto", height: 16 }}
+          className="object-contain"
         />
-      ) : null}
-      <span>{label}</span>
+      ) : (
+        // No asset (wallet, Octo, an unrecognised slug) — the text is all there
+        // is, so it has to stay or the badge renders empty.
+        <span>{label}</span>
+      )}
     </span>
   );
 }
