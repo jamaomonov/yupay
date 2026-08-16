@@ -115,6 +115,16 @@ class OrderItem(Base):
     )
     qty: Mapped[int] = mapped_column(Integer, nullable=False)
     unit_price_usd: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
+    # What this line was priced at, frozen at checkout (ADR-0051). On a
+    # variable-amount line ``unit_price_usd`` is only the face value the
+    # customer chose; the markup that turned it into money lives in
+    # ``rate_multiplier``, and reading that from the live SKU meant an admin
+    # editing the margin revalued every past order. NULL where it does not
+    # apply — a fixed line has no multiplier, an override-priced line and a
+    # USD order never touched a rate — and NULL on an old row means "not
+    # recorded", which ``orders.revenue`` resolves against the SKU.
+    rate_multiplier: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    fx_rate: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
     fulfillment_data: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
@@ -132,6 +142,11 @@ class OrderItem(Base):
     __table_args__ = (
         CheckConstraint("qty > 0", name="ck_order_items_qty_positive"),
         CheckConstraint("unit_price_usd > 0", name="ck_order_items_price_positive"),
+        CheckConstraint(
+            "rate_multiplier IS NULL OR rate_multiplier > 0",
+            name="ck_order_items_rate_multiplier_positive",
+        ),
+        CheckConstraint("fx_rate IS NULL OR fx_rate > 0", name="ck_order_items_fx_rate_positive"),
     )
 
 

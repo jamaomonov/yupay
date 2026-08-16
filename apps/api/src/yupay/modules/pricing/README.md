@@ -124,6 +124,14 @@ adjustable from the admin UI without a deploy.
 > Use `orders.revenue.charged_usd_expr` / `order_charged_usd` instead — they
 > apply `rate_multiplier` for variable lines and are the twin of
 > `stats.analytics.business._margin_expr`.
+>
+> The multiplier they apply is the one **frozen on the order line** at checkout
+> (`order_items.rate_multiplier`, [ADR-0051](../../../../../../docs/decisions/0051-pin-the-rate-an-order-was-priced-at.md)),
+> not the SKU's current one — otherwise editing a margin here would revalue
+> every order ever sold. `order_items.fx_rate` keeps the market rate the line
+> was priced against, so `display_rate` is reconstructible after the fact.
+> Lines older than that migration have both `NULL` and fall back to the live
+> SKU; they were deliberately not backfilled.
 
 `price_in_quote` returns six decimal places for intermediate precision;
 rounding to the currency's smallest **chargeable** unit happens once, when

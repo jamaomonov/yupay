@@ -36,7 +36,7 @@ from yupay.core.ids import new_id
 from yupay.modules.catalog.models import Brand, Category, Product, Sku
 from yupay.modules.fx.providers.base import FxProvider, FxProviderError, Quote
 from yupay.modules.fx.service import FxService
-from yupay.modules.orders.models import Order
+from yupay.modules.orders.models import Order, OrderItem
 
 pytestmark = pytest.mark.asyncio
 
@@ -510,3 +510,68 @@ async def test_fixed_sku_checkout_fails_closed_on_a_rejected_rate(
     assert r.status_code == 502, r.text
     rows = (await db_session.execute(select(Order))).scalars().all()
     assert rows == []
+
+
+async def test_checkout_freezes_the_rate_the_line_was_priced_at(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    _variable_sku: Sku,
+) -> None:
+    """ADR-0051: the multiplier and market rate that produced the charge are
+    written onto the line.
+
+    Without them the order's value in USD can only be recovered by re-reading
+    a ``Sku.rate_multiplier`` an admin may since have changed — so raising the
+    Steam margin would silently revalue every order ever sold.
+    """
+    monkeypatch.setattr(
+        "yupay.modules.pricing.fx_guard.build_default_service",
+        lambda: _stub_fx_service({"UZS": Decimal("13000")}),
+    )
+    token = await _login_user(integration_client, tg_id=120)
+    r = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "variable-pins-rate-aaaa",
+        },
+        json=_order_body(sku_id=_variable_sku.id, currency="UZS", amount_usd="10"),
+    )
+    assert r.status_code == 201, r.text
+
+    item = (await db_session.execute(select(OrderItem))).scalars().one()
+    assert item.rate_multiplier == _variable_sku.rate_multiplier
+    # The *market* rate, pre-multiplier — the customer-facing rate is this
+    # times the multiplier, and keeping the two apart is what lets the margin
+    # be recovered later.
+    assert item.fx_rate == Decimal("13000")
+
+
+async def test_a_fixed_line_records_its_rate_but_no_multiplier(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    _fixed_sku: Sku,
+) -> None:
+    """A fixed line has no markup in its rate — its USD value is already
+    ``unit_price_usd`` — so the multiplier stays NULL. The rate it converted
+    at is still worth keeping for "what did we quote them"."""
+    monkeypatch.setattr(
+        "yupay.modules.pricing.fx_guard.build_default_service",
+        lambda: _stub_fx_service({"UZS": Decimal("13000")}),
+    )
+    token = await _login_user(integration_client, tg_id=121)
+    r = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "fixed-pins-rate-aaaaaa",
+        },
+        json=_order_body(sku_id=_fixed_sku.id, currency="UZS"),
+    )
+    assert r.status_code == 201, r.text
+
+    item = (await db_session.execute(select(OrderItem))).scalars().one()
+    assert item.rate_multiplier is None
+    assert item.fx_rate == Decimal("13000")

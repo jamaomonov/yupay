@@ -21,7 +21,7 @@ from urllib.parse import urlencode
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import event, update
+from sqlalchemy import event, select, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.modules.catalog.models import Brand, Category, Product, Sku
@@ -169,12 +169,15 @@ async def _make_order_item(
     order_id: str,
     unit_price_usd: str = "1.00",
     rate_multiplier: str | None = None,
+    pin_rate: bool = False,
 ) -> str:
     """Build the full catalog chain needed to satisfy the order_items FK constraints.
 
     Passing ``rate_multiplier`` makes the SKU variable-amount (a Steam-style
     top-up), which also requires the min/max bounds —
-    ``ck_skus_variable_amount_complete`` rejects a partial set.
+    ``ck_skus_variable_amount_complete`` rejects a partial set. ``pin_rate``
+    additionally freezes that multiplier onto the line the way checkout does
+    (ADR-0051); leaving it off models a row written before that column existed.
     """
     slug = uuid.uuid4().hex[:8]
     cat_id = str(uuid.uuid4())
@@ -213,6 +216,9 @@ async def _make_order_item(
             sku_id=sku_id,
             qty=1,
             unit_price_usd=Decimal(unit_price_usd),
+            rate_multiplier=(
+                Decimal(rate_multiplier) if pin_rate and rate_multiplier is not None else None
+            ),
         )
     )
     await db.commit()
@@ -406,6 +412,41 @@ async def test_spend_counts_the_steam_markup_not_the_face_value(
     stats = r.json()["stats"]
     assert stats["total_orders"] == 1
     assert Decimal(stats["total_spent_usd"]) == Decimal("11.30")
+
+
+async def test_spend_uses_the_rate_frozen_on_the_line_not_todays_sku(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _admin_headers: dict[str, str],
+) -> None:
+    """ADR-0051: raising the Steam margin must not revalue past orders.
+
+    The line was sold at 1.13. The SKU now says 1.50. Reported spend has to
+    stay at what was actually charged.
+    """
+    user_id = await _make_user(db_session, email="pinned-buyer@example.com")
+    order_id = await _make_order(db_session, user_id=user_id, status="delivered")
+    item_id = await _make_order_item(
+        db_session,
+        order_id=order_id,
+        unit_price_usd="10.00",
+        rate_multiplier="1.1300",
+        pin_rate=True,
+    )
+    # The admin edits the margin after the sale.
+    sku_id = (
+        await db_session.execute(select(OrderItem.sku_id).where(OrderItem.id == item_id))
+    ).scalar_one()
+    await db_session.execute(
+        update(Sku).where(Sku.id == sku_id).values(rate_multiplier=Decimal("1.5000"))
+    )
+    await db_session.commit()
+
+    r = await integration_client.get(
+        f"/api/v1/admin/customers/{user_id}/overview", headers=_admin_headers
+    )
+    assert r.status_code == 200, r.text
+    assert Decimal(r.json()["stats"]["total_spent_usd"]) == Decimal("11.30")
 
 
 async def test_spend_leaves_a_fixed_price_order_alone(

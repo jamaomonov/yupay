@@ -19,14 +19,14 @@ lines and ``qty * unit_price_usd`` for the rest. That is the same shape
 ``stats.analytics.business._margin_expr`` already uses for margin, and the two
 stay consistent by construction: ``gross - margin == cost``.
 
-**It is an approximation in one respect**: ``rate_multiplier`` is mutable from
-the admin UI, so an order placed under an older multiplier is valued at
-today's. The exact alternative — dividing ``total_charged`` by the order's
-pinned ``fx_snapshot`` rate — is not usable: ``fx_snapshot_id`` is null on most
-orders in practice (``_snapshot_id_for_rate`` returns ``None`` whenever it
-cannot match the rate back to a row, and override-priced lines never set one).
-Pinning the rate per order is the real fix and is worth doing before this
-number is ever used for accounting rather than for operator context.
+The multiplier comes from the order line itself, frozen at checkout
+(``OrderItem.rate_multiplier``, ADR-0051) — an order's worth must not be a
+function of today's pricing config, and it used to be: editing a SKU's margin
+revalued every order ever placed against it. Lines written before that column
+existed have ``NULL`` there and fall back to the live SKU; that is a knowingly
+approximate valuation, kept rather than backfilled so a guess never becomes
+indistinguishable from a recorded fact. See the ADR for why the pre-existing
+``Order.fx_snapshot_id`` could not serve this purpose.
 """
 
 from __future__ import annotations
@@ -48,16 +48,22 @@ _CENTS = Decimal("0.01")
 def charged_usd_expr() -> Case[Any]:
     """Per-order-item gross value in USD, for use inside ``func.sum(...)``.
 
-    Variable-amount lines carry their markup in ``rate_multiplier`` (never
-    null for them — ``ck_skus_variable_amount_complete`` enforces it), so the
-    multiplier has to be applied to reach what was actually charged. Fixed
-    lines are already priced at retail.
+    Prefers the multiplier frozen on the line at checkout (ADR-0051), so an
+    admin editing a SKU's margin cannot revalue orders already taken. Falls
+    back to the live SKU only for lines written before that column existed,
+    where ``NULL`` means "not recorded" rather than "no markup" — those keep
+    reporting exactly as they did before, which is the best that can honestly
+    be said about them. Fixed lines are already priced at retail either way.
 
     Returns:
         A SQLAlchemy ``CASE``. Typed ``Case[Any]`` because SQLAlchemy's
         ``case()`` stub always returns ``Case[Any]`` regardless of branch type.
     """
     return case(
+        (
+            OrderItem.rate_multiplier.isnot(None),
+            OrderItem.qty * OrderItem.unit_price_usd * OrderItem.rate_multiplier,
+        ),
         (
             Sku.variable_amount.is_(True),
             OrderItem.qty * OrderItem.unit_price_usd * Sku.rate_multiplier,
@@ -103,7 +109,11 @@ def order_charged_usd(order: Order) -> Decimal | None:
             # should not take a whole admin page down.
             return None  # type: ignore[unreachable]
         line = Decimal(item.qty) * item.unit_price_usd
-        if sku.variable_amount and sku.rate_multiplier is not None:
+        # Same precedence as `charged_usd_expr`: the rate frozen on the line
+        # wins, the live SKU is only the pre-ADR-0051 fallback.
+        if item.rate_multiplier is not None:
+            line *= item.rate_multiplier
+        elif sku.variable_amount and sku.rate_multiplier is not None:
             line *= sku.rate_multiplier
         total += line
     return total.quantize(_CENTS, rounding=ROUND_HALF_UP)

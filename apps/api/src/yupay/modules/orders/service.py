@@ -294,7 +294,7 @@ async def _variable_line_charge(
     qty: int,
     currency: str,
     rate_cache: dict[str, Decimal],
-) -> Decimal:
+) -> tuple[Decimal, Decimal]:
     """Amount charged, in ``currency``, for one variable-amount line.
 
     Never uses a ``SkuPrice`` override or the plain FX snapshot — only the
@@ -303,6 +303,12 @@ async def _variable_line_charge(
     every variable line in the same currency shares the same market rate
     (only the multiplier differs per SKU), so this avoids re-querying the
     FX trust gate once per line.
+
+    Returns:
+        ``(charge, market_rate)``. The market rate is handed back rather than
+        left in ``rate_cache`` for the caller to fish out, because the caller
+        has to record it on the line (ADR-0051) and an implicit read of a
+        cache someone else populated is how that quietly stops happening.
 
     Raises:
         UpstreamUnavailableError: the FX trust gate rejects the rate.
@@ -320,7 +326,7 @@ async def _variable_line_charge(
             ) from exc
         rate_cache[currency] = market
     rate = display_rate(market, sku.rate_multiplier or Decimal("1"))
-    return price_in_quote(unit_price_usd, rate=rate) * qty
+    return price_in_quote(unit_price_usd, rate=rate) * qty, market
 
 
 async def _snapshot_id_for_rate(db: AsyncSession, *, quote: str, rate: Decimal) -> str | None:
@@ -398,7 +404,7 @@ async def _compute_total_charged(
         sku = skus[line.sku_id]
 
         if sku.variable_amount:
-            total_charged += await _variable_line_charge(
+            charge, market = await _variable_line_charge(
                 db,
                 sku=sku,
                 unit_price_usd=item.unit_price_usd,
@@ -406,6 +412,13 @@ async def _compute_total_charged(
                 currency=currency,
                 rate_cache=rate_cache,
             )
+            total_charged += charge
+            # Frozen here, where the rate that priced this line is in hand
+            # (ADR-0051). Without it the line's value in USD is only knowable
+            # by re-reading a `Sku.rate_multiplier` an admin may since have
+            # changed, which silently revalues every past order.
+            item.rate_multiplier = sku.rate_multiplier
+            item.fx_rate = market
             continue
 
         override = next(
@@ -413,6 +426,8 @@ async def _compute_total_charged(
             None,
         )
         if override is not None:
+            # No rate participated: the override *is* the price in this
+            # currency. Both stay NULL, which is what says so.
             total_charged += override.price * line.qty
             continue
 
@@ -431,6 +446,10 @@ async def _compute_total_charged(
             rate_cache[currency] = rate
         if fx_snapshot_id is None:
             fx_snapshot_id = await _snapshot_id_for_rate(db, quote=currency, rate=rate)
+        # A fixed line carries no multiplier — its USD value is already
+        # `unit_price_usd` — but the rate it converted at is still worth
+        # keeping, for "what did we quote them" (ADR-0051).
+        item.fx_rate = rate
         total_charged += (sku.price_usd * line.qty * rate).quantize(Decimal("1.000000"))
 
     # Line prices carry 6 dp for intermediate precision (see

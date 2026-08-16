@@ -41,9 +41,17 @@ def _order(items: list[OrderItem]) -> Order:
     )
 
 
-def _item(sku: Sku, *, qty: int = 1, unit: str = "10.00") -> OrderItem:
+def _item(sku: Sku, *, qty: int = 1, unit: str = "10.00", pinned: str | None = None) -> OrderItem:
+    """One line. ``pinned`` is the multiplier frozen at checkout (ADR-0051);
+    ``None`` models a row written before that column existed."""
     return OrderItem(
-        id="i-1", order_id="o-1", sku_id=sku.id, qty=qty, unit_price_usd=Decimal(unit), sku=sku
+        id="i-1",
+        order_id="o-1",
+        sku_id=sku.id,
+        qty=qty,
+        unit_price_usd=Decimal(unit),
+        rate_multiplier=Decimal(pinned) if pinned is not None else None,
+        sku=sku,
     )
 
 
@@ -71,6 +79,29 @@ def test_a_mixed_order_applies_the_markup_only_to_the_variable_line() -> None:
     variable = _item(_sku(variable=True, multiplier="1.1300"))
     fixed = _item(_sku(variable=False, multiplier=None), unit="5.00")
     assert order_charged_usd(_order([variable, fixed])) == Decimal("16.30")
+
+
+def test_the_pinned_multiplier_wins_over_a_since_edited_sku() -> None:
+    # The whole point of freezing it: the shop raises its Steam margin to 1.20
+    # tomorrow, and an order sold at 1.13 must still be worth $11.30.
+    sku = _sku(variable=True, multiplier="1.2000")
+    order = _order([_item(sku, pinned="1.1300")])
+    assert order_charged_usd(order) == Decimal("11.30")
+
+
+def test_a_line_predating_the_snapshot_falls_back_to_the_sku() -> None:
+    # NULL means "not recorded", not "no markup" — those orders keep valuing
+    # exactly as they did before the column existed.
+    order = _order([_item(_sku(variable=True, multiplier="1.1300"), pinned=None)])
+    assert order_charged_usd(order) == Decimal("11.30")
+
+
+def test_a_pinned_multiplier_applies_even_if_the_sku_is_no_longer_variable() -> None:
+    # A SKU converted to fixed pricing later must not retroactively strip the
+    # markup off the orders that were sold under it.
+    sku = _sku(variable=False, multiplier=None)
+    order = _order([_item(sku, pinned="1.1300")])
+    assert order_charged_usd(order) == Decimal("11.30")
 
 
 def test_the_result_is_rounded_to_cents() -> None:

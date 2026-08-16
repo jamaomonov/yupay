@@ -8,17 +8,17 @@ See [ADR-0011](../../../../../docs/decisions/0011-order-fsm-and-snapshots.md).
 - Own `orders`, `order_items`, `order_events`.
 - Accept new orders from authenticated users **and** guest checkouts (by email).
 - Validate `fulfillment_data` against the product's `required_fields` schema.
-- Freeze `unit_price_usd` per item and lock the FX rate via
-  [`fx.snapshot`](../fx/service.py).
+- Freeze `unit_price_usd` per item, plus the multiplier and market rate the
+  line was priced at (ADR-0051), via the [`fx` trust gate](../pricing/fx_guard.py).
 - Provide owner-scoped read endpoints and admin endpoints for ops.
 
 ## Tables
 
-| Table          | Notes                                                                                                                                                                                                                                                                                                               |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `orders`       | Either `user_id` or `guest_email` is set (CHECK enforced). Per-actor partial UNIQUE on `idempotency_key`. `total_charged = total_usd × fx_snapshot.rate` (frozen), rounded to the currency's smallest chargeable unit (whole so'm for UZS, kopecks for RUB) so it is always an exact tiyin amount acquirers accept. |
-| `order_items`  | `unit_price_usd` frozen, `fulfillment_data` validated. `fulfillment_state` runs its own micro-FSM (`pending → reserved → in_progress → delivered`).                                                                                                                                                                 |
-| `order_events` | Append-only audit. Outbox reads from here when `payments` + `fulfillment` land.                                                                                                                                                                                                                                     |
+| Table          | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `orders`       | Either `user_id` or `guest_email` is set (CHECK enforced). Per-actor partial UNIQUE on `idempotency_key`. `total_charged` is the sum of the per-line charges, rounded to the currency's smallest chargeable unit (whole so'm for UZS, kopecks for RUB) so it is always an exact tiyin amount acquirers accept. It is **not** `total_usd × rate`: a variable-amount line is charged at `market_rate × sku.rate_multiplier`, and an override-priced line ignores the rate entirely. |
+| `order_items`  | `unit_price_usd` frozen, `fulfillment_data` validated. `rate_multiplier` + `fx_rate` freeze what the line was priced at (ADR-0051) so its value in USD never depends on today's catalog config — see [`revenue.py`](revenue.py). `fulfillment_state` runs its own micro-FSM (`pending → reserved → in_progress → delivered`).                                                                                                                                                     |
+| `order_events` | Append-only audit. Outbox reads from here when `payments` + `fulfillment` land.                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 ## Public interface
 
