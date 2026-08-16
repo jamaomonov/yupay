@@ -21,7 +21,9 @@ import {
 import { useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
+import { EvidenceCard } from "./EvidenceCard";
 import {
+  type EvidencePackOut,
   type OrderAdminOut,
   type OrderEventOut,
   type OrderStatus,
@@ -63,6 +65,8 @@ export function OrderDetailPage() {
   // fetch is what gets audited server-side, and nobody wants them on screen
   // during a screen-share.
   const [codesRevealed, setCodesRevealed] = useState(false);
+  // Same bargain for the buyer's IP and browser: personal data, audited read.
+  const [evidenceRevealed, setEvidenceRevealed] = useState(false);
   const toast = useToast();
 
   const orderQuery = useQuery<OrderAdminOut>({
@@ -98,6 +102,14 @@ export function OrderDetailPage() {
     // Every fetch writes an audit event server-side, so don't re-poll silently.
     staleTime: Infinity,
     queryFn: () => apiGet<DeliveryListOut>(`/api/v1/admin/orders/${orderId}/deliveries`),
+  });
+
+  const evidenceQuery = useQuery<EvidencePackOut>({
+    queryKey: ["admin", "orders", orderId, "evidence"],
+    enabled: evidenceRevealed,
+    // Every fetch writes an audit event server-side, so don't re-poll silently.
+    staleTime: Infinity,
+    queryFn: () => apiGet<EvidencePackOut>(`/api/v1/admin/orders/${orderId}/evidence`),
   });
 
   const resendEmail = useMutation<void, ApiError>({
@@ -396,6 +408,13 @@ export function OrderDetailPage() {
             }}
             resending={resendEmail.isPending}
             canResend={Boolean(order.guest_email)}
+          />
+          <EvidenceCard
+            revealed={evidenceRevealed}
+            onReveal={() => {
+              setEvidenceRevealed(true);
+            }}
+            query={evidenceQuery}
           />
           <FulfillmentCard
             tasks={tasks}

@@ -329,3 +329,39 @@ async def test_an_admin_gets_a_usable_pack(
     # The timeline is what answers "when was this delivered, and to whom".
     assert isinstance(pack["timeline"], list)
     assert pack["timeline"]
+
+
+async def test_reading_the_pack_is_written_to_the_order_timeline(
+    integration_client: AsyncClient, db_session: AsyncSession, _seed_sku: str
+) -> None:
+    """Looking up a customer's address has to leave a trace.
+
+    This is the only route in the API that returns an unhashed IP, so the read
+    is audited the same way a delivery-artifact read is. The event must not
+    land inside the pack itself, though: that goes to an acquirer, and our own
+    access log is not part of their answer.
+    """
+    token = await _login_user(integration_client, tg_id=9108)
+    _, order_id = await _post_order(
+        integration_client, token=token, sku_id=_seed_sku, key="idem-evidence-9108-pad"
+    )
+    await _grant_admin(db_session, tg_id=9108)
+    admin_token = await _login_user(integration_client, tg_id=9108)
+
+    r = await integration_client.get(
+        f"/api/v1/admin/orders/{order_id}/evidence",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert r.status_code == 200, r.text
+    assert not [e for e in r.json()["timeline"] if e["kind"] == "admin.evidence_viewed"]
+
+    # The next read sees the previous one, which is the point of recording it.
+    again = await integration_client.get(
+        f"/api/v1/admin/orders/{order_id}/evidence",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert again.status_code == 200, again.text
+    viewed = [e for e in again.json()["timeline"] if e["kind"] == "admin.evidence_viewed"]
+    assert len(viewed) == 1
+    assert viewed[0]["actor"].startswith("admin:")
+    assert viewed[0]["payload"] == {"has_capture": True}

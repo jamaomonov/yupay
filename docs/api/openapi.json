@@ -14697,7 +14697,7 @@
     },
     "/api/v1/admin/orders/{order_id}/evidence": {
       "get": {
-        "description": "Return the capture plus the order's full timeline.",
+        "description": "Return the capture plus the order's full timeline.\n\nThe read itself is recorded on the order timeline\n(``admin.evidence_viewed``) \u2014 this is the one route that hands back an\nunhashed address, so it is answerable who asked for it.",
         "operationId": "admin_order_evidence_api_v1_admin_orders__order_id__evidence_get",
         "parameters": [
           {

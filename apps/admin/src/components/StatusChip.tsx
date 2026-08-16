@@ -57,6 +57,10 @@ const EVENT_KIND: Record<string, StatusMeta> = {
   "order.failed": { label: "Отмечен проблемным", tone: DANGER },
   "order.cancelled": { label: "Отменён", tone: MUTED },
   "order.expired": { label: "Истёк", tone: MUTED },
+  // Audited admin reads of customer data — a bearer code and a personal
+  // address respectively. Both are answers to "who looked at this".
+  "admin.deliveries_viewed": { label: "Админ смотрел выдачу", tone: MUTED },
+  "admin.evidence_viewed": { label: "Админ смотрел контекст", tone: MUTED },
   "payments.cascaded_cancel": { label: "Платежи отменены каскадом", tone: MUTED },
   "payment.pending": { label: "Платёж: ожидание", tone: MUTED },
   "payment.requires_action": { label: "Платёж: нужно действие", tone: WARNING },

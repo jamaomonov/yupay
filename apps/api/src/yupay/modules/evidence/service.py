@@ -13,6 +13,7 @@ from yupay.core.client_ip import UNKNOWN_IP, client_ip
 from yupay.core.clock import now
 from yupay.core.config import Settings, get_settings
 from yupay.core.errors import NotFoundError
+from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.modules.evidence.models import OrderEvidence
 from yupay.modules.evidence.schemas import (
@@ -21,7 +22,7 @@ from yupay.modules.evidence.schemas import (
     OrderEventOut,
     OrderEvidenceOut,
 )
-from yupay.modules.orders.models import Order
+from yupay.modules.orders.models import Order, OrderEvent
 
 if TYPE_CHECKING:  # pragma: no cover -- type hints only
     from fastapi import Request
@@ -101,8 +102,15 @@ async def capture_for_order(
         log.exception("evidence.capture_failed", order_id=order_id)
 
 
-async def get_pack(db: AsyncSession, *, order_id: str) -> EvidencePackOut:
-    """Everything an acquirer asks for about one order, in one response."""
+async def get_pack(db: AsyncSession, *, order_id: str, admin_id: str) -> EvidencePackOut:
+    """Everything an acquirer asks for about one order, in one response.
+
+    Every read is recorded on the order timeline with the acting admin. This is
+    the only endpoint that returns an unhashed IP, so "who looked up this
+    customer's address" has to be a question the audit feed can answer — the
+    same rule the delivery-artifact read follows, where a bearer code is at
+    stake instead of a personal address.
+    """
     order = (await db.execute(select(Order).where(Order.id == order_id))).scalar_one_or_none()
     if order is None:
         raise NotFoundError("order not found", extra={"order_id": order_id})
@@ -111,7 +119,7 @@ async def get_pack(db: AsyncSession, *, order_id: str) -> EvidencePackOut:
         await db.execute(select(OrderEvidence).where(OrderEvidence.order_id == order_id))
     ).scalar_one_or_none()
 
-    return EvidencePackOut(
+    pack = EvidencePackOut(
         order_id=order.id,
         status=order.status,
         total_charged=str(order.total_charged),
@@ -122,6 +130,21 @@ async def get_pack(db: AsyncSession, *, order_id: str) -> EvidencePackOut:
         capture=OrderEvidenceOut.model_validate(capture) if capture is not None else None,
         timeline=[OrderEventOut.model_validate(e) for e in order.events],
     )
+
+    # Built before the event is written, deliberately: the pack goes to an
+    # acquirer, and "an admin opened this screen" is our own audit trail, not
+    # part of the answer to their document request.
+    db.add(
+        OrderEvent(
+            id=new_id(),
+            order_id=order_id,
+            kind="admin.evidence_viewed",
+            payload={"has_capture": capture is not None},
+            actor=f"admin:{admin_id}",
+        )
+    )
+    await db.flush()
+    return pack
 
 
 async def purge_expired(db: AsyncSession) -> int:

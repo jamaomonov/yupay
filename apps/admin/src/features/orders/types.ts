@@ -65,6 +65,36 @@ export interface OrderAdminListOut {
   total: number;
 }
 
+/** The request context an order was placed from — see ADR-0044. Mirrors
+ *  `OrderEvidenceOut`. `null` on the pack for orders placed before the
+ *  capture existed, or when the capture failed (it is best-effort by
+ *  design: it must never be the reason a sale is lost). */
+export interface OrderEvidenceOut {
+  order_id: string;
+  ip: string | null;
+  user_agent: string | null;
+  accept_language: string | null;
+  /** Browser-reported timezone / locale / screen. Corroboration, not proof. */
+  client_hints: Record<string, unknown>;
+  created_at: string;
+  /** When retention deletes this row. */
+  purge_after: string;
+}
+
+/** `GET /api/v1/admin/orders/{id}/evidence` — what gets handed to an acquirer
+ *  when a payment is disputed. Fetching it is audited server-side. */
+export interface EvidencePackOut {
+  order_id: string;
+  status: string;
+  total_charged: string;
+  currency: string;
+  created_at: string;
+  paid_at: string | null;
+  delivered_at: string | null;
+  capture: OrderEvidenceOut | null;
+  timeline: OrderEventOut[];
+}
+
 export const STATUS_LABEL: Record<OrderStatus, string> = {
   pending_payment: "Ждёт оплаты",
   paid: "Оплачен",

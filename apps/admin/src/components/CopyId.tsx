@@ -12,6 +12,8 @@ import { Check, Copy } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { writeToClipboard } from "@/lib/clipboard";
+
 interface CopyIdProps {
   /** The full identifier. Never truncate before passing it in. */
   value: string;
@@ -30,40 +32,6 @@ interface CopyIdProps {
 
 /** Milliseconds the confirmation tick stays up after a copy. */
 const FEEDBACK_MS = 1400;
-
-async function writeToClipboard(text: string): Promise<boolean> {
-  // `navigator.clipboard` is undefined outside a secure context, which is how
-  // the admin gets served when someone opens it over plain http on an internal
-  // address. Fall back rather than throw — the id is still in the tooltip
-  // either way, but the button should not look broken.
-  // The cast widens rather than narrows: lib.dom declares `navigator.clipboard`
-  // as always present, which is false outside a secure context.
-  const clipboard = navigator.clipboard as Clipboard | undefined;
-  if (clipboard) {
-    try {
-      await clipboard.writeText(text);
-      return true;
-    } catch {
-      // Permission denied or the document lost focus; try the fallback.
-    }
-  }
-  const area = document.createElement("textarea");
-  area.value = text;
-  area.setAttribute("readonly", "");
-  area.style.position = "fixed";
-  area.style.opacity = "0";
-  document.body.appendChild(area);
-  area.select();
-  try {
-    // Deprecated, and the only copy path left when the async API is missing.
-    // eslint-disable-next-line @typescript-eslint/no-deprecated
-    return document.execCommand("copy");
-  } catch {
-    return false;
-  } finally {
-    document.body.removeChild(area);
-  }
-}
 
 export function CopyId({ value, chars = 8, label, to, className = "" }: CopyIdProps) {
   const [state, setState] = useState<"idle" | "copied" | "failed">("idle");

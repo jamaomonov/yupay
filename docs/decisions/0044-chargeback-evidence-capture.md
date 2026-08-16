@@ -77,6 +77,13 @@ Scope is deliberately narrow:
   on day 539 and the exchange that follows.
 - **One reader**, `GET /admin/orders/{id}/evidence`, behind `require_admin`. There is no
   public counterpart and there must not be one.
+- **Every read is audited** as `admin.evidence_viewed` on the order timeline, carrying the
+  acting admin — the same rule the delivery-artifact read follows. Data kept in its own table
+  with an enforced expiry, precisely because it is sensitive, cannot also be readable without
+  a trace. The event is appended after the pack is assembled, so our access log never travels
+  to the acquirer as part of their answer. The admin surface (the "Контекст покупателя" card
+  on the order page) keeps it collapsed until an operator asks, so opening an order does not
+  itself log a view or put an address on screen mid-screen-share.
 - **Never fails a sale.** The capture runs after the order is created, inside a SAVEPOINT. A
   bare `try/except` would not be enough: the request's transaction commits after the route
   returns, so a failed statement poisons it and the _order_ is lost at commit — the exact
