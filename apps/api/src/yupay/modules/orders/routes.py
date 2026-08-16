@@ -24,6 +24,7 @@ from yupay.modules.evidence.service import capture_for_order
 from yupay.modules.fulfillment.schemas import DeliveryListOut, DeliveryOut
 from yupay.modules.orders import service as svc
 from yupay.modules.orders.models import Order, OrderEvent
+from yupay.modules.orders.revenue import order_charged_usd
 from yupay.modules.orders.schemas import (
     ClaimOut,
     OrderAdminListOut,
@@ -54,6 +55,9 @@ def _to_order_out(order: Order, locale: str = "ru") -> OrderOut:
 def _to_admin_order_out(order: Order, locale: str = "ru") -> OrderAdminOut:
     out = OrderAdminOut.model_validate(order)
     out.payment_provider = succeeded_provider_for(order)
+    # Free of extra queries: `_order_load_options` has already walked
+    # items → sku, which is all this needs.
+    out.charged_usd = order_charged_usd(order)
     _attach_displays(out, order, locale=locale)
     return out
 

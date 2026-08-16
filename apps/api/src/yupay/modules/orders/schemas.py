@@ -145,6 +145,14 @@ class OrderAdminOut(OrderOut):
     """Same as :class:`OrderOut` but exposes actor identifiers + audit trail."""
 
     items: list[OrderItemAdminOut]  # type: ignore[assignment]
+    #: What the order is actually worth in USD, markup included — see
+    #: ``orders.revenue``. Distinct from ``total_usd``, which on a
+    #: variable-amount line is the face value the customer chose (the $10 of
+    #: Steam credit), not the ~$11.30 they paid for it. Admin-only: an operator
+    #: comparing orders across currencies needs the real figure, and the
+    #: customer has no use for our markup. ``None`` only when a line's SKU
+    #: could not be loaded.
+    charged_usd: Decimal | None = None
     user_id: str | None
     # Plain ``str`` (not ``EmailStr``) on purpose: this is a read-only view of an
     # already-stored address, and re-validating it on output makes the whole

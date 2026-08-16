@@ -35,6 +35,7 @@ function makeOrder(over: Partial<OrderAdminOut> = {}): OrderAdminOut {
     status: "paid",
     currency: "UZS",
     total_usd: "43.000000",
+    charged_usd: "11.30",
     total_charged: "577735.000000",
     fx_snapshot_id: null,
     expires_at: "2026-08-15T22:26:44Z",
@@ -135,4 +136,23 @@ it("shows no release banner for an ordinary paid order", async () => {
 
   expect(await screen.findByText("Сводка")).toBeInTheDocument();
   expect(screen.queryByText("Заказ на проверке — выдача не запускалась")).not.toBeInTheDocument();
+});
+
+it("converts the charged amount at the real rate, not the Steam face value", async () => {
+  // `total_usd` on a top-up is the credit the buyer chose ($10), while they
+  // actually paid the markup on top. Showing the face value beside the so'm
+  // amount read as a conversion and was short by the whole margin.
+  mockEndpoints(makeOrder({ total_usd: "10.00", charged_usd: "11.30" }));
+  renderPage();
+
+  expect(await screen.findByText("≈ $11,30")).toBeInTheDocument();
+  expect(screen.queryByText("≈ $10,00")).not.toBeInTheDocument();
+});
+
+it("omits the USD hint when the backend could not value the order", async () => {
+  mockEndpoints(makeOrder({ charged_usd: null }));
+  renderPage();
+
+  expect(await screen.findByText("Сводка")).toBeInTheDocument();
+  expect(screen.queryByText(/≈ \$/)).not.toBeInTheDocument();
 });

@@ -38,6 +38,7 @@ from yupay.modules.admin.schemas import (
 from yupay.modules.catalog.models import Sku
 from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.orders.models import Order, OrderItem
+from yupay.modules.orders.revenue import order_charged_usd_subq
 from yupay.modules.payments.models import Payment, PaymentWebhook
 from yupay.modules.users import service as users_svc
 from yupay.modules.users.models import TelegramLink, User
@@ -330,14 +331,25 @@ async def _fetch_wallet_balances(db: AsyncSession, *, user_id: str) -> list[Cust
 async def _fetch_customer_stats(
     db: AsyncSession, *, user_id: str, order_id_subq: object
 ) -> CustomerStatsOut:
-    orders_stmt = select(
-        func.count(Order.id),
-        func.count(case((Order.status.in_(_DELIVERED_STATUSES), 1))),
-        func.coalesce(
-            func.sum(case((Order.status.in_(_DELIVERED_STATUSES), Order.total_usd))),
-            Decimal("0"),
-        ),
-    ).where(Order.user_id == user_id)
+    # Spend is the *charged* value, not `Order.total_usd`: on a Steam top-up
+    # the latter is the face value the customer picked ($10 of credit), so
+    # summing it reports a buyer who paid ~$11.30 as having spent $10 — see
+    # `orders.revenue`. Joined as a pre-grouped subquery so the two counts
+    # beside it keep counting orders rather than order lines.
+    gross = order_charged_usd_subq()
+    orders_stmt = (
+        select(
+            func.count(Order.id),
+            func.count(case((Order.status.in_(_DELIVERED_STATUSES), 1))),
+            func.coalesce(
+                func.sum(case((Order.status.in_(_DELIVERED_STATUSES), gross.c.charged_usd))),
+                Decimal("0"),
+            ),
+        )
+        .select_from(Order)
+        .join(gross, gross.c.order_id == Order.id, isouter=True)
+        .where(Order.user_id == user_id)
+    )
     total_orders, delivered_orders, total_spent = (await db.execute(orders_stmt)).one()
 
     failed_stmt = select(func.count(Payment.id)).where(

@@ -163,8 +163,19 @@ async def _make_payment(
     return payment_id
 
 
-async def _make_order_item(db: AsyncSession, *, order_id: str) -> str:
-    """Build the full catalog chain needed to satisfy the order_items FK constraints."""
+async def _make_order_item(
+    db: AsyncSession,
+    *,
+    order_id: str,
+    unit_price_usd: str = "1.00",
+    rate_multiplier: str | None = None,
+) -> str:
+    """Build the full catalog chain needed to satisfy the order_items FK constraints.
+
+    Passing ``rate_multiplier`` makes the SKU variable-amount (a Steam-style
+    top-up), which also requires the min/max bounds —
+    ``ck_skus_variable_amount_complete`` rejects a partial set.
+    """
     slug = uuid.uuid4().hex[:8]
     cat_id = str(uuid.uuid4())
     brand_id = str(uuid.uuid4())
@@ -177,7 +188,23 @@ async def _make_order_item(db: AsyncSession, *, order_id: str) -> str:
     await db.flush()
     db.add(Product(id=product_id, slug=f"p-{slug}", brand_id=brand_id, kind="top_up"))
     await db.flush()
-    db.add(Sku(id=sku_id, product_id=product_id, sku_code=f"sku-{slug}", price_usd=Decimal("1.00")))
+    variable_kwargs: dict[str, object] = {}
+    if rate_multiplier is not None:
+        variable_kwargs = {
+            "variable_amount": True,
+            "min_amount_usd": Decimal("1.00"),
+            "max_amount_usd": Decimal("300.00"),
+            "rate_multiplier": Decimal(rate_multiplier),
+        }
+    db.add(
+        Sku(
+            id=sku_id,
+            product_id=product_id,
+            sku_code=f"sku-{slug}",
+            price_usd=Decimal("1.00"),
+            **variable_kwargs,  # type: ignore[arg-type]
+        )
+    )
     await db.flush()
     db.add(
         OrderItem(
@@ -185,7 +212,7 @@ async def _make_order_item(db: AsyncSession, *, order_id: str) -> str:
             order_id=order_id,
             sku_id=sku_id,
             qty=1,
-            unit_price_usd=Decimal("1.00"),
+            unit_price_usd=Decimal(unit_price_usd),
         )
     )
     await db.commit()
@@ -352,6 +379,50 @@ async def test_overview_empty_user_has_zero_aggregates(
     assert body["open_fulfillment_tasks"] == []
     assert body["wallet_balances"] == []
     assert body["stats"]["total_orders"] == 0
+
+
+async def test_spend_counts_the_steam_markup_not_the_face_value(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _admin_headers: dict[str, str],
+) -> None:
+    """A $10 Steam top-up costs the buyer more than $10.
+
+    `Order.total_usd` holds the credit the customer picked; the money they
+    actually paid is that times the SKU's `rate_multiplier` (the markup is the
+    whole business model). Summing the face value reported a customer who
+    spent ~$11.30 as having spent $10 — see `orders.revenue`.
+    """
+    user_id = await _make_user(db_session, email="steam-buyer@example.com")
+    order_id = await _make_order(db_session, user_id=user_id, status="delivered")
+    await _make_order_item(
+        db_session, order_id=order_id, unit_price_usd="10.00", rate_multiplier="1.1300"
+    )
+
+    r = await integration_client.get(
+        f"/api/v1/admin/customers/{user_id}/overview", headers=_admin_headers
+    )
+    assert r.status_code == 200, r.text
+    stats = r.json()["stats"]
+    assert stats["total_orders"] == 1
+    assert Decimal(stats["total_spent_usd"]) == Decimal("11.30")
+
+
+async def test_spend_leaves_a_fixed_price_order_alone(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _admin_headers: dict[str, str],
+) -> None:
+    """The correction must not touch SKUs that were already priced at retail."""
+    user_id = await _make_user(db_session, email="voucher-buyer@example.com")
+    order_id = await _make_order(db_session, user_id=user_id, status="delivered", total_usd="25.00")
+    await _make_order_item(db_session, order_id=order_id, unit_price_usd="25.00")
+
+    r = await integration_client.get(
+        f"/api/v1/admin/customers/{user_id}/overview", headers=_admin_headers
+    )
+    assert r.status_code == 200, r.text
+    assert Decimal(r.json()["stats"]["total_spent_usd"]) == Decimal("25.00")
 
 
 # ---------- risk flags ----------

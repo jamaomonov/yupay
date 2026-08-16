@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.modules.catalog.models import Brand, Product, Sku
 from yupay.modules.orders.models import Order, OrderItem
+from yupay.modules.orders.revenue import order_charged_usd_subq
 from yupay.modules.stats.analytics._common import _PAID_LIKE
 from yupay.modules.stats.schemas import (
     AnalyticsRange,
@@ -42,6 +43,10 @@ def _margin_expr() -> Case[Any]:
     Fixed SKUs without a known cost evaluate to ``NULL``, so
     ``func.sum(_margin_expr())`` naturally excludes them from a group's
     total (NULL when a group has no costable rows at all).
+
+    Twin of ``orders.revenue.charged_usd_expr`` — that one is the gross, this
+    one the part of it we keep, and ``gross - margin == cost``. Change the
+    treatment of a SKU kind in one and it has to change in the other.
 
     Returns:
         A SQLAlchemy ``CASE`` expression. Typed ``Case[Any]`` because
@@ -98,11 +103,17 @@ async def _business_summary(
     # population from the created_at-windowed counts below; it only feeds
     # revenue/margin/AOV, never the "orders" / "paid_orders" headline counts
     # (those come from ``status_counts`` so they match the funnel exactly).
+    # Summed from `charged_usd`, not `Order.total_usd`: on a variable-amount
+    # line the latter is the face value the customer picked, so GMV would
+    # exclude the markup — the very thing the margin block below counts as
+    # ours. See `orders.revenue`.
+    gross = order_charged_usd_subq()
     gmv_raw = (
         await db.execute(
-            select(func.coalesce(func.sum(Order.total_usd), 0)).where(
-                Order.paid_at >= since, Order.status.in_(_PAID_LIKE)
-            )
+            select(func.coalesce(func.sum(gross.c.charged_usd), 0))
+            .select_from(Order)
+            .join(gross, gross.c.order_id == Order.id, isouter=True)
+            .where(Order.paid_at >= since, Order.status.in_(_PAID_LIKE))
         )
     ).scalar_one()
     gmv = Decimal(str(gmv_raw or 0))
@@ -178,12 +189,16 @@ async def _business_summary(
 
 async def _revenue_series(db: AsyncSession, since: datetime) -> list[RevenuePoint]:
     day = func.date_trunc("day", Order.paid_at)
+    # Same basis as the GMV headline — the two must not disagree.
+    gross = order_charged_usd_subq()
     stmt = (
         select(
             day.label("d"),
-            func.coalesce(func.sum(Order.total_usd), 0).label("rev"),
+            func.coalesce(func.sum(gross.c.charged_usd), 0).label("rev"),
             func.count(Order.id).label("c"),
         )
+        .select_from(Order)
+        .join(gross, gross.c.order_id == Order.id, isouter=True)
         .where(Order.paid_at >= since, Order.status.in_(_PAID_LIKE))
         .group_by(day)
         .order_by(day)

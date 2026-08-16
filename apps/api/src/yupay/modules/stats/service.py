@@ -18,6 +18,7 @@ from yupay.core.clock import now
 from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.inventory.models import InventoryCode
 from yupay.modules.orders.models import Order
+from yupay.modules.orders.revenue import order_charged_usd_subq
 from yupay.modules.payments.models import Payment
 from yupay.modules.stats.schemas import (
     CurrencyAmount,
@@ -178,14 +179,19 @@ async def _orders_last_7_days(db: AsyncSession, anchor: datetime) -> list[DayBuc
     """Day-bucketed orders + revenue for the last 7 days (UTC)."""
     seven_days_ago = anchor - timedelta(days=7)
     day = func.date_trunc("day", Order.created_at)
+    # `charged_usd`, not `total_usd` — the latter is a Steam order's face value
+    # and undercounts revenue by the whole markup. See `orders.revenue`.
+    gross = order_charged_usd_subq()
     stmt = (
         select(
             day.label("d"),
             func.count().label("c"),
-            func.sum(Order.total_usd)
+            func.sum(gross.c.charged_usd)
             .filter(Order.status.in_(("paid", "fulfilling", "fulfilled", "delivered")))
             .label("rev"),
         )
+        .select_from(Order)
+        .join(gross, gross.c.order_id == Order.id, isouter=True)
         .where(Order.created_at >= seven_days_ago)
         .group_by(day)
         .order_by(day)

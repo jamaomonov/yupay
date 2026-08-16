@@ -523,9 +523,12 @@ function SummaryCard({ order }: { order: OrderAdminOut }) {
       value: (
         <span className="font-medium">
           {formatMoney(order.total_charged, order.currency)}
-          {order.currency !== "USD" && (
+          {/* `charged_usd`, not `total_usd`: on a Steam top-up the latter is
+              the face value the buyer picked ($10 of credit), so showing it
+              here read as "134 380 сум ≈ $10" — off by the entire markup. */}
+          {order.currency !== "USD" && order.charged_usd !== null && (
             <span className="ml-2 text-xs text-[var(--text-secondary)]">
-              ≈ ${formatMoneyValue(order.total_usd, "USD")}
+              ≈ ${formatMoneyValue(order.charged_usd, "USD")}
             </span>
           )}
         </span>

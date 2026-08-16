@@ -33,6 +33,7 @@ function makeOrder(over: Partial<OrderAdminOut> = {}): OrderAdminOut {
     status: "delivered",
     currency: "UZS",
     total_usd: "1.00",
+    charged_usd: "11.30",
     total_charged: "13438.00",
     fx_snapshot_id: null,
     expires_at: "2026-08-16T00:00:00Z",

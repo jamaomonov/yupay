@@ -116,6 +116,15 @@ field shown anywhere. The storefront shows something like "1 $ = 14 025
 not in settings, so a new variable-amount product gets its own margin,
 adjustable from the admin UI without a deploy.
 
+> **`Order.total_usd` is not revenue.** Because the margin lives in the rate,
+> a variable-amount line stores the customer's _chosen face value_ in
+> `unit_price_usd` (and therefore in `total_usd`): $10 of Steam credit, even
+> though the buyer paid ~$11.30 for it. Summing `total_usd` to answer "what did
+> this customer spend" or "what was revenue" silently drops the entire markup.
+> Use `orders.revenue.charged_usd_expr` / `order_charged_usd` instead — they
+> apply `rate_multiplier` for variable lines and are the twin of
+> `stats.analytics.business._margin_expr`.
+
 `price_in_quote` returns six decimal places for intermediate precision;
 rounding to the currency's smallest **chargeable** unit happens once, when
 the full order total is assembled at checkout (`orders.service._round_to_payable`)

@@ -45,7 +45,13 @@ export interface OrderAdminOut {
   id: string;
   status: OrderStatus;
   currency: string;
+  /** Face value of the goods in USD. On a variable-amount (Steam) line this is
+   *  the credit the buyer chose, NOT what they paid — use `charged_usd` for
+   *  money. See `orders/revenue.py`. */
   total_usd: string;
+  /** What the order is actually worth in USD, markup included. `null` only
+   *  when a line's SKU could not be resolved. */
+  charged_usd: string | null;
   total_charged: string;
   fx_snapshot_id: string | null;
   expires_at: string;

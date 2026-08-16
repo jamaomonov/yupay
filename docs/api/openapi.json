@@ -4770,6 +4770,18 @@
             ],
             "title": "Cancelled At"
           },
+          "charged_usd": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charged Usd"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
