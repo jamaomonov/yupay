@@ -227,6 +227,36 @@ checkout dependency, contradicting the resilience goal that motivated
 keeping payments/fulfilment decoupled from suppliers elsewhere in the
 codebase (ADR-0013, ADR-0019). Rejected outright during brainstorming.
 
+## Which games may carry the check (verified 2026-08-16)
+
+Not every G2B title has a validator behind `checkPlayerId`, and the ones that
+do not **do not say so** — they answer `{"valid": "valid"}` to anything. Probed
+each mapped game with an id that cannot exist (`999999999999`):
+
+| game code                      | bogus id answers | verdict                     |
+| ------------------------------ | ---------------- | --------------------------- |
+| `pubgm`                        | `invalid`        | real validator              |
+| `mlbb` / `mlbb_ru`             | `invalid`        | real validator              |
+| `magic_chess_gogo` / `mcgg_ru` | `invalid`        | real validator              |
+| `arena_breakout`(+`_infinite`) | `invalid`        | real validator              |
+| `deltaforce`                   | `invalid`        | real validator              |
+| `bloodstrike`                  | `invalid`        | real validator              |
+| `whiteout_survival`            | `invalid`        | real validator              |
+| `genshin`                      | **`valid`**      | **rubber stamp — no check** |
+| `honkai_star_rail`             | **`valid`**      | **rubber stamp — no check** |
+| `freefire_cis`                 | **`valid`**      | **rubber stamp — no check** |
+
+A rubber-stamping game must never carry `check`. The point of this feature is
+to catch a typo before money moves; a green "account confirmed" pill printed
+over any typo does the opposite — it manufactures confidence exactly where the
+customer would otherwise hesitate. Absence of a check is the honest state
+there, and the storefront degrades to what it did before the feature existed.
+
+`/games/fields` does **not** answer this question: `genshin` and
+`honkai_star_rail` both declare `["userid", "serverid"]` like the games that do
+validate. Only calling the validator distinguishes them. Re-run the probe
+before enabling `check` on any new game.
+
 ## References
 
 - `docs/superpowers/specs/2026-07-16-storefront-player-check-design.md` — feature design spec
