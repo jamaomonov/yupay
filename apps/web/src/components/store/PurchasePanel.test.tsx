@@ -323,3 +323,65 @@ it("checks straight away on a single-product brand", async () => {
   expect(screen.getByRole("button", { name: "check" })).toHaveAttribute("aria-disabled", "false");
   expect(screen.queryByText("checkNeedsSku")).not.toBeInTheDocument();
 });
+
+it("drops a confirmed nickname when the package switches to another product", async () => {
+  // Found on prod with Playwright: verify a Russian id, then pick a global
+  // package, and the green pill stayed — a nickname confirmed against the
+  // other region, shown as reassurance for the one about to be paid for.
+  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL) => {
+    // `RequestInfo` covers `Request`, which stringifies to "[object Object]".
+    const url = input instanceof Request ? input.url : String(input);
+    if (url.includes("check-player")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ status: "valid", name: "blood moon" }), { status: 200 }),
+      );
+    }
+    return Promise.resolve(
+      new Response(JSON.stringify({ providers: [{ slug: "click", status: "active" }] }), {
+        status: 200,
+      }),
+    );
+  });
+
+  const base = makeProduct();
+  // Distinct denominations so each package button is uniquely addressable.
+  const ruSkus = [
+    { ...base.skus[0]!, id: "sku-ru-1", sku_code: "MLBB-RU-86", denomination: "RU 86" },
+    { ...base.skus[0]!, id: "sku-ru-2", sku_code: "MLBB-RU-172", denomination: "RU 172" },
+  ];
+  const globalSkus = [
+    { ...base.skus[0]!, id: "sku-gl-1", sku_code: "MLBB-86", denomination: "GL 86" },
+    { ...base.skus[0]!, id: "sku-gl-2", sku_code: "MLBB-172", denomination: "GL 172" },
+  ];
+  const globalProduct: ProductDetail = {
+    ...base,
+    required_fields: MLBB_FIELDS,
+    skus: globalSkus,
+  };
+  const ruProduct: ProductDetail = {
+    ...globalProduct,
+    id: "prod-ru",
+    slug: "mlbb-diamonds-ru",
+    skus: ruSkus,
+  };
+  render(<PurchasePanel products={[globalProduct, ruProduct]} locale="ru" />);
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
+  });
+
+  // Pick the RU package, fill both ids, verify.
+  fireEvent.click(screen.getByRole("button", { name: /RU 86/ }));
+  fireEvent.change(screen.getByPlaceholderText("playerIdPlaceholder"), {
+    target: { value: "1313232551" },
+  });
+  fireEvent.change(screen.getByLabelText("ID сервера *"), { target: { value: "6618" } });
+  fireEvent.click(screen.getByRole("button", { name: "check" }));
+
+  expect(await screen.findByText("blood moon")).toBeInTheDocument();
+
+  // Switch to a package belonging to the other product.
+  fireEvent.click(screen.getByRole("button", { name: /GL 86/ }));
+
+  expect(screen.queryByText("blood moon")).not.toBeInTheDocument();
+});

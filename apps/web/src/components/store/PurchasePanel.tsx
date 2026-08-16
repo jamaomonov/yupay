@@ -115,9 +115,15 @@ function CheckablePlayerField({
   // an unnamed "edit text" and the checkout cannot be completed by voice or
   // screen reader.
   const fieldId = useId();
+  // `productId` as well as `value`: the answer belongs to the product it was
+  // asked about. On a region-split brand (ADR-0048) switching package switches
+  // product, and keeping the green "verified" pill across that switch shows a
+  // nickname confirmed against the *other* region — the customer sees the
+  // reassurance and pays for the wrong account. Verified on prod: checking a
+  // Russian id, then picking a global package, left the pill standing.
   useEffect(() => {
     setState(IDLE);
-  }, [value]);
+  }, [value, productId]);
   const blocker = checkBlocker({
     value,
     pattern,
