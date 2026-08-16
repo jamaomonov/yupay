@@ -12,6 +12,17 @@ export type OrderStatus =
   | "refunded"
   | "partially_refunded";
 
+export type OrderSource = "web" | "miniapp" | "bot" | "unknown";
+
+/** Deliberately not a coloured badge: the surface is context, not a state, and
+ *  colouring it would compete with the status column beside it. */
+export const SOURCE_LABEL: Record<OrderSource, string> = {
+  web: "Сайт",
+  miniapp: "Mini App",
+  bot: "Бот",
+  unknown: "—",
+};
+
 export interface OrderItemDisplay {
   brand_slug: string;
   brand_name: string;
@@ -63,6 +74,9 @@ export interface OrderAdminOut {
   items: OrderItemOut[];
   user_id: string | null;
   guest_email: string | null;
+  /** Which surface placed the order. `unknown` for anything that did not say —
+   *  including every order older than the column. */
+  source: OrderSource;
   events: OrderEventOut[];
 }
 

@@ -161,6 +161,10 @@ class OrderAdminOut(OrderOut):
     # like ``uzum-test@test.local`` seeded during sandbox payment testing — must
     # still render. Email format is enforced at write time (``OrderCreate``).
     guest_email: str | None
+    #: Which surface the order came from (``web`` / ``miniapp`` / ``bot`` /
+    #: ``unknown``). Admin-only: it is operator context, and a customer has no
+    #: use for being told which of our own apps they used.
+    source: str = "unknown"
     events: list[OrderEventOut]
 
 

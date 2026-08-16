@@ -45,6 +45,7 @@ function makeOrder(over: Partial<OrderAdminOut> = {}): OrderAdminOut {
     items: [],
     user_id: null,
     guest_email: "buyer@example.com",
+    source: "web",
     events: [],
     ...over,
   };
@@ -86,4 +87,25 @@ it("still labels an ordinary delivered order", async () => {
 
   const row = await findDataRow();
   expect(within(row).getByText("Доставлен")).toBeInTheDocument();
+});
+
+it("says which surface an order came from", async () => {
+  renderPage([
+    makeOrder({ id: "01a00001-0000-0000-0000-000000000000", source: "miniapp" }),
+    makeOrder({ id: "01a00002-0000-0000-0000-000000000000", source: "web" }),
+  ]);
+
+  const table = await screen.findByRole("table");
+  expect(within(table).getByText("Mini App")).toBeInTheDocument();
+  expect(within(table).getByText("Сайт")).toBeInTheDocument();
+});
+
+it("does not invent a surface for orders that never recorded one", async () => {
+  // Every order older than the column reads `unknown`; claiming "Сайт" there
+  // would turn an absence of evidence into a fact an operator might act on.
+  renderPage([makeOrder({ source: "unknown" })]);
+
+  const rows = await screen.findAllByRole("row");
+  expect(within(rows[1]!).getByText("—")).toBeInTheDocument();
+  expect(within(rows[1]!).queryByText("Сайт")).not.toBeInTheDocument();
 });

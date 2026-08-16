@@ -48,6 +48,13 @@ class Order(Base):
         nullable=True,
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Which surface placed the order. Client-declared (the `X-Yupay-Surface`
+    # header both frontends send) — an operator's "where did this come from",
+    # never an authorisation input. `unknown` covers anything that did not say,
+    # including every order placed before this column existed.
+    source: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'unknown'")
+    )
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     ip_hash: Mapped[str | None] = mapped_column(CHAR(64), nullable=True)
     ua_hash: Mapped[str | None] = mapped_column(CHAR(64), nullable=True)
@@ -94,6 +101,9 @@ class Order(Base):
         ),
         CheckConstraint("total_usd >= 0", name="ck_orders_total_usd_nonneg"),
         CheckConstraint("total_charged >= 0", name="ck_orders_total_charged_nonneg"),
+        CheckConstraint(
+            "source IN ('web', 'miniapp', 'bot', 'unknown')", name="ck_orders_source_known"
+        ),
     )
 
 

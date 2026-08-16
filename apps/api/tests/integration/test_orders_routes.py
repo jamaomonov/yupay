@@ -1125,3 +1125,76 @@ async def test_admin_orders_search_is_server_side(
     assert empty.status_code == 200, empty.text
     assert empty.json()["items"] == []
     assert empty.json()["total"] == 0
+
+
+async def test_order_records_the_surface_that_placed_it(
+    integration_client: AsyncClient, db_session: AsyncSession, _seed_pubg: dict[str, str]
+) -> None:
+    """Nothing stored this before; the only hint was Click's per-surface
+    merchant service, which covers a tenth of orders and says nothing about
+    the ones never paid."""
+    from sqlalchemy import select as sa_select
+    from yupay.modules.orders.models import Order
+
+    token = await _login_user(integration_client, tg_id=7311)
+    r = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "surface-miniapp-aaaaaa",
+            "X-Yupay-Surface": "miniapp",
+        },
+        json={
+            "currency": "USD",
+            "items": [
+                {
+                    "sku_id": _seed_pubg["sku_id"],
+                    "qty": 1,
+                    "fulfillment_data": {"player_id": "123456", "server": "as"},
+                }
+            ],
+        },
+    )
+    assert r.status_code == 201, r.text
+    order = (
+        await db_session.execute(sa_select(Order).where(Order.id == r.json()["id"]))
+    ).scalar_one()
+    assert order.source == "miniapp"
+
+
+async def test_an_unrecognised_or_absent_surface_records_as_unknown(
+    integration_client: AsyncClient, db_session: AsyncSession, _seed_pubg: dict[str, str]
+) -> None:
+    """The header is client-declared, so it is a closed set or nothing —
+    never stored verbatim. And an unreadable header must not refuse a sale."""
+    from sqlalchemy import select as sa_select
+    from yupay.modules.orders.models import Order
+
+    token = await _login_user(integration_client, tg_id=7312)
+    for key, header in (
+        ("surface-junk-aaaaaaaaaa", {"X-Yupay-Surface": "'; DROP TABLE"}),
+        ("surface-absent-aaaaaaaa", {}),
+    ):
+        r = await integration_client.post(
+            "/api/v1/orders",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Idempotency-Key": key,
+                **header,
+            },
+            json={
+                "currency": "USD",
+                "items": [
+                    {
+                        "sku_id": _seed_pubg["sku_id"],
+                        "qty": 1,
+                        "fulfillment_data": {"player_id": "123456", "server": "as"},
+                    }
+                ],
+            },
+        )
+        assert r.status_code == 201, r.text
+        order = (
+            await db_session.execute(sa_select(Order).where(Order.id == r.json()["id"]))
+        ).scalar_one()
+        assert order.source == "unknown"

@@ -71,6 +71,12 @@ admin_router = APIRouter(
 
 _MIN_IDEMPOTENCY_KEY_LEN = MIN_IDEMPOTENCY_KEY_LENGTH
 
+#: Which surface placed the order — ``web`` / ``miniapp`` / ``bot``. Advisory
+#: and client-declared: it answers "where did this come from" for an operator
+#: and gates nothing, so an absent or unrecognised value records as ``unknown``
+#: rather than being trusted verbatim.
+SURFACE_HEADER = "X-Yupay-Surface"
+
 
 async def _resolve_actor(
     request: Request,
@@ -127,6 +133,7 @@ async def create_order_route(
     request: Request,
     db: Annotated[AsyncSession, Depends(db_session)],
     idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
+    surface: Annotated[str | None, Header(alias=SURFACE_HEADER)] = None,
 ) -> OrderOut:
     """Create a new order on behalf of the authenticated user or guest."""
     if not idempotency_key or len(idempotency_key) < _MIN_IDEMPOTENCY_KEY_LEN:
@@ -140,6 +147,7 @@ async def create_order_route(
         body,
         actor=actor,
         idempotency_key=idempotency_key,
+        source=svc.normalise_source(surface),
     )
     # After the order exists, so the capture can never be the reason a sale
     # fails; idempotent, so a retried Idempotency-Key keeps the original

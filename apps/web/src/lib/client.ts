@@ -130,8 +130,16 @@ interface ReqOpts {
   retry?: boolean;
 }
 
+/** Which of our surfaces this bundle is. Sent on every call so an order can
+ *  record where it came from — nothing stored it before, and the only hint was
+ *  Click's per-surface merchant service, which covered a tenth of orders and
+ *  said nothing about the ones never paid. Advisory: the server gates nothing
+ *  on it. */
+const SURFACE = "web";
+
 export async function apiFetch<T>(path: string, opts: ReqOpts = {}): Promise<T> {
   const headers = new Headers(opts.headers);
+  headers.set("X-Yupay-Surface", SURFACE);
   if (opts.body !== undefined) headers.set("Content-Type", "application/json");
   const token = getAccessToken();
   if (!opts.anonymous && token) headers.set("Authorization", `Bearer ${token}`);

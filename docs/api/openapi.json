@@ -5059,6 +5059,11 @@
             ],
             "title": "Payment Provider"
           },
+          "source": {
+            "default": "unknown",
+            "title": "Source",
+            "type": "string"
+          },
           "status": {
             "enum": [
               "pending_payment",
@@ -18838,6 +18843,22 @@
                 }
               ],
               "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Yupay-Surface",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Yupay-Surface"
             }
           }
         ],

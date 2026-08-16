@@ -129,6 +129,20 @@ def build_item_display(item: OrderItem, *, locale: str = "ru") -> OrderItemDispl
 ORDER_EXPIRY_SECONDS = 10 * 60
 
 
+#: Surfaces an order can be placed from. Client-declared via the
+#: ``X-Yupay-Surface`` header; anything we do not recognise (an old client, a
+#: script, a spoof) records as ``unknown`` rather than being trusted verbatim,
+#: so the column stays a closed set the admin can filter on.
+ORDER_SOURCES: frozenset[str] = frozenset({"web", "miniapp", "bot"})
+
+
+def normalise_source(raw: str | None) -> str:
+    """The declared surface, or ``unknown``. Never raises — an unreadable
+    header must not be able to refuse a sale."""
+    value = (raw or "").strip().lower()
+    return value if value in ORDER_SOURCES else "unknown"
+
+
 @dataclass(frozen=True)
 class Actor:
     """Either a logged-in user (``user_id``) or a guest (``email``). Exactly one set."""
@@ -468,6 +482,7 @@ async def create_order(
     settings: Settings | None = None,  # noqa: ARG001 -- reserved for future per-request config
     ip_hash: str | None = None,
     ua_hash: str | None = None,
+    source: str = "unknown",
 ) -> Order:
     """Validate, snapshot price + FX, persist the order. Idempotent per actor.
 
@@ -543,6 +558,7 @@ async def create_order(
         idempotency_key=idempotency_key,
         ip_hash=ip_hash,
         ua_hash=ua_hash,
+        source=source,
         items=items,
     )
     db.add(order)

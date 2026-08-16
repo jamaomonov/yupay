@@ -8,6 +8,7 @@ import {
   type OrderAdminListOut,
   type OrderAdminOut,
   type OrderStatus,
+  SOURCE_LABEL,
   STATUS_LABEL,
   STATUS_TONE,
 } from "./types";
@@ -244,6 +245,21 @@ export function OrdersListPage() {
       render: (o) => <StatusBadge status={o.status} />,
       className: "w-40",
       sortAccessor: (o) => o.status,
+    },
+    {
+      key: "source",
+      header: "Источник",
+      render: (o) => (
+        <span
+          className={
+            o.source === "unknown" ? "text-[var(--text-secondary)]" : "text-[var(--text-primary)]"
+          }
+        >
+          {SOURCE_LABEL[o.source] ?? o.source}
+        </span>
+      ),
+      className: "w-28",
+      sortAccessor: (o) => o.source,
     },
     {
       key: "created",

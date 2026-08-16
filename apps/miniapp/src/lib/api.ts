@@ -110,6 +110,9 @@ export async function api<T = unknown>(path: string, options: RequestOptions = {
   const send = async (token: string | null): Promise<Response> => {
     const h = new Headers(headers);
     h.set("Accept", "application/json");
+    // Lets an order record which surface placed it (see the web client's
+    // SURFACE note). Advisory — the server gates nothing on this.
+    h.set("X-Yupay-Surface", "miniapp");
     // Catalog endpoints localize their text from this header (default ru).
     if (!h.has("Accept-Language")) h.set("Accept-Language", getActiveLocale());
     if (init.body && !h.has("Content-Type")) {

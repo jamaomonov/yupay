@@ -47,6 +47,7 @@ function makeOrder(over: Partial<OrderAdminOut> = {}): OrderAdminOut {
     items: [],
     user_id: null,
     guest_email: "buyer@example.com",
+    source: "web",
     events: [HELD_EVENT],
     ...over,
   };
