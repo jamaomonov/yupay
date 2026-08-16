@@ -193,7 +193,7 @@
     "checkNickname": "Nickname: {name}",
     "checkFailed": "Could not verify",
     "checkNeedsId": "Enter {label} first",
-    "checkNeedsSku": "Pick a package first — it decides which account region we check",
+    "checkNeedsSku": "Pick a package first — it decides which account we check",
     "checkNeedsServer": "Enter {label} first",
     "checkNotFound": "Player not found",
     "paymentTitle": "Payment method",

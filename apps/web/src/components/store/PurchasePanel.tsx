@@ -1223,13 +1223,18 @@ export function PurchasePanel({
                       }}
                       pattern={f.pattern}
                       required={f.required}
-                      // A brand that splits one game across regions sells one
-                      // product per region (ADR-0048), and `fieldsProduct`
-                      // falls back to `products[0]` so the form is usable
-                      // before a package is picked. That fallback is fine for
-                      // rendering the fields, and wrong for the check: it
-                      // would verify a Russian id against the global game and
-                      // report it as not found.
+                      // `fieldsProduct` falls back to `products[0]` so the
+                      // form is usable before a package is picked. Fine for
+                      // rendering the fields, wrong for the check, which is
+                      // scoped to one product: on a brand that splits a game
+                      // across regions (ADR-0048) it would verify a Russian id
+                      // against the global game and report it not found.
+                      // Deliberately not narrowed to the region case — the
+                      // storefront cannot see the supplier game codes, so
+                      // "more than one product" is the honest test. Costs a
+                      // brand like PUBG (three products, one game) a click the
+                      // customer was going to make anyway, since the package
+                      // list sits above this form.
                       productChosen={selProduct !== undefined || products.length <= 1}
                       serverId={f.check.server_field ? (form[f.check.server_field] ?? null) : null}
                       serverLabel={

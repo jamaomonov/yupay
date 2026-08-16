@@ -193,7 +193,7 @@
     "checkNickname": "Nik: {name}",
     "checkFailed": "Tekshirib boʻlmadi",
     "checkNeedsId": "Avval «{label}»ni kiriting",
-    "checkNeedsSku": "Avval paketni tanlang — hisob regioni shunga bogʻliq",
+    "checkNeedsSku": "Avval paketni tanlang — qaysi hisobni tekshirishimiz shunga bogʻliq",
     "checkNeedsServer": "Avval «{label}»ni kiriting",
     "checkNotFound": "Oʻyinchi topilmadi",
     "paymentTitle": "Toʻlov usuli",

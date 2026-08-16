@@ -193,7 +193,7 @@
     "checkNickname": "Ник: {name}",
     "checkFailed": "Не удалось проверить",
     "checkNeedsId": "Сначала укажите «{label}»",
-    "checkNeedsSku": "Сначала выберите пакет — от него зависит регион аккаунта",
+    "checkNeedsSku": "Сначала выберите пакет — от него зависит, какой аккаунт мы проверяем",
     "checkNeedsServer": "Сначала укажите «{label}»",
     "checkNotFound": "Игрок с таким ID не найден",
     "paymentTitle": "Способ оплаты",
