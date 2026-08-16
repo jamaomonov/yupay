@@ -3835,11 +3835,153 @@
         "title": "FulfillmentAttemptOut",
         "type": "object"
       },
+      "FulfillmentTaskListItemOut": {
+        "description": "A task as it appears in a list \u2014 everything except the attempt log.\n\nThe log is unbounded: a task whose supplier order stays open polls its\nstatus once a minute for as long as that lasts, and one task in\nproduction carries 1641 attempts. A list showing only ``attempts_count``\nhas no use for them, so they are fetched on demand from\n``GET /admin/fulfillment/attempts?task_id=\u2026`` instead of riding along with\nevery row.",
+        "properties": {
+          "admin_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin Note"
+          },
+          "attempts_count": {
+            "title": "Attempts Count",
+            "type": "integer"
+          },
+          "cancelled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancelled At"
+          },
+          "completed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed By"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "external_order_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Order Id"
+          },
+          "extra_metadata": {
+            "additionalProperties": true,
+            "title": "Extra Metadata",
+            "type": "object"
+          },
+          "failed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "order_id": {
+            "title": "Order Id",
+            "type": "string"
+          },
+          "order_item_id": {
+            "title": "Order Item Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "in_progress",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "succeeded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Succeeded At"
+          },
+          "supplier": {
+            "title": "Supplier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "order_id",
+          "order_item_id",
+          "supplier",
+          "status",
+          "attempts_count",
+          "external_order_id",
+          "last_error",
+          "created_at",
+          "succeeded_at",
+          "failed_at",
+          "cancelled_at"
+        ],
+        "title": "FulfillmentTaskListItemOut",
+        "type": "object"
+      },
       "FulfillmentTaskListOut": {
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/FulfillmentTaskOut"
+              "$ref": "#/components/schemas/FulfillmentTaskListItemOut"
             },
             "title": "Items",
             "type": "array"
@@ -12328,9 +12470,25 @@
     },
     "/api/v1/admin/fulfillment/attempts": {
       "get": {
-        "description": "Supplier-interaction audit feed.\n\nJoins ``fulfillment_attempts`` with its parent task so callers see the\nsupplier slug without a second lookup. Filter by ``supplier`` to e.g.\nshow \"everything G2B did in the last hour\".",
+        "description": "Supplier-interaction audit feed.\n\nJoins ``fulfillment_attempts`` with its parent task so callers see the\nsupplier slug without a second lookup. Filter by ``supplier`` to e.g.\nshow \"everything G2B did in the last hour\", or by ``task_id`` to page\nthrough one task's log \u2014 which is how the inbox renders it, since the log\ngrows a row per status poll and is unbounded.",
         "operationId": "admin_list_attempts_api_v1_admin_fulfillment_attempts_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "task_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task Id"
+            }
+          },
           {
             "in": "query",
             "name": "supplier",

@@ -347,3 +347,56 @@ async def test_admin_task_and_attempt_list_filters(
         "/api/v1/admin/fulfillment/attempts?supplier=manual&status_filter=error", headers=headers
     )
     assert r.status_code == 200, r.text
+
+
+async def test_task_list_omits_the_attempt_log(
+    integration_client: AsyncClient, db_session: AsyncSession, _manual_sku: str
+) -> None:
+    """The list renders a count, never the log — so it must not carry one.
+
+    A task polls its supplier's status once a minute for as long as the order
+    stays open; production has one with 1641 attempts (218 kB). Shipping those
+    with every row put a quarter of a megabyte of unused JSON on each page.
+    """
+    token = await _login_user(integration_client, tg_id=907)
+    await _grant_admin(db_session, tg_id=907)
+    headers = {"Authorization": f"Bearer {token}"}
+    _, task_id = await _paid_manual_task(
+        integration_client, token=token, sku_id=_manual_sku, tag="907"
+    )
+
+    r = await integration_client.get("/api/v1/admin/fulfillment/tasks", headers=headers)
+    assert r.status_code == 200, r.text
+    row = next(t for t in r.json()["items"] if t["id"] == task_id)
+    assert "attempts" not in row
+    # The count stays — it is what the column shows.
+    assert "attempts_count" in row
+
+    # And the single-task read still carries the log, for anything that wants it.
+    r = await integration_client.get(f"/api/v1/admin/fulfillment/tasks/{task_id}", headers=headers)
+    assert r.status_code == 200, r.text
+    assert isinstance(r.json()["attempts"], list)
+
+
+async def test_attempts_can_be_narrowed_to_one_task(
+    integration_client: AsyncClient, db_session: AsyncSession, _manual_sku: str
+) -> None:
+    """`task_id` is what lets the detail panel page through a long log."""
+    token = await _login_user(integration_client, tg_id=908)
+    await _grant_admin(db_session, tg_id=908)
+    headers = {"Authorization": f"Bearer {token}"}
+    _, mine = await _paid_manual_task(
+        integration_client, token=token, sku_id=_manual_sku, tag="908a"
+    )
+    _, other = await _paid_manual_task(
+        integration_client, token=token, sku_id=_manual_sku, tag="908b"
+    )
+
+    r = await integration_client.get(
+        f"/api/v1/admin/fulfillment/attempts?task_id={mine}", headers=headers
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["items"], "the task has at least its own intake attempt"
+    assert {a["task_id"] for a in body["items"]} == {mine}
+    assert other not in {a["task_id"] for a in body["items"]}

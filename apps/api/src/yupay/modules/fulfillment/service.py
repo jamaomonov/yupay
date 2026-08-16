@@ -1036,7 +1036,13 @@ async def list_tasks_admin(
         FulfillmentTask.created_at.asc() if ascending else FulfillmentTask.created_at.desc()
     )
     id_order = FulfillmentTask.id.asc() if ascending else FulfillmentTask.id.desc()
-    base = select(FulfillmentTask).options(selectinload(FulfillmentTask.attempts))
+    # Attempts are deliberately NOT eager-loaded: the list renders a count,
+    # never the log, and loading them shipped every attempt of every row.
+    # One production task polls its supplier's status once a minute while the
+    # order stays open — 1641 rows, 218 kB — so a single page of 50 carried a
+    # quarter of a megabyte nothing on screen used. The detail panel pages
+    # through `list_attempts_admin(task_id=...)` instead.
+    base = select(FulfillmentTask)
     count_stmt = select(func.count()).select_from(FulfillmentTask)
     if order_id is not None:
         base = base.where(FulfillmentTask.order_id == order_id)
@@ -1063,6 +1069,7 @@ async def get_task_admin(db: AsyncSession, task_id: str) -> FulfillmentTask:
 async def list_attempts_admin(
     db: AsyncSession,
     *,
+    task_id: str | None = None,
     supplier: str | None = None,
     status_filter: str | None = None,
     limit: int = 50,
@@ -1072,6 +1079,12 @@ async def list_attempts_admin(
 
     Returns rows joined with the parent task's supplier slug so the admin
     UI can render "G2B attempts" without a second query per row.
+
+    ``task_id`` narrows the feed to one task's log. That is what lets the
+    inbox's detail panel page through attempts instead of receiving every
+    one of them at once: a single slow supplier order polls its status once
+    a minute for as long as it stays open, and one such task in production
+    has 1641 rows behind it.
     """
     base = (
         select(FulfillmentAttempt, FulfillmentTask.supplier)
@@ -1083,6 +1096,9 @@ async def list_attempts_admin(
         .select_from(FulfillmentAttempt)
         .join(FulfillmentTask, FulfillmentTask.id == FulfillmentAttempt.task_id)
     )
+    if task_id is not None:
+        base = base.where(FulfillmentAttempt.task_id == task_id)
+        count_stmt = count_stmt.where(FulfillmentAttempt.task_id == task_id)
     if supplier is not None:
         base = base.where(FulfillmentTask.supplier == supplier)
         count_stmt = count_stmt.where(FulfillmentTask.supplier == supplier)

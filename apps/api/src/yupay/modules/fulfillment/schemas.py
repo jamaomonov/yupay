@@ -70,8 +70,38 @@ class FulfillmentTaskOut(BaseModel):
     attempts: list[FulfillmentAttemptOut]
 
 
+class FulfillmentTaskListItemOut(BaseModel):
+    """A task as it appears in a list — everything except the attempt log.
+
+    The log is unbounded: a task whose supplier order stays open polls its
+    status once a minute for as long as that lasts, and one task in
+    production carries 1641 attempts. A list showing only ``attempts_count``
+    has no use for them, so they are fetched on demand from
+    ``GET /admin/fulfillment/attempts?task_id=…`` instead of riding along with
+    every row.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    order_id: str
+    order_item_id: str
+    supplier: str
+    status: TaskStatus
+    attempts_count: int
+    external_order_id: str | None
+    last_error: str | None
+    extra_metadata: dict[str, Any] = Field(default_factory=dict)
+    admin_note: str | None = None
+    completed_by: str | None = None
+    created_at: datetime
+    succeeded_at: datetime | None
+    failed_at: datetime | None
+    cancelled_at: datetime | None
+
+
 class FulfillmentTaskListOut(BaseModel):
-    items: list[FulfillmentTaskOut]
+    items: list[FulfillmentTaskListItemOut]
     total: int = 0
 
 
@@ -163,6 +193,7 @@ __all__ = [
     "DeliveryListOut",
     "DeliveryOut",
     "FulfillmentAttemptOut",
+    "FulfillmentTaskListItemOut",
     "FulfillmentTaskListOut",
     "FulfillmentTaskOut",
     "ManualCompleteIn",

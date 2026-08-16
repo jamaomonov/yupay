@@ -31,6 +31,7 @@ from yupay.modules.fulfillment.schemas import (
     CodeAccessIn,
     DeliveryListOut,
     DeliveryOut,
+    FulfillmentTaskListItemOut,
     FulfillmentTaskListOut,
     FulfillmentTaskOut,
     ManualCompleteIn,
@@ -194,7 +195,7 @@ async def admin_list_tasks(
         offset=max(0, offset),
     )
     return FulfillmentTaskListOut(
-        items=[FulfillmentTaskOut.model_validate(r) for r in rows],
+        items=[FulfillmentTaskListItemOut.model_validate(r) for r in rows],
         total=total,
     )
 
@@ -213,6 +214,7 @@ async def admin_get_task(
 async def admin_list_attempts(
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
+    task_id: str | None = None,
     supplier: str | None = None,
     status_filter: Annotated[str | None, "status"] = None,
     limit: int = 50,
@@ -222,10 +224,13 @@ async def admin_list_attempts(
 
     Joins ``fulfillment_attempts`` with its parent task so callers see the
     supplier slug without a second lookup. Filter by ``supplier`` to e.g.
-    show "everything G2B did in the last hour".
+    show "everything G2B did in the last hour", or by ``task_id`` to page
+    through one task's log — which is how the inbox renders it, since the log
+    grows a row per status poll and is unbounded.
     """
     rows, total = await svc.list_attempts_admin(
         db,
+        task_id=task_id,
         supplier=supplier,
         status_filter=status_filter,
         limit=max(1, min(limit, 500)),
@@ -315,7 +320,7 @@ async def admin_release_held_order(
     """
     tasks = await svc.start_for_order(db, order_id=order_id)
     return FulfillmentTaskListOut(
-        items=[FulfillmentTaskOut.model_validate(t) for t in tasks],
+        items=[FulfillmentTaskListItemOut.model_validate(t) for t in tasks],
         total=len(tasks),
     )
 
