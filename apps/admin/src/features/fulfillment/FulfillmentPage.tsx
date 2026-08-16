@@ -1,15 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input, Select } from "@yupay/ui";
-import { ExternalLink, X } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
+
+import { TaskDetailPanel } from "./TaskDetailPanel";
 
 import type { TaskAdminOut, TaskListOut, TaskStatus } from "./types";
 
-import { Badge } from "@/components/Badge";
 import { CopyId } from "@/components/CopyId";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { Pagination } from "@/components/Pagination";
+import { StatusChip } from "@/components/StatusChip";
 import { useToast } from "@/components/Toast";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
@@ -49,22 +50,34 @@ export function FulfillmentPage() {
   const fieldId = useId();
   const qc = useQueryClient();
   const toast = useToast();
+  // `orderId` is what the query uses; `orderDraft` is what the field shows.
+  // A UUID typed straight into the query fired one request per character.
   const [orderId, setOrderId] = useState("");
+  const [orderDraft, setOrderDraft] = useState("");
   const [supplier, setSupplier] = useState("");
   // Status is URL-bound so Dashboard alerts can deep-link to e.g.
   // ``/fulfillment?status=pending`` (ADR-0017).
   const [status, setStatus] = useSearchParamsState<TaskStatus | "">("status", "");
   const [offset, setOffset] = useState(0);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const detailsRef = useRef<HTMLDivElement | null>(null);
 
-  // Scroll the detail panel into view when a row is opened — the table
-  // can be long, and the panel renders below the pagination.
   useEffect(() => {
-    if (expanded && detailsRef.current) {
-      detailsRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }
-  }, [expanded]);
+    if (orderDraft === orderId) return;
+    const timer = setTimeout(() => {
+      setOrderId(orderDraft.trim());
+      setOffset(0);
+    }, 350);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [orderDraft, orderId]);
+
+  // A selection only means something within the page it was made on. Left
+  // alone, changing a filter or paging away kept `expanded` pointing at a row
+  // that is no longer listed, and the panel just vanished with no explanation.
+  useEffect(() => {
+    setExpanded(null);
+  }, [orderId, supplier, status, offset]);
 
   const tasksQuery = useQuery<TaskListOut>({
     queryKey: [
@@ -113,6 +126,10 @@ export function FulfillmentPage() {
     },
   });
 
+  // Resolved from the page in hand rather than refetched: the row is already
+  // loaded, and a selection can only point at something on this page.
+  const selectedTask = (tasksQuery.data?.items ?? []).find((t) => t.id === expanded) ?? null;
+
   const columns: Column<TaskAdminOut>[] = [
     {
       key: "order",
@@ -134,15 +151,21 @@ export function FulfillmentPage() {
     {
       key: "status",
       header: "Статус",
-      render: (t) => <StatusBadge status={t.status} />,
+      render: (t) => <StatusChip domain="taskStatus" value={t.status} />,
       className: "w-32",
       sortAccessor: (t) => t.status,
     },
     {
       key: "attempts",
-      header: "Попыток",
-      render: (t) => t.attempts_count,
-      className: "w-20 text-center",
+      header: "Обращений",
+      // Not "attempts to deliver": every status poll counts here too, and a
+      // task left open by a slow supplier polls once a minute — one live task
+      // reads 1641 while having been fulfilled exactly once. Naming the column
+      // after what it counts stops that number reading as an alarm.
+      render: (t) => (
+        <span title="Обращений к поставщику, включая проверки статуса">{t.attempts_count}</span>
+      ),
+      className: "w-24 text-center",
       sortAccessor: (t) => t.attempts_count,
     },
     {
@@ -199,10 +222,9 @@ export function FulfillmentPage() {
         <div>
           <label className="text-xs uppercase text-[var(--text-secondary)]">Order ID</label>
           <Input
-            value={orderId}
+            value={orderDraft}
             onChange={(e) => {
-              setOrderId(e.target.value);
-              setOffset(0);
+              setOrderDraft(e.target.value);
             }}
             placeholder="UUID"
             className="mt-1 font-mono text-xs"
@@ -256,201 +278,46 @@ export function FulfillmentPage() {
         </div>
       </section>
 
-      <DataTable
-        rows={tasksQuery.data?.items ?? []}
-        columns={columns}
-        rowKey={(t) => t.id}
-        empty="Задач не нашлось."
-        selectedKey={expanded}
-        onRowClick={(t) => {
-          setExpanded(expanded === t.id ? null : t.id);
-        }}
-      />
-
-      <Pagination
-        total={tasksQuery.data?.total ?? 0}
-        limit={PAGE_SIZE}
-        offset={offset}
-        onPageChange={setOffset}
-      />
-
-      {expanded &&
-        (tasksQuery.data?.items ?? [])
-          .filter((t) => t.id === expanded)
-          .map((t) => (
-            <div key={t.id} ref={detailsRef} className="mt-4">
-              <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-sm font-semibold">
-                  Детали задачи{" "}
-                  <CopyId
-                    value={t.id}
-                    className="text-xs font-normal text-[var(--text-secondary)]"
-                  />
-                </h3>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setExpanded(null);
-                  }}
-                >
-                  <X className="size-4" />
-                  Закрыть
-                </Button>
-              </div>
-              <TaskDetails task={t} />
-            </div>
-          ))}
-    </div>
-  );
-}
-
-function StatusBadge({ status }: { status: TaskStatus }) {
-  const map: Record<TaskStatus, string> = {
-    pending: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
-    in_progress: "bg-[var(--warning-soft)] text-[var(--warning-fg)]",
-    succeeded: "bg-[var(--success-soft)] text-[var(--success-fg)]",
-    failed: "bg-[var(--danger-soft)] text-[var(--danger-fg)]",
-    cancelled: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
-  };
-  return (
-    <Badge tone={map[status]} dot>
-      {status}
-    </Badge>
-  );
-}
-
-function TaskDetails({ task }: { task: TaskAdminOut }) {
-  const proofUrl =
-    typeof task.extra_metadata.proof_url === "string" ? task.extra_metadata.proof_url : null;
-  const queuedAt =
-    typeof task.extra_metadata.queued_at === "string" ? task.extra_metadata.queued_at : null;
-  const otherMeta = Object.fromEntries(
-    Object.entries(task.extra_metadata).filter(([k]) => k !== "proof_url" && k !== "queued_at"),
-  );
-
-  return (
-    <article className="space-y-4 rounded-lg border bg-[var(--bg-surface)] p-4 text-sm shadow-[var(--shadow-sm)]">
-      {/* Task header — basic fields + lifecycle timestamps. */}
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        <DetailField label="ID" value={task.id} mono />
-        <DetailField label="Маршрут" value={task.supplier} mono />
-        <DetailField label="Статус" value={task.status} />
-        <DetailField label="Создана" value={new Date(task.created_at).toLocaleString("ru")} />
-        {task.succeeded_at && (
-          <DetailField label="Завершена" value={new Date(task.succeeded_at).toLocaleString("ru")} />
-        )}
-        {task.failed_at && (
-          <DetailField label="Провалена" value={new Date(task.failed_at).toLocaleString("ru")} />
-        )}
-        {task.cancelled_at && (
-          <DetailField label="Отменена" value={new Date(task.cancelled_at).toLocaleString("ru")} />
-        )}
-        {task.external_order_id && (
-          <DetailField label="External order" value={task.external_order_id} mono />
-        )}
-        {queuedAt && (
-          <DetailField
-            label="Поставлена в очередь"
-            value={new Date(queuedAt).toLocaleString("ru")}
+      {/* Table and detail side by side: the panel used to render *below* the
+          pagination, so opening a row on a 50-row page threw the operator to
+          the bottom of the document and closing it threw them back. Here the
+          selection just updates a panel that is already on screen, and on a
+          wide viewport it sticks while the list scrolls under it. */}
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_26rem]">
+        <div className="min-w-0">
+          <DataTable
+            rows={tasksQuery.data?.items ?? []}
+            columns={columns}
+            rowKey={(t) => t.id}
+            loading={tasksQuery.isPending}
+            busy={tasksQuery.isFetching}
+            empty="Задач не нашлось."
+            ariaLabel="Задачи фулфилмента"
+            selectedKey={expanded}
+            onRowClick={(t) => {
+              setExpanded(expanded === t.id ? null : t.id);
+            }}
           />
-        )}
-      </section>
 
-      {/* Manual-fulfilment audit. Only show the block when at least one
-          of the manual fields is set — for supplier-driven tasks the
-          whole block stays hidden. */}
-      {(task.completed_by || task.admin_note || proofUrl) && (
-        <section className="border-[var(--border-default)]/60 bg-[var(--bg-muted)]/40 space-y-2 rounded-md border p-3">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-secondary)]">
-            Ручная обработка
-          </h4>
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-            {task.completed_by && (
-              <DetailField label="Обработал admin" value={task.completed_by} mono />
-            )}
-            {task.admin_note && <DetailField label="Заметка" value={task.admin_note} />}
+          <Pagination
+            total={tasksQuery.data?.total ?? 0}
+            limit={PAGE_SIZE}
+            offset={offset}
+            onPageChange={setOffset}
+          />
+        </div>
+
+        {selectedTask && (
+          <div className="xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto">
+            <TaskDetailPanel
+              task={selectedTask}
+              onClose={() => {
+                setExpanded(null);
+              }}
+            />
           </div>
-          {proofUrl && (
-            <a
-              href={proofUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-sm text-[var(--accent)] hover:underline"
-            >
-              <ExternalLink className="size-3.5" />
-              Открыть пруф
-            </a>
-          )}
-        </section>
-      )}
-
-      {/* Any extra_metadata keys we don't explicitly render — dump as JSON
-          so they don't get lost when a supplier sets a custom field. */}
-      {Object.keys(otherMeta).length > 0 && (
-        <section>
-          <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--text-secondary)]">
-            Метаданные
-          </h4>
-          <pre className="border-[var(--border-default)]/50 bg-[var(--bg-muted)]/40 whitespace-pre-wrap rounded border p-2 text-xs">
-            {JSON.stringify(otherMeta, null, 2)}
-          </pre>
-        </section>
-      )}
-
-      {/* Attempts log. */}
-      <section>
-        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-secondary)]">
-          Аттемпты — {task.attempts.length}
-        </h4>
-        {task.attempts.length === 0 ? (
-          <p className="text-[var(--text-secondary)]">Попыток ещё не было.</p>
-        ) : (
-          <ol className="space-y-2">
-            {task.attempts.map((a, i) => (
-              <li
-                key={`${a.kind}-${a.created_at}-${i}`}
-                className="border-[var(--border-default)]/50 rounded border p-2 text-xs"
-              >
-                <div className="flex justify-between">
-                  <span>
-                    <code>{a.kind}</code> ·{" "}
-                    <span
-                      className={
-                        a.status === "ok" ? "text-[var(--success)]" : "text-[var(--danger)]"
-                      }
-                    >
-                      {a.status}
-                    </span>
-                  </span>
-                  <span className="text-[var(--text-secondary)]">
-                    {new Date(a.created_at).toLocaleString("ru")}
-                  </span>
-                </div>
-                {a.error && (
-                  <pre className="mt-1 whitespace-pre-wrap text-[var(--danger)]">{a.error}</pre>
-                )}
-                {Object.keys(a.payload).length > 0 && (
-                  <pre className="mt-1 whitespace-pre-wrap text-[var(--text-secondary)]">
-                    {JSON.stringify(a.payload, null, 2)}
-                  </pre>
-                )}
-              </li>
-            ))}
-          </ol>
         )}
-      </section>
-    </article>
-  );
-}
-
-function DetailField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div>
-      <p className="text-xs font-medium uppercase text-[var(--text-secondary)]">{label}</p>
-      <p className={["mt-0.5 break-words text-sm", mono ? "font-mono text-xs" : ""].join(" ")}>
-        {value}
-      </p>
+      </div>
     </div>
   );
 }

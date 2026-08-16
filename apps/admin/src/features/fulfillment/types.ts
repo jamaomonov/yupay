@@ -1,11 +1,22 @@
 export type TaskStatus = "pending" | "in_progress" | "succeeded" | "failed" | "cancelled";
 
+/** One row of the supplier-interaction log, as the audit feed returns it
+ *  (`GET /admin/fulfillment/attempts`). Fetched per task on demand — the log
+ *  is unbounded, since a task polls its supplier once a minute for as long as
+ *  the order stays open. */
 export interface AttemptOut {
+  task_id: string;
+  supplier: string;
   kind: string;
   status: string;
   payload: Record<string, unknown>;
   error: string | null;
   created_at: string;
+}
+
+export interface AttemptListOut {
+  items: AttemptOut[];
+  total: number;
 }
 
 export interface TaskAdminOut {
@@ -30,7 +41,6 @@ export interface TaskAdminOut {
   succeeded_at: string | null;
   failed_at: string | null;
   cancelled_at: string | null;
-  attempts: AttemptOut[];
 }
 
 export interface TaskListOut {
