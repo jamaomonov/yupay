@@ -14,7 +14,9 @@ import { Link } from "react-router-dom";
 
 import { Badge } from "@/components/Badge";
 import { useAuthStore } from "@/features/auth/authStore";
+import { type OrderStatus, STATUS_TONE } from "@/features/orders/types";
 import { apiGet } from "@/lib/api";
+import { formatMoney } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
 
 interface DashboardOut {
@@ -38,27 +40,44 @@ interface DashboardOut {
   orders_last_7_days: { date: string; count: number; revenue_usd: string }[];
 }
 
-const STATUS_LABEL: Record<string, string> = {
+/**
+ * Dashboard-only wording for order statuses, kept separate from the orders
+ * list's `STATUS_LABEL` on purpose: this is a tally ("Доставлено — 2"), so the
+ * labels are neuter/plural, while a single order's badge reads "Доставлен".
+ *
+ * Typed against `OrderStatus` rather than `string` so it cannot drift from the
+ * backend again — a status added to the union stops compiling here until it
+ * gets wording, which is what let `failed` render as raw English. Tones carry
+ * no grammar, so those are the shared map, not a third copy.
+ */
+const STATUS_LABEL: Record<OrderStatus, string> = {
   pending_payment: "Ждут оплаты",
   paid: "Оплачено",
   fulfilling: "В работе",
   fulfilled: "Готово",
   delivered: "Доставлено",
+  failed: "Проблемные",
   cancelled: "Отменено",
   expired: "Истекло",
   refunded: "Возврат",
+  partially_refunded: "Частичный возврат",
 };
 
-const STATUS_TONE: Record<string, string> = {
-  pending_payment: "bg-[var(--warning-soft)] text-[var(--warning-fg)]",
-  paid: "bg-[var(--info-soft)] text-[var(--info-fg)]",
-  fulfilling: "bg-[var(--bg-accent-soft)] text-[var(--accent-soft-fg)]",
-  fulfilled: "bg-[var(--success-soft)] text-[var(--success-fg)]",
-  delivered: "bg-[var(--success-soft)] text-[var(--success-fg)]",
-  cancelled: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
-  expired: "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
-  refunded: "bg-[var(--danger-soft)] text-[var(--danger-fg)]",
-};
+/** The breakdown arrives as a bare string from the API, so a status the union
+ *  doesn't know about is possible at runtime even though the maps are
+ *  exhaustive at compile time. Both casts widen rather than narrow — indexing
+ *  a finite-key `Record` is typed as always-present, which would make the
+ *  fallbacks below look dead while still being the thing that keeps an
+ *  unrecognised status readable. */
+type Lookup = Record<string, string | undefined>;
+
+function statusLabel(status: string): string {
+  return (STATUS_LABEL as Lookup)[status] ?? status;
+}
+
+function statusTone(status: string): string {
+  return (STATUS_TONE as Lookup)[status] ?? "bg-[var(--bg-muted)] text-[var(--text-secondary)]";
+}
 
 export function DashboardPage() {
   const me = useAuthStore((s) => s.me);
@@ -118,9 +137,7 @@ export function DashboardPage() {
           label="Выручка"
           value={
             d && d.revenue_in_window.length > 0
-              ? d.revenue_in_window
-                  .map((r) => `${Number.parseFloat(r.amount).toFixed(2)} ${r.currency}`)
-                  .join(" · ")
+              ? d.revenue_in_window.map((r) => formatMoney(r.amount, r.currency)).join(" · ")
               : "—"
           }
           accent
@@ -166,13 +183,8 @@ export function DashboardPage() {
                   className="flex items-center justify-between rounded-md px-3 py-1.5"
                   style={{ background: "var(--bg-muted)" }}
                 >
-                  <Badge
-                    tone={
-                      STATUS_TONE[s.status] ?? "bg-[var(--bg-muted)] text-[var(--text-secondary)]"
-                    }
-                    dot
-                  >
-                    {STATUS_LABEL[s.status] ?? s.status}
+                  <Badge tone={statusTone(s.status)} dot>
+                    {statusLabel(s.status)}
                   </Badge>
                   <span className="font-mono text-sm">{s.count}</span>
                 </li>
@@ -450,8 +462,7 @@ function DayBars({ buckets }: { buckets: { date: string; count: number; revenue_
         <div className="relative flex h-full items-end gap-2 pr-12">
           {buckets.map((b) => {
             const heightPct = b.count === 0 ? 4 : Math.max(8, (b.count / max) * 100);
-            const revenue = Number.parseFloat(b.revenue_usd) || 0;
-            const tooltip = `${formatDayLabel(b.date)}: ${b.count.toString()} заказов · ${revenue.toFixed(2)} USD`;
+            const tooltip = `${formatDayLabel(b.date)}: ${b.count.toString()} заказов · ${formatMoney(b.revenue_usd, "USD")}`;
             return (
               <div
                 key={b.date}
