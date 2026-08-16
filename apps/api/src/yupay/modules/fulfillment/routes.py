@@ -245,6 +245,8 @@ async def admin_list_attempts(
                 status=attempt.status,
                 payload=attempt.payload,
                 error=attempt.error,
+                repeat_count=attempt.repeat_count,
+                last_seen_at=attempt.last_seen_at,
                 created_at=attempt.created_at,
             )
             for attempt, supplier_slug in rows

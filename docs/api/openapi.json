@@ -846,10 +846,27 @@
             "title": "Kind",
             "type": "string"
           },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          },
           "payload": {
             "additionalProperties": true,
             "title": "Payload",
             "type": "object"
+          },
+          "repeat_count": {
+            "default": 1,
+            "title": "Repeat Count",
+            "type": "integer"
           },
           "status": {
             "title": "Status",
@@ -3815,10 +3832,27 @@
             "title": "Kind",
             "type": "string"
           },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          },
           "payload": {
             "additionalProperties": true,
             "title": "Payload",
             "type": "object"
+          },
+          "repeat_count": {
+            "default": 1,
+            "title": "Repeat Count",
+            "type": "integer"
           },
           "status": {
             "title": "Status",

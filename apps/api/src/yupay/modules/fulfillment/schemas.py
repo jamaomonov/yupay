@@ -43,6 +43,11 @@ class FulfillmentAttemptOut(BaseModel):
     status: str
     payload: dict[str, Any]
     error: str | None
+    #: How many identical observations this row stands for, and when the last
+    #: of them landed. A run of once-a-minute status polls folds into one row
+    #: rather than one row per poll — see migration 0045.
+    repeat_count: int = 1
+    last_seen_at: datetime | None = None
     created_at: datetime
 
 
@@ -174,6 +179,8 @@ class AttemptAdminOut(BaseModel):
     status: str
     payload: dict[str, Any]
     error: str | None
+    repeat_count: int = 1
+    last_seen_at: datetime | None = None
     created_at: datetime
 
 

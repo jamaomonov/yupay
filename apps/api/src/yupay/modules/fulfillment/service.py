@@ -122,7 +122,7 @@ async def _existing_tasks_for_order(db: AsyncSession, order_id: str) -> list[Ful
 # ---------- audit ----------
 
 
-def _record_attempt(
+async def _record_attempt(
     db: AsyncSession,
     *,
     task: FulfillmentTask,
@@ -131,6 +131,46 @@ def _record_attempt(
     payload: dict[str, Any] | None = None,
     error: str | None = None,
 ) -> None:
+    """Append an interaction to the task's audit log, folding repeats.
+
+    The poller asks the supplier for a status once a minute for as long as the
+    order stays open, and every answer used to become a row: one production
+    task holds 1641, of which 1640 are the identical "still in progress". They
+    say nothing the first one does not — except that we were still checking at
+    T, which ``last_seen_at``/``repeat_count`` record on the row itself.
+
+    So an attempt identical to the task's most recent one (same kind, status,
+    payload and error) updates that row instead of adding another. Anything
+    that differs — a new outcome, an error appearing or clearing — starts a new
+    row, which is what makes the log a record of what *changed*.
+
+    ``attempts_count`` counts rows, not observations, so it stays in step with
+    the log the admin panel renders and stops reporting a well-behaved task as
+    having been attempted 1641 times. (`stats.analytics.ops` averages it per
+    supplier; polls had pushed that average to 47.6.)
+    """
+    previous = (
+        await db.execute(
+            select(FulfillmentAttempt)
+            .where(FulfillmentAttempt.task_id == task.id)
+            .order_by(FulfillmentAttempt.created_at.desc(), FulfillmentAttempt.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    moment = now()
+    if (
+        previous is not None
+        and previous.kind == kind
+        and previous.status == status
+        and previous.error == error
+        and previous.payload == (payload or {})
+    ):
+        previous.repeat_count += 1
+        previous.last_seen_at = moment
+        task.updated_at = moment
+        return
+
     db.add(
         FulfillmentAttempt(
             id=new_id(),
@@ -142,7 +182,7 @@ def _record_attempt(
         )
     )
     task.attempts_count += 1
-    task.updated_at = now()
+    task.updated_at = moment
 
 
 # ---------- realtime ----------
@@ -253,7 +293,7 @@ async def _inventory_fulfill(db: AsyncSession, *, task: FulfillmentTask, item: O
     try:
         issued = await inv_svc.reserve_and_issue(db, sku_id=item.sku_id, order_item_id=item.id)
     except inv_svc.NoStockError as exc:
-        _record_attempt(
+        await _record_attempt(
             db,
             task=task,
             kind="fulfill",
@@ -282,7 +322,7 @@ async def _inventory_fulfill(db: AsyncSession, *, task: FulfillmentTask, item: O
             },
         )
     )
-    _record_attempt(
+    await _record_attempt(
         db,
         task=task,
         kind="fulfill",
@@ -341,7 +381,7 @@ async def process_task(  # noqa: PLR0915 -- linear saga; splitting hurts readabi
             return task
         # Switch the route to the supplier fallback for the rest of this attempt.
         task.supplier = _supplier_slug(decision.fallback)
-        _record_attempt(
+        await _record_attempt(
             db,
             task=task,
             kind="fulfill",
@@ -357,7 +397,7 @@ async def process_task(  # noqa: PLR0915 -- linear saga; splitting hurts readabi
             db=db, order=order, item=item, idempotency_key=task.id
         )
     except (FulfillerError, FulfillerNotIntegratedError) as exc:
-        _record_attempt(
+        await _record_attempt(
             db,
             task=task,
             kind="fulfill",
@@ -381,7 +421,7 @@ async def process_task(  # noqa: PLR0915 -- linear saga; splitting hurts readabi
     if result.extra_metadata:
         task.extra_metadata = {**task.extra_metadata, **result.extra_metadata}
 
-    _record_attempt(
+    await _record_attempt(
         db,
         task=task,
         kind="fulfill",
@@ -497,7 +537,7 @@ async def _apply_cancel(db: AsyncSession, *, task: FulfillmentTask, reason: str)
     fulfiller = get_fulfiller(task.supplier)
     try:
         await fulfiller.cancel(db=db, task=task)
-        _record_attempt(
+        await _record_attempt(
             db,
             task=task,
             kind="cancel",
@@ -505,7 +545,7 @@ async def _apply_cancel(db: AsyncSession, *, task: FulfillmentTask, reason: str)
             payload={"supplier": task.supplier, "reason": reason},
         )
     except (FulfillerError, FulfillerNotIntegratedError) as exc:
-        _record_attempt(
+        await _record_attempt(
             db,
             task=task,
             kind="cancel",
@@ -657,7 +697,7 @@ async def process_webhook_update(
     try:
         status = await fulfiller.check_status(db=db, task=task)
     except (FulfillerError, FulfillerNotIntegratedError) as exc:
-        _record_attempt(
+        await _record_attempt(
             db,
             task=task,
             kind="status_check",
@@ -677,7 +717,7 @@ async def process_webhook_update(
         await db.execute(select(OrderItem).where(OrderItem.id == task.order_item_id))
     ).scalar_one()
 
-    _record_attempt(
+    await _record_attempt(
         db,
         task=task,
         kind="status_check",
@@ -841,7 +881,7 @@ async def complete_manual_task(
             if new_meta:
                 task.extra_metadata = {**(task.extra_metadata or {}), **new_meta}
             item.fulfillment_state = "delivered"
-            _record_attempt(
+            await _record_attempt(
                 db,
                 task=task,
                 kind="fulfill",
@@ -907,7 +947,7 @@ async def fail_manual_task(
     task.admin_note = admin_note
     task.updated_at = moment
     item.fulfillment_state = "failed"
-    _record_attempt(
+    await _record_attempt(
         db,
         task=task,
         kind="fulfill",

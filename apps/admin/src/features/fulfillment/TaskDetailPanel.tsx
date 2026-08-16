@@ -218,9 +218,21 @@ function AttemptRow({ attempt }: { attempt: AttemptOut }) {
           <span className={failed ? "text-[var(--danger)]" : "text-[var(--success)]"}>
             {attempt.status}
           </span>
+          {attempt.repeat_count > 1 && (
+            <span
+              className="shrink-0 rounded bg-[var(--bg-muted)] px-1 text-[var(--text-secondary)]"
+              title="Столько раз подряд поставщик ответил тем же"
+            >
+              ×{attempt.repeat_count}
+            </span>
+          )}
           {attempt.error && <span className="truncate text-[var(--danger)]">{attempt.error}</span>}
         </span>
-        <span className="shrink-0 text-[var(--text-secondary)]">{fmt(attempt.created_at)}</span>
+        <span className="shrink-0 text-[var(--text-secondary)]">
+          {attempt.last_seen_at
+            ? `${fmt(attempt.created_at)} → ${fmt(attempt.last_seen_at)}`
+            : fmt(attempt.created_at)}
+        </span>
       </button>
       {open && (
         <div className="border-[var(--border-default)]/50 border-t px-2 py-1.5">

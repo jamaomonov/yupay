@@ -9,6 +9,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -99,11 +100,22 @@ class FulfillmentAttempt(Base):
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # A run of identical polls collapses into one row (ADR-less, see migration
+    # 0045): `created_at` is when the outcome was first seen, `last_seen_at`
+    # when it was last confirmed, `repeat_count` how many observations that
+    # covers. NULL `last_seen_at` means the row was only ever seen once.
+    repeat_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )
 
     task: Mapped[FulfillmentTask] = relationship(back_populates="attempts")
+
+    __table_args__ = (
+        CheckConstraint("repeat_count >= 1", name="ck_fulfillment_attempts_repeat_positive"),
+        Index("ix_fulfillment_attempts_task_id_created_at", "task_id", text("created_at DESC")),
+    )
 
 
 class Delivery(Base):

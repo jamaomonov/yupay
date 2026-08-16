@@ -17,7 +17,7 @@ from urllib.parse import urlencode
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.ids import new_id
 from yupay.modules.catalog.models import (
@@ -400,3 +400,79 @@ async def test_attempts_can_be_narrowed_to_one_task(
     assert body["items"], "the task has at least its own intake attempt"
     assert {a["task_id"] for a in body["items"]} == {mine}
     assert other not in {a["task_id"] for a in body["items"]}
+
+
+async def test_identical_polls_fold_into_one_attempt_row(
+    integration_client: AsyncClient, db_session: AsyncSession, _manual_sku: str
+) -> None:
+    """A run of identical status polls is one row, not one row per poll.
+
+    The poller asks once a minute for as long as the supplier order stays
+    open. In production that produced 1641 rows for a task delivered on its
+    first try, 1640 of them the same "still in progress" — and pushed the
+    per-supplier average-attempts metric to 47.6.
+    """
+    from sqlalchemy import select as sa_select
+    from yupay.modules.fulfillment import service as svc
+    from yupay.modules.fulfillment.models import FulfillmentAttempt, FulfillmentTask
+
+    token = await _login_user(integration_client, tg_id=909)
+    await _grant_admin(db_session, tg_id=909)
+    _, task_id = await _paid_manual_task(
+        integration_client, token=token, sku_id=_manual_sku, tag="909"
+    )
+    task = (
+        await db_session.execute(sa_select(FulfillmentTask).where(FulfillmentTask.id == task_id))
+    ).scalar_one()
+    before_rows = (
+        await db_session.execute(
+            sa_select(func.count())
+            .select_from(FulfillmentAttempt)
+            .where(FulfillmentAttempt.task_id == task_id)
+        )
+    ).scalar_one()
+    before_count = task.attempts_count
+
+    same = {"supplier": "manual", "outcome": "in_progress"}
+    for _ in range(5):
+        await svc._record_attempt(
+            db_session, task=task, kind="status_check", status="ok", payload=same
+        )
+    await db_session.flush()
+
+    rows = list(
+        (
+            await db_session.execute(
+                sa_select(FulfillmentAttempt)
+                .where(FulfillmentAttempt.task_id == task_id)
+                .order_by(FulfillmentAttempt.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    # Five polls, one new row — and it says it stands for five.
+    assert len(rows) == before_rows + 1
+    folded = rows[-1]
+    assert folded.repeat_count == 5
+    assert folded.last_seen_at is not None
+    # The count tracks rows, so it no longer inflates with poll volume.
+    assert task.attempts_count == before_count + 1
+
+    # A different outcome is a change, and changes start a new row.
+    await svc._record_attempt(
+        db_session,
+        task=task,
+        kind="status_check",
+        status="ok",
+        payload={"supplier": "manual", "outcome": "succeeded"},
+    )
+    await db_session.flush()
+    after = (
+        await db_session.execute(
+            sa_select(func.count())
+            .select_from(FulfillmentAttempt)
+            .where(FulfillmentAttempt.task_id == task_id)
+        )
+    ).scalar_one()
+    assert after == before_rows + 2

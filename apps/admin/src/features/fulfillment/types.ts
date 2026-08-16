@@ -11,6 +11,10 @@ export interface AttemptOut {
   status: string;
   payload: Record<string, unknown>;
   error: string | null;
+  /** How many identical observations this row stands for. A run of
+   *  once-a-minute status polls folds into one row instead of one per poll. */
+  repeat_count: number;
+  last_seen_at: string | null;
   created_at: string;
 }
 

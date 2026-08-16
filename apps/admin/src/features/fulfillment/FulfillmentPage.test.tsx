@@ -54,6 +54,8 @@ function mockApi(tasks: TaskAdminOut[], attemptsTotal = 1641) {
           status: "ok",
           payload: { outcome: "in_progress" },
           error: null,
+          repeat_count: 1,
+          last_seen_at: null,
           created_at: `2026-08-14T10:${String(i).padStart(2, "0")}:00Z`,
         })),
         total: attemptsTotal,
