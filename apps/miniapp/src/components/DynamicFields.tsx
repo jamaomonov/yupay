@@ -236,9 +236,15 @@ function TextLikeField({
   // rendered when the catalog schema marks this field as checkable.
   const checkConfig = field.check;
   const [check, setCheck] = useState<CheckState>(IDLE);
+  // `productId` as well as `value`: the answer belongs to the product it was
+  // asked about. Mobile Legends and Magic Chess: Go Go each sell one product
+  // per account region (ADR-0048), and switching between them keeps the typed
+  // id — the form is only cleared on a *brand* switch (`TopUp.tsx`). Without
+  // this the green "verified" pill survives the switch and vouches for an
+  // account against the region it was never checked against.
   useEffect(() => {
     setCheck(IDLE);
-  }, [value]);
+  }, [value, productId]);
   const serverId = checkConfig?.server_field ? (allValues[checkConfig.server_field] ?? null) : null;
   const idOk = canCheck(value, field.pattern);
   const canRunCheck = canCheck(value, field.pattern, {
