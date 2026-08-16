@@ -22,6 +22,7 @@ from yupay.modules.catalog.admin_schemas import (
     SkuCreate,
     SkuUpdate,
 )
+from yupay.modules.catalog.schemas import FieldCheck, FormField
 
 _BASE_CREATE: dict[str, object] = {
     "product_id": "prod-1",
@@ -202,3 +203,68 @@ def test_sku_create_rejects_ssrf_image_url() -> None:
 def test_sku_update_rejects_ssrf_image_url() -> None:
     with pytest.raises(ValidationError, match="not allowed"):
         SkuUpdate(image_url="https://box.internal/x")
+
+
+# ---------- required_fields: the player check has to name a real sibling ----------
+#
+# `mlbb-diamonds-ru` shipped with its check on the *server* field and
+# `server_field` pointing at that same field, so the storefront asked G2B to
+# verify player 6618 on server 6618 — invalid for every customer, forever, with
+# nothing in the UI to say the form was misconfigured. These reject the two
+# shapes that produce a check which can never succeed.
+
+
+def _field(key: str, check: FieldCheck | None = None) -> FormField:
+    return FormField(key=key, label={"ru": key}, type="text", required=True, check=check)
+
+
+def _g2b(server_field: str | None = None) -> FieldCheck:
+    return FieldCheck(provider="g2b", server_field=server_field)
+
+
+def test_product_create_rejects_a_check_pointing_at_its_own_field() -> None:
+    with pytest.raises(ValidationError, match="points at the field itself"):
+        ProductCreate(
+            **_PRODUCT_BASE,  # type: ignore[arg-type]
+            required_fields=[
+                _field("player_id"),
+                _field("server", _g2b("server")),
+            ],
+        )
+
+
+def test_product_create_rejects_a_server_field_no_field_defines() -> None:
+    with pytest.raises(ValidationError, match="is not a field on this product"):
+        ProductCreate(
+            **_PRODUCT_BASE,  # type: ignore[arg-type]
+            required_fields=[_field("player_id", _g2b("zone"))],
+        )
+
+
+def test_product_create_accepts_the_correct_pairing() -> None:
+    body = ProductCreate(
+        **_PRODUCT_BASE,  # type: ignore[arg-type]
+        required_fields=[
+            _field("player_id", _g2b("server")),
+            _field("server"),
+        ],
+    )
+    assert body.required_fields[0].check is not None
+
+
+def test_product_create_accepts_a_check_with_no_server_field() -> None:
+    """Steam's login check has no sibling to name — that stays legal."""
+    body = ProductCreate(
+        **_PRODUCT_BASE,  # type: ignore[arg-type]
+        required_fields=[_field("steam_login", FieldCheck(provider="waxpeer"))],
+    )
+    assert body.required_fields[0].check is not None
+
+
+def test_product_update_applies_the_same_rule() -> None:
+    with pytest.raises(ValidationError, match="points at the field itself"):
+        ProductUpdate(required_fields=[_field("server", _g2b("server"))])
+
+
+def test_product_update_without_required_fields_is_unaffected() -> None:
+    assert ProductUpdate(slug="mlbb-diamonds-ru").required_fields is None

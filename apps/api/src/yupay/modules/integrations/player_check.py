@@ -67,8 +67,15 @@ def _map_response(resp: dict[str, Any]) -> PlayerCheckOut:
 
 
 async def resolve_g2b_game_code(session: AsyncSession, product_id: str) -> str | None:
-    """The G2B game_code for a product = external_product_id of any active
-    g2b game mapping among its SKUs. A product's game SKUs share one code."""
+    """The G2B game_code for a product = external_product_id of its active g2b
+    game mappings.
+
+    A product's game SKUs are meant to share one code — region is split across
+    *products* (ADR-0048), not across the SKUs of one. If that ever stops being
+    true, picking one arbitrarily would validate a player against the wrong
+    region's game and answer "invalid" for a perfectly good id, so two distinct
+    codes is treated as a misconfiguration: no check rather than a wrong one.
+    """
     stmt = (
         select(SkuSupplierMapping.external_product_id)
         .join(Sku, Sku.id == SkuSupplierMapping.sku_id)
@@ -78,9 +85,20 @@ async def resolve_g2b_game_code(session: AsyncSession, product_id: str) -> str |
             SkuSupplierMapping.kind == "game",
             SkuSupplierMapping.is_active.is_(True),
         )
-        .limit(1)
+        .distinct()
+        # Two is all it takes to know the answer is ambiguous; no need to drag
+        # back one row per SKU.
+        .limit(2)
     )
-    return (await session.execute(stmt)).scalar_one_or_none()
+    codes = list((await session.execute(stmt)).scalars().all())
+    if len(codes) > 1:
+        logger.error(
+            "player_check_ambiguous_game_code",
+            product_id=product_id,
+            codes=sorted(codes),
+        )
+        return None
+    return codes[0] if codes else None
 
 
 def _cache_key(game_code: str, player_id: str, server_id: str | None) -> str:

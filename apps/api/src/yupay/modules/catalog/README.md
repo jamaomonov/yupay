@@ -130,6 +130,15 @@ gates checkout. `provider` may also be `"waxpeer"` — that branch validates a
 Steam login instead of resolving a game player id, and returns no nickname
 (`name` is always `null`).
 
+`check` belongs on the field holding the **player id**, never on the server
+field: the storefront sends the checked field's own value as `player_id` and
+the field named by `server_field` as `server_id`. Putting it on the server
+field (with `server_field` pointing back at itself) sends the server id as
+both halves, so the check reports every customer's correct id as invalid —
+which is exactly what shipped on `mlbb-diamonds-ru`. `ProductCreate` /
+`ProductUpdate` now reject a `server_field` that names the field itself or a
+key no field defines; see `admin_schemas.validate_form_fields`.
+
 ## Display-price policy
 
 For every SKU and a requested currency `Q`:

@@ -296,6 +296,49 @@ async def test_g2b_error_degrades_to_error_status(client, seed_g2b_product: Prod
     assert r.json()["status"] == "error"
 
 
+async def test_two_game_codes_on_one_product_check_nothing(
+    client, db_session: AsyncSession, seed_g2b_product: Product
+) -> None:
+    """A product mapped to two G2B games has no single right answer.
+
+    Region is split across products (ADR-0048), so this is a misconfiguration —
+    and the old ``.limit(1)`` picked one arbitrarily, which would verify a
+    player against the wrong region's game and report a perfectly good id as
+    invalid. No check beats a wrong one: the storefront shows "couldn't check",
+    never "wrong id".
+    """
+    second = Sku(
+        id=new_id(),
+        product_id=seed_g2b_product.id,
+        sku_code="pubgm-325uc-check",
+        denomination="325",
+        region="RU",
+        price_usd=Decimal("5.00"),
+        sort_order=20,
+        active=True,
+    )
+    db_session.add(second)
+    await db_session.commit()
+    db_session.add(
+        SkuSupplierMapping(
+            sku_id=second.id,
+            supplier_slug="g2b",
+            kind="game",
+            external_product_id="pubgm_ru",
+            external_variant_id="325UC",
+            is_active=True,
+        )
+    )
+    await db_session.commit()
+
+    r = await client.post(
+        f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player",
+        json={"player_id": "51234567"},
+    )
+    assert r.status_code == 200
+    assert r.json()["status"] == "error"
+
+
 async def test_not_checkable_product_422(client, seed_plain_product: Product) -> None:
     # NOTE: the task brief's global constraints and design spec both say "→ 400"
     # for a non-checkable product. The already-merged Task 3 service

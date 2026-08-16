@@ -19,6 +19,42 @@ from yupay.modules.catalog.schemas import FormField
 _SLUG_PATTERN = r"^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$"
 
 
+def validate_form_fields(fields: list[FormField]) -> list[FormField]:
+    """Reject a form schema whose player check can never succeed.
+
+    ``check.server_field`` names the *sibling* whose value is sent as the
+    checker's ``server_id`` — the storefront sends the checked field's own
+    value as ``player_id`` and that sibling's as ``server_id``. Two ways to
+    get this wrong produce a check that fails for every customer while looking
+    configured:
+
+    * pointing it at the checked field itself, which sends the server id as
+      both halves (this shipped: ``mlbb-diamonds-ru`` carried the check on
+      ``server`` with ``server_field: "server"``, so every Russian player's
+      correct id was reported invalid);
+    * pointing it at a key no field defines, which sends no server id at all.
+
+    Neither is detectable at runtime — G2B simply answers "invalid", which the
+    storefront honestly reports as the customer's mistake. So it has to be
+    caught on write, which is where a hand edit in the admin introduces it.
+    """
+    keys = {f.key for f in fields}
+    for f in fields:
+        if f.check is None or f.check.server_field is None:
+            continue
+        target = f.check.server_field
+        if target == f.key:
+            raise ValueError(
+                f"field '{f.key}': check.server_field points at the field itself; "
+                "it must name the sibling field holding the server id"
+            )
+        if target not in keys:
+            raise ValueError(
+                f"field '{f.key}': check.server_field '{target}' is not a field on this product"
+            )
+    return fields
+
+
 def require_variable_amount_fields(
     *,
     variable_amount: bool,
@@ -258,6 +294,7 @@ class ProductCreate(BaseModel):
 
     # SSRF guard — see BrandCreate._validate_image_hosts.
     _validate_image_hosts = field_validator("image_url")(validate_optional_public_image_url)
+    _validate_form = field_validator("required_fields")(validate_form_fields)
 
 
 class ProductUpdate(BaseModel):
@@ -277,6 +314,11 @@ class ProductUpdate(BaseModel):
 
     # SSRF guard — see BrandUpdate._validate_image_hosts.
     _validate_image_hosts = field_validator("image_url")(validate_optional_public_image_url)
+
+    @field_validator("required_fields")
+    @classmethod
+    def _validate_form(cls, v: list[FormField] | None) -> list[FormField] | None:
+        return None if v is None else validate_form_fields(v)
 
 
 # ---------- SKUs ----------
