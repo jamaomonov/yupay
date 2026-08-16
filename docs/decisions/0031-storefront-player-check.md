@@ -257,6 +257,17 @@ there, and the storefront degrades to what it did before the feature existed.
 validate. Only calling the validator distinguishes them. Re-run the probe
 before enabling `check` on any new game.
 
+**Free Fire is a per-title gap, not a per-game one.** G2B sells ten regional
+Free Fire titles and nine of them validate properly (`freefire_bd`, `_br`,
+`_latam`, `_sgmy`, `_vn`, `_global`, `_sg`, `_me`, `_tw` all answer `invalid`
+to a bogus id). Only `freefire_cis` — the one we sell — rubber-stamps, and it
+is also the only one whose `/games/fields` returns
+`404 game fields not available`. That looks like a hole on G2B's side specific
+to the CIS title rather than a deliberate "this game cannot be checked", so it
+is worth asking them about and re-probing later: if it starts answering
+`invalid`, the check can be enabled on `free-fire-*` with the same SQL pattern
+as `scripts/seed/2026-08-16_enable_player_check.sql`.
+
 ## References
 
 - `docs/superpowers/specs/2026-07-16-storefront-player-check-design.md` — feature design spec
