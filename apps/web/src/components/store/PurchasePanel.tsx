@@ -26,7 +26,7 @@ import {
   type ProviderStatus,
   type ProvidersOut,
 } from "@/lib/payment-providers";
-import { canCheck, IDLE, runPlayerCheck, type CheckState } from "@/lib/player-check-state";
+import { checkBlocker, IDLE, runPlayerCheck, type CheckState } from "@/lib/player-check-state";
 import { formatUzs, pathFor } from "@/lib/seo";
 import { amountError, parseAmount } from "@/lib/variable-amount";
 
@@ -77,6 +77,7 @@ function CheckablePlayerField({
   required,
   serverId,
   serverLabel,
+  productChosen,
   help,
   placeholder,
   t,
@@ -92,6 +93,10 @@ function CheckablePlayerField({
    *  when `check.server_field` names one — doubles as "server is required
    *  for this check" and as the text for the "fill it in first" hint below. */
   serverLabel: string | null;
+  /** False while the brand still offers more than one product and none is
+   *  picked — the check would run against an arbitrary one. See
+   *  `checkBlocker`. */
+  productChosen: boolean;
   help: string | null;
   placeholder: string;
   t: (key: string, values?: Record<string, string>) => string;
@@ -113,13 +118,26 @@ function CheckablePlayerField({
   useEffect(() => {
     setState(IDLE);
   }, [value]);
-  const idOk = canCheck(value, pattern);
-  const enabled = canCheck(value, pattern, { required: serverLabel !== null, id: serverId });
-  // A valid id sitting next to an empty server field would otherwise just
-  // disable the button with no explanation — say what's missing.
-  const missingServer = idOk && serverLabel !== null && (serverId ?? "").trim().length === 0;
+  const blocker = checkBlocker({
+    value,
+    pattern,
+    server: { required: serverLabel !== null, id: serverId },
+    productChosen,
+  });
+  // Set when the customer presses a button that cannot fire yet. A dimmed
+  // control that swallows the click teaches nothing; pressing it should say
+  // what is missing. The two blockers the customer can see coming (no package
+  // picked, empty sibling server field) are announced without waiting for
+  // that press — only "you have not typed the id yet" would be noise before
+  // they have tried.
+  const [attempted, setAttempted] = useState(false);
+  const hint = blocker !== null && (blocker !== "playerId" || attempted) ? blocker : null;
 
   async function onCheck() {
+    if (blocker !== null) {
+      setAttempted(true);
+      return;
+    }
     setState({ phase: "loading" });
     setState(await runPlayerCheck(productId, { playerId: value, serverId }));
   }
@@ -219,13 +237,20 @@ function CheckablePlayerField({
         </div>
         <button
           type="button"
-          disabled={!enabled || state.phase === "loading"}
+          // `aria-disabled`, not `disabled`: a real `disabled` button drops the
+          // click, so there is no moment at which to explain why nothing
+          // happens. This one still looks inert and stays out of the tab order
+          // for the same reason it always did, but pressing it answers.
+          aria-disabled={blocker !== null}
+          disabled={state.phase === "loading"}
           onClick={() => void onCheck()}
           // Neutral on purpose: this is advisory (a failed lookup never blocks
           // checkout), and in lime it read as the main action while the real
           // CTA below sat dimmed. The green confirmation pill still marks a
           // successful check.
-          className="border-border-2 text-tx-mute hover:border-tx-dim hover:text-foreground hover:bg-muted rounded-btn inline-flex h-[46px] shrink-0 items-center justify-center gap-2 border px-5 text-[14px] font-semibold transition disabled:pointer-events-none disabled:opacity-40"
+          className={`border-border-2 text-tx-mute hover:border-tx-dim hover:text-foreground hover:bg-muted rounded-btn inline-flex h-[46px] shrink-0 items-center justify-center gap-2 border px-5 text-[14px] font-semibold transition disabled:pointer-events-none disabled:opacity-40 ${
+            blocker !== null ? "opacity-40" : ""
+          }`}
         >
           {state.phase === "loading" && <Loader2 size={16} className="animate-spin" />}
           {state.phase === "loading" ? t("checking") : t("check")}
@@ -252,9 +277,13 @@ function CheckablePlayerField({
           </button>
         </p>
       )}
-      {missingServer && (
-        <p className="text-tx-dim mt-2 px-1 text-[13px]">
-          {t("checkNeedsServer", { label: serverLabel })}
+      {hint && (
+        <p role="status" className="text-tx-dim mt-2 px-1 text-[13px]">
+          {hint === "product"
+            ? t("checkNeedsSku")
+            : hint === "serverId"
+              ? t("checkNeedsServer", { label: serverLabel ?? "" })
+              : t("checkNeedsId", { label })}
         </p>
       )}
     </div>
@@ -1188,6 +1217,14 @@ export function PurchasePanel({
                       }}
                       pattern={f.pattern}
                       required={f.required}
+                      // A brand that splits one game across regions sells one
+                      // product per region (ADR-0048), and `fieldsProduct`
+                      // falls back to `products[0]` so the form is usable
+                      // before a package is picked. That fallback is fine for
+                      // rendering the fields, and wrong for the check: it
+                      // would verify a Russian id against the global game and
+                      // report it as not found.
+                      productChosen={selProduct !== undefined || products.length <= 1}
                       serverId={f.check.server_field ? (form[f.check.server_field] ?? null) : null}
                       serverLabel={
                         f.check.server_field

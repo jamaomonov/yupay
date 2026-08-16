@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 
-import { canCheck, runPlayerCheck } from "./player-check-state";
+import { canCheck, checkBlocker, runPlayerCheck } from "./player-check-state";
 
 describe("canCheck", () => {
   test("false when blank", () => expect(canCheck("   ")).toBe(false));
@@ -42,5 +42,48 @@ describe("runPlayerCheck", () => {
     const run = vi.fn().mockResolvedValue({ status: "invalid", name: null });
     await runPlayerCheck("p1", { playerId: "9", serverId: "as" }, run);
     expect(run).toHaveBeenCalledWith("p1", { playerId: "9", serverId: "as" });
+  });
+});
+
+describe("checkBlocker", () => {
+  const server = { required: true, id: "6618" };
+
+  test("names the missing player id rather than just refusing", () => {
+    expect(checkBlocker({ value: "", server })).toBe("playerId");
+  });
+
+  test("blocks on a filled server id with an empty player id", () => {
+    // The asymmetry reported from prod: this direction used to run the check.
+    expect(checkBlocker({ value: "  ", pattern: "^[0-9]{5,20}$", server })).toBe("playerId");
+  });
+
+  test("blocks on a filled player id with an empty server id", () => {
+    expect(checkBlocker({ value: "1313232551", server: { required: true, id: "" } })).toBe(
+      "serverId",
+    );
+  });
+
+  test("passes when both halves are present", () => {
+    expect(checkBlocker({ value: "1313232551", server })).toBeNull();
+  });
+
+  test("reports an unpicked package before the ids, since typing cannot fix it", () => {
+    expect(checkBlocker({ value: "1313232551", server, productChosen: false })).toBe("product");
+  });
+
+  test("never blocks on the package when the brand sells one product", () => {
+    expect(checkBlocker({ value: "1313232551", server, productChosen: true })).toBeNull();
+  });
+
+  test("treats a value that fails the field's pattern as a missing id", () => {
+    expect(checkBlocker({ value: "12", pattern: "^[0-9]{5,20}$", server })).toBe("playerId");
+  });
+
+  test("lets a malformed server-supplied pattern through rather than blocking", () => {
+    expect(checkBlocker({ value: "1313232551", pattern: "([", server })).toBeNull();
+  });
+
+  test("ignores the server half when no sibling field is named", () => {
+    expect(checkBlocker({ value: "_jamshid__", server: { required: false, id: null } })).toBeNull();
   });
 });

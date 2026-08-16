@@ -211,12 +211,115 @@ it("disables the check button and explains why until the paired server field is 
     target: { value: "51234567" },
   });
 
+  // `aria-disabled`, not `disabled`: the button has to keep receiving clicks
+  // so pressing it can say what is missing (a real `disabled` swallows them).
   const checkBtn = screen.getByRole("button", { name: "check" });
-  expect(checkBtn).toBeDisabled();
+  expect(checkBtn).toHaveAttribute("aria-disabled", "true");
   expect(screen.getByText("checkNeedsServer")).toBeInTheDocument();
 
   fireEvent.change(screen.getByLabelText("ID сервера *"), { target: { value: "19450" } });
 
-  expect(checkBtn).not.toBeDisabled();
+  expect(checkBtn).toHaveAttribute("aria-disabled", "false");
   expect(screen.queryByText("checkNeedsServer")).not.toBeInTheDocument();
+});
+
+/** The two MLBB-shaped fields: a checked player id plus its sibling server. */
+const MLBB_FIELDS: ProductDetail["required_fields"] = [
+  {
+    key: "player_id",
+    label: { ru: "ID игрока" },
+    type: "text",
+    required: true,
+    pattern: "^[0-9]{5,20}$",
+    check: { provider: "g2b", server_field: "server" },
+  },
+  { key: "server", label: { ru: "ID сервера" }, type: "text", required: true },
+];
+
+it("keeps the check blocked when only the server id is filled in", async () => {
+  // Reported from prod as an asymmetry: id-without-server correctly refused,
+  // server-without-id happily ran. Both halves are needed either way round.
+  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  render(
+    <PurchasePanel products={[{ ...makeProduct(), required_fields: MLBB_FIELDS }]} locale="ru" />,
+  );
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
+  });
+
+  fireEvent.change(screen.getByLabelText("ID сервера *"), { target: { value: "6618" } });
+
+  const checkBtn = screen.getByRole("button", { name: "check" });
+  expect(checkBtn).toHaveAttribute("aria-disabled", "true");
+  // Silent until pressed — nagging for an id the customer has not reached yet
+  // would be noise.
+  expect(screen.queryByText("checkNeedsId")).not.toBeInTheDocument();
+
+  fireEvent.click(checkBtn);
+
+  expect(screen.getByText("checkNeedsId")).toBeInTheDocument();
+});
+
+it("will not check a region-split brand until a package is picked", async () => {
+  // Two products = one per account region (ADR-0048). The form renders from
+  // products[0] so it is usable immediately, but running the lookup against
+  // that arbitrary product verifies a Russian id against the global game and
+  // calls it not-found — the FAQ then sends the buyer to the wrong region.
+  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  // Two SKUs each: a lone SKU auto-selects (see `skuId`'s initialiser), and
+  // the real products carry 13 and 10 denominations, so nothing is picked for
+  // the customer.
+  const base = makeProduct();
+  const global: ProductDetail = {
+    ...base,
+    required_fields: MLBB_FIELDS,
+    skus: [
+      { ...base.skus[0]!, id: "sku-1", sku_code: "MLBB-86" },
+      { ...base.skus[0]!, id: "sku-1b", sku_code: "MLBB-172" },
+    ],
+  };
+  const ru: ProductDetail = {
+    ...global,
+    id: "prod-2",
+    slug: "mlbb-diamonds-ru",
+    skus: [
+      { ...base.skus[0]!, id: "sku-2", sku_code: "MLBB-RU-86" },
+      { ...base.skus[0]!, id: "sku-2b", sku_code: "MLBB-RU-172" },
+    ],
+  };
+  render(<PurchasePanel products={[global, ru]} locale="ru" />);
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
+  });
+
+  fireEvent.change(screen.getByPlaceholderText("playerIdPlaceholder"), {
+    target: { value: "1313232551" },
+  });
+  fireEvent.change(screen.getByLabelText("ID сервера *"), { target: { value: "6618" } });
+
+  // Both ids present and still blocked: which product to ask is the open
+  // question, and no amount of typing answers it.
+  const checkBtn = screen.getByRole("button", { name: "check" });
+  expect(checkBtn).toHaveAttribute("aria-disabled", "true");
+  expect(screen.getByText("checkNeedsSku")).toBeInTheDocument();
+});
+
+it("checks straight away on a single-product brand", async () => {
+  // Nothing to disambiguate, so requiring a package here would be a pointless
+  // extra step.
+  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  render(
+    <PurchasePanel products={[{ ...makeProduct(), required_fields: MLBB_FIELDS }]} locale="ru" />,
+  );
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
+  });
+
+  fireEvent.change(screen.getByPlaceholderText("playerIdPlaceholder"), {
+    target: { value: "1313232551" },
+  });
+  fireEvent.change(screen.getByLabelText("ID сервера *"), { target: { value: "6618" } });
+
+  expect(screen.getByRole("button", { name: "check" })).toHaveAttribute("aria-disabled", "false");
+  expect(screen.queryByText("checkNeedsSku")).not.toBeInTheDocument();
 });

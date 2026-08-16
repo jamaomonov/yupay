@@ -12,6 +12,13 @@ export type CheckState =
 
 export const IDLE: CheckState = { phase: "idle" };
 
+/** Why the check cannot run yet, or `null` when it can.
+ *
+ * Named rather than boolean so the UI can say what to do instead of just
+ * dimming a button — a check that silently refuses to fire reads as broken.
+ */
+export type CheckBlocker = "product" | "playerId" | "serverId";
+
 /** Whether the check button is enabled: value non-empty and, if a pattern is
  *  provided, the value matches it. A malformed server-supplied pattern must
  *  never block the user, so treat a bad regex as "allow". When the field's
@@ -24,17 +31,43 @@ export function canCheck(
   pattern?: string | null,
   server?: { required: boolean; id: string | null | undefined } | null,
 ): boolean {
-  const v = value.trim();
-  if (v.length === 0) return false;
-  if (pattern) {
+  return checkBlocker({ value, pattern, server }) === null;
+}
+
+/**
+ * The first thing standing between the customer and a meaningful answer.
+ *
+ * Order matters, and `product` comes first on purpose: the check is scoped to
+ * one product, and a brand that sells the same game per region (Mobile
+ * Legends: global vs RU — ADR-0048) has one product per region. Until the
+ * buyer picks a package we do not know which, and running the lookup against
+ * an arbitrary one answers "no such player" for a perfectly good id — then the
+ * FAQ tells them that means they need the *other* region, sending them the
+ * wrong way. Filled-in ids cannot fix that, so it is reported before them.
+ */
+export function checkBlocker(input: {
+  value: string;
+  // `| undefined` spelled out on every optional: `exactOptionalPropertyTypes`
+  // is on, so `?:` alone means "absent", not "may be undefined", and callers
+  // forward values that genuinely can be.
+  pattern?: string | null | undefined;
+  server?: { required: boolean; id: string | null | undefined } | null | undefined;
+  /** False only when the brand sells more than one product and none is picked
+   *  yet. A single-product brand is never ambiguous, so it never blocks. */
+  productChosen?: boolean | undefined;
+}): CheckBlocker | null {
+  if (input.productChosen === false) return "product";
+  const v = input.value.trim();
+  if (v.length === 0) return "playerId";
+  if (input.pattern) {
     try {
-      if (!new RegExp(pattern).test(v)) return false;
+      if (!new RegExp(input.pattern).test(v)) return "playerId";
     } catch {
       // malformed server-supplied pattern must never block the user
     }
   }
-  if (server?.required && (server.id ?? "").trim().length === 0) return false;
-  return true;
+  if (input.server?.required && (input.server.id ?? "").trim().length === 0) return "serverId";
+  return null;
 }
 
 /** Run the check, folding ANY error into an advisory soft-failure (never throws).
