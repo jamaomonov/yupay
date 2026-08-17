@@ -74,6 +74,11 @@ export interface SkuOut {
   // Optional: an older deployed API (or a build prerendering against one, see
   // web-ssg-prerenders-against-deployed-api) may not send these yet.
   variable_amount?: boolean;
+  // Optional on purpose: `next build` prerenders against the deployed API,
+  // which does not serve these until this change ships. A required field here
+  // fails the production build.
+  amount_unit?: string | null;
+  units_per_usd?: string | null;
   min_amount_usd?: string | null;
   max_amount_usd?: string | null;
   // Gift cards are finite: the supplier holds real codes and runs out. Optional

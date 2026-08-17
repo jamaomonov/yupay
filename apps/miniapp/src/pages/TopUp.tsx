@@ -45,7 +45,14 @@ import { getRecentFulfillment, rememberFulfillment } from "@/lib/recent-checkout
 import { haptic, isInsideTelegram, openExternalLink, setClosingConfirmation } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { cn } from "@/lib/utils";
-import { amountError, parseAmount } from "@/lib/variable-amount";
+import {
+  amountError,
+  boundToUnits,
+  parseAmount,
+  toUsd,
+  unitAmountError,
+  unitsPerUsd,
+} from "@/lib/variable-amount";
 import { formatBalance, groupBalancesByCurrency, useWallet } from "@/lib/wallet";
 import { ensureBotCanWrite } from "@/lib/write-access";
 
@@ -63,6 +70,8 @@ interface Package {
   // amount instead of picking this card. ``price``/``priceCode`` above are
   // meaningless for these — see ``ratePerDollar``.
   variableAmount: boolean;
+  amountUnit: string | null;
+  unitsPerUsd: number | null;
   minAmountUsd: number | null;
   maxAmountUsd: number | null;
   /** Localised price of one dollar. `null` means the FX trust gate rejected
@@ -81,6 +90,8 @@ function adaptPackage(api: ApiPackage): Package {
     priceCode: api.displayPrice?.currency ?? "USD",
     imageUrl: api.imageUrl,
     variableAmount: api.variableAmount,
+    amountUnit: api.amountUnit,
+    unitsPerUsd: api.unitsPerUsd,
     minAmountUsd: api.minAmountUsd,
     maxAmountUsd: api.maxAmountUsd,
     ratePerDollar: api.ratePerDollar,
@@ -260,7 +271,11 @@ export default function TopUp() {
   // types the amount). Detected as "every SKU on this product is
   // variable-amount" rather than a product-level flag, since the flag lives
   // on the SKU.
-  const isVariableProduct = packages.length > 0 && packages.every((p) => p.variableAmount);
+  // Telegram Stars sells eleven packages *and* a free amount, so the two
+  // coexist rather than one replacing the other; Steam has only the amount.
+  const variablePkg = packages.find((p) => p.variableAmount);
+  const fixedPackages = packages.filter((p) => !p.variableAmount);
+  const isVariableProduct = packages.length > 0 && fixedPackages.length === 0 && !!variablePkg;
 
   // Cache it so the next visit's skeleton promises the right form (see
   // lib/brand-shape.ts) — the flag only becomes knowable after the SKUs load,
@@ -291,7 +306,13 @@ export default function TopUp() {
     // set an order currency the display price was never computed for, so it
     // must never be offered here, independent of the live-providers check
     // below (checked first so it applies even before that query resolves).
-    if (isVariableProduct) {
+    // Follows the selected line, not the product: a mixed product (Telegram
+    // Stars) sells packages, which are fine in USD, alongside a free amount,
+    // which the server refuses in USD. Gating on the product would let the
+    // customer pick a currency checkout then rejects. `selectedPkg` is
+    // declared below; this closure only ever runs after it exists.
+    const variableChosen = variablePkg !== undefined && selectedPkg === variablePkg.id;
+    if (variableChosen) {
       const method = PAYMENT_METHODS.find((m) => m.id === methodId);
       if (method && method.currency !== "UZS") return false;
     }
@@ -348,7 +369,7 @@ export default function TopUp() {
     const fallback = PAYMENT_METHODS.find((m) => isMethodAvailable(m.id));
     setPaymentMethod(fallback ? fallback.id : "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [providerStatusBySlug, paymentMethod, isVariableProduct]);
+  }, [providerStatusBySlug, paymentMethod, isVariableProduct, selectedPkg, variablePkg]);
 
   // Don't pre-select a package — the customer chooses. A variable-amount
   // product is the exception: there's nothing to pick (one SKU, no
@@ -446,15 +467,29 @@ export default function TopUp() {
   // Parsed only for a variable-amount SKU — a fixed package has nothing to
   // parse. ``null`` covers both "nothing typed yet" and "unparseable".
   const parsedAmount = isVariableSelected ? parseAmount(amountInput) : null;
+  const perUsd = activePkg
+    ? unitsPerUsd({
+        amount_unit: activePkg.amountUnit,
+        units_per_usd: activePkg.unitsPerUsd != null ? String(activePkg.unitsPerUsd) : null,
+      })
+    : null;
+  const amountAsUsd =
+    parsedAmount === null ? null : perUsd !== null ? toUsd(parsedAmount, perUsd) : parsedAmount;
   const variableAmountErr =
     isVariableSelected && parsedAmount !== null
-      ? amountError(parsedAmount, activePkg?.minAmountUsd ?? 0, activePkg?.maxAmountUsd ?? 0)
+      ? perUsd !== null
+        ? unitAmountError(
+            parsedAmount,
+            boundToUnits(activePkg?.minAmountUsd ?? 0, perUsd, "min"),
+            boundToUnits(activePkg?.maxAmountUsd ?? 0, perUsd, "max"),
+          )
+        : amountError(parsedAmount, activePkg?.minAmountUsd ?? 0, activePkg?.maxAmountUsd ?? 0)
       : null;
   // Client-side total for display only — the server recomputes the
   // authoritative price from ``amount_usd`` at checkout.
   const variableTotal =
-    isVariableSelected && parsedAmount !== null && activePkg?.ratePerDollar
-      ? parsedAmount * activePkg.ratePerDollar.amount
+    isVariableSelected && amountAsUsd !== null && activePkg?.ratePerDollar
+      ? amountAsUsd * activePkg.ratePerDollar.amount
       : null;
   const priceCode = isVariableSelected
     ? (activePkg?.ratePerDollar?.currency ?? currency)
@@ -618,7 +653,9 @@ export default function TopUp() {
         // round-trip a client float — the server re-validates and re-prices
         // from it regardless.
         ...(isVariableSelected && parsedAmount !== null
-          ? { amountUsd: parsedAmount.toFixed(2) }
+          ? // Always dollars on the wire. Six decimals because one unit is
+            // rarely a round cent; the server snaps it to a whole unit.
+            { amountUsd: (amountAsUsd ?? parsedAmount).toFixed(perUsd !== null ? 6 : 2) }
           : {}),
       });
       // Remember the fulfilment payload only after the order was accepted by
@@ -925,18 +962,9 @@ export default function TopUp() {
                 {t("topup.noPositions")}
               </p>
             )}
-            {!productQuery.isLoading && isVariableProduct && activePkg && (
-              <VariableAmountPanel
-                pkg={activePkg}
-                value={amountInput}
-                onChange={setAmountInput}
-                total={variableTotal}
-                error={variableAmountErr}
-              />
-            )}
-            {!isVariableProduct && packages.length > 0 && (
+            {fixedPackages.length > 0 && (
               <div className="grid grid-cols-2 gap-2.5">
-                {packages.map((pkg) => (
+                {fixedPackages.map((pkg) => (
                   <PackageCard
                     key={pkg.id}
                     pkg={pkg}
@@ -948,6 +976,28 @@ export default function TopUp() {
                     }}
                   />
                 ))}
+              </div>
+            )}
+            {/* Packages and a free amount can coexist — Telegram Stars sells
+                both. Tapping the field is what selects the variable line, the
+                same gesture selecting a package is. */}
+            {!productQuery.isLoading && variablePkg && (
+              <div
+                className={fixedPackages.length > 0 ? "mt-2.5" : ""}
+                onFocusCapture={() => {
+                  if (selectedPkg !== variablePkg.id) setSelectedPkg(variablePkg.id);
+                }}
+              >
+                <VariableAmountPanel
+                  pkg={variablePkg}
+                  value={selectedPkg === variablePkg.id ? amountInput : ""}
+                  onChange={(next) => {
+                    if (selectedPkg !== variablePkg.id) setSelectedPkg(variablePkg.id);
+                    setAmountInput(next);
+                  }}
+                  total={selectedPkg === variablePkg.id ? variableTotal : null}
+                  error={selectedPkg === variablePkg.id ? variableAmountErr : null}
+                />
               </div>
             )}
           </div>
@@ -1334,13 +1384,27 @@ function VariableAmountPanel({
     );
   }
 
+  // When the field is denominated in something else (stars), every number the
+  // customer reads is in that unit — quoting dollars back at them would be
+  // answering a question they did not ask.
+  const perUsd = unitsPerUsd({
+    amount_unit: pkg.amountUnit,
+    units_per_usd: pkg.unitsPerUsd != null ? String(pkg.unitsPerUsd) : null,
+  });
+  const unit = perUsd !== null ? (pkg.amountUnit ?? "") : null;
+  const bound = (usd: number, edge: "min" | "max") =>
+    perUsd !== null
+      ? `${boundToUnits(usd, perUsd, edge).toLocaleString()} ${unit}`
+      : formatMoney(usd, "USD");
   const errorMessage =
     error === "below"
-      ? t("topup.amountBelow", { min: formatMoney(pkg.minAmountUsd ?? 0, "USD") })
+      ? t("topup.amountBelow", { min: bound(pkg.minAmountUsd ?? 0, "min") })
       : error === "above"
-        ? t("topup.amountAbove", { max: formatMoney(pkg.maxAmountUsd ?? 0, "USD") })
+        ? t("topup.amountAbove", { max: bound(pkg.maxAmountUsd ?? 0, "max") })
         : error === "precision"
-          ? t("topup.amountPrecision")
+          ? unit
+            ? t("topup.amountWhole")
+            : t("topup.amountPrecision")
           : null;
 
   return (

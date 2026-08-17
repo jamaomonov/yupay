@@ -246,6 +246,27 @@ async def _existing_idempotent_order(
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
+def _snap_to_unit(amount_usd: Decimal, sku: Sku) -> Decimal:
+    """Round a unit-priced amount to a whole unit before it prices anything.
+
+    On a SKU bought in stars rather than dollars, the storefront divides the
+    star count by ``units_per_usd`` and sends the result. Float noise on the way
+    means 500 stars can arrive as the USD value of 499.9997 — and the supplier
+    is sent an integer, so the customer would be charged for one amount and
+    credited another. Snapping here makes the two agree by construction, and
+    leaves a dollar-priced SKU (every existing one) untouched.
+    """
+    per_usd = sku.units_per_usd
+    if not sku.variable_amount or per_usd is None or per_usd <= 0:
+        return amount_usd
+    units = (amount_usd * per_usd).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    if units <= 0:
+        # Below half a unit. Let the bounds check reject it with its own message
+        # rather than silently selling zero.
+        return amount_usd
+    return (units / per_usd).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+
+
 def _resolve_line_unit_price(sku: Sku, line: OrderItemIn, currency: str) -> Decimal:
     """The USD amount one order line bills for.
 
@@ -289,12 +310,13 @@ def _resolve_line_unit_price(sku: Sku, line: OrderItemIn, currency: str) -> Deci
             )
         if line.amount_usd is None:
             raise ValidationError("amount is required for this product", extra={"sku_id": sku.id})
+        amount = _snap_to_unit(line.amount_usd, sku)
         validate_amount(
-            line.amount_usd,
+            amount,
             minimum=sku.min_amount_usd or Decimal("0"),
             maximum=sku.max_amount_usd or Decimal("0"),
         )
-        return line.amount_usd
+        return amount
     if line.amount_usd is not None:
         raise ValidationError("this product has a fixed price", extra={"sku_id": sku.id})
     return sku.price_usd

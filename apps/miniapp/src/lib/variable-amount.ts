@@ -52,3 +52,50 @@ export function amountError(amount: number, min: number, max: number): AmountErr
   if (amount > max) return "above";
   return null;
 }
+
+/* ---------------------------------------------------------------------------
+ * Amounts typed in something other than dollars.
+ *
+ * The Steam wallet is bought in dollars, so the number the customer types is
+ * the number that gets billed. Telegram Stars is bought in stars at about
+ * $0.0155 each — asking for dollars would be asking the customer to do
+ * arithmetic this page can do. The SKU carries `amount_unit` ("stars") and
+ * `units_per_usd` (64.705882); everything below converts between the two.
+ *
+ * Dollars stay authoritative on the wire: `toUsd` is what checkout sends, and
+ * the server snaps it back to a whole unit before pricing, so the count the
+ * customer saw and the count the supplier is sent cannot drift.
+ * ------------------------------------------------------------------------- */
+
+/** How many units one dollar buys, or `null` when the SKU is priced in dollars. */
+export function unitsPerUsd(sku: {
+  units_per_usd?: string | null;
+  amount_unit?: string | null;
+}): number | null {
+  if (!sku.amount_unit || sku.units_per_usd == null) return null;
+  const n = Number.parseFloat(sku.units_per_usd);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** A unit count as the dollar amount to send. Six decimals matches the
+ *  column; the server snaps to a whole unit regardless. */
+export function toUsd(units: number, perUsd: number): number {
+  return Number((units / perUsd).toFixed(6));
+}
+
+/** A dollar bound as a whole number of units, rounded inward so the displayed
+ *  range never promises an amount the server would reject: a minimum rounds up
+ *  and a maximum rounds down. */
+export function boundToUnits(usd: number, perUsd: number, edge: "min" | "max"): number {
+  const raw = usd * perUsd;
+  return edge === "min" ? Math.ceil(raw - EPSILON) : Math.floor(raw + EPSILON);
+}
+
+/** Whether a typed unit count can be charged. Units are whole things — half a
+ *  star does not exist — so any fraction is a precision error. */
+export function unitAmountError(units: number, min: number, max: number): AmountErrorReason {
+  if (Math.abs(units - Math.round(units)) > EPSILON) return "precision";
+  if (units < min) return "below";
+  if (units > max) return "above";
+  return null;
+}

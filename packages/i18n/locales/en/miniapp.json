@@ -164,6 +164,8 @@
   "topup.amountBelow": "Minimum {min}",
   "topup.amountAbove": "Maximum {max}",
   "topup.amountPrecision": "At most two decimal places",
+  "topup.amountWhole": "Enter a whole number",
+  "topup.ratePerUnit": "1 {unit} = {rate}",
   "topup.amountInvalidTitle": "Check the amount",
   "topup.ratePerDollar": "$1 = {rate}",
   "topup.zeroFee": "0% fee",

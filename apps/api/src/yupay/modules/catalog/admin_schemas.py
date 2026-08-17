@@ -363,6 +363,10 @@ class SkuCreate(BaseModel):
     min_amount_usd: Decimal | None = Field(default=None, gt=0)
     max_amount_usd: Decimal | None = Field(default=None, gt=0)
     rate_multiplier: Decimal | None = Field(default=None, gt=0)
+    # What the customer types, when it is not dollars: ("stars", 64.705882).
+    # Both or neither — see ``ck_skus_amount_unit_complete``.
+    amount_unit: str | None = Field(default=None, max_length=32)
+    units_per_usd: Decimal | None = Field(default=None, gt=0)
     image_url: str | None = Field(default=None, max_length=1024)
     sort_order: int = 0
     active: bool = True
@@ -413,6 +417,10 @@ class SkuUpdate(BaseModel):
     min_amount_usd: Decimal | None = Field(default=None, gt=0)
     max_amount_usd: Decimal | None = Field(default=None, gt=0)
     rate_multiplier: Decimal | None = Field(default=None, gt=0)
+    # What the customer types, when it is not dollars: ("stars", 64.705882).
+    # Both or neither — see ``ck_skus_amount_unit_complete``.
+    amount_unit: str | None = Field(default=None, max_length=32)
+    units_per_usd: Decimal | None = Field(default=None, gt=0)
     image_url: str | None = None
     sort_order: int | None = None
     active: bool | None = None

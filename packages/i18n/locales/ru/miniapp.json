@@ -164,6 +164,8 @@
   "topup.amountBelow": "Минимум {min}",
   "topup.amountAbove": "Максимум {max}",
   "topup.amountPrecision": "Не более двух знаков после запятой",
+  "topup.amountWhole": "Введите целое число",
+  "topup.ratePerUnit": "1 {unit} = {rate}",
   "topup.amountInvalidTitle": "Проверьте сумму",
   "topup.ratePerDollar": "1 $ = {rate}",
   "topup.zeroFee": "Комиссия 0%",

@@ -8175,6 +8175,18 @@
             "title": "Active",
             "type": "boolean"
           },
+          "amount_unit": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Unit"
+          },
           "cost_usdt": {
             "anyOf": [
               {
@@ -8326,6 +8338,22 @@
             "title": "Sort Order",
             "type": "integer"
           },
+          "units_per_usd": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Units Per Usd"
+          },
           "variable_amount": {
             "default": false,
             "title": "Variable Amount",
@@ -8343,6 +8371,17 @@
       "SkuOut": {
         "description": "A single sellable variant.",
         "properties": {
+          "amount_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Unit"
+          },
           "denomination": {
             "anyOf": [
               {
@@ -8429,6 +8468,18 @@
           "sku_code": {
             "title": "Sku Code",
             "type": "string"
+          },
+          "units_per_usd": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Units Per Usd"
           },
           "variable_amount": {
             "default": false,
@@ -8627,6 +8678,18 @@
             ],
             "title": "Active"
           },
+          "amount_unit": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Unit"
+          },
           "cost_usdt": {
             "anyOf": [
               {
@@ -8793,6 +8856,22 @@
               }
             ],
             "title": "Sort Order"
+          },
+          "units_per_usd": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Units Per Usd"
           },
           "variable_amount": {
             "anyOf": [

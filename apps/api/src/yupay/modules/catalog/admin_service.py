@@ -532,6 +532,8 @@ async def create_sku(db: AsyncSession, body: SkuCreate) -> Sku:
         min_amount_usd=body.min_amount_usd,
         max_amount_usd=body.max_amount_usd,
         rate_multiplier=body.rate_multiplier,
+        amount_unit=body.amount_unit,
+        units_per_usd=body.units_per_usd,
         image_url=body.image_url,
         sort_order=body.sort_order,
         active=body.active,
@@ -545,6 +547,21 @@ async def create_sku(db: AsyncSession, body: SkuCreate) -> Sku:
     except IntegrityError as exc:
         raise ConflictError("sku_code already exists") from exc
     return row
+
+
+def _apply_amount_unit(row: Sku, body: SkuUpdate, sent: set[str]) -> None:
+    """Merge the amount-unit pair, following the same "sent, not None" rule as
+    the variable-amount block: sending either as JSON null clears it, which is
+    how a stars SKU is turned back into a dollar one."""
+    if "amount_unit" in sent:
+        row.amount_unit = body.amount_unit
+    if "units_per_usd" in sent:
+        row.units_per_usd = body.units_per_usd
+    if (row.amount_unit is None) != (row.units_per_usd is None):
+        # Mirrors ck_skus_amount_unit_complete. A unit with no rate cannot be
+        # converted and a rate with no unit has nothing to label; either alone
+        # renders a field the storefront cannot price.
+        raise ValidationError("amount_unit and units_per_usd must be set together")
 
 
 async def update_sku(db: AsyncSession, sku_id: str, body: SkuUpdate) -> Sku:
@@ -580,6 +597,7 @@ async def update_sku(db: AsyncSession, sku_id: str, body: SkuUpdate) -> Sku:
         row.max_amount_usd = body.max_amount_usd
     if "rate_multiplier" in sent:
         row.rate_multiplier = body.rate_multiplier
+    _apply_amount_unit(row, body, sent)
 
     # Validate the RESULTING row, not just the fields this request touched.
     # The request body alone can't tell whether a partial edit leaves an
@@ -597,6 +615,11 @@ async def update_sku(db: AsyncSession, sku_id: str, body: SkuUpdate) -> Sku:
     except ValueError as exc:
         raise ValidationError(str(exc)) from exc
     if not row.variable_amount:
+        # A unit only means something on a variable amount — a fixed SKU has
+        # nothing for the customer to type, so clearing it keeps the row from
+        # advertising a field the storefront will never render.
+        row.amount_unit = None
+        row.units_per_usd = None
         row.min_amount_usd = None
         row.max_amount_usd = None
         row.rate_multiplier = None

@@ -28,7 +28,14 @@ import {
 } from "@/lib/payment-providers";
 import { checkBlocker, IDLE, runPlayerCheck, type CheckState } from "@/lib/player-check-state";
 import { formatUzs, pathFor } from "@/lib/seo";
-import { amountError, parseAmount } from "@/lib/variable-amount";
+import {
+  amountError,
+  boundToUnits,
+  parseAmount,
+  toUsd,
+  unitAmountError,
+  unitsPerUsd,
+} from "@/lib/variable-amount";
 
 const API = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
 
@@ -466,22 +473,42 @@ function VariableAmountCard({
     );
   }
   const rateUzs = Number(rate.amount); // one dollar, in UZS
-  const min = sku.min_amount_usd != null ? Number.parseFloat(sku.min_amount_usd) : 1;
-  const max = sku.max_amount_usd != null ? Number.parseFloat(sku.max_amount_usd) : 0;
+  const minUsd = sku.min_amount_usd != null ? Number.parseFloat(sku.min_amount_usd) : 1;
+  const maxUsd = sku.max_amount_usd != null ? Number.parseFloat(sku.max_amount_usd) : 0;
+  // Non-null when the field is denominated in something else — stars, say.
+  // Everything the customer sees is then in that unit; only the wire is USD.
+  const perUsd = unitsPerUsd(sku);
+  const unit = perUsd !== null ? (sku.amount_unit ?? "") : null;
+  const min = perUsd !== null ? boundToUnits(minUsd, perUsd, "min") : minUsd;
+  const max = perUsd !== null ? boundToUnits(maxUsd, perUsd, "max") : maxUsd;
   const parsed = parseAmount(value);
-  const error = parsed !== null ? amountError(parsed, min, max) : null;
-  const total = parsed !== null ? parsed * rateUzs : null;
+  const error =
+    parsed !== null
+      ? perUsd !== null
+        ? unitAmountError(parsed, min, max)
+        : amountError(parsed, min, max)
+      : null;
+  const total =
+    parsed !== null ? (perUsd !== null ? toUsd(parsed, perUsd) : parsed) * rateUzs : null;
+  const asUnits = (n: number) => (unit ? `${n.toLocaleString(locale)} ${unit}` : null);
   const errorMessage =
     error === "below"
-      ? t("amountBelow", { min: formatMoney(min.toFixed(2), "USD", locale) })
+      ? t("amountBelow", { min: asUnits(min) ?? formatMoney(min.toFixed(2), "USD", locale) })
       : error === "above"
-        ? t("amountAbove", { max: formatMoney(max.toFixed(2), "USD", locale) })
+        ? t("amountAbove", { max: asUnits(max) ?? formatMoney(max.toFixed(2), "USD", locale) })
         : error === "precision"
-          ? t("amountPrecision")
+          ? // A fraction of a star does not exist, which is a different
+            // complaint from "more than two decimal places" on a dollar amount.
+            unit
+            ? t("amountWhole")
+            : t("amountPrecision")
           : null;
 
-  // Quick-pick presets, clamped to the SKU's own [min, max]. $10 is the nudge.
-  const PRESETS = [5, 10, 20, 30, 50, 100].filter((a) => a >= min && a <= max);
+  // Quick-pick presets, clamped to the SKU's own [min, max]. $10 is the nudge
+  // for dollars; for a unit-priced field the round numbers are the unit's own.
+  const PRESETS = (
+    perUsd !== null ? [100, 250, 500, 1000, 2500, 5000] : [5, 10, 20, 30, 50, 100]
+  ).filter((a) => a >= min && a <= max);
   const HIT = 10;
   const sliderVal = Math.min(max, Math.max(min, parsed ?? min));
   const pick = (amount: number) => {
@@ -494,7 +521,14 @@ function VariableAmountCard({
     const n = parseAmount(raw);
     onChange(n !== null && n > max ? String(max) : raw);
   };
-  const rateLine = t("ratePerDollar", { rate: formatUzs(locale, Math.round(rateUzs)) });
+  const rateLine =
+    perUsd !== null && unit
+      ? // Per-dollar is meaningless to someone buying stars; quote the unit.
+        t("ratePerUnit", {
+          rate: formatUzs(locale, Math.round(rateUzs / perUsd)),
+          unit,
+        })
+      : t("ratePerDollar", { rate: formatUzs(locale, Math.round(rateUzs)) });
 
   return (
     <div className="border-border overflow-hidden rounded-xl border bg-[linear-gradient(135deg,hsl(var(--card)),hsl(var(--bg)))]">
@@ -813,13 +847,27 @@ export function PurchasePanel({
   const parsedAmount = selSkuVariable ? parseAmount(amountInput) : null;
   const minUsd = selSku?.min_amount_usd != null ? Number.parseFloat(selSku.min_amount_usd) : 0;
   const maxUsd = selSku?.max_amount_usd != null ? Number.parseFloat(selSku.max_amount_usd) : 0;
+  // Non-null when the customer types units rather than dollars (Telegram
+  // Stars). The typed number is then a unit count, and only the wire stays
+  // in dollars.
+  const perUsd = selSku ? unitsPerUsd(selSku) : null;
+  const amountAsUsd =
+    parsedAmount === null ? null : perUsd !== null ? toUsd(parsedAmount, perUsd) : parsedAmount;
   const variableAmountErr =
-    selSkuVariable && parsedAmount !== null ? amountError(parsedAmount, minUsd, maxUsd) : null;
+    selSkuVariable && parsedAmount !== null
+      ? perUsd !== null
+        ? unitAmountError(
+            parsedAmount,
+            boundToUnits(minUsd, perUsd, "min"),
+            boundToUnits(maxUsd, perUsd, "max"),
+          )
+        : amountError(parsedAmount, minUsd, maxUsd)
+      : null;
   // Client-side total for display only — the server recomputes the
   // authoritative price from `amount_usd` at checkout.
   const variableTotal =
-    selSkuVariable && parsedAmount !== null && variableRate
-      ? parsedAmount * Number(variableRate.amount)
+    selSkuVariable && amountAsUsd !== null && variableRate
+      ? amountAsUsd * Number(variableRate.amount)
       : null;
   // Gates the CTA for a variable-amount SKU: a live rate (the FX trust gate
   // didn't reject it) and a parsed, in-bounds, two-decimals-or-fewer amount.
@@ -949,7 +997,11 @@ export function PurchasePanel({
         sku_id: selSku.id,
         qty: 1,
         fulfillment_data: form,
-        ...(selSkuVariable && parsedAmount !== null ? { amount_usd: parsedAmount.toFixed(2) } : {}),
+        ...(selSkuVariable && amountAsUsd !== null
+          ? // Always dollars on the wire. Six decimals because one unit is
+            // rarely a round cent; the server snaps it back to a whole unit.
+            { amount_usd: amountAsUsd.toFixed(perUsd !== null ? 6 : 2) }
+          : {}),
       };
       // Collected at submit, not at mount: the value that matters is the one in
       // force when the purchase was made. Omitted entirely when the browser
@@ -1080,29 +1132,19 @@ export function PurchasePanel({
             // A variable-amount product (Steam wallet top-up) has exactly one
             // SKU with nothing to pick — the customer types the amount, so
             // the denomination grid is replaced with the amount card.
-            const isVariableProduct =
-              product.skus.length > 0 && product.skus.every((s) => s.variable_amount ?? false);
-            const variableSku = isVariableProduct ? product.skus[0] : undefined;
+            // A product can carry both: Telegram Stars sells eleven packages
+            // *and* a free amount, so the grid and the amount card coexist
+            // rather than one replacing the other. Steam has only the card.
+            const variableSku = product.skus.find((s) => s.variable_amount ?? false);
+            const fixedSkus = product.skus.filter((s) => !(s.variable_amount ?? false));
             return (
               <div key={product.id} className="mt-5">
                 {products.length > 1 && (
                   <div className="text-tx-mute mb-3 text-sm font-semibold">{product.name}</div>
                 )}
-                {variableSku ? (
-                  <VariableAmountCard
-                    sku={variableSku}
-                    value={skuId === variableSku.id ? amountInput : ""}
-                    onChange={setAmountInput}
-                    onFocus={() => {
-                      setSkuId(variableSku.id);
-                    }}
-                    locale={locale}
-                    image={variableSku.image_url ?? product.image_url ?? product.brand.logo_url}
-                    t={t}
-                  />
-                ) : (
+                {fixedSkus.length > 0 && (
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    {product.skus.map((sku) => {
+                    {fixedSkus.map((sku) => {
                       const active = sku.id === skuId;
                       const img = sku.image_url ?? product.image_url;
                       // Gift cards run out. `in_stock` is absent on an older
@@ -1156,6 +1198,21 @@ export function PurchasePanel({
                         </button>
                       );
                     })}
+                  </div>
+                )}
+                {variableSku && (
+                  <div className={fixedSkus.length > 0 ? "mt-3" : ""}>
+                    <VariableAmountCard
+                      sku={variableSku}
+                      value={skuId === variableSku.id ? amountInput : ""}
+                      onChange={setAmountInput}
+                      onFocus={() => {
+                        setSkuId(variableSku.id);
+                      }}
+                      locale={locale}
+                      image={variableSku.image_url ?? product.image_url ?? product.brand.logo_url}
+                      t={t}
+                    />
                   </div>
                 )}
               </div>

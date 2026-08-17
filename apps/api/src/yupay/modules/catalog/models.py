@@ -300,6 +300,14 @@ class Sku(Base):
     max_amount_usd: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
     # Margin: the customer-facing rate is the market rate times this.
     rate_multiplier: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    # What the customer types on a variable-amount SKU, when it is not dollars.
+    # The Steam wallet is bought in USD and leaves both NULL; Telegram Stars is
+    # bought in stars, so it carries ("stars", 64.705882) and the storefront
+    # labels the field and converts. The USD bounds above stay authoritative —
+    # pricing, revenue and the FX snapshot all speak dollars, and giving them a
+    # second currency to be right about is how those go wrong.
+    amount_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    units_per_usd: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
     # The margin this SKU is meant to hold above cost_usdt: price_usd =
     # cost_usdt * (1 + margin_percent / 100). Not just a UI convenience —
     # the hourly supplier price-refresh (integrations.price_refresh) reads

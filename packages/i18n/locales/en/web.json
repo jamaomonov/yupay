@@ -237,6 +237,8 @@
     "amountBelow": "Minimum {min}",
     "amountAbove": "Maximum {max}",
     "amountPrecision": "At most two decimal places",
+    "amountWhole": "Enter a whole number",
+    "ratePerUnit": "1 {unit} = {rate}",
     "ratePerDollar": "$1 = {rate}",
     "zeroFee": "0% fee",
     "priceUnavailable": "Price is temporarily unavailable. Please check back soon.",

@@ -54,6 +54,11 @@ interface SkuApi {
   // web-ssg-prerenders-against-deployed-api (the same risk applies to any
   // build/runtime hitting a stale API before this field shipped).
   variable_amount?: boolean;
+  // Optional on purpose: `next build` prerenders against the deployed API,
+  // which does not serve these until this change ships. A required field here
+  // fails the production build.
+  amount_unit?: string | null;
+  units_per_usd?: string | null;
   min_amount_usd?: string | null;
   max_amount_usd?: string | null;
   // Gift cards are finite: the supplier holds real codes and runs out. Same
@@ -190,6 +195,9 @@ export interface Package {
   // ``price_usd`` is a ``1``-dollar placeholder) — use ``ratePerDollar``
   // instead, which is the localised price of ONE dollar.
   variableAmount: boolean;
+  // Set when the amount is typed in something other than dollars (stars).
+  amountUnit: string | null;
+  unitsPerUsd: number | null;
   minAmountUsd: number | null;
   maxAmountUsd: number | null;
   /** Localised price of one dollar for a variable-amount SKU. `null` means
@@ -221,6 +229,8 @@ function skuToPackage(sku: SkuApi): Package {
     displayPrice,
     imageUrl: sku.image_url,
     variableAmount,
+    amountUnit: sku.amount_unit ?? null,
+    unitsPerUsd: sku.units_per_usd != null ? Number.parseFloat(sku.units_per_usd) : null,
     minAmountUsd: sku.min_amount_usd != null ? Number.parseFloat(sku.min_amount_usd) : null,
     maxAmountUsd: sku.max_amount_usd != null ? Number.parseFloat(sku.max_amount_usd) : null,
     ratePerDollar: variableAmount ? displayPrice : null,

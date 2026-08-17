@@ -164,6 +164,8 @@
   "topup.amountBelow": "Kamida {min}",
   "topup.amountAbove": "Ko'pi bilan {max}",
   "topup.amountPrecision": "Nuqtadan keyin ikkitagacha raqam",
+  "topup.amountWhole": "Butun son kiriting",
+  "topup.ratePerUnit": "1 {unit} = {rate}",
   "topup.amountInvalidTitle": "Miqdorni tekshiring",
   "topup.ratePerDollar": "1 $ = {rate}",
   "topup.zeroFee": "Komissiya 0%",

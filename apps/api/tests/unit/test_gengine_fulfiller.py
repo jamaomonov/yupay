@@ -66,6 +66,27 @@ class FakeClient:
         return self._paid
 
 
+class _FakeDb:
+    """Stands in for the session `fulfill` uses to look the SKU up.
+
+    An amount-priced line re-derives its quantity from the SKU, so the adapter
+    now reads one. `sku=None` means "not found", which falls back to the
+    mapping's quantity — the package case.
+    """
+
+    def __init__(self, sku: Any = None) -> None:
+        self._sku = sku
+
+    async def execute(self, _stmt: Any) -> Any:
+        sku = self._sku
+
+        class _Result:
+            def scalar_one_or_none(self) -> Any:
+                return sku
+
+        return _Result()
+
+
 class _Task:
     def __init__(self, external_order_id: str | None) -> None:
         self.external_order_id = external_order_id
@@ -235,7 +256,12 @@ async def _sent_params(
     monkeypatch.setattr(GEngineFulfiller, "available", property(lambda _self: True))
 
     f = GEngineFulfiller(Client())  # type: ignore[arg-type]
-    await f.fulfill(db=None, order=None, item=Item(), idempotency_key="k")  # type: ignore[arg-type]
+    await f.fulfill(
+        db=_FakeDb(),  # type: ignore[arg-type]
+        order=None,  # type: ignore[arg-type]
+        item=Item(),  # type: ignore[arg-type]
+        idempotency_key="k",
+    )
     return sent
 
 
@@ -579,7 +605,7 @@ async def test_a_lost_create_response_is_recovered_instead_of_bought_twice(
     monkeypatch.setattr(GEngineFulfiller, "available", property(lambda _self: True))
 
     result = await GEngineFulfiller(client).fulfill(  # type: ignore[arg-type]
-        db=None,  # type: ignore[arg-type]
+        db=_FakeDb(),  # type: ignore[arg-type]
         order=None,  # type: ignore[arg-type]
         item=Item(),  # type: ignore[arg-type]
         idempotency_key="uuid-1",
@@ -614,7 +640,7 @@ async def test_a_create_that_truly_failed_is_reported_not_retried(
 
     with pytest.raises(FulfillerError, match="insufficient funds"):
         await GEngineFulfiller(client).fulfill(  # type: ignore[arg-type]
-            db=None,  # type: ignore[arg-type]
+            db=_FakeDb(),  # type: ignore[arg-type]
             order=None,  # type: ignore[arg-type]
             item=Item(),  # type: ignore[arg-type]
             idempotency_key="uuid-2",
@@ -688,7 +714,7 @@ async def test_an_unreachable_supplier_during_create_is_reported(
     client = FakeClient(created=GEngineUnavailableError("connection reset"))
     with pytest.raises(FulfillerError, match="connection reset"):
         await GEngineFulfiller(client).fulfill(  # type: ignore[arg-type]
-            db=None,  # type: ignore[arg-type]
+            db=_FakeDb(),  # type: ignore[arg-type]
             order=None,  # type: ignore[arg-type]
             item=Item(),  # type: ignore[arg-type]
             idempotency_key="uuid-3",
@@ -722,7 +748,7 @@ async def test_an_empty_checkout_form_is_refused_before_any_purchase(
     client = FakeClient()
     with pytest.raises(FulfillerError, match="no G-Engine parameters"):
         await GEngineFulfiller(client).fulfill(  # type: ignore[arg-type]
-            db=None,  # type: ignore[arg-type]
+            db=_FakeDb(),  # type: ignore[arg-type]
             order=None,  # type: ignore[arg-type]
             item=Item(),  # type: ignore[arg-type]
             idempotency_key="uuid-4",
@@ -753,7 +779,7 @@ async def test_a_voucher_mapping_routes_to_the_shop_half(
 
     client = FakeShopClient(reserved=_shop("pending"), paid=_shop("shipped", codes=["SO2-AAA"]))
     result = await GEngineFulfiller(client).fulfill(  # type: ignore[arg-type]
-        db=None,  # type: ignore[arg-type]
+        db=_FakeDb(),  # type: ignore[arg-type]
         order=None,  # type: ignore[arg-type]
         item=Item(),  # type: ignore[arg-type]
         idempotency_key="uuid-5",
@@ -789,3 +815,59 @@ async def test_the_read_client_is_the_adapter_s_own() -> None:
 
     f = GEngineFulfiller(Client())  # type: ignore[arg-type]
     assert f.client_for_reads() is f._client_override
+
+
+async def test_a_variable_line_sends_the_amount_that_was_paid_for(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Not the mapping's quantity, and not the checkout form either. The star
+    count is re-derived from the money actually charged, so it cannot drift
+    from what the customer paid."""
+    from decimal import Decimal
+
+    import yupay.modules.fulfillment.suppliers.gengine as mod
+
+    class Mapping:
+        kind = "game"
+        external_product_id = "72"
+        external_variant_id = None
+        quantity = 1  # the package default, and wrong for this line
+
+    class Sku:
+        variable_amount = True
+        units_per_usd = Decimal("64.705882")
+
+    class Item:
+        sku_id = "sku-stars-any"
+        unit_price_usd = Decimal("7.727273")  # 500 stars
+        fulfillment_data: ClassVar[dict[str, str]] = {"username": "durov"}
+
+    class Result:
+        def scalar_one_or_none(self) -> Sku:
+            return Sku()
+
+    class Db:
+        async def execute(self, _stmt: Any) -> Result:
+            return Result()
+
+    sent: dict[str, Any] = {}
+
+    class Client:
+        async def create_recharge_order(self, **kw: Any) -> GEngineOrder:
+            sent.update(kw)
+            return _order("pending")
+
+    async def _mapping_for(_db: Any, *, sku_id: str) -> Any:
+        return Mapping()
+
+    monkeypatch.setattr(mod, "_mapping_for", _mapping_for)
+    monkeypatch.setattr(GEngineFulfiller, "available", property(lambda _self: True))
+
+    await GEngineFulfiller(Client()).fulfill(  # type: ignore[arg-type]
+        db=Db(),  # type: ignore[arg-type]
+        order=None,  # type: ignore[arg-type]
+        item=Item(),  # type: ignore[arg-type]
+        idempotency_key="uuid-var",
+    )
+
+    assert sent["params"]["Quantity"] == "500"

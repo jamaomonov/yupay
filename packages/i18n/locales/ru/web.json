@@ -237,6 +237,8 @@
     "amountBelow": "Минимум {min}",
     "amountAbove": "Максимум {max}",
     "amountPrecision": "Не более двух знаков после запятой",
+    "amountWhole": "Введите целое число",
+    "ratePerUnit": "1 {unit} = {rate}",
     "ratePerDollar": "1 $ = {rate}",
     "zeroFee": "Комиссия 0%",
     "priceUnavailable": "Цена временно недоступна. Загляните чуть позже.",

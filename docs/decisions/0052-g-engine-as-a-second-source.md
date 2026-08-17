@@ -170,6 +170,32 @@ it), and the alert fires only on the _transition_ into empty. The count itself i
 still never shown to customers — only the derived `Sku.in_stock`, which greys the
 buy button out and replaces the price with "нет в наличии".
 
+## An amount typed in stars, not dollars
+
+Stars ships as eleven packages **and** a free-amount line, because most buyers
+want "500 stars" in one tap and the rest want a number the grid does not have.
+
+The variable-amount model already existed for the Steam wallet, where the thing
+the customer types _is_ dollars. Stars is the same shape of purchase priced in a
+different unit, so migration 0047 gives a SKU an `amount_unit` and a
+`units_per_usd`; NULL on both means dollars, which is every row that existed
+before. The USD bounds stay authoritative and stay in USD — pricing, revenue and
+the FX snapshot all speak dollars, and giving them a second currency to be right
+about is how those go wrong.
+
+The number the customer sees and the number the supplier is sent must not drift:
+G-Engine takes an integer star count, so checkout **snaps** the amount to a whole
+unit before pricing anything (`orders.service._snap_to_unit`), and the adapter
+re-derives the count from `unit_price_usd` rather than trusting the form. A
+customer who asked for 500 is charged for 500 and credited 500, by construction
+rather than by luck.
+
+Both storefronts had assumed a product is _either_ packages _or_ an amount
+(`skus.every(variable_amount)`). They now render both, and the miniapp's
+UZS-only payment restriction follows the selected line rather than the product —
+a package is fine in USD, the free amount is not, and gating on the product
+would have offered a currency checkout then rejects.
+
 ## Wiring a SKU to G-Engine from the admin
 
 The backend adapter is only half the integration: `_mapping_for` refuses with

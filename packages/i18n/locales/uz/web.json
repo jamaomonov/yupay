@@ -237,6 +237,8 @@
     "amountBelow": "Kamida {min}",
     "amountAbove": "Koʻpi bilan {max}",
     "amountPrecision": "Nuqtadan keyin ikkitagacha raqam",
+    "amountWhole": "Butun son kiriting",
+    "ratePerUnit": "1 {unit} = {rate}",
     "ratePerDollar": "1 $ = {rate}",
     "zeroFee": "Komissiya 0%",
     "priceUnavailable": "Narx vaqtincha mavjud emas. Birozdan soʻng qayta urinib koʻring.",

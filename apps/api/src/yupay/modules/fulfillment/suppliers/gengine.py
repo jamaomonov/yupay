@@ -29,6 +29,7 @@ money.
 
 from __future__ import annotations
 
+from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any
 
 from yupay.core.config import get_settings
@@ -139,11 +140,15 @@ class GEngineFulfiller(Fulfiller):
         if denomination_id is None:
             # An `unfixed` service (Telegram Stars, and anything else priced by
             # amount) has no denominations to choose from — it wants a
-            # `Quantity` instead, and rejects the order without one. The amount
-            # lives on the mapping because we sell these as fixed packages: one
-            # SKU per star count, so the number is known before checkout and is
-            # never the customer's to type.
-            params["Quantity"] = str(mapping.quantity)
+            # `Quantity` instead, and rejects the order without one.
+            #
+            # Where that number comes from depends on how the SKU is sold. A
+            # package SKU carries it on the mapping. A variable-amount SKU is
+            # the customer's own figure, and it has to be re-derived from the
+            # money actually charged rather than trusted from the form —
+            # checkout snapped it to a whole unit, so this reverses exactly
+            # that and cannot drift from what was paid.
+            params["Quantity"] = str(await _quantity_for(db, item=item, mapping=mapping))
 
         try:
             created = await self._client().create_recharge_order(
@@ -329,6 +334,25 @@ class GEngineFulfiller(Fulfiller):
 
 
 # ---------- helpers ----------
+
+
+async def _quantity_for(db: AsyncSession, *, item: OrderItem, mapping: Any) -> int:
+    """How many units to buy for one order line of an amount-priced service."""
+    from sqlalchemy import select
+
+    from yupay.modules.catalog.models import Sku
+
+    sku = (await db.execute(select(Sku).where(Sku.id == item.sku_id))).scalar_one_or_none()
+    if sku is not None and sku.variable_amount and sku.units_per_usd:
+        units = (item.unit_price_usd * sku.units_per_usd).quantize(
+            Decimal("1"), rounding=ROUND_HALF_UP
+        )
+        if units > 0:
+            return int(units)
+        raise FulfillerError(
+            f"variable amount {item.unit_price_usd} resolves to no units — refusing to order"
+        )
+    return int(mapping.quantity)
 
 
 async def _mapping_for(db: AsyncSession, *, sku_id: str) -> Any:
