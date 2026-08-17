@@ -179,6 +179,40 @@ def _order_body(
     return {"currency": currency, "items": [item]}
 
 
+async def test_the_storefront_is_told_what_unit_the_amount_is_in(
+    integration_client: AsyncClient,
+    _variable_sku: Sku,
+    db_session: AsyncSession,
+) -> None:
+    """The unit lives on the SKU and only reaches the customer through this
+    DTO. It was added to the schema and left unpopulated once already, which
+    reads as "priced in dollars" — so a stars field would have asked for
+    dollars and priced them as stars."""
+    _variable_sku.amount_unit = "Stars"
+    _variable_sku.units_per_usd = Decimal("64.705882")
+    await db_session.commit()
+
+    r = await integration_client.get("/api/v1/catalog/products/steam-wallet?currency=UZS")
+
+    assert r.status_code == 200, r.text
+    sku = next(s for s in r.json()["skus"] if s["variable_amount"])
+    assert sku["amount_unit"] == "Stars"
+    assert Decimal(sku["units_per_usd"]) == Decimal("64.705882")
+
+
+async def test_a_dollar_priced_sku_reports_no_unit(
+    integration_client: AsyncClient,
+    _variable_sku: Sku,
+) -> None:
+    # Every SKU that existed before this field. Absent must keep meaning
+    # dollars, or the storefront starts converting by a rate that is not there.
+    r = await integration_client.get("/api/v1/catalog/products/steam-wallet?currency=UZS")
+
+    sku = next(s for s in r.json()["skus"] if s["variable_amount"])
+    assert sku["amount_unit"] is None
+    assert sku["units_per_usd"] is None
+
+
 async def test_variable_sku_prices_from_the_amount(
     integration_client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
