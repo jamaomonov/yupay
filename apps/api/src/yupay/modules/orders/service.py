@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -198,6 +199,10 @@ async def _fetch_skus_with_product(db: AsyncSession, sku_ids: list[str]) -> dict
         select(Sku)
         .options(
             selectinload(Sku.product).selectinload(Product.brand),
+            # The product's other SKUs, because a free-amount line is priced
+            # from whichever package it falls in — see `tier_unit_price`. One
+            # extra query, not one per line.
+            selectinload(Sku.product).selectinload(Product.skus),
             selectinload(Sku.price_overrides),
         )
         .where(Sku.id.in_(sku_ids))
@@ -246,6 +251,34 @@ async def _existing_idempotent_order(
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
+def _tier_priced_amount(amount_usd: Decimal, sku: Sku) -> Decimal | None:
+    """Re-price a snapped amount from the packages, or ``None`` to leave it be.
+
+    ``None`` covers everything that is not sold by unit — the Steam wallet, and
+    any unit SKU whose product has no packages to price from — so those keep
+    billing the amount the customer named, exactly as before.
+
+    The returned value is a **face value**, which is what ``unit_price_usd``
+    has always held: the charge is later computed as face × rate × multiplier,
+    and revenue as face × multiplier. So the package price is divided by the
+    multiplier here and multiplied back downstream, leaving the customer
+    charged exactly the package price. Doing it this way rather than requiring
+    ``rate_multiplier = 1`` on these SKUs means a mis-set multiplier cannot
+    silently charge the margin twice.
+    """
+    per_usd = sku.units_per_usd
+    if per_usd is None or per_usd <= 0 or sku.product is None:
+        return None
+    units = int((amount_usd * per_usd).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    if units <= 0:
+        return None
+    total = tier_price_usd(units, (s for s in sku.product.skus if s.id != sku.id))
+    if total is None:
+        return None
+    multiplier = sku.rate_multiplier or Decimal("1")
+    return (total / multiplier).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+
+
 def _snap_to_unit(amount_usd: Decimal, sku: Sku) -> Decimal:
     """Round a unit-priced amount to a whole unit before it prices anything.
 
@@ -265,6 +298,47 @@ def _snap_to_unit(amount_usd: Decimal, sku: Sku) -> Decimal:
         # rather than silently selling zero.
         return amount_usd
     return (units / per_usd).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+
+
+def tier_price_usd(units: int, siblings: Iterable[Sku]) -> Decimal | None:
+    """What a free amount of ``units`` costs, priced from the packages.
+
+    Margin differs per package — 20% on the small Telegram Stars packs, less on
+    the large ones — so there is no single rate that prices "any amount". The
+    amount is priced *from* the package it falls in: 50–74 stars at the 50-pack's
+    per-star price, 75–99 at the 75-pack's. The two can then never disagree,
+    whatever margins are set, because one is derived from the other.
+
+    Two rules, and the second is the one that is easy to miss:
+
+    * the band is the largest package at or below the amount;
+    * **the amount never costs more than the next package up.** Without that,
+      band pricing is not monotonic — with a 10% discount on the 500-pack, 499
+      stars at the 100-pack's rate came to $9.23 while 500 cost $8.89, so buying
+      less cost more. The cap flattens the top of each band instead, which is
+      both monotonic and the answer in the customer's favour.
+
+    Returns ``None`` below the smallest package rather than inventing a price;
+    the caller's bounds check is what rejects that.
+    """
+    packs = sorted(
+        (s for s in siblings if s.active and s.units is not None and s.units > 0),
+        key=lambda s: s.units or 0,
+    )
+    band: Sku | None = None
+    ceiling: Decimal | None = None
+    for pack in packs:
+        pack_units = pack.units or 0
+        if pack_units <= units:
+            band = pack
+        elif ceiling is None:
+            ceiling = pack.price_usd
+    if band is None or band.units is None:
+        return None
+    total = Decimal(units) * (band.price_usd / Decimal(band.units))
+    if ceiling is not None and total > ceiling:
+        total = ceiling
+    return total.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
 
 
 def _resolve_line_unit_price(sku: Sku, line: OrderItemIn, currency: str) -> Decimal:
@@ -316,7 +390,12 @@ def _resolve_line_unit_price(sku: Sku, line: OrderItemIn, currency: str) -> Deci
             minimum=sku.min_amount_usd or Decimal("0"),
             maximum=sku.max_amount_usd or Decimal("0"),
         )
-        return amount
+        # `amount` is still the unit count expressed in dollars, which is only
+        # a way of naming the count unambiguously. What gets billed is the
+        # package-derived price, so the free amount and the packages cannot
+        # drift apart when their margins differ.
+        priced = _tier_priced_amount(amount, sku)
+        return priced if priced is not None else amount
     if line.amount_usd is not None:
         raise ValidationError("this product has a fixed price", extra={"sku_id": sku.id})
     return sku.price_usd

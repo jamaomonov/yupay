@@ -367,6 +367,7 @@ class SkuCreate(BaseModel):
     # Both or neither — see ``ck_skus_amount_unit_complete``.
     amount_unit: str | None = Field(default=None, max_length=32)
     units_per_usd: Decimal | None = Field(default=None, gt=0)
+    units: int | None = Field(default=None, gt=0)
     image_url: str | None = Field(default=None, max_length=1024)
     sort_order: int = 0
     active: bool = True
@@ -421,6 +422,7 @@ class SkuUpdate(BaseModel):
     # Both or neither — see ``ck_skus_amount_unit_complete``.
     amount_unit: str | None = Field(default=None, max_length=32)
     units_per_usd: Decimal | None = Field(default=None, gt=0)
+    units: int | None = Field(default=None, gt=0)
     image_url: str | None = None
     sort_order: int | None = None
     active: bool | None = None

@@ -65,6 +65,107 @@ function makeProduct(): ProductDetail {
   };
 }
 
+/** A Telegram-Stars-shaped product: one fixed pack plus a free amount typed in
+ *  Stars (64.705882 per dollar, $0.7727–$772.7 → 50–50 000 Stars). */
+function makeUnitProduct(): ProductDetail {
+  const base = makeProduct();
+  return {
+    ...base,
+    skus: [
+      { ...base.skus[0]!, id: "sku-pack", sku_code: "STARS-50", denomination: "50 Stars" },
+      {
+        ...base.skus[0]!,
+        id: "sku-var",
+        sku_code: "STARS-VAR",
+        denomination: "Stars",
+        variable_amount: true,
+        amount_unit: "Stars",
+        units_per_usd: "64.705882",
+        min_amount_usd: "0.7727",
+        max_amount_usd: "772.7",
+        display_price: { amount: "12500", currency: "UZS", source: "fx" },
+      },
+    ],
+  };
+}
+
+it("puts the free-amount field above the packages and says nothing about rate or fees", async () => {
+  // The old card asked for dollars while the customer was buying Stars, hid the
+  // field under the grid, and wrapped it in a rate / "комиссия 0%" / limit
+  // panel plus a slider and its own duplicate $100/$250/$500 presets.
+  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  render(<PurchasePanel products={[makeUnitProduct()]} locale="ru" />);
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
+  });
+
+  const field = screen.getByLabelText("amountUnitLabel");
+  const pack = screen.getByRole("button", { name: /50 Stars/ });
+  // DOCUMENT_POSITION_FOLLOWING === the pack comes after the field.
+  expect(field.compareDocumentPosition(pack) & 4).toBeTruthy();
+
+  // Denominated in the unit, never in dollars: the label carries "Stars" and
+  // the placeholder is the smallest count, not "например, 10".
+  expect(field).toHaveAttribute("placeholder", "50");
+  expect(field).toHaveAttribute("inputMode", "numeric");
+  expect(screen.getByText("amountRange")).toBeInTheDocument();
+
+  for (const gone of ["rateLabel", "feeLabel", "limitLabel", "feeNote", "amountSubtitle"]) {
+    expect(screen.queryByText(gone)).not.toBeInTheDocument();
+  }
+  expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+});
+
+it("makes the typed amount and a package mutually exclusive", async () => {
+  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  render(<PurchasePanel products={[makeUnitProduct()]} locale="ru" />);
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
+  });
+
+  const field = screen.getByLabelText("amountUnitLabel");
+  const pack = screen.getByRole("button", { name: /50 Stars/ });
+
+  // Focus precedes input in a real browser — that is what selects the SKU.
+  fireEvent.focus(field);
+  fireEvent.change(field, { target: { value: "100" } });
+  expect(field).toHaveValue("100");
+  expect(pack).toHaveAttribute("aria-pressed", "false");
+
+  fireEvent.click(pack);
+  expect(pack).toHaveAttribute("aria-pressed", "true");
+  expect(field).toHaveValue("");
+});
+
+it("keeps the dollar wording for a SKU with no unit (Steam)", async () => {
+  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  const base = makeProduct();
+  const steam: ProductDetail = {
+    ...base,
+    skus: [
+      {
+        ...base.skus[0]!,
+        variable_amount: true,
+        amount_unit: null,
+        units_per_usd: null,
+        min_amount_usd: "1",
+        max_amount_usd: "300",
+      },
+    ],
+  };
+  render(<PurchasePanel products={[steam]} locale="ru" />);
+  // Let the provider-status fetch settle so it doesn't resolve outside act().
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
+  });
+
+  const field = screen.getByLabelText("amountOwn");
+  expect(field).toHaveAttribute("placeholder", "amountPlaceholder");
+  expect(field).toHaveAttribute("inputMode", "decimal");
+  // No packages to choose from, so the heading stays the amount one.
+  expect(screen.getByRole("heading", { name: "amountTitle" })).toBeInTheDocument();
+});
+
 // `METHODS` (module-level in PurchasePanel.tsx) is [click, payme, uzum]; the
 // component defaults `methodId` to the first entry (click) before it knows
 // anything about live provider status.

@@ -49,6 +49,7 @@ import {
   amountError,
   boundToUnits,
   parseAmount,
+  tierPrice,
   toUsd,
   unitAmountError,
   unitsPerUsd,
@@ -72,6 +73,7 @@ interface Package {
   variableAmount: boolean;
   amountUnit: string | null;
   unitsPerUsd: number | null;
+  units: number | null;
   minAmountUsd: number | null;
   maxAmountUsd: number | null;
   /** Localised price of one dollar. `null` means the FX trust gate rejected
@@ -92,6 +94,7 @@ function adaptPackage(api: ApiPackage): Package {
     variableAmount: api.variableAmount,
     amountUnit: api.amountUnit,
     unitsPerUsd: api.unitsPerUsd,
+    units: api.units,
     minAmountUsd: api.minAmountUsd,
     maxAmountUsd: api.maxAmountUsd,
     ratePerDollar: api.ratePerDollar,
@@ -487,10 +490,22 @@ export default function TopUp() {
       : null;
   // Client-side total for display only — the server recomputes the
   // authoritative price from ``amount_usd`` at checkout.
-  const variableTotal =
-    isVariableSelected && amountAsUsd !== null && activePkg?.ratePerDollar
-      ? amountAsUsd * activePkg.ratePerDollar.amount
-      : null;
+  // Packages the typed amount is priced from, in the currency being shown, so
+  // a per-currency override on a pack carries through to the field.
+  const tierPacks = fixedPackages
+    .filter((p) => p.units != null && p.price != null)
+    .map((p) => ({ units: p.units ?? 0, price: Number(p.price ?? 0) }));
+  const variableTotal = !isVariableSelected
+    ? null
+    : parsedAmount === null
+      ? null
+      : // Priced from the packages when there are any — the screen must show
+        // what checkout will bill (`orders.service.tier_price_usd`).
+        tierPacks.length > 0
+        ? tierPrice(parsedAmount, tierPacks)
+        : amountAsUsd !== null && activePkg?.ratePerDollar
+          ? amountAsUsd * activePkg.ratePerDollar.amount
+          : null;
   const priceCode = isVariableSelected
     ? (activePkg?.ratePerDollar?.currency ?? currency)
     : (activePkg?.priceCode ?? currency);
@@ -500,6 +515,12 @@ export default function TopUp() {
   const variableAmountReady =
     !isVariableSelected ||
     (activePkg?.ratePerDollar !== null && parsedAmount !== null && variableAmountErr === null);
+  /** A dollar bound as the buyer reads it — a unit count for a unit-priced SKU,
+   *  where quoting "$0.77" back at someone buying Stars is a non-answer. */
+  const boundLabel = (usd: number, edge: "min" | "max"): string =>
+    perUsd !== null
+      ? `${boundToUnits(usd, perUsd, edge).toLocaleString(getActiveLocale())} ${activePkg?.amountUnit ?? ""}`
+      : formatMoney(usd, "USD");
   // Human-readable reason the CTA is disabled — reused for both the toast
   // (belt-and-suspenders guard in handlePayment) and the button label itself,
   // so the customer sees *why* right on the button, same as the existing
@@ -509,11 +530,12 @@ export default function TopUp() {
       ? activePkg.ratePerDollar === null
         ? t("topup.priceUnavailable")
         : variableAmountErr === "below"
-          ? t("topup.amountBelow", { min: formatMoney(activePkg.minAmountUsd ?? 0, "USD") })
+          ? t("topup.amountBelow", { min: boundLabel(activePkg.minAmountUsd ?? 0, "min") })
           : variableAmountErr === "above"
-            ? t("topup.amountAbove", { max: formatMoney(activePkg.maxAmountUsd ?? 0, "USD") })
+            ? t("topup.amountAbove", { max: boundLabel(activePkg.maxAmountUsd ?? 0, "max") })
             : variableAmountErr === "precision"
-              ? t("topup.amountPrecision")
+              ? // Half a star does not exist; a fraction of a dollar cent does.
+                t(perUsd !== null ? "topup.amountWhole" : "topup.amountPrecision")
               : t("topup.amountRequired")
       : null;
 
@@ -952,7 +974,14 @@ export default function TopUp() {
           <div>
             <Step
               n={accountRequired ? 2 : 1}
-              title={t(isVoucher ? "topup.pickDenomination" : "topup.howMuch")}
+              // One heading over the whole choice. When a free amount and
+              // packages are both on offer they are two ways of answering the
+              // same question, so the step says so instead of naming only one.
+              title={
+                variablePkg && fixedPackages.length > 0
+                  ? t("topup.pickPackOrAmount")
+                  : t(isVoucher ? "topup.pickDenomination" : "topup.howMuch")
+              }
               sub={t(isVoucher ? "topup.voucherDeliveryNote" : "topup.creditWithinMinutes")}
             />
 
@@ -962,8 +991,32 @@ export default function TopUp() {
                 {t("topup.noPositions")}
               </p>
             )}
+            {/* Packages and a free amount can coexist — Telegram Stars sells
+                both. The field goes first and the packages read as its presets
+                underneath; the other way round it looked like an afterthought
+                below a wall of tiles. Tapping the field is what selects the
+                variable line, the same gesture selecting a package is. */}
+            {!productQuery.isLoading && variablePkg && (
+              <div
+                onFocusCapture={() => {
+                  if (selectedPkg !== variablePkg.id) setSelectedPkg(variablePkg.id);
+                }}
+              >
+                <VariableAmountPanel
+                  pkg={variablePkg}
+                  value={selectedPkg === variablePkg.id ? amountInput : ""}
+                  selected={selectedPkg === variablePkg.id}
+                  onChange={(next) => {
+                    if (selectedPkg !== variablePkg.id) setSelectedPkg(variablePkg.id);
+                    setAmountInput(next);
+                  }}
+                  total={selectedPkg === variablePkg.id ? variableTotal : null}
+                  error={selectedPkg === variablePkg.id ? variableAmountErr : null}
+                />
+              </div>
+            )}
             {fixedPackages.length > 0 && (
-              <div className="grid grid-cols-2 gap-2.5">
+              <div className={cn("grid grid-cols-2 gap-2.5", variablePkg && "mt-2.5")}>
                 {fixedPackages.map((pkg) => (
                   <PackageCard
                     key={pkg.id}
@@ -973,31 +1026,13 @@ export default function TopUp() {
                     onSelect={() => {
                       haptic("select");
                       setSelectedPkg(pkg.id);
+                      // A package and the free amount are two answers to one
+                      // question. Dropping the typed number here keeps the
+                      // field from resurrecting it when it is focused again.
+                      setAmountInput("");
                     }}
                   />
                 ))}
-              </div>
-            )}
-            {/* Packages and a free amount can coexist — Telegram Stars sells
-                both. Tapping the field is what selects the variable line, the
-                same gesture selecting a package is. */}
-            {!productQuery.isLoading && variablePkg && (
-              <div
-                className={fixedPackages.length > 0 ? "mt-2.5" : ""}
-                onFocusCapture={() => {
-                  if (selectedPkg !== variablePkg.id) setSelectedPkg(variablePkg.id);
-                }}
-              >
-                <VariableAmountPanel
-                  pkg={variablePkg}
-                  value={selectedPkg === variablePkg.id ? amountInput : ""}
-                  onChange={(next) => {
-                    if (selectedPkg !== variablePkg.id) setSelectedPkg(variablePkg.id);
-                    setAmountInput(next);
-                  }}
-                  total={selectedPkg === variablePkg.id ? variableTotal : null}
-                  error={selectedPkg === variablePkg.id ? variableAmountErr : null}
-                />
               </div>
             )}
           </div>
@@ -1352,23 +1387,40 @@ function PackageThumb({ pkg, fallback }: { pkg: Package; fallback: string | null
   return tagChip;
 }
 
-// ─── Variable-amount panel (Steam wallet top-up) ──────────────────────────────
+// ─── Variable-amount panel (free amount) ──────────────────────────────────────
 /**
- * Replaces the package grid for a variable-amount SKU: the customer types a
- * dollar amount instead of picking a denomination. `pkg.ratePerDollar` is the
- * localised price of ONE dollar (the SKU's `price_usd` is a `1`-placeholder) —
- * `null` means the FX trust gate rejected the live rate, so the product isn't
- * sellable right now and we render that instead of a price of zero.
+ * The free-amount field of a product that carries a variable-amount SKU: the
+ * customer types how much they want instead of picking a denomination.
+ *
+ * It sits ABOVE the package grid, and the two are mutually exclusive — tapping
+ * a package clears the field, typing in the field selects this line. `selected`
+ * is what makes that visible: the card takes the same lime border an active
+ * `PackageCard` does.
+ *
+ * Everything on screen is denominated in the SKU's own `amountUnit` (Stars)
+ * when it has one, and in dollars when it doesn't (the Steam wallet, where the
+ * dollar IS the unit). Dollars stay internal for a unit-priced SKU: quoting a
+ * rate at someone buying Stars answers a question they did not ask, which is
+ * why there is no rate or fee row here — only what they typed, what it costs,
+ * and how far the field can go.
+ *
+ * `pkg.ratePerDollar` is the localised price of ONE dollar (the SKU's
+ * `price_usd` is a `1`-placeholder) — `null` means the FX trust gate rejected
+ * the live rate, so the product isn't sellable right now and we render that
+ * instead of a price of zero.
  */
 function VariableAmountPanel({
   pkg,
   value,
+  selected,
   onChange,
   total,
   error,
 }: {
   pkg: Package;
   value: string;
+  /** True while this line is the current selection — drives the active accent. */
+  selected: boolean;
   onChange: (v: string) => void;
   total: number | null;
   error: "below" | "above" | "precision" | null;
@@ -1392,15 +1444,21 @@ function VariableAmountPanel({
     units_per_usd: pkg.unitsPerUsd != null ? String(pkg.unitsPerUsd) : null,
   });
   const unit = perUsd !== null ? (pkg.amountUnit ?? "") : null;
+  const minUsd = pkg.minAmountUsd ?? 0;
+  const maxUsd = pkg.maxAmountUsd ?? 0;
+  /** A dollar bound as a bare number the customer reads — a unit count, or a
+   *  dollar sum. The unit word itself is appended only where it isn't already
+   *  on the label. */
   const bound = (usd: number, edge: "min" | "max") =>
     perUsd !== null
-      ? `${boundToUnits(usd, perUsd, edge).toLocaleString()} ${unit}`
+      ? boundToUnits(usd, perUsd, edge).toLocaleString(getActiveLocale())
       : formatMoney(usd, "USD");
+  const withUnit = (text: string) => (unit ? `${text} ${unit}` : text);
   const errorMessage =
     error === "below"
-      ? t("topup.amountBelow", { min: bound(pkg.minAmountUsd ?? 0, "min") })
+      ? t("topup.amountBelow", { min: withUnit(bound(minUsd, "min")) })
       : error === "above"
-        ? t("topup.amountAbove", { max: bound(pkg.maxAmountUsd ?? 0, "max") })
+        ? t("topup.amountAbove", { max: withUnit(bound(maxUsd, "max")) })
         : error === "precision"
           ? unit
             ? t("topup.amountWhole")
@@ -1410,56 +1468,77 @@ function VariableAmountPanel({
   return (
     <div
       className="rounded-2xl p-4"
-      style={{ background: "hsl(var(--surface-2))", border: "1px solid hsl(var(--border))" }}
+      style={{
+        background: "hsl(var(--surface-2))",
+        border: selected ? "1.5px solid hsl(var(--primary) / 0.8)" : "1px solid hsl(var(--border))",
+        boxShadow: selected ? "0 0 0 3px hsl(var(--primary) / 0.1)" : "none",
+      }}
     >
       <label className="block">
         <span className="mb-1.5 block text-xs font-semibold text-white/50">
-          {t("topup.amountLabel")}
+          {unit ? t("topup.amountUnitLabel", { unit }) : t("topup.amountLabel")}
         </span>
         <div className="relative">
-          <span
-            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-base font-bold text-white/40"
-            aria-hidden="true"
-          >
-            $
-          </span>
+          {/* The dollar SKU (Steam) carries its unit as a prefix, the way money
+              is written; a named unit reads as a suffix after the count. Both
+              are decorative — the label above already names the unit. */}
+          {unit === null && (
+            <span
+              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-base font-bold text-white/40"
+              aria-hidden="true"
+            >
+              $
+            </span>
+          )}
           <input
             type="text"
-            inputMode="decimal"
+            // Whole units only (half a star does not exist) → the numeric pad;
+            // dollars take cents, so they keep the decimal one.
+            inputMode={unit ? "numeric" : "decimal"}
             value={value}
             onChange={(e) => {
               onChange(e.target.value);
             }}
-            placeholder={t("topup.amountPlaceholder")}
-            className="h-12 w-full rounded-xl border border-white/10 bg-black/20 pl-7 pr-3 text-lg font-bold text-white outline-none transition focus:border-white/25"
+            // A plain number, not "e.g. 10": the placeholder doubles as the
+            // smallest amount the field accepts. Dollars keep today's wording.
+            placeholder={unit ? bound(minUsd, "min") : t("topup.amountPlaceholder")}
+            // 48px tall and 18px of type: above the 44px tap target, and above
+            // the 16px below which iOS Safari zooms the page on focus.
+            className={cn(
+              "h-12 w-full rounded-xl border border-white/10 bg-black/20 text-lg font-bold text-white outline-none transition focus:border-white/25",
+              unit ? "pl-3.5 pr-24" : "pl-7 pr-3",
+            )}
             data-testid="input-amount"
           />
+          {unit !== null && (
+            <span
+              className="pointer-events-none absolute right-3.5 top-1/2 max-w-[80px] -translate-y-1/2 truncate text-sm font-semibold text-white/40"
+              aria-hidden="true"
+            >
+              {unit}
+            </span>
+          )}
         </div>
-        {errorMessage && (
-          <p className="mt-1.5 text-xs font-medium" style={{ color: "rgb(252, 165, 165)" }}>
-            {errorMessage}
-          </p>
-        )}
       </label>
 
-      <div className="mt-3 flex items-center justify-between rounded-xl bg-black/15 px-3 py-2.5">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-xs text-white/50">
-            {t("topup.ratePerDollar", { rate: formatMoney(rate.amount, rate.currency) })}
-          </span>
-          <span
-            className="flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold"
-            style={{ background: "hsl(var(--primary) / 0.15)", color: "hsl(var(--primary))" }}
-          >
-            {t("topup.zeroFee")}
-          </span>
-        </div>
+      {/* The only two numbers under the field: how far it can go, and what the
+          typed amount costs. No rate, no fee — see the component docstring. */}
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <span className="min-w-0 truncate text-xs text-white/45">
+          {t("topup.amountRange", { min: bound(minUsd, "min"), max: bound(maxUsd, "max") })}
+        </span>
         {total !== null && (
           <span className="flex-shrink-0 text-sm font-bold text-white">
             {formatMoney(total, rate.currency)}
           </span>
         )}
       </div>
+
+      {errorMessage && (
+        <p className="mt-1.5 text-xs font-medium" style={{ color: "rgb(252, 165, 165)" }}>
+          {errorMessage}
+        </p>
+      )}
     </div>
   );
 }

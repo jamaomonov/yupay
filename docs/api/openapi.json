@@ -8338,6 +8338,18 @@
             "title": "Sort Order",
             "type": "integer"
           },
+          "units": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Units"
+          },
           "units_per_usd": {
             "anyOf": [
               {
@@ -8468,6 +8480,17 @@
           "sku_code": {
             "title": "Sku Code",
             "type": "string"
+          },
+          "units": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Units"
           },
           "units_per_usd": {
             "anyOf": [
@@ -8856,6 +8879,18 @@
               }
             ],
             "title": "Sort Order"
+          },
+          "units": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Units"
           },
           "units_per_usd": {
             "anyOf": [

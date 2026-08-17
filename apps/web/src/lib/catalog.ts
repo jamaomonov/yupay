@@ -77,6 +77,9 @@ export interface SkuOut {
   // Optional on purpose: `next build` prerenders against the deployed API,
   // which does not serve these until this change ships. A required field here
   // fails the production build.
+  // How many units a package delivers, so a typed amount can be priced from
+  // it. Optional for the same build-time reason as the two above.
+  units?: number | null;
   amount_unit?: string | null;
   units_per_usd?: string | null;
   min_amount_usd?: string | null;

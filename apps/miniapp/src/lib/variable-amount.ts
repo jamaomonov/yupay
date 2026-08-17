@@ -99,3 +99,46 @@ export function unitAmountError(units: number, min: number, max: number): Amount
   if (units > max) return "above";
   return null;
 }
+
+/** One package, as the free-amount field needs to see it: how many units it
+ *  delivers and what it costs in the currency being shown. */
+export interface PricedPack {
+  units: number;
+  /** Price in the displayed currency — already an override or an FX
+   *  conversion, whichever the API resolved. */
+  price: number;
+}
+
+/**
+ * What a typed amount costs, priced from the packages.
+ *
+ * Margin differs per pack (20% on the small ones, less on the large), so there
+ * is no single rate that prices "any amount" — the amount is priced from the
+ * pack it falls in, and the two can then never disagree. Mirrors
+ * `orders.service.tier_price_usd`, which is what actually charges; this is the
+ * same rule so the page shows what the server will bill.
+ *
+ * Deliberately works in the **displayed** currency rather than USD: a pack may
+ * carry a per-currency override, and reading its resolved price is what makes
+ * the field follow that too.
+ *
+ * Two rules, and the second is easy to miss: the band is the largest pack at or
+ * below the amount, and the amount never costs more than the next pack up —
+ * without the cap, 499 stars priced at the 100-pack's rate cost more than the
+ * 500 pack, so buying less cost more. Returns `null` below the smallest pack
+ * rather than inventing a price.
+ */
+export function tierPrice(units: number, packs: readonly PricedPack[]): number | null {
+  const sorted = [...packs]
+    .filter((p) => p.units > 0 && p.price > 0)
+    .sort((a, b) => a.units - b.units);
+  let band: PricedPack | null = null;
+  let ceiling: number | null = null;
+  for (const pack of sorted) {
+    if (pack.units <= units) band = pack;
+    else if (ceiling === null) ceiling = pack.price;
+  }
+  if (band === null) return null;
+  const total = units * (band.price / band.units);
+  return ceiling !== null && total > ceiling ? ceiling : total;
+}

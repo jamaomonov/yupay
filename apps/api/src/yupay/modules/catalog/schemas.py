@@ -178,6 +178,10 @@ class SkuOut(BaseModel):
     # been, so an older client keeps working unchanged.
     amount_unit: str | None = None
     units_per_usd: Decimal | None = None
+    # On a package: how many units it delivers, so the storefront can price a
+    # typed amount from whichever package it falls in. On the variable line and
+    # on anything not sold by unit: absent.
+    units: int | None = None
     # Boolean, never the count. How many codes a supplier is holding is not the
     # customer's business: the number moves without warning as other resellers
     # draw on the same pool, so "3 left" is a promise we cannot keep. Defaults

@@ -534,6 +534,7 @@ async def create_sku(db: AsyncSession, body: SkuCreate) -> Sku:
         rate_multiplier=body.rate_multiplier,
         amount_unit=body.amount_unit,
         units_per_usd=body.units_per_usd,
+        units=body.units,
         image_url=body.image_url,
         sort_order=body.sort_order,
         active=body.active,
@@ -557,6 +558,8 @@ def _apply_amount_unit(row: Sku, body: SkuUpdate, sent: set[str]) -> None:
         row.amount_unit = body.amount_unit
     if "units_per_usd" in sent:
         row.units_per_usd = body.units_per_usd
+    if "units" in sent:
+        row.units = body.units
     if (row.amount_unit is None) != (row.units_per_usd is None):
         # Mirrors ck_skus_amount_unit_complete. A unit with no rate cannot be
         # converted and a rate with no unit has nothing to label; either alone

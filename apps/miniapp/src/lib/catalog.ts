@@ -57,6 +57,9 @@ interface SkuApi {
   // Optional on purpose: `next build` prerenders against the deployed API,
   // which does not serve these until this change ships. A required field here
   // fails the production build.
+  // How many units a package delivers, so a typed amount can be priced from
+  // it. Optional for the same build-time reason as the two above.
+  units?: number | null;
   amount_unit?: string | null;
   units_per_usd?: string | null;
   min_amount_usd?: string | null;
@@ -198,6 +201,8 @@ export interface Package {
   // Set when the amount is typed in something other than dollars (stars).
   amountUnit: string | null;
   unitsPerUsd: number | null;
+  // How many units a package delivers — what a typed amount is priced from.
+  units: number | null;
   minAmountUsd: number | null;
   maxAmountUsd: number | null;
   /** Localised price of one dollar for a variable-amount SKU. `null` means
@@ -231,6 +236,7 @@ function skuToPackage(sku: SkuApi): Package {
     variableAmount,
     amountUnit: sku.amount_unit ?? null,
     unitsPerUsd: sku.units_per_usd != null ? Number.parseFloat(sku.units_per_usd) : null,
+    units: sku.units ?? null,
     minAmountUsd: sku.min_amount_usd != null ? Number.parseFloat(sku.min_amount_usd) : null,
     maxAmountUsd: sku.max_amount_usd != null ? Number.parseFloat(sku.max_amount_usd) : null,
     ratePerDollar: variableAmount ? displayPrice : null,

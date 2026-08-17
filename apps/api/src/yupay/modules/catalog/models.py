@@ -308,6 +308,12 @@ class Sku(Base):
     # second currency to be right about is how those go wrong.
     amount_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
     units_per_usd: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    # How many units of ``amount_unit`` a *package* SKU delivers ("50 Stars" →
+    # 50). It is what lets the free-amount line be priced from the packages
+    # instead of from a rate of its own — necessary once margin differs per
+    # pack, because then no single rate prices "any amount" correctly. NULL on
+    # anything not sold by unit, and on the variable line itself.
+    units: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # The margin this SKU is meant to hold above cost_usdt: price_usd =
     # cost_usdt * (1 + margin_percent / 100). Not just a UI convenience —
     # the hourly supplier price-refresh (integrations.price_refresh) reads

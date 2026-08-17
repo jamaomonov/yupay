@@ -65,9 +65,9 @@ function accentZero(title: string) {
  * lands on the Steam balance. Never claim an "official rate" here, and never
  * imply the displayed rate matches the central bank's: the margin lives in the
  * rate, which is why the copy no longer says "без скрытых сборов" and why the
- * amount card on the brand page states plainly where the margin sits
- * (`store.feeNote`). A buyer compares against their banking app in seconds;
- * being the one who told them is the whole point.
+ * /store FAQ states plainly where the margin sits (`store.hubFaqA5`). The
+ * amount card on the brand page carries no rate or fee line at all — see
+ * `VariableAmountCard` in PurchasePanel.tsx.
  */
 export async function SteamZeroCommission({ locale }: { locale: string }) {
   const t = await getTranslations("web.steamZero");

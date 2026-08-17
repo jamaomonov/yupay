@@ -5,7 +5,7 @@ import { ArrowUpRight, Check, Info, Loader2, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { ConfirmPurchaseModal } from "./ConfirmPurchaseModal";
 import { WhereToFindModal } from "./WhereToFindModal";
@@ -32,6 +32,7 @@ import {
   amountError,
   boundToUnits,
   parseAmount,
+  tierPrice,
   toUsd,
   unitAmountError,
   unitsPerUsd,
@@ -438,8 +439,21 @@ function FieldLabel({
 }
 
 /**
- * Replaces the SKU grid for a variable-amount product (Steam wallet top-up):
- * the customer types a dollar amount instead of picking a denomination.
+ * The free-amount field of a product that carries a variable-amount SKU: the
+ * customer types how much they want instead of picking a denomination.
+ *
+ * It renders ABOVE the package grid, and the two are mutually exclusive — a
+ * package tap clears the field (via the parent's `skuId` effect), typing in the
+ * field selects this SKU. `selected` is what makes that visible, so the card
+ * carries the same lime accent an active package tile does.
+ *
+ * Everything on screen is denominated in the SKU's own `amount_unit` (Stars)
+ * when it has one, and in dollars when it doesn't (the Steam wallet, where the
+ * dollar IS the unit). Dollars stay internal for a unit-priced SKU: quoting a
+ * rate at someone buying Stars answers a question they did not ask, which is
+ * why there is no rate, fee or limit line here — only what they typed, what it
+ * costs, and how far the field can go.
+ *
  * `sku.display_price` is the localised price of ONE dollar (its `price_usd`
  * is a `1`-placeholder) — `null` means the FX trust gate rejected the live
  * rate, so the product isn't sellable right now and we render that instead
@@ -448,19 +462,19 @@ function FieldLabel({
 function VariableAmountCard({
   sku,
   value,
+  selected,
   onChange,
   onFocus,
   locale,
-  image,
   t,
 }: {
   sku: SkuOut;
   value: string;
+  /** True while this SKU is the current selection — drives the active accent. */
+  selected: boolean;
   onChange: (v: string) => void;
   onFocus: () => void;
   locale: string;
-  /** Product/SKU artwork shown on each preset; falls back to a blank tile. */
-  image: string | null;
   t: (key: string, values?: Record<string, string>) => string;
 }) {
   const amountId = useId();
@@ -490,12 +504,14 @@ function VariableAmountCard({
       : null;
   const total =
     parsed !== null ? (perUsd !== null ? toUsd(parsed, perUsd) : parsed) * rateUzs : null;
-  const asUnits = (n: number) => (unit ? `${n.toLocaleString(locale)} ${unit}` : null);
+  /** A bound as the customer reads it: a plain unit count, or a dollar sum. */
+  const bound = (n: number) =>
+    unit ? n.toLocaleString(locale) : formatMoney(n.toFixed(2), "USD", locale);
   const errorMessage =
     error === "below"
-      ? t("amountBelow", { min: asUnits(min) ?? formatMoney(min.toFixed(2), "USD", locale) })
+      ? t("amountBelow", { min: unit ? `${bound(min)} ${unit}` : bound(min) })
       : error === "above"
-        ? t("amountAbove", { max: asUnits(max) ?? formatMoney(max.toFixed(2), "USD", locale) })
+        ? t("amountAbove", { max: unit ? `${bound(max)} ${unit}` : bound(max) })
         : error === "precision"
           ? // A fraction of a star does not exist, which is a different
             // complaint from "more than two decimal places" on a dollar amount.
@@ -504,198 +520,75 @@ function VariableAmountCard({
             : t("amountPrecision")
           : null;
 
-  // Quick-pick presets, clamped to the SKU's own [min, max]. $10 is the nudge
-  // for dollars; for a unit-priced field the round numbers are the unit's own.
-  const PRESETS = (
-    perUsd !== null ? [100, 250, 500, 1000, 2500, 5000] : [5, 10, 20, 30, 50, 100]
-  ).filter((a) => a >= min && a <= max);
-  const HIT = 10;
-  const sliderVal = Math.min(max, Math.max(min, parsed ?? min));
-  const pick = (amount: number) => {
-    onFocus();
-    onChange(String(amount));
-  };
-  // Hard-cap the typed amount at the SKU's max ($300 for Steam). The slider is
-  // already bounded; the text input would otherwise accept a larger number.
+  // Hard-cap the typed amount at the SKU's max ($300 for Steam, 50 000 Stars):
+  // the field would otherwise accept a number the server is bound to refuse.
   const handleAmountChange = (raw: string) => {
     const n = parseAmount(raw);
     onChange(n !== null && n > max ? String(max) : raw);
   };
-  const rateLine =
-    perUsd !== null && unit
-      ? // Per-dollar is meaningless to someone buying stars; quote the unit.
-        t("ratePerUnit", {
-          rate: formatUzs(locale, Math.round(rateUzs / perUsd)),
-          unit,
-        })
-      : t("ratePerDollar", { rate: formatUzs(locale, Math.round(rateUzs)) });
 
   return (
-    <div className="border-border overflow-hidden rounded-xl border bg-[linear-gradient(135deg,hsl(var(--card)),hsl(var(--bg)))]">
-      {/* header band: title + subtitle */}
-      <div className="border-border/70 border-b p-5">
-        <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t("amountTitle")}</h2>
-        <p className="text-tx-mute mt-1 text-[13px]">{t("amountSubtitle")}</p>
+    <div
+      className={`rounded-xl border p-4 transition sm:p-5 ${
+        selected ? "border-primary bg-primary/[0.06]" : "border-border bg-card"
+      }`}
+    >
+      <label htmlFor={amountId} className="text-tx-mute mb-2 block text-[13px]">
+        {unit ? t("amountUnitLabel", { unit }) : t("amountOwn")}
+      </label>
+      <div className="border-border bg-bg focus-within:border-primary rounded-btn flex items-center gap-2 border px-3.5 transition">
+        {/* The dollar SKU (Steam) carries its unit as a prefix, the way money is
+            written; a named unit reads as a suffix after the count. Both are
+            decorative — the label above already names the unit. */}
+        {unit === null && (
+          <span className="text-tx-dim text-[18px] font-bold" aria-hidden="true">
+            $
+          </span>
+        )}
+        <input
+          id={amountId}
+          aria-invalid={errorMessage ? true : undefined}
+          aria-describedby={errorMessage ? `${amountId}-error` : undefined}
+          type="text"
+          // Whole units only (half a star does not exist) → the numeric pad;
+          // dollars take cents, so they keep the decimal one.
+          inputMode={unit ? "numeric" : "decimal"}
+          value={value}
+          onFocus={onFocus}
+          onChange={(e) => {
+            handleAmountChange(e.target.value);
+          }}
+          // A plain number, not "e.g. 10": the placeholder doubles as the
+          // smallest amount the field accepts. Dollars keep today's wording.
+          placeholder={unit ? String(min) : t("amountPlaceholder")}
+          // 52px tall and 20px of type: above the 44px tap target, and above
+          // the 16px below which iOS Safari zooms the page on focus.
+          className="h-[52px] min-w-0 flex-1 bg-transparent text-[20px] font-extrabold outline-none"
+        />
+        {unit !== null && (
+          <span className="text-tx-dim shrink-0 text-[15px] font-semibold" aria-hidden="true">
+            {unit}
+          </span>
+        )}
       </div>
-
-      {/* custom amount first — stays neutral; the selected preset (or nothing)
-          carries the lime accent, never this block */}
-      <div className="p-5 pb-0">
-        <div className="border-border bg-card rounded-lg border p-5">
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            {/* left: label + input + slider */}
-            <div className="lg:border-border/70 lg:border-r lg:pr-6">
-              <label htmlFor={amountId} className="text-tx-mute mb-2 block text-[13px]">
-                {t("amountOwn")}
-              </label>
-              <div className="border-border bg-bg focus-within:border-primary rounded-btn flex items-center gap-2 border px-3.5 transition">
-                <span className="text-tx-dim text-[18px] font-bold" aria-hidden="true">
-                  $
-                </span>
-                <input
-                  id={amountId}
-                  aria-invalid={errorMessage ? true : undefined}
-                  aria-describedby={errorMessage ? `${amountId}-error` : undefined}
-                  type="text"
-                  inputMode="decimal"
-                  value={value}
-                  onFocus={onFocus}
-                  onChange={(e) => {
-                    handleAmountChange(e.target.value);
-                  }}
-                  placeholder={t("amountPlaceholder")}
-                  className="h-[52px] min-w-0 flex-1 bg-transparent text-[22px] font-extrabold outline-none"
-                />
-                {total !== null && (
-                  <span className="text-tx-mute shrink-0 font-mono text-[13px]">
-                    {formatUzs(locale, Math.round(total))}
-                  </span>
-                )}
-              </div>
-              <input
-                type="range"
-                min={min}
-                max={max}
-                step={1}
-                value={sliderVal}
-                onFocus={onFocus}
-                onChange={(e) => {
-                  pick(Number(e.target.value));
-                }}
-                aria-label={t("amountOwn")}
-                // 16px tall by default — about one pixel per dollar across
-                // $1–$300, which is a hard target for a thumb. The track keeps
-                // its look; the control gets height to grab.
-                className="mt-4 h-7 w-full cursor-pointer"
-                style={{ accentColor: "hsl(var(--primary))" }}
-              />
-              <div className="text-tx-dim mt-1.5 flex justify-between text-[12px]">
-                <span>${min}</span>
-                <span>${max}</span>
-              </div>
-            </div>
-
-            {/* right: rate / fee / limit */}
-            <div className="flex flex-col justify-center gap-3 text-[14px]">
-              <dl className="flex flex-col gap-3">
-                <div className="flex items-center justify-between gap-3">
-                  <dt className="text-tx-mute">{t("rateLabel")}</dt>
-                  <dd className="font-mono font-semibold">{rateLine}</dd>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <dt className="text-tx-mute">{t("feeLabel")}</dt>
-                  <dd className="text-primary font-mono font-bold">0%</dd>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <dt className="text-tx-mute">{t("limitLabel")}</dt>
-                  <dd className="font-mono font-semibold">
-                    ${min} — ${max}
-                  </dd>
-                </div>
-              </dl>
-              {/* "Комиссия 0%" is true — nothing is taken off the top-up — but
-                  it sits next to a rate the buyer can compare against their
-                  banking app in ten seconds. Saying where the margin actually
-                  is, right here at the decision, beats having it discovered.
-                  The same explanation existed only inside a collapsed FAQ on
-                  /store.
-                  It lives outside the <dl>: it is prose about the list, not a
-                  term or a definition, and a <p> child makes the whole
-                  description list invalid — assistive tech and agent crawlers
-                  then drop the rate/fee/limit rows entirely. */}
-              <p className="text-tx-dim -mt-1 text-[12px] leading-[17px]">{t("feeNote")}</p>
-            </div>
-          </div>
-          {/* Tied to the input: a rejected amount that only exists as loose text
-              below the card is invisible to anyone who reached the field by
-              keyboard or screen reader. */}
-          {errorMessage && (
-            <p id={`${amountId}-error`} className="mt-3 text-[12px] text-[#FF6B6B]">
-              {errorMessage}
-            </p>
-          )}
-        </div>
+      {/* The only two numbers under the field: how far it can go, and what the
+          typed amount costs. No rate, no fee, no margin copy — see the
+          component docstring. */}
+      <div className="text-tx-dim mt-2 flex items-center justify-between gap-3 text-[12px]">
+        <span>{t("amountRange", { min: bound(min), max: bound(max) })}</span>
+        {total !== null && (
+          <span className="text-foreground shrink-0 font-mono text-[13px] font-semibold tabular-nums">
+            {formatUzs(locale, Math.round(total))}
+          </span>
+        )}
       </div>
-
-      {/* Quick picks, from `sm` up only. They were briefly shown on phones too,
-          on the argument that hiding them removed the fastest path — but on a
-          390px screen the three cards are as tall as the amount field itself,
-          duplicate what the input and slider already do, and push the order
-          summary a screen further down. The slider is 28px tall now, so the
-          input is not the only alternative to typing. */}
-      {PRESETS.length > 0 && (
-        <div className="hidden gap-3 p-5 sm:grid sm:grid-cols-3">
-          {PRESETS.map((amount) => {
-            const active = parsed === amount;
-            return (
-              <button
-                key={amount}
-                type="button"
-                aria-pressed={active}
-                onClick={() => {
-                  pick(amount);
-                }}
-                className={`focus-visible:ring-primary focus-visible:ring-offset-bg relative flex flex-col items-start gap-3 rounded-lg border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
-                  active
-                    ? "border-primary bg-primary/[0.06]"
-                    : "border-border bg-card hover:border-border-2"
-                }`}
-              >
-                <div className="flex w-full items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    {image ? (
-                      <span className="rounded-btn relative size-9 shrink-0 overflow-hidden">
-                        <Image
-                          src={image}
-                          alt=""
-                          fill
-                          unoptimized={!isOptimizable(image)}
-                          sizes="36px"
-                          className="object-contain"
-                        />
-                      </span>
-                    ) : (
-                      <span
-                        className="border-border/60 rounded-btn size-9 border bg-[hsl(var(--card-2))] bg-gradient-to-br from-white/[0.04] to-transparent"
-                        aria-hidden="true"
-                      />
-                    )}
-                    <span className="text-tx-dim font-mono text-[12px] tracking-[0.08em]">USD</span>
-                  </div>
-                  {amount === HIT && (
-                    <span className="bg-primary text-primary-foreground rounded-full px-2 py-0.5 text-[10px] font-bold">
-                      {t("popular")}
-                    </span>
-                  )}
-                </div>
-                <div className="font-display text-2xl font-extrabold">${amount}</div>
-                <div className="text-tx-mute font-mono text-[12px]">
-                  {formatUzs(locale, Math.round(amount * rateUzs))}
-                </div>
-              </button>
-            );
-          })}
-        </div>
+      {/* Tied to the input: a rejected amount that only exists as loose text
+          below the card is invisible to anyone who reached the field by
+          keyboard or screen reader. */}
+      {errorMessage && (
+        <p id={`${amountId}-error`} className="mt-2 text-[12px] text-[#FF6B6B]">
+          {errorMessage}
+        </p>
       )}
     </div>
   );
@@ -865,15 +758,47 @@ export function PurchasePanel({
       : null;
   // Client-side total for display only — the server recomputes the
   // authoritative price from `amount_usd` at checkout.
-  const variableTotal =
-    selSkuVariable && amountAsUsd !== null && variableRate
-      ? amountAsUsd * Number(variableRate.amount)
-      : null;
+  // Packages the typed amount is priced from, in the currency being shown —
+  // so a per-currency override on a pack carries through to the field.
+  const tierPacks = useMemo(
+    () =>
+      (products[0]?.skus ?? [])
+        .filter((s) => !(s.variable_amount ?? false) && s.units != null && s.display_price)
+        .map((s) => ({ units: s.units ?? 0, price: Number(s.display_price?.amount ?? 0) })),
+    [products],
+  );
+  const variableTotal = !selSkuVariable
+    ? null
+    : parsedAmount === null
+      ? null
+      : // Priced from the packages when there are any — the page must show what
+        // checkout will bill, and that is `orders.service.tier_price_usd`.
+        tierPacks.length > 0
+        ? tierPrice(parsedAmount, tierPacks)
+        : amountAsUsd !== null && variableRate
+          ? amountAsUsd * Number(variableRate.amount)
+          : null;
   // Gates the CTA for a variable-amount SKU: a live rate (the FX trust gate
   // didn't reject it) and a parsed, in-bounds, two-decimals-or-fewer amount.
   const variableAmountOk =
     !selSkuVariable ||
     (variableRate !== null && parsedAmount !== null && variableAmountErr === null);
+  /** A dollar bound as the buyer reads it — a unit count for a unit-priced SKU,
+   *  where quoting "$0.77" back at someone buying Stars is a non-answer. */
+  const boundLabel = (usd: number, edge: "min" | "max"): string =>
+    perUsd !== null
+      ? `${boundToUnits(usd, perUsd, edge).toLocaleString(locale)} ${selSku?.amount_unit ?? ""}`
+      : formatMoney(usd.toFixed(2), "USD", locale);
+
+  // The heading over the whole choice. A free amount alongside packages is
+  // "pick one or type one"; a lone free amount (Steam) keeps its own title.
+  const hasVariableSku = products.some((p) => p.skus.some((s) => s.variable_amount ?? false));
+  const hasFixedSku = products.some((p) => p.skus.some((s) => !(s.variable_amount ?? false)));
+  const chooseTitle = !hasVariableSku
+    ? t("packsTitle")
+    : hasFixedSku
+      ? t("pickPackOrAmount")
+      : t("amountTitle");
 
   const emailOk = EMAIL_RE.test(email);
   const fieldsOk = fields.every((f) => !f.required || (form[f.key]?.trim() ?? "") !== "");
@@ -909,11 +834,12 @@ export function PurchasePanel({
       : selSkuVariable && parsedAmount === null
         ? t("amountRequired")
         : selSkuVariable && variableAmountErr === "below"
-          ? t("amountBelow", { min: formatMoney(minUsd.toFixed(2), "USD", locale) })
+          ? t("amountBelow", { min: boundLabel(minUsd, "min") })
           : selSkuVariable && variableAmountErr === "above"
-            ? t("amountAbove", { max: formatMoney(maxUsd.toFixed(2), "USD", locale) })
+            ? t("amountAbove", { max: boundLabel(maxUsd, "max") })
             : selSkuVariable && variableAmountErr === "precision"
-              ? t("amountPrecision")
+              ? // Half a star does not exist; a fraction of a dollar cent does.
+                t(perUsd !== null ? "amountWhole" : "amountPrecision")
               : !user && !emailOk
                 ? t("payHintEmail")
                 : !fieldsOk
@@ -1123,18 +1049,17 @@ export function PurchasePanel({
       <div className="grid grid-cols-1 gap-8 pb-24 lg:grid-cols-[1.5fr_1fr] lg:pb-0">
         {/* selection + fields */}
         <div className="lg:col-start-1 lg:row-start-1">
-          {/* Variable products (Steam) render their own titled "Сумма пополнения"
-              card, so the section heading is only for the fixed-denomination grid. */}
-          {!primaryIsVariable && (
-            <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t("packsTitle")}</h2>
-          )}
+          {/* One heading over the whole choice, whatever shape it takes: a free
+              amount and a package grid are two ways of answering the same
+              question, and two competing titles made them look like two steps. */}
+          <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{chooseTitle}</h2>
           {products.map((product) => {
             // A variable-amount product (Steam wallet top-up) has exactly one
             // SKU with nothing to pick — the customer types the amount, so
-            // the denomination grid is replaced with the amount card.
+            // there is no denomination grid at all, only the amount field.
             // A product can carry both: Telegram Stars sells eleven packages
-            // *and* a free amount, so the grid and the amount card coexist
-            // rather than one replacing the other. Steam has only the card.
+            // *and* a free amount, so the field and the grid coexist rather
+            // than one replacing the other. Steam has only the field.
             const variableSku = product.skus.find((s) => s.variable_amount ?? false);
             const fixedSkus = product.skus.filter((s) => !(s.variable_amount ?? false));
             return (
@@ -1142,8 +1067,26 @@ export function PurchasePanel({
                 {products.length > 1 && (
                   <div className="text-tx-mute mb-3 text-sm font-semibold">{product.name}</div>
                 )}
+                {/* The typed amount comes first and the packages read as its
+                    presets underneath — the other way round, the field looked
+                    like an afterthought below a wall of tiles. */}
+                {variableSku && (
+                  <VariableAmountCard
+                    sku={variableSku}
+                    value={skuId === variableSku.id ? amountInput : ""}
+                    selected={skuId === variableSku.id}
+                    onChange={setAmountInput}
+                    onFocus={() => {
+                      setSkuId(variableSku.id);
+                    }}
+                    locale={locale}
+                    t={t}
+                  />
+                )}
                 {fixedSkus.length > 0 && (
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  <div
+                    className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${variableSku ? "mt-3" : ""}`}
+                  >
                     {fixedSkus.map((sku) => {
                       const active = sku.id === skuId;
                       const img = sku.image_url ?? product.image_url;
@@ -1198,21 +1141,6 @@ export function PurchasePanel({
                         </button>
                       );
                     })}
-                  </div>
-                )}
-                {variableSku && (
-                  <div className={fixedSkus.length > 0 ? "mt-3" : ""}>
-                    <VariableAmountCard
-                      sku={variableSku}
-                      value={skuId === variableSku.id ? amountInput : ""}
-                      onChange={setAmountInput}
-                      onFocus={() => {
-                        setSkuId(variableSku.id);
-                      }}
-                      locale={locale}
-                      image={variableSku.image_url ?? product.image_url ?? product.brand.logo_url}
-                      t={t}
-                    />
                   </div>
                 )}
               </div>
