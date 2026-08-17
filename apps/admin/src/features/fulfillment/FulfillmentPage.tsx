@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Pagination } from "@/components/Pagination";
 import { StatusChip } from "@/components/StatusChip";
 import { useToast } from "@/components/Toast";
+import { FULFILMENT_ROUTES } from "@/features/integrations/types";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { useSearchParamsState } from "@/lib/useSearchParamsState";
@@ -31,17 +32,13 @@ const STATUSES: { value: TaskStatus | ""; label: string }[] = [
 // ``inventory`` for the warehouse, the bare supplier slug otherwise.
 // Listing the known routes as a picker beats a free-text field where a
 // typo silently returns zero rows.
+// Built from the shared route table. The hand-written list this replaced had
+// drifted badly: it offered steam/riot/pubg/spotify/apple — stubs that have
+// never produced a task — while omitting waxpeer and gengine, which produce
+// all of them.
 const ROUTES: { value: string; label: string }[] = [
   { value: "", label: "Все маршруты" },
-  { value: "inventory", label: "Склад кодов" },
-  { value: "g2b", label: "G2Bulk" },
-  { value: "manual", label: "Ручная выдача" },
-  { value: "mock", label: "Mock (dev)" },
-  { value: "steam", label: "Steam" },
-  { value: "riot", label: "Riot" },
-  { value: "pubg", label: "PUBG" },
-  { value: "spotify", label: "Spotify" },
-  { value: "apple", label: "Apple" },
+  ...FULFILMENT_ROUTES.map((r) => ({ value: r.slug, label: r.label })),
 ];
 
 export function FulfillmentPage() {

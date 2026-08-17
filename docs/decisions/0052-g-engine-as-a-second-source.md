@@ -121,6 +121,30 @@ against the shapes the live API actually returned.
 - No cancel endpoint exists upstream, so a cancelled task cannot be withdrawn
   at the supplier; the adapter says so instead of pretending.
 
+## Wiring a SKU to G-Engine from the admin
+
+The backend adapter is only half the integration: `_mapping_for` refuses with
+_"no active g-engine mapping for this SKU"_ until a `sku_supplier_mapping` row
+exists. Three admin screens assumed a single supplier and had to be widened
+before any such row could be created:
+
+| Screen                          | Was                                      | Now                                                                    |
+| ------------------------------- | ---------------------------------------- | ---------------------------------------------------------------------- |
+| Интеграции → Маппинги → создать | `supplier_slug` hardcoded to `g2b`       | supplier picked from the shared route table                            |
+| Same, steps 3–4                 | ids chosen from `supplier_catalog_cache` | ids typed in when we mirror no catalogue                               |
+| Маршрутизация (sourcing)        | force-target could only be G2B           | any external supplier; the "no mapping" warning follows the picked one |
+| Fulfilment Inbox filter         | five stub slugs with zero tasks          | the routes that actually run                                           |
+
+`FULFILMENT_ROUTES` in `apps/admin/src/features/integrations/types.ts` is the
+single list all four read, so a fifth supplier needs one edit rather than four.
+Its `mappings` flag is what keeps Waxpeer out of the mapping form — Waxpeer
+derives a Steam top-up from the order itself and would save a row nothing reads.
+
+The ids an operator types come from the supplier's own API: `service id` from
+`GET /recharge/services` and its `denominations[].id` for a top-up, `product id`
+from `GET /shop/products` for a gift card. This stays manual until the follow-up
+below lands.
+
 ## Follow-ups
 
 - Teach the catalogue wizard `/recharge/services` so mappings stop being manual.

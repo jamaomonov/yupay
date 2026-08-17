@@ -24,14 +24,15 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/components/Toast";
 import { SkuPicker } from "@/features/integrations/pickers";
+import { FULFILMENT_ROUTES } from "@/features/integrations/types";
 import { type ApiError, api, apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
-// Suppliers that make sense as a ``force_supplier`` target today.
-const SUPPLIER_OPTIONS: { slug: string; label: string; note: string }[] = [
-  { slug: "g2b", label: "G2Bulk", note: "реальный поставщик" },
-  { slug: "mock", label: "Mock", note: "только dev" },
-];
+// Suppliers that make sense as a ``force_supplier`` target. Derived from the
+// shared route table so a newly integrated supplier shows up here without a
+// second edit — the list used to be G2B-only, which quietly made every other
+// supplier unreachable from this screen.
+const SUPPLIER_OPTIONS = FULFILMENT_ROUTES.filter((r) => r.external || r.slug === "mock");
 
 interface ModeCard {
   value: SourcingMode;
@@ -97,6 +98,20 @@ export function SourcingPage() {
     if (!sku) return null;
     return mappingsQuery.data?.items.find((m) => m.sku_id === sku.id && m.is_active) ?? null;
   }, [mappingsQuery.data, sku]);
+
+  /** The label of the forced supplier when it needs a mapping and has none.
+   *
+   * `skuMapping` is "any active mapping", which is what auto-routing cares
+   * about — but forcing G-Engine while only a G2B mapping exists would still
+   * fail, so this check is per-supplier. */
+  const missingMappingFor = useMemo(() => {
+    const route = FULFILMENT_ROUTES.find((r) => r.slug === supplierSlug);
+    if (!route?.mappings || !sku) return null;
+    const has = mappingsQuery.data?.items.some(
+      (m) => m.sku_id === sku.id && m.supplier_slug === supplierSlug && m.is_active,
+    );
+    return has ? null : route.label;
+  }, [mappingsQuery.data, sku, supplierSlug]);
 
   // When the operator picks a SKU, prefill the form with its existing
   // rule (or reset to auto if it has none).
@@ -279,10 +294,10 @@ export function SourcingPage() {
                     </button>
                   ))}
                 </div>
-                {supplierSlug === "g2b" && skuMapping === null && (
+                {missingMappingFor && (
                   <p className="mt-2 text-xs text-[var(--danger)]">
-                    У этого SKU нет активного маппинга на G2B — заказ упадёт в ошибку. Сначала
-                    создайте маппинг в «Интеграции → Маппинги».
+                    У этого SKU нет активного маппинга на {missingMappingFor} — заказ упадёт в
+                    ошибку. Сначала создайте маппинг в «Интеграции → Маппинги».
                   </p>
                 )}
               </div>

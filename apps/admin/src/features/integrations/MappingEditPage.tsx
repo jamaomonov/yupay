@@ -7,7 +7,9 @@
  *
  *   1. SKU            — Combobox sourced from /admin/catalog/skus/search.
  *   2. Тип            — voucher | game (radio chips).
- *   3. Продукт / Игра — Combobox over supplier_catalog_cache.
+ *   3. Поставщик + продукт — a supplier picker, then either a Combobox over
+ *      supplier_catalog_cache or, for suppliers we do not mirror a catalogue
+ *      for, the id typed in by hand. Both write the same field.
  *   4. Номинал        — game-only; lazy fetch of /games/{code}/catalogue.
  *      Required-fields hint + optional player checker live in this step.
  *   5. Параметры      — quantity, активность, опц. extra JSON.
@@ -21,6 +23,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { DenomPicker, PlayerChecker, RequiredFieldsHint } from "./gameWidgets";
 import { CatalogPicker, SkuPicker } from "./pickers";
+import { FULFILMENT_ROUTES, hasCatalogueCache } from "./types";
 
 import type {
   CatalogEntry,
@@ -35,7 +38,10 @@ import { useToast } from "@/components/Toast";
 import { ApiError, api, apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
-const SUPPLIER_SLUG = "g2b";
+/** Suppliers a mapping can point at. G2B and G-Engine both resolve a SKU
+ *  through `sku_supplier_mapping`; the rest either derive the purchase from
+ *  the order or are in-house routes. */
+const MAPPABLE = FULFILMENT_ROUTES.filter((r) => r.mappings);
 
 interface ExistingMappingPayload {
   items: SupplierMapping[];
@@ -48,6 +54,7 @@ export function MappingEditPage() {
   const toast = useToast();
 
   // ---- form state ----
+  const [supplier, setSupplier] = useState<string>(params.supplier ?? "g2b");
   const [sku, setSku] = useState<SkuPickerRow | null>(null);
   const [kind, setKind] = useState<MappingKind | null>(null);
   const [catalog, setCatalog] = useState<CatalogEntry | null>(null);
@@ -82,6 +89,7 @@ export function MappingEditPage() {
 
   useEffect(() => {
     if (!existing.data) return;
+    setSupplier(existing.data.supplier_slug);
     setKind(existing.data.kind);
     setQuantity(existing.data.quantity);
     setIsActive(existing.data.is_active);
@@ -112,7 +120,7 @@ export function MappingEditPage() {
   const stepStatus = useMemo(() => {
     const s1 = Boolean(sku);
     const s2 = Boolean(kind);
-    const s3 = Boolean(catalog);
+    const s3 = Boolean(catalog?.external_id.trim());
     const s4 = kind !== "game" || denom.trim().length > 0;
     const s5 = quantity > 0;
     return { s1, s2, s3, s4, s5, all: s1 && s2 && s3 && s4 && s5 };
@@ -124,7 +132,7 @@ export function MappingEditPage() {
       api<SupplierMappingUpsertResult>(`/api/v1/admin/integrations/mappings/${sku?.id ?? ""}`, {
         method: "PUT",
         body: JSON.stringify({
-          supplier_slug: SUPPLIER_SLUG,
+          supplier_slug: supplier,
           kind,
           external_product_id: catalog?.external_id ?? "",
           external_variant_id: kind === "game" && denom.trim() ? denom.trim() : null,
@@ -135,7 +143,7 @@ export function MappingEditPage() {
       }),
     onSuccess: (result) => {
       toast.success(formatSaveSuccess(result));
-      navigate(`/integrations/mappings?supplier=${SUPPLIER_SLUG}`);
+      navigate(`/integrations/mappings?supplier=${supplier}`);
     },
     onError: (err) => {
       const msg = formatError(err);
@@ -147,7 +155,7 @@ export function MappingEditPage() {
   const validate = (): string | null => {
     if (!sku) return "Шаг 1 не заполнен: выберите SKU";
     if (!kind) return "Шаг 2 не заполнен: выберите тип";
-    if (!catalog) return "Шаг 3 не заполнен: выберите продукт или игру G2B";
+    if (!catalog?.external_id.trim()) return "Шаг 3 не заполнен: укажите продукт поставщика";
     if (kind === "game" && !denom.trim()) return "Шаг 4 не заполнен: укажите номинал";
     if (quantity <= 0) return "Шаг 5: множитель должен быть положительным";
     try {
@@ -172,7 +180,7 @@ export function MappingEditPage() {
     <div className="space-y-4">
       <PageHeader
         title={editing ? "Изменить маппинг" : "Создать маппинг"}
-        description="Связь SKU с продуктом G2B. Поставщик будет выкупать у G2B заказ, когда покупатель оплачивает этот SKU."
+        description="Связь SKU с продуктом поставщика. Когда покупатель оплачивает этот SKU, заказ выкупается у выбранного поставщика."
         breadcrumbs={[
           { label: "Интеграции", to: "/integrations" },
           { label: "Маппинги", to: "/integrations/mappings" },
@@ -225,28 +233,85 @@ export function MappingEditPage() {
 
       <Step
         number={3}
-        title={
-          kind === "voucher"
-            ? "Какой продукт G2B соответствует SKU?"
-            : kind === "game"
-              ? "Какая игра G2B соответствует SKU?"
-              : "Что у G2B?"
-        }
+        title={kind === "voucher" ? "Какой продукт поставщика?" : "Какая игра у поставщика?"}
         done={stepStatus.s3}
         active={stepStatus.s2 && !stepStatus.s3}
         disabled={!stepStatus.s2}
       >
-        {kind && (
-          <CatalogPicker
-            supplier={SUPPLIER_SLUG}
-            kind={kind}
-            value={catalog}
-            onChange={(next) => {
-              setCatalog(next);
-              if (next?.external_id !== catalog?.external_id) setDenom("");
-            }}
-          />
-        )}
+        <div className="space-y-4">
+          <div>
+            <label
+              htmlFor="mapping-supplier"
+              className="mb-1 block text-xs font-medium text-[var(--text-secondary)]"
+            >
+              Поставщик
+            </label>
+            <select
+              id="mapping-supplier"
+              value={supplier}
+              disabled={editing}
+              onChange={(e) => {
+                setSupplier(e.target.value);
+                // Ids are per-supplier; keeping them would point the new
+                // supplier at another catalogue's product.
+                setCatalog(null);
+                setDenom("");
+              }}
+              className="h-9 w-full max-w-sm rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 text-sm disabled:opacity-60"
+            >
+              {MAPPABLE.map((r) => (
+                <option key={r.slug} value={r.slug}>
+                  {r.label} — {r.note}
+                </option>
+              ))}
+            </select>
+            {editing && (
+              <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+                Поставщик входит в ключ маппинга — чтобы сменить его, создайте новый.
+              </p>
+            )}
+          </div>
+
+          {kind && hasCatalogueCache(supplier) && (
+            <CatalogPicker
+              supplier={supplier}
+              kind={kind}
+              value={catalog}
+              onChange={(next) => {
+                setCatalog(next);
+                if (next?.external_id !== catalog?.external_id) setDenom("");
+              }}
+            />
+          )}
+
+          {kind && !hasCatalogueCache(supplier) && (
+            <ManualIdField
+              label={kind === "voucher" ? "ID продукта у поставщика" : "ID сервиса у поставщика"}
+              hint={
+                supplier === "gengine"
+                  ? kind === "voucher"
+                    ? "product id из GET /shop/products"
+                    : "service id из GET /recharge/services"
+                  : "Идентификатор продукта в системе поставщика"
+              }
+              value={catalog?.external_id ?? ""}
+              onChange={(next) => {
+                setCatalog(
+                  next.trim()
+                    ? {
+                        supplier_slug: supplier,
+                        kind: kind === "voucher" ? "voucher" : "game",
+                        external_id: next.trim(),
+                        title: next.trim(),
+                        raw: {},
+                        fetched_at: new Date().toISOString(),
+                      }
+                    : null,
+                );
+              }}
+            />
+          )}
+        </div>
       </Step>
 
       {kind === "game" && (
@@ -257,11 +322,32 @@ export function MappingEditPage() {
           active={stepStatus.s3 && !stepStatus.s4}
           disabled={!stepStatus.s3}
         >
-          <DenomPicker gameCode={catalog?.external_id ?? null} value={denom} onChange={setDenom} />
-          <div className="mt-4 space-y-3">
-            <RequiredFieldsHint gameCode={catalog?.external_id ?? null} />
-            <PlayerChecker gameCode={catalog?.external_id ?? null} />
-          </div>
+          {hasCatalogueCache(supplier) ? (
+            <>
+              <DenomPicker
+                gameCode={catalog?.external_id ?? null}
+                value={denom}
+                onChange={setDenom}
+              />
+              <div className="mt-4 space-y-3">
+                {/* Both widgets query G2B's catalogue endpoints, so they only
+                    mean anything for a supplier we mirror. */}
+                <RequiredFieldsHint gameCode={catalog?.external_id ?? null} />
+                <PlayerChecker gameCode={catalog?.external_id ?? null} />
+              </div>
+            </>
+          ) : (
+            <ManualIdField
+              label="ID номинала у поставщика"
+              hint={
+                supplier === "gengine"
+                  ? "denomination id — из denominations[] в GET /recharge/services"
+                  : "Идентификатор номинала в системе поставщика"
+              }
+              value={denom}
+              onChange={setDenom}
+            />
+          )}
         </Step>
       )}
 
@@ -496,6 +582,47 @@ function KindCard({
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Free-text id entry for suppliers whose catalogue we do not mirror.
+ *
+ * G-Engine has no `supplier_catalog_cache` rows, so the picker would show an
+ * empty list and there would be no way to create the mapping at all. The id is
+ * numeric on their side but stays a string here — the column is text, and the
+ * backend already names a non-numeric value rather than crashing on it.
+ */
+function ManualIdField({
+  label,
+  hint,
+  value,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  return (
+    <div>
+      <label
+        htmlFor={`manual-${label}`}
+        className="mb-1 block text-xs font-medium text-[var(--text-secondary)]"
+      >
+        {label}
+      </label>
+      <input
+        id={`manual-${label}`}
+        value={value}
+        inputMode="numeric"
+        onChange={(e) => {
+          onChange(e.target.value);
+        }}
+        placeholder="напр. 5"
+        className="h-9 w-full max-w-sm rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 font-mono text-sm"
+      />
+      <p className="mt-1 text-xs text-[var(--text-tertiary)]">{hint}</p>
+    </div>
+  );
+}
 
 function parseExtra(raw: string): Record<string, unknown> {
   const trimmed = raw.trim();
