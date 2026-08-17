@@ -200,6 +200,82 @@ async def test_form_fields_are_translated_to_the_supplier_s_parameter_names() ->
     }
 
 
+async def test_a_telegram_username_travels_in_the_account_slot() -> None:
+    from yupay.modules.fulfillment.suppliers.gengine import _params_from
+
+    class Item:
+        def __init__(self) -> None:
+            self.fulfillment_data = {"username": "@durov"}
+
+    assert _params_from(Item()) == {"Account": "@durov"}  # type: ignore[arg-type]
+
+
+async def _sent_params(
+    monkeypatch: pytest.MonkeyPatch, *, mapping: Any, data: dict[str, str]
+) -> dict[str, Any]:
+    """Run `fulfill` against a stub client and report what it put on the wire."""
+    import yupay.modules.fulfillment.suppliers.gengine as mod
+
+    sent: dict[str, Any] = {}
+
+    class Client:
+        async def create_recharge_order(self, **kw: Any) -> GEngineOrder:
+            sent.update(kw)
+            return _order("pending")
+
+    class Item:
+        sku_id = "sku-1"
+        fulfillment_data = data
+
+    async def _mapping_for(_db: Any, *, sku_id: str) -> Any:
+        return mapping
+
+    monkeypatch.setattr(mod, "_mapping_for", _mapping_for)
+    # The key is absent in tests; `available` is not what is under test here.
+    monkeypatch.setattr(GEngineFulfiller, "available", property(lambda _self: True))
+
+    f = GEngineFulfiller(Client())  # type: ignore[arg-type]
+    await f.fulfill(db=None, order=None, item=Item(), idempotency_key="k")  # type: ignore[arg-type]
+    return sent
+
+
+async def test_an_unfixed_service_is_sent_the_quantity_it_requires(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Telegram Stars has no denominations — G-Engine wants `Quantity`, and
+    refuses the order without one. We sell fixed packages, so the count comes
+    from the mapping and is never the customer's to type."""
+
+    class Mapping:
+        kind = "game"
+        external_product_id = "72"
+        external_variant_id = None
+        quantity = 250
+
+    sent = await _sent_params(monkeypatch, mapping=Mapping(), data={"username": "durov"})
+
+    assert sent["params"] == {"Account": "durov", "Quantity": "250"}
+    # No denomination for an unfixed service — sending one would be rejected.
+    assert sent["denomination_id"] is None
+
+
+async def test_a_fixed_service_is_not_given_a_quantity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Premium picks a denomination instead. `quantity` defaults to 1 on every
+    mapping, so forwarding it unconditionally would attach a meaningless
+    parameter to every game top-up we already sell."""
+
+    class Mapping:
+        kind = "game"
+        external_product_id = "79"
+        external_variant_id = "740"
+        quantity = 1
+
+    sent = await _sent_params(monkeypatch, mapping=Mapping(), data={"username": "durov"})
+
+    assert sent["params"] == {"Account": "durov"}
+    assert sent["denomination_id"] == 740
+
+
 async def test_a_non_numeric_mapping_is_named_rather_than_crashing() -> None:
     from yupay.modules.fulfillment.suppliers.gengine import _int_or_fail
 

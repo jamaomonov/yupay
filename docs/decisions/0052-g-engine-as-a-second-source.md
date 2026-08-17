@@ -121,6 +121,26 @@ against the shapes the live API actually returned.
 - No cancel endpoint exists upstream, so a cancelled task cannot be withdrawn
   at the supplier; the adapter says so instead of pretending.
 
+## Unfixed services, and why the amount lives on the mapping
+
+G-Engine splits recharge services in two. A `fixed` one (Telegram Premium,
+service 79) is bought by picking a `denomination_id`. An `unfixed` one (Telegram
+Stars, service 72) has no denominations at all: it takes a `Quantity` parameter
+and prices it off `unfixed_details.rate`, quoted as **units per USD** — 64.705882
+Stars per dollar, so about $0.01545 each. The order is refused outright without
+that parameter.
+
+We sell these as fixed packages rather than a Steam-style "type any amount" box,
+so the count is known before checkout. It rides on `sku_supplier_mapping.quantity`,
+a column the recharge path had not been using, and the adapter forwards it as
+`Quantity` **only when there is no denomination** — every mapping carries
+`quantity = 1` by default, so forwarding it unconditionally would attach a
+meaningless parameter to every game top-up already being sold.
+
+Telegram also credits a public `@username` rather than a numeric player id. It
+travels in the same `Account` slot, so `_PARAM_MAP` gained `username` beside
+`player_id`.
+
 ## Wiring a SKU to G-Engine from the admin
 
 The backend adapter is only half the integration: `_mapping_for` refuses with

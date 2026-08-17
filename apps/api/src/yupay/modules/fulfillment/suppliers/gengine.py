@@ -64,6 +64,10 @@ _PARAM_MAP: dict[str, str] = {
     "server": "Region",
     "region": "Region",
     "steam_login": "Account",
+    # Telegram credits a @username rather than a numeric id, but it travels in
+    # the same `Account` slot.
+    "username": "Account",
+    "telegram_username": "Account",
 }
 
 #: Order statuses that mean the sale is finished, one way or another.
@@ -122,6 +126,15 @@ class GEngineFulfiller(Fulfiller):
         params = _params_from(item)
         if not params:
             raise FulfillerError("no G-Engine parameters could be built from fulfillment_data")
+
+        if denomination_id is None:
+            # An `unfixed` service (Telegram Stars, and anything else priced by
+            # amount) has no denominations to choose from — it wants a
+            # `Quantity` instead, and rejects the order without one. The amount
+            # lives on the mapping because we sell these as fixed packages: one
+            # SKU per star count, so the number is known before checkout and is
+            # never the customer's to type.
+            params["Quantity"] = str(mapping.quantity)
 
         try:
             created = await self._client().create_recharge_order(
