@@ -155,12 +155,13 @@ export interface PriceRefreshOut {
 
 /** All G2B-flavoured slugs we expose in the admin today. Extend when adding
  *  Steam / Riot / etc. */
-export const KNOWN_SUPPLIERS = ["g2b", "waxpeer"] as const;
+export const KNOWN_SUPPLIERS = ["g2b", "waxpeer", "gengine"] as const;
 export type KnownSupplier = (typeof KNOWN_SUPPLIERS)[number];
 
 export const SUPPLIER_LABELS: Record<KnownSupplier, string> = {
   g2b: "G2Bulk",
   waxpeer: "Waxpeer",
+  gengine: "G-Engine",
 };
 
 /**
@@ -181,11 +182,18 @@ export interface SupplierCapabilities {
 export const SUPPLIER_CAPABILITIES: Record<KnownSupplier, SupplierCapabilities> = {
   g2b: { catalogue: true },
   waxpeer: { catalogue: false },
+  // Its catalogue lives behind `/recharge/services`, which the import
+  // wizard does not speak yet — the mapping is hand-entered for now.
+  gengine: { catalogue: false },
 };
 
 /** Why a supplier shows no catalogue tooling — stated rather than left as a
  *  suspicious absence. */
 export const SUPPLIER_NO_CATALOGUE_NOTE: Partial<Record<KnownSupplier, string>> = {
+  gengine:
+    "Каталог G-Engine (сервисы пополнения) пока не импортируется мастером — " +
+    "маппинг SKU заводится вручную: service_id в external_product_id, " +
+    "denomination_id в external_variant_id.",
   waxpeer:
     "Waxpeer пополняет Steam-кошелёк на введённую сумму — у него нет списка товаров, " +
     "поэтому каталог, маппинг SKU и обновление цен здесь неприменимы.",
