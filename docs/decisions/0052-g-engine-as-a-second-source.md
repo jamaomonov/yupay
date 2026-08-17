@@ -141,6 +141,15 @@ Telegram also credits a public `@username` rather than a numeric player id. It
 travels in the same `Account` slot, so `_PARAM_MAP` gained `username` beside
 `player_id`.
 
+One shared guard had to give way. `integrations.service.upsert_mapping` required
+`external_variant_id` for every `kind="game"` mapping — correct when G2B was the
+only supplier and every game top-up named a denomination, but an unfixed service
+has no denomination id to give. The rule now exempts suppliers listed in
+`_AMOUNT_PRICED_SUPPLIERS`. This is not a seed-only concern: the admin mapping
+form calls the same function, so leaving the guard as it was would have made a
+Stars-style SKU unmappable by hand as well. The G2B path keeps the requirement,
+and both halves have a test.
+
 ## Stock, and why the sweep had to learn a second shape
 
 `integrations.stock_refresh` was written against G2B, which reports **one count

@@ -244,6 +244,14 @@ export const FULFILMENT_ROUTES: FulfilmentRoute[] = [
   },
 ];
 
+/** Suppliers whose catalogue includes **amount-priced** services — ones with no
+ *  denominations, where what to buy is a quantity. G-Engine calls them
+ *  `unfixed`; Telegram Stars is one. Mirrors `_AMOUNT_PRICED_SUPPLIERS` in
+ *  `integrations/service.py`, which is what actually accepts the null variant. */
+export function isAmountPriced(slug: string): boolean {
+  return slug === "gengine";
+}
+
 /** Suppliers whose catalogue is cached locally, so a mapping can be picked
  *  from a list. Anything else is typed in by hand — see `MappingEditPage`. */
 export function hasCatalogueCache(slug: string): boolean {

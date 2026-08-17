@@ -207,6 +207,34 @@ async def test_game_kind_requires_variant(
     assert r.status_code == 422, r.text
 
 
+async def test_an_amount_priced_service_needs_no_variant(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_sku: str,
+) -> None:
+    """G-Engine's `unfixed` services (Telegram Stars) have no denominations at
+    all — what to buy is a quantity. Demanding a variant id there would demand
+    an id that does not exist upstream, making the SKU unmappable from both the
+    seed and this form."""
+    admin = await _login_user(integration_client, tg_id=413)
+    await _grant_admin(db_session, tg_id=413)
+    headers = {"Authorization": f"Bearer {admin}"}
+    r = await integration_client.put(
+        f"/api/v1/admin/integrations/mappings/{_seed_sku}",
+        headers=headers,
+        json={
+            "supplier_slug": "gengine",
+            "kind": "game",
+            "external_product_id": "72",
+            "quantity": 250,
+        },
+    )
+    assert r.status_code in (200, 201), r.text
+    body = r.json()
+    assert body["mapping"]["external_variant_id"] is None
+    assert body["mapping"]["quantity"] == 250
+
+
 async def test_list_filters_by_supplier(
     integration_client: AsyncClient,
     db_session: AsyncSession,

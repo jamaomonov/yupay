@@ -116,13 +116,28 @@ async def sku_codes_for(db: AsyncSession, sku_ids: Iterable[str]) -> dict[str, s
     return {row.id: row.sku_code for row in rows}
 
 
+#: Suppliers whose game catalogue includes **amount-priced** services — ones
+#: with no denominations at all, where what to buy is a quantity rather than a
+#: catalogue entry (G-Engine calls them ``unfixed``; Telegram Stars is one).
+#:
+#: The rule below was written when G2B was the only supplier and every game
+#: top-up named a denomination. Applied to an unfixed service it demands an id
+#: that does not exist upstream, which would make such a SKU unmappable — from
+#: this seed *and* from the admin form, which calls the same function.
+_AMOUNT_PRICED_SUPPLIERS = frozenset({"gengine"})
+
+
 async def upsert_mapping(db: AsyncSession, payload: MappingUpsert) -> SkuSupplierMapping:
     """Create or overwrite the mapping row for ``(sku_id, supplier_slug)``."""
     if not payload.external_product_id.strip():
         raise ValidationError("external_product_id is required")
     if payload.quantity <= 0:
         raise ValidationError("quantity must be positive")
-    if payload.kind == "game" and not payload.external_variant_id:
+    if (
+        payload.kind == "game"
+        and not payload.external_variant_id
+        and payload.supplier_slug not in _AMOUNT_PRICED_SUPPLIERS
+    ):
         # Game orders need a catalogue_name / denom id — voucher orders don't.
         raise ValidationError(
             "external_variant_id is required for kind='game'",

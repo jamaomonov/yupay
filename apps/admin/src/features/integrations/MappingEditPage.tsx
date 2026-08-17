@@ -23,7 +23,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { DenomPicker, PlayerChecker, RequiredFieldsHint } from "./gameWidgets";
 import { CatalogPicker, SkuPicker } from "./pickers";
-import { FULFILMENT_ROUTES, hasCatalogueCache } from "./types";
+import { FULFILMENT_ROUTES, hasCatalogueCache, isAmountPriced } from "./types";
 
 import type {
   CatalogEntry,
@@ -116,15 +116,24 @@ export function MappingEditPage() {
     if (found) setSku(found);
   }, [existingSkuQuery.data, params.sku]);
 
+  //: True when this supplier sells services priced by amount rather than by a
+  //: catalogue entry. Then the denomination is optional and step 5's quantity
+  //: is what says how much to buy.
+  const amountPriced = isAmountPriced(supplier);
+
   // ---- derived completeness ----
   const stepStatus = useMemo(() => {
     const s1 = Boolean(sku);
     const s2 = Boolean(kind);
     const s3 = Boolean(catalog?.external_id.trim());
-    const s4 = kind !== "game" || denom.trim().length > 0;
+    // An amount-priced service (G-Engine's `unfixed`, e.g. Telegram Stars) has
+    // no denominations at all — what to buy is the quantity in step 5. The
+    // backend allows the null variant for those suppliers, so requiring one
+    // here would block by hand exactly what the seed does in bulk.
+    const s4 = kind !== "game" || amountPriced || denom.trim().length > 0;
     const s5 = quantity > 0;
     return { s1, s2, s3, s4, s5, all: s1 && s2 && s3 && s4 && s5 };
-  }, [sku, kind, catalog, denom, quantity]);
+  }, [sku, kind, catalog, denom, quantity, amountPriced]);
 
   // ---- save ----
   const save = useMutation<SupplierMappingUpsertResult, ApiError>({
@@ -156,7 +165,8 @@ export function MappingEditPage() {
     if (!sku) return "Шаг 1 не заполнен: выберите SKU";
     if (!kind) return "Шаг 2 не заполнен: выберите тип";
     if (!catalog?.external_id.trim()) return "Шаг 3 не заполнен: укажите продукт поставщика";
-    if (kind === "game" && !denom.trim()) return "Шаг 4 не заполнен: укажите номинал";
+    if (kind === "game" && !amountPriced && !denom.trim())
+      return "Шаг 4 не заполнен: укажите номинал";
     if (quantity <= 0) return "Шаг 5: множитель должен быть положительным";
     try {
       parseExtra(extraJson);
@@ -317,7 +327,9 @@ export function MappingEditPage() {
       {kind === "game" && (
         <Step
           number={4}
-          title="Какой номинал из каталога игры?"
+          title={
+            amountPriced ? "Номинал (если у сервиса он есть)" : "Какой номинал из каталога игры?"
+          }
           done={stepStatus.s4}
           active={stepStatus.s3 && !stepStatus.s4}
           disabled={!stepStatus.s3}
@@ -359,11 +371,15 @@ export function MappingEditPage() {
         disabled={kind === "game" ? !stepStatus.s4 : !stepStatus.s3}
       >
         <div className="flex flex-wrap items-end gap-6">
-          <label className="block">
-            <span className="text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">
-              Множитель
-            </span>
+          <div className="block">
+            <label
+              htmlFor="mapping-quantity"
+              className="text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]"
+            >
+              {amountPriced ? "Количество" : "Множитель"}
+            </label>
             <input
+              id="mapping-quantity"
               type="number"
               min={1}
               max={10_000}
@@ -374,9 +390,13 @@ export function MappingEditPage() {
               className="mt-1 h-10 w-24 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 text-sm"
             />
             <span className="mt-1 block text-[10px] text-[var(--text-tertiary)]">
-              сколько единиц у G2B = один наш SKU
+              {amountPriced
+                ? // For an amount-priced service this is not a multiplier at
+                  // all: it is the amount itself, sent as the `Quantity` param.
+                  "сколько единиц покупать — для Telegram Stars это число звёзд"
+                : "сколько единиц у поставщика = один наш SKU"}
             </span>
-          </label>
+          </div>
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"

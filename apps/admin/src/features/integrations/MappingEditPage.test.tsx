@@ -115,6 +115,36 @@ it("lets the ids be typed in for a supplier whose catalogue we do not mirror", a
   });
 });
 
+it("can save an amount-priced service that has no denomination", async () => {
+  // Telegram Stars: G-Engine's service 72 has no denominations at all, and the
+  // star count rides on the quantity. Requiring a denomination here would block
+  // by hand exactly what the seed creates in bulk.
+  renderPage();
+  const picker = await reachSupplierStep();
+
+  fireEvent.change(picker, { target: { value: "gengine" } });
+  fireEvent.change(screen.getByLabelText("ID сервиса у поставщика"), { target: { value: "72" } });
+  // Not "Множитель" here: for an amount-priced service the field is the amount
+  // itself, and calling it a multiplier would mislead whoever fills it in.
+  fireEvent.change(screen.getByLabelText("Количество"), { target: { value: "250" } });
+
+  const save = screen.getByRole("button", { name: "Сохранить" });
+  expect(save).toBeEnabled();
+  fireEvent.click(save);
+
+  await waitFor(() => {
+    expect(mockedApi).toHaveBeenCalled();
+  });
+  const raw = mockedApi.mock.calls[0]?.[1]?.body as string | undefined;
+  const body: unknown = JSON.parse(raw ?? "{}");
+  expect(body).toMatchObject({
+    supplier_slug: "gengine",
+    external_product_id: "72",
+    external_variant_id: null,
+    quantity: 250,
+  });
+});
+
 it("drops the ids when the supplier changes", async () => {
   // Ids are per-supplier. Carrying one over would point G-Engine at a product
   // id that means something else in their catalogue — and it would save
@@ -128,5 +158,7 @@ it("drops the ids when the supplier changes", async () => {
   fireEvent.change(picker, { target: { value: "gengine" } });
 
   expect(screen.getByLabelText("ID сервиса у поставщика")).toHaveValue("");
+  // Disabled because the product id is gone — the denomination is optional for
+  // this supplier, so it is not what is blocking here.
   expect(screen.getByRole("button", { name: "Сохранить" })).toBeDisabled();
 });
