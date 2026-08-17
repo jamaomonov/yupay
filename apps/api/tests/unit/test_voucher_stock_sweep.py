@@ -1,5 +1,9 @@
 """The loop inside ``refresh_voucher_stock``.
 
+Two suppliers report stock at different levels — G2B one count per product,
+G-Engine one per denomination — so the loop dispatches per mapping and the
+G-Engine branch is covered alongside the G2B one.
+
 ``normalise_stock`` is pinned next door; this covers what wraps it — that a
 withdrawn product becomes zero rather than staying unknown, that one failing id
 does not stop the queue or get mistaken for empty, and that the alert fires on
@@ -94,7 +98,7 @@ def _harness(monkeypatch: pytest.MonkeyPatch) -> Any:
     # which mypy does not treat as an attribute of it.
     monkeypatch.setattr("yupay.modules.notifications.api.send_admin_alert", _capture, raising=False)
 
-    def _install(targets: list[tuple[str, str]], skus: list[Sku]) -> dict[str, Any]:
+    def _install(targets: list[tuple[str, ...]], skus: list[Sku]) -> dict[str, Any]:
         state: dict[str, Any] = {
             "targets": targets,
             "skus": skus,
@@ -110,7 +114,10 @@ def _harness(monkeypatch: pytest.MonkeyPatch) -> Any:
 async def test_sweep_writes_counts_and_zeroes_withdrawn_products(_harness: Any) -> None:
     install, alerts = _harness
     full, gone = _sku("roblox-800", 420), _sku("roblox-2000", 5)
-    install([("id-roblox-800", "107"), ("id-roblox-2000", "108")], [full, gone])
+    install(
+        [("id-roblox-800", "g2b", "107", None), ("id-roblox-2000", "g2b", "108", None)],
+        [full, gone],
+    )
     client = _Client({"107": {"stock": 12}, "108": None})
 
     report = await mod.refresh_voucher_stock(client=client)
@@ -130,7 +137,7 @@ async def test_sweep_writes_counts_and_zeroes_withdrawn_products(_harness: Any) 
 async def test_sweep_does_not_alert_for_an_already_empty_sku(_harness: Any) -> None:
     install, alerts = _harness
     empty = _sku("roblox-2000", 0)
-    install([("id-roblox-2000", "108")], [empty])
+    install([("id-roblox-2000", "g2b", "108", None)], [empty])
 
     report = await mod.refresh_voucher_stock(client=_Client({"108": {"stock": 0}}))
 
@@ -143,7 +150,7 @@ async def test_sweep_does_not_alert_for_an_already_empty_sku(_harness: Any) -> N
 async def test_sweep_survives_one_failing_product(_harness: Any) -> None:
     install, _alerts = _harness
     ok = _sku("roblox-2000", 5)
-    install([("id-roblox-800", "107"), ("id-roblox-2000", "108")], [ok])
+    install([("id-roblox-800", "g2b", "107", None), ("id-roblox-2000", "g2b", "108", None)], [ok])
     client = _Client({"108": {"stock": 7}}, boom={"107"})
 
     report = await mod.refresh_voucher_stock(client=client)
@@ -157,7 +164,7 @@ async def test_sweep_survives_one_failing_product(_harness: Any) -> None:
 async def test_sweep_treats_minus_one_as_untracked(_harness: Any) -> None:
     install, alerts = _harness
     sku = _sku("roblox-800", 5)
-    install([("id-roblox-800", "107")], [sku])
+    install([("id-roblox-800", "g2b", "107", None)], [sku])
 
     report = await mod.refresh_voucher_stock(client=_Client({"107": {"stock": -1}}))
 
@@ -175,3 +182,75 @@ async def test_sweep_without_a_registered_adapter_is_a_no_op(
     monkeypatch.setattr("yupay.modules.fulfillment.suppliers.REGISTRY", {}, raising=False)
     report = await mod.refresh_voucher_stock()
     assert report.checked == 0
+
+
+# ---------- G-Engine: stock lives on the denomination ----------
+
+
+class _GEngineClient:
+    """`GET /shop/denominations/{product}` — every denomination in one answer."""
+
+    def __init__(self, answers: dict[int, list[dict[str, Any]]]) -> None:
+        self.answers = answers
+        self.asked: list[int] = []
+
+    async def list_shop_denominations(self, product_id: int) -> list[dict[str, Any]]:
+        self.asked.append(product_id)
+        return self.answers.get(product_id, [])
+
+
+async def test_gengine_stock_is_read_per_denomination(_harness: Any) -> None:
+    install, alerts = _harness
+    gold100, gold500 = _sku("so2-gold-100", 15), _sku("so2-gold-500", 5)
+    install(
+        [
+            ("id-so2-gold-100", "gengine", "140", "788"),
+            ("id-so2-gold-500", "gengine", "140", "789"),
+        ],
+        [gold100, gold500],
+    )
+    client = _GEngineClient(
+        {140: [{"id": 788, "stock": 12}, {"id": 789, "stock": 0}, {"id": 790, "stock": 5}]}
+    )
+
+    report = await mod.refresh_voucher_stock(client=None, gengine_client=client)
+
+    # One call, not one per SKU: four Standoff 2 lines sit behind one product.
+    assert client.asked == [140]
+    assert gold100.supplier_stock == 12
+    assert gold500.supplier_stock == 0
+    assert gold500.in_stock is False
+    assert report.went_out_of_stock == 1
+    assert alerts == ["voucher_out_of_stock"]
+
+
+async def test_a_denomination_that_vanished_reads_as_empty(_harness: Any) -> None:
+    """Delisted upstream cannot be delivered. Leaving it NULL would keep it on
+    the shelf — the same call the G2B branch makes for a withdrawn product."""
+    install, _alerts = _harness
+    sku = _sku("so2-gold-3000", 5)
+    install([("id-so2-gold-3000", "gengine", "140", "791")], [sku])
+    client = _GEngineClient({140: [{"id": 788, "stock": 12}]})
+
+    await mod.refresh_voucher_stock(client=None, gengine_client=client)
+
+    assert sku.supplier_stock == 0
+    assert sku.in_stock is False
+
+
+async def test_the_two_suppliers_are_swept_in_one_run(_harness: Any) -> None:
+    install, _alerts = _harness
+    robux, gold = _sku("roblox-800", 5), _sku("so2-gold-100", 5)
+    install(
+        [("id-roblox-800", "g2b", "107", None), ("id-so2-gold-100", "gengine", "140", "788")],
+        [robux, gold],
+    )
+
+    report = await mod.refresh_voucher_stock(
+        client=_Client({"107": {"stock": 3}}),
+        gengine_client=_GEngineClient({140: [{"id": 788, "stock": 9}]}),
+    )
+
+    assert (robux.supplier_stock, gold.supplier_stock) == (3, 9)
+    assert report.checked == 2
+    assert report.errors == 0

@@ -1,0 +1,412 @@
+"""The G-Engine order state machine.
+
+A sale here is not one call. G-Engine creates the order unpaid, verifies the
+player account itself, and only a ``verified`` order may be paid — so the
+adapter has to carry a sale across several polls without ever paying twice or
+declaring success early.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import pytest
+from yupay.modules.fulfillment.suppliers.base import FulfillerError
+from yupay.modules.fulfillment.suppliers.gengine import GEngineFulfiller
+from yupay.modules.fulfillment.suppliers.gengine_client import (
+    GEngineError,
+    GEngineOrder,
+    GEngineUnavailableError,
+)
+
+pytestmark = pytest.mark.asyncio
+
+
+def _order(status: str, *, order_id: int = 9001, refunded: bool = False) -> GEngineOrder:
+    return GEngineOrder(
+        id=order_id,
+        uuid="uuid-1",
+        status=status,
+        price=0.6018,
+        currency="USD",
+        is_refunded=refunded,
+    )
+
+
+class FakeClient:
+    """Records what was called, so "did it pay twice" is answerable."""
+
+    def __init__(self, *, created: Any = None, fetched: Any = None, paid: Any = None) -> None:
+        self._created = created
+        self._fetched = fetched
+        self._paid = paid
+        self.pay_calls = 0
+        self.create_calls = 0
+
+    async def create_recharge_order(self, **_kw: Any) -> GEngineOrder:
+        self.create_calls += 1
+        if isinstance(self._created, Exception):
+            raise self._created
+        return self._created
+
+    async def get_recharge_order(self, _order_id: int) -> GEngineOrder:
+        if isinstance(self._fetched, Exception):
+            raise self._fetched
+        return self._fetched
+
+    async def get_recharge_order_by_uuid(self, _uuid: str) -> GEngineOrder:
+        if isinstance(self._fetched, Exception):
+            raise self._fetched
+        return self._fetched
+
+    async def pay_recharge_order(self, _order_id: int) -> GEngineOrder:
+        self.pay_calls += 1
+        if isinstance(self._paid, Exception):
+            raise self._paid
+        return self._paid
+
+
+class _Task:
+    def __init__(self, external_order_id: str | None) -> None:
+        self.external_order_id = external_order_id
+
+
+async def test_a_fresh_order_is_in_progress_not_a_delivery() -> None:
+    """It has not been paid yet, and the account is still being verified.
+    Reporting success here would tell the customer their diamonds arrived."""
+    f = GEngineFulfiller(FakeClient(created=_order("pending")))  # type: ignore[arg-type]
+    result = await f._advance(_order("pending"), first_call=True)
+
+    assert result.outcome == "in_progress"
+    assert result.external_order_id == "9001"
+    assert result.artifact is None
+
+
+async def test_a_verified_order_is_paid_immediately() -> None:
+    # `verified` is the only state that opens payment, and every minute it
+    # waits is a minute the customer is staring at "в обработке".
+    client = FakeClient(paid=_order("shipped"))
+    f = GEngineFulfiller(client)  # type: ignore[arg-type]
+
+    result = await f._advance(_order("verified"), first_call=False)
+
+    assert client.pay_calls == 1
+    assert result.outcome == "succeeded"
+    assert result.artifact == {
+        "supplier": "gengine",
+        "external_order_id": "9001",
+        "status": "shipped",
+    }
+
+
+async def test_an_already_shipped_order_is_not_paid_again() -> None:
+    """The poller sees `shipped` on every later tick; paying again would be
+    buying the same top-up twice."""
+    client = FakeClient()
+    f = GEngineFulfiller(client)  # type: ignore[arg-type]
+
+    result = await f._advance(_order("shipped"), first_call=False)
+
+    assert client.pay_calls == 0
+    assert result.outcome == "succeeded"
+
+
+async def test_a_wrong_player_id_is_the_customers_mistake_not_a_fault() -> None:
+    # G-Engine catches this *before* our money moves — the whole reason the
+    # flow has a verification step.
+    f = GEngineFulfiller(FakeClient())  # type: ignore[arg-type]
+
+    result = await f._advance(_order("invalid_account"), first_call=False)
+
+    assert result.outcome == "failed"
+    assert result.error == "invalid_account"
+    assert result.extra_metadata["supplier_refunded"] is False
+
+
+async def test_a_refunded_failure_says_so_so_nobody_chases_the_money() -> None:
+    f = GEngineFulfiller(FakeClient())  # type: ignore[arg-type]
+
+    result = await f._advance(_order("cancelled", refunded=True), first_call=False)
+
+    assert result.outcome == "failed"
+    assert result.extra_metadata["supplier_refunded"] is True
+
+
+async def test_an_unreachable_supplier_mid_payment_stays_in_progress() -> None:
+    """Nothing was decided upstream. Failing here would abandon a sale that
+    may already have gone through."""
+    client = FakeClient(paid=GEngineUnavailableError("timeout"))
+    f = GEngineFulfiller(client)  # type: ignore[arg-type]
+
+    result = await f._advance(_order("verified"), first_call=False)
+
+    assert result.outcome == "in_progress"
+
+
+async def test_a_refused_payment_fails_with_the_supplier_s_own_words() -> None:
+    client = FakeClient(paid=GEngineError("insufficient funds"))
+    f = GEngineFulfiller(client)  # type: ignore[arg-type]
+
+    result = await f._advance(_order("verified"), first_call=False)
+
+    assert result.outcome == "failed"
+    assert "insufficient funds" in (result.error or "")
+
+
+async def test_check_status_before_an_order_exists_is_not_an_error() -> None:
+    f = GEngineFulfiller(FakeClient())  # type: ignore[arg-type]
+
+    status = await f.check_status(db=None, task=_Task(None))  # type: ignore[arg-type]
+
+    assert status.outcome == "in_progress"
+
+
+async def test_a_create_that_already_happened_is_recovered_not_repeated() -> None:
+    """The create response can be lost to a timeout. Retrying blind would buy
+    the top-up twice, which for a top-up cannot be undone."""
+    client = FakeClient(
+        created=GEngineError("uuid already used"),
+        fetched=_order("verified"),
+        paid=_order("shipped"),
+    )
+    f = GEngineFulfiller(client)  # type: ignore[arg-type]
+
+    # `fulfill` needs a mapping and an item; exercise the recovery seam
+    # directly — the mapping lookup is covered by its own integration test.
+    recovered = await f._recover("uuid-1")
+
+    assert recovered is not None
+    assert recovered.id == 9001
+    assert client.create_calls == 0
+
+
+async def test_form_fields_are_translated_to_the_supplier_s_parameter_names() -> None:
+    from yupay.modules.fulfillment.suppliers.gengine import _params_from
+
+    class Item:
+        def __init__(self) -> None:
+            self.fulfillment_data = {
+                "player_id": "1313232551",
+                "server": "6618",
+                "note": "ignored",
+            }
+
+    # Ours are `player_id`/`server`; G-Engine wants `Account`/`Region`. An
+    # unmapped key is dropped rather than forwarded — the API rejects unknown
+    # params, and a stray note is more likely our form than their contract.
+    assert _params_from(Item()) == {  # type: ignore[arg-type]
+        "Account": "1313232551",
+        "Region": "6618",
+    }
+
+
+async def test_a_telegram_username_travels_in_the_account_slot() -> None:
+    from yupay.modules.fulfillment.suppliers.gengine import _params_from
+
+    class Item:
+        def __init__(self) -> None:
+            self.fulfillment_data = {"username": "@durov"}
+
+    assert _params_from(Item()) == {"Account": "@durov"}  # type: ignore[arg-type]
+
+
+async def _sent_params(
+    monkeypatch: pytest.MonkeyPatch, *, mapping: Any, data: dict[str, str]
+) -> dict[str, Any]:
+    """Run `fulfill` against a stub client and report what it put on the wire."""
+    import yupay.modules.fulfillment.suppliers.gengine as mod
+
+    sent: dict[str, Any] = {}
+
+    class Client:
+        async def create_recharge_order(self, **kw: Any) -> GEngineOrder:
+            sent.update(kw)
+            return _order("pending")
+
+    class Item:
+        sku_id = "sku-1"
+        fulfillment_data = data
+
+    async def _mapping_for(_db: Any, *, sku_id: str) -> Any:
+        return mapping
+
+    monkeypatch.setattr(mod, "_mapping_for", _mapping_for)
+    # The key is absent in tests; `available` is not what is under test here.
+    monkeypatch.setattr(GEngineFulfiller, "available", property(lambda _self: True))
+
+    f = GEngineFulfiller(Client())  # type: ignore[arg-type]
+    await f.fulfill(db=None, order=None, item=Item(), idempotency_key="k")  # type: ignore[arg-type]
+    return sent
+
+
+async def test_an_unfixed_service_is_sent_the_quantity_it_requires(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Telegram Stars has no denominations — G-Engine wants `Quantity`, and
+    refuses the order without one. We sell fixed packages, so the count comes
+    from the mapping and is never the customer's to type."""
+
+    class Mapping:
+        kind = "game"
+        external_product_id = "72"
+        external_variant_id = None
+        quantity = 250
+
+    sent = await _sent_params(monkeypatch, mapping=Mapping(), data={"username": "durov"})
+
+    assert sent["params"] == {"Account": "durov", "Quantity": "250"}
+    # No denomination for an unfixed service — sending one would be rejected.
+    assert sent["denomination_id"] is None
+
+
+async def test_a_fixed_service_is_not_given_a_quantity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Premium picks a denomination instead. `quantity` defaults to 1 on every
+    mapping, so forwarding it unconditionally would attach a meaningless
+    parameter to every game top-up we already sell."""
+
+    class Mapping:
+        kind = "game"
+        external_product_id = "79"
+        external_variant_id = "740"
+        quantity = 1
+
+    sent = await _sent_params(monkeypatch, mapping=Mapping(), data={"username": "durov"})
+
+    assert sent["params"] == {"Account": "durov"}
+    assert sent["denomination_id"] == 740
+
+
+async def test_a_non_numeric_mapping_is_named_rather_than_crashing() -> None:
+    from yupay.modules.fulfillment.suppliers.gengine import _int_or_fail
+
+    with pytest.raises(FulfillerError, match="must be numeric"):
+        _int_or_fail("mlbb_ru", field="external_product_id")
+
+
+# ---------- shop: gift codes and keys ----------
+
+
+def _shop(status: str, *, codes: list[str] | None = None, refunded: bool = False) -> Any:
+    from yupay.modules.fulfillment.suppliers.gengine_client import GEngineShopOrder
+
+    return GEngineShopOrder(
+        id=7001, status=status, price=3.5, is_refunded=refunded, codes=codes or []
+    )
+
+
+class FakeShopClient:
+    """Counts reserve/pay separately — the whole safety argument rests on
+    which of the two ran."""
+
+    def __init__(self, *, reserved: Any = None, paid: Any = None, fetched: Any = None) -> None:
+        self._reserved = reserved
+        self._paid = paid
+        self._fetched = fetched
+        self.reserve_calls = 0
+        self.pay_calls = 0
+
+    async def create_shop_order(self, **_kw: Any) -> Any:
+        self.reserve_calls += 1
+        if isinstance(self._reserved, Exception):
+            raise self._reserved
+        return self._reserved
+
+    async def pay_shop_order(self, _order_id: int) -> Any:
+        self.pay_calls += 1
+        if isinstance(self._paid, Exception):
+            raise self._paid
+        return self._paid
+
+    async def get_shop_order(self, _order_id: int) -> Any:
+        if isinstance(self._fetched, Exception):
+            raise self._fetched
+        return self._fetched
+
+
+class _Mapping:
+    def __init__(self) -> None:
+        self.kind = "voucher"
+        self.external_product_id = "140"
+        self.external_variant_id = "555"
+
+
+class _ShopItem:
+    def __init__(self) -> None:
+        self.sku_id = "sku-1"
+        self.qty = 2
+        self.fulfillment_data: dict[str, str] = {}
+
+
+async def test_a_paid_shop_order_delivers_its_codes() -> None:
+    client = FakeShopClient(
+        reserved=_shop("pending"), paid=_shop("shipped", codes=["AAA-111", "BBB-222"])
+    )
+    f = GEngineFulfiller(client)  # type: ignore[arg-type]
+
+    result = await f._fulfill_shop(mapping=_Mapping(), item=_ShopItem())  # type: ignore[arg-type]
+
+    assert (client.reserve_calls, client.pay_calls) == (1, 1)
+    assert result.outcome == "succeeded"
+    assert result.artifact_kind == "voucher_code"
+    assert result.artifact is not None
+    assert result.artifact["code"] == "AAA-111"
+    assert result.artifact["codes"] == ["AAA-111", "BBB-222"]
+
+
+async def test_a_shipped_order_with_no_codes_yet_is_not_a_delivery() -> None:
+    """Handing over an empty voucher is worse than making the customer wait —
+    the same rule the G2B adapter follows."""
+    client = FakeShopClient(reserved=_shop("pending"), paid=_shop("shipped", codes=[]))
+    f = GEngineFulfiller(client)  # type: ignore[arg-type]
+
+    result = await f._fulfill_shop(mapping=_Mapping(), item=_ShopItem())  # type: ignore[arg-type]
+
+    assert result.outcome == "in_progress"
+    assert result.artifact is None
+
+
+async def test_an_unreachable_supplier_after_reserving_keeps_the_order_id() -> None:
+    """This is the case the two-step flow exists for. The shop API takes no
+    client-supplied id, so losing the order id would mean losing the sale —
+    but the reservation costs nothing until it is paid."""
+    client = FakeShopClient(reserved=_shop("pending"), paid=GEngineUnavailableError("timeout"))
+    f = GEngineFulfiller(client)  # type: ignore[arg-type]
+
+    result = await f._fulfill_shop(mapping=_Mapping(), item=_ShopItem())  # type: ignore[arg-type]
+
+    assert result.outcome == "in_progress"
+    assert result.external_order_id == "7001"
+    # And the task is tagged so the poller knows to use the shop endpoints.
+    assert result.extra_metadata["gengine_kind"] == "voucher"
+
+
+async def test_the_poller_pays_a_reservation_that_was_never_settled() -> None:
+    client = FakeShopClient(fetched=_shop("pending"), paid=_shop("shipped", codes=["CCC-333"]))
+    f = GEngineFulfiller(client)  # type: ignore[arg-type]
+
+    status = await f._shop_status(_Task("7001"))  # type: ignore[arg-type]
+
+    assert client.pay_calls == 1
+    assert status.outcome == "succeeded"
+    assert status.artifact is not None
+    assert status.artifact["code"] == "CCC-333"
+
+
+async def test_the_poller_does_not_pay_an_order_that_is_already_shipped() -> None:
+    client = FakeShopClient(fetched=_shop("shipped", codes=["DDD-444"]))
+    f = GEngineFulfiller(client)  # type: ignore[arg-type]
+
+    status = await f._shop_status(_Task("7001"))  # type: ignore[arg-type]
+
+    assert client.pay_calls == 0
+    assert status.outcome == "succeeded"
+
+
+async def test_a_cancelled_shop_order_fails_and_says_whether_money_came_back() -> None:
+    client = FakeShopClient(fetched=_shop("canceled", refunded=True))
+    f = GEngineFulfiller(client)  # type: ignore[arg-type]
+
+    status = await f._shop_status(_Task("7001"))  # type: ignore[arg-type]
+
+    assert status.outcome == "failed"
+    assert status.extra_metadata["supplier_refunded"] is True

@@ -317,6 +317,14 @@ class Settings(BaseSettings):
     # amount up so the customer still receives what they asked for.
     waxpeer_fee_rate: Decimal = Field(default=Decimal("0"), ge=0, lt=1)
 
+    # G-Engine — second source for game top-ups (and Steam in USD/RUB/KZT/UAH).
+    # Same empty-key-disables rule as the two above. Its ``limit`` query param
+    # is capped at 100 server-side, which the client mirrors rather than
+    # discovering through a 422.
+    gengine_api_key: str = Field(default="")
+    gengine_base_url: str = Field(default="https://api.g-engine.net/v2.1")
+    gengine_request_timeout_seconds: float = Field(default=20.0)
+
     # --- acquirer: Octo (octo.uz) ---
     # Hosted-page card acquirer for the UZ market (Uzcard/Humo/Visa). Empty
     # credentials → the gateway reports ``available=False`` and disappears from

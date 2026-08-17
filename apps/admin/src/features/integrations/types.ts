@@ -155,12 +155,13 @@ export interface PriceRefreshOut {
 
 /** All G2B-flavoured slugs we expose in the admin today. Extend when adding
  *  Steam / Riot / etc. */
-export const KNOWN_SUPPLIERS = ["g2b", "waxpeer"] as const;
+export const KNOWN_SUPPLIERS = ["g2b", "waxpeer", "gengine"] as const;
 export type KnownSupplier = (typeof KNOWN_SUPPLIERS)[number];
 
 export const SUPPLIER_LABELS: Record<KnownSupplier, string> = {
   g2b: "G2Bulk",
   waxpeer: "Waxpeer",
+  gengine: "G-Engine",
 };
 
 /**
@@ -181,11 +182,88 @@ export interface SupplierCapabilities {
 export const SUPPLIER_CAPABILITIES: Record<KnownSupplier, SupplierCapabilities> = {
   g2b: { catalogue: true },
   waxpeer: { catalogue: false },
+  // Its catalogue lives behind `/recharge/services`, which the import
+  // wizard does not speak yet — the mapping is hand-entered for now.
+  gengine: { catalogue: false },
 };
+
+/**
+ * Every route a fulfilment task can carry, in one place.
+ *
+ * Four screens used to keep their own list and all four had drifted: the
+ * mapping form was hardcoded to G2B, the sourcing rules offered only G2B, and
+ * the inbox filter listed five stub suppliers that have never produced a task
+ * while omitting the two that produce all of them. A supplier added in one
+ * place but not the others is invisible in exactly the screens needed to wire
+ * it up.
+ */
+export interface FulfilmentRoute {
+  slug: string;
+  label: string;
+  /** Whether a SKU has to be wired to this supplier through a mapping row
+   *  before it can be fulfilled. Waxpeer derives its Steam top-up from the
+   *  order itself and needs none, so offering it in the mapping form would be
+   *  an option that silently does nothing. */
+  mappings: boolean;
+  /** False for the in-house routes (warehouse, manual, dev mock) — they have
+   *  no API key, no health probe and no place on the integrations page. */
+  external: boolean;
+  note: string;
+}
+
+export const FULFILMENT_ROUTES: FulfilmentRoute[] = [
+  {
+    slug: "inventory",
+    label: "Склад кодов",
+    external: false,
+    mappings: false,
+    note: "наш склад ваучеров",
+  },
+  {
+    slug: "manual",
+    label: "Ручная выдача",
+    external: false,
+    mappings: false,
+    note: "оператор выдаёт руками",
+  },
+  { slug: "g2b", label: "G2Bulk", external: true, mappings: true, note: "игры и ваучеры" },
+  { slug: "waxpeer", label: "Waxpeer", external: true, mappings: false, note: "пополнение Steam" },
+  {
+    slug: "gengine",
+    label: "G-Engine",
+    external: true,
+    mappings: true,
+    note: "игры + подарочные карты",
+  },
+  {
+    slug: "mock",
+    label: "Mock (dev)",
+    external: false,
+    mappings: false,
+    note: "только для разработки",
+  },
+];
+
+/** Suppliers whose catalogue is cached locally, so a mapping can be picked
+ *  from a list. Anything else is typed in by hand — see `MappingEditPage`. */
+export function hasCatalogueCache(slug: string): boolean {
+  // Narrowed by membership rather than cast: `SUPPLIER_CAPABILITIES` is keyed
+  // by the known slugs, so casting an arbitrary string into that key type
+  // would tell the compiler the lookup always hits when it does not.
+  return isKnownSupplier(slug) && SUPPLIER_CAPABILITIES[slug].catalogue;
+}
+
+function isKnownSupplier(slug: string): slug is KnownSupplier {
+  return (KNOWN_SUPPLIERS as readonly string[]).includes(slug);
+}
 
 /** Why a supplier shows no catalogue tooling — stated rather than left as a
  *  suspicious absence. */
 export const SUPPLIER_NO_CATALOGUE_NOTE: Partial<Record<KnownSupplier, string>> = {
+  gengine:
+    "Каталог G-Engine (сервисы пополнения) пока не импортируется мастером — " +
+    "маппинг SKU заводится вручную: service_id в external_product_id, " +
+    "denomination_id в external_variant_id.",
   waxpeer:
     "Waxpeer пополняет Steam-кошелёк на введённую сумму — у него нет списка товаров, " +
     "поэтому каталог, маппинг SKU и обновление цен здесь неприменимы.",
