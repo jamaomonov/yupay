@@ -1470,8 +1470,7 @@ function VariableAmountPanel({
       className="rounded-2xl p-4"
       style={{
         background: "hsl(var(--surface-2))",
-        border: selected ? "1.5px solid hsl(var(--primary) / 0.8)" : "1px solid hsl(var(--border))",
-        boxShadow: selected ? "0 0 0 3px hsl(var(--primary) / 0.1)" : "none",
+        border: "1px solid hsl(var(--border))",
       }}
     >
       <label className="block">
@@ -1505,7 +1504,13 @@ function VariableAmountPanel({
             // 48px tall and 18px of type: above the 44px tap target, and above
             // the 16px below which iOS Safari zooms the page on focus.
             className={cn(
-              "h-12 w-full rounded-xl border border-white/10 bg-black/20 text-lg font-bold text-white outline-none transition focus:border-white/25",
+              "h-12 w-full rounded-xl border text-lg font-bold text-white outline-none transition",
+              // Lighter than the panel behind it: `bg-black/20` on a dark
+              // surface read as a hole punched in the card rather than a field.
+              "bg-white/[0.06]",
+              selected
+                ? "border-[hsl(var(--primary)/0.8)] shadow-[0_0_0_3px_hsl(var(--primary)/0.12)]"
+                : "border-white/10 focus:border-white/25",
               unit ? "pl-3.5 pr-24" : "pl-7 pr-3",
             )}
             data-testid="input-amount"

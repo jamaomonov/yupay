@@ -19,7 +19,9 @@ Three fields carry that:
   Steam's is. It is set to match the 20% the packages already carry.
 
 Bounds are 50 stars (Telegram's own floor, so nothing smaller can be sold) to
-50 000, expressed in USD because that is what the column means.
+5 000, expressed in USD because that is what the column means. The ceiling is a
+business limit, not a supplier one: a single order worth more than that is more
+likely a typo or a card test than a sale.
 
 Idempotent: re-running finds the SKU and leaves it alone.
 """
@@ -45,7 +47,7 @@ PRODUCT_SLUG = "telegram-stars"
 SKU_CODE = "tg-stars-any"
 
 MIN_STARS = 50
-MAX_STARS = 50_000
+MAX_STARS = 5_000
 #: The margin the packages carry, as a multiplier on the guarded FX rate.
 RATE_MULTIPLIER = Decimal("1.2000")
 

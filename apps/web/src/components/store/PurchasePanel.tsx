@@ -528,15 +528,15 @@ function VariableAmountCard({
   };
 
   return (
-    <div
-      className={`rounded-xl border p-4 transition sm:p-5 ${
-        selected ? "border-primary bg-primary/[0.06]" : "border-border bg-card"
-      }`}
-    >
+    <div className="border-border bg-card rounded-xl border p-4 transition sm:p-5">
       <label htmlFor={amountId} className="text-tx-mute mb-2 block text-[13px]">
         {unit ? t("amountUnitLabel", { unit }) : t("amountOwn")}
       </label>
-      <div className="border-border bg-bg focus-within:border-primary rounded-btn flex items-center gap-2 border px-3.5 transition">
+      <div
+        className={`rounded-btn bg-card-2 flex items-center gap-2 border px-3.5 transition ${
+          selected ? "border-primary" : "border-border focus-within:border-primary"
+        }`}
+      >
         {/* The dollar SKU (Steam) carries its unit as a prefix, the way money is
             written; a named unit reads as a suffix after the count. Both are
             decorative — the label above already names the unit. */}
