@@ -72,6 +72,22 @@ class GEngineUnavailableError(Exception):
 
 
 @dataclass(frozen=True)
+class GEngineShopOrder:
+    """One shop (gift-code / key) order, with whatever codes it has released.
+
+    ``codes`` is flattened out of a three-level nesting —
+    ``products[].denominations[].items[].activation_code`` — because every
+    caller wants the codes and none of them want the tree.
+    """
+
+    id: int
+    status: str
+    price: float
+    is_refunded: bool
+    codes: list[str]
+
+
+@dataclass(frozen=True)
 class GEngineOrder:
     """One recharge order as G-Engine reports it."""
 
@@ -206,11 +222,68 @@ class GEngineClient:
         body = await self._request("GET", f"/recharge/orders/{order_id}")
         return _to_order(body)
 
+    # ---------- shop: gift codes and keys ----------
+
+    async def list_shop_products(
+        self, *, limit: int = MAX_PAGE, offset: int = 0
+    ) -> list[dict[str, Any]]:
+        """One page of gift-code / key products."""
+        data = await self._request(
+            "GET", "/shop/products", params={"limit": min(limit, MAX_PAGE), "offset": offset}
+        )
+        items = data.get("items") if isinstance(data, dict) else data
+        return [i for i in (items or []) if isinstance(i, dict)]
+
+    async def list_shop_denominations(self, product_id: int) -> list[dict[str, Any]]:
+        """A product's denominations with price and, usefully, ``stock``."""
+        data = await self._request("GET", f"/shop/denominations/{product_id}")
+        return [i for i in (data or []) if isinstance(i, dict)]
+
+    async def create_shop_order(self, *, denomination_id: int, quantity: int) -> GEngineShopOrder:
+        """Reserve goods **without paying**.
+
+        Reserving costs nothing but stock, which is what makes the two-step
+        flow safe: a create whose response we lose leaves an unpaid
+        reservation, not a purchased code. Only :meth:`pay_shop_order` spends.
+        """
+        body = await self._request(
+            "POST", "/shop/orders", json={"items": [{"id": denomination_id, "quantity": quantity}]}
+        )
+        return _to_shop_order(body)
+
+    async def pay_shop_order(self, order_id: int) -> GEngineShopOrder:
+        """Pay, and receive the activation codes in the response."""
+        body = await self._request("POST", f"/shop/orders/{order_id}/pay")
+        return _to_shop_order(body)
+
+    async def get_shop_order(self, order_id: int) -> GEngineShopOrder:
+        body = await self._request("GET", f"/shop/orders/{order_id}")
+        return _to_shop_order(body)
+
     async def get_recharge_order_by_uuid(self, uuid: str) -> GEngineOrder:
         """Look a sale up by the id we minted — the recovery path when a
         create call's response was lost."""
         body = await self._request("GET", f"/recharge/orders/{uuid}/uuid")
         return _to_order(body)
+
+
+def _to_shop_order(body: Any) -> GEngineShopOrder:
+    if not isinstance(body, dict) or body.get("id") is None:
+        raise GEngineError("g-engine returned no shop order", body=str(body)[:500])
+    codes: list[str] = []
+    for product in body.get("products") or []:
+        for denom in (product or {}).get("denominations") or []:
+            for line in (denom or {}).get("items") or []:
+                code = (line or {}).get("activation_code")
+                if code:
+                    codes.append(str(code))
+    return GEngineShopOrder(
+        id=int(body["id"]),
+        status=str(body.get("status") or "unknown"),
+        price=float(body.get("price") or 0),
+        is_refunded=bool(body.get("is_refunded")),
+        codes=codes,
+    )
 
 
 def _to_order(body: Any) -> GEngineOrder:
@@ -233,5 +306,6 @@ __all__ = [
     "GEngineOrder",
     "GEngineOrderStatus",
     "GEngineParamKey",
+    "GEngineShopOrder",
     "GEngineUnavailableError",
 ]

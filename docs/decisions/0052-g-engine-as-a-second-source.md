@@ -37,7 +37,10 @@ to point at.
 
 ## Decision outcome
 
-Add `gengine` as a `Fulfiller`, scoped to `/recharge/*` (game top-ups).
+Add `gengine` as a `Fulfiller` covering both halves of its catalogue:
+`/recharge/*` for game top-ups and `/shop/*` for gift cards and keys.
+Which one a SKU uses is decided by `sku_supplier_mapping.kind`
+(`game` / `voucher`), exactly as the G2B adapter already branches.
 
 ### The order flow is a state machine, unlike our other adapters
 
@@ -72,6 +75,24 @@ The catalogue import wizard does not speak `/recharge/services` yet, so mappings
 are entered by hand for now; the integrations page says so rather than offering
 a sync button that would fail.
 
+### Shop: reserve first, pay second — for a different reason
+
+`/shop/*` sells activation codes (Xbox, Steam, Riot, PlayStation, Razer,
+Nintendo, Apple, EA — 100+ products, each denomination reporting `stock`). Its
+order flow is `pending → paid → shipped` with no verification step, because
+there is no account to verify.
+
+It also accepts **no client-supplied id**, so the `uuid` trick that makes the
+recharge path safe is unavailable. The ordering carries that weight instead:
+reserving costs nothing but stock, only paying spends. A create whose response
+we lose therefore leaves an unpaid reservation, not a code we bought and cannot
+find — and once the reservation exists we hold its id, so the poller can settle
+a sale this call could not.
+
+A `shipped` order with no codes yet stays `in_progress`. Handing a customer an
+empty voucher is worse than making them wait, which is the rule the G2B adapter
+already follows.
+
 ### Two response envelopes, one client
 
 `/users/balance` and `/shop/*` wrap payloads in `{success, message, data}`;
@@ -94,13 +115,15 @@ against the shapes the live API actually returned.
 - A third supplier's quirks to keep in mind, and its wallet to keep funded —
   **the account balance is $0.00 today**, so the adapter is wired but cannot
   fulfil anything until it is topped up.
-- Only `/recharge/*` is covered. `/shop/*` (gift codes and keys, the analogue
-  of our voucher inventory), `/gifts/*` and `/skins/*` are untouched.
+- `/gifts/*` and `/skins/*` are untouched.
+- Shop codes are delivered straight to the customer rather than stocked into
+  the code warehouse, so `inventory` does not yet know about them.
 - No cancel endpoint exists upstream, so a cancelled task cannot be withdrawn
   at the supplier; the adapter says so instead of pretending.
 
 ## Follow-ups
 
 - Teach the catalogue wizard `/recharge/services` so mappings stop being manual.
-- `/shop/*` as a voucher source, feeding the code warehouse.
+- Feed shop `stock` into the availability sweep so a SKU stops being offered
+  before a customer pays for something the supplier cannot hand over.
 - Decide per-SKU which supplier is primary once both have real cost history.

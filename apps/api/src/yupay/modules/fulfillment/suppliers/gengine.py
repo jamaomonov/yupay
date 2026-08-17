@@ -44,6 +44,7 @@ from yupay.modules.fulfillment.suppliers.gengine_client import (
     GEngineClient,
     GEngineError,
     GEngineOrder,
+    GEngineShopOrder,
     GEngineUnavailableError,
 )
 
@@ -109,6 +110,9 @@ class GEngineFulfiller(Fulfiller):
             raise FulfillerError("GENGINE_API_KEY is not configured")
 
         mapping = await _mapping_for(db, sku_id=item.sku_id)
+        if mapping.kind == "voucher":
+            return await self._fulfill_shop(mapping=mapping, item=item)
+
         service_id = _int_or_fail(mapping.external_product_id, field="external_product_id")
         denomination_id = (
             _int_or_fail(mapping.external_variant_id, field="external_variant_id")
@@ -148,6 +152,9 @@ class GEngineFulfiller(Fulfiller):
             return FulfillStatus(
                 outcome="in_progress", artifact_kind=None, artifact=None, error=None
             )
+        if str(task.extra_metadata.get("gengine_kind") or "") == "voucher":
+            return await self._shop_status(task)
+
         try:
             order = await self._client().get_recharge_order(int(task.external_order_id))
         except (GEngineError, GEngineUnavailableError) as exc:
@@ -169,6 +176,65 @@ class GEngineFulfiller(Fulfiller):
         task: FulfillmentTask,  # noqa: ARG002
     ) -> None:
         raise FulfillerNotIntegratedError("g-engine exposes no cancel endpoint")
+
+    # ---------- shop: gift codes and keys ----------
+
+    async def _fulfill_shop(self, *, mapping: Any, item: OrderItem) -> FulfillResult:
+        """Buy activation codes.
+
+        Two calls, and the order matters. Reserving costs nothing but stock,
+        so a create whose response is lost leaves an unpaid reservation rather
+        than a code we paid for and cannot find. Only the pay step spends, and
+        by then we hold the order id — which is what lets the poller finish a
+        sale this call could not.
+
+        Unlike ``/recharge``, the shop API accepts no client-supplied id, so
+        that ordering *is* the idempotency story rather than a nicety.
+        """
+        denomination_id = _int_or_fail(
+            mapping.external_variant_id or mapping.external_product_id,
+            field="external_variant_id",
+        )
+        client = self._client()
+        try:
+            reserved = await client.create_shop_order(
+                denomination_id=denomination_id, quantity=item.qty
+            )
+        except (GEngineError, GEngineUnavailableError) as exc:
+            raise FulfillerError(str(exc)) from exc
+
+        try:
+            paid = await client.pay_shop_order(reserved.id)
+        except GEngineError as exc:
+            return _shop_failed(reserved, f"payment refused: {exc}")
+        except GEngineUnavailableError as exc:
+            # Undecided upstream. The reservation exists and we know its id, so
+            # the poller can settle it — failing here would abandon a sale that
+            # may already have gone through.
+            log.warning("gengine.shop_pay_unavailable", order_id=reserved.id, error=str(exc))
+            return _shop_in_progress(reserved)
+
+        return _shop_result(paid, mapping=mapping, item=item)
+
+    async def _shop_status(self, task: FulfillmentTask) -> FulfillStatus:
+        client = self._client()
+        try:
+            order = await client.get_shop_order(int(task.external_order_id or 0))
+            if order.status == "pending":
+                # Reserved but never paid — the window this design exists to
+                # make cheap. Settle it now.
+                order = await client.pay_shop_order(order.id)
+        except (GEngineError, GEngineUnavailableError) as exc:
+            raise FulfillerError(str(exc)) from exc
+
+        result = _shop_result(order, mapping=None, item=None)
+        return FulfillStatus(
+            outcome=result.outcome,
+            artifact_kind=result.artifact_kind,
+            artifact=result.artifact,
+            error=result.error,
+            extra_metadata=result.extra_metadata,
+        )
 
     # ---------- state machine ----------
 
@@ -296,6 +362,68 @@ def _receipt(order: GEngineOrder) -> dict[str, Any]:
         "external_order_id": str(order.id),
         "status": order.status,
     }
+
+
+def _shop_meta(order: GEngineShopOrder) -> dict[str, Any]:
+    # `gengine_kind` is what tells `check_status` to poll the shop endpoints
+    # rather than the recharge ones — the task itself carries no mapping.
+    return {
+        "supplier": "gengine",
+        "gengine_kind": "voucher",
+        "gengine_status": order.status,
+    }
+
+
+def _shop_result(order: GEngineShopOrder, *, mapping: Any, item: OrderItem | None) -> FulfillResult:
+    """Interpret a shop order.
+
+    A ``shipped``/``paid`` order with **no codes yet** stays in progress: never
+    hand a customer an empty voucher, the same rule the G2B adapter follows.
+    """
+    if order.status == "canceled":
+        return _shop_failed(order, "cancelled by supplier")
+    if not order.codes:
+        return _shop_in_progress(order)
+    return FulfillResult(
+        outcome="succeeded",
+        external_order_id=str(order.id),
+        artifact_kind="voucher_code",
+        artifact={
+            # `code` is the single-unit case; `codes` carries everything so a
+            # multi-quantity buy shows all of them.
+            "code": order.codes[0],
+            "codes": list(order.codes),
+            "sku_id": getattr(item, "sku_id", None),
+            "qty": getattr(item, "qty", len(order.codes)),
+            "source": "gengine",
+            "external_order_id": str(order.id),
+            "external_product_id": getattr(mapping, "external_product_id", None),
+        },
+        error=None,
+        extra_metadata=_shop_meta(order),
+    )
+
+
+def _shop_in_progress(order: GEngineShopOrder) -> FulfillResult:
+    return FulfillResult(
+        outcome="in_progress",
+        external_order_id=str(order.id),
+        artifact_kind=None,
+        artifact=None,
+        error=None,
+        extra_metadata=_shop_meta(order),
+    )
+
+
+def _shop_failed(order: GEngineShopOrder, error: str) -> FulfillResult:
+    return FulfillResult(
+        outcome="failed",
+        external_order_id=str(order.id),
+        artifact_kind=None,
+        artifact=None,
+        error=error,
+        extra_metadata={**_shop_meta(order), "supplier_refunded": order.is_refunded},
+    )
 
 
 def _in_progress(order: GEngineOrder) -> FulfillResult:

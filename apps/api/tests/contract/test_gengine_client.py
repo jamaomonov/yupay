@@ -199,3 +199,100 @@ async def test_a_response_without_an_order_is_an_error_not_a_blank_order() -> No
     respx.post(f"{BASE}/recharge/orders/5").mock(return_value=httpx.Response(200, json={}))
     with pytest.raises(GEngineError, match="no order"):
         await _client().create_recharge_order(service_id=5, params={"Account": "1"})
+
+
+# ---------- shop: gift codes and keys ----------
+
+
+@respx.mock
+async def test_shop_codes_are_flattened_out_of_a_three_level_nesting() -> None:
+    """The codes sit at ``products[].denominations[].items[].activation_code``.
+    Every caller wants the codes; none of them want the tree."""
+    respx.post(f"{BASE}/shop/orders/7001/pay").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "success": True,
+                "message": "",
+                "data": {
+                    "id": 7001,
+                    "status": "shipped",
+                    "is_refunded": False,
+                    "price": 3.5,
+                    "created_at": "2026-08-17T00:00:00Z",
+                    "products": [
+                        {
+                            "id": 140,
+                            "name": "Standoff 2 Gold",
+                            "denominations": [
+                                {
+                                    "id": 555,
+                                    "name": "500 Gold",
+                                    "items": [
+                                        {"id": 1, "activation_code": "AAA-111", "price": 1.75},
+                                        {"id": 2, "activation_code": "BBB-222", "price": 1.75},
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                },
+            },
+        )
+    )
+    order = await _client().pay_shop_order(7001)
+    assert order.codes == ["AAA-111", "BBB-222"]
+    assert order.status == "shipped"
+
+
+@respx.mock
+async def test_reserving_sends_the_denomination_id_and_quantity() -> None:
+    route = respx.post(f"{BASE}/shop/orders").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "success": True,
+                "message": "",
+                "data": {
+                    "id": 7001,
+                    "status": "pending",
+                    "is_refunded": False,
+                    "price": 3.5,
+                    "products": [],
+                },
+            },
+        )
+    )
+    order = await _client().create_shop_order(denomination_id=555, quantity=2)
+
+    assert (order.id, order.status, order.codes) == (7001, "pending", [])
+    assert json.loads(route.calls.last.request.read()) == {"items": [{"id": 555, "quantity": 2}]}
+
+
+@respx.mock
+async def test_shop_denominations_report_stock() -> None:
+    # Stock is what lets us stop offering a SKU before a customer pays for
+    # something the supplier cannot hand over.
+    respx.get(f"{BASE}/shop/denominations/140").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "success": True,
+                "message": "",
+                "data": [
+                    {"id": 555, "name": "500 Gold", "value": "500", "price": 1.75, "stock": 42}
+                ],
+            },
+        )
+    )
+    denoms = await _client().list_shop_denominations(140)
+    assert denoms[0]["stock"] == 42
+
+
+@respx.mock
+async def test_a_shop_response_without_an_order_is_an_error() -> None:
+    respx.post(f"{BASE}/shop/orders").mock(
+        return_value=httpx.Response(200, json={"success": True, "message": "", "data": {}})
+    )
+    with pytest.raises(GEngineError, match="no shop order"):
+        await _client().create_shop_order(denomination_id=555, quantity=1)
