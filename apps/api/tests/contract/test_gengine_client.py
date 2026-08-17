@@ -296,3 +296,94 @@ async def test_a_shop_response_without_an_order_is_an_error() -> None:
     )
     with pytest.raises(GEngineError, match="no shop order"):
         await _client().create_shop_order(denomination_id=555, quantity=1)
+
+
+@respx.mock
+async def test_paying_a_recharge_order_returns_its_new_state() -> None:
+    respx.post(f"{BASE}/recharge/orders/9001/pay").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": 9001,
+                "uuid": "u",
+                "status": "shipped",
+                "price": 0.77,
+                "currency": "USD",
+                "is_refunded": False,
+            },
+        )
+    )
+    order = await _client().pay_recharge_order(9001)
+    assert (order.id, order.status) == (9001, "shipped")
+
+
+@respx.mock
+async def test_an_order_can_be_read_back_by_its_supplier_id() -> None:
+    respx.get(f"{BASE}/recharge/orders/9001").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": 9001,
+                "uuid": "u",
+                "status": "verified",
+                "price": 0.77,
+                "currency": "USD",
+                "is_refunded": False,
+            },
+        )
+    )
+    assert (await _client().get_recharge_order(9001)).status == "verified"
+
+
+@respx.mock
+async def test_shop_products_are_unwrapped_and_paged() -> None:
+    route = respx.get(f"{BASE}/shop/products").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "success": True,
+                "message": "",
+                "data": {"total": 1, "items": [{"id": 140, "name": "Standoff 2"}]},
+            },
+        )
+    )
+    products = await _client().list_shop_products(limit=500)
+    assert [p["id"] for p in products] == [140]
+    # Same server-side cap as the recharge catalogue: asking for more is a
+    # refusal, not a clamp.
+    assert route.calls.last.request.url.params["limit"] == "100"
+
+
+@respx.mock
+async def test_a_shop_order_can_be_read_back_before_paying() -> None:
+    """The poller's entry point when a reservation was made but the pay call's
+    answer was lost."""
+    respx.get(f"{BASE}/shop/orders/7001").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "success": True,
+                "message": "",
+                "data": {
+                    "id": 7001,
+                    "status": "pending",
+                    "is_refunded": False,
+                    "price": 3.5,
+                    "products": [],
+                },
+            },
+        )
+    )
+    order = await _client().get_shop_order(7001)
+    assert (order.status, order.codes) == ("pending", [])
+
+
+@respx.mock
+async def test_a_non_json_body_is_named_rather_than_crashing() -> None:
+    # An HTML error page from a proxy is the realistic case; `json()` on it
+    # raises a ValueError that would surface with no hint of the cause.
+    respx.get(f"{BASE}/health").mock(
+        return_value=httpx.Response(200, text="<html>502 Bad Gateway</html>")
+    )
+    with pytest.raises(GEngineError, match="non-JSON"):
+        await _client().health()

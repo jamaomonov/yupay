@@ -104,7 +104,10 @@ it("lets the ids be typed in for a supplier whose catalogue we do not mirror", a
   await waitFor(() => {
     expect(mockedApi).toHaveBeenCalled();
   });
-  const body = JSON.parse(String(mockedApi.mock.calls[0]?.[1]?.body));
+  // `api` is called with a JSON string body; narrowing it back for the
+  // assertion, since RequestInit types it as the wider BodyInit.
+  const raw = mockedApi.mock.calls[0]?.[1]?.body as string | undefined;
+  const body: unknown = JSON.parse(raw ?? "{}");
   expect(body).toMatchObject({
     supplier_slug: "gengine",
     external_product_id: "5",

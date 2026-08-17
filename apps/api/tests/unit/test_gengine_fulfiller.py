@@ -8,7 +8,7 @@ declaring success early.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from yupay.modules.fulfillment.suppliers.base import FulfillerError
@@ -410,3 +410,382 @@ async def test_a_cancelled_shop_order_fails_and_says_whether_money_came_back() -
 
     assert status.outcome == "failed"
     assert status.extra_metadata["supplier_refunded"] is True
+
+
+# ---------- the health probe on the integrations page ----------
+
+
+async def test_health_without_a_key_says_so_instead_of_probing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(GEngineFulfiller, "available", property(lambda _self: False))
+    assert await GEngineFulfiller().health() == {
+        "available": False,
+        "reason": "GENGINE_API_KEY is not configured",
+    }
+
+
+async def test_health_reports_the_wallet_balance(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(GEngineFulfiller, "available", property(lambda _self: True))
+
+    class Client:
+        async def get_balance(self) -> dict[str, Any]:
+            return {"balance": 54.0512, "currency": "USD"}
+
+    health = await GEngineFulfiller(Client()).health()  # type: ignore[arg-type]
+
+    # Two decimals: a balance is money, and 54.0512 on a dashboard reads as a bug.
+    assert health == {"available": True, "balance": "54.05", "currency": "USD"}
+
+
+async def test_a_supplier_that_is_down_does_not_break_the_admin_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An operator opening the integrations page must not meet an error
+    boundary because a supplier is unreachable."""
+    monkeypatch.setattr(GEngineFulfiller, "available", property(lambda _self: True))
+
+    class Client:
+        async def get_balance(self) -> dict[str, Any]:
+            raise GEngineUnavailableError("connection refused")
+
+    health = await GEngineFulfiller(Client()).health()  # type: ignore[arg-type]
+
+    assert health["available"] is False
+    assert "connection refused" in str(health["reason"])
+
+
+async def test_an_unexpected_fault_in_the_probe_is_still_caught(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(GEngineFulfiller, "available", property(lambda _self: True))
+
+    class Client:
+        async def get_balance(self) -> dict[str, Any]:
+            raise ValueError("something we did not anticipate")
+
+    health = await GEngineFulfiller(Client()).health()  # type: ignore[arg-type]
+    assert health["available"] is False
+
+
+# ---------- polling routes to the right half of the API ----------
+
+
+class _TaskWithKind:
+    def __init__(self, order_id: str, kind: str | None) -> None:
+        self.external_order_id = order_id
+        self.extra_metadata = {"gengine_kind": kind} if kind else {}
+
+
+async def test_a_voucher_task_is_polled_against_the_shop_endpoints() -> None:
+    """Recharge and shop are separate order spaces upstream — id 7001 exists in
+    both and means different things. The tag written at fulfil time is what
+    keeps the poller on the right one."""
+    client = FakeShopClient(fetched=_shop("shipped", codes=["EEE-555"]))
+    f = GEngineFulfiller(client)  # type: ignore[arg-type]
+
+    status = await f.check_status(db=None, task=_TaskWithKind("7001", "voucher"))  # type: ignore[arg-type]
+
+    assert status.outcome == "succeeded"
+    assert status.artifact is not None
+    assert status.artifact["code"] == "EEE-555"
+
+
+async def test_a_top_up_task_is_polled_against_the_recharge_endpoints() -> None:
+    client = FakeClient(fetched=_order("shipped"))
+    f = GEngineFulfiller(client)  # type: ignore[arg-type]
+
+    status = await f.check_status(db=None, task=_TaskWithKind("9001", None))  # type: ignore[arg-type]
+
+    assert status.outcome == "succeeded"
+
+
+async def test_an_unreachable_supplier_while_polling_is_raised_not_swallowed() -> None:
+    # Swallowing it would read as "still pending" forever; the caller retries.
+    client = FakeClient(fetched=GEngineUnavailableError("timeout"))
+    f = GEngineFulfiller(client)  # type: ignore[arg-type]
+
+    with pytest.raises(FulfillerError):
+        await f.check_status(db=None, task=_TaskWithKind("9001", None))  # type: ignore[arg-type]
+
+
+async def test_a_uuid_with_no_order_behind_it_recovers_nothing() -> None:
+    f = GEngineFulfiller(FakeClient(fetched=GEngineError("not found")))  # type: ignore[arg-type]
+    assert await f._recover("uuid-unknown") is None
+
+
+# ---------- the mapping is what makes a SKU sellable ----------
+
+
+async def test_a_sku_with_no_mapping_is_named_rather_than_silently_failing() -> None:
+    from yupay.modules.fulfillment.suppliers.gengine import _mapping_for
+
+    class _Empty:
+        def scalar_one_or_none(self) -> None:
+            return None
+
+    class _Db:
+        async def execute(self, _stmt: Any) -> _Empty:
+            return _Empty()
+
+    with pytest.raises(FulfillerError, match="no active g-engine mapping"):
+        await _mapping_for(_Db(), sku_id="sku-unmapped")  # type: ignore[arg-type]
+
+
+async def test_fulfill_without_a_key_refuses_before_touching_the_network(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(GEngineFulfiller, "available", property(lambda _self: False))
+    with pytest.raises(FulfillerError, match="GENGINE_API_KEY"):
+        await GEngineFulfiller().fulfill(
+            db=None,  # type: ignore[arg-type]
+            order=None,  # type: ignore[arg-type]
+            item=None,  # type: ignore[arg-type]
+            idempotency_key="k",
+        )
+
+
+# ---------- the create-was-lost window ----------
+
+
+async def test_a_lost_create_response_is_recovered_instead_of_bought_twice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The whole point of minting our own uuid. G-Engine rejects the second
+    create; recovering the first is the difference between one top-up and two,
+    and a top-up cannot be un-bought."""
+
+    class Mapping:
+        kind = "game"
+        external_product_id = "72"
+        external_variant_id = None
+        quantity = 50
+
+    class Item:
+        sku_id = "sku-1"
+        fulfillment_data: ClassVar[dict[str, str]] = {"username": "durov"}
+
+    client = FakeClient(
+        created=GEngineError("uuid already used"),
+        fetched=_order("verified"),
+        paid=_order("shipped"),
+    )
+    import yupay.modules.fulfillment.suppliers.gengine as mod
+
+    async def _mapping_for(_db: Any, *, sku_id: str) -> Any:
+        return Mapping()
+
+    monkeypatch.setattr(mod, "_mapping_for", _mapping_for)
+    monkeypatch.setattr(GEngineFulfiller, "available", property(lambda _self: True))
+
+    result = await GEngineFulfiller(client).fulfill(  # type: ignore[arg-type]
+        db=None,  # type: ignore[arg-type]
+        order=None,  # type: ignore[arg-type]
+        item=Item(),  # type: ignore[arg-type]
+        idempotency_key="uuid-1",
+    )
+
+    assert client.create_calls == 1
+    assert result.outcome == "succeeded"
+
+
+async def test_a_create_that_truly_failed_is_reported_not_retried(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Mapping:
+        kind = "game"
+        external_product_id = "72"
+        external_variant_id = None
+        quantity = 50
+
+    class Item:
+        sku_id = "sku-1"
+        fulfillment_data: ClassVar[dict[str, str]] = {"username": "durov"}
+
+    # Nothing to recover: the refusal was real, not a lost response.
+    client = FakeClient(created=GEngineError("insufficient funds"), fetched=GEngineError("404"))
+    import yupay.modules.fulfillment.suppliers.gengine as mod
+
+    async def _mapping_for(_db: Any, *, sku_id: str) -> Any:
+        return Mapping()
+
+    monkeypatch.setattr(mod, "_mapping_for", _mapping_for)
+    monkeypatch.setattr(GEngineFulfiller, "available", property(lambda _self: True))
+
+    with pytest.raises(FulfillerError, match="insufficient funds"):
+        await GEngineFulfiller(client).fulfill(  # type: ignore[arg-type]
+            db=None,  # type: ignore[arg-type]
+            order=None,  # type: ignore[arg-type]
+            item=Item(),  # type: ignore[arg-type]
+            idempotency_key="uuid-2",
+        )
+
+
+# ---------- shop failure modes ----------
+
+
+async def test_a_reservation_that_never_happened_is_an_error() -> None:
+    client = FakeShopClient(reserved=GEngineUnavailableError("timeout"))
+    f = GEngineFulfiller(client)  # type: ignore[arg-type]
+
+    with pytest.raises(FulfillerError, match="timeout"):
+        await f._fulfill_shop(mapping=_Mapping(), item=_ShopItem())  # type: ignore[arg-type]
+
+    assert client.pay_calls == 0
+
+
+async def test_a_refused_shop_payment_fails_with_the_supplier_s_words() -> None:
+    client = FakeShopClient(reserved=_shop("pending"), paid=GEngineError("out of stock"))
+    f = GEngineFulfiller(client)  # type: ignore[arg-type]
+
+    result = await f._fulfill_shop(mapping=_Mapping(), item=_ShopItem())  # type: ignore[arg-type]
+
+    assert result.outcome == "failed"
+    assert "out of stock" in (result.error or "")
+
+
+async def test_a_shop_poll_that_cannot_reach_the_supplier_is_raised() -> None:
+    client = FakeShopClient(fetched=GEngineUnavailableError("timeout"))
+    f = GEngineFulfiller(client)  # type: ignore[arg-type]
+
+    with pytest.raises(FulfillerError):
+        await f._shop_status(_Task("7001"))  # type: ignore[arg-type]
+
+
+async def test_cancel_says_plainly_that_there_is_no_such_endpoint() -> None:
+    """A task cancelled here cannot be withdrawn upstream. Saying so beats
+    pretending it was, which would leave money spent and nobody looking."""
+    from yupay.modules.fulfillment.suppliers.base import FulfillerNotIntegratedError
+
+    with pytest.raises(FulfillerNotIntegratedError):
+        await GEngineFulfiller().cancel(db=None, task=_Task("9001"))  # type: ignore[arg-type]
+
+
+async def test_an_unreachable_supplier_during_create_is_reported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Distinct from a refusal: nothing was decided upstream, so the caller is
+    told to retry rather than the sale being written off."""
+
+    class Mapping:
+        kind = "game"
+        external_product_id = "72"
+        external_variant_id = None
+        quantity = 50
+
+    class Item:
+        sku_id = "sku-1"
+        fulfillment_data: ClassVar[dict[str, str]] = {"username": "durov"}
+
+    import yupay.modules.fulfillment.suppliers.gengine as mod
+
+    async def _mapping_for(_db: Any, *, sku_id: str) -> Any:
+        return Mapping()
+
+    monkeypatch.setattr(mod, "_mapping_for", _mapping_for)
+    monkeypatch.setattr(GEngineFulfiller, "available", property(lambda _self: True))
+
+    client = FakeClient(created=GEngineUnavailableError("connection reset"))
+    with pytest.raises(FulfillerError, match="connection reset"):
+        await GEngineFulfiller(client).fulfill(  # type: ignore[arg-type]
+            db=None,  # type: ignore[arg-type]
+            order=None,  # type: ignore[arg-type]
+            item=Item(),  # type: ignore[arg-type]
+            idempotency_key="uuid-3",
+        )
+
+
+async def test_an_empty_checkout_form_is_refused_before_any_purchase(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sending no parameters would have G-Engine credit nobody, having spent
+    our money — so the adapter stops first."""
+
+    class Mapping:
+        kind = "game"
+        external_product_id = "72"
+        external_variant_id = None
+        quantity = 50
+
+    class Item:
+        sku_id = "sku-1"
+        fulfillment_data: ClassVar[dict[str, str]] = {}
+
+    import yupay.modules.fulfillment.suppliers.gengine as mod
+
+    async def _mapping_for(_db: Any, *, sku_id: str) -> Any:
+        return Mapping()
+
+    monkeypatch.setattr(mod, "_mapping_for", _mapping_for)
+    monkeypatch.setattr(GEngineFulfiller, "available", property(lambda _self: True))
+
+    client = FakeClient()
+    with pytest.raises(FulfillerError, match="no G-Engine parameters"):
+        await GEngineFulfiller(client).fulfill(  # type: ignore[arg-type]
+            db=None,  # type: ignore[arg-type]
+            order=None,  # type: ignore[arg-type]
+            item=Item(),  # type: ignore[arg-type]
+            idempotency_key="uuid-4",
+        )
+    assert client.create_calls == 0
+
+
+async def test_a_voucher_mapping_routes_to_the_shop_half(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Mapping:
+        kind = "voucher"
+        external_product_id = "140"
+        external_variant_id = "788"
+
+    class Item:
+        sku_id = "so2-gold-100"
+        qty = 1
+        fulfillment_data: ClassVar[dict[str, str]] = {}
+
+    import yupay.modules.fulfillment.suppliers.gengine as mod
+
+    async def _mapping_for(_db: Any, *, sku_id: str) -> Any:
+        return Mapping()
+
+    monkeypatch.setattr(mod, "_mapping_for", _mapping_for)
+    monkeypatch.setattr(GEngineFulfiller, "available", property(lambda _self: True))
+
+    client = FakeShopClient(reserved=_shop("pending"), paid=_shop("shipped", codes=["SO2-AAA"]))
+    result = await GEngineFulfiller(client).fulfill(  # type: ignore[arg-type]
+        db=None,  # type: ignore[arg-type]
+        order=None,  # type: ignore[arg-type]
+        item=Item(),  # type: ignore[arg-type]
+        idempotency_key="uuid-5",
+    )
+
+    assert result.artifact_kind == "voucher_code"
+    assert result.artifact is not None
+    assert result.artifact["code"] == "SO2-AAA"
+
+
+async def test_an_active_mapping_is_returned_as_found() -> None:
+    from yupay.modules.fulfillment.suppliers.gengine import _mapping_for
+
+    sentinel = object()
+
+    class _Row:
+        def scalar_one_or_none(self) -> object:
+            return sentinel
+
+    class _Db:
+        async def execute(self, _stmt: Any) -> _Row:
+            return _Row()
+
+    assert await _mapping_for(_Db(), sku_id="sku-1") is sentinel  # type: ignore[arg-type]
+
+
+async def test_the_read_client_is_the_adapter_s_own() -> None:
+    """The stock sweep borrows it rather than rebuilding one from settings,
+    so credentials and timeouts cannot drift apart."""
+
+    class Client:
+        pass
+
+    f = GEngineFulfiller(Client())  # type: ignore[arg-type]
+    assert f.client_for_reads() is f._client_override
