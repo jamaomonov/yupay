@@ -155,11 +155,40 @@ export interface PriceRefreshOut {
 
 /** All G2B-flavoured slugs we expose in the admin today. Extend when adding
  *  Steam / Riot / etc. */
-export const KNOWN_SUPPLIERS = ["g2b"] as const;
+export const KNOWN_SUPPLIERS = ["g2b", "waxpeer"] as const;
 export type KnownSupplier = (typeof KNOWN_SUPPLIERS)[number];
 
 export const SUPPLIER_LABELS: Record<KnownSupplier, string> = {
   g2b: "G2Bulk",
+  waxpeer: "Waxpeer",
+};
+
+/**
+ * What a supplier actually supports, so the page offers only what will work.
+ *
+ * Waxpeer sells one thing — a Steam wallet top-up priced by the dollar amount
+ * the customer types — so there is no product list to browse, cache or map a
+ * SKU onto, and no per-mapping cost to refresh. It has zero rows in
+ * `sku_supplier_mapping` and `supplier_catalog_cache` for that reason, not
+ * because someone forgot. Showing those actions anyway would offer buttons
+ * that can only fail.
+ */
+export interface SupplierCapabilities {
+  /** Has a browsable/syncable product catalogue and SKU mappings built on it. */
+  catalogue: boolean;
+}
+
+export const SUPPLIER_CAPABILITIES: Record<KnownSupplier, SupplierCapabilities> = {
+  g2b: { catalogue: true },
+  waxpeer: { catalogue: false },
+};
+
+/** Why a supplier shows no catalogue tooling — stated rather than left as a
+ *  suspicious absence. */
+export const SUPPLIER_NO_CATALOGUE_NOTE: Partial<Record<KnownSupplier, string>> = {
+  waxpeer:
+    "Waxpeer пополняет Steam-кошелёк на введённую сумму — у него нет списка товаров, " +
+    "поэтому каталог, маппинг SKU и обновление цен здесь неприменимы.",
 };
 
 export interface GameImportDenom {

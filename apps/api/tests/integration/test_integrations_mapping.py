@@ -518,3 +518,36 @@ async def test_upsert_mapping_replays_pre_sku_code_body(
     )
     assert r.status_code == 200, r.text
     assert r.json()["mapping"]["sku_code"] == _seed_sku
+
+
+async def test_waxpeer_health_is_reachable(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Waxpeer had a balance probe all along and no way to reach it.
+
+    The route used to branch per supplier and knew only G2B, so the admin
+    answered "no health probe defined" for a supplier that was live and
+    fulfilling Steam top-ups. It resolves through the fulfiller registry now,
+    so any supplier that can describe itself shows up.
+    """
+    from yupay.core import config as cfg
+
+    monkeypatch.setenv("WAXPEER_API_KEY", "")
+    cfg.get_settings.cache_clear()
+
+    admin = await _login_user(integration_client, tg_id=410)
+    await _grant_admin(db_session, tg_id=410)
+    r = await integration_client.get(
+        "/api/v1/admin/integrations/waxpeer/health",
+        headers={"Authorization": f"Bearer {admin}"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["supplier"] == "waxpeer"
+    # Unconfigured here, but answered by the adapter rather than dismissed as
+    # an unknown supplier — that distinction is the whole fix.
+    assert body["available"] is False
+    assert "not configured" in (body.get("reason") or "").lower()
+    assert body.get("reason") != "no health probe defined"

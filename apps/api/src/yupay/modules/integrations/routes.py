@@ -7,7 +7,7 @@ supplier API, and on-demand catalog sync that populates
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -88,7 +88,7 @@ async def check_player(
     )
 
 
-_KNOWN_SUPPLIERS = {"g2b"}
+_KNOWN_SUPPLIERS = {"g2b", "waxpeer"}
 
 
 def _mapping_out(row: SkuSupplierMapping, sku_code: str) -> SupplierMappingOut:
@@ -564,10 +564,15 @@ async def supplier_health(
 ) -> SupplierHealthOut:
     """Live probe against the supplier's status endpoint.
 
-    For G2B we call ``GET /v1/getMe`` through the fulfiller and surface the
-    balance + username back to the admin UI. The fulfiller's ``health()``
-    method already swallows network errors and shapes them into
-    ``{available: false, reason}`` — we just adapt to the DTO.
+    Resolved through the fulfiller registry rather than a per-supplier branch:
+    a supplier that can describe its own health exposes ``health()``, and this
+    route only adapts the result to the DTO. That is what lets Waxpeer appear
+    here at all — it was integrated for Steam top-ups and had a balance probe
+    the whole time, but no way to reach it from the admin.
+
+    ``health()`` swallows its own network errors and shapes them into
+    ``{available: false, reason}``, so an operator opening the page while a
+    supplier is down sees "not available", not an error boundary.
     """
     if supplier_slug not in _KNOWN_SUPPLIERS:
         return SupplierHealthOut(
@@ -576,32 +581,27 @@ async def supplier_health(
             reason="unknown supplier",
             last_checked_at=now(),
         )
-    if supplier_slug == "g2b":
-        from yupay.modules.fulfillment.suppliers import REGISTRY
-        from yupay.modules.fulfillment.suppliers.g2b import G2bFulfiller
 
-        fulfiller = REGISTRY.get("g2b")
-        if not isinstance(fulfiller, G2bFulfiller):
-            return SupplierHealthOut(
-                supplier="g2b",
-                available=False,
-                reason="g2b adapter not registered",
-                last_checked_at=now(),
-            )
-        result = await fulfiller.health()
-        balance = result.get("balance")
+    from yupay.modules.fulfillment.suppliers import REGISTRY
+
+    fulfiller = REGISTRY.get(supplier_slug)
+    probe = getattr(fulfiller, "health", None)
+    if fulfiller is None or probe is None:
         return SupplierHealthOut(
-            supplier="g2b",
-            available=bool(result.get("available")),
-            reason=result.get("reason"),
-            balance=str(balance) if balance is not None else None,
-            currency=None,
-            username=result.get("username"),
+            supplier=supplier_slug,
+            available=False,
+            reason="no health probe defined",
             last_checked_at=now(),
         )
+
+    result: dict[str, Any] = await probe()
+    balance = result.get("balance")
     return SupplierHealthOut(
         supplier=supplier_slug,
-        available=False,
-        reason="no health probe defined",
+        available=bool(result.get("available")),
+        reason=result.get("reason"),
+        balance=str(balance) if balance is not None else None,
+        currency=result.get("currency"),
+        username=result.get("username"),
         last_checked_at=now(),
     )

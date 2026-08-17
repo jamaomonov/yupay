@@ -13,10 +13,12 @@ import { Button } from "@yupay/ui";
 import { Database, ListTree, RefreshCw, TrendingUp } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
-import { G2bAttemptsTab } from "./G2bAttemptsTab";
+import { SupplierAttemptsTab } from "./SupplierAttemptsTab";
 import {
   HEALTH_CHECK_TIMEOUT_MS,
+  SUPPLIER_CAPABILITIES,
   SUPPLIER_LABELS,
+  SUPPLIER_NO_CATALOGUE_NOTE,
   type CatalogSyncResult,
   type PriceRefreshOut,
   type SupplierHealth,
@@ -28,11 +30,19 @@ import { useToast } from "@/components/Toast";
 import { ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
-export function G2bDetailPage() {
+export function SupplierDetailPage() {
   const { slug = "g2b" } = useParams<{ slug?: string }>();
   const qc = useQueryClient();
   const toast = useToast();
   const label = SUPPLIER_LABELS[slug as keyof typeof SUPPLIER_LABELS] ?? slug;
+  // Unknown suppliers get the full set rather than a blank page: better to
+  // offer an action that might fail than to silently hide tooling from a
+  // supplier someone just added.
+  const caps = SUPPLIER_CAPABILITIES[slug as keyof typeof SUPPLIER_CAPABILITIES] ?? {
+    catalogue: true,
+  };
+  const noCatalogueNote =
+    SUPPLIER_NO_CATALOGUE_NOTE[slug as keyof typeof SUPPLIER_NO_CATALOGUE_NOTE] ?? null;
 
   const health = useQuery<SupplierHealth>({
     queryKey: qk.integrationHealth(slug),
@@ -122,48 +132,56 @@ export function G2bDetailPage() {
         <HealthSummary data={health.data} />
       )}
 
-      <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
-        <ActionCard
-          icon={ListTree}
-          title="Маппинг SKU"
-          description="Свяжите наши SKU с продуктами и играми поставщика. Без маппинга задача упадёт в failed."
-          actionLabel="Открыть маппинги"
-          to={`/integrations/mappings?supplier=${slug}`}
-        />
-        <ActionCard
-          icon={Database}
-          title="Каталог поставщика"
-          description="Синхронизируйте список товаров / игр в локальный кэш. Используется для автокомплита в форме маппинга."
-          actionLabel={sync.isPending ? "Синхронизируем…" : "Синхронизировать"}
-          onClick={() => {
-            sync.mutate();
-          }}
-          actionDisabled={sync.isPending || !health.data?.available}
-          hint={
-            health.data?.available
-              ? null
-              : "Доступно только когда ключ настроен и подключение зелёное."
-          }
-        />
-        <ActionCard
-          icon={Database}
-          title="Просмотр каталога"
-          description="Откройте список игр поставщика и импортируйте игру как бренд с номиналами одним действием."
-          actionLabel="Перейти к каталогу"
-          to={`/integrations/${slug}/catalog`}
-        />
-        <ActionCard
-          icon={TrendingUp}
-          title="Цены маппингов"
-          description="Прогнать все активные маппинги и обновить cost_usdt. То же делает воркер каждый час; кнопка для ручного запуска."
-          actionLabel={refreshPrices.isPending ? "Обновляем…" : "Обновить цены"}
-          onClick={() => {
-            refreshPrices.mutate();
-          }}
-          actionDisabled={refreshPrices.isPending || !health.data?.available}
-          hint={health.data?.available ? null : "Нужно настроенное и онлайн-подключение к G2B."}
-        />
-      </section>
+      {caps.catalogue ? (
+        <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+          <ActionCard
+            icon={ListTree}
+            title="Маппинг SKU"
+            description="Свяжите наши SKU с продуктами и играми поставщика. Без маппинга задача упадёт в failed."
+            actionLabel="Открыть маппинги"
+            to={`/integrations/mappings?supplier=${slug}`}
+          />
+          <ActionCard
+            icon={Database}
+            title="Каталог поставщика"
+            description="Синхронизируйте список товаров / игр в локальный кэш. Используется для автокомплита в форме маппинга."
+            actionLabel={sync.isPending ? "Синхронизируем…" : "Синхронизировать"}
+            onClick={() => {
+              sync.mutate();
+            }}
+            actionDisabled={sync.isPending || !health.data?.available}
+            hint={
+              health.data?.available
+                ? null
+                : "Доступно только когда ключ настроен и подключение зелёное."
+            }
+          />
+          <ActionCard
+            icon={Database}
+            title="Просмотр каталога"
+            description="Откройте список игр поставщика и импортируйте игру как бренд с номиналами одним действием."
+            actionLabel="Перейти к каталогу"
+            to={`/integrations/${slug}/catalog`}
+          />
+          <ActionCard
+            icon={TrendingUp}
+            title="Цены маппингов"
+            description="Прогнать все активные маппинги и обновить cost_usdt. То же делает воркер каждый час; кнопка для ручного запуска."
+            actionLabel={refreshPrices.isPending ? "Обновляем…" : "Обновить цены"}
+            onClick={() => {
+              refreshPrices.mutate();
+            }}
+            actionDisabled={refreshPrices.isPending || !health.data?.available}
+            hint={health.data?.available ? null : "Нужно настроенное и онлайн-подключение к G2B."}
+          />
+        </section>
+      ) : (
+        noCatalogueNote && (
+          <p className="mt-6 rounded-md border border-dashed border-[var(--border-default)] p-4 text-sm text-[var(--text-secondary)]">
+            {noCatalogueNote}
+          </p>
+        )
+      )}
 
       <section className="mt-8">
         <h2 className="mb-3 text-lg font-semibold">Последние взаимодействия</h2>
@@ -172,7 +190,7 @@ export function G2bDetailPage() {
           задачам, привязанным к этому поставщику. PII (player_id, коды) не показывается — только
           счётчики и хэши.
         </p>
-        <G2bAttemptsTab supplier={slug} />
+        <SupplierAttemptsTab supplier={slug} />
       </section>
     </div>
   );

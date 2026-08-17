@@ -21,7 +21,7 @@ interface Props {
   limit?: number;
 }
 
-export function G2bAttemptsTab({ supplier, limit = 50 }: Props) {
+export function SupplierAttemptsTab({ supplier, limit = 50 }: Props) {
   const query = useQuery<AttemptListOut>({
     queryKey: qk.integrationAttempts({ supplier }),
     queryFn: () =>

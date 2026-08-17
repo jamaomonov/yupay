@@ -272,6 +272,32 @@ class WaxpeerFulfiller(Fulfiller):
             log.warning("waxpeer.balance_probe_failed")
             return None
 
+    async def health(self) -> dict[str, Any]:
+        """Connectivity + balance probe for ``/admin/integrations/waxpeer/health``.
+
+        Same contract as the G2B probe: ``{"available": True, "balance": ...}``
+        on success, ``{"available": False, "reason": ...}`` otherwise, and it
+        never raises — an operator opening the integrations page must not meet
+        an error boundary because a supplier is down.
+
+        The wallet is reported in supplier units (thousandths of a dollar), and
+        is converted here rather than in the UI: "8500" next to a G2B balance
+        in dollars would read as a wallet 1000x richer than it is.
+        """
+        if not self.available:
+            return {"available": False, "reason": "WAXPEER_API_KEY is not configured"}
+        try:
+            units = await self._client().get_balance_units()
+        except (WaxpeerError, WaxpeerUnavailableError) as exc:
+            return {"available": False, "reason": str(exc)[:200]}
+        except Exception as exc:  # noqa: BLE001 -- a probe must not crash the page
+            return {"available": False, "reason": str(exc)[:200]}
+        return {
+            "available": True,
+            "balance": f"{Decimal(units) / UNITS_PER_USD:.2f}",
+            "currency": "USD",
+        }
+
     async def has_balance(self, units: int) -> bool:
         """Whether we can currently fund ``units``. ``False`` on an unreadable
         balance (not a raise), so a caller treating the supplier as unsellable
