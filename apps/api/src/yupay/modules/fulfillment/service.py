@@ -11,6 +11,7 @@ of executing inline; the public API stays the same.
 
 from __future__ import annotations
 
+import hashlib
 import html
 from collections.abc import Iterable
 from typing import Any
@@ -183,6 +184,14 @@ async def _record_attempt(
     )
     task.attempts_count += 1
     task.updated_at = moment
+
+    # Every way fulfilment can go wrong lands here: a supplier call that threw,
+    # and a call that succeeded while *reporting* failure (both record
+    # ``status="error"``). Alerting from this one place is what makes "any
+    # error reaches us" true, rather than a list of call sites someone has to
+    # remember to extend.
+    if status == "error":
+        await _alert_fulfillment_error(task, kind=kind, error=error)
 
 
 # ---------- realtime ----------
@@ -601,6 +610,61 @@ async def cancel_open_tasks_for_order(
     if cancelled:
         await db.flush()
     return cancelled
+
+
+# ---------- error alerting ----------
+
+#: How long the same error on the same task stays quiet after the first alert.
+#: Consecutive identical failures already collapse into one attempt row
+#: (see ``_record_attempt``) and never reach here twice, so this covers the
+#: flapping case — error, recovery, same error again — and duplicate delivery
+#: from a second worker. An hour is long enough that a task failing every
+#: minute costs one message, short enough that an unresolved incident says so
+#: again within a shift.
+_ERROR_ALERT_DEDUPE_SECONDS = 60 * 60
+
+
+async def _alert_fulfillment_error(
+    task: FulfillmentTask,
+    *,
+    kind: str,
+    error: str | None,
+) -> None:
+    """Tell ops, immediately, that a fulfilment step failed.
+
+    Never raises and never blocks the saga: an alerting outage must not be
+    able to fail an order that is otherwise recoverable, so every failure here
+    is swallowed and logged.
+
+    The message deliberately carries no ``fulfillment_data`` — that is where
+    the customer's Steam login and player ids live (§9). Supplier error text
+    is included because it is the one thing that says *what to do*, truncated
+    so a stack trace cannot turn into a wall of chat.
+    """
+    from yupay.modules.notifications import api as notifications
+
+    detail = (error or "").strip() or "без текста ошибки"
+    signature = hashlib.sha1(detail.encode("utf-8")).hexdigest()[:12]  # noqa: S324 -- dedupe key, not a secret
+    key = f"alert:fulfill_error:{task.id}:{kind}:{signature}"
+    try:
+        if await _set_redis_dedupe(key, ttl_seconds=_ERROR_ALERT_DEDUPE_SECONDS):
+            return
+        text = (
+            "<b>🛑 Ошибка фулфилмента</b>\n"
+            f"Шаг: <code>{html.escape(kind)}</code> · "
+            f"Поставщик: <code>{html.escape(task.supplier or '?')}</code>\n"
+            f"Заказ: <code>{task.order_id}</code>\n"
+            f"Задача: <code>{task.id}</code>\n"
+            f"<pre>{html.escape(detail[:300])}</pre>"
+        )
+        await notifications.send_admin_alert(text, kind="fulfillment_error")
+    except Exception as exc:  # noqa: BLE001 -- alerting must never break a sale
+        log.warning(
+            "fulfillment.error_alert_failed",
+            task_id=task.id,
+            kind=kind,
+            error=str(exc)[:200],
+        )
 
 
 # ---------- low-balance alerting ----------
