@@ -370,3 +370,64 @@ async def test_admin_duplicate_code_conflicts(
     )
     assert r.status_code == 409, r.text
     assert r.json()["code"] == "duplicate_code"
+
+
+async def test_admin_sees_who_redeemed_a_code(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The list page shows a counter; this is the other half of the answer.
+
+    Identity comes back joined — name, avatar, handle — because the admin
+    renders faces, and a column of user ids would be the same data and
+    useless for recognising anyone.
+    """
+    admin = await _admin_token(integration_client, db_session, tg_id=1090)
+    created = await _create_code(integration_client, admin=admin, code="whoused1")
+
+    buyer = await _login_user(integration_client, tg_id=1091)
+    r = await _redeem(integration_client, token=buyer, code="whoused1", key="pr-1091-padpadpadpad")
+    assert r.status_code == 200, r.text
+
+    r = await integration_client.get(
+        f"/api/v1/admin/promo/{created['id']}/redemptions",
+        headers={"Authorization": f"Bearer {admin}"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["total"] == 1
+    row = body["items"][0]
+    # Telegram login seeds the handle; the row must carry enough to render a
+    # recognisable person, not just a foreign key.
+    assert row["tg_username"] is not None or row["display_name"] is not None
+    assert row["user_id"]
+    assert row["redeemed_at"]
+
+
+async def test_redemptions_are_admin_only(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """It lists customers by name and avatar — never reachable by a customer."""
+    admin = await _admin_token(integration_client, db_session, tg_id=1092)
+    created = await _create_code(integration_client, admin=admin, code="whoused2")
+    path = f"/api/v1/admin/promo/{created['id']}/redemptions"
+
+    anon = await integration_client.get(path)
+    assert anon.status_code in (401, 403)
+
+    plain = await _login_user(integration_client, tg_id=1093)
+    as_customer = await integration_client.get(path, headers={"Authorization": f"Bearer {plain}"})
+    assert as_customer.status_code == 403
+
+
+async def test_a_code_nobody_used_lists_nothing(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    admin = await _admin_token(integration_client, db_session, tg_id=1094)
+    created = await _create_code(integration_client, admin=admin, code="whoused3")
+
+    r = await integration_client.get(
+        f"/api/v1/admin/promo/{created['id']}/redemptions",
+        headers={"Authorization": f"Bearer {admin}"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json() == {"items": [], "total": 0}

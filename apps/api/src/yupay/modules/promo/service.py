@@ -22,6 +22,7 @@ from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.modules.promo.models import PromoCode, PromoRedemption
 from yupay.modules.promo.schemas import PromoCreateIn
+from yupay.modules.users.models import TelegramLink, User
 from yupay.modules.wallet import api as wallet_api
 
 log = get_logger("yupay.promo.service")
@@ -177,3 +178,34 @@ async def deactivate(db: AsyncSession, *, promo_id: str) -> PromoCode:
 
 
 __all__ = ["create_code", "deactivate", "list_codes", "redeem"]
+
+
+async def list_redemptions(
+    db: AsyncSession, *, promo_code_id: str, limit: int = 200
+) -> tuple[list[tuple[PromoRedemption, User, str | None]], int]:
+    """Who redeemed this code, newest first, joined to the identity fields.
+
+    Joined rather than fetched per row: the admin renders an avatar and a name
+    per redemption, and a code handed out in a campaign has as many rows as it
+    has uses. ``TelegramLink`` is an outer join — an email-only account has no
+    handle and must still appear.
+    """
+    base = (
+        select(PromoRedemption, User, TelegramLink.tg_username)
+        .join(User, User.id == PromoRedemption.user_id)
+        .outerjoin(TelegramLink, TelegramLink.user_id == User.id)
+        .where(PromoRedemption.promo_code_id == promo_code_id)
+        .order_by(PromoRedemption.created_at.desc())
+    )
+    rows = list((await db.execute(base.limit(limit))).all())
+    total = int(
+        (
+            await db.execute(
+                select(func.count())
+                .select_from(PromoRedemption)
+                .where(PromoRedemption.promo_code_id == promo_code_id)
+            )
+        ).scalar_one()
+        or 0
+    )
+    return [(r[0], r[1], r[2]) for r in rows], total

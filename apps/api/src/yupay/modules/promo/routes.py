@@ -20,6 +20,8 @@ from yupay.modules.promo.schemas import (
     PromoCreateIn,
     PromoRedeemIn,
     PromoRedeemOut,
+    PromoRedemptionListOut,
+    PromoRedemptionOut,
 )
 from yupay.modules.users.models import User
 
@@ -92,6 +94,41 @@ async def admin_list_promos(
             PromoAdminOut.model_validate({**promo.__dict__, "redemptions": count})
             for promo, count in rows
         ]
+    )
+
+
+@admin_router.get(
+    "/{promo_id}/redemptions",
+    response_model=PromoRedemptionListOut,
+    summary="Who redeemed this promo code",
+)
+async def admin_list_redemptions(
+    promo_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+    limit: int = 200,
+) -> PromoRedemptionListOut:
+    """The people behind the redemption counter.
+
+    The list page shows "3 / 10" and nothing about who — which is the question
+    an operator actually has when a campaign code starts moving.
+    """
+    rows, total = await svc.list_redemptions(
+        db, promo_code_id=promo_id, limit=max(1, min(limit, 500))
+    )
+    return PromoRedemptionListOut(
+        items=[
+            PromoRedemptionOut(
+                user_id=user.id,
+                display_name=user.display_name,
+                photo_url=user.photo_url,
+                tg_username=tg_username,
+                email=user.email,
+                redeemed_at=redemption.created_at,
+            )
+            for redemption, user, tg_username in rows
+        ],
+        total=total,
     )
 
 

@@ -7159,6 +7159,91 @@
         "title": "PromoRedeemOut",
         "type": "object"
       },
+      "PromoRedemptionListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PromoRedemptionOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "PromoRedemptionListOut",
+        "type": "object"
+      },
+      "PromoRedemptionOut": {
+        "description": "One redemption, shaped for the admin's \"\u043a\u0442\u043e \u0430\u043a\u0442\u0438\u0432\u0438\u0440\u043e\u0432\u0430\u043b\" list.\n\nCarries the identity fields the operator recognises a person by \u2014 avatar,\nname, Telegram handle \u2014 so the list is scannable without opening each\nprofile. ``user_id`` is what the row links to.",
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Url"
+          },
+          "redeemed_at": {
+            "format": "date-time",
+            "title": "Redeemed At",
+            "type": "string"
+          },
+          "tg_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tg Username"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "redeemed_at"
+        ],
+        "title": "PromoRedemptionOut",
+        "type": "object"
+      },
       "ProviderIncidentsOut": {
         "description": "Stuck-pending + failed-webhook counts for a provider group.\n\nMirrors ``admin.service.triage_payments``'s definitions exactly so the\nnumbers agree with the existing triage screen.",
         "properties": {
@@ -15953,6 +16038,75 @@
           }
         },
         "summary": "Deactivate a promo code",
+        "tags": [
+          "admin:promo"
+        ]
+      }
+    },
+    "/api/v1/admin/promo/{promo_id}/redemptions": {
+      "get": {
+        "description": "The people behind the redemption counter.\n\nThe list page shows \"3 / 10\" and nothing about who \u2014 which is the question\nan operator actually has when a campaign code starts moving.",
+        "operationId": "admin_list_redemptions_api_v1_admin_promo__promo_id__redemptions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "promo_id",
+            "required": true,
+            "schema": {
+              "title": "Promo Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromoRedemptionListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Who redeemed this promo code",
         "tags": [
           "admin:promo"
         ]

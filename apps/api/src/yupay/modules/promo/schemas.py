@@ -51,6 +51,29 @@ class PromoAdminOut(BaseModel):
     created_at: datetime
 
 
+class PromoRedemptionOut(BaseModel):
+    """One redemption, shaped for the admin's "кто активировал" list.
+
+    Carries the identity fields the operator recognises a person by — avatar,
+    name, Telegram handle — so the list is scannable without opening each
+    profile. ``user_id`` is what the row links to.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    user_id: str
+    display_name: str | None = None
+    photo_url: str | None = None
+    tg_username: str | None = None
+    email: str | None = None
+    redeemed_at: datetime
+
+
+class PromoRedemptionListOut(BaseModel):
+    items: list[PromoRedemptionOut]
+    total: int = 0
+
+
 class PromoAdminListOut(BaseModel):
     items: list[PromoAdminOut]
 
@@ -61,4 +84,6 @@ __all__ = [
     "PromoCreateIn",
     "PromoRedeemIn",
     "PromoRedeemOut",
+    "PromoRedemptionListOut",
+    "PromoRedemptionOut",
 ]

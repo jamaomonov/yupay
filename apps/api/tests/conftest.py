@@ -41,6 +41,12 @@ def _test_env() -> Iterator[None]:
         "JWT_KID": "test",
         "AUTH_EMAIL_PEPPER": "test-pepper",
         "TELEGRAM_BOT_TOKEN": "123456:TEST",
+        # Ops alerting stays off for the whole suite. `send_admin_alert`
+        # short-circuits on an empty token, so nothing reaches
+        # api.telegram.org — without this a developer's real .env turns every
+        # error-path test into an outbound HTTP call, and the suite crawls.
+        "TG_ALERT_BOT_TOKEN": "",
+        "TG_ALERT_CHAT_ID": "",
     }
     previous = {k: os.environ.get(k) for k in env}
     os.environ.update(env)

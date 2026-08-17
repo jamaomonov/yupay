@@ -145,3 +145,43 @@ async def test_an_alerting_outage_cannot_fail_the_order(
 
     # Must not raise.
     await ff_svc._alert_fulfillment_error(_task(), kind="fulfill", error="boom")
+
+
+async def test_the_alert_does_not_make_the_saga_wait_for_telegram() -> None:
+    """It fires from inside the saga's transaction.
+
+    Awaiting it there put an outbound HTTP round trip inside a database
+    transaction — which is exactly how the test suite went from six minutes to
+    hanging once every error path started alerting. `_dispatch_alert` starts
+    the send and returns; the alert still leaves immediately.
+    """
+    import asyncio
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def _slow() -> None:
+        started.set()
+        await release.wait()
+
+    ff_svc._dispatch_alert(_slow())
+    # Returned while the "send" is still in flight — that is the whole point.
+    await asyncio.wait_for(started.wait(), timeout=1)
+    release.set()
+    await asyncio.sleep(0)
+
+
+async def test_dispatch_outside_an_event_loop_does_not_warn() -> None:
+    """Some harnesses call the saga with no running loop; a coroutine left
+    un-awaited there is a warning and a silently dropped alert."""
+    import asyncio
+
+    async def _noop() -> None:  # pragma: no cover -- never scheduled
+        return None
+
+    coro = _noop()
+
+    def _sync() -> None:
+        ff_svc._dispatch_alert(coro)
+
+    await asyncio.get_running_loop().run_in_executor(None, _sync)

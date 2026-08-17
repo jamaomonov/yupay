@@ -3,6 +3,8 @@ import { Button, Input, Select } from "@yupay/ui";
 import { Ban } from "lucide-react";
 import { useState } from "react";
 
+import { PromoRedemptionsModal } from "./PromoRedemptionsModal";
+
 import { DataTable, type Column } from "@/components/DataTable";
 import { MoneyInput } from "@/components/MoneyInput";
 import { PageHeader } from "@/components/PageHeader";
@@ -60,6 +62,8 @@ export function PromoPage() {
   const [code, setCode] = useState("");
   const [maxRedemptions, setMaxRedemptions] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
+  // The code whose redemption list is open, if any.
+  const [showing, setShowing] = useState<PromoAdminOut | null>(null);
 
   function resetForm() {
     setAmount("");
@@ -126,12 +130,26 @@ export function PromoPage() {
     {
       key: "usage",
       header: "Активаций",
-      render: (p) => (
-        <span className="font-mono">
-          {p.redemptions}
-          {p.max_redemptions !== null ? ` / ${String(p.max_redemptions)}` : ""}
-        </span>
-      ),
+      // The count is the way in to who is behind it — the number alone is the
+      // half of the answer an operator never actually wanted.
+      render: (p) =>
+        p.redemptions > 0 ? (
+          <button
+            type="button"
+            onClick={() => {
+              setShowing(p);
+            }}
+            className="font-mono underline-offset-2 hover:underline"
+            aria-label={`Кто активировал ${p.code}`}
+          >
+            {p.redemptions}
+            {p.max_redemptions !== null ? ` / ${String(p.max_redemptions)}` : ""}
+          </button>
+        ) : (
+          <span className="font-mono text-[var(--text-secondary)]">
+            0{p.max_redemptions !== null ? ` / ${String(p.max_redemptions)}` : ""}
+          </span>
+        ),
       className: "w-28 text-right",
     },
     {
@@ -271,6 +289,16 @@ export function PromoPage() {
           empty="Кодов пока нет — выпустите первый выше."
           ariaLabel="Промокоды"
           busy={listQuery.isFetching}
+        />
+      )}
+
+      {showing && (
+        <PromoRedemptionsModal
+          promoId={showing.id}
+          code={showing.code}
+          onClose={() => {
+            setShowing(null);
+          }}
         />
       )}
     </div>

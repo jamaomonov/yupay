@@ -11,9 +11,10 @@ of executing inline; the public API stays the same.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import html
-from collections.abc import Iterable
+from collections.abc import Coroutine, Iterable
 from typing import Any
 
 from sqlalchemy import func, select
@@ -191,7 +192,7 @@ async def _record_attempt(
     # error reaches us" true, rather than a list of call sites someone has to
     # remember to extend.
     if status == "error":
-        await _alert_fulfillment_error(task, kind=kind, error=error)
+        _dispatch_alert(_alert_fulfillment_error(task, kind=kind, error=error))
 
 
 # ---------- realtime ----------
@@ -473,7 +474,7 @@ async def process_task(  # noqa: PLR0915 -- linear saga; splitting hurts readabi
         # The admin will either top up + retry, or fulfil manually.
         if result.error == _LOW_BALANCE_ERROR:
             item.fulfillment_state = "in_progress"
-            await _maybe_alert_low_balance(task=task, result=result)
+            _dispatch_alert(_maybe_alert_low_balance(task=task, result=result))
         else:
             item.fulfillment_state = "failed"
 
@@ -610,6 +611,35 @@ async def cancel_open_tasks_for_order(
     if cancelled:
         await db.flush()
     return cancelled
+
+
+# ---------- alert dispatch ----------
+
+#: Strong references to in-flight alert tasks. Without them the event loop is
+#: free to garbage-collect a pending task mid-send, and the alert vanishes.
+_ALERT_TASKS: set[asyncio.Task[None]] = set()
+
+
+def _dispatch_alert(coro: Coroutine[Any, Any, None]) -> None:
+    """Start an alert without making the caller wait for Telegram.
+
+    Alerts fire from inside the saga, mid-transaction. Awaiting them there put
+    an outbound HTTP round trip inside a database transaction — latency on the
+    fulfilment path and a transaction held open across a third party we do not
+    control (AGENTS.md §10). The alert still leaves immediately; only the
+    waiting is gone.
+
+    Outside a running loop (a sync script, some test harnesses) there is
+    nothing to schedule on, so the coroutine is closed rather than left as an
+    un-awaited warning.
+    """
+    try:
+        task = asyncio.create_task(coro)
+    except RuntimeError:
+        coro.close()
+        return
+    _ALERT_TASKS.add(task)
+    task.add_done_callback(_ALERT_TASKS.discard)
 
 
 # ---------- error alerting ----------
