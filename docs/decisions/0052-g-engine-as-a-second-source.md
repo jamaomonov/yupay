@@ -141,6 +141,26 @@ Telegram also credits a public `@username` rather than a numeric player id. It
 travels in the same `Account` slot, so `_PARAM_MAP` gained `username` beside
 `player_id`.
 
+## Stock, and why the sweep had to learn a second shape
+
+`integrations.stock_refresh` was written against G2B, which reports **one count
+per product**. G-Engine reports **one per denomination**
+(`GET /shop/denominations/{product}`), and returns every denomination of a
+product in a single response — Standoff 2 alone is four SKUs behind product 140.
+So the sweep now dispatches per mapping and caches responses per product id for
+the length of a run, rather than asking four times for the same answer.
+
+This was a follow-up until Standoff 2 made it load-bearing: those four lines held
+15 / 5 / 5 / 5 codes, which goes stale within a day. Without the sweep the
+storefront would have kept offering codes the supplier no longer had, and the
+count seeded at import would have been a number that was true once.
+
+Two rules are shared with the G2B branch rather than re-decided: a line that has
+vanished upstream reads as **zero, not unknown** (leaving it NULL keeps selling
+it), and the alert fires only on the _transition_ into empty. The count itself is
+still never shown to customers — only the derived `Sku.in_stock`, which greys the
+buy button out and replaces the price with "нет в наличии".
+
 ## Wiring a SKU to G-Engine from the admin
 
 The backend adapter is only half the integration: `_mapping_for` refuses with
@@ -168,6 +188,4 @@ below lands.
 ## Follow-ups
 
 - Teach the catalogue wizard `/recharge/services` so mappings stop being manual.
-- Feed shop `stock` into the availability sweep so a SKU stops being offered
-  before a customer pays for something the supplier cannot hand over.
 - Decide per-SKU which supplier is primary once both have real cost history.

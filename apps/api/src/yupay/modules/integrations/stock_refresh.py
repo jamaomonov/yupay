@@ -6,6 +6,14 @@ large share of its catalogue sits at zero at any moment. Selling one we cannot
 deliver costs a manual refund, so the count is pulled on a schedule and checkout
 refuses SKUs that have run dry (``orders.service._sku_is_buyable``).
 
+Both voucher suppliers are swept, and they report stock at different levels:
+
+* **G2B** — one count per product (``GET /products/{id}``).
+* **G-Engine** — a count per *denomination* (``GET /shop/denominations/{product}``),
+  which returns every denomination of a product in one call. Standoff 2 alone is
+  four SKUs behind one product id, so the responses are cached per product for
+  the length of a run rather than fetched once per SKU.
+
 Invoked from the hourly scheduler job
 (``apps/scheduler/.../jobs/refresh_voucher_stock.py``).
 
@@ -68,52 +76,77 @@ def normalise_stock(raw: Any) -> int | None:
     return None if value < 0 else value
 
 
-async def refresh_voucher_stock(*, client: Any | None = None) -> StockRefreshReport:
+async def refresh_voucher_stock(
+    *, client: Any | None = None, gengine_client: Any | None = None
+) -> StockRefreshReport:
     """Pull stock for every active voucher mapping and persist it.
 
     Returns a per-run summary. Alerts on the *transition* into out-of-stock
     only — a SKU that has been empty for a week should not re-alert every hour.
 
-    ``client`` is injectable for tests, mirroring how ``G2bFulfiller`` takes one;
-    in production it is borrowed from the registered adapter so credentials and
-    retry policy stay in one place.
+    The clients are injectable for tests, mirroring how ``G2bFulfiller`` takes
+    one; in production each is borrowed from its registered adapter so
+    credentials and retry policy stay in one place. A supplier whose adapter is
+    not registered is skipped rather than failing the run — the other one still
+    needs sweeping.
     """
-    if client is None:
-        from yupay.modules.fulfillment.suppliers import REGISTRY
-        from yupay.modules.fulfillment.suppliers.g2b import G2bFulfiller
-
-        fulfiller = REGISTRY.get("g2b")
-        if not isinstance(fulfiller, G2bFulfiller):
-            log.info("stock_refresh.skipped", reason="g2b adapter not registered")
-            return StockRefreshReport()
-        client = fulfiller.client_for_reads()
+    sources: dict[str, Any] = {}
+    g2b = client if client is not None else _g2b_client()
+    if g2b is not None:
+        sources["g2b"] = g2b
+    gengine = gengine_client if gengine_client is not None else _gengine_client()
+    if gengine is not None:
+        sources["gengine"] = gengine
+    for slug in ("g2b", "gengine"):
+        if slug not in sources:
+            log.info("stock_refresh.supplier_skipped", supplier=slug)
+    if not sources:
+        # Nothing to ask. Returning before the session keeps the scheduler tick
+        # free of a pointless connection when no supplier key is configured.
+        return StockRefreshReport()
 
     factory = get_session_factory()
     async with factory() as session:
         rows = (
             await session.execute(
-                select(SkuSupplierMapping.sku_id, SkuSupplierMapping.external_product_id).where(
-                    SkuSupplierMapping.supplier_slug == "g2b",
+                select(
+                    SkuSupplierMapping.sku_id,
+                    SkuSupplierMapping.supplier_slug,
+                    SkuSupplierMapping.external_product_id,
+                    SkuSupplierMapping.external_variant_id,
+                ).where(
+                    SkuSupplierMapping.supplier_slug.in_(tuple(sources)),
                     SkuSupplierMapping.kind == "voucher",
                     SkuSupplierMapping.is_active.is_(True),
                 )
             )
         ).all()
-        targets = [(str(sku_id), str(external_id)) for sku_id, external_id in rows]
+        targets = [
+            (str(sku_id), str(supplier), str(product_id), variant_id)
+            for sku_id, supplier, product_id, variant_id in rows
+        ]
+
+    #: G-Engine answers with every denomination of a product at once, so one
+    #: response serves all the SKUs behind that product id.
+    denominations: dict[str, dict[str, Any] | None] = {}
 
     checked = updated = out = errors = 0
-    for sku_id, external_id in targets:
+    for sku_id, supplier, product_id, variant_id in targets:
         checked += 1
         try:
-            product = await client.fetch_product(external_id)
+            new_stock = await _stock_for(
+                supplier,
+                sources[supplier],
+                product_id=product_id,
+                variant_id=variant_id,
+                cache=denominations,
+            )
         except Exception:
-            log.exception("stock_refresh.fetch_failed", external_product_id=external_id)
+            log.exception(
+                "stock_refresh.fetch_failed", supplier=supplier, external_product_id=product_id
+            )
             errors += 1
             continue
-
-        # Withdrawn upstream is not "unknown" — it is zero. Leaving it NULL
-        # would keep selling a product G2B no longer lists.
-        new_stock = 0 if product is None else normalise_stock(product.get("stock"))
 
         async with factory() as session:
             sku = (await session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one_or_none()
@@ -130,7 +163,9 @@ async def refresh_voucher_stock(*, client: Any | None = None) -> StockRefreshRep
 
         if was_in_stock and not now_in_stock:
             out += 1
-            await _alert_out_of_stock(sku_code=sku_code, external_id=external_id)
+            await _alert_out_of_stock(
+                sku_code=sku_code, external_id=variant_id or product_id, supplier=supplier
+            )
 
     log.info(
         "stock_refresh.done", checked=checked, updated=updated, out_of_stock=out, errors=errors
@@ -140,7 +175,75 @@ async def refresh_voucher_stock(*, client: Any | None = None) -> StockRefreshRep
     )
 
 
-async def _alert_out_of_stock(*, sku_code: str, external_id: str) -> None:
+async def _stock_for(
+    supplier: str,
+    client: Any,
+    *,
+    product_id: str,
+    variant_id: str | None,
+    cache: dict[str, dict[str, Any] | None],
+) -> int | None:
+    """Stock for one mapping, asked of whichever supplier owns it."""
+    if supplier == "gengine":
+        return await _gengine_stock(
+            client, product_id=product_id, variant_id=variant_id, cache=cache
+        )
+    product = await client.fetch_product(product_id)
+    # Withdrawn upstream is not "unknown" — it is zero. Leaving it NULL would
+    # keep selling a product G2B no longer lists.
+    return 0 if product is None else normalise_stock(product.get("stock"))
+
+
+def _g2b_client() -> Any | None:
+    """The G2B read client, or None when the adapter is not registered."""
+    from yupay.modules.fulfillment.suppliers import REGISTRY
+    from yupay.modules.fulfillment.suppliers.g2b import G2bFulfiller
+
+    fulfiller = REGISTRY.get("g2b")
+    if not isinstance(fulfiller, G2bFulfiller):
+        return None
+    return fulfiller.client_for_reads()
+
+
+def _gengine_client() -> Any | None:
+    """The G-Engine read client, or None when the adapter is not registered."""
+    from yupay.modules.fulfillment.suppliers import REGISTRY
+    from yupay.modules.fulfillment.suppliers.gengine import GEngineFulfiller
+
+    fulfiller = REGISTRY.get("gengine")
+    if not isinstance(fulfiller, GEngineFulfiller) or not fulfiller.available:
+        return None
+    return fulfiller.client_for_reads()
+
+
+async def _gengine_stock(
+    client: Any,
+    *,
+    product_id: str,
+    variant_id: str | None,
+    cache: dict[str, dict[str, Any] | None],
+) -> int | None:
+    """Stock for one G-Engine denomination.
+
+    A denomination that has vanished from the product reads as zero for the
+    same reason a withdrawn G2B product does: it cannot be delivered, and
+    leaving it NULL would keep it on the shelf.
+    """
+    if product_id not in cache:
+        rows = await client.list_shop_denominations(int(product_id))
+        cache[product_id] = {str(row.get("id")): row for row in rows if isinstance(row, dict)}
+    by_id = cache[product_id] or {}
+    if variant_id is None:
+        # No denomination pinned: the whole product is the line, so it is in
+        # stock while any of its denominations is.
+        counts = [normalise_stock(r.get("stock")) for r in by_id.values()]
+        real = [c for c in counts if c is not None]
+        return max(real) if real else None
+    row = by_id.get(str(variant_id))
+    return 0 if row is None else normalise_stock(row.get("stock"))
+
+
+async def _alert_out_of_stock(*, sku_code: str, external_id: str, supplier: str = "g2b") -> None:
     """Tell the operator a line just emptied.
 
     Only on the transition. A SKU that has been out for a week is a known state,
@@ -149,7 +252,7 @@ async def _alert_out_of_stock(*, sku_code: str, external_id: str) -> None:
     text = (
         "<b>Ваучер закончился</b>\n"
         f"SKU: <code>{html.escape(sku_code)}</code>\n"
-        f"G2B product: <code>{html.escape(str(external_id))}</code>\n"
+        f"{html.escape(supplier)}: <code>{html.escape(str(external_id))}</code>\n"
         "Позиция скрыта с витрины до появления кодов у поставщика."
     )
     await notifications.send_admin_alert(text, kind="voucher_out_of_stock")

@@ -96,6 +96,15 @@ class GEngineFulfiller(Fulfiller):
             timeout_seconds=s.gengine_request_timeout_seconds,
         )
 
+    def client_for_reads(self) -> GEngineClient:
+        """A client for read-only catalogue calls made outside fulfilment.
+
+        The stock refresh lives in ``integrations`` but the credentials and
+        retry policy belong here, so it borrows a client instead of building a
+        second one from settings and drifting apart from this adapter.
+        """
+        return self._client()
+
     @property
     def available(self) -> bool:
         return bool(get_settings().gengine_api_key)
