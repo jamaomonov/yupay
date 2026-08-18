@@ -15,16 +15,35 @@ function languagesFor(path: string): Record<string, string> {
   return Object.fromEntries(LOCALES.map((l) => [l, localeUrl(l, path)]));
 }
 
+/**
+ * Regenerate hourly instead of only at build time.
+ *
+ * Without this the map is baked by `next build`, which reads the *deployed*
+ * API — so a brand added to the catalogue stayed missing until someone
+ * remembered to rebuild, even though its page was already live through ISR.
+ * That caught us with Telegram Stars and Standoff 2: the pages worked, the map
+ * did not list them, and it took a second deploy after the seeds to fix.
+ */
+export const revalidate = 3600;
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const entries: MetadataRoute.Sitemap = [];
   const slugs = await getBrandSlugs();
 
-  // No per-entry content timestamps are exposed to the storefront, so use the
-  // build/generation time as `lastModified`. It's a truthful "site last
-  // rebuilt/deployed" signal (a redeploy is what publishes content changes) and
-  // `lastmod` is the one sitemap hint Google actually uses. Computed once so
-  // every URL in a given generation shares the same value.
+  // No per-entry content timestamps are exposed to the storefront, so this is
+  // the generation date — but truncated to the day.
+  //
+  // `lastmod` is the one sitemap hint Google actually uses, and it only keeps
+  // using it while it stays believable: a value that moves on every URL without
+  // the content changing teaches a crawler to ignore the field. Regenerating
+  // hourly would do exactly that, and even today's build-time value moves on
+  // every deploy — six of them in one afternoon, recently. Truncating bounds
+  // the churn to once a day whatever the release cadence.
+  //
+  // The real fix is a content timestamp per brand; the catalogue API exposes
+  // none today.
   const lastModified = new Date();
+  lastModified.setUTCHours(0, 0, 0, 0);
 
   const paths: {
     path: string;
