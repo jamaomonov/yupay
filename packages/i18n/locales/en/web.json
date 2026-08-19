@@ -390,6 +390,10 @@
           "p": "Prices are in Uzbek som and include all taxes. The rate is fixed when the order is placed and the final amount is shown before payment. We charge no separate fee on top — our margin is already in the price. Payment by Uzcard and Humo through Click, Payme or Uzum. A fiscal receipt is issued after payment."
         },
         {
+          "h": "Fraud prevention",
+          "p": "We control and limit fraud risk in line with the law of the Republic of Uzbekistan and our partner banks' requirements: we screen payments for signs of fraud, restrict transactions flagged by the bank's security systems, identify and verify the payer, and use secure data channels and up-to-date information-security tools. If we detect a risk, we may temporarily suspend a transaction, request additional confirmation of identity or of the payment method, or decline it — and where needed we work with the bank to prevent unauthorised charges. In turn, you agree not to share your personal data, passwords or confirmation codes with third parties, to report suspicious transactions to us immediately, and to follow the general rules for safe use of electronic payment systems."
+        },
+        {
           "h": "Fulfilment",
           "p": "Most orders are fulfilled automatically within 1–5 minutes of payment confirmation. You are responsible for the accuracy of the game ID and other account details: goods credited to details you entered incorrectly count as properly delivered and are not refundable. If fulfilment is delayed, the order status is available from the link in your email and under My orders."
         },
