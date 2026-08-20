@@ -14,10 +14,10 @@ import { buttonStyles } from "@/lib/button";
  * указан неверно по вашей вине"). So the one thing that cannot be undone gets
  * one confirmation.
  *
- * Where the catalogue has no player check at all (Free Fire, Genshin — the
- * supplier reports "no validation required"), the dialog additionally asks the
- * buyer to confirm they checked the ID in-game. That is the only place in the
- * flow where anyone can catch the typo.
+ * Where the catalogue has no player check at all (Genshin, Honkai Star Rail —
+ * the supplier reports "no validation required"), the dialog additionally asks
+ * the buyer to confirm they checked the ID in-game. That is the only place in
+ * the flow where anyone can catch the typo.
  *
  * Mirrors the app's modal convention (see WhereToFindModal): backdrop click,
  * Escape, focus moved into the card and restored to the opener.

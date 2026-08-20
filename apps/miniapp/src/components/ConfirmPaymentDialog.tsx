@@ -14,10 +14,10 @@ import { haptic } from "@/lib/telegram";
  * not.
  *
  * Where the supplier can verify the id it already has (the resolved nickname
- * shows in the field). Where it cannot — Free Fire and Genshin, which g2b
- * reports as "no validation required" — this dialog is the only place a typo
- * can still be caught, so it asks the buyer to attest and holds the button
- * until they do.
+ * shows in the field). Where it cannot — Genshin and Honkai Star Rail, which
+ * g2b reports as "no validation required" — this dialog is the only place a
+ * typo can still be caught, so it asks the buyer to attest and holds the
+ * button until they do.
  */
 export interface ConfirmRow {
   label: string;

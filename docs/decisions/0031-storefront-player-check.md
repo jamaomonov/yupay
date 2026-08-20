@@ -227,7 +227,7 @@ checkout dependency, contradicting the resilience goal that motivated
 keeping payments/fulfilment decoupled from suppliers elsewhere in the
 codebase (ADR-0013, ADR-0019). Rejected outright during brainstorming.
 
-## Which games may carry the check (verified 2026-08-16)
+## Which games may carry the check (verified 2026-08-16, `freefire_cis` re-verified 2026-08-20)
 
 Not every G2B title has a validator behind `checkPlayerId`, and the ones that
 do not **do not say so** — they answer `{"valid": "valid"}` to anything. Probed
@@ -242,9 +242,9 @@ each mapped game with an id that cannot exist (`999999999999`):
 | `deltaforce`                   | `invalid`        | real validator              |
 | `bloodstrike`                  | `invalid`        | real validator              |
 | `whiteout_survival`            | `invalid`        | real validator              |
+| `freefire_cis`                 | `invalid`        | real validator (since 2026-08-20 — was a rubber stamp, see below) |
 | `genshin`                      | **`valid`**      | **rubber stamp — no check** |
 | `honkai_star_rail`             | **`valid`**      | **rubber stamp — no check** |
-| `freefire_cis`                 | **`valid`**      | **rubber stamp — no check** |
 
 A rubber-stamping game must never carry `check`. The point of this feature is
 to catch a typo before money moves; a green "account confirmed" pill printed
@@ -257,16 +257,19 @@ there, and the storefront degrades to what it did before the feature existed.
 validate. Only calling the validator distinguishes them. Re-run the probe
 before enabling `check` on any new game.
 
-**Free Fire is a per-title gap, not a per-game one.** G2B sells ten regional
-Free Fire titles and nine of them validate properly (`freefire_bd`, `_br`,
-`_latam`, `_sgmy`, `_vn`, `_global`, `_sg`, `_me`, `_tw` all answer `invalid`
-to a bogus id). Only `freefire_cis` — the one we sell — rubber-stamps, and it
-is also the only one whose `/games/fields` returns
-`404 game fields not available`. That looks like a hole on G2B's side specific
-to the CIS title rather than a deliberate "this game cannot be checked", so it
-is worth asking them about and re-probing later: if it starts answering
-`invalid`, the check can be enabled on `free-fire-*` with the same SQL pattern
-as `scripts/seed/2026-08-16_enable_player_check.sql`.
+**Free Fire was a per-title gap, not a per-game one — now closed.** G2B sells
+ten regional Free Fire titles; nine always validated properly (`freefire_bd`,
+`_br`, `_latam`, `_sgmy`, `_vn`, `_global`, `_sg`, `_me`, `_tw` all answer
+`invalid` to a bogus id). Only `freefire_cis` — the one we sell — rubber-
+stamped, and it was also the only one whose `/games/fields` returned
+`404 game fields not available`, pointing at a hole on G2B's side specific to
+the CIS title rather than a deliberate "this game cannot be checked". Re-probed
+2026-08-20 after the supplier reported it now validates: `freefire_cis`
+answers `invalid` to the bogus id like every other checkable title, so `check`
+was enabled on `free-fire-*` in `seed_catalog.py`, with
+`scripts/seed/2026-08-20_enable_free_fire_player_check.sql` applying the same
+change to rows already seeded on prod/staging (same pattern as
+`scripts/seed/2026-08-16_enable_player_check.sql`).
 
 ## References
 

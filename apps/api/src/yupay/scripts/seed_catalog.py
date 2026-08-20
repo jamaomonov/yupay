@@ -319,8 +319,10 @@ GAME_META: list[GameMeta] = [
     GameMeta(
         brand_slug="free-fire",
         name="Free Fire",
-        # G2B returns "No validation required" for Free Fire — no player-id check.
-        required_fields=[_player_id_field()],
+        # `freefire_cis` used to rubber-stamp any id (ADR-0031); re-probed
+        # 2026-08-20 and it now answers "invalid" for a bogus id like every
+        # other G2B title, so the check is safe to enable.
+        required_fields=[_player_id_field(check={"provider": "g2b"})],
         products=[
             ProductMeta(
                 "free-fire-diamonds",
