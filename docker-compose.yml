@@ -65,6 +65,24 @@ x-app-env: &app-env
   PAYME_TEST_KEY: ${PAYME_TEST_KEY:-}
   PAYME_LOGIN: ${PAYME_LOGIN:-Paycom}
   PAYME_CHECKOUT_URL: ${PAYME_CHECKOUT_URL:-https://checkout.paycom.uz}
+  # Uzum (Merchant API) — set in .env (or /opt/yupay/secrets/api.env in prod).
+  # Empty UZUM_SERVICE_ID leaves the gateway ``available=false``.
+  UZUM_SERVICE_ID: ${UZUM_SERVICE_ID:-}
+  UZUM_LOGIN: ${UZUM_LOGIN:-}
+  UZUM_PASSWORD: ${UZUM_PASSWORD:-}
+  UZUM_TEST_LOGIN: ${UZUM_TEST_LOGIN:-}
+  UZUM_TEST_PASSWORD: ${UZUM_TEST_PASSWORD:-}
+  UZUM_OPEN_SERVICE_URL: ${UZUM_OPEN_SERVICE_URL:-https://www.uzumbank.uz/open-service}
+  # Click (Shop API) — set in .env (or /opt/yupay/secrets/api.env in prod).
+  # Empty CLICK_MERCHANT_ID leaves the gateway ``available=false``.
+  CLICK_MERCHANT_ID: ${CLICK_MERCHANT_ID:-}
+  CLICK_SERVICE_ID_WEB: ${CLICK_SERVICE_ID_WEB:-}
+  CLICK_SERVICE_ID_BOT: ${CLICK_SERVICE_ID_BOT:-}
+  CLICK_SECRET_KEY_WEB: ${CLICK_SECRET_KEY_WEB:-}
+  CLICK_SECRET_KEY_BOT: ${CLICK_SECRET_KEY_BOT:-}
+  CLICK_MERCHANT_USER_ID_WEB: ${CLICK_MERCHANT_USER_ID_WEB:-}
+  CLICK_MERCHANT_USER_ID_BOT: ${CLICK_MERCHANT_USER_ID_BOT:-}
+  CLICK_PAY_URL: ${CLICK_PAY_URL:-https://my.click.uz/services/pay}
   # Admin alert bot (separate from the customer-facing bot). Empty values
   # no-op the alerts module — useful in dev before the bot is provisioned.
   TG_ALERT_BOT_TOKEN: ${TG_ALERT_BOT_TOKEN:-}
