@@ -425,6 +425,65 @@ it("checks straight away on a single-product brand", async () => {
   expect(screen.queryByText("checkNeedsSku")).not.toBeInTheDocument();
 });
 
+it("keeps Pay disabled until the checkable field passes verification", async () => {
+  // A filled-in id used to be enough to reach the acquirer — a typo then
+  // landed the top-up on a stranger's account with no way back. Pay must
+  // stay blocked until "Проверить" actually confirms the id.
+  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  render(
+    <PurchasePanel products={[{ ...makeProduct(), required_fields: MLBB_FIELDS }]} locale="ru" />,
+  );
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
+  });
+
+  fireEvent.change(screen.getByPlaceholderText("playerIdPlaceholder"), {
+    target: { value: "1313232551" },
+  });
+  fireEvent.change(screen.getByLabelText("ID сервера *"), { target: { value: "6618" } });
+  fireEvent.change(screen.getByPlaceholderText("emailPlaceholder"), {
+    target: { value: "buyer@example.com" },
+  });
+
+  expect(screen.getByRole("button", { name: /^pay ·/i })).toBeDisabled();
+  expect(screen.getAllByText("payHintVerify").length).toBeGreaterThan(0);
+});
+
+it("enables Pay once the checkable field's check comes back valid", async () => {
+  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (url.includes("check-player")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ status: "valid", name: "blood moon" }), { status: 200 }),
+      );
+    }
+    return Promise.resolve(
+      new Response(JSON.stringify({ providers: [{ slug: "click", status: "active" }] }), {
+        status: 200,
+      }),
+    );
+  });
+  render(
+    <PurchasePanel products={[{ ...makeProduct(), required_fields: MLBB_FIELDS }]} locale="ru" />,
+  );
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
+  });
+
+  fireEvent.change(screen.getByPlaceholderText("playerIdPlaceholder"), {
+    target: { value: "1313232551" },
+  });
+  fireEvent.change(screen.getByLabelText("ID сервера *"), { target: { value: "6618" } });
+  fireEvent.change(screen.getByPlaceholderText("emailPlaceholder"), {
+    target: { value: "buyer@example.com" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "check" }));
+
+  expect(await screen.findByText("blood moon")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^pay ·/i })).not.toBeDisabled();
+});
+
 it("drops a confirmed nickname when the package switches to another product", async () => {
   // Found on prod with Playwright: verify a Russian id, then pick a global
   // package, and the green pill stayed — a nickname confirmed against the

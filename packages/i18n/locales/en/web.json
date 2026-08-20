@@ -185,6 +185,7 @@
     "selectPack": "Pick a pack above",
     "payHintEmail": "Enter an email for the receipt",
     "payHintFields": "Fill in the top-up details",
+    "payHintVerify": "Press \"Check\" next to the ID",
     "emailLabel": "Email — your receipt and order link go here",
     "emailPlaceholder": "you@example.com",
     "check": "Check",

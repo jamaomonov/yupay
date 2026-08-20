@@ -159,6 +159,9 @@
   "topup.processingBtn": "Processing...",
   "topup.availableInTg": "Available in Telegram",
   "topup.pay": "Pay",
+  "topup.continueCta": "Continue",
+  "topup.reviewTitle": "Checkout",
+  "topup.orderDetailsTitle": "Order details",
   "topup.amountLabel": "Amount in dollars",
   "topup.amountPlaceholder": "e.g. 10",
   "topup.amountRequired": "Enter an amount",
@@ -349,5 +352,6 @@
   "topup.confirmAttest": "I've checked these details in-game and they are correct.",
   "topup.confirmCta": "All correct, pay",
   "topup.confirmCancel": "Edit",
-  "topup.fillFieldCta": "Enter {field}"
+  "topup.fillFieldCta": "Enter {field}",
+  "topup.verifyFieldCta": "Verify {field}"
 }

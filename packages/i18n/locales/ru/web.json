@@ -185,6 +185,7 @@
     "selectPack": "Выберите пакет выше",
     "payHintEmail": "Введите email для чека",
     "payHintFields": "Заполните данные для зачисления",
+    "payHintVerify": "Нажмите «Проверить» рядом с ID",
     "emailLabel": "Email — сюда придёт чек и ссылка на заказ",
     "emailPlaceholder": "you@example.com",
     "check": "Проверить",

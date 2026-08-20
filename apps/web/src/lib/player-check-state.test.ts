@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 
-import { canCheck, checkBlocker, runPlayerCheck } from "./player-check-state";
+import { canCheck, checkBlocker, mergeCheckResult, runPlayerCheck } from "./player-check-state";
 
 describe("canCheck", () => {
   test("false when blank", () => expect(canCheck("   ")).toBe(false));
@@ -85,5 +85,37 @@ describe("checkBlocker", () => {
 
   test("ignores the server half when no sibling field is named", () => {
     expect(checkBlocker({ value: "_jamshid__", server: { required: false, id: null } })).toBeNull();
+  });
+});
+
+describe("mergeCheckResult", () => {
+  test("sets a new key's result", () => {
+    const next = mergeCheckResult({}, "player_id", { status: "valid", name: "Neo" });
+    expect(next).toEqual({ player_id: { status: "valid", name: "Neo" } });
+  });
+
+  test("returns the very same reference when both idle (null → null)", () => {
+    const prev = {};
+    expect(mergeCheckResult(prev, "player_id", null)).toBe(prev);
+  });
+
+  test("returns the very same reference when the result is unchanged", () => {
+    const prev = { player_id: { status: "valid" as const, name: "Neo" } };
+    const next = mergeCheckResult(prev, "player_id", { status: "valid", name: "Neo" });
+    expect(next).toBe(prev);
+  });
+
+  test("returns a new object when the status changes", () => {
+    const prev = { player_id: { status: "valid" as const, name: "Neo" } };
+    const next = mergeCheckResult(prev, "player_id", { status: "invalid", name: null });
+    expect(next).not.toBe(prev);
+    expect(next).toEqual({ player_id: { status: "invalid", name: null } });
+  });
+
+  test("returns a new object when a fresh field key is edited back to idle", () => {
+    const prev = { player_id: { status: "valid" as const, name: "Neo" } };
+    const next = mergeCheckResult(prev, "player_id", null);
+    expect(next).not.toBe(prev);
+    expect(next).toEqual({ player_id: null });
   });
 });

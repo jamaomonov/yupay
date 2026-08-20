@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 
-import { canCheck, runPlayerCheck } from "./player-check-state";
+import { canCheck, mergeCheckResult, runPlayerCheck } from "./player-check-state";
 
 describe("canCheck", () => {
   test("false when blank", () => expect(canCheck("   ")).toBe(false));
@@ -42,5 +42,46 @@ describe("runPlayerCheck", () => {
     const run = vi.fn().mockResolvedValue({ status: "invalid", name: null });
     await runPlayerCheck("p1", { playerId: "9", serverId: "as" }, run);
     expect(run).toHaveBeenCalledWith("p1", { playerId: "9", serverId: "as" });
+  });
+});
+
+describe("mergeCheckResult", () => {
+  test("sets a new key's result", () => {
+    const next = mergeCheckResult({}, "player_id", { status: "valid", name: "Neo" });
+    expect(next).toEqual({ player_id: { status: "valid", name: "Neo" } });
+  });
+
+  test("returns the very same reference when both idle (null → null)", () => {
+    const prev = {};
+    expect(mergeCheckResult(prev, "player_id", null)).toBe(prev);
+  });
+
+  test("returns the very same reference when the result is unchanged", () => {
+    const prev = { player_id: { status: "valid" as const, name: "Neo" } };
+    const next = mergeCheckResult(prev, "player_id", { status: "valid", name: "Neo" });
+    expect(next).toBe(prev);
+  });
+
+  test("returns a new object when the status changes", () => {
+    const prev = { player_id: { status: "valid" as const, name: "Neo" } };
+    const next = mergeCheckResult(prev, "player_id", { status: "invalid", name: null });
+    expect(next).not.toBe(prev);
+    expect(next).toEqual({ player_id: { status: "invalid", name: null } });
+  });
+
+  test("returns a new object when a fresh field key is edited back to idle", () => {
+    const prev = { player_id: { status: "valid" as const, name: "Neo" } };
+    const next = mergeCheckResult(prev, "player_id", null);
+    expect(next).not.toBe(prev);
+    expect(next).toEqual({ player_id: null });
+  });
+
+  test("leaves other keys untouched", () => {
+    const prev = { server: { status: "valid" as const, name: "S1" } };
+    const next = mergeCheckResult(prev, "player_id", { status: "valid", name: "Neo" });
+    expect(next).toEqual({
+      server: { status: "valid", name: "S1" },
+      player_id: { status: "valid", name: "Neo" },
+    });
   });
 });

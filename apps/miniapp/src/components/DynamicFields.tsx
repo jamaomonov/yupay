@@ -8,9 +8,10 @@
  */
 
 import { Check, HelpCircle, History, Loader2, X } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import type { FormField } from "@/lib/catalog";
+import type { PlayerCheckResult } from "@/lib/player-check";
 import type { Locale } from "@yupay/i18n";
 
 import {
@@ -45,6 +46,19 @@ export interface DynamicFieldsProps {
   /** Per-field values from the customer's last checkout, offered as a
    *  tap-to-fill suggestion. Never auto-applied — the user decides. */
   suggestions?: Record<string, string>;
+  /** Reports a checkable field's latest player-check outcome (or `null` once
+   *  it goes stale — the value changed, so the previous result no longer
+   *  vouches for anything). Only fired for fields that carry a `check`
+   *  config; lets the parent gate checkout on "verified", not just "typed
+   *  something", and show the resolved nickname elsewhere (order summary). */
+  onCheckResult?: (key: string, result: PlayerCheckResult | null) => void;
+  /** The parent's memory of each field's last `onCheckResult` report — fed
+   *  straight back in as the initial state on (re)mount. `TopUp`'s review
+   *  stage unmounts this whole form (it lives behind `stage === "select"`),
+   *  and without this a verified pill would forget itself and demand another
+   *  "Проверить" the moment the buyer taps back, despite nothing about the
+   *  id having changed. */
+  knownResults?: Record<string, PlayerCheckResult | null>;
 }
 
 export function DynamicFields({
@@ -53,6 +67,8 @@ export function DynamicFields({
   values,
   onChange,
   suggestions,
+  onCheckResult,
+  knownResults,
 }: DynamicFieldsProps) {
   const { locale } = useT();
   if (fields.length === 0) return null;
@@ -80,6 +96,8 @@ export function DynamicFields({
             onChange={(v) => {
               onChange(field.key, v);
             }}
+            onCheckResult={onCheckResult}
+            knownResult={knownResults?.[field.key] ?? null}
           />
         );
       })}
@@ -95,6 +113,8 @@ function DynamicField({
   serverLabel,
   onChange,
   suggestion,
+  onCheckResult,
+  knownResult,
 }: {
   productId: string;
   field: FormField;
@@ -103,6 +123,8 @@ function DynamicField({
   serverLabel: string | null;
   onChange: (v: string) => void;
   suggestion: string | null;
+  onCheckResult?: (key: string, result: PlayerCheckResult | null) => void;
+  knownResult: PlayerCheckResult | null;
 }) {
   const { t, locale } = useT();
   const [helpOpen, setHelpOpen] = useState(false);
@@ -178,6 +200,8 @@ function DynamicField({
           fieldId={fieldId}
           required={required}
           suggestion={suggestion}
+          onCheckResult={onCheckResult}
+          knownResult={knownResult}
         />
       )}
 
@@ -209,6 +233,8 @@ function TextLikeField({
   fieldId,
   required,
   suggestion,
+  onCheckResult,
+  knownResult,
 }: {
   productId: string;
   field: FormField;
@@ -223,6 +249,10 @@ function TextLikeField({
   fieldId: string;
   required: boolean;
   suggestion: string | null;
+  onCheckResult?: (key: string, result: PlayerCheckResult | null) => void;
+  /** The parent's last-known result for this field, fed back in as the
+   *  initial state — see `DynamicFieldsProps.knownResults`. */
+  knownResult: PlayerCheckResult | null;
 }) {
   const { t } = useT();
   const inputType = field.type === "email" ? "email" : field.type === "number" ? "tel" : "text";
@@ -235,7 +265,20 @@ function TextLikeField({
   // Advisory player-id lookup (e.g. Steam/game nickname preview). Only
   // rendered when the catalog schema marks this field as checkable.
   const checkConfig = field.check;
-  const [check, setCheck] = useState<CheckState>(IDLE);
+  // Seeded from `knownResult` rather than always `IDLE`: this component
+  // remounts every time the buyer taps "back" out of the review stage (that
+  // screen lives behind a `stage === "select" &&`, so going back tears the
+  // whole form down and rebuilds it), and without the seed a verified pill
+  // would forget itself and demand another "Проверить" for an id that never
+  // changed.
+  const [check, setCheck] = useState<CheckState>(() =>
+    knownResult ? { phase: "done", result: knownResult } : IDLE,
+  );
+  // Guards the reset effect below from firing on this initial, seeded
+  // render — otherwise it would immediately wipe the very state we just
+  // seeded, since `value`/`productId` "change" (from nothing to something)
+  // on mount too.
+  const skipNextReset = useRef(true);
   // `productId` as well as `value`: the answer belongs to the product it was
   // asked about. Mobile Legends and Magic Chess: Go Go each sell one product
   // per account region (ADR-0048), and switching between them keeps the typed
@@ -243,8 +286,21 @@ function TextLikeField({
   // this the green "verified" pill survives the switch and vouches for an
   // account against the region it was never checked against.
   useEffect(() => {
+    if (skipNextReset.current) {
+      skipNextReset.current = false;
+      return;
+    }
     setCheck(IDLE);
   }, [value, productId]);
+  // Mirror the outcome up to the parent so it can gate "continue"/"pay" on
+  // an actual verification, not just a non-empty box — and show the resolved
+  // nickname elsewhere (the order summary). Fires `null` the moment the
+  // value edit above resets `check` to idle, so a stale "verified" never
+  // survives a keystroke past the parent's back.
+  useEffect(() => {
+    if (!checkConfig) return;
+    onCheckResult?.(field.key, check.phase === "done" ? check.result : null);
+  }, [checkConfig, check, field.key, onCheckResult]);
   const serverId = checkConfig?.server_field ? (allValues[checkConfig.server_field] ?? null) : null;
   const idOk = canCheck(value, field.pattern);
   const canRunCheck = canCheck(value, field.pattern, {

@@ -185,6 +185,7 @@
     "selectPack": "Yuqoridan paket tanlang",
     "payHintEmail": "Chek uchun email kiriting",
     "payHintFields": "Toʻldirish maʼlumotlarini kiriting",
+    "payHintVerify": "ID yonidagi «Tekshirish»ni bosing",
     "emailLabel": "Email — chek va buyurtma havolasi shu yerga keladi",
     "emailPlaceholder": "you@example.com",
     "check": "Tekshirish",

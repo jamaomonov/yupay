@@ -11,6 +11,7 @@ import { ConfirmPurchaseModal } from "./ConfirmPurchaseModal";
 import { WhereToFindModal } from "./WhereToFindModal";
 
 import type { FormField, ProductDetail, SkuOut } from "@/lib/catalog";
+import type { PlayerCheckResult } from "@/lib/player-check";
 
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
@@ -26,7 +27,13 @@ import {
   type ProviderStatus,
   type ProvidersOut,
 } from "@/lib/payment-providers";
-import { checkBlocker, IDLE, runPlayerCheck, type CheckState } from "@/lib/player-check-state";
+import {
+  checkBlocker,
+  IDLE,
+  mergeCheckResult,
+  runPlayerCheck,
+  type CheckState,
+} from "@/lib/player-check-state";
 import { formatUzs, pathFor } from "@/lib/seo";
 import {
   amountError,
@@ -53,9 +60,23 @@ interface Method {
  * so checkout falls back to the live `mock` provider when the chosen one isn't
  * available yet — the UI stays honest while the flow works end-to-end. */
 const METHODS: Method[] = [
-  { id: "click", name: "Click", provider: "click", icon: "/payment/click.svg", w: 157, h: 40 },
-  { id: "payme", name: "Payme", provider: "payme", icon: "/payment/payme.png", w: 454, h: 179 },
-  { id: "uzum", name: "Uzum", provider: "uzum", icon: "/payment/uzum.png", w: 506, h: 148 },
+  {
+    id: "click",
+    name: "Click",
+    provider: "click",
+    icon: "/payment/click-mark.png",
+    w: 160,
+    h: 160,
+  },
+  {
+    id: "payme",
+    name: "Payme",
+    provider: "payme",
+    icon: "/payment/payme-mark.png",
+    w: 160,
+    h: 160,
+  },
+  { id: "uzum", name: "Uzum", provider: "uzum", icon: "/payment/uzum-mark.png", w: 160, h: 160 },
 ];
 
 /** A fixed-price SKU's display price. Never call this for a variable-amount
@@ -88,6 +109,7 @@ function CheckablePlayerField({
   productChosen,
   help,
   placeholder,
+  onCheckResult,
   t,
 }: {
   productId: string;
@@ -107,6 +129,10 @@ function CheckablePlayerField({
   productChosen: boolean;
   help: string | null;
   placeholder: string;
+  /** Reports this field's latest check outcome (or `null` once it goes
+   *  stale) so the parent can require a real "valid" before Pay, not just a
+   *  filled-in box. */
+  onCheckResult?: (result: PlayerCheckResult | null) => void;
   t: (key: string, values?: Record<string, string>) => string;
 }) {
   // Pick the mobile keyboard from the field's pattern: a letter-bearing
@@ -132,6 +158,12 @@ function CheckablePlayerField({
   useEffect(() => {
     setState(IDLE);
   }, [value, productId]);
+  // Mirrored up so `canPay` can require an actual "valid" behind this field,
+  // not just a non-empty box — a keystroke after a pass resets `state` above,
+  // and that reset must reach the parent just as reliably as a fresh pass.
+  useEffect(() => {
+    onCheckResult?.(state.phase === "done" ? state.result : null);
+  }, [state, onCheckResult]);
   const blocker = checkBlocker({
     value,
     pattern,
@@ -626,6 +658,11 @@ export function PurchasePanel({
     return only && only.in_stock !== false ? only.id : undefined;
   });
   const [form, setForm] = useState<Record<string, string>>({});
+  // Mirrors each checkable field's latest player-check result, reported by
+  // `CheckablePlayerField`. Lets `canPay` require a real verification
+  // instead of a filled-in box — a mistyped id otherwise redirects straight
+  // to the acquirer, and the refund policy says that's unrecoverable.
+  const [checkResults, setCheckResults] = useState<Record<string, PlayerCheckResult | null>>({});
   const [email, setEmail] = useState("");
   // The dollar amount typed for a variable-amount SKU. Raw string, not a
   // number — see `@/lib/variable-amount` for parsing/validation.
@@ -802,6 +839,17 @@ export function PurchasePanel({
 
   const emailOk = EMAIL_RE.test(email);
   const fieldsOk = fields.every((f) => !f.required || (form[f.key]?.trim() ?? "") !== "");
+  // A checkable field (`f.check`) with something typed but no successful
+  // "Проверить" behind that value — never pressed, came back not-found or
+  // errored, or a later edit reset a previous pass (`CheckablePlayerField`'s
+  // own effect resets `state`, and its `onCheckResult` mirrors that here).
+  const uncheckedFieldKey = fields.find((f) => {
+    if (!f.check) return false;
+    const v = (form[f.key] ?? "").trim();
+    if (v.length === 0) return false;
+    return checkResults[f.key]?.status !== "valid";
+  })?.key;
+  const fieldsVerified = uncheckedFieldKey === undefined;
   // Not just "a method id is set" — the selected method's *provider* must
   // currently be `active`. Combined with the reselection effect above, this
   // is the belt-and-suspenders guarantee that Pay can never submit a
@@ -822,6 +870,7 @@ export function PurchasePanel({
     Boolean(selSku) &&
     (user !== null || emailOk) &&
     fieldsOk &&
+    fieldsVerified &&
     selectedMethodActive &&
     variableAmountOk &&
     !loading;
@@ -844,7 +893,9 @@ export function PurchasePanel({
                 ? t("payHintEmail")
                 : !fieldsOk
                   ? t("payHintFields")
-                  : null;
+                  : !fieldsVerified
+                    ? t("payHintVerify")
+                    : null;
 
   // The price shown in the summary header, the pay button, and the mobile
   // sticky bar. A variable-amount SKU has no fixed `skuPrice` — its total
@@ -871,9 +922,9 @@ export function PurchasePanel({
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   // A product whose fields the supplier can verify (`f.check`) has already had
-  // the id resolved to a nickname. Where it cannot — Free Fire and Genshin,
-  // where the supplier reports "no validation required" — the dialog is the
-  // only place a typo can still be caught, so it asks the buyer to attest.
+  // the id resolved to a nickname. Where it cannot — Genshin and Honkai Star
+  // Rail, where the supplier reports "no validation required" — the dialog is
+  // the only place a typo can still be caught, so it asks the buyer to attest.
   const hasVerifiableField = fields.some((f) => Boolean(f.check));
 
   const confirmRows = [
@@ -1230,6 +1281,9 @@ export function PurchasePanel({
                       }
                       help={f.help_text ? label(f.help_text) : null}
                       placeholder={f.placeholder ? label(f.placeholder) : t("playerIdPlaceholder")}
+                      onCheckResult={(result) => {
+                        setCheckResults((prev) => mergeCheckResult(prev, f.key, result));
+                      }}
                       t={t}
                     />
                   ) : (
@@ -1263,7 +1317,7 @@ export function PurchasePanel({
                   {t("paymentNone")}
                 </p>
               )}
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {METHODS.map((m) => {
                   // Absent from the providers response → admin-disabled, not
                   // offered at all. `maintenance` still renders, but greyed
@@ -1290,15 +1344,16 @@ export function PurchasePanel({
                             : "border-border bg-card hover:border-border-2"
                       }`}
                     >
-                      <Image
-                        src={m.icon}
-                        alt={m.name}
-                        title={m.name}
-                        width={m.w}
-                        height={m.h}
-                        style={{ width: "auto", height: 20 }}
-                        className="object-contain"
-                      />
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md">
+                        <Image
+                          src={m.icon}
+                          alt=""
+                          width={m.w}
+                          height={m.h}
+                          className="h-full w-full object-cover"
+                        />
+                      </span>
+                      <span className="text-foreground text-[13px] font-semibold">{m.name}</span>
                       {disabled && (
                         <span className="text-tx-dim text-[10px] font-semibold uppercase tracking-[0.04em]">
                           {t("paymentMaintenance")}

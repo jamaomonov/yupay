@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import {
+  ArrowLeft,
   Check,
   ChevronRight,
   ExternalLink,
@@ -14,6 +15,8 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useParams } from "wouter";
+
+import type { PlayerCheckResult } from "@/lib/player-check";
 
 import { ConfirmPaymentDialog } from "@/components/ConfirmPaymentDialog";
 import { DynamicFields, pickLocalized } from "@/components/DynamicFields";
@@ -41,6 +44,7 @@ import {
   useCheckout,
 } from "@/lib/orders";
 import { ACQUIRER_BY_METHOD, PAYMENT_METHODS, PROVIDER_BY_METHOD } from "@/lib/payment-methods";
+import { mergeCheckResult } from "@/lib/player-check-state";
 import { getRecentFulfillment, rememberFulfillment } from "@/lib/recent-checkout";
 import { haptic, isInsideTelegram, openExternalLink, setClosingConfirmation } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -122,13 +126,20 @@ const PROVIDER_BY_METHOD_FULL: Record<string, string> = {
   [WALLET_METHOD_ID]: "wallet",
 };
 
+// ISO 4217 currencies YuPay handles that carry no practically-displayed minor
+// unit — UZS technically has tiyin, but showing them just renders noisy
+// ",00"/",79" suffixes on already-large sums. Mirrors packages/utils/money.ts.
+const ZERO_DECIMAL_CURRENCIES = new Set(["UZS"]);
+
 function formatMoney(value: number, code: string): string {
   const locale = getActiveLocale();
+  const fractionDigits = ZERO_DECIMAL_CURRENCIES.has(code) ? 0 : 2;
   try {
     return new Intl.NumberFormat(locale, {
       style: "currency",
       currency: code,
-      maximumFractionDigits: 2,
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
     }).format(value);
   } catch {
     // Non-ISO pseudocurrency (USDT) — format the number, suffix the code.
@@ -137,19 +148,25 @@ function formatMoney(value: number, code: string): string {
 }
 
 // ─── Step heading ──────────────────────────────────────────────────────────────
-function Step({ n, title, sub }: { n: number; title: string; sub?: string }) {
+// `n` is omitted once a section is a standalone screen rather than one of
+// several steps in a sequence (the review stage has only one section left to
+// number — payment method — and a lone "3" read as "step 3 of 3" when the
+// other two are a page away, on the previous screen).
+function Step({ n, title, sub }: { n?: number; title: string; sub?: string }) {
   return (
     <div className="mb-3.5 flex items-start gap-3">
-      <div
-        className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
-        style={{
-          background: "hsl(var(--primary) / 0.15)",
-          color: "hsl(var(--primary))",
-          border: "1px solid hsl(var(--primary) / 0.4)",
-        }}
-      >
-        {n}
-      </div>
+      {n !== undefined && (
+        <div
+          className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
+          style={{
+            background: "hsl(var(--primary) / 0.15)",
+            color: "hsl(var(--primary))",
+            border: "1px solid hsl(var(--primary) / 0.4)",
+          }}
+        >
+          {n}
+        </div>
+      )}
       <div>
         <p className="text-base font-bold leading-tight text-white">{title}</p>
         {sub && <p className="mt-0.5 text-xs text-white/40">{sub}</p>}
@@ -300,6 +317,17 @@ export default function TopUp() {
     if (!providersQuery.data) return null;
     return providerStatusMap(providersQuery.data);
   }, [providersQuery.data]);
+  // Admin-disabled methods are dropped entirely (not just greyed out like
+  // `maintenance`), so the grid below sizes its columns to however many
+  // remain — otherwise a hidden 4th method (e.g. crypto) leaves a blank
+  // column-width gap on the right instead of letting the other three fill it.
+  const visiblePaymentMethods = useMemo(
+    () =>
+      PAYMENT_METHODS.filter(
+        (m) => methodVisibility(m.provider, providerStatusBySlug) !== "hidden",
+      ),
+    [providerStatusBySlug],
+  );
   const isMethodAvailable = (methodId: string): boolean => {
     // Wallet eligibility is computed below from the user's balance — the
     // payment-provider list on the server does not know about it.
@@ -349,6 +377,11 @@ export default function TopUp() {
   // per-field tap-to-fill suggestion (see DynamicFields) — never auto-applied,
   // so we don't carry a stale player_id into a fresh order by surprise.
   const [suggestions, setSuggestions] = useState<Record<string, string>>({});
+  // Mirrors each checkable field's latest player-check result, reported by
+  // DynamicFields. Lets "continue" require an actual verification instead of
+  // a filled-in box — a mistyped id otherwise sails straight to checkout,
+  // and the refund policy says a wrong id after payment is unrecoverable.
+  const [checkResults, setCheckResults] = useState<Record<string, PlayerCheckResult | null>>({});
   const [selectedPkg, setSelectedPkg] = useState<string>("");
   // Confirmation before an irreversible payment. Declared here with the other
   // hooks — the component has early returns further down, and a `useState`
@@ -358,6 +391,14 @@ export default function TopUp() {
   // number — see ``@/lib/variable-amount`` for parsing/validation.
   const [amountInput, setAmountInput] = useState<string>("");
   const [paymentMethod, setPaymentMethod] = useState(DEFAULT_PAYMENT_METHOD);
+  // The fixed CTA used to jump straight to the confirm dialog from the
+  // denomination step, defaulting silently to whichever acquirer came first
+  // — a first-time buyer who never scrolled past the packages had no idea
+  // other payment methods existed. Splitting the flow into two screens
+  // forces the payment-method grid onto the page the buyer actually lands
+  // on after tapping the primary button. Kept as in-page state (not a
+  // route) so the selected package/fields survive a back-and-forth for free.
+  const [stage, setStage] = useState<"select" | "review">("select");
 
   // If the user has a stale selection (e.g. "card" preserved across a session
   // where the live list now only has "mock", or a non-UZS method carried over
@@ -408,6 +449,7 @@ export default function TopUp() {
   // player_id from bleeding into Steam's email when the user changes brand.
   useEffect(() => {
     setFulfillment({});
+    setCheckResults({});
     if (!gameId) {
       setSuggestions({});
       return;
@@ -556,6 +598,18 @@ export default function TopUp() {
     const v = fulfillment[f.key];
     return !v || v.trim().length === 0;
   })?.key;
+  // A checkable field (`f.check`) with something typed into it but no
+  // successful "Проверить" behind that value yet — either it was never
+  // pressed, it came back "not found"/errored, or an edit after a pass
+  // reset the result to stale (see DynamicFields' `onCheckResult`). Checked
+  // after `missingFieldKey` on purpose: an empty required field is "nothing
+  // to verify yet", not "unverified".
+  const uncheckedFieldKey = requiredFields.find((f) => {
+    if (!f.check) return false;
+    const v = (fulfillment[f.key] ?? "").trim();
+    if (v.length === 0) return false;
+    return checkResults[f.key]?.status !== "valid";
+  })?.key;
 
   // One expression for the CTA's disabled state, used by both its styling and
   // its own `disabled` — spelled out three times, they drifted apart easily.
@@ -567,7 +621,8 @@ export default function TopUp() {
     !insideTelegram ||
     !variableAmountReady ||
     !activePkg ||
-    Boolean(missingFieldKey);
+    Boolean(missingFieldKey) ||
+    Boolean(uncheckedFieldKey);
   const firstFieldLabel =
     requiredFields[0]?.label?.[locale] ?? requiredFields[0]?.label?.ru ?? t("topup.fieldFallback");
   const fillingHint = accountRequired
@@ -578,6 +633,23 @@ export default function TopUp() {
   // nickname in place. Where none can be verified, the dialog is the only
   // place a typo is still catchable, so it asks for an explicit attestation.
   const hasVerifiableField = requiredFields.some((f) => Boolean(f.check));
+
+  // Everything the buyer typed into step 1, for the review screen's order
+  // details card — the nickname (once verified) rides along next to the raw
+  // id, since that's the strongest "yes, this is the right account" signal
+  // the buyer gets before paying.
+  const filledAccountFields = requiredFields
+    .filter((f) => (fulfillment[f.key] ?? "").trim() !== "")
+    .map((f) => {
+      const value = fulfillment[f.key] ?? "";
+      const checked = f.check ? checkResults[f.key] : null;
+      return {
+        key: f.key,
+        label: pickLocalized(f.label, locale, f.key),
+        value,
+        nickname: checked?.status === "valid" ? checked.name : null,
+      };
+    });
 
   const confirmRows = [
     {
@@ -735,6 +807,12 @@ export default function TopUp() {
     }
   };
 
+  const goToReview = () => {
+    haptic("press");
+    setStage("review");
+    window.scrollTo({ top: 0 });
+  };
+
   return (
     <>
       {reviewsOpen && gameId && (
@@ -752,98 +830,141 @@ export default function TopUp() {
         transition={{ duration: 0.22 }}
         className="pb-32"
       >
-        {/* ── Hero ── */}
-        <div className="relative h-56 overflow-hidden">
-          {game.bgUrl ? (
-            <SafeImage
-              src={game.bgUrl}
-              className="absolute inset-0 h-full w-full object-cover"
-              fallback={
-                <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950" />
-              }
-            />
-          ) : (
-            <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950" />
-          )}
-          <div className="from-background via-background/40 absolute inset-0 bg-gradient-to-t to-black/20" />
-
-          <div className="absolute bottom-0 left-0 right-0 z-10 flex items-end gap-3 px-4 pb-4">
-            <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-2xl shadow-xl">
-              {game.appIcon ? (
-                <SafeImage
-                  src={game.appIcon}
-                  className="h-full w-full object-cover"
-                  fallback={
-                    <div
-                      className="flex h-full w-full items-center justify-center text-xl font-bold text-white/80"
-                      style={{ background: game.color }}
-                    >
-                      {game.name.charAt(0)}
-                    </div>
-                  }
-                />
-              ) : (
-                <div
-                  className="flex h-full w-full items-center justify-center text-xl font-bold text-white/80"
-                  style={{ background: game.color }}
-                >
-                  {game.name.charAt(0)}
-                </div>
-              )}
-            </div>
+        {/* ── Review header ── */}
+        {/* Only the stage the fixed CTA below actually needs a back path
+            for — the select stage still relies on Telegram's own
+            BackButton (see PageSkeleton's comment on this route). */}
+        {stage === "review" && (
+          <div className="flex items-center gap-3 px-4 pb-1 pt-4">
+            <button
+              type="button"
+              onClick={() => {
+                setStage("select");
+              }}
+              className="bg-card border-border flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border"
+              aria-label={t("common.back")}
+            >
+              <ArrowLeft size={16} className="text-white/70" />
+            </button>
             <div className="min-w-0 flex-1">
-              <p className="line-clamp-1 text-[11px] uppercase tracking-wide text-white/50">
-                {game.publisher || "YuPay"}
+              <p className="text-base font-bold leading-tight text-white">
+                {t("topup.reviewTitle")}
               </p>
-              <h1 className="line-clamp-1 text-lg font-bold leading-tight text-white">
-                {game.name}
-              </h1>
-              <div className="mt-0.5 flex items-center gap-3">
-                {/* Single honest signal: fulfilment is automated (supplier API
+              <p className="line-clamp-1 text-xs text-white/40">
+                {[game.name, activePkg?.label].filter(Boolean).join(" · ")}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* ── Hero ── */}
+        {stage === "select" && (
+          <div className="relative h-56 overflow-hidden">
+            {game.bgUrl ? (
+              <SafeImage
+                src={game.bgUrl}
+                className="absolute inset-0 h-full w-full object-cover"
+                fallback={
+                  <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950" />
+                }
+              />
+            ) : (
+              <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950" />
+            )}
+            <div className="from-background via-background/40 absolute inset-0 bg-gradient-to-t to-black/20" />
+
+            {/* Back to the catalog. Telegram's own BackButton covers this
+              inside the app, but outside it (a browser tab, a shared link)
+              there was no way back at all — this one always works. */}
+            <button
+              type="button"
+              onClick={() => {
+                setLocation("/");
+              }}
+              aria-label={t("common.back")}
+              className="absolute left-4 top-12 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-black/40 backdrop-blur-sm"
+            >
+              <ArrowLeft size={16} className="text-white" />
+            </button>
+
+            <div className="absolute bottom-0 left-0 right-0 z-10 flex items-end gap-3 px-4 pb-4">
+              <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-2xl shadow-xl">
+                {game.appIcon ? (
+                  <SafeImage
+                    src={game.appIcon}
+                    className="h-full w-full object-cover"
+                    fallback={
+                      <div
+                        className="flex h-full w-full items-center justify-center text-xl font-bold text-white/80"
+                        style={{ background: game.color }}
+                      >
+                        {game.name.charAt(0)}
+                      </div>
+                    }
+                  />
+                ) : (
+                  <div
+                    className="flex h-full w-full items-center justify-center text-xl font-bold text-white/80"
+                    style={{ background: game.color }}
+                  >
+                    {game.name.charAt(0)}
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="line-clamp-1 text-[11px] uppercase tracking-wide text-white/50">
+                  {game.publisher || "YuPay"}
+                </p>
+                <h1 className="line-clamp-1 text-lg font-bold leading-tight text-white">
+                  {game.name}
+                </h1>
+                <div className="mt-0.5 flex items-center gap-3">
+                  {/* Single honest signal: fulfilment is automated (supplier API
                     or the code warehouse), not a promised ETA. The 4.9 star
                     rating that used to live here was hardcoded with no count
                     behind it — pulled per the audit ("trust gaps · present
                     but unearned"). When real review data lands, add a count
                     + tap-to-open reviews sheet. */}
-                <div
-                  className="flex items-center gap-1 rounded-full px-2 py-0.5"
-                  style={{
-                    background: "hsl(var(--primary) / 0.15)",
-                    border: "1px solid hsl(var(--primary) / 0.3)",
-                  }}
-                >
-                  <Zap size={10} className="text-primary" />
-                  <span className="text-primary text-[10px] font-semibold">
-                    {t(isVoucher ? "topup.autoIssue" : "topup.autoCredit")}
-                  </span>
-                </div>
-                {brandQuery.data?.rating && brandQuery.data.rating.count > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setReviewsOpen(true);
-                    }}
+                  <div
                     className="flex items-center gap-1 rounded-full px-2 py-0.5"
-                    style={{ background: "rgba(255,255,255,0.08)" }}
+                    style={{
+                      background: "hsl(var(--primary) / 0.15)",
+                      border: "1px solid hsl(var(--primary) / 0.3)",
+                    }}
                   >
-                    <Star size={10} className="fill-amber-400 text-amber-400" />
-                    <span className="text-[10px] font-semibold text-white">
-                      {brandQuery.data.rating.avg.toFixed(1)}
+                    <Zap size={10} className="text-primary" />
+                    <span className="text-primary text-[10px] font-semibold">
+                      {t(isVoucher ? "topup.autoIssue" : "topup.autoCredit")}
                     </span>
-                    <span className="text-[10px] text-white/50">
-                      ({brandQuery.data.rating.count})
-                    </span>
-                  </button>
-                )}
+                  </div>
+                  {brandQuery.data?.rating && brandQuery.data.rating.count > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReviewsOpen(true);
+                      }}
+                      className="flex items-center gap-1 rounded-full px-2 py-0.5"
+                      style={{ background: "rgba(255,255,255,0.08)" }}
+                    >
+                      <Star size={10} className="fill-amber-400 text-amber-400" />
+                      <span className="text-[10px] font-semibold text-white">
+                        {brandQuery.data.rating.avg.toFixed(1)}
+                      </span>
+                      <span className="text-[10px] text-white/50">
+                        ({brandQuery.data.rating.count})
+                      </span>
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Telegram-only banner — surfaced at the top of the funnel, before
             the user invests time filling fulfilment fields and picking a
             package. */}
-        {!insideTelegram && (
+        {stage === "select" && !insideTelegram && (
           <div className="px-4 pt-4">
             <div
               className="flex items-start gap-3 rounded-2xl p-4"
@@ -886,317 +1007,363 @@ export default function TopUp() {
         )}
 
         {/* ── Form ── */}
-        <div className="space-y-7 px-4 pt-5">
-          {/* Step 0 — Product picker (only when there's more than one product) */}
-          {products.length > 1 && (
-            <div>
-              <div className="mb-2.5 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <PackageIcon size={13} className="text-white/40" />
-                  <span className="text-xs font-semibold uppercase tracking-wide text-white/50">
-                    {t("topup.pickProduct")}
+        {stage === "select" && (
+          <div className="space-y-7 px-4 pt-5">
+            {/* Step 0 — Product picker (only when there's more than one product) */}
+            {products.length > 1 && (
+              <div>
+                <div className="mb-2.5 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <PackageIcon size={13} className="text-white/40" />
+                    <span className="text-xs font-semibold uppercase tracking-wide text-white/50">
+                      {t("topup.pickProduct")}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-white/30">
+                    {tn("topup.optionsCount", products.length)}
                   </span>
                 </div>
-                <span className="text-[10px] text-white/30">
-                  {tn("topup.optionsCount", products.length)}
-                </span>
+                <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
+                  {products.map((p) => {
+                    const active = p.slug === selectedProductSlug;
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => {
+                          setSelectedProductSlug(p.slug);
+                        }}
+                        className="flex flex-shrink-0 items-center gap-2 rounded-2xl py-1.5 pl-2 pr-3 transition-all duration-150"
+                        style={{
+                          background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
+                          border: active
+                            ? "1.5px solid hsl(var(--primary) / 0.7)"
+                            : "1px solid hsl(var(--border))",
+                        }}
+                      >
+                        <div
+                          className={`flex h-6 w-6 flex-shrink-0 items-center justify-center overflow-hidden rounded-md ${
+                            p.image_url ? "" : "bg-black/30"
+                          }`}
+                        >
+                          {p.image_url ? (
+                            <SafeImage
+                              src={p.image_url}
+                              className="h-full w-full object-cover"
+                              fallback={<PackageIcon size={11} className="text-white/40" />}
+                            />
+                          ) : (
+                            <PackageIcon size={11} className="text-white/40" />
+                          )}
+                        </div>
+                        <span
+                          className={cn(
+                            "whitespace-nowrap text-xs font-semibold",
+                            active ? "text-white" : "text-white/60",
+                          )}
+                        >
+                          {p.name}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
-                {products.map((p) => {
-                  const active = p.slug === selectedProductSlug;
+            )}
+
+            {/* Step 1 — Dynamic account fields from product.required_fields */}
+            {accountRequired && (
+              <div>
+                <Step
+                  n={1}
+                  title={
+                    requiredFields.length === 1 ? t("topup.whereToCredit") : t("topup.credentials")
+                  }
+                  sub={fillingHint}
+                />
+                <DynamicFields
+                  productId={productQuery.data?.product.id ?? ""}
+                  fields={requiredFields}
+                  values={fulfillment}
+                  suggestions={suggestions}
+                  onChange={(key, value) => {
+                    setFulfillment((prev) => ({ ...prev, [key]: value }));
+                  }}
+                  onCheckResult={(key, result) => {
+                    setCheckResults((prev) => mergeCheckResult(prev, key, result));
+                  }}
+                  knownResults={checkResults}
+                />
+              </div>
+            )}
+
+            {/* Step 2 — Packages */}
+            <div>
+              <Step
+                n={accountRequired ? 2 : 1}
+                // One heading over the whole choice. When a free amount and
+                // packages are both on offer they are two ways of answering the
+                // same question, so the step says so instead of naming only one.
+                title={
+                  variablePkg && fixedPackages.length > 0
+                    ? t("topup.pickPackOrAmount")
+                    : t(isVoucher ? "topup.pickDenomination" : "topup.howMuch")
+                }
+                sub={t(isVoucher ? "topup.voucherDeliveryNote" : "topup.creditWithinMinutes")}
+              />
+
+              {productQuery.isLoading && <PackagesSkeleton shape={getBrandShape(gameId)} />}
+              {!productQuery.isLoading && packages.length === 0 && (
+                <p className="rounded-2xl border border-dashed border-white/10 p-6 text-center text-sm text-white/40">
+                  {t("topup.noPositions")}
+                </p>
+              )}
+              {/* Packages and a free amount can coexist — Telegram Stars sells
+                both. The field goes first and the packages read as its presets
+                underneath; the other way round it looked like an afterthought
+                below a wall of tiles. Tapping the field is what selects the
+                variable line, the same gesture selecting a package is. */}
+              {!productQuery.isLoading && variablePkg && (
+                <div
+                  onFocusCapture={() => {
+                    if (selectedPkg !== variablePkg.id) setSelectedPkg(variablePkg.id);
+                  }}
+                >
+                  <VariableAmountPanel
+                    pkg={variablePkg}
+                    value={selectedPkg === variablePkg.id ? amountInput : ""}
+                    selected={selectedPkg === variablePkg.id}
+                    onChange={(next) => {
+                      if (selectedPkg !== variablePkg.id) setSelectedPkg(variablePkg.id);
+                      setAmountInput(next);
+                    }}
+                    total={selectedPkg === variablePkg.id ? variableTotal : null}
+                    error={selectedPkg === variablePkg.id ? variableAmountErr : null}
+                  />
+                </div>
+              )}
+              {fixedPackages.length > 0 && (
+                <div className={cn("grid grid-cols-2 gap-2.5", variablePkg && "mt-2.5")}>
+                  {fixedPackages.map((pkg) => (
+                    <PackageCard
+                      key={pkg.id}
+                      pkg={pkg}
+                      active={selectedPkg === pkg.id}
+                      fallbackImage={productImage}
+                      onSelect={() => {
+                        haptic("select");
+                        setSelectedPkg(pkg.id);
+                        // A package and the free amount are two answers to one
+                        // question. Dropping the typed number here keeps the
+                        // field from resurrecting it when it is focused again.
+                        setAmountInput("");
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {stage === "review" && (
+          <div className="space-y-7 px-4 pt-2">
+            {/* Order details — moved to the top of the review screen so the
+              buyer sees what they're paying for (and to whom — the id and,
+              once verified, the nickname behind it) before picking how, instead
+              of scrolling past the payment grid to find it below. */}
+            {activePkg && (
+              <div>
+                <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-white/50">
+                  {t("topup.orderDetailsTitle")}
+                </p>
+                <motion.div
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="rounded-2xl p-3"
+                  style={{
+                    background: "hsl(var(--surface-2))",
+                    border: "1px solid hsl(var(--border))",
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <PackageThumb pkg={activePkg} fallback={productImage ?? game.appIcon ?? null} />
+                    <div className="min-w-0 flex-1">
+                      <p className="line-clamp-1 text-sm font-bold text-white">
+                        {activePkg.label} · {game.name}
+                      </p>
+                      <p className="mt-0.5 line-clamp-1 text-xs text-white/40">
+                        {accountRequired
+                          ? missingFieldKey
+                            ? t("topup.fillAbove")
+                            : t("topup.filled")
+                          : t("topup.getCode")}
+                      </p>
+                    </div>
+                    <p className="flex-shrink-0 text-sm font-bold text-white">
+                      {isVariableSelected
+                        ? variableTotal !== null
+                          ? formatMoney(variableTotal, priceCode)
+                          : "—"
+                        : formatMoney(activePkg.price, activePkg.priceCode)}
+                    </p>
+                  </div>
+                  {/* Every field the buyer typed on step 1 — with the resolved
+                      nickname next to the raw id wherever "Проверить" confirmed
+                      one, so this is the last look before the acquirer redirect
+                      shows the account, not just that a box was non-empty. */}
+                  {filledAccountFields.length > 0 && (
+                    <div
+                      className="mt-3 space-y-2 border-t pt-3"
+                      style={{ borderColor: "hsl(var(--border))" }}
+                    >
+                      {filledAccountFields.map((f) => (
+                        <div key={f.key} className="flex items-center justify-between gap-3">
+                          <span className="text-xs text-white/40">{f.label}</span>
+                          <span className="min-w-0 truncate text-right text-[13px] font-semibold text-white">
+                            {f.nickname ? (
+                              <>
+                                {f.nickname}{" "}
+                                <span className="font-mono text-white/45">· {f.value}</span>
+                              </>
+                            ) : (
+                              f.value
+                            )}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </motion.div>
+              </div>
+            )}
+
+            {/* Payment method — its own screen now, so it no longer carries a
+              step number ("3 of 3" read oddly once the other two steps live a
+              page back). */}
+            <div>
+              <Step title={t("topup.paymentMethod")} sub={t("topup.paymentSafe")} />
+
+              {/* Wallet — separate full-width card on top because it's the
+                cheapest option when funded, and because the disabled copy
+                ("не хватает X") needs more room than a 4-col chip. */}
+              <WalletPayOption
+                active={paymentMethod === WALLET_METHOD_ID}
+                enough={walletEnough}
+                loading={walletQuery.isPending}
+                balance={walletBalance}
+                shortfall={walletShortfall}
+                currency={priceCode}
+                onSelect={() => {
+                  setPaymentMethod(WALLET_METHOD_ID);
+                }}
+              />
+
+              <div
+                className="mb-3 grid gap-2"
+                style={{
+                  gridTemplateColumns: `repeat(${visiblePaymentMethods.length}, minmax(0, 1fr))`,
+                }}
+              >
+                {visiblePaymentMethods.map((m) => {
+                  const maintenance =
+                    methodVisibility(m.provider, providerStatusBySlug) === "maintenance";
+                  const available = isMethodAvailable(m.id);
+                  // An unavailable method can never look selected.
+                  const active = paymentMethod === m.id && available;
+                  const unavailableLabel = maintenance ? t("payment.maintenance") : t("topup.soon");
                   return (
                     <button
-                      key={p.id}
+                      key={m.id}
+                      type="button"
                       onClick={() => {
-                        setSelectedProductSlug(p.slug);
+                        if (!available) return;
+                        setPaymentMethod(m.id);
                       }}
-                      className="flex flex-shrink-0 items-center gap-2 rounded-2xl py-1.5 pl-2 pr-3 transition-all duration-150"
+                      disabled={!available}
+                      aria-disabled={!available}
+                      title={available ? undefined : unavailableLabel}
+                      className="relative flex flex-col items-center gap-1 rounded-2xl py-3 transition-all duration-150 disabled:cursor-not-allowed"
                       style={{
                         background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
                         border: active
-                          ? "1.5px solid hsl(var(--primary) / 0.7)"
+                          ? "1.5px solid hsl(var(--primary) / 0.8)"
                           : "1px solid hsl(var(--border))",
+                        opacity: available ? 1 : 0.5,
                       }}
+                      data-testid={`btn-pay-${m.id}`}
                     >
-                      <div
-                        className={`flex h-6 w-6 flex-shrink-0 items-center justify-center overflow-hidden rounded-md ${
-                          p.image_url ? "" : "bg-black/30"
-                        }`}
-                      >
-                        {p.image_url ? (
-                          <SafeImage
-                            src={p.image_url}
-                            className="h-full w-full object-cover"
-                            fallback={<PackageIcon size={11} className="text-white/40" />}
-                          />
-                        ) : (
-                          <PackageIcon size={11} className="text-white/40" />
-                        )}
-                      </div>
+                      {active && available && (
+                        <div
+                          className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full"
+                          style={{ background: "hsl(var(--primary))" }}
+                        >
+                          <Check size={9} strokeWidth={3} className="text-black" />
+                        </div>
+                      )}
+                      {!available && !maintenance && (
+                        <div
+                          className="absolute right-1 top-1 rounded px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide"
+                          style={{
+                            background: "hsl(var(--surface-3))",
+                            color: "hsl(var(--muted-foreground))",
+                          }}
+                        >
+                          {t("topup.soon")}
+                        </div>
+                      )}
+                      <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-md">
+                        <img src={m.icon} alt={m.name} className="h-full w-full object-cover" />
+                      </span>
                       <span
                         className={cn(
-                          "whitespace-nowrap text-xs font-semibold",
-                          active ? "text-white" : "text-white/60",
+                          "text-[11px] font-bold leading-none",
+                          active && available ? "text-white" : "text-white/50",
                         )}
                       >
-                        {p.name}
+                        {m.name}
                       </span>
+                      {maintenance && (
+                        <span className="px-0.5 text-center text-[8px] font-semibold uppercase leading-tight text-white/40">
+                          {t("payment.maintenance")}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
               </div>
             </div>
-          )}
 
-          {/* Step 1 — Dynamic account fields from product.required_fields */}
-          {accountRequired && (
-            <div>
-              <Step
-                n={1}
-                title={
-                  requiredFields.length === 1 ? t("topup.whereToCredit") : t("topup.credentials")
-                }
-                sub={fillingHint}
-              />
-              <DynamicFields
-                productId={productQuery.data?.product.id ?? ""}
-                fields={requiredFields}
-                values={fulfillment}
-                suggestions={suggestions}
-                onChange={(key, value) => {
-                  setFulfillment((prev) => ({ ...prev, [key]: value }));
-                }}
-              />
-            </div>
-          )}
-
-          {/* Step 2 — Packages */}
-          <div>
-            <Step
-              n={accountRequired ? 2 : 1}
-              // One heading over the whole choice. When a free amount and
-              // packages are both on offer they are two ways of answering the
-              // same question, so the step says so instead of naming only one.
-              title={
-                variablePkg && fixedPackages.length > 0
-                  ? t("topup.pickPackOrAmount")
-                  : t(isVoucher ? "topup.pickDenomination" : "topup.howMuch")
-              }
-              sub={t(isVoucher ? "topup.voucherDeliveryNote" : "topup.creditWithinMinutes")}
-            />
-
-            {productQuery.isLoading && <PackagesSkeleton shape={getBrandShape(gameId)} />}
-            {!productQuery.isLoading && packages.length === 0 && (
-              <p className="rounded-2xl border border-dashed border-white/10 p-6 text-center text-sm text-white/40">
-                {t("topup.noPositions")}
-              </p>
-            )}
-            {/* Packages and a free amount can coexist — Telegram Stars sells
-                both. The field goes first and the packages read as its presets
-                underneath; the other way round it looked like an afterthought
-                below a wall of tiles. Tapping the field is what selects the
-                variable line, the same gesture selecting a package is. */}
-            {!productQuery.isLoading && variablePkg && (
-              <div
-                onFocusCapture={() => {
-                  if (selectedPkg !== variablePkg.id) setSelectedPkg(variablePkg.id);
-                }}
-              >
-                <VariableAmountPanel
-                  pkg={variablePkg}
-                  value={selectedPkg === variablePkg.id ? amountInput : ""}
-                  selected={selectedPkg === variablePkg.id}
-                  onChange={(next) => {
-                    if (selectedPkg !== variablePkg.id) setSelectedPkg(variablePkg.id);
-                    setAmountInput(next);
-                  }}
-                  total={selectedPkg === variablePkg.id ? variableTotal : null}
-                  error={selectedPkg === variablePkg.id ? variableAmountErr : null}
-                />
-              </div>
-            )}
-            {fixedPackages.length > 0 && (
-              <div className={cn("grid grid-cols-2 gap-2.5", variablePkg && "mt-2.5")}>
-                {fixedPackages.map((pkg) => (
-                  <PackageCard
-                    key={pkg.id}
-                    pkg={pkg}
-                    active={selectedPkg === pkg.id}
-                    fallbackImage={productImage}
-                    onSelect={() => {
-                      haptic("select");
-                      setSelectedPkg(pkg.id);
-                      // A package and the free amount are two answers to one
-                      // question. Dropping the typed number here keeps the
-                      // field from resurrecting it when it is focused again.
-                      setAmountInput("");
-                    }}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Step 3 — Payment */}
-          <div>
-            <Step
-              n={accountRequired ? 3 : 2}
-              title={t("topup.paymentMethod")}
-              sub={t("topup.paymentSafe")}
-            />
-
-            {/* Wallet — separate full-width card on top because it's the
-                cheapest option when funded, and because the disabled copy
-                ("не хватает X") needs more room than a 4-col chip. */}
-            <WalletPayOption
-              active={paymentMethod === WALLET_METHOD_ID}
-              enough={walletEnough}
-              loading={walletQuery.isPending}
-              balance={walletBalance}
-              shortfall={walletShortfall}
-              currency={priceCode}
-              onSelect={() => {
-                setPaymentMethod(WALLET_METHOD_ID);
-              }}
-            />
-
-            <div className="mb-3 grid grid-cols-4 gap-2">
-              {PAYMENT_METHODS.map((m) => {
-                // Absent from the providers response → admin-disabled, not
-                // offered at all — distinct from `maintenance`, which is
-                // still rendered but locked out below.
-                const visibility = methodVisibility(m.provider, providerStatusBySlug);
-                if (visibility === "hidden") return null;
-                const maintenance = visibility === "maintenance";
-                const available = isMethodAvailable(m.id);
-                // An unavailable method can never look selected.
-                const active = paymentMethod === m.id && available;
-                const unavailableLabel = maintenance ? t("payment.maintenance") : t("topup.soon");
-                return (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => {
-                      if (!available) return;
-                      setPaymentMethod(m.id);
-                    }}
-                    disabled={!available}
-                    aria-disabled={!available}
-                    title={available ? undefined : unavailableLabel}
-                    className="relative flex flex-col items-center gap-1 rounded-2xl py-3 transition-all duration-150 disabled:cursor-not-allowed"
-                    style={{
-                      background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
-                      border: active
-                        ? "1.5px solid hsl(var(--primary) / 0.8)"
-                        : "1px solid hsl(var(--border))",
-                      opacity: available ? 1 : 0.5,
-                    }}
-                    data-testid={`btn-pay-${m.id}`}
-                  >
-                    {active && available && (
-                      <div
-                        className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full"
-                        style={{ background: "hsl(var(--primary))" }}
-                      >
-                        <Check size={9} strokeWidth={3} className="text-black" />
-                      </div>
-                    )}
-                    {!available && !maintenance && (
-                      <div
-                        className="absolute right-1 top-1 rounded px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide"
-                        style={{
-                          background: "hsl(var(--surface-3))",
-                          color: "hsl(var(--muted-foreground))",
-                        }}
-                      >
-                        {t("topup.soon")}
-                      </div>
-                    )}
-                    <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-white">
-                      <img src={m.icon} alt={m.name} className="h-full w-full object-contain p-1" />
-                    </span>
-                    <span
-                      className={cn(
-                        "text-[11px] font-bold leading-none",
-                        active && available ? "text-white" : "text-white/50",
-                      )}
-                    >
-                      {m.name}
-                    </span>
-                    {maintenance && (
-                      <span className="px-0.5 text-center text-[8px] font-semibold uppercase leading-tight text-white/40">
-                        {t("payment.maintenance")}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+            {/* Trust items */}
+            <div className="space-y-2.5 pt-1">
+              {[
+                {
+                  icon: ShieldCheck,
+                  text: accountRequired ? t("topup.trustNoPassword") : t("topup.trustEncrypted"),
+                },
+                {
+                  icon: RotateCcw,
+                  text: t("topup.trustRefund"),
+                },
+              ].map(({ icon: Icon, text }, i) => (
+                <div key={i} className="flex items-center gap-2.5">
+                  <Icon size={14} className="flex-shrink-0 text-white/25" />
+                  <span className="text-xs text-white/35">{text}</span>
+                </div>
+              ))}
             </div>
           </div>
-
-          {/* Trust items */}
-          <div className="space-y-2.5 pt-1">
-            {[
-              {
-                icon: ShieldCheck,
-                text: accountRequired ? t("topup.trustNoPassword") : t("topup.trustEncrypted"),
-              },
-              {
-                icon: RotateCcw,
-                text: t("topup.trustRefund"),
-              },
-            ].map(({ icon: Icon, text }, i) => (
-              <div key={i} className="flex items-center gap-2.5">
-                <Icon size={14} className="flex-shrink-0 text-white/25" />
-                <span className="text-xs text-white/35">{text}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Order summary */}
-          {activePkg && (
-            <motion.div
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex items-center gap-3 rounded-2xl p-3"
-              style={{
-                background: "hsl(var(--surface-2))",
-                border: "1px solid hsl(var(--border))",
-              }}
-            >
-              <PackageThumb pkg={activePkg} fallback={productImage ?? game.appIcon ?? null} />
-              <div className="min-w-0 flex-1">
-                <p className="line-clamp-1 text-sm font-bold text-white">
-                  {activePkg.label} · {game.name}
-                </p>
-                <p className="mt-0.5 line-clamp-1 text-xs text-white/40">
-                  {accountRequired
-                    ? missingFieldKey
-                      ? t("topup.fillAbove")
-                      : t("topup.filled")
-                    : t("topup.getCode")}
-                </p>
-              </div>
-              <p className="flex-shrink-0 text-sm font-bold text-white">
-                {isVariableSelected
-                  ? variableTotal !== null
-                    ? formatMoney(variableTotal, priceCode)
-                    : "—"
-                  : formatMoney(activePkg.price, activePkg.priceCode)}
-              </p>
-            </motion.div>
-          )}
-        </div>
+        )}
       </motion.div>
 
       {/* ── Fixed CTA ── */}
       {/* 16px clear of the nav band — at 8px the two pills read as one stuck
           block on a real phone. */}
       <div className="fixed bottom-[calc(var(--app-nav-total)_+_16px)] left-1/2 z-40 w-full max-w-[430px] -translate-x-1/2 px-4">
-        {/* Settlement disclaimer — only shown when the gateway will charge
-            in a currency different from the displayed one. Keeps the CTA
-            honest without forcing a live FX preview. */}
-        {insideTelegram &&
+        {/* Settlement disclaimer — only shown on the review screen, where a
+            payment method is actually being chosen. Keeps the CTA honest
+            without forcing a live FX preview. */}
+        {stage === "review" &&
+          insideTelegram &&
           activePkg &&
           ACQUIRER_BY_METHOD[paymentMethod] &&
           ACQUIRER_BY_METHOD[paymentMethod].currency !== priceCode && (
@@ -1221,12 +1388,54 @@ export default function TopUp() {
             <Send size={16} />
             {t("topup.openInTgCta")}
           </motion.a>
+        ) : stage === "select" ? (
+          /* "Далее" only — no acquirer, no total. Committing to a payment
+             method (and finding out others exist) happens on its own screen
+             right after this, not silently via whatever the grid defaulted
+             to below the fold. Same disabled-with-the-reason pattern as the
+             pay button used to carry alone. */
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            onClick={goToReview}
+            disabled={payDisabled}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-base font-bold tracking-wide transition-all"
+            style={{
+              background: payDisabled ? "hsl(var(--primary) / 0.45)" : "hsl(var(--primary))",
+              color: "#000",
+              boxShadow: payDisabled ? "none" : "0 0 16px hsl(var(--primary) / 0.25)",
+            }}
+            data-testid="btn-continue"
+          >
+            {!insideTelegram
+              ? t("topup.availableInTg")
+              : !activePkg
+                ? t("topup.pickPackageBody")
+                : missingFieldKey
+                  ? t("topup.fillFieldCta", {
+                      field: pickLocalized(
+                        requiredFields.find((f) => f.key === missingFieldKey)?.label,
+                        locale,
+                        missingFieldKey,
+                      ),
+                    })
+                  : uncheckedFieldKey
+                    ? t("topup.verifyFieldCta", {
+                        field: pickLocalized(
+                          requiredFields.find((f) => f.key === uncheckedFieldKey)?.label,
+                          locale,
+                          uncheckedFieldKey,
+                        ),
+                      })
+                    : (variableAmountReason ?? (
+                        <>
+                          {t("topup.continueCta")}
+                          <ChevronRight size={18} strokeWidth={2.5} />
+                        </>
+                      ))}
+          </motion.button>
         ) : (
-          /* The button is always on screen. It used to render `null` until a
-             denomination was picked — which is the default state of every game
-             with fixed packs, so the key conversion screen opened with no goal
-             visible at all. Disabled-with-the-reason is the pattern this file
-             already uses for a missing variable amount. */
+          /* Review screen's own CTA — the only place money actually moves,
+             now that a method has to be picked to get here at all. */
           <motion.button
             whileTap={{ scale: 0.97 }}
             onClick={() => {
@@ -1259,17 +1468,20 @@ export default function TopUp() {
                           missingFieldKey,
                         ),
                       })
-                    : (variableAmountReason ?? (
-                        <>
-                          {/* The total belongs on the button. The summary card that
-                      carries it sits below the payment methods and the trust
-                      row — roughly 1300px down on a 12-denomination game — so
-                      the thumb reaches "Оплатить" long before the eye reaches
-                      the price, and the next screen is the acquirer's. */}
-                          {t("topup.pay")} · {formatMoney(finalPrice, priceCode)}
-                          <ChevronRight size={18} strokeWidth={2.5} />
-                        </>
-                      ))}
+                    : uncheckedFieldKey
+                      ? t("topup.verifyFieldCta", {
+                          field: pickLocalized(
+                            requiredFields.find((f) => f.key === uncheckedFieldKey)?.label,
+                            locale,
+                            uncheckedFieldKey,
+                          ),
+                        })
+                      : (variableAmountReason ?? (
+                          <>
+                            {t("topup.pay")} · {formatMoney(finalPrice, priceCode)}
+                            <ChevronRight size={18} strokeWidth={2.5} />
+                          </>
+                        ))}
           </motion.button>
         )}
       </div>
@@ -1554,10 +1766,14 @@ function PageSkeleton({ onBack, slug }: { onBack: () => void; slug: string | und
   return (
     <div className="pb-32">
       <div className="relative h-56 overflow-hidden bg-gradient-to-br from-slate-800 to-slate-950">
-        <div className="absolute left-4 top-12 z-10">
-          {/* No arrow in the skeleton either: Telegram already shows its
-              BackButton on this route. */}
-        </div>
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label={t("common.back")}
+          className="absolute left-4 top-12 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-black/40 backdrop-blur-sm"
+        >
+          <ArrowLeft size={16} className="text-white" />
+        </button>
       </div>
       <div className="space-y-4 px-4 pt-5">
         <Skeleton className="h-12 w-full" />

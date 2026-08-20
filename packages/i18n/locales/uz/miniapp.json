@@ -159,6 +159,9 @@
   "topup.processingBtn": "Ishlanmoqda...",
   "topup.availableInTg": "Telegram'da mavjud",
   "topup.pay": "To'lash",
+  "topup.continueCta": "Keyingisi",
+  "topup.reviewTitle": "Buyurtmani rasmiylashtirish",
+  "topup.orderDetailsTitle": "Buyurtma tafsilotlari",
   "topup.amountLabel": "Dollardagi summa",
   "topup.amountPlaceholder": "Masalan, 10",
   "topup.amountRequired": "Summani kiriting",
@@ -349,5 +352,6 @@
   "topup.confirmAttest": "Maʼlumotlarni oʻyinda tekshirdim — ular toʻgʻri.",
   "topup.confirmCta": "Hammasi toʻgʻri, toʻlash",
   "topup.confirmCancel": "Oʻzgartirish",
-  "topup.fillFieldCta": "{field} kiriting"
+  "topup.fillFieldCta": "{field} kiriting",
+  "topup.verifyFieldCta": "{field}ni tekshiring"
 }

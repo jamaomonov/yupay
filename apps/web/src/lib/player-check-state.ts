@@ -85,3 +85,29 @@ export async function runPlayerCheck(
     return { phase: "done", result: { status: "error", name: null } };
   }
 }
+
+/** Sets `key` to `result` in a check-results map, but returns `prev` itself
+ *  (same reference) when nothing actually changed.
+ *
+ * `CheckablePlayerField` reports its outcome from an effect keyed partly on
+ * the reporter callback the parent hands it — and that callback is a fresh
+ * arrow function every render. Without this guard, mapping that into a plain
+ * `{ ...prev, [key]: result }` on every one of those calls would itself
+ * trigger the parent's next render, forever. Returning the very same
+ * reference when the value is unchanged lets React bail out of the update
+ * instead (a `useState` setter skips re-rendering on an `Object.is`-equal
+ * result), breaking the cycle. */
+export function mergeCheckResult(
+  prev: Record<string, PlayerCheckResult | null>,
+  key: string,
+  result: PlayerCheckResult | null,
+): Record<string, PlayerCheckResult | null> {
+  const current = prev[key] ?? null;
+  const unchanged =
+    current === result ||
+    (current !== null &&
+      result !== null &&
+      current.status === result.status &&
+      current.name === result.name);
+  return unchanged ? prev : { ...prev, [key]: result };
+}
