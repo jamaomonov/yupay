@@ -481,7 +481,12 @@ it("enables Pay once the checkable field's check comes back valid", async () => 
   fireEvent.click(screen.getByRole("button", { name: "check" }));
 
   expect(await screen.findByText("blood moon")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /^pay ·/i })).not.toBeDisabled();
+  // The pill's own render and the parent's `checkResults` update (an effect,
+  // mirrored up a tick after the pill commits) are two separate renders —
+  // `findByText` above only guarantees the first one happened.
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: /^pay ·/i })).not.toBeDisabled();
+  });
 });
 
 it("drops a confirmed nickname when the package switches to another product", async () => {
