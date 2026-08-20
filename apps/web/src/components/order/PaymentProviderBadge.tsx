@@ -12,27 +12,20 @@ export function PaymentProviderBadge({ provider }: { provider: string | null }) 
   const label = display.nameKey ? t(display.nameKey) : (display.name ?? "");
   return (
     <span className="border-border-2 bg-muted text-foreground rounded-btn inline-flex items-center gap-1.5 border px-2 py-1 text-[13px] font-medium">
-      {display.logo ? (
-        // The logo IS the name — every acquirer's asset is a wordmark, so
-        // pairing it with the text spelled "Click" twice. Scaled by height with
-        // the width left to the intrinsic ratio: these assets run from 3.9:1 to
-        // 2.5:1, and the old fixed 16x16 box squashed the wordmark into an
-        // illegible smudge. `alt` keeps the name available to screen readers,
-        // which is the only reason dropping the visible text is safe.
-        <Image
-          src={display.logo}
-          alt={label}
-          title={label}
-          width={display.logoWidth ?? 16}
-          height={display.logoHeight ?? 16}
-          style={{ width: "auto", height: 16 }}
-          className="object-contain"
-        />
-      ) : (
-        // No asset (wallet, Octo, an unrecognised slug) — the text is all there
-        // is, so it has to stay or the badge renders empty.
-        <span>{label}</span>
+      {display.logo && (
+        // A small square brand mark to the left of the text label — not a
+        // replacement for it (unlike the old wordmark assets, these are icons).
+        <span className="flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-white">
+          <Image
+            src={display.logo}
+            alt=""
+            width={display.logoWidth ?? 160}
+            height={display.logoHeight ?? 160}
+            className="h-full w-full object-contain"
+          />
+        </span>
       )}
+      <span>{label}</span>
     </span>
   );
 }

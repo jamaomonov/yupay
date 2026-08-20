@@ -3,12 +3,11 @@ export interface ProviderDisplay {
   name?: string;
   /** An i18n key under the `orders` namespace for a localized label (wallet). */
   nameKey?: string;
-  /** Public path to a logo asset, when one exists. */
+  /** Public path to a logo asset, when one exists. Square brand marks (not
+   *  wordmarks) — rendered as a small icon next to the text label, not in
+   *  place of it. See the same pairing in `PurchasePanel`'s METHODS. */
   logo?: string;
-  /** The asset's intrinsic pixel size. These logos are wordmarks with wildly
-   *  different aspect ratios (3.9:1 to 2.5:1), so a renderer needs the real
-   *  ratio to scale one by height without squashing it — see the same pairing
-   *  in `PurchasePanel`'s METHODS. */
+  /** The asset's intrinsic pixel size (all square marks, currently 160x160). */
   logoWidth?: number;
   logoHeight?: number;
 }
@@ -96,11 +95,11 @@ export function paymentProviderDisplay(provider: string | null): ProviderDisplay
   switch (provider) {
     case "click":
     case "click_miniapp":
-      return { name: "Click", logo: "/payment/click.svg", logoWidth: 157, logoHeight: 40 };
+      return { name: "Click", logo: "/payment/click-mark.png", logoWidth: 160, logoHeight: 160 };
     case "payme":
-      return { name: "Payme", logo: "/payment/payme.png", logoWidth: 454, logoHeight: 179 };
+      return { name: "Payme", logo: "/payment/payme-mark.png", logoWidth: 160, logoHeight: 160 };
     case "uzum":
-      return { name: "Uzum", logo: "/payment/uzum.png", logoWidth: 506, logoHeight: 148 };
+      return { name: "Uzum", logo: "/payment/uzum-mark.png", logoWidth: 160, logoHeight: 160 };
     case "octo":
       return { name: "Octo" };
     case "wallet":

@@ -46,6 +46,7 @@ import {
   type OrderStatus,
   type ProductKind,
 } from "@/lib/orders";
+import { ICON_BY_PROVIDER } from "@/lib/payment-methods";
 import { getMyReviews } from "@/lib/reviews";
 import {
   addToHomeScreen,
@@ -1055,10 +1056,9 @@ function CopyableValue({
 /**
  * Map a payment-provider slug to the label shown on the order summary.
  * Mirrors ``paymentProviderDisplay`` on web
- * (apps/web/src/lib/payment-providers.ts) but is text-only — the miniapp has
- * no provider logo assets under ``apps/miniapp/public``. Backend already
- * normalizes ``click_miniapp`` → ``click``; we tolerate both. Returns null
- * when there is no provider yet (unpaid order).
+ * (apps/web/src/lib/payment-providers.ts). Backend already normalizes
+ * ``click_miniapp`` → ``click``; we tolerate both. Returns null when there is
+ * no provider yet (unpaid order).
  */
 export function providerLabel(provider: string | null): string | null {
   switch (provider) {
@@ -1081,11 +1081,22 @@ export function providerLabel(provider: string | null): string | null {
   }
 }
 
+/**
+ * Small brand mark for the same provider slugs ``providerLabel`` handles.
+ * ``null`` for providers with no asset (wallet, Octo, unrecognised slugs) —
+ * the label text is all those get.
+ */
+export function providerIcon(provider: string | null): string | null {
+  if (!provider) return null;
+  return ICON_BY_PROVIDER[provider] ?? null;
+}
+
 // ─── Summary footer ─────────────────────────────────────────────────────────
 
 function Summary({ order }: { order: OrderOut }) {
   const { t } = useT();
   const providerText = providerLabel(order.payment_provider);
+  const providerIconSrc = providerIcon(order.payment_provider);
   return (
     <div className="px-4">
       <div
@@ -1099,7 +1110,9 @@ function Summary({ order }: { order: OrderOut }) {
           label={t("success.amount")}
           value={`${Number.parseFloat(order.total_charged).toLocaleString(getActiveLocale(), { maximumFractionDigits: 2 })} ${order.currency}`}
         />
-        {providerText && <Row label={t("success.paidWith")} value={providerText} />}
+        {providerText && (
+          <Row label={t("success.paidWith")} value={providerText} icon={providerIconSrc} />
+        )}
         <Row label={t("success.createdAt")} value={fmtDate(order.created_at)} />
         {order.paid_at && <Row label={t("success.paidAt")} value={fmtDate(order.paid_at)} />}
         {order.delivered_at && (
@@ -1110,11 +1123,18 @@ function Summary({ order }: { order: OrderOut }) {
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, icon }: { label: string; value: string; icon?: string | null }) {
   return (
     <div className="flex items-center justify-between">
       <span className="text-white/45">{label}</span>
-      <span className="font-medium text-white">{value}</span>
+      <span className="flex items-center gap-1.5 font-medium text-white">
+        {icon && (
+          <span className="flex h-4 w-4 items-center justify-center overflow-hidden rounded-sm bg-white">
+            <img src={icon} alt="" className="h-full w-full object-contain" />
+          </span>
+        )}
+        {value}
+      </span>
     </div>
   );
 }

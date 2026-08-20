@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { pickArtifactDisplay, providerLabel } from "./OrderSuccess";
+import { pickArtifactDisplay, providerIcon, providerLabel } from "./OrderSuccess";
 
 import { translate } from "@/lib/i18n/core";
 
@@ -24,6 +24,22 @@ describe("providerLabel", () => {
     expect(providerLabel("mock")).toBe("mock");
     expect(providerLabel(null)).toBeNull();
     expect(providerLabel("")).toBeNull();
+  });
+});
+
+describe("providerIcon", () => {
+  it("resolves a brand mark for click (and click_miniapp), payme and uzum", () => {
+    for (const slug of ["click", "click_miniapp", "payme", "uzum"]) {
+      expect(providerIcon(slug)).toEqual(expect.any(String));
+    }
+  });
+
+  it("returns null for providers with no asset, and for null/empty", () => {
+    expect(providerIcon("wallet")).toBeNull();
+    expect(providerIcon("octo")).toBeNull();
+    expect(providerIcon("mock")).toBeNull();
+    expect(providerIcon(null)).toBeNull();
+    expect(providerIcon("")).toBeNull();
   });
 });
 

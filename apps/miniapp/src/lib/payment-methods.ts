@@ -84,3 +84,16 @@ export interface AcquirerInfo {
 export const ACQUIRER_BY_METHOD: Record<string, AcquirerInfo> = Object.fromEntries(
   PAYMENT_METHODS.map((m) => [m.id, { label: m.name, currency: m.currency }]),
 );
+
+/**
+ * Backend ``payments.gateways`` provider slug → brand logo, for surfaces that
+ * show a completed order's payment method (e.g. the order-success summary),
+ * not just the checkout picker. Keyed by provider slug rather than method id
+ * since that's what an order stores; includes a bare ``click`` alias since
+ * the web storefront's service uses that slug while the mini app's own
+ * checkout uses ``click_miniapp`` — both render the same brand mark.
+ */
+export const ICON_BY_PROVIDER: Record<string, string> = {
+  ...Object.fromEntries(PAYMENT_METHODS.map((m) => [m.provider, m.icon])),
+  click: clickIcon,
+};

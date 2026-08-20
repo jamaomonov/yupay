@@ -10,27 +10,30 @@ import {
 
 describe("paymentProviderDisplay", () => {
   it("maps click (and click_miniapp) to the Click brand + logo", () => {
-    const click = { name: "Click", logo: "/payment/click.svg", logoWidth: 157, logoHeight: 40 };
+    const click = {
+      name: "Click",
+      logo: "/payment/click-mark.png",
+      logoWidth: 160,
+      logoHeight: 160,
+    };
     expect(paymentProviderDisplay("click")).toEqual(click);
     expect(paymentProviderDisplay("click_miniapp")).toEqual(click);
   });
   it("maps payme and uzum to their logos", () => {
     expect(paymentProviderDisplay("payme")).toEqual({
       name: "Payme",
-      logo: "/payment/payme.png",
-      logoWidth: 454,
-      logoHeight: 179,
+      logo: "/payment/payme-mark.png",
+      logoWidth: 160,
+      logoHeight: 160,
     });
     expect(paymentProviderDisplay("uzum")).toEqual({
       name: "Uzum",
-      logo: "/payment/uzum.png",
-      logoWidth: 506,
-      logoHeight: 148,
+      logo: "/payment/uzum-mark.png",
+      logoWidth: 160,
+      logoHeight: 160,
     });
   });
-  it("gives every logo its true aspect ratio, since callers scale by height", () => {
-    // A wrong ratio here squashes the wordmark, which is the whole reason the
-    // badge can drop the text beside it.
+  it("gives every logo a positive intrinsic size", () => {
     for (const slug of ["click", "payme", "uzum"]) {
       const d = paymentProviderDisplay(slug);
       expect(d?.logoWidth).toBeGreaterThan(0);
