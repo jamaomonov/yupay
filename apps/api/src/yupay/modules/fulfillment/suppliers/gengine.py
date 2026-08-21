@@ -348,12 +348,15 @@ async def _quantity_for(db: AsyncSession, *, item: OrderItem, mapping: Any) -> i
       reverses exactly that and cannot drift from what was paid. This path
       stays until the unit-SKU seed retires ``units_per_usd`` from the
       mappings it replaces.
-    - Everything else is ``item.qty * mapping.quantity``. Today that is
-      always one of the two factors doing the work: a package SKU carries
-      its count on the mapping (``item.qty`` is 1), a unit SKU (Telegram
-      Stars) carries it on the order line (``mapping.quantity`` is pinned to
-      1). Post-seed, every mapping's ``quantity`` is 1 and the line's own
-      ``qty`` is the whole story.
+    - Everything else is ``item.qty * mapping.quantity``. ``item.qty`` is
+      *not* pinned to 1 for a package SKU — checkout allows up to
+      ``DEFAULT_QTY_MAX`` packs of an ordinary SKU in one line — so this is
+      genuinely "packs bought × units per pack" for those. A unit SKU
+      (Telegram Stars) has no per-pack size; its mapping's ``quantity`` is
+      pinned to 1, so the product collapses to ``item.qty`` alone, the
+      customer's own count. Post-seed (the unit-SKU migration), every
+      mapping's ``quantity`` is 1 and ``item.qty`` is the whole story for
+      both cases.
     """
     from sqlalchemy import select
 
@@ -370,6 +373,10 @@ async def _quantity_for(db: AsyncSession, *, item: OrderItem, mapping: Any) -> i
             f"variable amount {item.unit_price_usd} resolves to no units — refusing to order"
         )
     qty = int(item.qty) * int(mapping.quantity)
+    # Both factors carry a DB `CHECK (... > 0)` (ck_order_items_qty_positive,
+    # ck_sku_supplier_mapping_quantity_positive), so this is belt-and-suspenders
+    # for a caller that hands in a non-persisted or duck-typed `item`/`mapping`
+    # rather than a reachable state for a real order.
     if qty <= 0:
         raise FulfillerError("quantity resolves to zero — refusing to order")
     return qty

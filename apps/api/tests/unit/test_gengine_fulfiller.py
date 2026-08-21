@@ -329,6 +329,24 @@ async def test_an_unfixed_unit_sku_sends_item_qty(monkeypatch: pytest.MonkeyPatc
     assert sent["create_calls"] == 1  # one create, not 500
 
 
+async def test_a_zero_quantity_is_refused_rather_than_creating_an_order() -> None:
+    """`item.qty` and `mapping.quantity` each carry a DB `CHECK (... > 0)`, so
+    a real order can never reach this — the guard is belt-and-suspenders
+    against a duck-typed caller that skips those constraints, not a state a
+    persisted row can be in."""
+    from yupay.modules.fulfillment.suppliers.gengine import _quantity_for
+
+    class Mapping:
+        quantity = 0
+
+    class Item:
+        sku_id = "sku-1"
+        qty = 5
+
+    with pytest.raises(FulfillerError, match="quantity resolves to zero"):
+        await _quantity_for(_FakeDb(), item=Item(), mapping=Mapping())  # type: ignore[arg-type]
+
+
 async def test_a_fixed_service_is_not_given_a_quantity(monkeypatch: pytest.MonkeyPatch) -> None:
     """Premium picks a denomination instead. `quantity` defaults to 1 on every
     mapping, so forwarding it unconditionally would attach a meaningless
