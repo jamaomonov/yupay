@@ -23,7 +23,7 @@ BEGIN;
 
 UPDATE brand_translations SET
     highlights = $c$["0% комиссии","Оплата в сумах","Моментально","Без пароля"]$c$::json,
-    short_description = $c$Пополнение Steam в Узбекистане за сумы без комиссии: сколько платите — столько и зачисляется на кошелёк Steam, один к одному. Оплата картами Uzcard и Humo через Click, Payme или Uzum, моментальное автоматическое начисление и без передачи пароля от аккаунта.$c$,
+    short_description = $c$Пополнение Steam в Узбекистане за сумы без комиссии: Оплата картами Uzcard и Humo через Click, Payme или Uzum, моментальное автоматическое начисление и без передачи пароля от аккаунта.$c$,
     description = $c$YuPay — это пополнение Steam Узбекистан за сумы с комиссией 0%. «0%» означает, что поверх суммы пополнения мы не берём отдельный сервисный сбор: сколько вы вводите, столько и попадает на кошелёк Steam — один к одному. Наш заработок заложен в курс конвертации, а не в скрытую комиссию, поэтому итоговая сумма к оплате прозрачна и видна ещё до подтверждения заказа.
 
 Оплатить можно привычными способами: картами Uzcard и Humo через Click, Payme и Uzum. Средства зачисляются на баланс Steam моментально и автоматически после подтверждения оплаты, а для пополнения не нужен пароль от вашего аккаунта — достаточно логина Steam. Поддерживаем аккаунты в регионах СНГ, Казахстана и Турции.$c$,
@@ -41,7 +41,7 @@ WHERE brand_id = (SELECT id FROM brands WHERE slug = 'steam') AND locale = 'ru';
 
 UPDATE brand_translations SET
     highlights = $c$["0% commission","Pay in UZS","Instant","No password"]$c$::json,
-    short_description = $c$Top up Steam in Uzbekistan in sum with no commission: what you pay is what lands on your Steam wallet, one to one. Pay with Uzcard or Humo via Click, Payme or Uzum — funds are credited instantly and automatically, and we never ask for your account password.$c$,
+    short_description = $c$Top up Steam in Uzbekistan in sum with no commission: Pay with Uzcard or Humo via Click, Payme or Uzum — funds are credited instantly and automatically, and we never ask for your account password.$c$,
     description = $c$YuPay lets you top up Steam in Uzbekistan in sum with 0% commission. "0%" means we add no separate service fee on top of the amount you top up: the sum you enter is the sum that reaches your Steam wallet, one to one. Our margin sits in the conversion rate, not in a hidden fee, so the total you pay is transparent and shown before you confirm the order.
 
 Pay the way you already do: Uzcard and Humo cards via Click, Payme and Uzum. Funds are credited to your Steam balance instantly and automatically once your payment is confirmed, and we never need your account password — your Steam login is enough. We support accounts in the CIS, Kazakhstan and Turkey regions.$c$,
@@ -59,7 +59,7 @@ WHERE brand_id = (SELECT id FROM brands WHERE slug = 'steam') AND locale = 'en';
 
 UPDATE brand_translations SET
     highlights = $c$["0% komissiya","Soʻmda toʻlov","Darhol","Parolsiz"]$c$::json,
-    short_description = $c$Steam hisobini Oʻzbekistonda soʻmda komissiyasiz toʻldiring: qancha toʻlasangiz, Steam hamyoningizga shuncha tushadi, birma-bir. Uzcard va Humo kartalari orqali Click, Payme yoki Uzum bilan toʻlang — mablagʻ avtomatik, darhol tushadi, akkaunt paroli soʻralmaydi.$c$,
+    short_description = $c$Steam hisobini Oʻzbekistonda soʻmda komissiyasiz toʻldiring: Uzcard va Humo kartalari orqali Click, Payme yoki Uzum bilan toʻlang — mablagʻ avtomatik, darhol tushadi, akkaunt paroli soʻralmaydi.$c$,
     description = $c$YuPay — Oʻzbekistonda Steam hisobini soʻmda 0% komissiya bilan toʻldirish. «0%» degani — toʻldirish summasi ustiga alohida xizmat haqi qoʻshmaymiz: siz kiritgan summa Steam hamyoningizga birma-bir tushadi. Bizning daromadimiz alohida komissiyada emas, konvertatsiya kursida, shuning uchun toʻlov summasi buyurtmani tasdiqlashdan oldin aniq koʻrinadi.
 
 Toʻlovni odatdagi usullarda amalga oshiring: Uzcard va Humo kartalari Click, Payme va Uzum orqali. Mablagʻ toʻlov tasdiqlangach Steam balansiga avtomatik, darhol tushadi, toʻldirish uchun akkaunt paroli kerak emas — Steam login yetarli. MDH, Qozogʻiston va Turkiya mintaqalaridagi akkauntlarni qoʻllab-quvvatlaymiz.$c$,

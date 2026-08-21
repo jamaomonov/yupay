@@ -17,7 +17,7 @@ BEGIN;
 
 UPDATE brand_translations SET
     highlights = $c$["0% комиссии","Оплата в сумах (Uzcard/Humo)","Зачисление моментальное","По логину, без пароля"]$c$::json,
-    short_description = $c$Пополнение Steam в Узбекистане за сумы без комиссии: сколько платите — столько и зачисляется на кошелёк, один к одному. Любая сумма от $1 до $300 по логину Steam (без пароля), оплата картами Uzcard и Humo через Click, Payme или Uzum, зачисление моментальное и автоматическое.$c$,
+    short_description = $c$Пополнение Steam в Узбекистане за сумы без комиссии: Любая сумма от $1 до $300 по логину Steam (без пароля), оплата картами Uzcard и Humo через Click, Payme или Uzum, зачисление моментальное и автоматическое.$c$,
     description = $c$YuPay — независимый сервис пополнения кошелька Steam в Узбекистане (не связан с Valve). Пополнение идёт по логину Steam (имя для входа) — пароль от аккаунта не нужен, и мы его не запрашиваем.
 
 Комиссия сервиса 0%: сколько вы вводите, столько и зачисляется на кошелёк, один к одному; наша маржа заложена в курс, а итог виден до оплаты. Пополнить можно на любую сумму от $1 до $300 за одну операцию — итог в сумах по текущему курсу показывается сразу.
@@ -35,7 +35,7 @@ WHERE brand_id = (SELECT id FROM brands WHERE slug = 'steam') AND locale = 'ru';
 
 UPDATE brand_translations SET
     highlights = $c$["0% commission","Pay in sum (Uzcard/Humo)","Instant crediting","By login, no password"]$c$::json,
-    short_description = $c$Top up Steam in Uzbekistan in sum with no commission: what you pay is what lands on your wallet, one to one. Any amount from $1 to $300 by Steam login (no password), pay with Uzcard and Humo via Click, Payme or Uzum, credited instantly and automatically.$c$,
+    short_description = $c$Top up Steam in Uzbekistan in sum with no commission: Any amount from $1 to $300 by Steam login (no password), pay with Uzcard and Humo via Click, Payme or Uzum, credited instantly and automatically.$c$,
     description = $c$YuPay is an independent Steam wallet top-up service in Uzbekistan (not affiliated with Valve). Top-ups go by your Steam login (the account name you sign in with) — no account password is needed, and we never ask for it.
 
 The service commission is 0%: what you enter is exactly what lands on your wallet, one to one; our margin is in the rate, and the total is shown before you pay. You can top up any amount from $1 to $300 per transaction — the total in sum at the current rate is shown right away.
@@ -53,7 +53,7 @@ WHERE brand_id = (SELECT id FROM brands WHERE slug = 'steam') AND locale = 'en';
 
 UPDATE brand_translations SET
     highlights = $c$["0% komissiya","Soʻmda toʻlov (Uzcard/Humo)","Bir zumda tushadi","Login boʻyicha, parolsiz"]$c$::json,
-    short_description = $c$Steam ni Oʻzbekistonda soʻmda komissiyasiz toʻldirish: qancha toʻlasangiz, shuncha hamyonga tushadi, bir xil. $1 dan $300 gacha istalgan summa Steam login boʻyicha (parolsiz), Uzcard va Humo kartalari bilan Click, Payme yoki Uzum orqali, bir zumda va avtomatik tushadi.$c$,
+    short_description = $c$Steam ni Oʻzbekistonda soʻmda komissiyasiz toʻldirish: $1 dan $300 gacha istalgan summa Steam login boʻyicha (parolsiz), Uzcard va Humo kartalari bilan Click, Payme yoki Uzum orqali, bir zumda va avtomatik tushadi.$c$,
     description = $c$YuPay — Oʻzbekistonda Steam hamyonini toʻldirish uchun mustaqil xizmat (Valve bilan bogʻliq emas). Toʻldirish Steam login (kirish uchun hisob nomi) boʻyicha amalga oshiriladi — akkaunt paroli kerak emas, biz uni soʻramaymiz.
 
 Xizmat komissiyasi 0%: qancha kiritsangiz, shuncha hamyonga tushadi, bir xil; marjamiz kursda, yakuniy summa toʻlovdan oldin koʻrinadi. Bir operatsiyada $1 dan $300 gacha istalgan summani toʻldirish mumkin — joriy kurs boʻyicha soʻmdagi summa darhol koʻrsatiladi.
