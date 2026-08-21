@@ -108,6 +108,32 @@ def require_variable_amount_fields(
         raise ValueError("max_amount_usd must be >= min_amount_usd")
 
 
+def require_qty_bounds(*, min_qty: int | None, max_qty: int | None) -> None:
+    """Mirror the ``ck_skus_qty_bounds_complete`` DB CHECK.
+
+    The single source of truth for the unit-SKU quantity invariant: both
+    ``min_qty`` and ``max_qty`` must be NULL, or both set with
+    ``min_qty >= 1`` and ``max_qty >= min_qty``. Unlike
+    :func:`require_variable_amount_fields`, there is no separate boolean gate
+    — presence of either field is itself the signal, matching the CHECK's own
+    shape.
+
+    Called from the same two places, for the same reason, as
+    ``require_variable_amount_fields``: the ``SkuCreate``/``SkuUpdate``
+    ``model_validator``s (full body available) and ``admin_service.update_sku``
+    against the row after merging a partial PATCH (only the resolved row can
+    tell whether a partial edit leaves the pair complete).
+    """
+    if min_qty is None and max_qty is None:
+        return
+    if min_qty is None or max_qty is None:
+        raise ValueError("min_qty and max_qty must be set together")
+    if min_qty < 1:
+        raise ValueError("min_qty must be >= 1")
+    if max_qty < min_qty:
+        raise ValueError("max_qty must be >= min_qty")
+
+
 # ---------- translations (shared shape) ----------
 
 
@@ -368,6 +394,10 @@ class SkuCreate(BaseModel):
     amount_unit: str | None = Field(default=None, max_length=32)
     units_per_usd: Decimal | None = Field(default=None, gt=0)
     units: int | None = Field(default=None, gt=0)
+    # Unit-SKU (Telegram Stars) quantity bounds — both or neither. See
+    # ``ck_skus_qty_bounds_complete`` / ``require_qty_bounds``.
+    min_qty: int | None = Field(default=None, ge=1)
+    max_qty: int | None = Field(default=None, ge=1)
     image_url: str | None = Field(default=None, max_length=1024)
     sort_order: int = 0
     active: bool = True
@@ -384,6 +414,11 @@ class SkuCreate(BaseModel):
             max_amount_usd=self.max_amount_usd,
             rate_multiplier=self.rate_multiplier,
         )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_qty_bounds(self) -> SkuCreate:
+        require_qty_bounds(min_qty=self.min_qty, max_qty=self.max_qty)
         return self
 
 
@@ -423,6 +458,13 @@ class SkuUpdate(BaseModel):
     amount_unit: str | None = Field(default=None, max_length=32)
     units_per_usd: Decimal | None = Field(default=None, gt=0)
     units: int | None = Field(default=None, gt=0)
+    # Unit-SKU (Telegram Stars) quantity bounds. Like the variable-amount
+    # block, "None means don't touch" doesn't apply here: sending either as
+    # JSON `null` clears it (see admin_service.update_sku / _apply_amount_unit
+    # for the merge). ``ge=1`` catches an obviously-bad single value early;
+    # the pairing rule below only fires when both are sent in the same PATCH.
+    min_qty: int | None = Field(default=None, ge=1)
+    max_qty: int | None = Field(default=None, ge=1)
     image_url: str | None = None
     sort_order: int | None = None
     active: bool | None = None
@@ -445,6 +487,21 @@ class SkuUpdate(BaseModel):
             max_amount_usd=self.max_amount_usd,
             rate_multiplier=self.rate_multiplier,
         )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_qty_bounds(self) -> SkuUpdate:
+        # Unlike variable_amount there is no boolean gate to tell "not sent"
+        # from "sent as the pair's other half" — so only validate when this
+        # PATCH sends *both* fields together (a coherent new pair, including
+        # `{"min_qty": null, "max_qty": null}` to clear it). A PATCH that
+        # sends only one (e.g. `{"max_qty": 5000}` against an already-set
+        # SKU) is deferred entirely to the merged-row check in
+        # admin_service.update_sku, which is the only place that can see
+        # whether the *other* half is already on file.
+        sent = self.model_fields_set
+        if "min_qty" in sent and "max_qty" in sent:
+            require_qty_bounds(min_qty=self.min_qty, max_qty=self.max_qty)
         return self
 
 
@@ -518,6 +575,10 @@ class AdminSkuOut(BaseModel):
     min_amount_usd: Decimal | None
     max_amount_usd: Decimal | None
     rate_multiplier: Decimal | None
+    # Unit-SKU (Telegram Stars) quantity bounds — admin-visible so the SKU
+    # edit form can round-trip them. See ``ck_skus_qty_bounds_complete``.
+    min_qty: int | None
+    max_qty: int | None
     image_url: str | None
     sort_order: int
     active: bool
@@ -579,5 +640,6 @@ __all__ = [
     "SkuPriceOverrideIn",
     "SkuUpdate",
     "TranslationIn",
+    "require_qty_bounds",
     "require_variable_amount_fields",
 ]

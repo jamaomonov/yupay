@@ -182,6 +182,13 @@ class SkuOut(BaseModel):
     # typed amount from whichever package it falls in. On the variable line and
     # on anything not sold by unit: absent.
     units: int | None = None
+    # Admin-configured quantity bounds for a unit SKU (Telegram Stars): the
+    # customer types how many of `amount_unit` to buy, and the storefront
+    # clamps the input to [min_qty, max_qty]. Both absent means this SKU isn't
+    # sold by typed quantity — an older client that doesn't know the fields
+    # simply never sees them, same precedent as `amount_unit` above.
+    min_qty: int | None = None
+    max_qty: int | None = None
     # Boolean, never the count. How many codes a supplier is holding is not the
     # customer's business: the number moves without warning as other resellers
     # draw on the same pool, so "3 left" is a promise we cannot keep. Defaults

@@ -18,7 +18,7 @@ from sqlalchemy.orm import selectinload
 from yupay.core.clock import now
 from yupay.core.errors import ConflictError, NotFoundError, ValidationError
 from yupay.core.ids import new_id
-from yupay.modules.catalog.admin_schemas import require_variable_amount_fields
+from yupay.modules.catalog.admin_schemas import require_qty_bounds, require_variable_amount_fields
 from yupay.modules.catalog.models import (
     Brand,
     BrandFaq,
@@ -535,6 +535,8 @@ async def create_sku(db: AsyncSession, body: SkuCreate) -> Sku:
         amount_unit=body.amount_unit,
         units_per_usd=body.units_per_usd,
         units=body.units,
+        min_qty=body.min_qty,
+        max_qty=body.max_qty,
         image_url=body.image_url,
         sort_order=body.sort_order,
         active=body.active,
@@ -553,18 +555,43 @@ async def create_sku(db: AsyncSession, body: SkuCreate) -> Sku:
 def _apply_amount_unit(row: Sku, body: SkuUpdate, sent: set[str]) -> None:
     """Merge the amount-unit pair, following the same "sent, not None" rule as
     the variable-amount block: sending either as JSON null clears it, which is
-    how a stars SKU is turned back into a dollar one."""
+    how a stars SKU is turned back into a dollar one.
+
+    Must run after ``row.min_qty``/``row.max_qty`` have already been merged
+    (see ``update_sku``) — the relaxed branch below reads the merged value,
+    not the request body's, so a PATCH that sets ``min_qty`` in the same
+    request as ``amount_unit`` is judged against the row it will actually
+    become.
+    """
     if "amount_unit" in sent:
         row.amount_unit = body.amount_unit
     if "units_per_usd" in sent:
         row.units_per_usd = body.units_per_usd
     if "units" in sent:
         row.units = body.units
-    if (row.amount_unit is None) != (row.units_per_usd is None):
-        # Mirrors ck_skus_amount_unit_complete. A unit with no rate cannot be
-        # converted and a rate with no unit has nothing to label; either alone
-        # renders a field the storefront cannot price.
-        raise ValidationError("amount_unit and units_per_usd must be set together")
+    # Mirrors ck_skus_amount_unit_complete: NULL/NULL, or amount_unit set with
+    # units_per_usd set, or amount_unit set with units_per_usd NULL as long as
+    # min_qty is set (the unit-SKU path — units_per_usd has nothing to convert
+    # when the customer types a qty, not a USD amount).
+    if row.amount_unit is None:
+        if row.units_per_usd is not None:
+            raise ValidationError("amount_unit and units_per_usd must be set together")
+    elif row.units_per_usd is None and row.min_qty is None:
+        raise ValidationError(
+            "amount_unit and units_per_usd must be set together, unless min_qty is also set"
+        )
+
+
+def _apply_qty_bounds(row: Sku, body: SkuUpdate, sent: set[str]) -> None:
+    """Merge the unit-SKU quantity pair, same "sent, not None" rule as the
+    variable-amount block: sending either as JSON null clears it. Split out of
+    ``update_sku`` purely to keep that function's branch count under the ruff
+    complexity limit — it has no validation of its own; ``update_sku`` calls
+    ``require_qty_bounds`` on the merged row afterwards."""
+    if "min_qty" in sent:
+        row.min_qty = body.min_qty
+    if "max_qty" in sent:
+        row.max_qty = body.max_qty
 
 
 async def update_sku(db: AsyncSession, sku_id: str, body: SkuUpdate) -> Sku:
@@ -600,6 +627,9 @@ async def update_sku(db: AsyncSession, sku_id: str, body: SkuUpdate) -> Sku:
         row.max_amount_usd = body.max_amount_usd
     if "rate_multiplier" in sent:
         row.rate_multiplier = body.rate_multiplier
+    # Merged before _apply_amount_unit, which reads row.min_qty for the
+    # relaxed amount_unit/units_per_usd rule below.
+    _apply_qty_bounds(row, body, sent)
     _apply_amount_unit(row, body, sent)
 
     # Validate the RESULTING row, not just the fields this request touched.
@@ -615,17 +645,25 @@ async def update_sku(db: AsyncSession, sku_id: str, body: SkuUpdate) -> Sku:
             max_amount_usd=row.max_amount_usd,
             rate_multiplier=row.rate_multiplier,
         )
+        require_qty_bounds(min_qty=row.min_qty, max_qty=row.max_qty)
     except ValueError as exc:
         raise ValidationError(str(exc)) from exc
     if not row.variable_amount:
-        # A unit only means something on a variable amount — a fixed SKU has
-        # nothing for the customer to type, so clearing it keeps the row from
-        # advertising a field the storefront will never render.
-        row.amount_unit = None
-        row.units_per_usd = None
+        # min_amount_usd/max_amount_usd/rate_multiplier only ever mean
+        # something on a variable-amount (Steam wallet) SKU — clearing them
+        # here keeps a fixed-price SKU from advertising a customer-chosen-
+        # amount field it doesn't offer.
         row.min_amount_usd = None
         row.max_amount_usd = None
         row.rate_multiplier = None
+        if row.min_qty is None:
+            # amount_unit/units_per_usd normally follow the same rule —
+            # EXCEPT a unit SKU (Telegram Stars, see unit_sku.is_unit_sku)
+            # is deliberately *not* variable_amount yet still needs
+            # amount_unit to label its qty field. Only clear here when
+            # min_qty is also unset, so that path survives untouched.
+            row.amount_unit = None
+            row.units_per_usd = None
 
     if body.price_overrides is not None:
         row.price_overrides = [

@@ -688,6 +688,166 @@ async def test_update_partial_max_amount_alone_persists_on_variable_sku(
     assert patched["variable_amount"] is True
 
 
+# ---------- unit-SKU (Telegram Stars) quantity bounds ----------
+
+
+async def test_create_sku_with_qty_bounds_only_missing_max_returns_422(
+    integration_client: AsyncClient, _admin_headers: dict[str, str]
+) -> None:
+    """Sending min_qty without max_qty (or vice versa) must fail validation
+    before it ever reaches the DB CHECK — a readable 422, not an
+    IntegrityError. Mirrors the variable_amount "missing bounds" case."""
+    product_id = await _create_product_for_sku(
+        integration_client, _admin_headers, suffix="qty-missing"
+    )
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/skus",
+        headers=_admin_headers,
+        json={
+            "product_id": product_id,
+            "sku_code": "stars-qty-missing",
+            "price_usd": "0.02",
+            "amount_unit": "Stars",
+            "min_qty": 50,
+            # max_qty omitted.
+        },
+    )
+    assert r.status_code == 422, r.text
+    assert "min_qty and max_qty must be set together" in r.text
+
+
+async def test_create_and_update_unit_sku_qty_bounds_round_trip(
+    integration_client: AsyncClient, _admin_headers: dict[str, str]
+) -> None:
+    """A complete unit SKU (Telegram Stars: amount_unit + min_qty/max_qty,
+    NOT variable_amount) round-trips through create, is visible on the admin
+    response, reaches the public SkuOut, and can have its bounds edited via a
+    partial PATCH."""
+    product_id = await _create_product_for_sku(
+        integration_client, _admin_headers, suffix="qty-roundtrip"
+    )
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/skus",
+        headers=_admin_headers,
+        json={
+            "product_id": product_id,
+            "sku_code": "stars-qty-roundtrip",
+            "price_usd": "0.02",
+            "amount_unit": "Stars",
+            "min_qty": 50,
+            "max_qty": 2500,
+        },
+    )
+    assert r.status_code == 201, r.text
+    sku = r.json()
+    sku_id = sku["id"]
+    assert sku["min_qty"] == 50
+    assert sku["max_qty"] == 2500
+    assert sku["variable_amount"] is False
+
+    # The public SkuOut must expose the bounds too, so the storefront can
+    # clamp the customer's typed quantity.
+    r = await integration_client.get(f"/api/v1/catalog/skus/{sku_id}")
+    assert r.status_code == 200, r.text
+    public_sku = r.json()
+    assert public_sku["min_qty"] == 50
+    assert public_sku["max_qty"] == 2500
+    assert public_sku["amount_unit"] == "Stars"
+
+    # Partial PATCH of max_qty alone must persist, leaving min_qty untouched
+    # (same "sent, not None" convention as the variable-amount block).
+    r = await integration_client.patch(
+        f"/api/v1/admin/catalog/skus/{sku_id}",
+        headers=_admin_headers,
+        json={"max_qty": 5000},
+    )
+    assert r.status_code == 200, r.text
+    patched = r.json()
+    assert patched["max_qty"] == 5000
+    assert patched["min_qty"] == 50
+
+
+async def test_update_partial_min_qty_above_max_rejected(
+    integration_client: AsyncClient, _admin_headers: dict[str, str]
+) -> None:
+    """A partial PATCH of min_qty alone that would push min above the SKU's
+    existing max must be rejected 422 — proves the merged-row invariant is
+    (re-)validated on partial edits, not just full ones."""
+    product_id = await _create_product_for_sku(
+        integration_client, _admin_headers, suffix="qty-partial-min"
+    )
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/skus",
+        headers=_admin_headers,
+        json={
+            "product_id": product_id,
+            "sku_code": "stars-qty-partial-min",
+            "price_usd": "0.02",
+            "amount_unit": "Stars",
+            "min_qty": 50,
+            "max_qty": 2500,
+        },
+    )
+    assert r.status_code == 201, r.text
+    sku_id = r.json()["id"]
+
+    r = await integration_client.patch(
+        f"/api/v1/admin/catalog/skus/{sku_id}",
+        headers=_admin_headers,
+        json={"min_qty": 3000},
+    )
+    assert r.status_code == 422, r.text
+    assert "max_qty must be >= min_qty" in r.text
+
+
+async def test_amount_unit_alone_with_qty_bounds_survives_variable_amount_false(
+    integration_client: AsyncClient, _admin_headers: dict[str, str]
+) -> None:
+    """Regression guard: `update_sku`'s "clear amount fields when not
+    variable_amount" branch must not wipe `amount_unit` off a unit SKU —
+    unit SKUs are deliberately not variable_amount (see
+    `unit_sku.is_unit_sku`). A PATCH that only edits an unrelated field
+    (`active`) must leave `amount_unit`/`min_qty`/`max_qty` untouched."""
+    product_id = await _create_product_for_sku(
+        integration_client, _admin_headers, suffix="qty-survives"
+    )
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/skus",
+        headers=_admin_headers,
+        json={
+            "product_id": product_id,
+            "sku_code": "stars-qty-survives",
+            "price_usd": "0.02",
+            "amount_unit": "Stars",
+            "min_qty": 50,
+            "max_qty": 2500,
+        },
+    )
+    assert r.status_code == 201, r.text
+    sku_id = r.json()["id"]
+
+    r = await integration_client.patch(
+        f"/api/v1/admin/catalog/skus/{sku_id}",
+        headers=_admin_headers,
+        json={"active": False},
+    )
+    assert r.status_code == 200, r.text
+    patched = r.json()
+    assert patched["min_qty"] == 50
+    assert patched["max_qty"] == 2500
+    assert patched["active"] is False
+
+    r = await integration_client.get(
+        "/api/v1/admin/catalog/skus",
+        headers=_admin_headers,
+        params={"product_id": product_id},
+    )
+    assert r.status_code == 200, r.text
+    sku = next(s for s in r.json() if s["id"] == sku_id)
+    assert sku["min_qty"] == 50
+    assert sku["max_qty"] == 2500
+
+
 async def test_update_partial_min_amount_above_max_rejected(
     integration_client: AsyncClient, _admin_headers: dict[str, str]
 ) -> None:
