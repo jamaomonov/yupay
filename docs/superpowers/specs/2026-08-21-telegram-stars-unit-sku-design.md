@@ -1,7 +1,7 @@
 # Telegram Stars as a unit SKU
 
 **Date:** 2026-08-21
-**Status:** Approved (brainstorm), pending implementation plan
+**Status:** Accepted, implemented — see [ADR-0054](../../decisions/0054-telegram-stars-unit-sku.md)
 **Scope:** Catalog + orders + G-Engine fulfillment + admin SKU form + web + Mini App
 **Supersedes (Stars-only):** ADR-0053 tier pricing, the Stars use of ADR-0047 `units_per_usd`, package SKUs as the source of price
 
@@ -43,24 +43,32 @@ sell price of one star. Packages are presets of that rate, not catalog rows.
 Product `telegram-stars` keeps a single **active** SKU, the existing
 `tg-stars-any` row. It is **not** `variable_amount`.
 
-| Field | Meaning |
-| --- | --- |
-| `cost_usdt` | Wholesale of 1★, hourly from G-Engine `unfixed` rate |
-| `margin_percent` | Drives `price_usd = cost × (1 + margin/100)` on refresh, same as any SKU |
-| `price_usd` | Sell of 1★ in USD |
-| `price_overrides` | Sell of 1★ in UZS/RUB/… — already-with-margin course |
-| `amount_unit` | `"Stars"` — storefront signal: field + grid are in stars |
-| `min_qty` / `max_qty` | Inclusive integer bounds in stars |
-| mapping `quantity` | `1` (per-unit multiplier) |
+| Field                 | Meaning                                                                  |
+| --------------------- | ------------------------------------------------------------------------ |
+| `cost_usdt`           | Wholesale of 1★, hourly from G-Engine `unfixed` rate                     |
+| `margin_percent`      | Drives `price_usd = cost × (1 + margin/100)` on refresh, same as any SKU |
+| `price_usd`           | Sell of 1★ in USD                                                        |
+| `price_overrides`     | Sell of 1★ in UZS/RUB/… — already-with-margin course                     |
+| `amount_unit`         | `"Stars"` — storefront signal: field + grid are in stars                 |
+| `min_qty` / `max_qty` | Inclusive integer bounds in stars                                        |
+| mapping `quantity`    | `1` (per-unit multiplier)                                                |
 
 Signal that a SKU is sold-by-unit (Stars, and anything like it later):
 **not** `variable_amount`, and `min_qty`/`max_qty`/`amount_unit` are all set.
 
-CHECK: both qty bounds null, or both set with `min_qty >= 1` and
-`max_qty >= min_qty`. Steam leaves them null.
+CHECK `ck_skus_qty_bounds_complete`: both qty bounds null, or both set with
+`min_qty >= 1` and `max_qty >= min_qty`. Steam leaves them null.
 
 `units_per_usd` is unused on this SKU (null). `units` is unused (null) —
 that column was the package face value for ADR-0053.
+
+`ck_skus_amount_unit_complete` (migration 0047) required `amount_unit` and
+`units_per_usd` together, which this SKU cannot satisfy. Migration 0049
+widens it to three legal shapes rather than dropping it: both null; both set
+with `units_per_usd > 0`; or **`amount_unit` set with `units_per_usd` null
+when `min_qty` is set** — the unit SKU. The third arm is gated on `min_qty`
+because `amount_unit` alone would name a unit with no way to price or bound
+it.
 
 Hourly refresh already writes `cost_usdt` and re-derives `price_usd` from
 `margin_percent`. For the unfixed G-Engine service the stored cost **is**
@@ -167,13 +175,13 @@ running in prod.
 
 ## Error handling
 
-| Case | Behaviour |
-| --- | --- |
-| `qty` outside SKU bounds | 422, same family as Steam’s amount bounds |
-| `amount_usd` sent | 422 fixed-price |
-| FX down, no override in that currency | SKU has no display price; checkout 502 / fail-closed like other FX sales |
+| Case                                     | Behaviour                                                                    |
+| ---------------------------------------- | ---------------------------------------------------------------------------- |
+| `qty` outside SKU bounds                 | 422, same family as Steam’s amount bounds                                    |
+| `amount_usd` sent                        | 422 fixed-price                                                              |
+| FX down, no override in that currency    | SKU has no display price; checkout 502 / fail-closed like other FX sales     |
 | G-Engine unfixed rate missing on refresh | cost unchanged (existing refresh behaviour), SKU stays sellable at last cost |
-| Every package filtered out by min/max | grid empty, field still works |
+| Every package filtered out by min/max    | grid empty, field still works                                                |
 
 ## Testing (must exist)
 
