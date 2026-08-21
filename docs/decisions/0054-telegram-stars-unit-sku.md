@@ -221,11 +221,28 @@ variable-amount branch is checked _first_:
 
 This is what makes step 2 of the rollout meaningful: the new image can be
 deployed and `/store/telegram-stars` confirmed still selling packs and a free
-amount, before any data moves. The legacy branch is dead code once the seed has
-retired `units_per_usd` from the mappings it replaces — post-seed every
-mapping's `quantity` is 1 and `item.qty` is the whole story — but it is not
-removed in this PR, because the whole point is that the old rows keep working
-until an operator says otherwise.
+amount, before any data moves.
+
+**What the seed retires is the Stars rows, not the variable-amount code.** Read
+"dual-read" narrowly: it is Telegram Stars, and only Telegram Stars, that exists
+in two catalog shapes during the cutover. Once the seed has run, no Stars row is
+`variable_amount` any more — but the branch it used is the generic
+variable-amount path and **must stay**:
+
+- In checkout, `orders.service._resolve_line_unit_price`'s `variable_amount`
+  branch is how the Steam wallet is priced (ADR-0032: `amount_usd` × guarded FX
+  × `rate_multiplier`). Nothing in this ADR touches it, before or after the
+  seed.
+- In `gengine._quantity_for`, the first branch is for a variable-amount line —
+  "Steam, and anything else the customer types a free-form USD amount into", as
+  its own docstring puts it. G-Engine is a second source for the Steam wallet
+  (ADR-0052), so an amount-priced line can reach that helper from a product that
+  has nothing to do with Stars.
+
+So the post-seed simplification is a **data** fact about one product, not an
+invitation to delete code: after the seed, every _Stars_ mapping's `quantity` is
+1 and `item.qty` is the whole story _for Stars_. A future reader who removes the
+variable-amount branch from either place takes Steam down with it.
 
 ### Storefront
 
@@ -272,9 +289,13 @@ Order history renders a unit line's `display.denomination` as
   keeping that from being a real limit is a server-side call. It is covered by a
   named regression test precisely because deleting the call would not break
   anything else.
-- The dual-read branch in checkout and in `gengine._quantity_for` is dead code
-  the moment the seed runs, and will read as unexplained until someone removes
-  it. It is documented in both docstrings.
+- For the length of the cutover, Stars is readable in two catalog shapes, so
+  checkout and `gengine._quantity_for` each carry a branch that is exercised by
+  whichever shape the row happens to be in. Once the seed has run, no Stars row
+  takes the variable-amount branch — but that branch is Steam's and stays. The
+  cost is therefore a comprehension cost, not dead code: both docstrings have to
+  keep saying which product each branch is for, or someone eventually "cleans
+  up" the Steam path.
 - ADR-0053's mechanism — `skus.units`, tier pricing, the monotonicity cap — is
   still in the codebase for products that use it, but has no user on Stars.
 - `price_usd` / `cost_usdt` on the unit SKU may need a one-shot rescale if they
@@ -336,8 +357,15 @@ and one wire field.
 ## Follow-ups
 
 - Run the seed and the runbook in prod
-  (`docs/runbooks/telegram-stars-unit-sku.md`), then remove the dual-read legacy
-  branches in `orders.service` and `gengine._quantity_for`.
+  (`docs/runbooks/telegram-stars-unit-sku.md`). **No code deletion follows.**
+  The variable-amount branches in `orders.service._resolve_line_unit_price` and
+  `gengine._quantity_for` are Steam's and stay; the seed only stops Stars rows
+  from reaching them.
+- Re-word `gengine._quantity_for`'s docstring, which currently reads "this path
+  stays until the unit-SKU seed retires `units_per_usd` from the mappings it
+  replaces". What the seed retires is `units_per_usd` on the **Stars** mappings.
+  The path itself is permanent — it is how any variable-amount line fulfilled
+  by G-Engine gets its count.
 - Settle the final package list before release; the eleven values above are the
   working set.
 
