@@ -46,6 +46,7 @@ import {
 import { ACQUIRER_BY_METHOD, PAYMENT_METHODS, PROVIDER_BY_METHOD } from "@/lib/payment-methods";
 import { mergeCheckResult } from "@/lib/player-check-state";
 import { getRecentFulfillment, rememberFulfillment } from "@/lib/recent-checkout";
+import { packagePrice, visibleStarPackages } from "@/lib/star-packages";
 import { haptic, isInsideTelegram, openExternalLink, setClosingConfirmation } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { cn } from "@/lib/utils";
@@ -53,7 +54,6 @@ import {
   amountError,
   boundToUnits,
   parseAmount,
-  tierPrice,
   toUsd,
   unitAmountError,
   unitsPerUsd,
@@ -80,6 +80,12 @@ interface Package {
   units: number | null;
   minAmountUsd: number | null;
   maxAmountUsd: number | null;
+  // Admin-configured quantity bounds for a unit SKU (Telegram Stars): the
+  // customer types/taps a whole number of `amountUnit` directly — no dollar
+  // conversion, unlike `minAmountUsd`/`maxAmountUsd` above. Both null means
+  // this package isn't sold by typed quantity.
+  minQty: number | null;
+  maxQty: number | null;
   /** Localised price of one dollar. `null` means the FX trust gate rejected
    *  the live rate — not sellable right now, never a price of zero. */
   ratePerDollar: { amount: number; currency: string } | null;
@@ -101,9 +107,23 @@ function adaptPackage(api: ApiPackage): Package {
     units: api.units,
     minAmountUsd: api.minAmountUsd,
     maxAmountUsd: api.maxAmountUsd,
+    minQty: api.minQty,
+    maxQty: api.maxQty,
     ratePerDollar: api.ratePerDollar,
     inStock: api.inStock,
   };
+}
+
+/**
+ * Sold as a typed (or tapped) integer quantity of `amountUnit` — Telegram
+ * Stars — checked out as `{ sku_id, qty }` with no `amount_usd`. Mirrors
+ * `yupay.modules.catalog.unit_sku.is_unit_sku` on the server. Until the Stars
+ * seed lands (a later task), `tg-stars-any` is still `variableAmount`, so it
+ * takes the old free-amount + package-tiers path below rather than this one —
+ * the two are mutually exclusive by construction, same as on the server.
+ */
+function isUnitPackage(p: Package): boolean {
+  return !p.variableAmount && p.amountUnit != null && p.minQty != null && p.maxQty != null;
 }
 
 const DEFAULT_PAYMENT_METHOD = PAYMENT_METHODS[0]?.id ?? "click";
@@ -294,7 +314,12 @@ export default function TopUp() {
   // Telegram Stars sells eleven packages *and* a free amount, so the two
   // coexist rather than one replacing the other; Steam has only the amount.
   const variablePkg = packages.find((p) => p.variableAmount);
-  const fixedPackages = packages.filter((p) => !p.variableAmount);
+  // Telegram Stars sold as a genuine unit SKU (Task 8): dual-read with the
+  // `variablePkg` shape above — a product carries at most one of the two,
+  // never both, same as the server (`unit_sku.is_unit_sku`). No pack SKUs
+  // sit alongside a unit package, unlike `variablePkg`+`fixedPackages`.
+  const unitPkg = packages.find(isUnitPackage);
+  const fixedPackages = packages.filter((p) => !p.variableAmount && p.id !== unitPkg?.id);
   const isVariableProduct = packages.length > 0 && fixedPackages.length === 0 && !!variablePkg;
 
   // Cache it so the next visit's skeleton promises the right form (see
@@ -509,6 +534,9 @@ export default function TopUp() {
 
   const activePkg = packages.find((p) => p.id === selectedPkg);
   const isVariableSelected = activePkg?.variableAmount ?? false;
+  // A genuine unit SKU (Telegram Stars, once the seed lands): mutually
+  // exclusive with `isVariableSelected` by construction, same as the server.
+  const isUnitSelected = unitPkg !== undefined && activePkg?.id === unitPkg.id;
   // Parsed only for a variable-amount SKU — a fixed package has nothing to
   // parse. ``null`` covers both "nothing typed yet" and "unparseable".
   const parsedAmount = isVariableSelected ? parseAmount(amountInput) : null;
@@ -532,37 +560,57 @@ export default function TopUp() {
       : null;
   // Client-side total for display only — the server recomputes the
   // authoritative price from ``amount_usd`` at checkout.
-  // Packages the typed amount is priced from, in the currency being shown, so
-  // a per-currency override on a pack carries through to the field.
-  const tierPacks = fixedPackages
-    .filter((p) => p.units != null && p.price != null)
-    .map((p) => ({ units: p.units ?? 0, price: Number(p.price ?? 0) }));
   const variableTotal = !isVariableSelected
     ? null
     : parsedAmount === null
       ? null
-      : // Priced from the packages when there are any — the screen must show
-        // what checkout will bill (`orders.service.tier_price_usd`).
-        tierPacks.length > 0
-        ? tierPrice(parsedAmount, tierPacks)
-        : amountAsUsd !== null && activePkg?.ratePerDollar
-          ? amountAsUsd * activePkg.ratePerDollar.amount
-          : null;
+      : amountAsUsd !== null && activePkg?.ratePerDollar
+        ? amountAsUsd * activePkg.ratePerDollar.amount
+        : null;
+
+  // Same shape as the variable-amount block above, but for a genuine unit SKU
+  // (Telegram Stars sold as `{ sku_id, qty }`, no `amount_usd`): the
+  // typed/tapped number IS the quantity, `minQty`/`maxQty` are already whole
+  // units, and there is no `unitsPerUsd`/`toUsd` conversion to run.
+  const parsedQty = isUnitSelected ? parseAmount(amountInput) : null;
+  const qtyMin = unitPkg?.minQty ?? 0;
+  const qtyMax = unitPkg?.maxQty ?? 0;
+  const qtyRate =
+    isUnitSelected && unitPkg ? { amount: unitPkg.price, currency: unitPkg.priceCode } : null;
+  const qtyErr =
+    isUnitSelected && parsedQty !== null ? unitAmountError(parsedQty, qtyMin, qtyMax) : null;
+  // `packagePrice` — a flat per-unit rate, never a guessed one.
+  const qtyTotal =
+    isUnitSelected && parsedQty !== null && qtyRate
+      ? packagePrice(parsedQty, qtyRate.amount)
+      : null;
+
   const priceCode = isVariableSelected
     ? (activePkg?.ratePerDollar?.currency ?? currency)
     : (activePkg?.priceCode ?? currency);
-  const finalPrice = isVariableSelected ? (variableTotal ?? 0) : (activePkg?.price ?? 0);
-  // Gates the CTA for a variable-amount SKU: a live rate (the FX trust gate
-  // didn't reject it) and a parsed, in-bounds, two-decimals-or-fewer amount.
-  const variableAmountReady =
-    !isVariableSelected ||
-    (activePkg?.ratePerDollar !== null && parsedAmount !== null && variableAmountErr === null);
+  const finalPrice = isVariableSelected
+    ? (variableTotal ?? 0)
+    : isUnitSelected
+      ? (qtyTotal ?? 0)
+      : (activePkg?.price ?? 0);
+  // Gates the CTA: a variable-amount SKU needs a live rate (the FX trust gate
+  // didn't reject it) and a parsed, in-bounds, two-decimals-or-fewer amount; a
+  // unit SKU needs the same, but a whole in-bounds quantity instead.
+  const variableAmountReady = isVariableSelected
+    ? activePkg?.ratePerDollar !== null && parsedAmount !== null && variableAmountErr === null
+    : isUnitSelected
+      ? qtyRate !== null && parsedQty !== null && qtyErr === null
+      : true;
   /** A dollar bound as the buyer reads it — a unit count for a unit-priced SKU,
    *  where quoting "$0.77" back at someone buying Stars is a non-answer. */
   const boundLabel = (usd: number, edge: "min" | "max"): string =>
     perUsd !== null
       ? `${boundToUnits(usd, perUsd, edge).toLocaleString(getActiveLocale())} ${activePkg?.amountUnit ?? ""}`
       : formatMoney(usd, "USD");
+  /** Same idea as `boundLabel`, for a unit SKU's already-whole `minQty`/
+   *  `maxQty` — no dollar bound to convert. */
+  const qtyBoundLabel = (n: number): string =>
+    `${n.toLocaleString(getActiveLocale())} ${unitPkg?.amountUnit ?? ""}`;
   // Human-readable reason the CTA is disabled — reused for both the toast
   // (belt-and-suspenders guard in handlePayment) and the button label itself,
   // so the customer sees *why* right on the button, same as the existing
@@ -579,7 +627,18 @@ export default function TopUp() {
               ? // Half a star does not exist; a fraction of a dollar cent does.
                 t(perUsd !== null ? "topup.amountWhole" : "topup.amountPrecision")
               : t("topup.amountRequired")
-      : null;
+      : isUnitSelected && !variableAmountReady
+        ? qtyRate === null
+          ? t("topup.priceUnavailable")
+          : qtyErr === "below"
+            ? t("topup.amountBelow", { min: qtyBoundLabel(qtyMin) })
+            : qtyErr === "above"
+              ? t("topup.amountAbove", { max: qtyBoundLabel(qtyMax) })
+              : qtyErr === "precision"
+                ? // Half a star does not exist.
+                  t("topup.amountWhole")
+                : t("topup.amountRequired")
+        : null;
 
   // Wallet sufficiency check + nicely-formatted shortfall message for the
   // disabled-state copy. ``walletBalance === null`` means we don't have
@@ -751,6 +810,11 @@ export default function TopUp() {
             // rarely a round cent; the server snaps it to a whole unit.
             { amountUsd: (amountAsUsd ?? parsedAmount).toFixed(perUsd !== null ? 6 : 2) }
           : {}),
+        // A unit SKU (Telegram Stars) is bought as a real quantity, not the
+        // usual single line + `amount_usd` — `variableAmountReady` (part of
+        // `payDisabled`) already guarantees `parsedQty` is set by the time we
+        // get here; the fallback is an unreachable sentinel.
+        ...(isUnitSelected ? { qty: parsedQty ?? 1 } : {}),
       });
       // Remember the fulfilment payload only after the order was accepted by
       // the API — no point caching a half-typed player_id that came back
@@ -1141,8 +1205,38 @@ export default function TopUp() {
                   />
                 </div>
               )}
+              {!productQuery.isLoading && unitPkg && (
+                <div
+                  onFocusCapture={() => {
+                    if (selectedPkg !== unitPkg.id) setSelectedPkg(unitPkg.id);
+                  }}
+                >
+                  <UnitAmountPanel
+                    pkg={unitPkg}
+                    value={selectedPkg === unitPkg.id ? amountInput : ""}
+                    selected={selectedPkg === unitPkg.id}
+                    onChange={(next) => {
+                      if (selectedPkg !== unitPkg.id) setSelectedPkg(unitPkg.id);
+                      setAmountInput(next);
+                    }}
+                    total={selectedPkg === unitPkg.id ? qtyTotal : null}
+                    error={selectedPkg === unitPkg.id ? qtyErr : null}
+                  />
+                  <UnitPackTiles
+                    pkg={unitPkg}
+                    qty={selectedPkg === unitPkg.id ? parseAmount(amountInput) : null}
+                    onPick={(n) => {
+                      haptic("select");
+                      setSelectedPkg(unitPkg.id);
+                      setAmountInput(String(n));
+                    }}
+                  />
+                </div>
+              )}
               {fixedPackages.length > 0 && (
-                <div className={cn("grid grid-cols-2 gap-2.5", variablePkg && "mt-2.5")}>
+                <div
+                  className={cn("grid grid-cols-2 gap-2.5", (variablePkg ?? unitPkg) && "mt-2.5")}
+                >
                   {fixedPackages.map((pkg) => (
                     <PackageCard
                       key={pkg.id}
@@ -1204,7 +1298,11 @@ export default function TopUp() {
                         ? variableTotal !== null
                           ? formatMoney(variableTotal, priceCode)
                           : "—"
-                        : formatMoney(activePkg.price, activePkg.priceCode)}
+                        : isUnitSelected
+                          ? qtyTotal !== null
+                            ? formatMoney(qtyTotal, priceCode)
+                            : "—"
+                          : formatMoney(activePkg.price, activePkg.priceCode)}
                     </p>
                   </div>
                   {/* Every field the buyer typed on step 1 — with the resolved
@@ -1766,6 +1864,177 @@ function VariableAmountPanel({
           {errorMessage}
         </p>
       )}
+    </div>
+  );
+}
+
+// ─── Unit-quantity panel (Telegram Stars, checked out as {sku_id, qty}) ──────
+/**
+ * The free-typed-quantity field for a genuine unit SKU (`minQty`/`maxQty` set,
+ * `variableAmount` false — see `isUnitPackage`) — the sibling of
+ * `VariableAmountPanel` for a package whose bounds are already whole units,
+ * not a USD range to convert. No `unitsPerUsd`/`toUsd` here: what's typed IS
+ * the quantity, and `pkg.price` (the SKU's own `display_price`) prices it
+ * directly via `packagePrice` (see `@/lib/star-packages` for why there's no
+ * volume-discount band like `tierPrice`'s packages).
+ *
+ * Renders above the tap-to-fill tiles the same way `VariableAmountPanel`
+ * renders above `fixedPackages` — typing and tapping a tile both just set
+ * this package's selection and its quantity.
+ */
+function UnitAmountPanel({
+  pkg,
+  value,
+  selected,
+  onChange,
+  total,
+  error,
+}: {
+  pkg: Package;
+  value: string;
+  /** True while this line is the current selection — drives the active accent. */
+  selected: boolean;
+  onChange: (v: string) => void;
+  total: number | null;
+  error: "below" | "above" | "precision" | null;
+}) {
+  const { t } = useT();
+  const rate = { amount: pkg.price, currency: pkg.priceCode };
+  const unit = pkg.amountUnit ?? "";
+  const min = pkg.minQty ?? 0;
+  const max = pkg.maxQty ?? 0;
+
+  const errorMessage =
+    error === "below"
+      ? t("topup.amountBelow", { min: `${min.toLocaleString(getActiveLocale())} ${unit}` })
+      : error === "above"
+        ? t("topup.amountAbove", { max: `${max.toLocaleString(getActiveLocale())} ${unit}` })
+        : error === "precision"
+          ? t("topup.amountWhole")
+          : null;
+
+  return (
+    <div
+      className="rounded-2xl p-4"
+      style={{
+        background: "hsl(var(--surface-2))",
+        border: "1px solid hsl(var(--border))",
+      }}
+    >
+      <label className="block">
+        <span className="mb-1.5 block text-xs font-semibold text-white/50">
+          {t("topup.amountUnitLabel", { unit })}
+        </span>
+        <div className="relative">
+          <input
+            type="text"
+            // Whole units only — half a star does not exist.
+            inputMode="numeric"
+            value={value}
+            onChange={(e) => {
+              onChange(e.target.value);
+            }}
+            // A plain number, not "e.g. 50": the placeholder doubles as the
+            // smallest amount the field accepts.
+            placeholder={String(min)}
+            // 48px tall and 18px of type: above the 44px tap target, and above
+            // the 16px below which iOS Safari zooms the page on focus.
+            className={cn(
+              "h-12 w-full rounded-xl border pl-3.5 pr-24 text-lg font-bold text-white outline-none transition",
+              // Lighter than the panel behind it: `bg-black/20` on a dark
+              // surface read as a hole punched in the card rather than a field.
+              "bg-white/[0.06]",
+              selected
+                ? "border-[hsl(var(--primary)/0.8)] shadow-[0_0_0_3px_hsl(var(--primary)/0.12)]"
+                : "border-white/10 focus:border-white/25",
+            )}
+            data-testid="input-amount"
+          />
+          <span
+            className="pointer-events-none absolute right-3.5 top-1/2 max-w-[80px] -translate-y-1/2 truncate text-sm font-semibold text-white/40"
+            aria-hidden="true"
+          >
+            {unit}
+          </span>
+        </div>
+      </label>
+
+      {/* The only two numbers under the field: how far it can go, and what the
+          typed amount costs. No rate, no fee — see the component docstring. */}
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <span className="min-w-0 truncate text-xs text-white/45">
+          {t("topup.amountRange", {
+            min: min.toLocaleString(getActiveLocale()),
+            max: max.toLocaleString(getActiveLocale()),
+          })}
+        </span>
+        {total !== null && (
+          <span className="flex-shrink-0 text-sm font-bold text-white">
+            {formatMoney(total, rate.currency)}
+          </span>
+        )}
+      </div>
+
+      {errorMessage && (
+        <p className="mt-1.5 text-xs font-medium" style={{ color: "rgb(252, 165, 165)" }}>
+          {errorMessage}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Unit-quantity quick-pick tiles ───────────────────────────────────────────
+/**
+ * Quick-pick tiles for a unit package, built from `visibleStarPackages` — not
+ * separate SKUs (there are none): tapping one just sets `UnitAmountPanel`'s
+ * quantity, the same field both render into.
+ */
+function UnitPackTiles({
+  pkg,
+  qty,
+  onPick,
+}: {
+  pkg: Package;
+  /** The field's currently parsed quantity, or `null` — used only to mark a
+   *  tile active when it matches what's typed. */
+  qty: number | null;
+  onPick: (n: number) => void;
+}) {
+  const packs = visibleStarPackages(pkg.minQty ?? 0, pkg.maxQty ?? 0);
+  if (packs.length === 0) return null;
+  const rate = { amount: pkg.price, currency: pkg.priceCode };
+  return (
+    <div className="mt-2.5 grid grid-cols-3 gap-2.5">
+      {packs.map((n) => {
+        const active = qty === n;
+        const price = packagePrice(n, rate.amount);
+        return (
+          <button
+            key={n}
+            type="button"
+            aria-pressed={active}
+            onClick={() => {
+              onPick(n);
+            }}
+            className="rounded-xl p-2.5 text-left transition-all duration-150"
+            style={{
+              background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
+              border: active
+                ? "1.5px solid hsl(var(--primary) / 0.8)"
+                : "1px solid hsl(var(--border))",
+            }}
+            data-testid={`btn-pkg-unit-${n}`}
+          >
+            <span className="block text-sm font-bold leading-none text-white">
+              {n.toLocaleString(getActiveLocale())} {pkg.amountUnit}
+            </span>
+            <span className="mt-1 block text-xs font-semibold text-white/60">
+              {formatMoney(price, rate.currency)}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }

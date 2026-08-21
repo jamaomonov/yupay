@@ -255,4 +255,43 @@ describe("performCheckout", () => {
     expect(result).toEqual({ order: ORDER, payment: PAYMENT });
     expect(mockApiGet).toHaveBeenCalledWith("/api/v1/payments/providers");
   });
+
+  // Task 8: a unit SKU (Telegram Stars) is bought as a real quantity, not the
+  // usual single line + `amount_usd`.
+  it("sends a unit SKU's tapped/typed count as qty, with no amount_usd", async () => {
+    await performCheckout(qc, {
+      skuId: "sku-stars-unit",
+      fulfillmentData: { username: "durov" },
+      qty: 500,
+      provider: "wallet",
+    });
+
+    expect(mockApiPost).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/orders",
+      expect.objectContaining({
+        items: [
+          {
+            sku_id: "sku-stars-unit",
+            qty: 500,
+            fulfillment_data: { username: "durov" },
+          },
+        ],
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("defaults every other line to qty: 1 when qty is left unset", async () => {
+    await performCheckout(qc, { skuId: "sku-1", fulfillmentData: {}, provider: "wallet" });
+
+    expect(mockApiPost).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/orders",
+      expect.objectContaining({
+        items: [{ sku_id: "sku-1", qty: 1, fulfillment_data: {} }],
+      }),
+      expect.anything(),
+    );
+  });
 });

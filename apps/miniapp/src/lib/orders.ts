@@ -206,6 +206,12 @@ export interface CreateOrderInput {
    *  the server re-validates and re-prices from it; the client never sends
    *  a computed price. */
   amountUsd?: string;
+  /** Set only for a unit SKU (Telegram Stars): the integer quantity the
+   *  customer typed or tapped, already validated client-side against the
+   *  SKU's `minQty`/`maxQty`. Mutually exclusive with `amountUsd` above —
+   *  mirrors `yupay.modules.catalog.unit_sku.is_unit_sku` on the server.
+   *  Every other line defaults to `qty: 1` when this is left unset. */
+  qty?: number;
 }
 
 export interface CheckoutResult {
@@ -258,6 +264,7 @@ export async function performCheckout(
     currency = "USD",
     provider = "mock",
     amountUsd,
+    qty,
   }: CreateOrderInput & {
     provider?: string;
   },
@@ -289,7 +296,7 @@ export async function performCheckout(
       items: [
         {
           sku_id: skuId,
-          qty: 1,
+          qty: qty ?? 1,
           fulfillment_data: fulfillmentData,
           ...(amountUsd !== undefined ? { amount_usd: amountUsd } : {}),
         },

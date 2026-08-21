@@ -64,6 +64,13 @@ interface SkuApi {
   units_per_usd?: string | null;
   min_amount_usd?: string | null;
   max_amount_usd?: string | null;
+  // Admin-configured quantity bounds for a unit SKU (Telegram Stars): the
+  // customer types how many of `amount_unit` to buy — or taps a package tile
+  // built from `visibleStarPackages` — and checkout sends `qty` directly, no
+  // `amount_usd`. Both absent means this SKU isn't sold by typed quantity —
+  // same stale-API caveat as `units` above.
+  min_qty?: number | null;
+  max_qty?: number | null;
   // Gift cards are finite: the supplier holds real codes and runs out. Same
   // stale-API caveat as above — absent means sellable, never the reverse.
   in_stock?: boolean;
@@ -205,6 +212,12 @@ export interface Package {
   units: number | null;
   minAmountUsd: number | null;
   maxAmountUsd: number | null;
+  // Admin-configured quantity bounds for a unit SKU (Telegram Stars): the
+  // customer types/taps a whole number of `amountUnit` directly, no dollar
+  // conversion — see `TopUp.tsx`'s unit-package panel. Both null means this
+  // SKU isn't sold by typed quantity.
+  minQty: number | null;
+  maxQty: number | null;
   /** Localised price of one dollar for a variable-amount SKU. `null` means
    *  the FX trust gate rejected the live rate — not sellable right now,
    *  never fall back to a price of zero/one. Always `null` for a
@@ -239,6 +252,8 @@ function skuToPackage(sku: SkuApi): Package {
     units: sku.units ?? null,
     minAmountUsd: sku.min_amount_usd != null ? Number.parseFloat(sku.min_amount_usd) : null,
     maxAmountUsd: sku.max_amount_usd != null ? Number.parseFloat(sku.max_amount_usd) : null,
+    minQty: sku.min_qty ?? null,
+    maxQty: sku.max_qty ?? null,
     ratePerDollar: variableAmount ? displayPrice : null,
     inStock: sku.in_stock !== false,
   };
