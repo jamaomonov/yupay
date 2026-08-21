@@ -84,6 +84,13 @@ export interface SkuOut {
   units_per_usd?: string | null;
   min_amount_usd?: string | null;
   max_amount_usd?: string | null;
+  // Admin-configured quantity bounds for a unit SKU (Telegram Stars): the
+  // customer types how many of `amount_unit` to buy — or taps a package tile
+  // built from `visibleStarPackages` — and checkout sends `qty` directly, no
+  // `amount_usd`. Both absent means this SKU isn't sold by typed quantity —
+  // optional for the same build-time-prerender reason as `units` above.
+  min_qty?: number | null;
+  max_qty?: number | null;
   // Gift cards are finite: the supplier holds real codes and runs out. Optional
   // and defaulted to sellable at every use site, because a build prerendering
   // against the older deployed API would otherwise grey out the whole catalog.

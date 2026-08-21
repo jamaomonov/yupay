@@ -35,6 +35,7 @@ import {
   type CheckState,
 } from "@/lib/player-check-state";
 import { formatUzs, pathFor } from "@/lib/seo";
+import { packagePrice, visibleStarPackages } from "@/lib/star-packages";
 import {
   amountError,
   boundToUnits,
@@ -85,6 +86,24 @@ const METHODS: Method[] = [
 function skuPrice(locale: string, sku: SkuOut): string {
   if (sku.display_price) return formatUzs(locale, Math.round(Number(sku.display_price.amount)));
   return formatMoney(sku.price_usd, "USD", locale);
+}
+
+/**
+ * Sold as a typed (or tapped) integer quantity of `amount_unit` — Telegram
+ * Stars — checkout out as `{ sku_id, qty }` with no `amount_usd`. Mirrors
+ * `yupay.modules.catalog.unit_sku.is_unit_sku` on the server: `variable_amount`
+ * false and `amount_unit`/`min_qty`/`max_qty` all present. Until the Stars
+ * seed lands (a later task), `tg-stars-any` is still `variable_amount`, so it
+ * takes `VariableAmountCard` below rather than this path — the two are
+ * mutually exclusive by construction, same as on the server.
+ */
+function isUnitSku(sku: SkuOut): boolean {
+  return (
+    !(sku.variable_amount ?? false) &&
+    sku.amount_unit != null &&
+    sku.min_qty != null &&
+    sku.max_qty != null
+  );
 }
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -626,6 +645,168 @@ function VariableAmountCard({
   );
 }
 
+/**
+ * The free-typed-quantity field for a genuine unit SKU (Telegram Stars sold
+ * as `{ sku_id, qty }`) — the sibling of `VariableAmountCard` for a SKU whose
+ * bounds are already whole units (`min_qty`/`max_qty`), not a USD range to
+ * convert. No `unitsPerUsd`/`toUsd` here: what's typed IS the quantity, and
+ * `sku.display_price` prices it directly via `packagePrice` — see that
+ * function's docstring for why there's no volume-discount band like
+ * `tierPrice`'s packages.
+ *
+ * Renders above the package tiles the same way `VariableAmountCard` renders
+ * above `fixedSkus` — typing and tapping a tile both just set this SKU's
+ * selection and its quantity.
+ */
+function UnitPackCard({
+  sku,
+  value,
+  selected,
+  onChange,
+  onFocus,
+  locale,
+  t,
+}: {
+  sku: SkuOut;
+  value: string;
+  selected: boolean;
+  onChange: (v: string) => void;
+  onFocus: () => void;
+  locale: string;
+  t: (key: string, values?: Record<string, string>) => string;
+}) {
+  const amountId = useId();
+  const rate = sku.display_price;
+  const unit = sku.amount_unit ?? "";
+  const min = sku.min_qty ?? 0;
+  const max = sku.max_qty ?? 0;
+  if (!rate) {
+    return (
+      <div className="border-border bg-card text-tx-mute rounded-lg border border-dashed p-6 text-center text-sm">
+        {t("priceUnavailable")}
+      </div>
+    );
+  }
+  const parsed = parseAmount(value);
+  const error = parsed !== null ? unitAmountError(parsed, min, max) : null;
+  const total = parsed !== null ? packagePrice(parsed, Number(rate.amount)) : null;
+  const bound = (n: number) => n.toLocaleString(locale);
+  const errorMessage =
+    error === "below"
+      ? t("amountBelow", { min: `${bound(min)} ${unit}` })
+      : error === "above"
+        ? t("amountAbove", { max: `${bound(max)} ${unit}` })
+        : error === "precision"
+          ? t("amountWhole")
+          : null;
+
+  // Same hard-cap as `VariableAmountCard`: never let the field hold a number
+  // the server is bound to refuse.
+  const handleAmountChange = (raw: string) => {
+    const n = parseAmount(raw);
+    onChange(n !== null && n > max ? String(max) : raw);
+  };
+
+  return (
+    <div className="border-border bg-card rounded-xl border p-4 transition sm:p-5">
+      <label htmlFor={amountId} className="text-tx-mute mb-2 block text-[13px]">
+        {t("amountUnitLabel", { unit })}
+      </label>
+      <div
+        className={`rounded-btn bg-card-2 flex items-center gap-2 border px-3.5 transition ${
+          selected ? "border-primary" : "border-border focus-within:border-primary"
+        }`}
+      >
+        <input
+          id={amountId}
+          aria-invalid={errorMessage ? true : undefined}
+          aria-describedby={errorMessage ? `${amountId}-error` : undefined}
+          type="text"
+          inputMode="numeric"
+          value={value}
+          onFocus={onFocus}
+          onChange={(e) => {
+            handleAmountChange(e.target.value);
+          }}
+          placeholder={String(min)}
+          className="h-[52px] min-w-0 flex-1 bg-transparent text-[20px] font-extrabold outline-none"
+        />
+        <span className="text-tx-dim shrink-0 text-[15px] font-semibold" aria-hidden="true">
+          {unit}
+        </span>
+      </div>
+      <div className="text-tx-dim mt-2 flex items-center justify-between gap-3 text-[12px]">
+        <span>{t("amountRange", { min: bound(min), max: bound(max) })}</span>
+        {total !== null && (
+          <span className="text-foreground shrink-0 font-mono text-[13px] font-semibold tabular-nums">
+            {formatUzs(locale, Math.round(total))}
+          </span>
+        )}
+      </div>
+      {errorMessage && (
+        <p id={`${amountId}-error`} className="mt-2 text-[12px] text-[#FF6B6B]">
+          {errorMessage}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Quick-pick tiles for a unit SKU, built from `visibleStarPackages` — not
+ * separate SKUs (there are none): tapping one just sets `UnitPackCard`'s
+ * quantity, the same field both render into.
+ */
+function UnitPackTiles({
+  sku,
+  qty,
+  onPick,
+  locale,
+}: {
+  sku: SkuOut;
+  /** The field's currently parsed quantity, or `null` — used only to mark a
+   *  tile active when it matches what's typed. */
+  qty: number | null;
+  onPick: (n: number) => void;
+  locale: string;
+}) {
+  const packs = visibleStarPackages(sku.min_qty ?? 0, sku.max_qty ?? 0);
+  if (packs.length === 0) return null;
+  const rate = sku.display_price ? Number(sku.display_price.amount) : null;
+  return (
+    <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+      {packs.map((n) => {
+        const active = qty === n;
+        const price = rate !== null ? packagePrice(n, rate) : null;
+        return (
+          <button
+            key={n}
+            type="button"
+            aria-pressed={active}
+            onClick={() => {
+              onPick(n);
+            }}
+            className={`focus-visible:ring-primary focus-visible:ring-offset-bg rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+              active
+                ? "border-primary bg-primary/10"
+                : "border-border bg-card hover:border-border-2"
+            }`}
+          >
+            <span className="font-display block text-[14px] font-semibold tracking-[-0.01em]">
+              {n.toLocaleString(locale)} {sku.amount_unit}
+            </span>
+            {price !== null && (
+              <span className="text-foreground mt-1 block font-mono text-[13.5px] font-semibold tabular-nums">
+                {formatUzs(locale, Math.round(price))}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function PurchasePanel({
   products,
   locale,
@@ -827,15 +1008,39 @@ export function PurchasePanel({
       ? `${boundToUnits(usd, perUsd, edge).toLocaleString(locale)} ${selSku?.amount_unit ?? ""}`
       : formatMoney(usd.toFixed(2), "USD", locale);
 
+  // Same shape as the variable-amount block above, but for a genuine unit SKU
+  // (Telegram Stars sold as `{ sku_id, qty }`, no `amount_usd`): the
+  // typed/tapped number IS the quantity, `min_qty`/`max_qty` are already
+  // whole units, and there is no `unitsPerUsd`/`toUsd` conversion to run.
+  const selSkuUnit = selSku ? isUnitSku(selSku) : false;
+  const unitRate = selSkuUnit ? (selSku?.display_price ?? null) : null;
+  const parsedQty = selSkuUnit ? parseAmount(amountInput) : null;
+  const qtyMin = selSku?.min_qty ?? 0;
+  const qtyMax = selSku?.max_qty ?? 0;
+  const qtyErr =
+    selSkuUnit && parsedQty !== null ? unitAmountError(parsedQty, qtyMin, qtyMax) : null;
+  // `packagePrice` — a flat per-unit rate, never a guessed one.
+  const qtyTotal =
+    selSkuUnit && parsedQty !== null && unitRate
+      ? packagePrice(parsedQty, Number(unitRate.amount))
+      : null;
+  // Gates the CTA for a unit SKU: a live rate and a parsed, in-bounds, whole quantity.
+  const qtyOk = !selSkuUnit || (unitRate !== null && parsedQty !== null && qtyErr === null);
+
   // The heading over the whole choice. A free amount alongside packages is
-  // "pick one or type one"; a lone free amount (Steam) keeps its own title.
+  // "pick one or type one"; a lone free amount (Steam) or a lone unit SKU
+  // (Stars, once it stops being `variable_amount`) keeps its own title.
   const hasVariableSku = products.some((p) => p.skus.some((s) => s.variable_amount ?? false));
-  const hasFixedSku = products.some((p) => p.skus.some((s) => !(s.variable_amount ?? false)));
-  const chooseTitle = !hasVariableSku
-    ? t("packsTitle")
-    : hasFixedSku
-      ? t("pickPackOrAmount")
-      : t("amountTitle");
+  const hasUnitSku = products.some((p) => p.skus.some((s) => isUnitSku(s)));
+  const hasFixedSku = products.some((p) =>
+    p.skus.some((s) => !(s.variable_amount ?? false) && !isUnitSku(s)),
+  );
+  const chooseTitle =
+    !hasVariableSku && !hasUnitSku
+      ? t("packsTitle")
+      : hasFixedSku
+        ? t("pickPackOrAmount")
+        : t("amountTitle");
 
   const emailOk = EMAIL_RE.test(email);
   const fieldsOk = fields.every((f) => !f.required || (form[f.key]?.trim() ?? "") !== "");
@@ -873,6 +1078,7 @@ export function PurchasePanel({
     fieldsVerified &&
     selectedMethodActive &&
     variableAmountOk &&
+    qtyOk &&
     !loading;
   // Tell the user *why* the pay button is inactive instead of leaving a dimmed
   // button with no explanation.
@@ -889,13 +1095,27 @@ export function PurchasePanel({
             : selSkuVariable && variableAmountErr === "precision"
               ? // Half a star does not exist; a fraction of a dollar cent does.
                 t(perUsd !== null ? "amountWhole" : "amountPrecision")
-              : !user && !emailOk
-                ? t("payHintEmail")
-                : !fieldsOk
-                  ? t("payHintFields")
-                  : !fieldsVerified
-                    ? t("payHintVerify")
-                    : null;
+              : selSkuUnit && unitRate === null
+                ? t("priceUnavailable")
+                : selSkuUnit && parsedQty === null
+                  ? t("amountRequired")
+                  : selSkuUnit && qtyErr === "below"
+                    ? t("amountBelow", {
+                        min: `${qtyMin.toLocaleString(locale)} ${selSku.amount_unit ?? ""}`,
+                      })
+                    : selSkuUnit && qtyErr === "above"
+                      ? t("amountAbove", {
+                          max: `${qtyMax.toLocaleString(locale)} ${selSku.amount_unit ?? ""}`,
+                        })
+                      : selSkuUnit && qtyErr === "precision"
+                        ? t("amountWhole")
+                        : !user && !emailOk
+                          ? t("payHintEmail")
+                          : !fieldsOk
+                            ? t("payHintFields")
+                            : !fieldsVerified
+                              ? t("payHintVerify")
+                              : null;
 
   // The price shown in the summary header, the pay button, and the mobile
   // sticky bar. A variable-amount SKU has no fixed `skuPrice` — its total
@@ -904,17 +1124,24 @@ export function PurchasePanel({
   // states handled explicitly rather than falling back to a placeholder.
   const selectedPriceLabel = !selSku
     ? ""
-    : !selSkuVariable
-      ? skuPrice(locale, selSku)
-      : variableRate === null
+    : selSkuVariable
+      ? variableRate === null
         ? t("priceUnavailable")
         : variableTotal !== null
           ? formatUzs(locale, Math.round(variableTotal))
-          : "—";
+          : "—"
+      : selSkuUnit
+        ? unitRate === null
+          ? t("priceUnavailable")
+          : qtyTotal !== null
+            ? formatUzs(locale, Math.round(qtyTotal))
+            : "—"
+        : skuPrice(locale, selSku);
   // `selectedPriceLabel` holds the full "temporarily unavailable" sentence
   // when the FX trust gate rejected the rate — that sentence belongs on the
   // card/hint, never glued onto "Оплатить" or the mobile summary line.
-  const priceUnavailable = selSkuVariable && variableRate === null;
+  const priceUnavailable =
+    (selSkuVariable && variableRate === null) || (selSkuUnit && unitRate === null);
 
   // Nothing in the flow ever asked the buyer to look at what they typed before
   // the money left. `pay()` redirects to the acquirer on the next line, and a
@@ -972,7 +1199,11 @@ export function PurchasePanel({
       // regardless (see `pricing.variable.validate_amount`).
       const orderItem = {
         sku_id: selSku.id,
-        qty: 1,
+        // A unit SKU (Telegram Stars) is bought as a real quantity, not the
+        // usual single line + `amount_usd` — `qtyOk` (part of `canPay`)
+        // already guarantees `parsedQty` is set by the time we get here; the
+        // fallback is an unreachable sentinel, same pattern as `provider` above.
+        qty: selSkuUnit ? (parsedQty ?? 1) : 1,
         fulfillment_data: form,
         ...(selSkuVariable && amountAsUsd !== null
           ? // Always dollars on the wire. Six decimals because one unit is
@@ -1112,7 +1343,13 @@ export function PurchasePanel({
             // *and* a free amount, so the field and the grid coexist rather
             // than one replacing the other. Steam has only the field.
             const variableSku = product.skus.find((s) => s.variable_amount ?? false);
-            const fixedSkus = product.skus.filter((s) => !(s.variable_amount ?? false));
+            // No pack SKUs sit alongside a unit SKU — see `isUnitSku`'s
+            // docstring — so there is at most one per product, unlike
+            // `variableSku`+`fixedSkus`.
+            const unitSku = product.skus.find((s) => isUnitSku(s));
+            const fixedSkus = product.skus.filter(
+              (s) => !(s.variable_amount ?? false) && s.id !== unitSku?.id,
+            );
             return (
               <div key={product.id} className="mt-5">
                 {products.length > 1 && (
@@ -1134,9 +1371,33 @@ export function PurchasePanel({
                     t={t}
                   />
                 )}
+                {unitSku && (
+                  <>
+                    <UnitPackCard
+                      sku={unitSku}
+                      value={skuId === unitSku.id ? amountInput : ""}
+                      selected={skuId === unitSku.id}
+                      onChange={setAmountInput}
+                      onFocus={() => {
+                        setSkuId(unitSku.id);
+                      }}
+                      locale={locale}
+                      t={t}
+                    />
+                    <UnitPackTiles
+                      sku={unitSku}
+                      qty={skuId === unitSku.id ? parseAmount(amountInput) : null}
+                      onPick={(n) => {
+                        setSkuId(unitSku.id);
+                        setAmountInput(String(n));
+                      }}
+                      locale={locale}
+                    />
+                  </>
+                )}
                 {fixedSkus.length > 0 && (
                   <div
-                    className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${variableSku ? "mt-3" : ""}`}
+                    className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${variableSku || unitSku ? "mt-3" : ""}`}
                   >
                     {fixedSkus.map((sku) => {
                       const active = sku.id === skuId;

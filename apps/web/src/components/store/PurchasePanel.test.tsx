@@ -7,6 +7,8 @@ import { PurchasePanel } from "./PurchasePanel";
 
 import type { ProductDetail } from "@/lib/catalog";
 
+import { formatUzs } from "@/lib/seo";
+
 vi.mock("next-intl", () => ({
   useTranslations: () => (k: string) => k,
 }));
@@ -88,6 +90,116 @@ function makeUnitProduct(): ProductDetail {
     ],
   };
 }
+
+/**
+ * A genuine unit SKU (`min_qty`/`max_qty` set, `variable_amount` false) —
+ * what Telegram Stars becomes once it stops using the legacy
+ * `variable_amount` + `units_per_usd` path that `makeUnitProduct` above
+ * still exercises. One SKU, no separate pack SKUs: the package tiles are
+ * built client-side from `visibleStarPackages`, not from the catalog.
+ */
+function makeStarsUnitProduct(): ProductDetail {
+  const base = makeProduct();
+  return {
+    ...base,
+    skus: [
+      {
+        ...base.skus[0]!,
+        id: "sku-unit",
+        sku_code: "STARS-UNIT",
+        denomination: "Stars",
+        variable_amount: false,
+        amount_unit: "Stars",
+        min_qty: 50,
+        max_qty: 2500,
+        display_price: { amount: "250", currency: "UZS", source: "fx" },
+      },
+    ],
+  };
+}
+
+it("renders Stars package tiles from the unit SKU's rate, not separate pack SKUs", async () => {
+  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  render(<PurchasePanel products={[makeStarsUnitProduct()]} locale="ru" />);
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
+  });
+
+  // The full working list, bounded to [50, 2500] — every entry is visible.
+  // Anchored: "150 Stars" and "1 500 Stars" both contain "50 Stars" as a
+  // substring, which an unanchored regex would also match.
+  const fifty = screen.getByRole("button", { name: /^50 Stars\b/ });
+  const seventyFive = screen.getByRole("button", { name: /^75 Stars\b/ });
+  expect(fifty).toBeInTheDocument();
+  expect(seventyFive).toBeInTheDocument();
+  // packagePrice(50, 250) = 12 500 — N times the per-star display_price, no
+  // volume-discount band and no server round-trip.
+  expect(fifty.textContent).toContain(formatUzs("ru", 12_500));
+
+  // The amount field is also here, denominated in Stars, not a pack SKU.
+  const field = screen.getByLabelText("amountUnitLabel");
+  expect(field).toHaveAttribute("inputMode", "numeric");
+  expect(field).toHaveAttribute("placeholder", "50");
+});
+
+interface CapturedOrderItem {
+  sku_id: string;
+  qty: number;
+  amount_usd?: string;
+}
+
+it("submits a tapped pack as { sku_id, qty } with no amount_usd", async () => {
+  // A box rather than a reassigned `let`: the assignment happens inside the
+  // mock's callback, and boxing it sidesteps TS narrowing the outer binding
+  // via control flow it can't see into.
+  const captured: { orderItems: CapturedOrderItem[] | null } = { orderItems: null };
+  vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (url.includes("/payments/providers")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ providers: [{ slug: "click", status: "active" }] }), {
+          status: 200,
+        }),
+      );
+    }
+    if (url.includes("/auth/guest")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ access_token: "guest-token" }), { status: 200 }),
+      );
+    }
+    if (url.includes("/api/v1/orders") && init?.method === "POST") {
+      const body = JSON.parse(init.body as string) as { items: CapturedOrderItem[] };
+      captured.orderItems = body.items;
+      return Promise.resolve(new Response(JSON.stringify({ id: "order-1" }), { status: 200 }));
+    }
+    if (url.includes("/payments/intents")) {
+      return Promise.resolve(new Response(JSON.stringify({ intent_url: null }), { status: 200 }));
+    }
+    return Promise.resolve(new Response("{}", { status: 200 }));
+  });
+
+  render(<PurchasePanel products={[makeStarsUnitProduct()]} locale="ru" />);
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: /^50 Stars\b/ }));
+  fireEvent.change(screen.getByPlaceholderText("emailPlaceholder"), {
+    target: { value: "buyer@example.com" },
+  });
+
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: /^pay ·/i })).not.toBeDisabled();
+  });
+  fireEvent.click(screen.getByRole("button", { name: /^pay ·/i }));
+  fireEvent.click(await screen.findByRole("button", { name: "confirmCta" }));
+
+  await waitFor(() => {
+    expect(captured.orderItems).not.toBeNull();
+  });
+  expect(captured.orderItems).toEqual([expect.objectContaining({ sku_id: "sku-unit", qty: 50 })]);
+  expect(captured.orderItems?.[0]).not.toHaveProperty("amount_usd");
+});
 
 it("puts the free-amount field above the packages and says nothing about rate or fees", async () => {
   // The old card asked for dollars while the customer was buying Stars, hid the
