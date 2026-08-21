@@ -35,11 +35,9 @@ the seed (step 3). The script aborts with the ids if any remain.
    row keeps `min_qty=NULL`. The new code dual-reads: unit SKU (`min_qty` set) →
    qty path; variable → old path. **Stars still sells the old way.** Steam is
    unchanged.
-2. **Confirm packs + typed amount on web.** Mini App typed-amount preview no
-   longer applies `tierPrice` until the seed, so it will disagree with the server
-   (checkout still charges the pack tier). Confirm packs and free amount still
-   sell on **web**. If they do not, stop and roll the image back; do not run the
-   seed. Seed promptly after this check — do not wait on Mini App preview.
+2. **Confirm packs + typed amount still sell** on web and Mini App. Both
+   previews apply `tierPrice` (same rule as checkout) until the seed. If they
+   do not sell, stop and roll the image back; do not run the seed.
 3. **Drain in-flight `tg-stars-any` orders, then run the seed** (command below).
    Wait out `pending_payment` (expires ~10 min) or finish/cancel any
    `pending_payment` / `paid` / `fulfilling` order that contains `tg-stars-any`,
