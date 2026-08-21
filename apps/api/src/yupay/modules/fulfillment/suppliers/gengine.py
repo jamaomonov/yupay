@@ -337,7 +337,24 @@ class GEngineFulfiller(Fulfiller):
 
 
 async def _quantity_for(db: AsyncSession, *, item: OrderItem, mapping: Any) -> int:
-    """How many units to buy for one order line of an amount-priced service."""
+    """How many units to buy for one order line of an amount-priced service.
+
+    Two sources of truth coexist here (dual-read), and the variable-amount
+    one is checked *first*:
+
+    - A variable-amount line (Steam, and anything else the customer types a
+      free-form USD amount into) re-derives its count from the money
+      actually charged — checkout snapped it to a whole unit, so this
+      reverses exactly that and cannot drift from what was paid. This path
+      stays until the unit-SKU seed retires ``units_per_usd`` from the
+      mappings it replaces.
+    - Everything else is ``item.qty * mapping.quantity``. Today that is
+      always one of the two factors doing the work: a package SKU carries
+      its count on the mapping (``item.qty`` is 1), a unit SKU (Telegram
+      Stars) carries it on the order line (``mapping.quantity`` is pinned to
+      1). Post-seed, every mapping's ``quantity`` is 1 and the line's own
+      ``qty`` is the whole story.
+    """
     from sqlalchemy import select
 
     from yupay.modules.catalog.models import Sku
@@ -352,7 +369,10 @@ async def _quantity_for(db: AsyncSession, *, item: OrderItem, mapping: Any) -> i
         raise FulfillerError(
             f"variable amount {item.unit_price_usd} resolves to no units — refusing to order"
         )
-    return int(mapping.quantity)
+    qty = int(item.qty) * int(mapping.quantity)
+    if qty <= 0:
+        raise FulfillerError("quantity resolves to zero — refusing to order")
+    return qty
 
 
 async def _mapping_for(db: AsyncSession, *, sku_id: str) -> Any:

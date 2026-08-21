@@ -232,21 +232,34 @@ async def test_a_telegram_username_travels_in_the_account_slot() -> None:
 
 
 async def _sent_params(
-    monkeypatch: pytest.MonkeyPatch, *, mapping: Any, data: dict[str, str]
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    mapping: Any,
+    data: dict[str, str] | None = None,
+    item: Any = None,
+    sku: Any = None,
 ) -> dict[str, Any]:
-    """Run `fulfill` against a stub client and report what it put on the wire."""
+    """Run `fulfill` against a stub client and report what it put on the wire.
+
+    ``item`` lets a caller supply a line with its own ``qty`` (a unit SKU);
+    the default is the plain package line most tests want. ``create_calls``
+    rides along in the same dict so a test can assert "one create" without a
+    second mock style.
+    """
     import yupay.modules.fulfillment.suppliers.gengine as mod
 
-    sent: dict[str, Any] = {}
+    sent: dict[str, Any] = {"create_calls": 0}
 
     class Client:
         async def create_recharge_order(self, **kw: Any) -> GEngineOrder:
+            sent["create_calls"] += 1
             sent.update(kw)
             return _order("pending")
 
-    class Item:
+    class DefaultItem:
         sku_id = "sku-1"
-        fulfillment_data = data
+        qty = 1
+        fulfillment_data: ClassVar[dict[str, str]] = data or {}
 
     async def _mapping_for(_db: Any, *, sku_id: str) -> Any:
         return mapping
@@ -257,9 +270,9 @@ async def _sent_params(
 
     f = GEngineFulfiller(Client())  # type: ignore[arg-type]
     await f.fulfill(
-        db=_FakeDb(),  # type: ignore[arg-type]
+        db=_FakeDb(sku),  # type: ignore[arg-type]
         order=None,  # type: ignore[arg-type]
-        item=Item(),  # type: ignore[arg-type]
+        item=item if item is not None else DefaultItem(),  # type: ignore[arg-type]
         idempotency_key="k",
     )
     return sent
@@ -283,6 +296,37 @@ async def test_an_unfixed_service_is_sent_the_quantity_it_requires(
     assert sent["params"] == {"Account": "durov", "Quantity": "250"}
     # No denomination for an unfixed service — sending one would be rejected.
     assert sent["denomination_id"] is None
+
+
+async def test_an_unfixed_unit_sku_sends_item_qty(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A unit SKU (Telegram Stars) carries its own count on the order line —
+    the mapping's `quantity` stays pinned at 1 for these until the seed
+    (Task 10), so `Quantity` must come from `item.qty`, not the mapping."""
+    from decimal import Decimal
+
+    class Mapping:
+        kind = "game"
+        external_product_id = "72"
+        external_variant_id = None
+        quantity = 1
+
+    class Item:
+        sku_id = "sku-stars"
+        qty = 500
+        fulfillment_data: ClassVar[dict[str, str]] = {"username": "durov"}
+        unit_price_usd = Decimal("0.02")
+
+    class Sku:
+        variable_amount = False
+        units_per_usd = None
+        amount_unit = "Stars"
+        min_qty = 50
+        max_qty = 2500
+
+    sent = await _sent_params(monkeypatch, mapping=Mapping(), item=Item(), sku=Sku())
+
+    assert sent["params"]["Quantity"] == "500"
+    assert sent["create_calls"] == 1  # one create, not 500
 
 
 async def test_a_fixed_service_is_not_given_a_quantity(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -589,6 +633,7 @@ async def test_a_lost_create_response_is_recovered_instead_of_bought_twice(
 
     class Item:
         sku_id = "sku-1"
+        qty = 1
         fulfillment_data: ClassVar[dict[str, str]] = {"username": "durov"}
 
     client = FakeClient(
@@ -626,6 +671,7 @@ async def test_a_create_that_truly_failed_is_reported_not_retried(
 
     class Item:
         sku_id = "sku-1"
+        qty = 1
         fulfillment_data: ClassVar[dict[str, str]] = {"username": "durov"}
 
     # Nothing to recover: the refusal was real, not a lost response.
@@ -701,6 +747,7 @@ async def test_an_unreachable_supplier_during_create_is_reported(
 
     class Item:
         sku_id = "sku-1"
+        qty = 1
         fulfillment_data: ClassVar[dict[str, str]] = {"username": "durov"}
 
     import yupay.modules.fulfillment.suppliers.gengine as mod
