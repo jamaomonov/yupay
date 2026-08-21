@@ -186,6 +186,33 @@ async def test_variable_amount_accepts_equal_min_and_max(
     assert _sku.min_amount_usd == _sku.max_amount_usd == Decimal("50.00")
 
 
+async def test_qty_bounds_must_arrive_together(db_session: AsyncSession, _sku: Sku) -> None:
+    _sku.min_qty = 50
+    _sku.max_qty = None
+    with pytest.raises(IntegrityError):
+        async with db_session.begin_nested():
+            await db_session.flush()
+
+
+async def test_qty_bounds_accept_a_closed_star_range(db_session: AsyncSession, _sku: Sku) -> None:
+    _sku.min_qty = 50
+    _sku.max_qty = 2500
+    await db_session.flush()
+    await db_session.refresh(_sku)
+    assert _sku.min_qty == 50
+    assert _sku.max_qty == 2500
+
+
+async def test_amount_unit_may_stand_alone_when_qty_bounds_are_set(
+    db_session: AsyncSession, _sku: Sku
+) -> None:
+    _sku.amount_unit = "Stars"
+    _sku.units_per_usd = None
+    _sku.min_qty = 50
+    _sku.max_qty = 2500
+    await db_session.flush()
+
+
 # ---------- catalog read path: display_price ----------
 
 

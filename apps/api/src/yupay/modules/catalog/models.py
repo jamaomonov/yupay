@@ -314,6 +314,8 @@ class Sku(Base):
     # pack, because then no single rate prices "any amount" correctly. NULL on
     # anything not sold by unit, and on the variable line itself.
     units: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    min_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # The margin this SKU is meant to hold above cost_usdt: price_usd =
     # cost_usdt * (1 + margin_percent / 100). Not just a UI convenience —
     # the hourly supplier price-refresh (integrations.price_refresh) reads
@@ -362,6 +364,18 @@ class Sku(Base):
             " AND rate_multiplier IS NOT NULL AND min_amount_usd > 0"
             " AND max_amount_usd >= min_amount_usd AND rate_multiplier > 0)",
             name="ck_skus_variable_amount_complete",
+        ),
+        CheckConstraint(
+            "(min_qty IS NULL AND max_qty IS NULL) OR "
+            "(min_qty IS NOT NULL AND max_qty IS NOT NULL "
+            "AND min_qty >= 1 AND max_qty >= min_qty)",
+            name="ck_skus_qty_bounds_complete",
+        ),
+        CheckConstraint(
+            "(amount_unit IS NULL AND units_per_usd IS NULL) "
+            "OR (amount_unit IS NOT NULL AND units_per_usd IS NOT NULL AND units_per_usd > 0) "
+            "OR (amount_unit IS NOT NULL AND units_per_usd IS NULL AND min_qty IS NOT NULL)",
+            name="ck_skus_amount_unit_complete",
         ),
     )
 
