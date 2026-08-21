@@ -26,7 +26,7 @@ from yupay.core.errors import (
 )
 from yupay.core.ids import new_id
 from yupay.modules.catalog.models import Brand, Product, Sku
-from yupay.modules.catalog.unit_sku import assert_qty_allowed
+from yupay.modules.catalog.unit_sku import assert_qty_allowed, is_unit_sku
 from yupay.modules.fx.models import FxSnapshot
 from yupay.modules.orders.models import Order, OrderEvent, OrderItem
 from yupay.modules.orders.schemas import OrderCreate, OrderItemDisplay, OrderItemIn
@@ -110,6 +110,12 @@ def build_item_display(item: OrderItem, *, locale: str = "ru") -> OrderItemDispl
         return None  # type: ignore[unreachable]
     product = sku.product
     brand = product.brand if product is not None else None
+    # A unit SKU (Telegram Stars) has no fixed denomination — the line is
+    # however many units the customer bought, not a catalog attribute. Read
+    # it from the frozen `item.qty`, never re-derived from `amount_usd`.
+    denomination = sku.denomination
+    if is_unit_sku(sku) and sku.amount_unit:
+        denomination = f"{item.qty} {sku.amount_unit}"
     return OrderItemDisplay(
         brand_slug=brand.slug if brand is not None else "",
         brand_name=_tr_name(brand.translations, locale) if brand is not None else "",
@@ -117,7 +123,7 @@ def build_item_display(item: OrderItem, *, locale: str = "ru") -> OrderItemDispl
         product_name=_tr_name(product.translations, locale) if product is not None else "",
         product_kind=product.kind if product is not None else "voucher",
         sku_code=sku.sku_code,
-        denomination=sku.denomination,
+        denomination=denomination,
         region=sku.region,
         image_url=sku.image_url or (product.image_url if product is not None else None),
         variable_amount=sku.variable_amount,
