@@ -678,6 +678,17 @@
             ],
             "title": "Max Amount Usd"
           },
+          "max_qty": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Qty"
+          },
           "min_amount_usd": {
             "anyOf": [
               {
@@ -689,6 +700,17 @@
               }
             ],
             "title": "Min Amount Usd"
+          },
+          "min_qty": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Qty"
           },
           "price_overrides": {
             "items": {
@@ -755,6 +777,8 @@
           "min_amount_usd",
           "max_amount_usd",
           "rate_multiplier",
+          "min_qty",
+          "max_qty",
           "image_url",
           "sort_order",
           "active",
@@ -5426,7 +5450,7 @@
             "type": "object"
           },
           "qty": {
-            "maximum": 100.0,
+            "maximum": 50000.0,
             "minimum": 1.0,
             "title": "Qty",
             "type": "integer"
@@ -8259,6 +8283,18 @@
             ],
             "title": "Max Amount Usd"
           },
+          "max_qty": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Qty"
+          },
           "min_amount_usd": {
             "anyOf": [
               {
@@ -8274,6 +8310,18 @@
               }
             ],
             "title": "Min Amount Usd"
+          },
+          "min_qty": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Qty"
           },
           "price_overrides": {
             "items": {
@@ -8449,6 +8497,17 @@
             ],
             "title": "Max Amount Usd"
           },
+          "max_qty": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Qty"
+          },
           "min_amount_usd": {
             "anyOf": [
               {
@@ -8460,6 +8519,17 @@
               }
             ],
             "title": "Min Amount Usd"
+          },
+          "min_qty": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Qty"
           },
           "price_usd": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
@@ -8783,6 +8853,18 @@
             ],
             "title": "Max Amount Usd"
           },
+          "max_qty": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Qty"
+          },
           "min_amount_usd": {
             "anyOf": [
               {
@@ -8798,6 +8880,18 @@
               }
             ],
             "title": "Min Amount Usd"
+          },
+          "min_qty": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Qty"
           },
           "price_overrides": {
             "anyOf": [
