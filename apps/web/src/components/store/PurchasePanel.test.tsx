@@ -175,30 +175,32 @@ it("submits a tapped pack as { sku_id, qty } with no amount_usd", async () => {
   // mock's callback, and boxing it sidesteps TS narrowing the outer binding
   // via control flow it can't see into.
   const captured: { orderItems: CapturedOrderItem[] | null } = { orderItems: null };
-  vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
-    const url = input instanceof Request ? input.url : String(input);
-    if (url.includes("/payments/providers")) {
-      return Promise.resolve(
-        new Response(JSON.stringify({ providers: [{ slug: "click", status: "active" }] }), {
-          status: 200,
-        }),
-      );
-    }
-    if (url.includes("/auth/guest")) {
-      return Promise.resolve(
-        new Response(JSON.stringify({ access_token: "guest-token" }), { status: 200 }),
-      );
-    }
-    if (url.includes("/api/v1/orders") && init?.method === "POST") {
-      const body = JSON.parse(init.body as string) as { items: CapturedOrderItem[] };
-      captured.orderItems = body.items;
-      return Promise.resolve(new Response(JSON.stringify({ id: "order-1" }), { status: 200 }));
-    }
-    if (url.includes("/payments/intents")) {
-      return Promise.resolve(new Response(JSON.stringify({ intent_url: null }), { status: 200 }));
-    }
-    return Promise.resolve(new Response("{}", { status: 200 }));
-  });
+  vi.spyOn(globalThis, "fetch").mockImplementation(
+    (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes("/payments/providers")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ providers: [{ slug: "click", status: "active" }] }), {
+            status: 200,
+          }),
+        );
+      }
+      if (url.includes("/auth/guest")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ access_token: "guest-token" }), { status: 200 }),
+        );
+      }
+      if (url.includes("/api/v1/orders") && init?.method === "POST") {
+        const body = JSON.parse(init.body as string) as { items: CapturedOrderItem[] };
+        captured.orderItems = body.items;
+        return Promise.resolve(new Response(JSON.stringify({ id: "order-1" }), { status: 200 }));
+      }
+      if (url.includes("/payments/intents")) {
+        return Promise.resolve(new Response(JSON.stringify({ intent_url: null }), { status: 200 }));
+      }
+      return Promise.resolve(new Response("{}", { status: 200 }));
+    },
+  );
 
   render(<PurchasePanel products={[makeStarsUnitProduct()]} locale="ru" />);
   await waitFor(() => {
