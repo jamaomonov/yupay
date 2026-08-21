@@ -26,6 +26,7 @@ from yupay.core.errors import (
 )
 from yupay.core.ids import new_id
 from yupay.modules.catalog.models import Brand, Product, Sku
+from yupay.modules.catalog.unit_sku import assert_qty_allowed
 from yupay.modules.fx.models import FxSnapshot
 from yupay.modules.orders.models import Order, OrderEvent, OrderItem
 from yupay.modules.orders.schemas import OrderCreate, OrderItemDisplay, OrderItemIn
@@ -366,10 +367,14 @@ def _resolve_line_unit_price(sku: Sku, line: OrderItemIn, currency: str) -> Deci
       supplier fee is configured).
 
     Raises:
-        ValidationError: ``amount_usd`` is missing/out of bounds for a
-            variable SKU, present for a fixed one, or the line is a
-            variable-amount SKU with ``qty != 1`` or ``currency == "USD"``.
+        ValidationError: ``qty`` is outside the SKU's real bounds (see
+            ``assert_qty_allowed`` — the wire-level ``OrderItemIn.qty`` max is
+            raised for unit SKUs and is not the real limit for anything
+            else), ``amount_usd`` is missing/out of bounds for a variable
+            SKU, present for a fixed one, or the line is a variable-amount
+            SKU with ``qty != 1`` or ``currency == "USD"``.
     """
+    assert_qty_allowed(sku, line.qty)
     if sku.variable_amount:
         if line.qty != 1:
             raise ValidationError(

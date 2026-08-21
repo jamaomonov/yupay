@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 # Imported from ``schemas`` rather than the module's ``api`` on purpose: ``api``
 # pulls in ``routes``, and a schema module reaching for a router is how import
 # cycles start. ``ClientHints`` is a leaf value object either way.
+from yupay.modules.catalog.unit_sku import UNIT_QTY_WIRE_MAX
 from yupay.modules.evidence.schemas import ClientHints
 
 OrderStatus = Literal[
@@ -33,7 +34,12 @@ class OrderItemIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     sku_id: str
-    qty: int = Field(ge=1, le=100)
+    # The wire ceiling only lets a unit SKU (Telegram Stars) be bought in
+    # bulk — it is not the real limit for anything else. The real limit is
+    # enforced server-side per line, in
+    # ``yupay.modules.orders.service._resolve_line_unit_price``, by
+    # ``yupay.modules.catalog.unit_sku.assert_qty_allowed``.
+    qty: int = Field(ge=1, le=UNIT_QTY_WIRE_MAX)
     fulfillment_data: dict[str, Any] = Field(default_factory=dict)
     # Set only for variable-amount SKUs (Steam wallet): how many dollars the
     # customer is buying. The price is derived from it server-side; the client
