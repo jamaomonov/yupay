@@ -108,6 +108,7 @@ function makeStarsUnitProduct(): ProductDetail {
         id: "sku-unit",
         sku_code: "STARS-UNIT",
         denomination: "Stars",
+        image_url: "/stars.webp",
         variable_amount: false,
         amount_unit: "Stars",
         min_qty: 50,
@@ -135,11 +136,32 @@ it("renders Stars package tiles from the unit SKU's rate, not separate pack SKUs
   // packagePrice(50, 250) = 12 500 — N times the per-star display_price, no
   // volume-discount band and no server round-trip.
   expect(fifty.textContent).toContain(formatUzs("ru", 12_500));
+  // Same SKU art on every tile — there is one unit SKU, not one image per pack.
+  expect(fifty.querySelector("img")).toHaveAttribute("src", expect.stringContaining("stars.webp"));
+  expect(seventyFive.querySelector("img")).toHaveAttribute(
+    "src",
+    expect.stringContaining("stars.webp"),
+  );
 
   // The amount field is also here, denominated in Stars, not a pack SKU.
   const field = screen.getByLabelText("amountUnitLabel");
   expect(field).toHaveAttribute("inputMode", "numeric");
   expect(field).toHaveAttribute("placeholder", "50");
+});
+
+it("falls back to the product image when the unit SKU has none", async () => {
+  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  const product = makeStarsUnitProduct();
+  product.image_url = "/product.webp";
+  product.skus[0] = { ...product.skus[0]!, image_url: null };
+  render(<PurchasePanel products={[product]} locale="ru" />);
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
+  });
+  expect(screen.getByRole("button", { name: /^50 Stars\b/ }).querySelector("img")).toHaveAttribute(
+    "src",
+    expect.stringContaining("product.webp"),
+  );
 });
 
 interface CapturedOrderItem {

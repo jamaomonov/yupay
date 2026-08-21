@@ -762,6 +762,7 @@ function UnitPackTiles({
   qty,
   onPick,
   locale,
+  fallbackImage,
 }: {
   sku: SkuOut;
   /** The field's currently parsed quantity, or `null` — used only to mark a
@@ -769,10 +770,14 @@ function UnitPackTiles({
   qty: number | null;
   onPick: (n: number) => void;
   locale: string;
+  /** Product art when the unit SKU itself has no `image_url` — same fallback
+   *  the fixed-SKU grid uses. */
+  fallbackImage: string | null;
 }) {
   const packs = visibleStarPackages(sku.min_qty ?? 0, sku.max_qty ?? 0);
   if (packs.length === 0) return null;
   const rate = sku.display_price ? Number(sku.display_price.amount) : null;
+  const img = sku.image_url ?? fallbackImage;
   return (
     <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
       {packs.map((n) => {
@@ -786,17 +791,29 @@ function UnitPackTiles({
             onClick={() => {
               onPick(n);
             }}
-            className={`focus-visible:ring-primary focus-visible:ring-offset-bg rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+            className={`focus-visible:ring-primary focus-visible:ring-offset-bg relative flex flex-col items-start gap-2 rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
               active
                 ? "border-primary bg-primary/10"
                 : "border-border bg-card hover:border-border-2"
             }`}
           >
+            <span className="rounded-btn relative h-12 w-12 overflow-hidden">
+              {img && (
+                <Image
+                  src={img}
+                  alt=""
+                  fill
+                  unoptimized={!isOptimizable(img)}
+                  sizes="48px"
+                  className="object-contain"
+                />
+              )}
+            </span>
             <span className="font-display block text-[14px] font-semibold tracking-[-0.01em]">
               {n.toLocaleString(locale)} {sku.amount_unit}
             </span>
             {price !== null && (
-              <span className="text-foreground mt-1 block font-mono text-[13.5px] font-semibold tabular-nums">
+              <span className="text-foreground font-mono text-[13.5px] font-semibold tabular-nums">
                 {formatUzs(locale, Math.round(price))}
               </span>
             )}
@@ -1392,6 +1409,7 @@ export function PurchasePanel({
                         setAmountInput(String(n));
                       }}
                       locale={locale}
+                      fallbackImage={product.image_url}
                     />
                   </>
                 )}

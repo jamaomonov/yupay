@@ -54,6 +54,7 @@ import {
   amountError,
   boundToUnits,
   parseAmount,
+  tierPrice,
   toUsd,
   unitAmountError,
   unitsPerUsd,
@@ -559,14 +560,26 @@ export default function TopUp() {
         : amountError(parsedAmount, activePkg?.minAmountUsd ?? 0, activePkg?.maxAmountUsd ?? 0)
       : null;
   // Client-side total for display only — the server recomputes the
-  // authoritative price from ``amount_usd`` at checkout.
+  // authoritative price from ``amount_usd`` at checkout. While pack SKUs
+  // still sit next to the variable line (dual-read until the Stars seed),
+  // this must be `tierPrice` — the same rule as `orders.service.tier_price_usd`
+  // — or the button shows a linear rate and checkout charges the pack band.
+  const tierPacks = useMemo(
+    () =>
+      packages
+        .filter((p) => !p.variableAmount && p.id !== unitPkg?.id && p.units != null && p.price > 0)
+        .map((p) => ({ units: p.units ?? 0, price: p.price })),
+    [packages, unitPkg?.id],
+  );
   const variableTotal = !isVariableSelected
     ? null
     : parsedAmount === null
       ? null
-      : amountAsUsd !== null && activePkg?.ratePerDollar
-        ? amountAsUsd * activePkg.ratePerDollar.amount
-        : null;
+      : tierPacks.length > 0
+        ? tierPrice(parsedAmount, tierPacks)
+        : amountAsUsd !== null && activePkg?.ratePerDollar
+          ? amountAsUsd * activePkg.ratePerDollar.amount
+          : null;
 
   // Same shape as the variable-amount block above, but for a genuine unit SKU
   // (Telegram Stars sold as `{ sku_id, qty }`, no `amount_usd`): the
@@ -1225,6 +1238,7 @@ export default function TopUp() {
                   <UnitPackTiles
                     pkg={unitPkg}
                     qty={selectedPkg === unitPkg.id ? parseAmount(amountInput) : null}
+                    fallbackImage={productImage}
                     onPick={(n) => {
                       haptic("select");
                       setSelectedPkg(unitPkg.id);
@@ -1994,12 +2008,16 @@ function UnitPackTiles({
   pkg,
   qty,
   onPick,
+  fallbackImage,
 }: {
   pkg: Package;
   /** The field's currently parsed quantity, or `null` — used only to mark a
    *  tile active when it matches what's typed. */
   qty: number | null;
   onPick: (n: number) => void;
+  /** Product art when the unit SKU itself has no `imageUrl` — same fallback
+   *  `PackageCard` uses for ordinary denominations. */
+  fallbackImage: string | null;
 }) {
   const packs = visibleStarPackages(pkg.minQty ?? 0, pkg.maxQty ?? 0);
   if (packs.length === 0) return null;
@@ -2026,6 +2044,9 @@ function UnitPackTiles({
             }}
             data-testid={`btn-pkg-unit-${n}`}
           >
+            <div className="mb-1.5">
+              <PackageThumb pkg={pkg} fallback={fallbackImage} />
+            </div>
             <span className="block text-sm font-bold leading-none text-white">
               {n.toLocaleString(getActiveLocale())} {pkg.amountUnit}
             </span>
