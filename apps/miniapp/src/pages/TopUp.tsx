@@ -1271,6 +1271,7 @@ export default function TopUp() {
                   // An unavailable method can never look selected.
                   const active = paymentMethod === m.id && available;
                   const unavailableLabel = maintenance ? t("payment.maintenance") : t("topup.soon");
+                  const badgeLabel = maintenance ? t("payment.maintenanceShort") : t("topup.soon");
                   return (
                     <button
                       key={m.id}
@@ -1282,13 +1283,12 @@ export default function TopUp() {
                       disabled={!available}
                       aria-disabled={!available}
                       title={available ? undefined : unavailableLabel}
-                      className="relative flex flex-col items-center gap-1 rounded-2xl py-3 transition-all duration-150 disabled:cursor-not-allowed"
+                      className="relative flex flex-col items-center gap-1 overflow-hidden rounded-2xl py-3 transition-all duration-150 disabled:cursor-not-allowed"
                       style={{
                         background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
                         border: active
                           ? "1.5px solid hsl(var(--primary) / 0.8)"
                           : "1px solid hsl(var(--border))",
-                        opacity: available ? 1 : 0.5,
                       }}
                       data-testid={`btn-pay-${m.id}`}
                     >
@@ -1300,33 +1300,43 @@ export default function TopUp() {
                           <Check size={9} strokeWidth={3} className="text-black" />
                         </div>
                       )}
-                      {!available && !maintenance && (
-                        <div
-                          className="absolute right-1 top-1 rounded px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide"
+                      {/* One strip for both unavailable reasons, pinned to the
+                          top edge and out of the flow: "Технические работы" as
+                          a third line under the name pushed this tile taller
+                          than its neighbours. The strip keeps full contrast
+                          while the mark and the name dim below it. */}
+                      {!available && (
+                        <span
+                          className="absolute inset-x-0 top-0 z-10 py-[3px] text-center text-[9px] font-bold uppercase leading-none tracking-[0.06em]"
                           style={{
                             background: "hsl(var(--surface-3))",
+                            borderBottom: "1px solid hsl(var(--border))",
                             color: "hsl(var(--muted-foreground))",
                           }}
                         >
-                          {t("topup.soon")}
-                        </div>
+                          {badgeLabel}
+                        </span>
                       )}
-                      <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-md">
+                      <span
+                        className={cn(
+                          "flex h-8 w-8 items-center justify-center overflow-hidden rounded-md",
+                          !available && "opacity-60 grayscale",
+                        )}
+                      >
                         <img src={m.icon} alt={m.name} className="h-full w-full object-cover" />
                       </span>
                       <span
                         className={cn(
                           "text-[11px] font-bold leading-none",
-                          active && available ? "text-white" : "text-white/50",
+                          active && available
+                            ? "text-white"
+                            : available
+                              ? "text-white/50"
+                              : "text-white/35",
                         )}
                       >
                         {m.name}
                       </span>
-                      {maintenance && (
-                        <span className="px-0.5 text-center text-[8px] font-semibold uppercase leading-tight text-white/40">
-                          {t("payment.maintenance")}
-                        </span>
-                      )}
                     </button>
                   );
                 })}

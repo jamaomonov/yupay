@@ -234,6 +234,44 @@ coverage gate (≥ 95%, per `AGENTS.md` §8) keeps the new modules
 (`provider_state`, `provider_analytics`, `provider_admin`) held to the same
 bar as the rest of the payments surface.
 
+## Amendment: the locked state is an overlay, not a third line (2026-08-21)
+
+### Context
+
+Both storefronts rendered `maintenance` as an extra line of text stacked under
+the provider name inside the method tile. The tiles sit in an equal-width grid,
+so the one line of copy ("Технические работы" — two lines once it wrapped in the
+web's ~110 px tile) made that tile taller than its neighbours and the whole row
+went ragged. The state that is supposed to read as "nothing to do here" was the
+most visually prominent thing in the block.
+
+### Decision
+
+The status is drawn out of the tile's flow: a strip pinned to the tile's top
+edge (`absolute inset-x-0 top-0`, clipped by the tile's own `overflow-hidden`),
+carrying a short label — new `web.store.paymentMaintenanceShort` /
+`payment.maintenanceShort` keys ("Тех. работы") — while the full copy stays as
+the `title` tooltip. The tile geometry is therefore identical in every state.
+Only the mark and the name dim (`opacity-60 grayscale`), never the strip, so the
+label keeps full contrast against a mark that now reads as inactive on sight.
+The Mini App's separate "Скоро" corner pill (a method unavailable because of the
+selected currency rather than an operator action) folds into the same strip, so
+"unavailable" looks like one thing with two reasons.
+
+For a11y the tile's accessible name stays the bare provider name; the strip is
+referenced with `aria-describedby` (web) so a screen reader gets the reason
+after the name instead of a name that changes when an acquirer goes down.
+`WalletTopUp`'s provider list is untouched — there the status replaces the
+row's subtitle, which never changed the row's height.
+
+### Consequences
+
+- Positive: the method row keeps its rhythm whatever the acquirers are doing,
+  and the locked tile reads as locked before the label is even read.
+- Negative: two copies per locale for one state (short for the strip, full for
+  the tooltip/SR). Accepted — a tile that narrow cannot hold the full phrase
+  without wrapping, which is the bug being fixed.
+
 ## Alternatives considered (detail)
 
 ### Option 2 — config/env-only flag

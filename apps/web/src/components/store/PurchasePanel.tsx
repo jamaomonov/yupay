@@ -1326,17 +1326,23 @@ export function PurchasePanel({
                   if (visibility === "hidden") return null;
                   const disabled = visibility === "maintenance";
                   const active = !disabled && m.id === methodId;
+                  const statusId = `pay-method-status-${m.id}`;
                   return (
                     <button
                       key={m.id}
                       type="button"
+                      // Kept as the bare provider name: the status rides
+                      // `aria-describedby` instead, so the accessible name of a
+                      // tile doesn't change when an acquirer goes down.
                       aria-label={m.name}
                       aria-pressed={active}
+                      aria-describedby={disabled ? statusId : undefined}
+                      title={disabled ? t("paymentMaintenance") : undefined}
                       disabled={disabled}
                       onClick={() => {
                         setMethodId(m.id);
                       }}
-                      className={`focus-visible:ring-primary focus-visible:ring-offset-bg rounded-btn flex flex-col items-center justify-center gap-1 border px-3 py-3 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
+                      className={`focus-visible:ring-primary focus-visible:ring-offset-bg rounded-btn relative flex flex-col items-center justify-center gap-1 overflow-hidden border px-3 py-3 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed ${
                         disabled
                           ? "border-border bg-card"
                           : active
@@ -1344,7 +1350,25 @@ export function PurchasePanel({
                             : "border-border bg-card hover:border-border-2"
                       }`}
                     >
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md">
+                      {/* Overlaid, not stacked: a third line of text inside the
+                          tile grew this one taller than its neighbours, so the
+                          whole row went ragged whenever an acquirer was down.
+                          A strip pinned to the top edge stays out of the flow
+                          and, unlike a floating pill, clears the mark below it
+                          instead of covering it. */}
+                      {disabled && (
+                        <span
+                          id={statusId}
+                          className="border-border bg-bg/95 text-tx-dim absolute inset-x-0 top-0 z-10 border-b py-[3px] text-center text-[9px] font-bold uppercase leading-none tracking-[0.06em]"
+                        >
+                          {t("paymentMaintenanceShort")}
+                        </span>
+                      )}
+                      <span
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md ${
+                          disabled ? "opacity-60 grayscale" : ""
+                        }`}
+                      >
                         <Image
                           src={m.icon}
                           alt=""
@@ -1353,12 +1377,13 @@ export function PurchasePanel({
                           className="h-full w-full object-cover"
                         />
                       </span>
-                      <span className="text-foreground text-[13px] font-semibold">{m.name}</span>
-                      {disabled && (
-                        <span className="text-tx-dim text-[10px] font-semibold uppercase tracking-[0.04em]">
-                          {t("paymentMaintenance")}
-                        </span>
-                      )}
+                      <span
+                        className={`text-[13px] font-semibold ${
+                          disabled ? "text-tx-dim" : "text-foreground"
+                        }`}
+                      >
+                        {m.name}
+                      </span>
                     </button>
                   );
                 })}

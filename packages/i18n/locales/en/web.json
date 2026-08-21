@@ -199,6 +199,7 @@
     "checkNotFound": "Player not found",
     "paymentTitle": "Payment method",
     "paymentMaintenance": "Under maintenance",
+    "paymentMaintenanceShort": "Maintenance",
     "paymentNone": "No payment methods available",
     "pay": "Pay",
     "payError": "Couldn't create the order. Try again, or message support.",

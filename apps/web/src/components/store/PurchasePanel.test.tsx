@@ -192,6 +192,25 @@ it("reselects the first active method when the hardcoded default (click) is unde
   expect(screen.queryByRole("button", { name: "Uzum" })).not.toBeInTheDocument();
 });
 
+it("shows the maintenance status as an overlay chip, outside the tile's flow", async () => {
+  mockProvidersResponse([
+    { slug: "click", status: "maintenance" },
+    { slug: "payme", status: "active" },
+  ]);
+
+  render(<PurchasePanel products={[makeProduct()]} locale="ru" />);
+
+  const click = await screen.findByRole("button", { name: "Click" });
+  const chip = await screen.findByText("paymentMaintenanceShort");
+  // Absolutely positioned: a status that participated in the flow made this
+  // tile taller than its siblings, which is the bug this guards.
+  expect(chip.className).toContain("absolute");
+  // The chip describes the tile; it must not become part of its name, or
+  // every "is Click still Click" query in this suite drifts with the copy.
+  expect(click).toHaveAttribute("aria-describedby", chip.id);
+  expect(screen.getByRole("button", { name: "Payme" })).not.toHaveAttribute("aria-describedby");
+});
+
 it("disables Pay when no payment provider is active", async () => {
   mockProvidersResponse([
     { slug: "click", status: "maintenance" },
