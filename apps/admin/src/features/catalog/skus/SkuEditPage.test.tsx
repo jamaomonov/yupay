@@ -7,7 +7,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { SkuEditPage } from "./SkuEditPage";
 
-import { apiGet } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 
 vi.mock("@/lib/api", () => ({
   apiGet: vi.fn(),
@@ -18,6 +18,23 @@ vi.mock("@/lib/api", () => ({
 }));
 
 const mockedApiGet = vi.mocked(apiGet);
+const mockedApiPost = vi.mocked(apiPost);
+
+// Minimal product so the create form can actually pass `product_id`
+// validation and reach the `apiPost` mutation — every other test in this
+// file leaves the product list empty since it doesn't need a saveable form.
+const PRODUCT = {
+  id: "prod-1",
+  slug: "tg-stars",
+  brand_id: "brand-1",
+  kind: "top_up" as const,
+  supplier_hint: null,
+  image_url: null,
+  sort_order: 0,
+  active: true,
+  required_fields: [],
+  translations: [],
+};
 
 const RATES = {
   base: "USD",
@@ -33,11 +50,12 @@ const RATES = {
   ],
 };
 
-function mockCatalog(): void {
+function mockCatalog(options?: { products?: (typeof PRODUCT)[] }): void {
   mockedApiGet.mockImplementation((path: string) => {
     if (path.includes("/fx/rates")) return Promise.resolve(RATES);
-    // products / brands / skus — a bare list page doesn't need a selected
-    // product to exercise the price/margin math, which is independent of it.
+    if (path.includes("/catalog/products")) return Promise.resolve(options?.products ?? []);
+    // brands / skus — a bare list page doesn't need a selected product to
+    // exercise the price/margin math, which is independent of it.
     return Promise.resolve([]);
   });
 }
@@ -138,7 +156,7 @@ it("shows the min/max stars fields for a non-variable SKU, and hides them once v
   expect(screen.queryByPlaceholderText("2500")).not.toBeInTheDocument();
 });
 
-it("requires min and max stars together, and max >= min", async () => {
+it("rejects max_qty below min_qty", async () => {
   renderPage();
 
   const priceUsd = await screen.findByPlaceholderText("0.85");
@@ -154,6 +172,77 @@ it("requires min and max stars together, and max >= min", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
 
   expect(await screen.findByText("Должно быть ≥ минимума")).toBeInTheDocument();
+  expect(mockedApiPost).not.toHaveBeenCalled();
+});
+
+it("rejects a lone min_qty with no max_qty", async () => {
+  renderPage();
+
+  const priceUsd = await screen.findByPlaceholderText("0.85");
+  fireEvent.change(priceUsd, { target: { value: "1" } });
+  const skuCode = screen.getByPlaceholderText("pubg-uc-60-tr");
+  fireEvent.change(skuCode, { target: { value: "tg-stars-any" } });
+
+  const minQty = screen.getByPlaceholderText("50");
+  fireEvent.change(minQty, { target: { value: "50" } });
+  // max_qty stays empty — both-or-neither must reject this.
+
+  fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+
+  expect(await screen.findByText("Оба поля вместе, целое число ≥ 1")).toBeInTheDocument();
+  expect(mockedApiPost).not.toHaveBeenCalled();
+});
+
+it("rejects a lone max_qty with no min_qty", async () => {
+  renderPage();
+
+  const priceUsd = await screen.findByPlaceholderText("0.85");
+  fireEvent.change(priceUsd, { target: { value: "1" } });
+  const skuCode = screen.getByPlaceholderText("pubg-uc-60-tr");
+  fireEvent.change(skuCode, { target: { value: "tg-stars-any" } });
+
+  // min_qty stays empty — both-or-neither must reject this.
+  const maxQty = screen.getByPlaceholderText("2500");
+  fireEvent.change(maxQty, { target: { value: "2500" } });
+
+  fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+
+  expect(await screen.findByText("Оба поля вместе, целое число ≥ 1")).toBeInTheDocument();
+  expect(mockedApiPost).not.toHaveBeenCalled();
+});
+
+it("sends min_qty and max_qty as numbers on the create request body", async () => {
+  mockCatalog({ products: [PRODUCT] });
+  mockedApiPost.mockResolvedValue(undefined);
+  renderPage();
+
+  // The "Продукт" <label> also wraps a help sentence, so its computed
+  // accessible name isn't the bare word — query the <select> directly
+  // instead of via getByLabelText, once its option has loaded in.
+  await waitFor(() => {
+    expect(document.querySelector(`option[value="${PRODUCT.id}"]`)).toBeInTheDocument();
+  });
+  const productSelect = document.querySelector<HTMLSelectElement>('select[name="product_id"]');
+  if (!productSelect) throw new Error("product_id <select> not found");
+  fireEvent.change(productSelect, { target: { value: PRODUCT.id } });
+
+  const skuCode = screen.getByPlaceholderText("pubg-uc-60-tr");
+  fireEvent.change(skuCode, { target: { value: "tg-stars-any" } });
+  const priceUsd = screen.getByPlaceholderText("0.85");
+  fireEvent.change(priceUsd, { target: { value: "1" } });
+  const minQty = screen.getByPlaceholderText("50");
+  fireEvent.change(minQty, { target: { value: "50" } });
+  const maxQty = screen.getByPlaceholderText("2500");
+  fireEvent.change(maxQty, { target: { value: "2500" } });
+
+  fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+
+  await waitFor(() => {
+    expect(mockedApiPost).toHaveBeenCalledTimes(1);
+  });
+  const [path, body] = mockedApiPost.mock.calls[0] as [string, Record<string, unknown>];
+  expect(path).toBe("/api/v1/admin/catalog/skus");
+  expect(body).toMatchObject({ min_qty: 50, max_qty: 2500 });
 });
 
 it("previews the USD price converted per FX rate, and prefers a currency override over the conversion", async () => {
