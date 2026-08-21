@@ -29,6 +29,12 @@ What it does, forward:
   ``order_items`` row is touched — a pack bought before the flip still fulfils
   as ``qty=1 × mapping.quantity``.
 
+It aborts (exit 1) if any ``tg-stars-any`` order is still ``pending_payment`` /
+``paid`` / ``fulfilling``, or a fulfillment task for that SKU is still open.
+Those free-amount lines stored ``qty=1``; after the flip G-Engine would be told
+to send 1 star. Pack SKUs in-flight are OK — this script does not rewrite their
+mappings.
+
 Two things it refuses to guess. ``cost_usdt`` must already look like a per-star
 cost, and the resulting ``price_usd`` must sit between that cost and half a
 dollar. A pack-sized number in either column means somebody has to look at the
@@ -52,9 +58,11 @@ from yupay.core.clock import now
 from yupay.core.config import get_settings
 from yupay.core.db import get_session_factory
 from yupay.modules.catalog.models import Product, Sku
+from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.fulfillment.suppliers.gengine_client import GEngineClient
 from yupay.modules.integrations.models import SkuSupplierMapping
 from yupay.modules.integrations.service import MappingUpsert, get_mapping, upsert_mapping
+from yupay.modules.orders.models import Order, OrderItem
 
 PRODUCT_SLUG = "telegram-stars"
 UNIT_SKU_CODE = "tg-stars-any"
@@ -207,6 +215,98 @@ def price_from_margin(cost: Decimal, margin_percent: Decimal) -> Decimal:
 def usd_for_stars(stars: int, rate: Decimal) -> Decimal:
     """Return the USD bound for ``stars`` at ``rate`` stars per USD (revert path)."""
     return (Decimal(stars) / rate).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+
+
+# Orders whose ``tg-stars-any`` line would fulfill as Quantity=1 after the
+# catalog flip. Names match ``OrderStatus`` / ``ck_orders_status``.
+IN_FLIGHT_ORDER_STATUSES: frozenset[str] = frozenset({"pending_payment", "paid", "fulfilling"})
+# Non-terminal fulfillment tasks (CHECK ``ck_fulfillment_tasks_status``).
+# ``failed`` is retryable — a retry after the seed would also send Quantity=1.
+OPEN_FULFILLMENT_TASK_STATUSES: frozenset[str] = frozenset({"pending", "in_progress", "failed"})
+
+
+def is_in_flight_order_status(status: str) -> bool:
+    """True when flipping ``tg-stars-any`` would mis-fulfill this order."""
+    return status in IN_FLIGHT_ORDER_STATUSES
+
+
+def is_open_fulfillment_task_status(status: str) -> bool:
+    """True when the task can still send Quantity to G-Engine (including retry)."""
+    return status in OPEN_FULFILLMENT_TASK_STATUSES
+
+
+def in_flight_abort_reason(*, order_ids: list[str], task_ids: list[str]) -> str | None:
+    """Return the abort text listing ids, or ``None`` when the catalog is safe to flip.
+
+    Args:
+        order_ids: ``orders.id`` for ``tg-stars-any`` lines still in
+            :data:`IN_FLIGHT_ORDER_STATUSES`.
+        task_ids: ``fulfillment_tasks.id`` for that SKU still in
+            :data:`OPEN_FULFILLMENT_TASK_STATUSES`.
+
+    Returns:
+        A multi-line operator message, or ``None``.
+    """
+    if not order_ids and not task_ids:
+        return None
+    parts: list[str] = [
+        "in-flight tg-stars-any orders or fulfillment tasks — flipping the SKU "
+        "would fulfill a pre-seed qty=1 line as Quantity=1. Drain them "
+        "(pending_payment expires ~10 min) and re-run. Pack SKUs in-flight are OK."
+    ]
+    if order_ids:
+        parts.append("orders: " + ", ".join(order_ids))
+    if task_ids:
+        parts.append("fulfillment_tasks: " + ", ".join(task_ids))
+    return "\n".join(parts)
+
+
+async def find_in_flight_unit_sku(
+    session: AsyncSession, *, sku_id: str
+) -> tuple[list[str], list[str]]:
+    """Return in-flight ``tg-stars-any`` order ids and open fulfillment task ids.
+
+    Pack SKUs are not queried: this seed does not rewrite their mappings.
+
+    Args:
+        session: Open catalog/orders session.
+        sku_id: ``skus.id`` of ``tg-stars-any``.
+
+    Returns:
+        ``(order_ids, task_ids)``, each sorted.
+    """
+    order_ids = list(
+        (
+            await session.execute(
+                select(Order.id)
+                .join(OrderItem, OrderItem.order_id == Order.id)
+                .where(
+                    OrderItem.sku_id == sku_id,
+                    Order.status.in_(tuple(IN_FLIGHT_ORDER_STATUSES)),
+                )
+                .distinct()
+                .order_by(Order.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    task_ids = list(
+        (
+            await session.execute(
+                select(FulfillmentTask.id)
+                .join(OrderItem, OrderItem.id == FulfillmentTask.order_item_id)
+                .where(
+                    OrderItem.sku_id == sku_id,
+                    FulfillmentTask.status.in_(tuple(OPEN_FULFILLMENT_TASK_STATUSES)),
+                )
+                .order_by(FulfillmentTask.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return order_ids, task_ids
 
 
 # --------------------------------------------------------------------------- #
@@ -389,6 +489,12 @@ def _deactivate_packs(packs: list[Sku]) -> list[str]:
 async def convert(session: AsyncSession, *, dry_run: bool) -> None:
     """Forward path: one unit SKU, packs off, mapping at quantity 1."""
     unit, packs, mapping = await _load(session)
+
+    order_ids, task_ids = await find_in_flight_unit_sku(session, sku_id=unit.id)
+    in_flight_reason = in_flight_abort_reason(order_ids=order_ids, task_ids=task_ids)
+    if in_flight_reason is not None:
+        print(f"\nABORT: {in_flight_reason}")
+        raise SystemExit(1)
 
     service_reason = mapping_service_guard(mapping.external_product_id)
     if service_reason is not None:

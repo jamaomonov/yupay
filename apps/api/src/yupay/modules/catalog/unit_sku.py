@@ -11,14 +11,14 @@ from __future__ import annotations
 
 from yupay.core.errors import ValidationError
 
-# Fallback ceiling on how many units an admin-configured SKU can require when
-# no explicit ``max_qty`` is on file — kept far below ``UNIT_QTY_WIRE_MAX`` so
-# a misconfigured SKU still can't be used to construct an oversized order.
+# Cap on how many of a *non-unit* SKU one line may buy (gift cards, UC packs,
+# etc.). Independent of ``UNIT_QTY_WIRE_MAX`` so raising the wire ceiling for
+# Stars does not let a client order 50_000 gift cards.
 DEFAULT_QTY_MAX: int = 100
 
-# Hard ceiling accepted from the client on any unit-SKU quantity field,
-# independent of the SKU's own ``max_qty`` — a last-resort guard against a
-# malformed or malicious request regardless of what the admin configured.
+# Pydantic ceiling on every ``OrderItemIn.qty``. The real per-SKU limit is
+# ``max_qty`` (unit SKU) or ``DEFAULT_QTY_MAX`` (everything else); this is
+# only the wire maximum the request schema will accept.
 UNIT_QTY_WIRE_MAX: int = 50_000
 
 

@@ -342,21 +342,19 @@ async def _quantity_for(db: AsyncSession, *, item: OrderItem, mapping: Any) -> i
     Two sources of truth coexist here (dual-read), and the variable-amount
     one is checked *first*:
 
-    - A variable-amount line (Steam, and anything else the customer types a
-      free-form USD amount into) re-derives its count from the money
+    - A ``variable_amount`` + ``units_per_usd`` line (Steam, and the
+      pre-seed Stars free-amount SKU) re-derives its count from the money
       actually charged — checkout snapped it to a whole unit, so this
-      reverses exactly that and cannot drift from what was paid. This path
-      stays until the unit-SKU seed retires ``units_per_usd`` from the
-      mappings it replaces.
+      reverses exactly that and cannot drift from what was paid. This
+      reverse-engineer path is for any such SKU, not Stars-specific; do
+      not delete it after the Stars seed.
     - Everything else is ``item.qty * mapping.quantity``. ``item.qty`` is
       *not* pinned to 1 for a package SKU — checkout allows up to
       ``DEFAULT_QTY_MAX`` packs of an ordinary SKU in one line — so this is
-      genuinely "packs bought × units per pack" for those. A unit SKU
-      (Telegram Stars) has no per-pack size; its mapping's ``quantity`` is
-      pinned to 1, so the product collapses to ``item.qty`` alone, the
-      customer's own count. Post-seed (the unit-SKU migration), every
-      mapping's ``quantity`` is 1 and ``item.qty`` is the whole story for
-      both cases.
+      genuinely "packs bought × units per pack" for those. After the Stars
+      seed, the Stars mapping is ``quantity=1`` so the product collapses
+      to ``item.qty`` (the customer's star count). Other products keep
+      their pack ``mapping.quantity``.
     """
     from sqlalchemy import select
 

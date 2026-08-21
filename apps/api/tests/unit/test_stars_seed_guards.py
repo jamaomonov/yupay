@@ -155,6 +155,49 @@ def test_a_mapping_pointing_somewhere_else_is_refused(external_id: str | None) -
     assert "72" in reason
 
 
+# ---------- in-flight tg-stars-any (cutover Quantity=1) ----------
+
+
+@pytest.mark.parametrize("status", ["pending_payment", "paid", "fulfilling"])
+def test_in_flight_order_statuses_match_the_order_fsm(status: str) -> None:
+    assert seed.is_in_flight_order_status(status)
+
+
+@pytest.mark.parametrize(
+    "status",
+    ["fulfilled", "delivered", "failed", "cancelled", "expired", "refunded", "partially_refunded"],
+)
+def test_settled_order_statuses_do_not_block_the_seed(status: str) -> None:
+    assert not seed.is_in_flight_order_status(status)
+
+
+@pytest.mark.parametrize("status", ["pending", "in_progress", "failed"])
+def test_open_fulfillment_task_statuses_block_the_seed(status: str) -> None:
+    assert seed.is_open_fulfillment_task_status(status)
+
+
+@pytest.mark.parametrize("status", ["succeeded", "cancelled"])
+def test_closed_fulfillment_task_statuses_do_not_block_the_seed(status: str) -> None:
+    assert not seed.is_open_fulfillment_task_status(status)
+
+
+def test_in_flight_abort_is_silent_when_the_queue_is_empty() -> None:
+    assert seed.in_flight_abort_reason(order_ids=[], task_ids=[]) is None
+
+
+def test_in_flight_abort_prints_order_and_task_ids() -> None:
+    reason = seed.in_flight_abort_reason(
+        order_ids=["ord-1", "ord-2"],
+        task_ids=["task-9"],
+    )
+
+    assert reason is not None
+    assert "ord-1" in reason
+    assert "ord-2" in reason
+    assert "task-9" in reason
+    assert "Quantity=1" in reason
+
+
 # ---------- the constants the runbook quotes ----------
 
 

@@ -81,6 +81,17 @@ def test_unit_sku_denomination_is_qty_and_unit() -> None:
     assert display.variable_amount is False
 
 
+def test_pre_seed_qty_one_on_unit_sku_keeps_stored_denomination() -> None:
+    """After the seed the live SKU is a unit SKU, but a historical free-amount
+    line stored ``qty=1``. Must not rewrite the label to ``"1 Stars"``."""
+    sku = _unit_sku()
+    sku.denomination = "Любое количество"
+    item = _item(sku, qty=1)
+    display = build_item_display(item)
+    assert display is not None
+    assert display.denomination == "Любое количество"
+
+
 def test_unit_sku_without_amount_unit_falls_back_to_stored_denomination() -> None:
     # Defensive: ``is_unit_sku`` requires amount_unit truthy, so a SKU
     # missing it (shouldn't happen once the DB constraint holds) still

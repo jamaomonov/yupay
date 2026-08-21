@@ -20,9 +20,14 @@ off and code that still expects them. **Never put this DML in an Alembic `upgrad
 | `tg-stars-50` … `tg-stars-2500` | `active=true`                                                          | `active=false` — **not deleted**                                                                                      |
 | historical `order_items`        | —                                                                      | untouched                                                                                                             |
 
-An in-flight pack order still fulfils correctly after the flip: it stored `qty=1`
-against a mapping with `quantity=N`, and the adapter sends `qty × mapping.quantity`
-either way.
+An in-flight **pack** order still fulfils correctly after the flip: it stored
+`qty=1` against a mapping with `quantity=N`, and the adapter sends
+`qty × mapping.quantity` either way. This seed does **not** rewrite pack mappings.
+
+An in-flight **`tg-stars-any` free-amount** order does not: it stored `qty=1` and
+the USD face in `unit_price_usd`. After the flip the reverse-engineer branch no
+longer matches, so G-Engine would be told `Quantity=1`. Drain those orders before
+the seed (step 3). The script aborts with the ids if any remain.
 
 ## Rollout — five steps, in this order
 
@@ -30,10 +35,17 @@ either way.
    row keeps `min_qty=NULL`. The new code dual-reads: unit SKU (`min_qty` set) →
    qty path; variable → old path. **Stars still sells the old way.** Steam is
    unchanged.
-2. **Confirm `/store/telegram-stars` still sells on prod** — pack grid and
-   free-amount field both render, and a pack tile still reaches payment. If it
-   does not, stop and roll the image back; do not run the seed.
-3. **Run the seed** (command below). Not in `alembic upgrade`. Never add it to one.
+2. **Confirm packs + typed amount on web.** Mini App typed-amount preview no
+   longer applies `tierPrice` until the seed, so it will disagree with the server
+   (checkout still charges the pack tier). Confirm packs and free amount still
+   sell on **web**. If they do not, stop and roll the image back; do not run the
+   seed. Seed promptly after this check — do not wait on Mini App preview.
+3. **Drain in-flight `tg-stars-any` orders, then run the seed** (command below).
+   Wait out `pending_payment` (expires ~10 min) or finish/cancel any
+   `pending_payment` / `paid` / `fulfilling` order that contains `tg-stars-any`,
+   and any still-open fulfillment task for that SKU. Pack SKUs in-flight are OK.
+   The seed exits 1 and prints the ids if any remain. Not in `alembic upgrade`.
+   Never add it to one.
 4. **Buy 50★ twice** — once from a tile, once by typing `50`. Each must create
    **one** G-Engine order with `Quantity = 50`.
 5. **Revert, if needed, in this order:** seed `--revert` first, then roll the
@@ -77,14 +89,15 @@ harmless on the variable-amount line are dangerous on this one. The script refus
 to guess and exits 1, printing the offending row plus (when `GENGINE_API_KEY` is
 configured) what G-Engine quotes for service 72 right now.
 
-| Abort                                               | What it means                                                                                                                                                                                                    | What to do                                                                                                                                                                    |
-| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cost_usdt is NULL`                                 | The variable-amount line never carried a cost. This is the case prod is most likely to hit.                                                                                                                      | Set the per-star cost — `1 / unfixed_details.rate` from G-Engine service 72, around `$0.0155` — and `margin_percent` on the SKU in the admin, then re-run.                    |
-| `cost_usdt=… is above 0.5`                          | That is a pack-sized cost that was never divided by the star count.                                                                                                                                              | Fix the row (or check you are pointed at the right SKU). **Do not divide it by 50 and do not ask the script to** — it will not, because picking a sale price is not its call. |
-| `cost_usdt=… is below 0.001`                        | Too small to be a star; something rounded to nothing.                                                                                                                                                            | Fix the row and re-run.                                                                                                                                                       |
-| `price_usd=… is above 0.5`                          | The resulting per-star price would sell 50 Stars for more than $25. The usual cause is the `price_usd=1` placeholder the variable line carried — on a unit SKU that is a dollar per star, i.e. $50 for 50 Stars. | Set `margin_percent` on the SKU so the price is re-derived from `cost_usdt`, or set `price_usd` by hand, then re-run.                                                         |
-| `price_usd=… is below cost_usdt=…`                  | Every star would sell at a loss.                                                                                                                                                                                 | Set `margin_percent` and re-run.                                                                                                                                              |
-| `the gengine mapping … points at service …, not 72` | The mapping this script would rewrite is not the Stars one.                                                                                                                                                      | Fix the mapping in the admin. The script will not edit a row it does not recognise.                                                                                           |
+| Abort                                                | What it means                                                                                                                                                                                                    | What to do                                                                                                                                                                    |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cost_usdt is NULL`                                  | The variable-amount line never carried a cost. This is the case prod is most likely to hit.                                                                                                                      | Set the per-star cost — `1 / unfixed_details.rate` from G-Engine service 72, around `$0.0155` — and `margin_percent` on the SKU in the admin, then re-run.                    |
+| `cost_usdt=… is above 0.5`                           | That is a pack-sized cost that was never divided by the star count.                                                                                                                                              | Fix the row (or check you are pointed at the right SKU). **Do not divide it by 50 and do not ask the script to** — it will not, because picking a sale price is not its call. |
+| `cost_usdt=… is below 0.001`                         | Too small to be a star; something rounded to nothing.                                                                                                                                                            | Fix the row and re-run.                                                                                                                                                       |
+| `price_usd=… is above 0.5`                           | The resulting per-star price would sell 50 Stars for more than $25. The usual cause is the `price_usd=1` placeholder the variable line carried — on a unit SKU that is a dollar per star, i.e. $50 for 50 Stars. | Set `margin_percent` on the SKU so the price is re-derived from `cost_usdt`, or set `price_usd` by hand, then re-run.                                                         |
+| `price_usd=… is below cost_usdt=…`                   | Every star would sell at a loss.                                                                                                                                                                                 | Set `margin_percent` and re-run.                                                                                                                                              |
+| `the gengine mapping … points at service …, not 72`  | The mapping this script would rewrite is not the Stars one.                                                                                                                                                      | Fix the mapping in the admin. The script will not edit a row it does not recognise.                                                                                           |
+| `in-flight tg-stars-any orders or fulfillment tasks` | A free-amount line stored `qty=1`. After the flip G-Engine would send `Quantity=1`. Pack SKUs in-flight are not this abort.                                                                                      | Drain / wait out `pending_payment` (~10 min), then re-run. The abort prints the order and task ids.                                                                           |
 
 When `margin_percent` is set, `price_usd = cost_usdt × (1 + margin_percent/100)` at
 six decimals — the same rule as the hourly supplier price refresh, except it keeps

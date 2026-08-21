@@ -113,8 +113,11 @@ def build_item_display(item: OrderItem, *, locale: str = "ru") -> OrderItemDispl
     # A unit SKU (Telegram Stars) has no fixed denomination — the line is
     # however many units the customer bought, not a catalog attribute. Read
     # it from the frozen `item.qty`, never re-derived from `amount_usd`.
+    # Only format `{qty} {unit}` for a real unit purchase (`qty >= min_qty`).
+    # A pre-seed free-amount line stored qty=1; after the seed the live SKU
+    # looks like a unit SKU and would otherwise display as "1 Stars".
     denomination = sku.denomination
-    if is_unit_sku(sku) and sku.amount_unit:
+    if is_unit_sku(sku) and sku.amount_unit and sku.min_qty is not None and item.qty >= sku.min_qty:
         denomination = f"{item.qty} {sku.amount_unit}"
     return OrderItemDisplay(
         brand_slug=brand.slug if brand is not None else "",
