@@ -322,6 +322,16 @@ export default function TopUp() {
   const unitPkg = packages.find(isUnitPackage);
   const fixedPackages = packages.filter((p) => !p.variableAmount && p.id !== unitPkg?.id);
   const isVariableProduct = packages.length > 0 && fixedPackages.length === 0 && !!variablePkg;
+  // Must sit with the other hooks — the loading / not-found / maintenance
+  // returns below would otherwise call this useMemo on some renders and skip
+  // it on others (react-hooks/rules-of-hooks).
+  const tierPacks = useMemo(
+    () =>
+      packages
+        .filter((p) => !p.variableAmount && p.id !== unitPkg?.id && p.units != null && p.price > 0)
+        .map((p) => ({ units: p.units ?? 0, price: p.price })),
+    [packages, unitPkg?.id],
+  );
 
   // Cache it so the next visit's skeleton promises the right form (see
   // lib/brand-shape.ts) — the flag only becomes knowable after the SKUs load,
@@ -564,13 +574,6 @@ export default function TopUp() {
   // still sit next to the variable line (dual-read until the Stars seed),
   // this must be `tierPrice` — the same rule as `orders.service.tier_price_usd`
   // — or the button shows a linear rate and checkout charges the pack band.
-  const tierPacks = useMemo(
-    () =>
-      packages
-        .filter((p) => !p.variableAmount && p.id !== unitPkg?.id && p.units != null && p.price > 0)
-        .map((p) => ({ units: p.units ?? 0, price: p.price })),
-    [packages, unitPkg?.id],
-  );
   const variableTotal = !isVariableSelected
     ? null
     : parsedAmount === null

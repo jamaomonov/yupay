@@ -60,7 +60,9 @@ async def _unit_sku(db_session: AsyncSession) -> Sku:
     ``_compute_total_charged`` is exercised the same way a real Stars sale
     would be."""
     category = Category(id=new_id(), slug="telegram", sort_order=10, active=True)
-    brand = Brand(id=new_id(), slug="telegram-stars", category_id=category.id, sort_order=10, active=True)
+    brand = Brand(
+        id=new_id(), slug="telegram-stars", category_id=category.id, sort_order=10, active=True
+    )
     sku = Sku(
         id=new_id(),
         sku_code="telegram-stars-unit",
@@ -95,7 +97,9 @@ async def _gift_sku(db_session: AsyncSession) -> Sku:
     """An ordinary fixed-price SKU (not a unit SKU) — the negative case that
     proves the raised wire ceiling did not raise the real limit for it too."""
     category = Category(id=new_id(), slug="games", sort_order=10, active=True)
-    brand = Brand(id=new_id(), slug="steam-giftcard", category_id=category.id, sort_order=10, active=True)
+    brand = Brand(
+        id=new_id(), slug="steam-giftcard", category_id=category.id, sort_order=10, active=True
+    )
     sku = Sku(
         id=new_id(),
         sku_code="steam-giftcard-20",
