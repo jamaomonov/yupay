@@ -99,7 +99,7 @@ the star count rides on `qty`. A leftover pack-era `500` there would order
 500 × whatever the customer asked for. The script prints the old → new line before
 it touches anything:
 
-```
+```text
 mapping.quantity: 500 -> 1 — G-Engine Quantity is qty × mapping.quantity, so
 leaving it at 500 would order 500 × the stars the customer asked for
 ```
