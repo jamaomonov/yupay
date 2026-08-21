@@ -125,6 +125,37 @@ it("re-derives margin from the new cost, keeping price_usd put", async () => {
   expect(price.value).toBe("1.50");
 });
 
+it("shows the min/max stars fields for a non-variable SKU, and hides them once variable amount is toggled on", async () => {
+  renderPage();
+
+  expect(await screen.findByPlaceholderText("50")).toBeInTheDocument();
+  expect(screen.getByPlaceholderText("2500")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByLabelText("Плавающая сумма"));
+  await waitFor(() => {
+    expect(screen.queryByPlaceholderText("50")).not.toBeInTheDocument();
+  });
+  expect(screen.queryByPlaceholderText("2500")).not.toBeInTheDocument();
+});
+
+it("requires min and max stars together, and max >= min", async () => {
+  renderPage();
+
+  const priceUsd = await screen.findByPlaceholderText("0.85");
+  fireEvent.change(priceUsd, { target: { value: "1" } });
+  const skuCode = screen.getByPlaceholderText("pubg-uc-60-tr");
+  fireEvent.change(skuCode, { target: { value: "tg-stars-any" } });
+
+  const minQty = screen.getByPlaceholderText("50");
+  fireEvent.change(minQty, { target: { value: "2500" } });
+  const maxQty = screen.getByPlaceholderText("2500");
+  fireEvent.change(maxQty, { target: { value: "50" } });
+
+  fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+
+  expect(await screen.findByText("Должно быть ≥ минимума")).toBeInTheDocument();
+});
+
 it("previews the USD price converted per FX rate, and prefers a currency override over the conversion", async () => {
   renderPage();
 

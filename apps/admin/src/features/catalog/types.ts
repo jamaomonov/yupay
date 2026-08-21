@@ -132,6 +132,10 @@ export interface Sku {
   max_amount_usd: string | null;
   /** Admin-only: the margin. Never sent to public endpoints. */
   rate_multiplier: string | null;
+  /** Unit-SKU (Telegram Stars) quantity bounds — both set or both null. See
+   *  `ck_skus_qty_bounds_complete` on the API. */
+  min_qty: number | null;
+  max_qty: number | null;
   image_url: string | null;
   sort_order: number;
   active: boolean;

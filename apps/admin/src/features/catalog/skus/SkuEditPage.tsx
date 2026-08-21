@@ -38,6 +38,9 @@ const priceOverrideSchema = z.object({
 // stored as Numeric(10, 4) so it gets its own, tighter pattern.
 const _amountPattern = /^(\d+(\.\d{1,6})?)?$/;
 const _multiplierPattern = /^(\d+(\.\d{1,4})?)?$/;
+// Unit-SKU (Telegram Stars) quantity bounds are plain positive integers —
+// no decimals, unlike the dollar-amount fields above.
+const _qtyPattern = /^(\d+)?$/;
 
 /** margin% = (price − cost) / cost × 100, rounded to 2 decimals — matches the
  *  sell-price formula already used by the G2B import wizard
@@ -104,12 +107,46 @@ const skuSchema = z
       .regex(_multiplierPattern, "число > 0 либо пусто")
       .optional()
       .nullable(),
+    // Unit-SKU (Telegram Stars) quantity bounds — both or neither, mirrors
+    // `ck_skus_qty_bounds_complete`. Empty means "not a unit SKU": the
+    // backend keeps min_qty/max_qty NULL. Only meaningful (and only
+    // rendered) when variable_amount is off, but validated unconditionally
+    // since it doesn't depend on that toggle.
+    min_qty: z.string().regex(_qtyPattern, "целое число ≥ 1 либо пусто").optional().nullable(),
+    max_qty: z.string().regex(_qtyPattern, "целое число ≥ 1 либо пусто").optional().nullable(),
     image_url: z.string().url().or(z.literal("")).optional().nullable(),
     sort_order: z.coerce.number().int().default(0),
     active: z.boolean().default(true),
     price_overrides: z.array(priceOverrideSchema).default([]),
   })
   .superRefine((val, ctx) => {
+    const minQtyStr = (val.min_qty ?? "").trim();
+    const maxQtyStr = (val.max_qty ?? "").trim();
+    if (minQtyStr || maxQtyStr) {
+      const minQty = Number.parseInt(minQtyStr, 10);
+      const maxQty = Number.parseInt(maxQtyStr, 10);
+      if (!minQtyStr || Number.isNaN(minQty) || minQty < 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["min_qty"],
+          message: "Оба поля вместе, целое число ≥ 1",
+        });
+      }
+      if (!maxQtyStr || Number.isNaN(maxQty) || maxQty < 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["max_qty"],
+          message: "Оба поля вместе, целое число ≥ 1",
+        });
+      }
+      if (!Number.isNaN(minQty) && !Number.isNaN(maxQty) && maxQty < minQty) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["max_qty"],
+          message: "Должно быть ≥ минимума",
+        });
+      }
+    }
     if (val.variable_amount) {
       const min = Number.parseFloat(val.min_amount_usd ?? "");
       const max = Number.parseFloat(val.max_amount_usd ?? "");
@@ -175,6 +212,8 @@ const EMPTY: FormValues = {
   min_amount_usd: "",
   max_amount_usd: "",
   rate_multiplier: "",
+  min_qty: "",
+  max_qty: "",
   image_url: "",
   sort_order: 0,
   active: true,
@@ -193,6 +232,8 @@ interface SkuCreateBody {
   min_amount_usd: string | null;
   max_amount_usd: string | null;
   rate_multiplier: string | null;
+  min_qty: number | null;
+  max_qty: number | null;
   image_url: string | null;
   sort_order: number;
   active: boolean;
@@ -210,6 +251,8 @@ interface SkuPatchBody {
   min_amount_usd: string | null;
   max_amount_usd: string | null;
   rate_multiplier: string | null;
+  min_qty: number | null;
+  max_qty: number | null;
   image_url: string | null;
   sort_order: number;
   active: boolean;
@@ -306,6 +349,8 @@ export function SkuEditPage() {
       min_amount_usd: existing.min_amount_usd ?? "",
       max_amount_usd: existing.max_amount_usd ?? "",
       rate_multiplier: existing.rate_multiplier ?? "",
+      min_qty: existing.min_qty != null ? String(existing.min_qty) : "",
+      max_qty: existing.max_qty != null ? String(existing.max_qty) : "",
       image_url: existing.image_url ?? "",
       sort_order: existing.sort_order,
       active: existing.active,
@@ -433,6 +478,13 @@ export function SkuEditPage() {
       const rateMultiplierNorm = values.variable_amount
         ? values.rate_multiplier?.trim() || null
         : null;
+      // Empty means "not a unit SKU" — both go NULL together. superRefine
+      // above already guarantees they're either both empty or both valid
+      // integers with max >= min by the time submit gets here.
+      const minQtyTrim = values.min_qty?.trim();
+      const maxQtyTrim = values.max_qty?.trim();
+      const minQtyNorm = minQtyTrim ? Number.parseInt(minQtyTrim, 10) : null;
+      const maxQtyNorm = maxQtyTrim ? Number.parseInt(maxQtyTrim, 10) : null;
       if (isNew) {
         const body: SkuCreateBody = {
           product_id: values.product_id,
@@ -446,6 +498,8 @@ export function SkuEditPage() {
           min_amount_usd: minAmountNorm,
           max_amount_usd: maxAmountNorm,
           rate_multiplier: rateMultiplierNorm,
+          min_qty: minQtyNorm,
+          max_qty: maxQtyNorm,
           image_url: values.image_url?.trim() || null,
           sort_order: values.sort_order,
           active: values.active,
@@ -467,6 +521,8 @@ export function SkuEditPage() {
         min_amount_usd: minAmountNorm,
         max_amount_usd: maxAmountNorm,
         rate_multiplier: rateMultiplierNorm,
+        min_qty: minQtyNorm,
+        max_qty: maxQtyNorm,
         image_url: values.image_url?.trim() || null,
         sort_order: values.sort_order,
         active: values.active,
@@ -663,6 +719,31 @@ export function SkuEditPage() {
               </Field>
             )}
           </div>
+
+          {!watchedVariableAmount && (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Field
+                label="Мин. звёзд"
+                error={form.formState.errors.min_qty?.message}
+                help="Unit-SKU (например, Telegram Stars): покупатель указывает целое количество. Оставь оба поля пустыми, если это не unit-SKU."
+              >
+                <Input
+                  {...form.register("min_qty")}
+                  inputMode="numeric"
+                  placeholder="50"
+                  className="font-mono"
+                />
+              </Field>
+              <Field label="Макс. звёзд" error={form.formState.errors.max_qty?.message}>
+                <Input
+                  {...form.register("max_qty")}
+                  inputMode="numeric"
+                  placeholder="2500"
+                  className="font-mono"
+                />
+              </Field>
+            </div>
+          )}
 
           <div className="rounded-md border border-[var(--border-default)] bg-[var(--bg-muted)] p-3">
             <label className="flex items-center gap-2 text-sm font-medium">
