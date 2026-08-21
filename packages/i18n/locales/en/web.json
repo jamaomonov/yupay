@@ -652,7 +652,6 @@
   "orderResult": {
     "deliveredTitle": "Top-up successful",
     "deliveredBody": "Your order has been delivered. Check your balance or the code you received.",
-    "rateCta": "Rate your purchase",
     "close": "Close"
   }
 }

@@ -20,6 +20,10 @@ export interface ReviewFormProps {
   /** Extra classes merged onto the outer `<form>` — callers differ only in
    *  their top margin (e.g. `mt-6` vs `mt-8`). */
   className?: string;
+  /** `card` (default) frames the form as its own panel inside a page section.
+   *  `bare` drops the frame for a host that already is one — the delivered
+   *  modal, where a bordered card inside a bordered card reads as a mistake. */
+  variant?: "card" | "bare";
 }
 
 /**
@@ -29,7 +33,13 @@ export interface ReviewFormProps {
  * the actual submit call stay in the parent, which drives this component via
  * `submitting`/`showError` and receives the result through `onSubmit`.
  */
-export function ReviewForm({ onSubmit, submitting, showError, className }: ReviewFormProps) {
+export function ReviewForm({
+  onSubmit,
+  submitting,
+  showError,
+  className,
+  variant = "card",
+}: ReviewFormProps) {
   const t = useTranslations("web.brandReviews");
   const [rating, setRating] = useState(0);
   const [hover, setHover] = useState(0);
@@ -42,11 +52,9 @@ export function ReviewForm({ onSubmit, submitting, showError, className }: Revie
   }
 
   const active = hover || rating;
+  const frame = variant === "card" ? "border-border bg-card rounded-2xl border p-5" : "";
   return (
-    <form
-      onSubmit={handleSubmit}
-      className={`border-border bg-card rounded-2xl border p-5 ${className ?? ""}`}
-    >
+    <form onSubmit={handleSubmit} className={`${frame} ${className ?? ""}`}>
       <p className="text-sm font-semibold">{t("formTitle")}</p>
       <div className="mt-3">
         <div className="text-tx-mute mb-1.5 text-xs">{t("ratingLabel")}</div>

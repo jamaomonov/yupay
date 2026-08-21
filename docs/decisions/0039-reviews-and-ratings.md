@@ -138,3 +138,41 @@ brand)` means a user who checks out as a guest and later claims that order
   order twice under two identities — accepted, since a single order has one
   buyer identity by construction and this only forecloses a scenario that was
   never possible anyway.
+
+## Amendment: the review is asked for in place (2026-08-21)
+
+### Context
+
+The logged-in web ask was a "rate your purchase" CTA in the delivered modal
+linking to `/store/{brand}?order={id}#reviews`. In practice that traded a
+one-tap ask for a page load onto the brand's marketing page — and usually at
+the top of it, because `WriteReviewPanel` is client-only and auth-gated, so the
+browser resolves `#reviews` before the form exists. The buyer arrived where
+they did not ask to be and had to find the form. The Mini App never had this
+problem: its delivered dialog opens `ReviewsSheet` in place.
+
+### Decision
+
+`OrderDeliveredModal` collects the review itself: it renders the shared
+`ReviewForm` (new `variant="bare"`, which drops the card frame that would
+otherwise nest a panel inside the dialog panel) and submits through
+`submitReview`, with the same `idle | sending | done | already | error`
+orchestration `GuestReviewPanel` and `WriteReviewPanel` use. Success
+invalidates `["my-reviews"]` so the remaining CTAs stop offering to rate a
+rated order, and the submit state resets on `orderId` change — the modal is
+mounted once per session, so a second delivery must open on a form, not on
+"спасибо за отзыв". The now-unused `web.orderResult.rateCta` key is dropped
+from all three locales.
+
+The brand-page form stays for the two entry points that are deliberately
+navigations (the order page and the account order list, where the buyer chose
+to act on a past order). For those, `WriteReviewPanel` scrolls `#reviews` into
+view itself when `?order=` is present rather than trusting the hash.
+
+### Consequences
+
+- Positive: the ask costs one tap and no page load; web and Mini App now
+  collect the review the same way.
+- Negative: the modal no longer doubles as a route to the brand page, so a
+  buyer who wanted to read other reviews navigates there themselves —
+  accepted, that was never what the CTA promised.

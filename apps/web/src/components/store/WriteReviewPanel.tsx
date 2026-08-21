@@ -3,7 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { ReviewForm } from "./ReviewForm";
 
@@ -24,6 +24,18 @@ export function WriteReviewPanel({ brandSlug }: { brandSlug: string }) {
   const orderId = useSearchParams().get("order");
 
   const [state, setState] = useState<"idle" | "sending" | "done" | "already" | "error">("idle");
+  const scrolledRef = useRef(false);
+
+  // `?order=` means the visitor came to rate, not to browse the brand, so put
+  // the reviews section on screen. The `#reviews` hash on those links is not
+  // enough: on a client-side transition the browser resolves it before this
+  // auth-gated panel mounts and grows the section, which is how buyers end up
+  // staring at the top of the brand page instead.
+  useEffect(() => {
+    if (!user || !orderId || scrolledRef.current) return;
+    scrolledRef.current = true;
+    document.getElementById("reviews")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [user, orderId]);
 
   if (!user || !orderId) return null;
   if (state === "done") {

@@ -1,30 +1,37 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
 
 import { OrderDeliveredModal } from "./OrderDeliveredModal";
 
+import type * as ClientModule from "@/lib/client";
 import type { OrderOut } from "@/lib/orders-types";
-import type { OwnReview } from "@/lib/reviews";
+import type { OwnReview, Review } from "@/lib/reviews";
 import type { ReactNode } from "react";
 
+import { ApiError } from "@/lib/client";
 import { useOrderDeliveredModal } from "@/store/useOrderDeliveredModal";
 
 vi.mock("next-intl", () => ({
-  useTranslations: () => (k: string) => `orderResult.${k}`,
+  useTranslations: (ns: string) => (k: string) => `${ns}.${k}`,
   useLocale: () => "ru",
 }));
 
 const mockApiFetch = vi.fn<(path: string) => Promise<OrderOut>>();
-vi.mock("@/lib/client", () => ({
+// `ApiError` is kept real — the modal branches on `err instanceof ApiError` to
+// tell "already reviewed" (409) from a transient failure.
+vi.mock("@/lib/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof ClientModule>()),
   apiFetch: (path: string) => mockApiFetch(path),
 }));
 
 const mockGetMyReviews = vi.fn<() => Promise<{ items: OwnReview[] }>>();
+const mockSubmitReview = vi.fn<(body: Record<string, unknown>) => Promise<Review>>();
 vi.mock("@/lib/reviews", () => ({
   getMyReviews: () => mockGetMyReviews(),
+  submitReview: (body: Record<string, unknown>) => mockSubmitReview(body),
 }));
 
 const ORDER_ID = "order-abc-123";
@@ -77,12 +84,22 @@ function renderModal() {
   return render(<OrderDeliveredModal />, { wrapper });
 }
 
+/** Opens the modal on a delivered, not-yet-reviewed order and waits for it. */
+async function openWithForm() {
+  mockApiFetch.mockResolvedValue(makeOrder("steam"));
+  mockGetMyReviews.mockResolvedValue({ items: [] });
+  useOrderDeliveredModal.setState({ orderId: ORDER_ID });
+  renderModal();
+  return screen.findByText("web.brandReviews.formTitle");
+}
+
 // Reset in `beforeEach` only (not `afterEach`): a store update after the test
 // body returns, while the component is still mounted, re-renders it outside
 // React Testing Library's `act()`-wrapped cleanup/unmount.
 beforeEach(() => {
   mockApiFetch.mockReset();
   mockGetMyReviews.mockReset();
+  mockSubmitReview.mockReset();
   useOrderDeliveredModal.setState({ orderId: null });
 });
 
@@ -95,20 +112,48 @@ test("renders nothing when the store is closed", () => {
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
-test("shows the rate CTA linking to the brand review anchor when not yet reviewed", async () => {
-  mockApiFetch.mockResolvedValue(makeOrder("steam"));
-  mockGetMyReviews.mockResolvedValue({ items: [] });
-  useOrderDeliveredModal.setState({ orderId: ORDER_ID });
+test("collects the review in the modal instead of linking to the brand page", async () => {
+  await openWithForm();
 
-  renderModal();
-
-  const cta = await screen.findByRole("link", { name: "orderResult.rateCta" });
-  // ru is the default locale → canonical, prefix-less path (pathFor).
-  expect(cta).toHaveAttribute("href", `/store/steam?order=${ORDER_ID}#reviews`);
+  expect(screen.getByRole("button", { name: "web.brandReviews.submit" })).toBeInTheDocument();
+  expect(screen.queryByRole("link")).not.toBeInTheDocument();
   expect(mockApiFetch).toHaveBeenCalledWith(`/orders/${ORDER_ID}`);
 });
 
-test("hides the rate CTA when the order is already reviewed", async () => {
+test("submits the rating and comment for the delivered order", async () => {
+  mockSubmitReview.mockResolvedValue({
+    id: "rev-1",
+    rating: 5,
+    body: "быстро",
+    author_name: null,
+    created_at: "2026-07-28T00:00:00Z",
+  });
+  await openWithForm();
+
+  fireEvent.click(screen.getByRole("button", { name: "5" }));
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "быстро" } });
+  fireEvent.click(screen.getByRole("button", { name: "web.brandReviews.submit" }));
+
+  expect(await screen.findByText("web.brandReviews.thanks")).toBeInTheDocument();
+  expect(mockSubmitReview).toHaveBeenCalledWith({
+    order_id: ORDER_ID,
+    brand_slug: "steam",
+    rating: 5,
+    body: "быстро",
+  });
+});
+
+test("reports an order rated elsewhere in the meantime (409)", async () => {
+  mockSubmitReview.mockRejectedValue(new ApiError(409, "/reviews"));
+  await openWithForm();
+
+  fireEvent.click(screen.getByRole("button", { name: "4" }));
+  fireEvent.click(screen.getByRole("button", { name: "web.brandReviews.submit" }));
+
+  expect(await screen.findByText("web.brandReviews.alreadyReviewed")).toBeInTheDocument();
+});
+
+test("hides the review form when the order is already reviewed", async () => {
   mockApiFetch.mockResolvedValue(makeOrder("steam"));
   mockGetMyReviews.mockResolvedValue({
     items: [{ id: "rev-1", order_id: ORDER_ID, brand_id: "brand-1", rating: 5 }],
@@ -118,6 +163,13 @@ test("hides the rate CTA when the order is already reviewed", async () => {
   renderModal();
 
   await screen.findByRole("dialog");
-  expect(screen.queryByRole("link", { name: "orderResult.rateCta" })).not.toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "orderResult.deliveredTitle" })).toBeInTheDocument();
+  // The dialog can render before `my-reviews` settles, and the form only ever
+  // disappears as that answer lands — so retry instead of asserting on the
+  // first paint.
+  await waitFor(() => {
+    expect(screen.queryByText("web.brandReviews.formTitle")).not.toBeInTheDocument();
+  });
+  expect(
+    screen.getByRole("heading", { name: "web.orderResult.deliveredTitle" }),
+  ).toBeInTheDocument();
 });
