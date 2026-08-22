@@ -86,15 +86,32 @@ export async function Footer({ locale }: { locale: string }) {
             <FooterLink href="https://t.me/yupay_support" external>
               {nav("support")}
             </FooterLink>
-            <FooterLink href={pathFor(locale, "/legal/refunds")}>{t("refunds")}</FooterLink>
+            <FooterLink href={pathFor(locale, "/legal/refunds")} prefetch={false}>
+              {t("refunds")}
+            </FooterLink>
           </FooterCol>
 
+          {/* The legal column sits on every page and is opened by almost nobody,
+              so the default viewport prefetch spends a mobile visitor's data on
+              five documents they will not read — and the browser cancels those
+              requests on navigation, which is what fills the proxy log with
+              "aborting with incomplete response". */}
           <FooterCol title={t("legalTitle")}>
-            <FooterLink href={pathFor(locale, "/legal/terms")}>{t("terms")}</FooterLink>
-            <FooterLink href={pathFor(locale, "/legal/agreement")}>{t("agreement")}</FooterLink>
-            <FooterLink href={pathFor(locale, "/legal/privacy")}>{t("privacy")}</FooterLink>
-            <FooterLink href={pathFor(locale, "/legal/imprint")}>{t("imprint")}</FooterLink>
-            <FooterLink href={pathFor(locale, "/legal")}>{t("allDocs")}</FooterLink>
+            <FooterLink href={pathFor(locale, "/legal/terms")} prefetch={false}>
+              {t("terms")}
+            </FooterLink>
+            <FooterLink href={pathFor(locale, "/legal/agreement")} prefetch={false}>
+              {t("agreement")}
+            </FooterLink>
+            <FooterLink href={pathFor(locale, "/legal/privacy")} prefetch={false}>
+              {t("privacy")}
+            </FooterLink>
+            <FooterLink href={pathFor(locale, "/legal/imprint")} prefetch={false}>
+              {t("imprint")}
+            </FooterLink>
+            <FooterLink href={pathFor(locale, "/legal")} prefetch={false}>
+              {t("allDocs")}
+            </FooterLink>
           </FooterCol>
 
           <FooterCol title={t("usTitle")}>
@@ -169,10 +186,14 @@ function FooterCol({ title, children }: { title: string; children: React.ReactNo
 function FooterLink({
   href,
   external,
+  // `null` is Next's own default (prefetch on viewport), not `true` — passing
+  // `true` would force a *full* route prefetch, the opposite of the intent.
+  prefetch = null,
   children,
 }: {
   href: string;
   external?: boolean;
+  prefetch?: boolean | null;
   children: React.ReactNode;
 }) {
   const cls =
@@ -185,7 +206,7 @@ function FooterLink({
     );
   }
   return (
-    <Link href={href} className={cls}>
+    <Link href={href} prefetch={prefetch} className={cls}>
       {children}
     </Link>
   );
