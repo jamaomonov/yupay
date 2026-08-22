@@ -16,8 +16,8 @@
     "gen:api": "openapi-ts -i ../../docs/api/openapi.json -o src/generated -c @hey-api/client-fetch || echo 'openapi.json not yet generated'"
   },
   "dependencies": {
-    "@hey-api/client-fetch": "^0.5.0",
-    "@tanstack/react-query": "^5.59.20",
+    "@hey-api/client-fetch": "^0.13.1",
+    "@tanstack/react-query": "^5.101.4",
     "zod": "^3.23.8"
   },
   "peerDependencies": {
@@ -25,7 +25,7 @@
   },
   "devDependencies": {
     "@hey-api/openapi-ts": "^0.61.0",
-    "@types/react": "^19.0.0",
+    "@types/react": "^19.2.18",
     "@yupay/config-eslint": "workspace:*",
     "@yupay/config-tsconfig": "workspace:*",
     "typescript": "^5.6.3",
