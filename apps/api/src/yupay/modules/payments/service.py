@@ -353,16 +353,26 @@ async def _settle_late_payment(
     looked. The order therefore moves to ``paid`` whatever we had decided
     earlier, and from there the two purposes diverge:
 
-    * a **deposit** is credited outright. There is nothing to source, nothing
-      to price, and no reason a late payment should be worth less than a
-      punctual one.
-    * a **catalogue order** is held. Its price and stock were settled ten
-      minutes ago and no longer bind, so a human chooses between delivering
-      and refunding — the same one-click release a large order already gets.
+    * a **deposit on an expired order** is credited outright. Expiry is
+      mechanical and blameless — the customer was slow with an SMS code —
+      and there is nothing to source or re-price.
+    * everything else is held: a **catalogue order**, whose price and stock
+      were settled ten minutes ago and no longer bind, and a deposit on an
+      order somebody **cancelled**, which is a decision a late callback must
+      not quietly reverse. Cancellation is only ever an operator's doing
+      (``cancel_order_admin`` is the single writer of that status), usually
+      because the order looked wrong; auto-crediting would hand the balance
+      to exactly that account, where it can be spent before anyone reads the
+      alert — and ``reverse_topup`` then refuses the clawback.
+
+    Either way a human releases the hold in one click, or refunds.
 
     ``cancelled_at`` is deliberately left where it is: it records that we did
     expire this order, which is the fact that explains the event beside it.
     """
+    # Expiry is the sweep giving up on us; cancellation is a person deciding.
+    # Only the first is safe to settle automatically.
+    lapsed = order.status == "expired"
     moment = now()
     order.status = "paid"
     if order.paid_at is None:
@@ -398,14 +408,18 @@ async def _settle_late_payment(
         f"Заказ {order.id} ({order.purpose}), {payment.amount} {payment.currency} "
         f"через {payment.provider}."
     )
-    if order.purpose == "wallet_topup":
+    if order.purpose == "wallet_topup" and lapsed:
         await _complete_wallet_topup(db, order=order, payment=payment)
         alert += "\nБаланс пополнен."
     else:
         from yupay.modules.orders.risk import REASON_PAID_AFTER_EXPIRY, hold_for_review
 
         await hold_for_review(db, order=order, reason=REASON_PAID_AFTER_EXPIRY)
-        alert += "\nВыдача не запускалась — решите, выдавать или вернуть деньги."
+        alert += (
+            "\nБаланс НЕ пополнен — заказ отменял оператор, решите вручную."
+            if order.purpose == "wallet_topup"
+            else "\nВыдача не запускалась — решите, выдавать или вернуть деньги."
+        )
     schedule_after_commit(db, lambda: send_admin_alert(alert, kind="paid_after_expiry"))
 
 

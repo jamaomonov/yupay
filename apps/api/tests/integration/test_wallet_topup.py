@@ -310,10 +310,12 @@ async def test_admin_payment_list_says_a_deposit_is_a_deposit(
     admin, _ = await _login_user(integration_client, tg_id=912)
     await _grant_admin(db_session, tg_id=912)
 
+    order_id = payment["order_id"]
+    assert isinstance(order_id, str)
     listing = await integration_client.get(
         "/api/v1/admin/payments",
         headers={"Authorization": f"Bearer {admin}"},
-        params={"order_id": payment["order_id"]},
+        params={"order_id": order_id},
     )
     assert listing.status_code == 200, listing.text
     rows = listing.json()["items"]

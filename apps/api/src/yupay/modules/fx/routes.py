@@ -211,14 +211,13 @@ async def admin_set_rate(
         manual_rate=body.manual_rate,
         updated_by=admin.id,
     )
-    # Commit before the rate goes live. Publishing from inside the transaction
-    # meant a later failure here — the 503 below, the replay write, the commit
-    # itself — rolled Postgres back while Redis kept serving the new rate, with
-    # nothing to expire it and an admin page reading the old row from Postgres.
-    # Same order as `admin_set_providers`.
-    await db.commit()
-    await service.publish_quote_setting(override)
-
+    # Everything that can still refuse the request happens before the commit,
+    # and the rate reaches Redis only after it. Publishing from inside the
+    # transaction — as this did — left Redis serving a rate Postgres had rolled
+    # back, with no TTL to expire it and an admin page reading the old row, so
+    # the divergence was invisible. Committing first instead would have been
+    # the other error: the 503 below would answer "failed" for a change that
+    # had already taken effect. Same order as `admin_set_providers`.
     market = await _market_or_none(service, quote)
     manual_q = override_to_quote(override)
     effective = manual_q or market
@@ -227,6 +226,8 @@ async def admin_set_rate(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"fx unavailable for {quote}",
         )
+    await db.commit()
+    await service.publish_quote_setting(override)
     out = _admin_row(
         quote=override.quote,
         effective=effective,

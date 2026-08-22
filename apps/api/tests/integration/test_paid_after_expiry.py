@@ -276,3 +276,50 @@ async def test_a_catalogue_order_paid_after_expiry_is_marked_paid_and_held(
         .all()
     )
     assert tasks == [], "an order we had already written off must not auto-deliver"
+
+
+async def test_a_deposit_on_an_admin_cancelled_order_is_not_credited(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """An operator's decision is not reversed by a late callback.
+
+    Expiry is mechanical and blameless, so a deposit that lapses and then pays
+    is credited outright. A cancellation is somebody deciding — usually because
+    the order looked wrong — and auto-crediting would hand the balance to the
+    account they were suspicious of, where it can be spent before anyone reads
+    the alert and `reverse_topup` then refuses the clawback.
+    """
+    token = await _login(integration_client, tg_id=9714)
+    payment = await _topup(
+        integration_client, token=token, amount="10000", key="late-topup-cancelled-1"
+    )
+    order_id = payment["order_id"]
+    assert isinstance(order_id, str)
+    external_id = payment["external_id"]
+    assert isinstance(external_id, str)
+
+    await db_session.execute(
+        update(Order).where(Order.id == order_id).values(status="cancelled", cancelled_at=now())
+    )
+    await db_session.commit()
+
+    await _settle_mock(integration_client, external_id=external_id, tag="late-topup-cancelled")
+
+    wallet = await integration_client.get(
+        "/api/v1/wallet", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert _wallet_uzs(wallet.json()) == Decimal("0"), "a cancelled deposit must wait for a human"
+
+    order = (await db_session.execute(select(Order).where(Order.id == order_id))).scalar_one()
+    await db_session.refresh(order)
+    assert order.status == "paid", "the money did arrive; the order must stop denying it"
+    assert order.paid_at is not None
+
+    kinds = [
+        e.kind
+        for e in (
+            await db_session.execute(select(OrderEvent).where(OrderEvent.order_id == order_id))
+        ).scalars()
+    ]
+    assert "order.paid_after_expiry" in kinds
+    assert "order.held_for_review" in kinds
