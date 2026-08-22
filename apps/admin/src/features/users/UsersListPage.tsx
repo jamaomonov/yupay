@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { ErrorState } from "@/components/States";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
+import { useDebouncedValue } from "@/lib/useDebouncedValue";
 
 const PAGE_SIZE = 50;
 
@@ -26,14 +27,18 @@ const PAGE_SIZE = 50;
 export function UsersListPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  const [debounced, setDebounced] = useState("");
   const [offset, setOffset] = useState(0);
-
   // Tiny debounce so the table doesn't fire a request on every keystroke.
-  useDebounce(search, 250, (v) => {
-    setDebounced(v);
+  const debounced = useDebouncedValue(search, 250);
+
+  // Back to page one when the *search* changes — an offset into the previous
+  // result set means nothing against a different one. Keyed on the debounced
+  // value, so it fires when that value actually changes and not, as the local
+  // hook this replaced did, on every render: paging forward re-rendered, which
+  // re-armed its timer, which reset the offset a quarter-second later.
+  useEffect(() => {
     setOffset(0);
-  });
+  }, [debounced]);
 
   const usersQuery = useQuery<UserAdminListOut>({
     queryKey: qk.users({ search: debounced || null, limit: PAGE_SIZE, offset }),
@@ -240,15 +245,4 @@ function initials(name: string | null): string {
       .map((s) => s[0]?.toUpperCase() ?? "")
       .join("") || "👤"
   );
-}
-
-function useDebounce<T>(value: T, delayMs: number, callback: (v: T) => void): void {
-  useEffect(() => {
-    const id = setTimeout(() => {
-      callback(value);
-    }, delayMs);
-    return () => {
-      clearTimeout(id);
-    };
-  }, [value, delayMs, callback]);
 }
