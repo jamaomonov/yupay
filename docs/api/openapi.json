@@ -2379,6 +2379,16 @@
             "title": "Games Synced",
             "type": "integer"
           },
+          "mapped_vouchers_refreshed": {
+            "default": 0,
+            "title": "Mapped Vouchers Refreshed",
+            "type": "integer"
+          },
+          "missing_upstream": {
+            "default": 0,
+            "title": "Missing Upstream",
+            "type": "integer"
+          },
           "supplier": {
             "title": "Supplier",
             "type": "string"

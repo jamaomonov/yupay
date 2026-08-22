@@ -270,6 +270,8 @@ async def sync_g2b_catalog(
         supplier="g2b",
         vouchers_synced=report.vouchers,
         games_synced=report.games,
+        mapped_vouchers_refreshed=report.mapped_vouchers,
+        missing_upstream=report.missing_upstream,
         error=report.error,
     )
 

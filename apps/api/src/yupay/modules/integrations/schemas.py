@@ -148,6 +148,12 @@ class CatalogSyncOut(BaseModel):
     supplier: str
     vouchers_synced: int = 0
     games_synced: int = 0
+    #: Mapped voucher products re-read by id — the ones that actually set a
+    #: price. The counts above are the browse sweep, which only reads page one.
+    mapped_vouchers_refreshed: int = 0
+    #: Mapped products G2B no longer lists. Their cached price is kept, so a
+    #: non-zero count here is worth a look rather than an outage.
+    missing_upstream: int = 0
     error: str | None = None
 
 

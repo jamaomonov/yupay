@@ -583,6 +583,31 @@ async def refresh_sku_cost_for_mapping(  # noqa: PLR0911, PLR0912 -- discriminat
     )
 
 
+async def mapped_external_product_ids(
+    db: AsyncSession,
+    *,
+    supplier_slug: str,
+    kind: CatalogKind,
+) -> list[str]:
+    """Distinct upstream product ids that active mappings point at.
+
+    The catalogue sync refreshes these by id rather than paging the supplier's
+    whole list: we only ever price what we map, and the list is two orders of
+    magnitude larger than the mapped set.
+    """
+    stmt = (
+        select(SkuSupplierMapping.external_product_id)
+        .where(
+            SkuSupplierMapping.supplier_slug == supplier_slug,
+            SkuSupplierMapping.kind == kind,
+            SkuSupplierMapping.is_active.is_(True),
+        )
+        .distinct()
+        .order_by(SkuSupplierMapping.external_product_id)
+    )
+    return [row for row in (await db.execute(stmt)).scalars().all() if row]
+
+
 async def list_active_mappings(
     db: AsyncSession,
     *,
@@ -608,6 +633,7 @@ __all__ = [
     "list_catalog",
     "list_mappings",
     "list_price_history",
+    "mapped_external_product_ids",
     "refresh_sku_cost_for_mapping",
     "sku_codes_for",
     "upsert_catalog_entry",

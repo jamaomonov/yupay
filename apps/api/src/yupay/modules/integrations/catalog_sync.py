@@ -26,9 +26,15 @@ from yupay.modules.integrations import service as svc
 
 log = get_logger("yupay.integrations.catalog_sync")
 
-#: One page of G2B's product list. Their API pages at 200; see
-#: ``sync_g2b_catalog``'s note on why we do not walk every page yet.
+#: One page of G2B's product list, which the client's docstring puts at
+#: ~12 800 rows. This sweep is for the admin picker — something to browse and
+#: search when choosing a product to map. What we actually *price* is refreshed
+#: by id in ``_refresh_mapped_vouchers``, so nothing depends on page one.
 _PRODUCT_PAGE_LIMIT = 200
+
+#: Ceiling on the by-id refresh, so a data mistake cannot turn one tick into
+#: thousands of supplier calls. Production maps eight voucher products.
+_MAPPED_FETCH_CAP = 200
 
 
 @dataclass(frozen=True)
@@ -37,7 +43,81 @@ class CatalogSyncReport:
 
     vouchers: int = 0
     games: int = 0
+    #: Mapped voucher products re-read one by one, and how many G2B no longer
+    #: lists. Separate from ``vouchers`` because these are the ones that decide
+    #: what a customer pays; the page sweep above only feeds the picker.
+    mapped_vouchers: int = 0
+    missing_upstream: int = 0
     error: str | None = None
+
+
+async def _refresh_mapped_vouchers(db: AsyncSession) -> tuple[int, int, str | None]:
+    """Re-read every voucher product an active mapping points at.
+
+    The page sweep fetches page one — 200 rows of a catalogue the client's own
+    docstring puts at ~12 800 — so whether a mapped product gets refreshed came
+    down to where it happened to sort. Walking all 64 pages hourly to keep a
+    handful of rows current is the wrong trade: we only ever price the products
+    we map, and there are eight of them.
+
+    Games do not need this. ``refresh_sku_cost_for_mapping`` calls
+    ``games_catalogue`` live for those; only vouchers read the cache.
+
+    Returns ``(refreshed, missing_upstream, error)``.
+    """
+    from yupay.modules.fulfillment.suppliers import REGISTRY
+    from yupay.modules.fulfillment.suppliers.g2b import G2bFulfiller
+
+    fulfiller = REGISTRY.get("g2b")
+    if not isinstance(fulfiller, G2bFulfiller) or not fulfiller.available:
+        return 0, 0, None
+
+    product_ids = await svc.mapped_external_product_ids(db, supplier_slug="g2b", kind="voucher")
+    if len(product_ids) > _MAPPED_FETCH_CAP:
+        # Loud rather than silently truncated: a cap that trims without saying
+        # so reads as "everything is current" when it is not.
+        log.warning(
+            "integrations.g2b.sync.mapped_cap_hit",
+            wanted=len(product_ids),
+            cap=_MAPPED_FETCH_CAP,
+        )
+        product_ids = product_ids[:_MAPPED_FETCH_CAP]
+
+    client = fulfiller._client()
+    refreshed = 0
+    missing = 0
+    failures = 0
+    for product_id in product_ids:
+        try:
+            item = await client.fetch_product(product_id)
+        except Exception as exc:  # noqa: BLE001 -- one bad product must not lose the rest
+            failures += 1
+            log.warning(
+                "integrations.g2b.sync.mapped_product_failed",
+                product_id=product_id,
+                error=str(exc),
+            )
+            continue
+        if item is None:
+            # Withdrawn upstream. The cached row stays: a mapping still points
+            # at it, and dropping the price silently would be worse than
+            # holding the last known one while somebody looks.
+            missing += 1
+            log.warning("integrations.g2b.sync.mapped_product_gone", product_id=product_id)
+            continue
+        title = str(item.get("title") or item.get("name") or product_id)[:255]
+        await svc.upsert_catalog_entry(
+            db,
+            supplier_slug="g2b",
+            kind="voucher",
+            external_id=product_id,
+            title=title,
+            raw=item,
+        )
+        refreshed += 1
+
+    error = f"{failures} mapped voucher(s) failed to refresh" if failures else None
+    return refreshed, missing, error
 
 
 async def sync_g2b_catalog(db: AsyncSession) -> CatalogSyncReport:
@@ -100,7 +180,19 @@ async def sync_g2b_catalog(db: AsyncSession) -> CatalogSyncReport:
         error = f"{error}; {err}" if error else err
         log.warning("integrations.g2b.sync.games_failed", error=str(exc))
 
-    return CatalogSyncReport(vouchers=vouchers, games=games, error=error)
+    # The part that decides what customers pay. Done after the sweep so a
+    # mapped product on page seven still ends up current.
+    mapped, missing, mapped_error = await _refresh_mapped_vouchers(db)
+    if mapped_error:
+        error = f"{error}; {mapped_error}" if error else mapped_error
+
+    return CatalogSyncReport(
+        vouchers=vouchers,
+        games=games,
+        mapped_vouchers=mapped,
+        missing_upstream=missing,
+        error=error,
+    )
 
 
 __all__ = ["CatalogSyncReport", "sync_g2b_catalog"]

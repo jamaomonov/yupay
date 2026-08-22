@@ -41,6 +41,8 @@ async def run_sync_supplier_catalog() -> None:
         supplier="g2b",
         vouchers=report.vouchers,
         games=report.games,
+        mapped_vouchers=report.mapped_vouchers,
+        missing_upstream=report.missing_upstream,
         error=report.error,
     )
 
