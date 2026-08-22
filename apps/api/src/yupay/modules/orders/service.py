@@ -250,6 +250,14 @@ def _sku_is_buyable(sku: Sku) -> bool:
 async def _existing_idempotent_order(
     db: AsyncSession, *, actor: Actor, idempotency_key: str
 ) -> Order | None:
+    """Replay the purchase this key already made, if any.
+
+    Deposits share this table and this key's unique index, so a key already
+    spent on one must not be replayed as a purchase: the buyer would be handed
+    a wallet top-up — no items, nothing bought — as though it were the order
+    they asked for. ``wallet.funding.create_topup`` refuses the mirror case;
+    this is the other half of that check.
+    """
     stmt = (
         select(Order)
         .options(*_order_load_options(), selectinload(Order.events))
@@ -259,7 +267,13 @@ async def _existing_idempotent_order(
         stmt = stmt.where(Order.user_id == actor.user_id)
     else:
         stmt = stmt.where(Order.guest_email == actor.email)
-    return (await db.execute(stmt)).scalar_one_or_none()
+    existing = (await db.execute(stmt)).scalar_one_or_none()
+    if existing is not None and existing.purpose != "catalog":
+        raise ConflictError(
+            "Idempotency-Key was already used for a different request",
+            extra={"purpose": existing.purpose},
+        )
+    return existing
 
 
 def _tier_priced_amount(amount_usd: Decimal, sku: Sku) -> Decimal | None:

@@ -256,3 +256,40 @@ async def test_topup_refund_refused_after_spend(
         await db_session.execute(select(Order).where(Order.id == payment["order_id"]))
     ).scalar_one()
     assert leftover.purpose == "wallet_topup"
+
+
+async def test_checkout_refuses_a_key_already_spent_on_a_deposit(
+    integration_client: AsyncClient,
+) -> None:
+    """The guard `create_topup` has, in the other direction.
+
+    Both live in `orders` and share one partial unique on
+    ``(user_id, idempotency_key)``. `create_topup` checks the purpose of what
+    it finds and answers 409; checkout replayed on the key alone, so a key
+    already spent on a deposit would have handed the buyer that deposit back
+    as though it were their purchase — no items, nothing bought.
+
+    The SKU here is deliberately nonexistent: the replay short-circuit runs
+    before any SKU is loaded, so reaching a SKU error at all would already
+    mean the guard fired.
+    """
+    token, _ = await _login_user(integration_client, tg_id=910)
+    await _topup(
+        integration_client,
+        token=token,
+        amount="10000",
+        provider="mock",
+        key="wallet-topup-crosstalk-1",
+    )
+    order = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "wallet-topup-crosstalk-1",
+        },
+        json={
+            "currency": "USD",
+            "items": [{"sku_id": "00000000-0000-7000-8000-000000000000", "qty": 1}],
+        },
+    )
+    assert order.status_code == 409, order.text
