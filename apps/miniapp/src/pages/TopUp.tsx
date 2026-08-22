@@ -5,7 +5,6 @@ import {
   ChevronRight,
   ExternalLink,
   Package as PackageIcon,
-  RotateCcw,
   Send,
   Settings,
   ShieldCheck,
@@ -1469,10 +1468,6 @@ export default function TopUp() {
                 {
                   icon: ShieldCheck,
                   text: accountRequired ? t("topup.trustNoPassword") : t("topup.trustEncrypted"),
-                },
-                {
-                  icon: RotateCcw,
-                  text: t("topup.trustRefund"),
                 },
               ].map(({ icon: Icon, text }, i) => (
                 <div key={i} className="flex items-center gap-2.5">

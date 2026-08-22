@@ -161,7 +161,6 @@
   "topup.soon": "Soon",
   "topup.trustNoPassword": "No password needed — only public account data",
   "topup.trustEncrypted": "Encrypted payments and secure code delivery",
-  "topup.trustRefund": "Not delivered within 5 minutes — we'll refund you",
   "topup.fillAbove": "Fill in the details above",
   "topup.filled": "Details filled in",
   "topup.getCode": "Get the code after payment",

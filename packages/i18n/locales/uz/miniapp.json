@@ -161,7 +161,6 @@
   "topup.soon": "Tez orada",
   "topup.trustNoPassword": "Parolsiz — faqat akkauntning ochiq ma'lumotlari",
   "topup.trustEncrypted": "Shifrlangan to'lovlar va kodlarni xavfsiz yetkazish",
-  "topup.trustRefund": "5 daqiqada kelmasa — pulni qaytaramiz",
   "topup.fillAbove": "Yuqoridagi rekvizitlarni to'ldiring",
   "topup.filled": "Rekvizitlar to'ldirildi",
   "topup.getCode": "Kodni to'lovdan keyin oling",

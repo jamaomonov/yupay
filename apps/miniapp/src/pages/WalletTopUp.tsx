@@ -245,10 +245,10 @@ export default function WalletTopUp() {
                   data-testid={`provider-${m.id}`}
                 >
                   <span
-                    className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-white"
+                    className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-md"
                     aria-hidden="true"
                   >
-                    <img src={m.icon} alt={m.name} className="h-full w-full object-contain p-1.5" />
+                    <img src={m.icon} alt={m.name} className="h-full w-full object-cover" />
                   </span>
                   <span className="min-w-0 flex-1 text-left">
                     <span className="flex items-center gap-2 text-sm font-bold text-white">
