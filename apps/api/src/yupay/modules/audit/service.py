@@ -83,7 +83,11 @@ async def _fetch_order_events(
     actor: str | None,
     limit: int,
 ) -> list[AuditEvent]:
-    stmt = select(OrderEvent).order_by(OrderEvent.created_at.desc()).limit(limit)
+    # `created_at` is the transaction start, so a settlement's three events
+    # share it exactly; without the id the feed shuffles them on every read.
+    stmt = (
+        select(OrderEvent).order_by(OrderEvent.created_at.desc(), OrderEvent.id.desc()).limit(limit)
+    )
     if since is not None:
         stmt = stmt.where(OrderEvent.created_at >= since)
     if until is not None:

@@ -80,13 +80,20 @@ class Order(Base):
         back_populates="order",
         cascade="all, delete-orphan",
         lazy="selectin",
-        order_by="OrderItem.created_at",
+        # `created_at` alone is a tie: it defaults to CURRENT_TIMESTAMP, which
+        # in Postgres is the *transaction* start, so every row a checkout
+        # writes shares one value. The id breaks it — `new_id()` is UUIDv7, so
+        # id order is insertion order.
+        order_by="OrderItem.created_at, OrderItem.id",
     )
     events: Mapped[list[OrderEvent]] = relationship(
         back_populates="order",
         cascade="all, delete-orphan",
         lazy="selectin",
-        order_by="OrderEvent.created_at",
+        # Same tie as the items above, and here it was visible: settlement
+        # writes paid/fulfilling/delivered in one transaction, so the admin
+        # timeline showed "Доставлен" above "Выдаётся" above "Оплачен".
+        order_by="OrderEvent.created_at, OrderEvent.id",
     )
     # One-directional (no back_populates) so this module doesn't force an
     # import of yupay.modules.payments.models at class-definition time —
