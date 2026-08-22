@@ -61,6 +61,11 @@ class WalletTopUpIn(BaseModel):
 
     amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
     provider: Annotated[str, Field(min_length=2, max_length=32)]
+    #: Where the acquirer sends the customer back to. Without it the server
+    #: falls back to ``{web_base_url}/checkout/return``, which is generic by
+    #: design — a deposit wants to land on the balance it just changed.
+    #: Validated same-origin by ``payments._safe_return_url``.
+    return_url: str | None = None
 
 
 class PostingOut(BaseModel):

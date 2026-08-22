@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatMoney } from "@yupay/utils";
 import { ArrowUpRight, Check, Info, Loader2, Wallet as WalletIcon, X } from "lucide-react";
 import Image from "next/image";
@@ -848,7 +848,7 @@ export function PurchasePanel({
   children?: ReactNode;
 }) {
   const t = useTranslations("web.store");
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   // Nothing is preselected on a grid the buyer still has to choose from. The
   // panel used to open on the middle SKU — `floor(len/2)`, i.e. a position in
   // the list, not a popularity — so a PUBG visitor's first number was "Ваш
@@ -888,6 +888,9 @@ export function PurchasePanel({
     orderId: string;
     intentUrl: string | null;
     trackHref: string;
+    /** A balance payment is settled already; every other rail still needs the
+     *  customer to finish at the acquirer. The copy differs accordingly. */
+    paidFromBalance: boolean;
   } | null>(null);
   // The mobile sticky pay bar scrolls here when the form isn't complete yet.
   const asideRef = useRef<HTMLElement>(null);
@@ -949,7 +952,15 @@ export function PurchasePanel({
   // disabled rather than ever letting a non-active provider be submitted.
   useEffect(() => {
     if (!providerStatus) return;
-    setMethodId((current) => selectActiveMethodId(METHODS, current, providerStatus) ?? "");
+    setMethodId((current) => {
+      // The wallet is not in METHODS, so `selectActiveMethodId` cannot find it,
+      // falls past its "keep the current one" guard and answers with the first
+      // active acquirer instead. A customer who picked "pay from balance"
+      // before this fetch landed would have had that swapped for a card
+      // without being told. Its readiness is `walletState`, not `providerStatus`.
+      if (current === WALLET_METHOD_ID) return current;
+      return selectActiveMethodId(METHODS, current, providerStatus) ?? "";
+    });
   }, [providerStatus]);
 
   let selSku: SkuOut | undefined;
@@ -1093,13 +1104,17 @@ export function PurchasePanel({
     staleTime: 30_000,
   });
   const walletState = walletTile({
-    isLoggedIn: user !== null,
+    // `isLoading` matters: the access token is memory-only, so a cold load
+    // re-mints it and `user` is null for a beat. Treating that as "guest" told
+    // signed-in customers to sign in, and opened a login modal if they tapped.
+    isLoggedIn: user !== null || authLoading,
     balance: spendableBalance(walletQuery.data?.balances ?? null, WALLET_CURRENCY),
     total: orderTotalUzs,
   });
   const payingFromBalance = methodId === WALLET_METHOD_ID;
 
   const openLogin = useLoginModal((st) => st.open);
+  const queryClient = useQueryClient();
 
   const emailOk = EMAIL_RE.test(email);
   const fieldsOk = fields.every((f) => !f.required || (form[f.key]?.trim() ?? "") !== "");
@@ -1181,7 +1196,11 @@ export function PurchasePanel({
                             ? t("payHintFields")
                             : !fieldsVerified
                               ? t("payHintVerify")
-                              : null;
+                              : payingFromBalance && walletState.state === "short"
+                                ? t("payFromBalanceShort", {
+                                    amount: formatUzs(locale, walletState.missing),
+                                  })
+                                : null;
 
   // The price shown in the summary header, the pay button, and the mobile
   // sticky bar. A variable-amount SKU has no fixed `skuPrice` — its total
@@ -1345,10 +1364,23 @@ export function PurchasePanel({
         window.location.href = intent.intent_url;
         return;
       }
-      setDone({ orderId: order.id, intentUrl: intent.intent_url, trackHref });
+      setDone({
+        orderId: order.id,
+        intentUrl: intent.intent_url,
+        trackHref,
+        paidFromBalance: payingFromBalance,
+      });
     } catch {
       setError(t("payError"));
     } finally {
+      // Whatever happened, the balance we hold may no longer be the one the
+      // ledger holds: a wallet payment just spent from it, and a failure may
+      // have been the server refusing on a balance we had cached as
+      // sufficient. Re-read rather than leave the tile promising a payment
+      // that will be refused again.
+      if (payingFromBalance) {
+        void queryClient.invalidateQueries({ queryKey: ["wallet"] });
+      }
       setLoading(false);
     }
   }
@@ -1359,11 +1391,15 @@ export function PurchasePanel({
         <span className="bg-primary mx-auto flex h-14 w-14 items-center justify-center rounded-full">
           <Check size={28} strokeWidth={3} className="text-primary-foreground" />
         </span>
+        {/* A wallet payment is already settled by the time this renders — the
+            gateway charges inside `create_intent`. The default copy ("перейдите
+            к оплате") told someone who had just paid that they had not, and the
+            lime CTA it refers to is skipped because there is no `intent_url`. */}
         <h2 className="font-display mt-5 text-2xl font-bold tracking-[-0.02em]">
-          {t("successTitle")}
+          {done.paidFromBalance ? t("successPaidTitle") : t("successTitle")}
         </h2>
         <p className="text-tx-mute mx-auto mt-2 max-w-[420px] text-[15px] leading-relaxed">
-          {t("successNote")}
+          {done.paidFromBalance ? t("successPaidNote") : t("successNote")}
         </p>
         <p className="text-tx-dim mt-3 font-mono text-xs">
           {t("orderLabel")} #{done.orderId.slice(0, 8)}
@@ -1652,7 +1688,7 @@ export function PurchasePanel({
               <button
                 type="button"
                 aria-pressed={payingFromBalance}
-                disabled={walletState.state === "short" || walletState.state === "unknown"}
+                disabled={walletState.state !== "ready" && walletState.state !== "guest"}
                 onClick={() => {
                   if (walletState.state === "guest") {
                     openLogin();
@@ -1661,7 +1697,7 @@ export function PurchasePanel({
                   setMethodId(WALLET_METHOD_ID);
                 }}
                 className={`focus-visible:ring-primary focus-visible:ring-offset-bg rounded-btn mb-2 flex w-full items-center gap-3 border px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed ${
-                  payingFromBalance
+                  payingFromBalance && walletState.state === "ready"
                     ? "border-primary bg-primary/10"
                     : "border-border bg-card hover:border-border-2"
                 }`}
@@ -1686,7 +1722,9 @@ export function PurchasePanel({
                           })
                         : walletState.state === "ready"
                           ? formatUzs(locale, Math.round(walletState.balance))
-                          : t("payFromBalanceUnknown")}
+                          : walletState.state === "noTotal"
+                            ? t("payFromBalanceUnknown")
+                            : t("payFromBalanceLoading")}
                   </span>
                 </span>
               </button>

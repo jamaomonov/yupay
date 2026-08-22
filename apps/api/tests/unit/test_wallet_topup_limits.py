@@ -6,7 +6,11 @@ from decimal import Decimal
 
 import pytest
 from yupay.core.errors import ValidationError
-from yupay.modules.wallet.topup_limits import currency_for_provider, quantize_topup_amount
+from yupay.modules.wallet.topup_limits import (
+    assert_provider_matches_surface,
+    currency_for_provider,
+    quantize_topup_amount,
+)
 
 
 def test_click_family_is_uzs() -> None:
@@ -52,3 +56,32 @@ def test_usdt_accepts_cents() -> None:
 def test_usdt_rejects_below_five() -> None:
     with pytest.raises(ValidationError, match="below the minimum"):
         quantize_topup_amount(Decimal("4.99"), "USDT")
+
+
+def test_click_slugs_are_bound_to_their_surface() -> None:
+    """Click bills per-surface, so the slug decides which merchant is credited.
+
+    The slug arrives in the body and the surface in a header; nothing tied them
+    together, so a web client could route its deposit through the mini app's
+    merchant just by asking for it.
+    """
+    assert_provider_matches_surface("click", "web")
+    assert_provider_matches_surface("click_miniapp", "miniapp")
+
+    with pytest.raises(ValidationError):
+        assert_provider_matches_surface("click_miniapp", "web")
+    with pytest.raises(ValidationError):
+        assert_provider_matches_surface("click", "miniapp")
+
+
+def test_an_unreadable_surface_header_does_not_block_a_deposit() -> None:
+    """`normalise_source` answers "unknown" for a missing or junk header, and a
+    missing header must not be able to refuse money."""
+    assert_provider_matches_surface("click", "unknown")
+    assert_provider_matches_surface("click_miniapp", "unknown")
+
+
+def test_single_merchant_acquirers_are_not_surface_bound() -> None:
+    for provider in ("payme", "uzum", "octo", "mock"):
+        assert_provider_matches_surface(provider, "web")
+        assert_provider_matches_surface(provider, "miniapp")

@@ -27,8 +27,11 @@ export type WalletTile =
   | { state: "ready"; balance: number }
   /** Signed in, balance is short by `missing`. */
   | { state: "short"; balance: number; missing: number }
-  /** Balance not known yet: the query is in flight, or the customer has not
-   *  chosen what they are buying, so there is no total to compare against. */
+  /** Nothing picked yet, so there is no total to weigh the balance against. */
+  | { state: "noTotal" }
+  /** A total exists but the balance does not: still loading, or the read
+   *  failed. Distinct from `noTotal` because the customer can act on one of
+   *  them and not the other. */
   | { state: "unknown" };
 
 /**
@@ -62,8 +65,12 @@ export function walletTile(input: {
   total: number | null;
 }): WalletTile {
   if (!input.isLoggedIn) return { state: "guest" };
+  // Order matters: with no total there is nothing to compare against whatever
+  // the balance is, and saying "choose a package" to someone who has chosen one
+  // — which is what a still-loading or failed balance used to produce — is
+  // worse than saying nothing.
+  if (input.total === null || input.total <= 0) return { state: "noTotal" };
   if (input.balance === null) return { state: "unknown" };
-  if (input.total === null || input.total <= 0) return { state: "unknown" };
   if (input.balance >= input.total) return { state: "ready", balance: input.balance };
   return {
     state: "short",

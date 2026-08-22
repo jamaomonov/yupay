@@ -292,7 +292,10 @@
     "payFromBalance": "Balance",
     "payFromBalanceGuest": "Sign in to pay from your balance",
     "payFromBalanceShort": "{amount} short",
-    "payFromBalanceUnknown": "Choose a package"
+    "payFromBalanceUnknown": "Choose a package",
+    "successPaidTitle": "Paid from your balance",
+    "successPaidNote": "The order is paid — we're delivering it. Track it below.",
+    "payFromBalanceLoading": "Loading your balance…"
   },
   "how": {
     "eyebrow": "Flow",
@@ -635,7 +638,8 @@
     "codesReadyTitle": "Order complete — your codes are ready",
     "supportCta": "Message support",
     "walletTopUpTitle": "Wallet top-up",
-    "walletTopUpBody": "The balance lives in the Telegram Mini App — open the bot to see this transaction."
+    "walletTopUpBody": "The balance updates once the bank confirms the payment.",
+    "walletTopUpCta": "To the wallet"
   },
   "brandReviews": {
     "title": "Reviews",
@@ -688,6 +692,14 @@
     "txPromo": "Promo code",
     "txCashback": "Cashback",
     "txTopUp": "Top-up",
-    "txTopUpRefund": "Top-up refund"
+    "txTopUpRefund": "Top-up refund",
+    "amountRange": "From {min} to {max}",
+    "balanceError": "Couldn't load the balance"
+  },
+  "checkoutReturn": {
+    "title": "Payment is being processed",
+    "body": "The bank confirms within a minute. Check your orders or your wallet — it will show up there.",
+    "toOrders": "My orders",
+    "toWallet": "Wallet"
   }
 }

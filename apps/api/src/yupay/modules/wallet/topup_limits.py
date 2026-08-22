@@ -23,6 +23,37 @@ PROVIDER_CURRENCY: dict[str, str] = {
 
 BLOCKED_PROVIDERS: frozenset[str] = frozenset({"wallet"})
 
+#: Click bills through a per-surface merchant service, so which slug a deposit
+#: uses decides which merchant is credited. The storefront sends ``click`` and
+#: the mini app ``click_miniapp`` — but the slug arrives in the body while the
+#: surface arrives in a header, and nothing tied them together: a web client
+#: could route its deposit through the mini app's merchant just by asking.
+#: Only the Click pair is surface-bound; every other acquirer is one merchant.
+_SURFACE_BOUND: dict[str, str] = {
+    "click": "web",
+    "click_miniapp": "miniapp",
+}
+
+
+def assert_provider_matches_surface(provider: str, source: str) -> None:
+    """Refuse an acquirer slug that belongs to a different surface.
+
+    ``source`` is ``normalise_source``'s output, so an absent or unreadable
+    header is ``unknown`` — that is allowed through rather than refused, since
+    a missing header must not be able to block a deposit (the bot and future
+    surfaces have no Click merchant of their own).
+
+    Raises:
+        ValidationError: the slug is bound to another surface.
+    """
+    required = _SURFACE_BOUND.get(provider)
+    if required is not None and source not in {"unknown", required}:
+        raise ValidationError(
+            "this payment method belongs to another surface",
+            extra={"provider": provider, "surface": source},
+        )
+
+
 # min, max, quantum (inclusive bounds).
 _LIMITS: dict[str, tuple[Decimal, Decimal, Decimal]] = {
     "UZS": (Decimal("10000"), Decimal("5000000"), Decimal("1")),

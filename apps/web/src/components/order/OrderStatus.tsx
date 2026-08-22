@@ -24,7 +24,7 @@ import { buttonStyles } from "@/lib/button";
 import { apiFetch } from "@/lib/client";
 import { mintGuestToken, requestCodeAccess } from "@/lib/guest";
 import { getMyReviews } from "@/lib/reviews";
-import { pathFor } from "@/lib/seo";
+import { formatUzs, pathFor } from "@/lib/seo";
 import { useRealtimeStatus } from "@/store/useRealtimeStatus";
 
 /** Statuses that mean the order is still moving — keep polling. */
@@ -183,15 +183,24 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
     );
   }
 
-  // A wallet deposit is an order row with no lines, and the storefront has no
-  // wallet surface to show it on — funding the balance is a Mini App flow. The
-  // list already hides deposits, so only a hand-typed link arrives here; say
-  // what it is rather than rendering a purchase of nothing.
+  // A deposit is an order row with no lines, so the ordinary layout would
+  // render a purchase of nothing. It used to send the reader to Telegram on
+  // the grounds that the storefront had no wallet; it has one now, and the
+  // top-up flow lands here for acquirers that return without a hosted page.
   if (order.data.purpose === "wallet_topup") {
     return (
       <div className="border-border bg-surface-1 rounded-2xl border p-6 text-center">
         <p className="text-foreground text-base font-semibold">{t("walletTopUpTitle")}</p>
+        <p className="font-display mt-2 text-2xl font-bold tabular-nums">
+          {formatUzs(locale, Math.round(Number(order.data.total_charged)))}
+        </p>
         <p className="text-tx-mute mt-2 text-sm">{t("walletTopUpBody")}</p>
+        <Link
+          href={pathFor(locale, "/account/wallet")}
+          className={buttonStyles({ size: "md", className: "mt-5" })}
+        >
+          {t("walletTopUpCta")}
+        </Link>
       </div>
     );
   }

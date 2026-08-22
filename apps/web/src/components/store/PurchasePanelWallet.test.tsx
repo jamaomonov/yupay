@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { PurchasePanel } from "./PurchasePanel";
@@ -141,4 +141,64 @@ it("refuses and says how much is missing when the balance is short", async () =>
   // Formatted the way the page shows it — asserting on bare digits would
   // pass while the customer saw an unformatted number.
   expect(tile.textContent).toContain(formatUzs("ru", ORDER_TOTAL - 12500));
+});
+
+it("keeps the balance selected when the provider list lands afterwards", async () => {
+  // The reselect effect exists to move off an acquirer that turns out to be
+  // under maintenance. It asks `selectActiveMethodId(METHODS, …)`, and METHODS
+  // deliberately excludes the wallet — so a `methodId` of "wallet" is not
+  // found, the guard falls through, and the customer's choice is replaced by
+  // the first active acquirer. Their money would go to a rail they did not
+  // pick.
+  //
+  // Reachable because the balance can come from the react-query cache
+  // instantly on a repeat visit while the providers fetch is still in flight.
+  let resolveProviders!: (v: unknown) => void;
+  const providersLanded = new Promise((r) => {
+    resolveProviders = r;
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes("/wallet")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              balances: [
+                { account_id: "acc-1", kind: "user_wallet", currency: "UZS", balance: "9000000" },
+              ],
+            }),
+        });
+      }
+      return providersLanded.then(() => ({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ providers: [{ slug: "click", status: "active" }] }),
+      }));
+    }),
+  );
+
+  renderPanel();
+  const tile = await screen.findByRole("button", { name: /payFromBalance/ });
+  await waitFor(() => {
+    expect(tile).not.toBeDisabled();
+  });
+
+  fireEvent.click(tile);
+  expect(tile).toHaveAttribute("aria-pressed", "true");
+
+  // Let the fetch settle and the reselect effect run before asserting — the
+  // acquirer tiles render enabled either way (they fail open while the status
+  // is unknown), so they are not a signal that the effect has fired.
+  await act(async () => {
+    resolveProviders(null);
+    await Promise.resolve();
+  });
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Click" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  expect(tile).toHaveAttribute("aria-pressed", "true");
 });

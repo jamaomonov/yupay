@@ -4,7 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { use, useRef, useState } from "react";
+import { use, useId, useRef, useState } from "react";
 
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
@@ -36,9 +36,14 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
   // Survives re-renders so a second submit after a timed-out first one replays
   // that request instead of opening another top-up order.
   const attempt = useRef<{ signature: string; key: string } | null>(null);
+  const boundsId = useId();
 
   const limits = TOP_UP_LIMITS[WALLET_CURRENCY];
-  const typed = Number.parseFloat(amount.replace(/\s/g, "")) || 0;
+  // Soum has no minor unit — the server refuses 10 000.5 rather than rounding
+  // it, so accepting a decimal separator here only buys the customer a 422.
+  // Spaces are stripped because `formatUzs` puts them in and people paste it
+  // back; everything else that is not a digit is simply not a soum.
+  const typed = Number.parseInt(amount.replace(/\D/g, ""), 10) || 0;
   const belowMin = typed > 0 && limits !== undefined && typed < limits.min;
   const aboveMax = limits !== undefined && typed > limits.max;
   const amountOk = limits !== undefined && typed >= limits.min && typed <= limits.max;
@@ -49,6 +54,9 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
         typed,
         method,
         topUpAttemptKey(attempt, `${typed.toString()}:${method}`),
+        // Land the customer back on the balance they just changed. Without
+        // this the server falls back to a generic return page.
+        `${window.location.origin}${pathFor(locale, "/account/wallet")}`,
       ),
     onSuccess: (payment) => {
       if (payment.intent_url) {
@@ -68,7 +76,7 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
 
   if (!user) {
     return (
-      <main className="mx-auto max-w-[560px] px-4 pb-24 pt-[120px]">
+      <main className="mx-auto max-w-[640px] px-4 pb-24 pt-[120px]">
         <div className="border-border bg-card rounded-2xl border p-10 text-center">
           <p className="text-tx-mute mb-5">{t("guestBody")}</p>
           <Link href={pathFor(locale, "/store")} className={buttonStyles({ size: "sm" })}>
@@ -82,7 +90,7 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
   const quick = QUICK_AMOUNTS[WALLET_CURRENCY] ?? [];
 
   return (
-    <main className="mx-auto max-w-[560px] px-4 pb-24 pt-[120px]">
+    <main className="mx-auto max-w-[640px] px-4 pb-24 pt-[120px]">
       <Link
         href={pathFor(locale, "/account/wallet")}
         className="text-tx-mute hover:text-foreground mb-4 inline-block text-sm transition"
@@ -100,16 +108,18 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
             inputMode="numeric"
             value={amount}
             onChange={(e) => {
-              setAmount(e.target.value);
+              setAmount(e.target.value.replace(/\D/g, ""));
               setError(null);
             }}
-            placeholder={String(limits?.min ?? "")}
+            placeholder={limits ? formatUzs(locale, limits.min) : ""}
             aria-label={t("amountLabel")}
-            className="border-border bg-muted focus:border-primary h-14 w-full rounded-xl border px-4 text-2xl font-bold tabular-nums outline-none transition"
+            aria-invalid={belowMin || aboveMax}
+            aria-describedby={belowMin || aboveMax ? boundsId : undefined}
+            className="border-border bg-card focus:border-primary rounded-btn h-14 w-full border px-4 text-2xl font-bold tabular-nums outline-none transition"
           />
         </label>
 
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
           {quick.map((v) => (
             <button
               key={v}
@@ -118,21 +128,30 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
                 setAmount(String(v));
                 setError(null);
               }}
-              className="border-border bg-muted hover:border-primary rounded-xl border px-3 py-2 text-sm font-bold tabular-nums transition"
+              aria-pressed={typed === v}
+              className={`rounded-btn h-11 border px-3 text-sm font-bold tabular-nums transition ${
+                typed === v
+                  ? "border-primary bg-primary/10"
+                  : "border-border bg-card hover:border-primary"
+              }`}
             >
-              {formatUzs(locale, v)}
+              {/* The field above establishes the currency; repeating "UZS" on
+                  every chip is what pushed them onto three rows at 360px. */}
+              {v.toLocaleString(locale)}
             </button>
           ))}
         </div>
 
-        {belowMin && limits !== undefined && (
-          <p className="text-tx-mute mt-3 text-sm">
-            {t("minAmount", { amount: formatUzs(locale, limits.min) })}
-          </p>
-        )}
-        {aboveMax && limits !== undefined && (
-          <p className="text-tx-mute mt-3 text-sm">
-            {t("maxAmount", { amount: formatUzs(locale, limits.max) })}
+        {limits !== undefined && (
+          <p
+            id={boundsId}
+            className={`mt-3 text-sm ${belowMin || aboveMax ? "text-[#FF6B6B]" : "text-tx-dim"}`}
+          >
+            {/* Shown from the start rather than only after they get it wrong. */}
+            {t("amountRange", {
+              min: formatUzs(locale, limits.min),
+              max: formatUzs(locale, limits.max),
+            })}
           </p>
         )}
       </section>
@@ -152,14 +171,14 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
                     setMethod(m.id);
                   }}
                   aria-pressed={active}
-                  className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${
-                    active ? "border-primary bg-primary/10" : "border-border bg-muted"
+                  className={`rounded-btn flex w-full items-center gap-3 border p-3 text-left transition ${
+                    active ? "border-primary bg-primary/10" : "border-border bg-card"
                   }`}
                 >
                   <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-md">
                     <Image
                       src={m.icon}
-                      alt={m.name}
+                      alt=""
                       width={40}
                       height={40}
                       className="h-full w-full object-cover"
@@ -182,13 +201,17 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
           setError(null);
           topUp.mutate();
         }}
-        className={buttonStyles({ size: "lg" }) + " w-full"}
+        className={buttonStyles({ size: "lg", className: "w-full" })}
       >
         {topUp.isPending
           ? t("topUpPending")
           : amountOk
             ? t("topUpSubmit", { amount: formatUzs(locale, typed) })
-            : t("topUpEnterAmount")}
+            : aboveMax && limits !== undefined
+              ? t("maxAmount", { amount: formatUzs(locale, limits.max) })
+              : belowMin && limits !== undefined
+                ? t("minAmount", { amount: formatUzs(locale, limits.min) })
+                : t("topUpEnterAmount")}
       </button>
 
       <p className="text-tx-dim mt-3 text-center text-xs leading-relaxed">{t("topUpNote")}</p>

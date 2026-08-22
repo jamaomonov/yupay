@@ -10587,6 +10587,17 @@
             "minLength": 2,
             "title": "Provider",
             "type": "string"
+          },
+          "return_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Url"
           }
         },
         "required": [

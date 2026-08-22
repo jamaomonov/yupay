@@ -292,7 +292,10 @@
     "payFromBalance": "Balans",
     "payFromBalanceGuest": "Balansdan toʻlash uchun kiring",
     "payFromBalanceShort": "{amount} yetmaydi",
-    "payFromBalanceUnknown": "Paketni tanlang"
+    "payFromBalanceUnknown": "Paketni tanlang",
+    "successPaidTitle": "Balansdan toʻlandi",
+    "successPaidNote": "Buyurtma toʻlandi — yetkazmoqdamiz. Holatni quyida kuzating.",
+    "payFromBalanceLoading": "Balans yuklanmoqda…"
   },
   "how": {
     "eyebrow": "Flow",
@@ -635,7 +638,8 @@
     "codesReadyTitle": "Buyurtma tayyor — kodlar tayyor",
     "supportCta": "Qoʻllab-quvvatlashga yozish",
     "walletTopUpTitle": "Hamyonni toʻldirish",
-    "walletTopUpBody": "Balans Telegram Mini App'da — bu amalni koʻrish uchun botni oching."
+    "walletTopUpBody": "Bank toʻlovni tasdiqlagach balans yangilanadi.",
+    "walletTopUpCta": "Hamyonga"
   },
   "brandReviews": {
     "title": "Sharhlar",
@@ -688,6 +692,14 @@
     "txPromo": "Promokod",
     "txCashback": "Keshbek",
     "txTopUp": "Toʻldirish",
-    "txTopUpRefund": "Toʻldirish qaytarildi"
+    "txTopUpRefund": "Toʻldirish qaytarildi",
+    "amountRange": "{min} dan {max} gacha",
+    "balanceError": "Balansni yuklab boʻlmadi"
+  },
+  "checkoutReturn": {
+    "title": "Toʻlov qayta ishlanmoqda",
+    "body": "Bank bir daqiqa ichida tasdiqlaydi. Buyurtmalar yoki hamyonga qarang — u yerda koʻrinadi.",
+    "toOrders": "Buyurtmalarim",
+    "toWallet": "Hamyon"
   }
 }

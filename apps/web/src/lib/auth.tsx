@@ -108,6 +108,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       removeGuestOrders(listGuestOrders().map((o) => o.orderId));
       void qc.invalidateQueries({ queryKey: ["orders"] });
+      // Signing in without a reload keeps the previous account's cache: the
+      // balance chip renders before this query settles, so a stale entry would
+      // show the wrong person's money.
+      void qc.invalidateQueries({ queryKey: ["wallet"] });
     },
     [qc],
   );
@@ -166,8 +170,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       /* best-effort logout — ignore network/revocation errors */
     });
     clearTokens();
+    // Everything cached belonged to the account that just left. On a shared
+    // device the next person signs in without a reload, so the same
+    // QueryClient survives — and TanStack serves cached data while it
+    // refetches, which for the wallet means one customer briefly seeing
+    // another's balance and ledger history. Drop it all, then re-seed `me`.
+    qc.clear();
     qc.setQueryData(["me"], null);
-    void qc.invalidateQueries({ queryKey: ["me"] });
   }, [qc]);
 
   const value = useMemo<AuthValue>(

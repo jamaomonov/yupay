@@ -133,11 +133,12 @@ export function createWalletTopUp(
   amount: number,
   provider: string,
   idempotencyKey: string,
+  returnUrl: string,
 ): Promise<PaymentOut> {
   return apiFetch<PaymentOut>("/wallet/topup", {
     method: "POST",
     headers: { "Idempotency-Key": idempotencyKey },
-    body: { amount: amount.toString(), provider },
+    body: { amount: amount.toString(), provider, return_url: returnUrl },
   });
 }
 

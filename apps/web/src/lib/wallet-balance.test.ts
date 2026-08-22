@@ -84,9 +84,17 @@ describe("walletTile", () => {
 
   test("no verdict before a package is chosen — there is nothing to compare against", () => {
     expect(walletTile({ isLoggedIn: true, balance: 500000, total: null })).toEqual({
-      state: "unknown",
+      state: "noTotal",
     });
     expect(walletTile({ isLoggedIn: true, balance: 500000, total: 0 })).toEqual({
+      state: "noTotal",
+    });
+  });
+
+  test("a package chosen but no balance yet is NOT 'choose a package'", () => {
+    // Loading and failed reads both land here. Telling a customer who has
+    // already picked a package to pick one is the message they cannot act on.
+    expect(walletTile({ isLoggedIn: true, balance: null, total: 159635 })).toEqual({
       state: "unknown",
     });
   });
@@ -133,5 +141,6 @@ describe("canPayFromBalance", () => {
     expect(canPayFromBalance({ state: "short", balance: 1, missing: 1 })).toBe(false);
     expect(canPayFromBalance({ state: "guest" })).toBe(false);
     expect(canPayFromBalance({ state: "unknown" })).toBe(false);
+    expect(canPayFromBalance({ state: "noTotal" })).toBe(false);
   });
 });

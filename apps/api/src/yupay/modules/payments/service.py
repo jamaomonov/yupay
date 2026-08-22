@@ -145,6 +145,32 @@ def _ensure_provider_accepting_intents(
         )
 
 
+def _ensure_provider_may_pay_for(*, provider: str, order: Order) -> None:
+    """Refuse a gateway that must not settle this kind of order.
+
+    `wallet.topup_limits.BLOCKED_PROVIDERS` already refuses "fund the wallet
+    from the wallet" at ``/wallet/topup`` — but the charge happens in
+    :func:`create_intent`, and that never consulted the purpose. A customer who
+    abandoned the acquirer, which leaves the deposit ``pending_payment`` by
+    design, could point a second intent at it with ``provider="wallet"``. Their
+    balance nets to zero, but every lap debits ``house_payments_received`` for
+    money no acquirer ever sent and books a delivered deposit, and it repeats
+    for as long as they care to.
+
+    Extracted rather than inlined to keep :func:`create_intent` under the
+    ``PLR0912`` branch gate, the same reason
+    :func:`_ensure_provider_accepting_intents` sits beside it.
+
+    Raises:
+        ConflictError: the wallet was asked to pay for a non-catalogue order.
+    """
+    if provider == "wallet" and order.purpose != "catalog":
+        raise ConflictError(
+            "the wallet cannot pay for a wallet top-up",
+            extra={"purpose": order.purpose},
+        )
+
+
 def _safe_return_url(candidate: str | None, settings: Settings) -> str:
     """Resolve the acquirer return URL, defaulting to the web order surface and
     rejecting any client-supplied URL that isn't same-origin as web_base_url."""
@@ -189,6 +215,7 @@ async def create_intent(
         raise ConflictError("order is not awaiting payment", extra={"status": order.status})
 
     gw = get_gateway(provider)
+    _ensure_provider_may_pay_for(provider=gw.provider, order=order)
     if not gw.available:
         raise ConflictError(
             "payment provider not available",

@@ -321,3 +321,76 @@ async def test_admin_payment_list_says_a_deposit_is_a_deposit(
     rows = listing.json()["items"]
     assert len(rows) == 1
     assert rows[0]["order_purpose"] == "wallet_topup"
+
+
+async def test_a_deposit_cannot_be_paid_from_the_wallet_itself(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """`BLOCKED_PROVIDERS` guards `/wallet/topup`; the charge happens elsewhere.
+
+    `create_intent` only checks that the order is awaiting payment, so a
+    customer who abandons the acquirer — which leaves the order
+    `pending_payment` by design — can point a second intent at the same
+    deposit with `provider: "wallet"`. The balance nets to zero, but each
+    lap debits `house_payments_received` for money no acquirer ever sent and
+    records a delivered deposit, and it can be repeated indefinitely.
+    """
+    token, user_id = await _login_user(integration_client, tg_id=913)
+
+    # Fund the balance so the gateway gets past its sufficiency check — the
+    # point is the missing purpose guard, not an empty wallet.
+    user_wallet = await wallet_svc.ensure_account(
+        db_session,
+        owner_type="user",
+        owner_id=user_id,
+        kind="user_wallet",
+        currency="UZS",
+    )
+    house = await wallet_svc.ensure_account(
+        db_session,
+        owner_type="house",
+        owner_id="house",
+        kind="house_payments_received",
+        currency="UZS",
+    )
+    await wallet_svc.post(
+        db_session,
+        kind="admin.adjust",
+        legs=[
+            Leg(account_id=user_wallet.id, direction="D", amount=Decimal("50000"), currency="UZS"),
+            Leg(account_id=house.id, direction="C", amount=Decimal("50000"), currency="UZS"),
+        ],
+        idempotency_key="wallet-selffund-seed-1",
+    )
+    await db_session.commit()
+
+    deposit = await _topup(
+        integration_client,
+        token=token,
+        amount="10000",
+        provider="mock",
+        key="wallet-selffund-order-1",
+    )
+
+    # The customer abandons the acquirer's page. That cancels our payment row
+    # and — by design, see `cancel_pending_provider_payment` — leaves the order
+    # awaiting payment, so `_find_active_payment` no longer guards the slot.
+    from yupay.modules.payments.models import Payment
+
+    await db_session.execute(
+        update(Payment).where(Payment.order_id == deposit["order_id"]).values(status="cancelled")
+    )
+    await db_session.commit()
+
+    intent = await integration_client.post(
+        "/api/v1/payments/intents",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "wallet-selffund-intent1",
+        },
+        json={"order_id": deposit["order_id"], "provider": "wallet"},
+    )
+    assert intent.status_code >= 400, (
+        "a deposit must not be payable from the balance it is meant to fund; "
+        f"got {intent.status_code}: {intent.text}"
+    )

@@ -63,7 +63,13 @@ export default function WalletPage({ params }: { params: Promise<{ locale: strin
   }
 
   const balance = spendableBalance(wallet.data?.balances ?? null, WALLET_CURRENCY);
-  const accountIds = new Set((wallet.data?.balances ?? []).map((b) => b.account_id));
+  // Only the account the headline counts. Building this from every balance
+  // put cashback and promo movements above a figure that never moved.
+  const accountIds = new Set(
+    (wallet.data?.balances ?? [])
+      .filter((b) => b.kind === "user_wallet" && b.currency === WALLET_CURRENCY)
+      .map((b) => b.account_id),
+  );
   const rows = (history.data?.items ?? [])
     .map((tx) => summarizeForUser(tx, accountIds))
     .filter((v): v is UserTransactionView => v !== null);
@@ -76,7 +82,9 @@ export default function WalletPage({ params }: { params: Promise<{ locale: strin
         <p className="text-tx-dim mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.16em]">
           {t("balanceLabel")}
         </p>
-        {balance === null ? (
+        {wallet.isError ? (
+          <p className="text-sm text-red-400">{t("balanceError")}</p>
+        ) : balance === null ? (
           <Skeleton className="h-10 w-40 rounded-lg" />
         ) : (
           <p className="font-display text-4xl font-bold tabular-nums tracking-[-0.02em]">
@@ -86,7 +94,7 @@ export default function WalletPage({ params }: { params: Promise<{ locale: strin
         <p className="text-tx-mute mt-3 text-sm leading-relaxed">{t("balanceNote")}</p>
         <Link
           href={pathFor(locale, "/account/wallet/top-up")}
-          className={buttonStyles({ size: "md" }) + " mt-5 w-full sm:w-auto"}
+          className={buttonStyles({ size: "md", className: "mt-5 w-full sm:w-auto" })}
         >
           {t("topUpCta")}
         </Link>
@@ -131,7 +139,9 @@ export default function WalletPage({ params }: { params: Promise<{ locale: strin
               </span>
               <span
                 className={`flex-shrink-0 text-sm font-bold tabular-nums ${
-                  row.delta >= 0 ? "text-primary" : "text-tx-mute"
+                  // `text-tx-mute` is the app's disabled-control colour; a
+                  // purchase is an ordinary row, not a greyed-out one.
+                  row.delta >= 0 ? "text-primary" : "text-foreground"
                 }`}
               >
                 {row.delta >= 0 ? "+" : "−"}

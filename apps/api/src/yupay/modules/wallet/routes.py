@@ -99,6 +99,7 @@ async def topup_wallet(
         provider=body.provider,
         idempotency_key=idempotency_key,
         source=normalise_source(surface),
+        return_url=body.return_url,
     )
     return PaymentOut.model_validate(payment)
 

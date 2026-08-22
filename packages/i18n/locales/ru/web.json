@@ -292,7 +292,10 @@
     "payFromBalance": "Баланс",
     "payFromBalanceGuest": "Войдите, чтобы платить с баланса",
     "payFromBalanceShort": "Не хватает {amount}",
-    "payFromBalanceUnknown": "Выберите пакет"
+    "payFromBalanceUnknown": "Выберите пакет",
+    "successPaidTitle": "Оплачено с баланса",
+    "successPaidNote": "Заказ оплачен — выдаём товар. Следите за статусом ниже.",
+    "payFromBalanceLoading": "Загружаем баланс…"
   },
   "how": {
     "eyebrow": "Flow",
@@ -635,7 +638,8 @@
     "codesReadyTitle": "Заказ выполнен — коды готовы",
     "supportCta": "Написать в поддержку",
     "walletTopUpTitle": "Пополнение кошелька",
-    "walletTopUpBody": "Баланс пополняется в Telegram Mini App — откройте бота, чтобы увидеть эту операцию."
+    "walletTopUpBody": "Баланс обновится, когда банк подтвердит платёж.",
+    "walletTopUpCta": "К кошельку"
   },
   "brandReviews": {
     "title": "Отзывы",
@@ -688,6 +692,14 @@
     "txPromo": "Промокод",
     "txCashback": "Кэшбэк",
     "txTopUp": "Пополнение",
-    "txTopUpRefund": "Возврат пополнения"
+    "txTopUpRefund": "Возврат пополнения",
+    "amountRange": "От {min} до {max}",
+    "balanceError": "Не удалось загрузить баланс"
+  },
+  "checkoutReturn": {
+    "title": "Платёж обрабатывается",
+    "body": "Банк подтвердит оплату в течение минуты. Загляните в заказы или в кошелёк — там всё будет видно.",
+    "toOrders": "Мои заказы",
+    "toWallet": "Кошелёк"
   }
 }

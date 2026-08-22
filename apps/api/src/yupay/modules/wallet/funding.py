@@ -21,6 +21,7 @@ from yupay.modules.orders.service import ORDER_EXPIRY_SECONDS, Actor, _record_ev
 from yupay.modules.payments.models import Payment
 from yupay.modules.wallet.topup_limits import (
     PURPOSE_WALLET_TOPUP,
+    assert_provider_matches_surface,
     currency_for_provider,
     quantize_topup_amount,
 )
@@ -51,12 +52,24 @@ async def create_topup(
     Replay of the same ``idempotency_key`` returns the original payment.
     """
     currency = currency_for_provider(provider)
+    assert_provider_matches_surface(provider, source)
     charged = quantize_topup_amount(amount, currency)
 
     existing = await _existing_topup_order(db, user_id=user_id, idempotency_key=idempotency_key)
     if existing is not None:
-        if existing.purpose != PURPOSE_WALLET_TOPUP:
-            raise ConflictError("idempotency key already used")
+        # A replay must be the *same* request. Checking only the purpose meant a
+        # client reusing a stale key for a different amount got a hosted
+        # checkout for the old one — money moving on a figure nobody asked for.
+        # `payments._validate_intent_replay` holds the same line for intents.
+        if (
+            existing.purpose != PURPOSE_WALLET_TOPUP
+            or existing.currency != currency
+            or existing.total_charged != charged
+        ):
+            raise ConflictError(
+                "Idempotency-Key was already used for a different request",
+                extra={"order_id": existing.id},
+            )
         return await _payment_for_order(db, existing.id)
 
     created = now()

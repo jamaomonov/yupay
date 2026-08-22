@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 import { useAuth } from "@/lib/auth";
 import { formatUzs, pathFor } from "@/lib/seo";
@@ -17,25 +18,36 @@ import { spendableBalance } from "@/lib/wallet-balance";
  */
 export function BalanceChip({ locale }: { locale: string }) {
   const { user } = useAuth();
+  const t = useTranslations("web.nav");
   const wallet = useQuery({
     queryKey: ["wallet"],
     queryFn: getWallet,
     enabled: Boolean(user),
-    // The header is mounted everywhere; a top-up or a wallet payment elsewhere
-    // in the tab invalidates this key, so polling would only add noise.
+    // The header is mounted on every page, so this must not be a per-navigation
+    // request. Checkout invalidates the key after paying from the balance, and
+    // a top-up leaves the tab entirely for the acquirer, so the window in which
+    // a stale figure can be shown is bounded by those two rather than by luck.
     staleTime: 30_000,
   });
 
   if (!user) return null;
   const balance = spendableBalance(wallet.data?.balances ?? null, WALLET_CURRENCY);
-  if (balance === null) return null;
+  // A fixed-width placeholder rather than nothing: rendering the chip late
+  // shifted every control beside it, which is the shift `AccountMenu` reserves
+  // space to avoid.
+  if (balance === null) return <div className="h-11 w-[92px] shrink-0" aria-hidden />;
+  const formatted = formatUzs(locale, Math.round(balance));
 
   return (
     <Link
       href={pathFor(locale, "/account/wallet")}
-      className="border-border bg-muted text-tx-mute hover:text-foreground hover:border-primary/40 flex h-11 items-center rounded-full border px-3.5 text-sm font-bold tabular-nums transition"
+      aria-label={`${t("wallet")}: ${formatted}`}
+      // `shrink-0 whitespace-nowrap`: between md and ~1024px the header's
+      // controls already fill the row, and a shrinkable chip wrapped its digits
+      // onto two lines inside a fixed-height pill.
+      className="border-border bg-muted text-tx-mute hover:text-foreground hover:border-primary/40 flex h-11 shrink-0 items-center whitespace-nowrap rounded-full border px-3.5 text-sm font-bold tabular-nums transition"
     >
-      {formatUzs(locale, Math.round(balance))}
+      {formatted}
     </Link>
   );
 }

@@ -127,3 +127,29 @@ describe("register", () => {
     expect(result.current.user).toBeNull();
   });
 });
+
+it("leaves nothing of the previous account in the cache after logout", async () => {
+  // Shared device: A signs out, B signs in without a reload, so the same
+  // QueryClient lives on. TanStack serves cached data while it refetches —
+  // which for the wallet is one customer seeing another's balance and their
+  // whole ledger history.
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  qc.setQueryData(["wallet"], { balances: [{ balance: "999999" }] });
+  qc.setQueryData(["wallet", "transactions"], { items: [{ id: "tx-a" }] });
+  qc.setQueryData(["orders"], { items: [{ id: "order-a" }] });
+
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={qc}>
+      <AuthProvider>{children}</AuthProvider>
+    </QueryClientProvider>
+  );
+  const { result } = renderHook(() => useAuth(), { wrapper });
+
+  await act(async () => {
+    result.current.logout();
+  });
+
+  expect(qc.getQueryData(["wallet"])).toBeUndefined();
+  expect(qc.getQueryData(["wallet", "transactions"])).toBeUndefined();
+  expect(qc.getQueryData(["orders"])).toBeUndefined();
+});
