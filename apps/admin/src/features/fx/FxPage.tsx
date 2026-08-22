@@ -29,10 +29,14 @@ export function FxPage() {
     },
   });
 
+  // No `refetchInterval`: this endpoint probes every FX adapter live, and the
+  // quotas behind them are measured in thousands of calls per month — a tab
+  // left open on this page used to spend one on every adapter every minute.
+  // The chain is configuration, not a live feed; it refreshes when the
+  // operator saves it or presses "Обновить".
   const providersQuery = useQuery<ProviderChainOut>({
     queryKey: qk.fxProviders(),
     queryFn: () => apiGet<ProviderChainOut>("/api/v1/admin/fx/providers"),
-    refetchInterval: 60_000,
   });
 
   const saveChain = useMutation<ProviderChainOut, ApiError, { slug: string; enabled: boolean }[]>({

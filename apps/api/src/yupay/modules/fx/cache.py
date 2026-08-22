@@ -4,9 +4,10 @@ Keys per pair:
 
 - ``fx:rate:{base}:{quote}`` — fresh value (TTL = ``fx_cache_fresh_seconds``).
 - ``fx:rate:{base}:{quote}:stale`` — last-known-good (TTL = ``fx_cache_stale_seconds``).
-- ``fx:manual:{quote}`` — admin override (no TTL; written on save / first DB load).
+- ``fx:manual:{quote}`` — admin override (1 h; written after save / on first DB load).
 - ``fx:provider_chain`` — ordered adapter list (no TTL).
 - ``fx:failover:{base}:{quote}`` — last failover fingerprint (no TTL).
+- ``fx:provider_probe`` — the admin page's live per-adapter probe (60 s).
 
 A fresh cache hit short-circuits the provider chain. A stale hit is the graceful
 degradation when every provider fails. A manual override short-circuits both.
@@ -148,3 +149,25 @@ async def write_manual_absent(redis: Redis, quote: str) -> None:
         updated_at=None,
         ttl_seconds=MANUAL_ABSENT_TTL_SECONDS,
     )
+
+
+#: The admin FX page's probe. Short, because the page exists to show what the
+#: adapters are answering *now* — but not absent, because the probe is a real
+#: upstream call per adapter per quote, billed against a quota measured in
+#: thousands per month. Without it, every open tab and every reload paid for
+#: its own round of them.
+PROBE_TTL_SECONDS = 60
+
+_PROBE_KEY = "fx:provider_probe"
+
+
+async def read_probe(redis: Redis) -> str | None:
+    """Raw cached probe JSON, or ``None``."""
+    raw = await redis.get(_PROBE_KEY)
+    if not raw:
+        return None
+    return str(raw)
+
+
+async def write_probe(redis: Redis, payload: str) -> None:
+    await redis.set(_PROBE_KEY, payload, ex=PROBE_TTL_SECONDS)

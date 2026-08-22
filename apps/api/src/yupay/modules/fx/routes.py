@@ -248,9 +248,22 @@ async def admin_get_providers(
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
 ) -> ProviderChainOut:
+    """Probe every adapter, cached for a minute.
+
+    Each probe is a real call per adapter per quote against quotas measured in
+    thousands per month, and this endpoint is read by a page that several
+    operators may have open at once. Serving one probe to all of them keeps the
+    page honest without paying for the same answer repeatedly; saving the chain
+    clears the entry so a reorder shows its effect at once.
+    """
     service = build_default_service()
+    cached = await cache.read_probe(service._redis)
+    if cached is not None:
+        return ProviderChainOut.model_validate_json(cached)
     chain = await list_chain(db)
-    return await probe_chain(service._providers, chain, service._settings.fx_supported_quotes)
+    out = await probe_chain(service._providers, chain, service._settings.fx_supported_quotes)
+    await cache.write_probe(service._redis, out.model_dump_json())
+    return out
 
 
 @admin_router.put(
@@ -281,6 +294,7 @@ async def admin_set_providers(
     await write_chain_cache(service._redis, saved)
     await cache.invalidate_fresh_many(service._redis, service._settings.fx_supported_quotes)
     out = await probe_chain(service._providers, saved, service._settings.fx_supported_quotes)
+    await cache.write_probe(service._redis, out.model_dump_json())
     if key is not None:
         await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
     return out
