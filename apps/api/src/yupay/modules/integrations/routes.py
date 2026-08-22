@@ -28,6 +28,7 @@ from yupay.core.logging import get_logger
 from yupay.modules.admin.api import require_admin
 from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.integrations import service as svc
+from yupay.modules.integrations.catalog_sync import sync_g2b_catalog as run_g2b_catalog_sync
 from yupay.modules.integrations.models import SkuSupplierMapping
 from yupay.modules.integrations.player_check import check_player_for_product
 from yupay.modules.integrations.schemas import (
@@ -259,70 +260,17 @@ async def sync_g2b_catalog(
     so the admin UI gets a definitive answer instead of a 5xx. Live
     fulfilment does NOT depend on this cache — the source of truth is
     ``sku_supplier_mapping``.
+
+    The scheduler runs the same function hourly (``sync_supplier_catalog``);
+    this button is for when someone does not want to wait.
     """
-    from yupay.modules.fulfillment.suppliers import REGISTRY
-    from yupay.modules.fulfillment.suppliers.g2b import G2bFulfiller
-
-    fulfiller = REGISTRY.get("g2b")
-    if not isinstance(fulfiller, G2bFulfiller) or not fulfiller.available:
-        return CatalogSyncOut(
-            supplier="g2b",
-            error="G2B_API_KEY is not configured",
-        )
-
-    client = fulfiller._client()
-    vouchers = 0
-    games = 0
-    error: str | None = None
-    try:
-        products = await client.fetch_products(page=1, limit=200)
-        for item in products:
-            external_id = str(item.get("id") or item.get("product_id") or "").strip()
-            if not external_id:
-                continue
-            title = str(
-                item.get("title") or item.get("name") or external_id,
-            )[:255]
-            await svc.upsert_catalog_entry(
-                db,
-                supplier_slug="g2b",
-                kind="voucher",
-                external_id=external_id,
-                title=title,
-                raw=item,
-            )
-            vouchers += 1
-    except Exception as exc:  # noqa: BLE001 -- best-effort sync
-        error = f"voucher sync failed: {exc!s}"[:200]
-        log.warning("integrations.g2b.sync.voucher_failed", error=str(exc))
-
-    try:
-        games_payload = await client.fetch_games()
-        for item in games_payload:
-            external_id = str(item.get("code") or item.get("id") or "").strip()
-            if not external_id:
-                continue
-            title = str(item.get("name") or external_id)[:255]
-            await svc.upsert_catalog_entry(
-                db,
-                supplier_slug="g2b",
-                kind="game",
-                external_id=external_id,
-                title=title,
-                raw=item,
-            )
-            games += 1
-    except Exception as exc:  # noqa: BLE001
-        err = f"game sync failed: {exc!s}"[:200]
-        error = f"{error}; {err}" if error else err
-        log.warning("integrations.g2b.sync.games_failed", error=str(exc))
-
+    report = await run_g2b_catalog_sync(db)
     await db.commit()
     return CatalogSyncOut(
         supplier="g2b",
-        vouchers_synced=vouchers,
-        games_synced=games,
-        error=error,
+        vouchers_synced=report.vouchers,
+        games_synced=report.games,
+        error=report.error,
     )
 
 

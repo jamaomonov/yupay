@@ -14661,7 +14661,7 @@
     },
     "/api/v1/admin/integrations/g2b/sync-catalog": {
       "post": {
-        "description": "Pulls G2B's product + game catalog into our cache.\n\nBest-effort: partial failures are logged but the endpoint never raises\nso the admin UI gets a definitive answer instead of a 5xx. Live\nfulfilment does NOT depend on this cache \u2014 the source of truth is\n``sku_supplier_mapping``.",
+        "description": "Pulls G2B's product + game catalog into our cache.\n\nBest-effort: partial failures are logged but the endpoint never raises\nso the admin UI gets a definitive answer instead of a 5xx. Live\nfulfilment does NOT depend on this cache \u2014 the source of truth is\n``sku_supplier_mapping``.\n\nThe scheduler runs the same function hourly (``sync_supplier_catalog``);\nthis button is for when someone does not want to wait.",
         "operationId": "sync_g2b_catalog_api_v1_admin_integrations_g2b_sync_catalog_post",
         "parameters": [
           {

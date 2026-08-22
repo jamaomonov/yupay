@@ -19,10 +19,12 @@ from yupay_scheduler.jobs import (
     purge_evidence,
     refresh_supplier_prices,
     refresh_voucher_stock,
+    sync_supplier_catalog,
 )
 
 #: Every job whose period is long enough that losing one costs a real window.
 LONG_PERIOD_JOBS = [
+    sync_supplier_catalog,
     refresh_supplier_prices,
     refresh_voucher_stock,
     purge_evidence,
@@ -56,3 +58,19 @@ def test_the_stagger_keeps_them_off_each_other() -> None:
     starts = sorted(job.next_run_time for job in scheduler.get_jobs())
     gaps = [b - a for a, b in zip(starts, starts[1:], strict=False)]
     assert all(gap >= timedelta(seconds=15) for gap in gaps), f"too tight: {gaps}"
+
+
+def test_the_catalogue_is_synced_before_prices_are_copied_from_it() -> None:
+    """`refresh_supplier_prices` copies `supplier_catalog_cache`, it does not
+    call G2B. Re-pricing from a cache nobody refreshed is what made the hourly
+    job report `moved: 0` for twelve days while the supplier's price had moved,
+    so the sync has to land first or the tick is just as uninformed as before.
+    """
+    scheduler = AsyncIOScheduler(timezone="UTC")
+    sync_supplier_catalog.register(scheduler)
+    refresh_supplier_prices.register(scheduler)
+
+    by_id = {job.id: job.next_run_time for job in scheduler.get_jobs()}
+    assert (
+        by_id["integrations.sync_supplier_catalog"] < by_id["integrations.refresh_supplier_prices"]
+    )
