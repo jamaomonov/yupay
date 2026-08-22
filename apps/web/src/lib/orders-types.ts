@@ -36,6 +36,8 @@ export interface OrderOut {
   delivered_at: string | null;
   cancelled_at: string | null;
   items: OrderItemOut[];
+  /** `catalog` (a sale) or `wallet_topup` (a 1:1 balance deposit, Mini App only). */
+  purpose?: string;
 }
 
 export interface OrderListOut {

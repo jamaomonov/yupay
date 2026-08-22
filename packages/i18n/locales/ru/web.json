@@ -628,7 +628,9 @@
       "credited": "Зачислено"
     },
     "codesReadyTitle": "Заказ выполнен — коды готовы",
-    "supportCta": "Написать в поддержку"
+    "supportCta": "Написать в поддержку",
+    "walletTopUpTitle": "Пополнение кошелька",
+    "walletTopUpBody": "Баланс пополняется в Telegram Mini App — откройте бота, чтобы увидеть эту операцию."
   },
   "brandReviews": {
     "title": "Отзывы",

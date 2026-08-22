@@ -628,7 +628,9 @@
       "credited": "Credited"
     },
     "codesReadyTitle": "Order complete — your codes are ready",
-    "supportCta": "Message support"
+    "supportCta": "Message support",
+    "walletTopUpTitle": "Wallet top-up",
+    "walletTopUpBody": "The balance lives in the Telegram Mini App — open the bot to see this transaction."
   },
   "brandReviews": {
     "title": "Reviews",

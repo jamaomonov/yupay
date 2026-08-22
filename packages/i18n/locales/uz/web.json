@@ -628,7 +628,9 @@
       "credited": "Hisobga o‘tdi"
     },
     "codesReadyTitle": "Buyurtma tayyor — kodlar tayyor",
-    "supportCta": "Qoʻllab-quvvatlashga yozish"
+    "supportCta": "Qoʻllab-quvvatlashga yozish",
+    "walletTopUpTitle": "Hamyonni toʻldirish",
+    "walletTopUpBody": "Balans Telegram Mini App'da — bu amalni koʻrish uchun botni oching."
   },
   "brandReviews": {
     "title": "Sharhlar",

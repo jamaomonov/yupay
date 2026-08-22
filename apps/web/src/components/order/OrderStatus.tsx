@@ -183,6 +183,19 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
     );
   }
 
+  // A wallet deposit is an order row with no lines, and the storefront has no
+  // wallet surface to show it on — funding the balance is a Mini App flow. The
+  // list already hides deposits, so only a hand-typed link arrives here; say
+  // what it is rather than rendering a purchase of nothing.
+  if (order.data.purpose === "wallet_topup") {
+    return (
+      <div className="border-border bg-surface-1 rounded-2xl border p-6 text-center">
+        <p className="text-foreground text-base font-semibold">{t("walletTopUpTitle")}</p>
+        <p className="text-tx-mute mt-2 text-sm">{t("walletTopUpBody")}</p>
+      </div>
+    );
+  }
+
   const brandSlug = order.data.items[0]?.display?.brand_slug ?? null;
   const alreadyReviewed = (myReviews.data?.items ?? []).some((r) => r.order_id === order.data.id);
   const canRate = status === "delivered" && Boolean(user) && brandSlug !== null && !alreadyReviewed;
