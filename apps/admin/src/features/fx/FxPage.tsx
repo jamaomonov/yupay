@@ -2,13 +2,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@yupay/ui";
 import { RefreshCw } from "lucide-react";
 
+import { FxProviderChain } from "./FxProviderChain";
 import { FxRateCard, formatRate } from "./FxRateCard";
-import type { AdminRateOut, AdminRatesOut } from "./types";
+import type { AdminRateOut, AdminRatesOut, ProviderChainOut } from "./types";
 
 import { PageHeader } from "@/components/PageHeader";
 import { Spinner } from "@/components/States";
 import { StatCard } from "@/components/StatCard";
-import { ApiError, apiGet, apiPatch, apiPost } from "@/lib/api";
+import { ApiError, apiGet, apiPatch, apiPost, apiPut } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
 export function FxPage() {
@@ -22,7 +23,24 @@ export function FxPage() {
 
   const refresh = useMutation<AdminRatesOut, ApiError>({
     mutationFn: () => apiPost<AdminRatesOut>("/api/v1/admin/fx/refresh", {}),
-    onSuccess: (data) => qc.setQueryData(qk.fxRates(), data),
+    onSuccess: (data) => {
+      qc.setQueryData(qk.fxRates(), data);
+      void qc.invalidateQueries({ queryKey: qk.fxProviders() });
+    },
+  });
+
+  const providersQuery = useQuery<ProviderChainOut>({
+    queryKey: qk.fxProviders(),
+    queryFn: () => apiGet<ProviderChainOut>("/api/v1/admin/fx/providers"),
+    refetchInterval: 60_000,
+  });
+
+  const saveChain = useMutation<ProviderChainOut, ApiError, { slug: string; enabled: boolean }[]>({
+    mutationFn: (items) => apiPut<ProviderChainOut>("/api/v1/admin/fx/providers", { items }),
+    onSuccess: (data) => {
+      qc.setQueryData(qk.fxProviders(), data);
+      void qc.invalidateQueries({ queryKey: qk.fxRates() });
+    },
   });
 
   const save = useMutation<
@@ -84,6 +102,21 @@ export function FxPage() {
         </p>
       )}
 
+      {providersQuery.isLoading && <Spinner label="Загрузка источников…" />}
+      {providersQuery.isError && (
+        <p className="mb-4 text-sm text-[var(--danger)]">Не удалось загрузить источники курса.</p>
+      )}
+      {providersQuery.data ? (
+        <FxProviderChain
+          data={providersQuery.data}
+          saving={saveChain.isPending}
+          error={saveChain.isError ? formatError(saveChain.error) : null}
+          onChange={(items) => {
+            saveChain.mutate(items);
+          }}
+        />
+      ) : null}
+
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {rates.map((row) => (
           <FxRateCard
@@ -102,8 +135,8 @@ export function FxPage() {
 
       <p className="mt-3 text-xs text-[var(--text-secondary)]">
         «Наш курс» подменяет FX во всём: каталог, чекаут, публичный <code>GET /fx/rates</code>.
-        Обновление FX не сбрасывает переключатель. SKU с отдельной ценой в валюте по-прежнему идут
-        своей ценой, не курсом.
+        Обновление FX не сбрасывает переключатель. Основной провайдер — первый живой в списке
+        источников. SKU с отдельной ценой в валюте по-прежнему идут своей ценой, не курсом.
         {rates.some((r) => r.use_manual)
           ? ` Сейчас вручную: ${rates
               .filter((r) => r.use_manual)

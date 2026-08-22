@@ -31,6 +31,7 @@ x-app-env: &app-env
   ADMIN_DEV_PASSWORD: ${ADMIN_DEV_PASSWORD:-admin}
   CORS_ALLOW_ORIGINS: '${CORS_ALLOW_ORIGINS:-["*"]}'
   FX_EXCHANGERATE_API_KEY: ${FX_EXCHANGERATE_API_KEY:-}
+  FX_RATES_API_KEY: ${FX_RATES_API_KEY:-}
   # G2Bulk supplier — set in .env (or /opt/yupay/secrets/api.env in prod).
   # Empty G2B_API_KEY leaves the adapter as ``available=false``.
   G2B_API_KEY: ${G2B_API_KEY:-}

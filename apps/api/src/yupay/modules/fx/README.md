@@ -27,14 +27,18 @@ from yupay.modules.fx.api import (
 
 ## Provider chain
 
-See [ADR-0008](../../../../../docs/decisions/0008-fx-provider-chain.md). In order:
+See [ADR-0008](../../../../../docs/decisions/0008-fx-provider-chain.md) and
+[ADR-0057](../../../../../docs/decisions/0057-admin-fx-provider-chain.md).
+Default seed (admin can reorder):
 
-1. `exchangerate.host` — fiat primary (no key)
-2. `openexchangerates.org` — fiat fallback (free key)
-3. `coingecko` — stablecoin / crypto
+1. `fxratesapi.com` — fiat, keyed (`FX_RATES_API_KEY`)
+2. `exchangerate-api.com` — fiat, keyed (`FX_EXCHANGERATE_API_KEY`)
+3. `exchangerate.host` — fiat, no key
+4. `openexchangerates.org` — fiat, keyed
+5. `coingecko` — USDT / crypto only
 
-Each provider implements :class:`FxProvider` and is composable with retries and circuit
-breakers at the service layer.
+Each provider implements :class:`FxProvider`. Empty keys make `supports` false
+so the chain skips that adapter.
 
 ## Cache
 
@@ -43,6 +47,7 @@ breakers at the service layer.
 | `fx:rate:{base}:{quote}`       | 15 min                     | Every successful provider call     |
 | `fx:rate:{base}:{quote}:stale` | 24 h                       | Same as above (parallel write)     |
 | `fx:manual:{quote}`            | none (60 s if row missing) | Admin save, or first Postgres load |
+| `fx:provider_chain`            | none                       | Admin save, or first Postgres load |
 
 The scheduled job `fx_refresh` (`apps/scheduler/.../jobs/fx_refresh.py`) walks
 the matrix every `FX_REFRESH_INTERVAL_MINUTES` (default 5) so demand reads
@@ -55,6 +60,7 @@ mostly hit Redis, writes `fx_rates` history, and runs the 6% drop tripwire
 - `fx_snapshots` — immutable per-order locked rates. Referenced by `orders.fx_snapshot_id`
   once that module lands.
 - `fx_quote_settings` — per-quote `use_manual` + `manual_rate` (ADR-0055).
+- `fx_provider_settings` — adapter order and enable flags (ADR-0057).
 
 ## HTTP surface
 
@@ -64,6 +70,8 @@ mostly hit Redis, writes `fx_rates` history, and runs the 6% drop tripwire
 | `GET`   | `/api/v1/admin/fx/rates`         | `AdminRatesOut` — effective + live FX + toggle                 |
 | `POST`  | `/api/v1/admin/fx/refresh`       | Same as admin GET after busting the provider cache             |
 | `PATCH` | `/api/v1/admin/fx/rates/{quote}` | `AdminRateOut` — set `use_manual` and optional `manual_rate`   |
+| `GET`   | `/api/v1/admin/fx/providers`     | `ProviderChainOut` — live quote per adapter + order            |
+| `PUT`   | `/api/v1/admin/fx/providers`     | Same, after replacing the chain                                |
 
 ## Tests
 

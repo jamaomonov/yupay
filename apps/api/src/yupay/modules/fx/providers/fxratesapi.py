@@ -1,17 +1,16 @@
-"""exchangerate-api.com v6 adapter — preferred fiat provider when a key is set.
+"""fxratesapi.com adapter — fiat provider with an API key.
 
 Endpoint shape::
 
-    GET https://v6.exchangerate-api.com/v6/<API_KEY>/latest/USD
+    GET https://api.fxratesapi.com/latest?api_key=<KEY>&base=USD&currencies=UZS
     →   {
-          "result": "success",
-          "base_code": "USD",
-          "conversion_rates": { "USD": 1, "RUB": 88.5, "UZS": 12347.5, ... }
+          "success": true,
+          "base": "USD",
+          "rates": { "UZS": 11853.55 }
         }
 
-Only fiat pairs with ``USD`` base are answered here. ``base != USD`` is rejected
-so the chain falls through to a provider that handles it (or to the snapshot's
-``base==quote`` short-circuit).
+Only fiat pairs with ``USD`` base. Missing key → ``supports`` is false so the
+chain skips this adapter.
 """
 
 from __future__ import annotations
@@ -26,11 +25,11 @@ from yupay.modules.fx.providers._http import client_context
 from yupay.modules.fx.providers.base import FxProvider, FxProviderError, Quote
 
 
-class ExchangerateApiProvider(FxProvider):
-    """v6 client. Requires a per-deployment API key (free tier: 1500 req/mo)."""
+class FxRatesApiProvider(FxProvider):
+    """FXRatesAPI latest-rates client."""
 
-    slug = "exchangerate-api"
-    name = "exchangerate-api.com"
+    slug = "fxratesapi"
+    name = "fxratesapi.com"
     _FIAT_BASES: ClassVar[frozenset[str]] = frozenset({"USD"})
     _SUPPORTED_QUOTES: ClassVar[frozenset[str]] = frozenset(
         {"USD", "RUB", "UZS", "EUR", "KZT", "UAH", "TRY", "BYN", "GBP", "TJS", "AZN"}
@@ -38,15 +37,13 @@ class ExchangerateApiProvider(FxProvider):
 
     def __init__(
         self,
-        url_template: str,
+        url: str,
         api_key: str,
         *,
         timeout_seconds: float,
         client: httpx.AsyncClient | None = None,
     ) -> None:
-        """``url_template`` should include a single ``{key}`` placeholder, e.g.
-        ``https://v6.exchangerate-api.com/v6/{key}/latest/USD``."""
-        self._url_template = url_template
+        self._url = url
         self._api_key = api_key
         self._timeout = timeout_seconds
         self._client = client
@@ -60,32 +57,28 @@ class ExchangerateApiProvider(FxProvider):
         if not self._api_key:
             raise FxProviderError(f"{self.name}: API key not configured")
         base_u, quote_u = base.upper(), quote.upper()
-        if base_u != "USD":
-            # v6 latest endpoint is /<key>/latest/<BASE>, but we only seed the
-            # template with the USD base. If you need other bases later, add
-            # them at the factory level.
-            raise FxProviderError(f"{self.name}: base {base_u} not supported here")
-
-        url = self._url_template.replace("{key}", self._api_key)
+        params = {
+            "api_key": self._api_key,
+            "base": base_u,
+            "currencies": quote_u,
+        }
         try:
             async with client_context(self._client) as client:
-                resp = await client.get(url, timeout=self._timeout)
+                resp = await client.get(self._url, params=params, timeout=self._timeout)
                 resp.raise_for_status()
                 payload = resp.json()
         except (httpx.HTTPError, ValueError) as exc:
-            raise FxProviderError(f"{self.name}: transport error: {exc}") from exc
+            raise FxProviderError(f"{self.name}: transport error") from exc
 
-        result_flag = payload.get("result")
-        if result_flag != "success":
-            error_type = payload.get("error-type", "unknown")
-            raise FxProviderError(f"{self.name}: API said {error_type}")
+        if payload.get("success") is not True:
+            raise FxProviderError(f"{self.name}: API said success={payload.get('success')!r}")
 
-        if (payload.get("base_code") or "").upper() != base_u:
+        if (payload.get("base") or "").upper() != base_u:
             raise FxProviderError(
-                f"{self.name}: API returned base {payload.get('base_code')!r}, expected {base_u}"
+                f"{self.name}: API returned base {payload.get('base')!r}, expected {base_u}"
             )
 
-        rate_raw = (payload.get("conversion_rates") or {}).get(quote_u)
+        rate_raw = (payload.get("rates") or {}).get(quote_u)
         if rate_raw is None:
             raise FxProviderError(f"{self.name}: missing rate for {base_u}->{quote_u}")
         try:

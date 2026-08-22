@@ -16,6 +16,7 @@ from yupay.modules.fx.providers import (
     ExchangerateApiProvider,
     ExchangerateHostProvider,
     FxProvider,
+    FxRatesApiProvider,
     OpenExchangeRatesProvider,
 )
 from yupay.modules.fx.service import FxService
@@ -26,37 +27,30 @@ def build_default_service(
     settings: Settings | None = None,
     redis: Redis | None = None,
 ) -> FxService:
-    """Build an :class:`FxService` wired to the configured provider chain.
+    """Build an :class:`FxService` with every known adapter.
 
-    Order matters — the first provider that ``supports`` a pair wins, and
-    failures fall through to the next. Crypto pairs route through Coingecko
-    regardless of the fiat order above it.
+    Runtime order comes from ``fx_provider_settings`` (admin UI). Constructor
+    order is the default: FXRatesAPI → ExchangeRate-API → exchangerate.host →
+    Open Exchange Rates → CoinGecko. Keyed adapters with an empty key stay in
+    the list but ``supports`` is false, so the chain skips them.
     """
     s = settings or get_settings()
-    providers: list[FxProvider] = []
-    # Prefer the keyed exchangerate-api.com if we have a key — it's the most
-    # stable in our region and includes UZS / KZT / TJS out of the box.
-    if s.fx_exchangerate_api_key:
-        providers.append(
-            ExchangerateApiProvider(
-                s.fx_exchangerate_api_url,
-                s.fx_exchangerate_api_key,
-                timeout_seconds=s.fx_provider_timeout_seconds,
-            )
-        )
-    providers.append(
-        ExchangerateHostProvider(s.fx_primary_url, timeout_seconds=s.fx_provider_timeout_seconds)
-    )
-    providers.append(
+    timeout = s.fx_provider_timeout_seconds
+    providers: list[FxProvider] = [
+        FxRatesApiProvider(s.fx_rates_api_url, s.fx_rates_api_key, timeout_seconds=timeout),
+        ExchangerateApiProvider(
+            s.fx_exchangerate_api_url,
+            s.fx_exchangerate_api_key,
+            timeout_seconds=timeout,
+        ),
+        ExchangerateHostProvider(s.fx_primary_url, timeout_seconds=timeout),
         OpenExchangeRatesProvider(
             s.fx_fallback_url,
             s.fx_fallback_api_key,
-            timeout_seconds=s.fx_provider_timeout_seconds,
-        )
-    )
-    providers.append(
-        CoingeckoProvider(s.fx_crypto_url, timeout_seconds=s.fx_provider_timeout_seconds)
-    )
+            timeout_seconds=timeout,
+        ),
+        CoingeckoProvider(s.fx_crypto_url, timeout_seconds=timeout),
+    ]
     return FxService(
         providers=providers,
         redis=redis or get_redis(),

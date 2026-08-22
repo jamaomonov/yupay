@@ -5,6 +5,7 @@ Keys per pair:
 - ``fx:rate:{base}:{quote}`` — fresh value (TTL = ``fx_cache_fresh_seconds``).
 - ``fx:rate:{base}:{quote}:stale`` — last-known-good (TTL = ``fx_cache_stale_seconds``).
 - ``fx:manual:{quote}`` — admin override (no TTL; written on save / first DB load).
+- ``fx:provider_chain`` — ordered adapter list (no TTL).
 
 A fresh cache hit short-circuits the provider chain. A stale hit is the graceful
 degradation when every provider fails. A manual override short-circuits both.
@@ -13,6 +14,7 @@ degradation when every provider fails. A manual override short-circuits both.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from datetime import datetime
 from decimal import Decimal
 
@@ -77,6 +79,12 @@ async def write(
 async def invalidate(redis: Redis, base: str, quote: str) -> None:
     """Drop the fresh cache entry (keep stale as a safety net)."""
     await redis.delete(_key(base, quote))
+
+
+async def invalidate_fresh_many(redis: Redis, quotes: Sequence[str], *, base: str = "USD") -> None:
+    """Drop fresh entries so the next read hits the (possibly reordered) chain."""
+    if quotes:
+        await redis.delete(*(_key(base, quote) for quote in quotes))
 
 
 MANUAL_ABSENT_TTL_SECONDS = 60

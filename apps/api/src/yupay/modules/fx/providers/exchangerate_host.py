@@ -19,7 +19,8 @@ from yupay.modules.fx.providers.base import FxProvider, FxProviderError, Quote
 class ExchangerateHostProvider(FxProvider):
     """Implementation of :class:`FxProvider` against ``api.exchangerate.host``."""
 
-    name = "exchangerate.host"  # instance default; the FxProvider protocol declares it
+    slug = "exchangerate-host"
+    name = "exchangerate.host"
     _FIAT_BASES: ClassVar[frozenset[str]] = frozenset({"USD"})
     _SUPPORTED_QUOTES: ClassVar[frozenset[str]] = frozenset(
         {"RUB", "UZS", "EUR", "KZT", "UAH", "TRY", "USD"}

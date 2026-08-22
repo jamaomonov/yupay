@@ -19,11 +19,15 @@ from yupay.core.logging import get_logger
 from yupay.modules.admin.api import require_admin
 from yupay.modules.fx import cache
 from yupay.modules.fx.factory import build_default_service
+from yupay.modules.fx.probe import probe_chain
+from yupay.modules.fx.provider_chain import ChainItem, list_chain, save_chain, write_chain_cache
 from yupay.modules.fx.providers.base import Quote
 from yupay.modules.fx.quote_settings import list_overrides, override_to_quote
 from yupay.modules.fx.schemas import (
     AdminRateOut,
     AdminRatesOut,
+    ProviderChainIn,
+    ProviderChainOut,
     RateOut,
     RateSettingIn,
     RatesOut,
@@ -222,6 +226,53 @@ async def admin_set_rate(
         use_manual=override.use_manual,
         manual_rate=override.manual_rate,
     )
+    if key is not None:
+        await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
+    return out
+
+
+@admin_router.get(
+    "/providers",
+    response_model=ProviderChainOut,
+    summary="Live rate from each FX adapter, plus the fallback order",
+)
+async def admin_get_providers(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+) -> ProviderChainOut:
+    service = build_default_service()
+    chain = await list_chain(db)
+    return await probe_chain(service._providers, chain, service._settings.fx_supported_quotes)
+
+
+@admin_router.put(
+    "/providers",
+    response_model=ProviderChainOut,
+    summary="Set which FX adapter is primary and the fallback order",
+)
+async def admin_set_providers(
+    body: ProviderChainIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
+) -> ProviderChainOut:
+    key = normalize_idempotency_key(idempotency_key)
+    scope = "fx.set_provider_chain"
+    if key is not None:
+        cached = await load_replay(db, scope=scope, idempotency_key=key)
+        if cached is not None and cached.body is not None:
+            return ProviderChainOut.model_validate(cached.body)
+
+    service = build_default_service()
+    items = [
+        ChainItem(slug=row.slug, enabled=row.enabled, sort_order=i)
+        for i, row in enumerate(body.items)
+    ]
+    saved = await save_chain(db, items=items)
+    await db.commit()
+    await write_chain_cache(service._redis, saved)
+    await cache.invalidate_fresh_many(service._redis, service._settings.fx_supported_quotes)
+    out = await probe_chain(service._providers, saved, service._settings.fx_supported_quotes)
     if key is not None:
         await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
     return out

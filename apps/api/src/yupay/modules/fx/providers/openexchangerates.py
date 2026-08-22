@@ -19,7 +19,8 @@ from yupay.modules.fx.providers.base import FxProvider, FxProviderError, Quote
 class OpenExchangeRatesProvider(FxProvider):
     """openexchangerates.org adapter; USD-base only on the free plan."""
 
-    name = "openexchangerates"  # instance default; the FxProvider protocol declares it
+    slug = "openexchangerates"
+    name = "openexchangerates"
     _SUPPORTED_QUOTES: ClassVar[frozenset[str]] = frozenset(
         {"RUB", "UZS", "EUR", "KZT", "UAH", "TRY"}
     )

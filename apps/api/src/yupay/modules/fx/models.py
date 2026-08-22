@@ -4,6 +4,7 @@
 - :class:`FxSnapshot` — immutable rate locked at order creation. Orders reference snapshot
   rows via FK once the ``orders`` module lands.
 - :class:`FxQuoteSetting` — per-quote toggle: live provider vs admin-set rate.
+- :class:`FxProviderSetting` — admin-ordered adapter chain.
 """
 
 from __future__ import annotations
@@ -11,7 +12,16 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Numeric, String, text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -92,4 +102,14 @@ class FxQuoteSetting(Base):
     )
 
 
-__all__ = ["FxQuoteSetting", "FxRate", "FxSnapshot"]
+class FxProviderSetting(Base):
+    """Admin-ordered provider chain. ``sort_order`` 0 is tried first."""
+
+    __tablename__ = "fx_provider_settings"
+
+    slug: Mapped[str] = mapped_column(String(32), primary_key=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+
+
+__all__ = ["FxProviderSetting", "FxQuoteSetting", "FxRate", "FxSnapshot"]

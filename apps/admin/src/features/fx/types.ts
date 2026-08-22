@@ -15,3 +15,25 @@ export interface AdminRatesOut {
   base: string;
   rates: AdminRateOut[];
 }
+
+export interface ProviderQuoteOut {
+  quote: string;
+  rate: string | null;
+  error: string | null;
+}
+
+export interface ProviderChainItemOut {
+  slug: string;
+  title: string;
+  kind: string;
+  enabled: boolean;
+  configured: boolean;
+  role: "primary" | "fallback" | "off" | "unconfigured" | string;
+  sort_order: number;
+  quotes: ProviderQuoteOut[];
+}
+
+export interface ProviderChainOut {
+  quotes: string[];
+  items: ProviderChainItemOut[];
+}

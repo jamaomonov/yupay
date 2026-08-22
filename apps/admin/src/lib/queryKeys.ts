@@ -41,6 +41,7 @@ export const qk = {
 
   // fx
   fxRates: () => ["admin", "fx", "rates"] as const,
+  fxProviders: () => ["admin", "fx", "providers"] as const,
 
   // webhook log
   webhooks: (filters: { provider?: string | null; signature_ok?: boolean | null }) =>

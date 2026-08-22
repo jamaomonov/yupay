@@ -6,7 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { FxPage } from "./FxPage";
-import type { AdminRatesOut } from "./types";
+import type { AdminRatesOut, ProviderChainOut } from "./types";
 
 import { apiGet, apiPatch } from "@/lib/api";
 
@@ -14,11 +14,31 @@ vi.mock("@/lib/api", () => ({
   apiGet: vi.fn(),
   apiPost: vi.fn(),
   apiPatch: vi.fn(),
+  apiPut: vi.fn(),
   ApiError: class ApiError extends Error {},
 }));
 
 const mockedApiGet = vi.mocked(apiGet);
 const mockedApiPatch = vi.mocked(apiPatch);
+
+const PROVIDERS: ProviderChainOut = {
+  quotes: ["UZS", "RUB"],
+  items: [
+    {
+      slug: "fxratesapi",
+      title: "FXRatesAPI",
+      kind: "fiat",
+      enabled: true,
+      configured: true,
+      role: "primary",
+      sort_order: 0,
+      quotes: [
+        { quote: "UZS", rate: "11853.55", error: null },
+        { quote: "RUB", rate: "78.2", error: null },
+      ],
+    },
+  ],
+};
 
 const RATES: AdminRatesOut = {
   base: "USD",
@@ -52,19 +72,30 @@ function renderPage() {
 beforeEach(() => {
   mockedApiGet.mockReset();
   mockedApiPatch.mockReset();
+  mockedApiGet.mockImplementation(async (path: string) => {
+    if (path.includes("/providers")) return PROVIDERS;
+    return RATES;
+  });
 });
 
 it("renders each quote with the live FX rate", async () => {
-  mockedApiGet.mockResolvedValue(RATES);
   renderPage();
   expect(await screen.findByRole("heading", { name: "USD → UZS" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Курс FX" })).toBeInTheDocument();
 });
 
+it("shows each provider's live rate and the primary badge", async () => {
+  renderPage();
+  expect(await screen.findByText("Источники курса FX")).toBeInTheDocument();
+  expect(screen.getByText("FXRatesAPI")).toBeInTheDocument();
+  expect(screen.getByText("Основной")).toBeInTheDocument();
+});
+
 it("saves a typed rate and turns the manual toggle on", async () => {
-  mockedApiGet.mockResolvedValue(RATES);
+  const first = RATES.rates[0];
+  if (first === undefined) throw new Error("fixture");
   mockedApiPatch.mockResolvedValue({
-    ...RATES.rates[0],
+    ...first,
     rate: "12500",
     source: "manual",
     use_manual: true,

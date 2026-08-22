@@ -51,4 +51,56 @@ class AdminRatesOut(BaseModel):
     rates: list[AdminRateOut]
 
 
-__all__ = ["AdminRateOut", "AdminRatesOut", "RateOut", "RateSettingIn", "RatesOut"]
+class ProviderQuoteOut(BaseModel):
+    """One provider's attempt at one quote."""
+
+    quote: str
+    rate: Decimal | None
+    error: str | None = None
+
+
+class ProviderChainItemOut(BaseModel):
+    """One adapter in the admin chain, with live probes."""
+
+    slug: str
+    title: str
+    kind: str
+    enabled: bool
+    configured: bool
+    role: str
+    sort_order: int
+    quotes: list[ProviderQuoteOut]
+
+
+class ProviderChainOut(BaseModel):
+    """Full admin view of every FX adapter."""
+
+    quotes: list[str]
+    items: list[ProviderChainItemOut]
+
+
+class ProviderChainItemIn(BaseModel):
+    """Reorder/enable one adapter."""
+
+    slug: str
+    enabled: bool
+
+
+class ProviderChainIn(BaseModel):
+    """Replace the whole chain. Must list every known slug once."""
+
+    items: list[ProviderChainItemIn]
+
+
+__all__ = [
+    "AdminRateOut",
+    "AdminRatesOut",
+    "ProviderChainIn",
+    "ProviderChainItemIn",
+    "ProviderChainItemOut",
+    "ProviderChainOut",
+    "ProviderQuoteOut",
+    "RateOut",
+    "RateSettingIn",
+    "RatesOut",
+]

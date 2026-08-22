@@ -213,6 +213,8 @@ class Settings(BaseSettings):
     fx_primary_url: str = Field(default="https://api.exchangerate.host/latest")
     fx_fallback_url: str = Field(default="https://openexchangerates.org/api/latest.json")
     fx_fallback_api_key: str = Field(default="")
+    fx_rates_api_url: str = Field(default="https://api.fxratesapi.com/latest")
+    fx_rates_api_key: str = Field(default="")
     fx_crypto_url: str = Field(default="https://api.coingecko.com/api/v3/simple/price")
     fx_cache_fresh_seconds: int = Field(default=15 * 60)
     fx_cache_stale_seconds: int = Field(default=24 * 60 * 60)

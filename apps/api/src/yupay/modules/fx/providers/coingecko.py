@@ -27,7 +27,8 @@ _COIN_IDS: dict[str, str] = {
 class CoingeckoProvider(FxProvider):
     """USD-base crypto rates via ``simple/price``."""
 
-    name = "coingecko"  # instance default; the FxProvider protocol declares it
+    slug = "coingecko"
+    name = "coingecko"
 
     def __init__(
         self,

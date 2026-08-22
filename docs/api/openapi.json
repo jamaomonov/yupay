@@ -7382,6 +7382,119 @@
         "title": "PromoRedemptionOut",
         "type": "object"
       },
+      "ProviderChainIn": {
+        "description": "Replace the whole chain. Must list every known slug once.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderChainItemIn"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ProviderChainIn",
+        "type": "object"
+      },
+      "ProviderChainItemIn": {
+        "description": "Reorder/enable one adapter.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "enabled"
+        ],
+        "title": "ProviderChainItemIn",
+        "type": "object"
+      },
+      "ProviderChainItemOut": {
+        "description": "One adapter in the admin chain, with live probes.",
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "quotes": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderQuoteOut"
+            },
+            "title": "Quotes",
+            "type": "array"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "title",
+          "kind",
+          "enabled",
+          "configured",
+          "role",
+          "sort_order",
+          "quotes"
+        ],
+        "title": "ProviderChainItemOut",
+        "type": "object"
+      },
+      "ProviderChainOut": {
+        "description": "Full admin view of every FX adapter.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderChainItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "quotes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Quotes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "quotes",
+          "items"
+        ],
+        "title": "ProviderChainOut",
+        "type": "object"
+      },
       "ProviderIncidentsOut": {
         "description": "Stuck-pending + failed-webhook counts for a provider group.\n\nMirrors ``admin.service.triage_payments``'s definitions exactly so the\nnumbers agree with the existing triage screen.",
         "properties": {
@@ -7399,6 +7512,44 @@
           "failed_webhooks"
         ],
         "title": "ProviderIncidentsOut",
+        "type": "object"
+      },
+      "ProviderQuoteOut": {
+        "description": "One provider's attempt at one quote.",
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate"
+          }
+        },
+        "required": [
+          "quote",
+          "rate"
+        ],
+        "title": "ProviderQuoteOut",
         "type": "object"
       },
       "ProviderStatOut": {
@@ -13781,6 +13932,128 @@
         "summary": "Admin Retry Task",
         "tags": [
           "admin:fulfillment"
+        ]
+      }
+    },
+    "/api/v1/admin/fx/providers": {
+      "get": {
+        "operationId": "admin_get_providers_api_v1_admin_fx_providers_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderChainOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Live rate from each FX adapter, plus the fallback order",
+        "tags": [
+          "admin:fx"
+        ]
+      },
+      "put": {
+        "operationId": "admin_set_providers_api_v1_admin_fx_providers_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderChainIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderChainOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set which FX adapter is primary and the fallback order",
+        "tags": [
+          "admin:fx"
         ]
       }
     },

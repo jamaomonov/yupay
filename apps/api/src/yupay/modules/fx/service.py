@@ -21,6 +21,7 @@ from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.modules.fx import cache
 from yupay.modules.fx.models import FxRate, FxSnapshot
+from yupay.modules.fx.provider_chain import load_chain, provider_slug
 from yupay.modules.fx.providers.base import FxProvider, FxProviderError, Quote
 from yupay.modules.fx.quote_settings import (
     MANUAL_SOURCE,
@@ -67,6 +68,28 @@ class FxService:
         self._settings = settings or get_settings()
         self._session_factory = session_factory
 
+    async def _ordered_providers(self) -> list[FxProvider]:
+        """Admin chain when stored; otherwise the constructor list."""
+        chain = await load_chain(self._redis, session_factory=self._session_factory)
+        if chain is None:
+            return list(self._providers)
+        by_slug = {provider_slug(p): p for p in self._providers}
+        ordered: list[FxProvider] = []
+        seen: set[str] = set()
+        for item in chain:
+            if not item.enabled:
+                continue
+            provider = by_slug.get(item.slug)
+            if provider is None:
+                continue
+            ordered.append(provider)
+            seen.add(item.slug)
+        for provider in self._providers:
+            slug = provider_slug(provider)
+            if slug not in seen:
+                ordered.append(provider)
+        return ordered
+
     async def get_rate(self, base: str, quote: str, *, allow_stale: bool = True) -> Quote:
         """Return the rate the system must use for ``base → quote``.
 
@@ -99,7 +122,7 @@ class FxService:
         if fresh is not None:
             return fresh
 
-        for provider in self._providers:
+        for provider in await self._ordered_providers():
             if not provider.supports(base_u, quote_u):
                 continue
             try:
