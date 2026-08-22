@@ -62,6 +62,7 @@ async def admin_adjust(db, *, user_id, kind, currency, amount, reason, idempoten
 ```
 GET  /api/v1/wallet                   — мои user_wallet/cashback/promo_credit балансы
 GET  /api/v1/wallet/transactions      — моя история (default 50, max 200)
+POST /api/v1/wallet/topup             — 1:1 пополнение через эквайринг (ADR-0058)
 POST /api/v1/admin/wallet/adjust      — ручная корректировка (signed amount, reason, idempotency_key)
 GET  /api/v1/admin/wallet/{user_id}   — все счета пользователя + история
 ```
@@ -90,11 +91,15 @@ sequenceDiagram
     API-->>A: balances: [{kind: user_cashback, balance: "5"}]
 ```
 
+## Что уже работает
+
+- Списание баланса на оплату заказа — `payments.gateways.wallet`.
+- Пополнение клиентом 1:1 через Click/Payme/Uzum — `POST /wallet/topup` (ADR-0058).
+
 ## Что в скелете НЕ работает
 
 - Автоматическое начисление cashback по `order.delivered` — ждёт `promotions`.
-- Списание баланса на оплату следующего заказа — ждёт интеграции с `payments`/`orders`.
-- Реальные provider_clearing-проводки — ждут живого эквайринга.
+- `provider_clearing` на **товарных** заказах — депозит кошелька уже пишет клиринг.
 - Outbox-события (`wallet.transaction.posted`) — ждут консьюмеров.
 - Materialized view балансов — пока on-the-fly `SUM`. Включим, когда тест покажет горячее место.
 

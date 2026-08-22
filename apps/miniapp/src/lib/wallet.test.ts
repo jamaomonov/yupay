@@ -12,6 +12,8 @@ const BACKEND_POSTED_KINDS = [
   "payment.refund", // payments/service.py
   "wallet_payment", // payments/gateways/wallet.py
   "promo.redeem", // promo/service.py
+  "topup", // wallet/service.py credit_topup
+  "topup.refund", // wallet/service.py reverse_topup
 ] as const;
 
 describe("txKindLabelKey", () => {
@@ -32,6 +34,7 @@ describe("txKindLabelKey", () => {
   test("keeps labels for kinds wired ahead of their flows", () => {
     expect(txKindLabelKey("cashback.grant")).toBe("wallet.tx.cashback");
     expect(txKindLabelKey("topup")).toBe("wallet.tx.topup");
+    expect(txKindLabelKey("topup.refund")).toBe("wallet.tx.topupRefund");
   });
 
   test("returns null for an unknown kind (caller shows the raw kind)", () => {

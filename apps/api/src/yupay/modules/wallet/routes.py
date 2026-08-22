@@ -1,17 +1,22 @@
-"""HTTP routes for ``wallet``: customer read-only views + admin adjustment."""
+"""HTTP routes for ``wallet``: customer views, top-up, admin adjustment."""
 
 from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
+from yupay.core.errors import ValidationError
+from yupay.core.idempotency import IDEMPOTENCY_HEADER, MIN_IDEMPOTENCY_KEY_LENGTH
 from yupay.modules.admin.api import require_admin
 from yupay.modules.auth.deps import current_user
+from yupay.modules.orders.service import normalise_source
+from yupay.modules.payments.schemas import PaymentOut
 from yupay.modules.users.models import User
 from yupay.modules.wallet import service as svc
+from yupay.modules.wallet.funding import create_topup
 from yupay.modules.wallet.schemas import (
     USER_VISIBLE_KINDS,
     AdminAccountWithBalanceOut,
@@ -21,6 +26,7 @@ from yupay.modules.wallet.schemas import (
     TransactionListOut,
     TransactionOut,
     WalletOverviewOut,
+    WalletTopUpIn,
 )
 
 router = APIRouter(prefix="/wallet", tags=["wallet"])
@@ -65,6 +71,36 @@ async def my_transactions(
     capped = max(1, min(limit, 200))
     txns = await svc.transactions_for_user(db, user.id, limit=capped)
     return TransactionListOut(items=[TransactionOut.model_validate(t) for t in txns])
+
+
+@router.post(
+    "/topup",
+    response_model=PaymentOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Fund the wallet via an acquirer (idempotent)",
+)
+async def topup_wallet(
+    body: WalletTopUpIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    user: Annotated[User, Depends(current_user)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
+    surface: Annotated[str | None, Header(alias="X-Yupay-Surface")] = None,
+) -> PaymentOut:
+    """Create a 1:1 deposit intent. Credit happens on acquirer settlement."""
+    if not idempotency_key or len(idempotency_key) < MIN_IDEMPOTENCY_KEY_LENGTH:
+        raise ValidationError(
+            f"Idempotency-Key header is required (>={MIN_IDEMPOTENCY_KEY_LENGTH} chars)",
+            extra={"header": IDEMPOTENCY_HEADER},
+        )
+    payment = await create_topup(
+        db,
+        user_id=user.id,
+        amount=body.amount,
+        provider=body.provider,
+        idempotency_key=idempotency_key,
+        source=normalise_source(surface),
+    )
+    return PaymentOut.model_validate(payment)
 
 
 # ---------- admin ----------

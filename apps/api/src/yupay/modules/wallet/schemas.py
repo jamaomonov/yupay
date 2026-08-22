@@ -54,6 +54,15 @@ class WalletOverviewOut(BaseModel):
     balances: list[BalanceOut]
 
 
+class WalletTopUpIn(BaseModel):
+    """Body of ``POST /api/v1/wallet/topup``. Currency is derived from ``provider``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
+    provider: Annotated[str, Field(min_length=2, max_length=32)]
+
+
 class PostingOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -128,4 +137,5 @@ __all__ = [
     "TransactionListOut",
     "TransactionOut",
     "WalletOverviewOut",
+    "WalletTopUpIn",
 ]

@@ -55,6 +55,12 @@ class Order(Base):
     source: Mapped[str] = mapped_column(
         String(16), nullable=False, server_default=text("'unknown'")
     )
+    # ``catalog`` is a storefront sale; ``wallet_topup`` is a 1:1 balance
+    # deposit with no SKUs (ADR-0058). Default keeps every pre-column row a
+    # normal order.
+    purpose: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'catalog'"), default="catalog"
+    )
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     ip_hash: Mapped[str | None] = mapped_column(CHAR(64), nullable=True)
     ua_hash: Mapped[str | None] = mapped_column(CHAR(64), nullable=True)
@@ -104,6 +110,7 @@ class Order(Base):
         CheckConstraint(
             "source IN ('web', 'miniapp', 'bot', 'unknown')", name="ck_orders_source_known"
         ),
+        CheckConstraint("purpose IN ('catalog', 'wallet_topup')", name="ck_orders_purpose_known"),
     )
 
 

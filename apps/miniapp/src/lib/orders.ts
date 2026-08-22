@@ -72,6 +72,8 @@ export interface OrderOut {
   delivered_at: string | null;
   cancelled_at: string | null;
   items: OrderItemOut[];
+  /** ``catalog`` (storefront sale) or ``wallet_topup`` (1:1 balance deposit). */
+  purpose?: string;
 }
 
 interface OrderListOut {

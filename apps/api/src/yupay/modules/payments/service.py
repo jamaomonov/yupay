@@ -293,6 +293,49 @@ async def create_intent(
     return payment
 
 
+async def _complete_wallet_topup(db: AsyncSession, *, order: Order, payment: Payment) -> None:
+    """Credit ``user_wallet`` and close the funding order. Idempotent.
+
+    Fulfilment is skipped: there is no SKU. ``notify_order_delivered`` is
+    skipped: it talks about codes. Replay after a crash between ``paid`` and
+    ``delivered`` re-runs the idempotent ledger post and finishes the walk.
+    """
+    if order.user_id is None:
+        raise ConflictError("wallet top-up has no user")
+    await wallet_api.credit_topup(
+        db,
+        user_id=order.user_id,
+        amount=payment.amount,
+        currency=payment.currency,
+        provider=payment.provider,
+        payment_id=payment.id,
+    )
+    if order.status == "delivered":
+        return
+    moment = now()
+    order.status = "delivered"
+    if order.paid_at is None:
+        order.paid_at = moment
+    order.fulfilled_at = order.fulfilled_at or moment
+    order.delivered_at = moment
+    order.updated_at = moment
+    db.add(
+        OrderEvent(
+            id=new_id(),
+            order_id=order.id,
+            kind="order.wallet_credited",
+            payload={
+                "payment_id": payment.id,
+                "amount": str(payment.amount),
+                "currency": payment.currency,
+            },
+            actor="payments",
+        )
+    )
+    await db.flush()
+    await _publish_status_changed(order)
+
+
 async def _mark_payment_succeeded(
     db: AsyncSession, *, payment: Payment, event: WebhookEvent
 ) -> None:
@@ -321,13 +364,16 @@ async def _mark_payment_succeeded(
                 actor="payments",
             )
         )
+        await db.flush()
+        await _publish_status_changed(order)
+        if order.purpose == "wallet_topup":
+            await _complete_wallet_topup(db, order=order, payment=payment)
+            return
         # Synchronous saga (ADR-0013). Will move to an outbox/Dramatiq actor once
         # the worker is wired up — the public service signature stays the same.
         from yupay.modules.fulfillment import service as fulfillment_svc
         from yupay.modules.orders.risk import hold_for_review, review_reason
 
-        await db.flush()
-        await _publish_status_changed(order)
         # The one place worth asking "should a human look first". Delivery is
         # irreversible — an issued code or a credited game balance cannot be
         # taken back — while a hold costs one click to release. The order stays
@@ -605,6 +651,31 @@ async def _book_refund_ledger(
             actor=actor,
             metadata={"reason": reason or "", "full": is_full, "credited_account": user_wallet.id},
         )
+    elif order.purpose == "wallet_topup":
+        if order.user_id is None:  # pragma: no cover -- deposits always have a user
+            raise ConflictError("wallet top-up has no user to refund")
+        try:
+            await wallet_api.reverse_topup(
+                db,
+                user_id=order.user_id,
+                amount=refund_amount,
+                currency=payment.currency,
+                provider=payment.provider,
+                payment_id=payment.id,
+                actor=actor,
+            )
+        except ConflictError:
+            from yupay.modules.notifications.alerts import send_admin_alert
+
+            await send_admin_alert(
+                (
+                    f"<b>Кошелёк: возврат пополнения заблокирован</b>\n"
+                    f"payment {payment.id}: на балансе меньше чем "
+                    f"{refund_amount} {payment.currency}"
+                ),
+                kind="wallet_topup_refund_blocked",
+            )
+            raise
     else:
         house_refunds = await wallet_api.ensure_account(
             db,
@@ -989,6 +1060,9 @@ async def settle_provider_payment(
     """
     await db.refresh(payment, with_for_update=True)
     if payment.status == "succeeded":
+        order = (await db.execute(select(Order).where(Order.id == payment.order_id))).scalar_one()
+        if order.purpose == "wallet_topup" and order.status != "delivered":
+            await _complete_wallet_topup(db, order=order, payment=payment)
         return
     event = WebhookEvent(
         external_event_id=external_event_id,

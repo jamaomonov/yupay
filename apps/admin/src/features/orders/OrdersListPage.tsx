@@ -195,6 +195,13 @@ export function OrdersListPage() {
       header: "Товар",
       render: (o) => {
         const first = o.items[0]?.display ?? null;
+        if (o.purpose === "wallet_topup") {
+          return (
+            <span className="text-sm">
+              Пополнение кошелька · {o.total_charged} {o.currency}
+            </span>
+          );
+        }
         if (!first) {
           return (
             <span className="text-xs text-[var(--text-secondary)]">{o.items.length} поз.</span>

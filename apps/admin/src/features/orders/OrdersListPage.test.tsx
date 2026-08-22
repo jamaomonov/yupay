@@ -109,3 +109,18 @@ it("does not invent a surface for orders that never recorded one", async () => {
   expect(within(rows[1]!).getByText("—")).toBeInTheDocument();
   expect(within(rows[1]!).queryByText("Сайт")).not.toBeInTheDocument();
 });
+
+it("labels a wallet top-up row instead of an empty item count", async () => {
+  renderPage([
+    makeOrder({
+      purpose: "wallet_topup",
+      items: [],
+      total_charged: "50000",
+      currency: "UZS",
+    }),
+  ]);
+
+  const row = await findDataRow();
+  expect(within(row).getByText(/Пополнение кошелька/)).toBeInTheDocument();
+  expect(within(row).getByText(/50000 UZS/)).toBeInTheDocument();
+});

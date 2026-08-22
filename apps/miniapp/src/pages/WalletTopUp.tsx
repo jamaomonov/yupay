@@ -1,8 +1,11 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Shield, Wallet as WalletIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "wouter";
 
 import { useToast } from "@/hooks/use-toast";
+import { ApiError } from "@/lib/api";
 import { useMe } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import {
@@ -11,9 +14,10 @@ import {
   selectActiveMethodId,
   useAvailableProviders,
 } from "@/lib/orders";
-import { PAYMENT_METHODS } from "@/lib/payment-methods";
+import { PAYMENT_METHODS, PROVIDER_BY_METHOD } from "@/lib/payment-methods";
+import { openExternalLink } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
-import { formatBalance } from "@/lib/wallet";
+import { createWalletTopUp, formatBalance } from "@/lib/wallet";
 
 /**
  * Quick-amount chips per currency. The shape is "round numbers a
@@ -32,11 +36,20 @@ const QUICK_AMOUNTS: Record<string, number[]> = {
  *  unambiguous currency before the user has touched the list. */
 const DEFAULT_METHOD_ID = PAYMENT_METHODS[0]?.id ?? "click";
 
+const MIN_AMOUNT: Record<string, number> = {
+  UZS: 10_000,
+  USDT: 5,
+  USD: 5,
+  RUB: 500,
+};
+
 export default function WalletTopUp() {
   const { t, locale } = useT();
   useDocumentTitle(t("walletTopUp.title"));
   const me = useMe();
   const toast = useToast();
+  const qc = useQueryClient();
+  const [, setLocation] = useLocation();
 
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState<string>(DEFAULT_METHOD_ID);
@@ -68,7 +81,9 @@ export default function WalletTopUp() {
   const quickAmounts = QUICK_AMOUNTS[currency] ?? QUICK_AMOUNTS.USD!;
 
   const numericAmount = Number.parseFloat(amount) || 0;
-  const canSubmit = numericAmount > 0 && me.data !== undefined && method !== "";
+  const minAmount = MIN_AMOUNT[currency] ?? MIN_AMOUNT.USD!;
+  const amountOk = numericAmount >= minAmount;
+  const canSubmit = amountOk && me.data !== undefined && method !== "";
 
   // Switching methods between different currencies (UZS → USDT) would leave a
   // stale amount in the wrong context. Clearing on currency change avoids the
@@ -81,15 +96,31 @@ export default function WalletTopUp() {
     setMethod(next.id);
   };
 
+  const topup = useMutation({
+    mutationFn: async () => {
+      const provider = PROVIDER_BY_METHOD[method];
+      if (!provider) {
+        throw new Error("missing provider");
+      }
+      return createWalletTopUp(numericAmount, provider);
+    },
+    onSuccess: (payment) => {
+      void qc.invalidateQueries({ queryKey: ["wallet"] });
+      if (payment.intent_url && payment.provider !== "mock") {
+        toast.toast({ title: t("walletTopUp.redirecting") });
+        openExternalLink(payment.intent_url);
+      }
+      setLocation(`/order/${payment.order_id}`);
+    },
+    onError: (err) => {
+      const detail = err instanceof ApiError ? err.detail : t("walletTopUp.failed");
+      toast.toast({ title: t("walletTopUp.failed"), description: detail, variant: "destructive" });
+    },
+  });
+
   const onSubmit = () => {
-    // Wallet funding has no backend yet — order checkout already pays via these
-    // acquirers, but crediting the wallet balance is a separate flow. When this
-    // is wired, resolve providers via PROVIDER_BY_METHOD from payment-methods.ts
-    // (Click already maps to "click_miniapp" there — no override needed).
-    toast.toast({
-      title: t("walletTopUp.soonTitle"),
-      description: t("walletTopUp.soonBody"),
-    });
+    if (!canSubmit || topup.isPending) return;
+    topup.mutate();
   };
 
   return (
@@ -247,7 +278,7 @@ export default function WalletTopUp() {
         <button
           type="button"
           onClick={onSubmit}
-          disabled={!canSubmit}
+          disabled={!canSubmit || topup.isPending}
           className="w-full rounded-2xl py-3.5 text-sm font-bold transition-colors disabled:cursor-not-allowed"
           style={
             canSubmit
@@ -259,9 +290,13 @@ export default function WalletTopUp() {
                 }
           }
         >
-          {canSubmit
-            ? t("walletTopUp.submit", { amount: formatBalance(numericAmount, currency) })
-            : t("walletTopUp.enterAmount")}
+          {topup.isPending
+            ? t("walletTopUp.processing")
+            : canSubmit
+              ? t("walletTopUp.submit", { amount: formatBalance(numericAmount, currency) })
+              : numericAmount > 0 && !amountOk
+                ? t("walletTopUp.minAmount", { amount: formatBalance(minAmount, currency) })
+                : t("walletTopUp.enterAmount")}
         </button>
 
         <p className="mt-3 flex items-start gap-2 text-[11px] text-white/40">

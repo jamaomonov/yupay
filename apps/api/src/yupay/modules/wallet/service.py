@@ -374,15 +374,125 @@ async def admin_adjust(
     )
 
 
+async def credit_topup(
+    db: AsyncSession,
+    *,
+    user_id: str,
+    amount: Decimal,
+    currency: str,
+    provider: str,
+    payment_id: str,
+) -> WalletTransaction:
+    """Book an acquirer-funded deposit. Idempotent on ``topup:payment:{id}``."""
+    user_wallet = await ensure_account(
+        db,
+        owner_type="user",
+        owner_id=user_id,
+        kind="user_wallet",
+        currency=currency,
+    )
+    clearing = await ensure_account(
+        db,
+        owner_type="provider",
+        owner_id=provider,
+        kind="provider_clearing",
+        currency=currency,
+    )
+    return await post(
+        db,
+        kind="topup",
+        legs=[
+            Leg(
+                account_id=user_wallet.id,
+                direction="D",
+                amount=amount,
+                currency=currency,
+            ),
+            Leg(
+                account_id=clearing.id,
+                direction="C",
+                amount=amount,
+                currency=currency,
+            ),
+        ],
+        idempotency_key=f"topup:payment:{payment_id}",
+        reference=Reference(type="payment", id=payment_id),
+        actor="payments.topup",
+        metadata={"provider": provider},
+    )
+
+
+async def reverse_topup(
+    db: AsyncSession,
+    *,
+    user_id: str,
+    amount: Decimal,
+    currency: str,
+    provider: str,
+    payment_id: str,
+    actor: str,
+) -> WalletTransaction:
+    """Claw a deposit back. Refuses if the spendable balance cannot cover it."""
+    user_wallet = await ensure_account(
+        db,
+        owner_type="user",
+        owner_id=user_id,
+        kind="user_wallet",
+        currency=currency,
+    )
+    locked = (
+        await db.execute(
+            select(WalletAccount).where(WalletAccount.id == user_wallet.id).with_for_update()
+        )
+    ).scalar_one()
+    have = await balance(db, locked.id)
+    if have < amount:
+        raise ConflictError(
+            "wallet top-up already spent; cannot refund",
+            extra={"have": str(have), "need": str(amount), "currency": currency},
+        )
+    clearing = await ensure_account(
+        db,
+        owner_type="provider",
+        owner_id=provider,
+        kind="provider_clearing",
+        currency=currency,
+    )
+    return await post(
+        db,
+        kind="topup.refund",
+        legs=[
+            Leg(
+                account_id=user_wallet.id,
+                direction="C",
+                amount=amount,
+                currency=currency,
+            ),
+            Leg(
+                account_id=clearing.id,
+                direction="D",
+                amount=amount,
+                currency=currency,
+            ),
+        ],
+        idempotency_key=f"refund:{payment_id}",
+        reference=Reference(type="payment", id=payment_id),
+        actor=actor,
+        metadata={"provider": provider},
+    )
+
+
 __all__ = [
     "NORMAL_SIDE",
     "Leg",
     "Reference",
     "admin_adjust",
     "balance",
+    "credit_topup",
     "ensure_account",
     "list_admin_adjustments",
     "post",
+    "reverse_topup",
     "transactions_for_user",
     "user_accounts",
 ]

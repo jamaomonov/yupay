@@ -139,6 +139,8 @@ class OrderOut(BaseModel):
     cancelled_at: datetime | None
     items: list[OrderItemOut]
     payment_provider: str | None = None
+    #: ``catalog`` (storefront sale) or ``wallet_topup`` (1:1 balance deposit).
+    purpose: str = "catalog"
 
 
 class OrderListOut(BaseModel):

@@ -5197,6 +5197,11 @@
             ],
             "title": "Payment Provider"
           },
+          "purpose": {
+            "default": "catalog",
+            "title": "Purpose",
+            "type": "string"
+          },
           "source": {
             "default": "unknown",
             "title": "Source",
@@ -5746,6 +5751,11 @@
               }
             ],
             "title": "Payment Provider"
+          },
+          "purpose": {
+            "default": "catalog",
+            "title": "Purpose",
+            "type": "string"
           },
           "status": {
             "enum": [
@@ -10537,6 +10547,37 @@
           "balances"
         ],
         "title": "WalletOverviewOut",
+        "type": "object"
+      },
+      "WalletTopUpIn": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /api/v1/wallet/topup``. Currency is derived from ``provider``.",
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,13}0*$)\\d{0,10}\\.\\d{0,2}0*$)",
+                "type": "string"
+              }
+            ],
+            "title": "Amount"
+          },
+          "provider": {
+            "maxLength": 32,
+            "minLength": 2,
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "provider"
+        ],
+        "title": "WalletTopUpIn",
         "type": "object"
       },
       "WebhookResolveIn": {
@@ -20827,6 +20868,98 @@
           }
         },
         "summary": "My wallet \u2014 balances",
+        "tags": [
+          "wallet"
+        ]
+      }
+    },
+    "/api/v1/wallet/topup": {
+      "post": {
+        "description": "Create a 1:1 deposit intent. Credit happens on acquirer settlement.",
+        "operationId": "topup_wallet_api_v1_wallet_topup_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Yupay-Surface",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Yupay-Surface"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WalletTopUpIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Fund the wallet via an acquirer (idempotent)",
         "tags": [
           "wallet"
         ]

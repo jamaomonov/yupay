@@ -2,8 +2,9 @@
  * Wallet hooks: balances + top-up.
  *
  * ``GET /api/v1/wallet`` returns the customer's own accounts (user_wallet,
- * user_cashback, user_promo_credit) with their computed balances. Top-up isn't
- * a real backend endpoint yet — the skeleton's submit handler is a toast.
+ * user_cashback, user_promo_credit) with their computed balances.
+ * ``POST /api/v1/wallet/topup`` starts an acquirer payment; the ledger credit
+ * lands when that payment settles (ADR-0058).
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -12,9 +13,10 @@ import type { MessageKey } from "@/lib/i18n";
 
 import { getActiveLocale } from "@/lib/i18n/core";
 
-import { apiGet } from "./api";
+import { apiGet, apiPost, newIdempotencyKey } from "./api";
 import { useMe } from "./auth";
 import { CURRENCY_SYMBOL, type DisplayCurrency } from "./currency";
+import type { PaymentOut } from "./orders";
 
 export type UserAccountKind = "user_wallet" | "user_cashback" | "user_promo_credit";
 
@@ -72,6 +74,15 @@ export function useWallet() {
     },
     staleTime: 30_000,
   });
+}
+
+/** Start an acquirer payment that will credit ``user_wallet`` 1:1 when it settles. */
+export function createWalletTopUp(amount: number, provider: string): Promise<PaymentOut> {
+  return apiPost<PaymentOut>(
+    "/api/v1/wallet/topup",
+    { amount: amount.toString(), provider },
+    { idempotencyKey: newIdempotencyKey("wallet-topup") },
+  );
 }
 
 // ---------- transactions / history ----------
@@ -140,10 +151,9 @@ export const TX_KIND_LABEL: Record<string, MessageKey> = {
   // Paying an order from the wallet balance — reads as "Оплата заказа".
   wallet_payment: "wallet.tx.orderPayment",
   "promo.redeem": "wallet.tx.promo",
-  // Pre-wired for flows that don't post yet (no cashback engine, no real
-  // top-up endpoint). Harmless now, and ready the day they land.
   "cashback.grant": "wallet.tx.cashback",
   topup: "wallet.tx.topup",
+  "topup.refund": "wallet.tx.topupRefund",
 };
 
 /** Catalog key for a backend transaction kind, or ``null`` for unknown kinds

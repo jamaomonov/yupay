@@ -757,7 +757,11 @@ async def get_order_for_actor(db: AsyncSession, order_id: str, *, actor: Actor) 
 
 async def list_orders_for_actor(db: AsyncSession, *, actor: Actor, limit: int = 50) -> list[Order]:
     stmt = (
-        select(Order).options(*_order_load_options()).order_by(Order.created_at.desc()).limit(limit)
+        select(Order)
+        .options(*_order_load_options())
+        .where(Order.purpose == "catalog")
+        .order_by(Order.created_at.desc())
+        .limit(limit)
     )
     if actor.user_id is not None:
         stmt = stmt.where(Order.user_id == actor.user_id)

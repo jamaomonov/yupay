@@ -77,6 +77,8 @@ export interface OrderAdminOut {
   /** Which surface placed the order. `unknown` for anything that did not say —
    *  including every order older than the column. */
   source: OrderSource;
+  /** ``catalog`` sale or ``wallet_topup`` 1:1 deposit (ADR-0058). */
+  purpose?: string;
   events: OrderEventOut[];
 }
 

@@ -57,6 +57,7 @@ import {
   shareToStory,
 } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { formatBalance } from "@/lib/wallet";
 
 const PROCESSING: OrderStatus[] = ["pending_payment", "paid", "fulfilling", "fulfilled"];
 
@@ -279,6 +280,21 @@ export default function OrderSuccess() {
     return (
       <SkeletonView
         onBack={() => {
+          setLocation("/");
+        }}
+      />
+    );
+  }
+
+  if (order.purpose === "wallet_topup") {
+    return (
+      <WalletFundingStatus
+        order={order}
+        payUrl={payUrl}
+        onWallet={() => {
+          setLocation("/wallet");
+        }}
+        onHome={() => {
           setLocation("/");
         }}
       />
@@ -1247,6 +1263,76 @@ function ErrorView({
         {t("common.toHome")}
       </button>
     </div>
+  );
+}
+
+function WalletFundingStatus({
+  order,
+  payUrl,
+  onWallet,
+  onHome,
+}: {
+  order: OrderOut;
+  payUrl: string | null;
+  onWallet: () => void;
+  onHome: () => void;
+}) {
+  const { t } = useT();
+  const qc = useQueryClient();
+  const charged = Number.parseFloat(order.total_charged) || 0;
+  const amountLabel = formatBalance(charged, order.currency);
+  const delivered = order.status === "delivered";
+  const failed = TERMINAL_FAIL.includes(order.status);
+
+  useEffect(() => {
+    if (delivered) void qc.invalidateQueries({ queryKey: ["wallet"] });
+  }, [delivered, qc]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="space-y-4 px-4 pb-8 pt-6"
+    >
+      <div className="flex flex-col items-center text-center">
+        {delivered ? (
+          <CheckCircle2 size={48} className="text-[hsl(var(--primary))]" />
+        ) : failed ? (
+          <XCircle size={48} className="text-red-400" />
+        ) : (
+          <Loader2 size={48} className="animate-spin text-white/50" />
+        )}
+        <h1 className="mt-4 text-xl font-bold text-white">
+          {delivered
+            ? t("walletTopUp.credited")
+            : failed
+              ? t("walletTopUp.failed")
+              : t("walletTopUp.waiting")}
+        </h1>
+        <p className="mt-2 text-2xl font-bold tabular-nums text-white">{amountLabel}</p>
+        <p className="mt-1 text-sm text-white/50">{t("walletTopUp.disclaimerAfter")}</p>
+      </div>
+      {order.status === "pending_payment" && payUrl ? (
+        <button
+          type="button"
+          onClick={() => {
+            openExternalLink(payUrl);
+          }}
+          className="w-full rounded-2xl py-3.5 text-sm font-bold"
+          style={{ background: "hsl(var(--primary))", color: "#000" }}
+        >
+          {t("walletTopUp.payAgain")}
+        </button>
+      ) : null}
+      <button
+        type="button"
+        onClick={delivered ? onWallet : onHome}
+        className="w-full rounded-2xl py-3 text-sm font-semibold text-white"
+        style={{ background: "hsl(var(--surface-1))", border: "1px solid hsl(var(--border))" }}
+      >
+        {delivered ? t("walletTopUp.toWallet") : t("common.toHome")}
+      </button>
+    </motion.div>
   );
 }
 

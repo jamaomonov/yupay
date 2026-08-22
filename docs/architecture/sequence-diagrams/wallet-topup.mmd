@@ -1,0 +1,19 @@
+sequenceDiagram
+    autonumber
+    actor C as Customer
+    participant MA as Mini App
+    participant API as FastAPI
+    participant P as Acquirer
+    participant L as Ledger
+
+    C->>MA: amount + method
+    MA->>API: POST /wallet/topup
+    API->>API: reject wallet, 1:1 amount, currency from provider
+    API->>API: orders(purpose=wallet_topup)
+    API->>P: create_intent
+    API-->>MA: PaymentOut
+    MA->>P: hosted pay page
+    P->>API: settle_provider_payment
+    API->>L: D user_wallet / C provider_clearing
+    API->>API: order delivered (no fulfilment)
+    API-->>MA: GET /orders/{id} status=delivered
