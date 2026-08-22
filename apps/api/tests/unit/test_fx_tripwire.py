@@ -47,10 +47,14 @@ async def test_trips_and_pages_ops_when_a_drop_is_new(monkeypatch: pytest.Monkey
     assert changed == ["click", "wallet"]
     trip.assert_awaited_once()
     sched.assert_called_once()
-    assert sched.call_args.args[0] is db
-    await sched.call_args.args[1]()
+    scheduled = sched.call_args
+    assert scheduled is not None
+    assert scheduled.args[0] is db
+    await scheduled.args[1]()
     alert.assert_awaited_once()
-    assert alert.await_args.kwargs["kind"] == "fx_drop"
+    called = alert.await_args
+    assert called is not None
+    assert called.kwargs["kind"] == "fx_drop"
 
 
 @pytest.mark.asyncio
