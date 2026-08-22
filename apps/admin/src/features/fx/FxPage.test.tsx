@@ -114,3 +114,45 @@ it("saves a typed rate and turns the manual toggle on", async () => {
     });
   });
 });
+
+it("does not save a rate far from FX on the first click", async () => {
+  const first = RATES.rates[0];
+  if (first === undefined) throw new Error("fixture");
+  mockedApiPatch.mockResolvedValue({
+    ...first,
+    rate: "1250",
+    source: "manual",
+    use_manual: true,
+    manual_rate: "1250",
+  });
+  renderPage();
+
+  fireEvent.click(await screen.findByRole("button", { name: "Наш курс" }));
+  // 1250 against an FX rate of 12700.25 — a lost zero, the exact typo that
+  // silently reprices the catalogue because a pinned rate skips the band.
+  fireEvent.change(screen.getByLabelText("Наш курс"), { target: { value: "1250" } });
+  fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+
+  expect(mockedApiPatch).not.toHaveBeenCalled();
+  const confirm = await screen.findByRole("button", { name: "Да, сохранить этот курс" });
+
+  fireEvent.click(confirm);
+  await waitFor(() => {
+    expect(mockedApiPatch).toHaveBeenCalledWith("/api/v1/admin/fx/rates/UZS", {
+      use_manual: true,
+      manual_rate: "1250",
+    });
+  });
+});
+
+it("withdraws the confirmation when the number is edited again", async () => {
+  renderPage();
+  fireEvent.click(await screen.findByRole("button", { name: "Наш курс" }));
+  fireEvent.change(screen.getByLabelText("Наш курс"), { target: { value: "1250" } });
+  fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+  await screen.findByRole("button", { name: "Да, сохранить этот курс" });
+
+  fireEvent.change(screen.getByLabelText("Наш курс"), { target: { value: "12500" } });
+  expect(screen.getByRole("button", { name: "Сохранить" })).toBeInTheDocument();
+  expect(mockedApiPatch).not.toHaveBeenCalled();
+});

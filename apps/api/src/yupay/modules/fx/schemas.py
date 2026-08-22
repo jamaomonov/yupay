@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RateOut(BaseModel):
@@ -28,10 +28,17 @@ class RatesOut(BaseModel):
 
 
 class RateSettingIn(BaseModel):
-    """Admin toggle + optional typed rate for one quote."""
+    """Admin toggle + optional typed rate for one quote.
+
+    Bounded at the edge as well as in the service: the column is
+    ``Numeric(20, 10)``, so an unbounded Decimal reaches Postgres as a 500
+    rather than a 422, and a pinned rate skips the pricing band by design
+    (ADR-0055) — this field deserves what checking it can get. The admin UI
+    asks for confirmation when the number is far from the live FX rate.
+    """
 
     use_manual: bool
-    manual_rate: Decimal | None = None
+    manual_rate: Decimal | None = Field(default=None, gt=0, max_digits=20, decimal_places=10)
 
 
 class AdminRateOut(RateOut):

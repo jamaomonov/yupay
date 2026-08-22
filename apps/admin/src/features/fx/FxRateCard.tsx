@@ -13,10 +13,12 @@ interface Props {
 export function FxRateCard({ row, saving, error, onSave }: Props) {
   const [useManual, setUseManual] = useState(row.use_manual);
   const [manualRate, setManualRate] = useState(row.manual_rate ?? "");
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     setUseManual(row.use_manual);
     setManualRate(row.manual_rate ?? "");
+    setConfirming(false);
   }, [row.use_manual, row.manual_rate, row.rate]);
 
   const parsed = parseRate(manualRate);
@@ -24,6 +26,16 @@ export function FxRateCard({ row, saving, error, onSave }: Props) {
     useManual !== row.use_manual ||
     (manualRate.trim() === "" ? null : manualRate.trim()) !== (row.manual_rate ?? "");
   const canSave = dirty && (!useManual || parsed !== null);
+  const drift = useManual ? deviation(parsed, row.fx_rate) : null;
+  const needsConfirm = drift !== null && drift > CONFIRM_DEVIATION;
+
+  const save = () => {
+    onSave({
+      use_manual: useManual,
+      manual_rate: manualRate.trim() === "" ? null : manualRate.trim(),
+    });
+    setConfirming(false);
+  };
 
   return (
     <article className="rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
@@ -81,23 +93,37 @@ export function FxRateCard({ row, saving, error, onSave }: Props) {
           value={manualRate}
           onChange={(e) => {
             setManualRate(e.target.value);
+            setConfirming(false);
           }}
           placeholder={row.fx_rate ? formatRate(row.fx_rate) : "например 12500"}
         />
       </label>
 
+      {needsConfirm ? (
+        <p className="mb-2 text-sm text-[var(--warning,var(--danger))]">
+          Это на {formatPercent(drift)} от курса FX (
+          {row.fx_rate ? formatRate(row.fx_rate) : "недоступен"}). Наш курс идёт в цены без проверки
+          на отклонение — убедитесь, что не потеряли ноль.
+        </p>
+      ) : null}
+
       {error ? <p className="mb-2 text-sm text-[var(--danger)]">{error}</p> : null}
 
       <Button
         onClick={() => {
-          onSave({
-            use_manual: useManual,
-            manual_rate: manualRate.trim() === "" ? null : manualRate.trim(),
-          });
+          if (needsConfirm && !confirming) {
+            setConfirming(true);
+            return;
+          }
+          save();
         }}
         disabled={saving || !canSave}
       >
-        {saving ? "Сохраняем…" : "Сохранить"}
+        {saving
+          ? "Сохраняем…"
+          : needsConfirm && confirming
+            ? "Да, сохранить этот курс"
+            : "Сохранить"}
       </Button>
     </article>
   );
@@ -112,12 +138,35 @@ function toggleClass(active: boolean): string {
   ].join(" ");
 }
 
+function formatPercent(fraction: number | null): string {
+  if (fraction === null) return "—";
+  return `${Math.round(fraction * 100).toLocaleString("ru")}%`;
+}
+
 export function formatRate(s: string): string {
   const n = Number.parseFloat(s);
   if (Number.isNaN(n)) return s;
   if (n >= 1000) return n.toLocaleString("ru", { maximumFractionDigits: 2 });
   return n.toLocaleString("ru", { maximumFractionDigits: 4 });
 }
+
+/** How far a typed rate sits from the live FX one, as a fraction, or `null`
+ *  when there is nothing to compare against. */
+export function deviation(typed: string | null, market: string | null): number | null {
+  if (typed === null || market === null) return null;
+  const t = Number.parseFloat(typed);
+  const m = Number.parseFloat(market);
+  if (!Number.isFinite(t) || !Number.isFinite(m) || m <= 0) return null;
+  return Math.abs(t - m) / m;
+}
+
+/** Past this, we ask before saving.
+ *
+ * A pinned rate deliberately bypasses the pricing trust gate (ADR-0055), so a
+ * typo in this one field re-prices the whole catalogue with nothing downstream
+ * to argue. 12500 typed as 1250 is a factor of ten; 20% is comfortably above
+ * any real pin and far below any fat finger. */
+const CONFIRM_DEVIATION = 0.2;
 
 function parseRate(s: string): string | null {
   const trimmed = s.trim().replace(",", ".");
