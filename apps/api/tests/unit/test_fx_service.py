@@ -232,6 +232,27 @@ def test_from_row_strips_numeric_scale() -> None:
     assert format(rate, "f") == "12500"
 
 
+@pytest.mark.parametrize(
+    "raw",
+    ["12500", "13000", "100", "8000.00", "12500.0000000000", "1", "12345.6700"],
+)
+def test_compact_rate_never_changes_the_number(raw: str) -> None:
+    """Only the *scale* may be dropped, never a digit.
+
+    ``rstrip("0")`` on a whole number eats its significant zeros: 12500 became
+    125 and priced the whole catalogue at a hundredth. A manual rate bypasses
+    the pricing band by design (ADR-0055), so nothing downstream would have
+    caught it.
+    """
+    from yupay.modules.fx.quote_settings import _compact_rate
+
+    compacted = _compact_rate(Decimal(raw))
+    assert compacted == Decimal(raw)
+    # Plain digits, never scientific notation: this value is serialised into
+    # JSON and cached as text.
+    assert "E" not in format(compacted, "f").upper()
+
+
 async def test_failover_alerts_once_then_dedupes(redis, monkeypatch: pytest.MonkeyPatch) -> None:
     alert = AsyncMock(return_value=True)
     monkeypatch.setattr("yupay.modules.fx.failover_alert.send_admin_alert", alert)

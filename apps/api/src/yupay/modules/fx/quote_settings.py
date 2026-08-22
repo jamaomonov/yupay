@@ -23,10 +23,18 @@ MANUAL_SOURCE = "manual"
 
 
 def _compact_rate(value: Decimal | None) -> Decimal | None:
-    """Drop ``Numeric(20, 10)`` trailing zeros so JSON stays ``12500``."""
+    """Drop ``Numeric(20, 10)`` trailing zeros so JSON stays ``12500``.
+
+    Only the fractional part is stripped. Stripping unconditionally eats the
+    significant zeros of a whole number — 12500 came back 125 — and a manual
+    rate skips the pricing band by design (ADR-0055), so nothing downstream
+    would have questioned it.
+    """
     if value is None:
         return None
-    text = format(value, "f").rstrip("0").rstrip(".")
+    text = format(value, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
     return Decimal(text or "0")
 
 
