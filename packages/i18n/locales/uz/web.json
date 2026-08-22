@@ -21,9 +21,7 @@
   "nav": {
     "store": "Katalog",
     "how": "Qanday ishlaydi",
-    "reviews": "Sharhlar",
     "support": "Yordam",
-    "topUp": "Toʻldirish",
     "login": "Kirish",
     "account": "Akkaunt",
     "orders": "Buyurtmalarim",
@@ -35,7 +33,9 @@
     "footerLabel": "Pastki qism navigatsiyasi",
     "breadcrumbLabel": "Yoʻl xaritasi",
     "closeMenu": "Menyuni yopish",
-    "wallet": "Hamyon"
+    "wallet": "Hamyon",
+    "buy": "Sotib olish",
+    "walletTopUp": "Toʻldirish"
   },
   "hero": {
     "badge": "Oʻyin va obunalar · 1 markaz",

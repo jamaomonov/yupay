@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { use, useEffect, useId, useRef, useState } from "react";
 
+import { amountValue, groupDigits, toDigits } from "@/lib/amount-input";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { ApiError, apiFetch } from "@/lib/client";
@@ -66,11 +67,7 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
   }, [providers.data]);
 
   const limits = TOP_UP_LIMITS[WALLET_CURRENCY];
-  // Soum has no minor unit — the server refuses 10 000.5 rather than rounding
-  // it, so accepting a decimal separator here only buys the customer a 422.
-  // Spaces are stripped because `formatUzs` puts them in and people paste it
-  // back; everything else that is not a digit is simply not a soum.
-  const typed = Number.parseInt(amount.replace(/\D/g, ""), 10) || 0;
+  const typed = amountValue(amount);
   const belowMin = typed > 0 && limits !== undefined && typed < limits.min;
   const aboveMax = limits !== undefined && typed > limits.max;
   const amountOk = limits !== undefined && typed >= limits.min && typed <= limits.max;
@@ -149,9 +146,12 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
           </span>
           <input
             inputMode="numeric"
-            value={amount}
+            // Grouped for reading: 100000 and 1000000 are one character apart
+            // and ten times different, which in a bold 24px field is the same
+            // shape. The stored value stays plain digits.
+            value={groupDigits(amount, locale)}
             onChange={(e) => {
-              setAmount(e.target.value.replace(/\D/g, ""));
+              setAmount(toDigits(e.target.value));
               setError(null);
             }}
             placeholder={limits ? formatUzs(locale, limits.min) : ""}

@@ -21,9 +21,7 @@
   "nav": {
     "store": "Catalog",
     "how": "How it works",
-    "reviews": "Reviews",
     "support": "Help",
-    "topUp": "Top up",
     "login": "Sign in",
     "account": "Account",
     "orders": "My orders",
@@ -35,7 +33,9 @@
     "footerLabel": "Footer navigation",
     "breadcrumbLabel": "Breadcrumb",
     "closeMenu": "Close menu",
-    "wallet": "Wallet"
+    "wallet": "Wallet",
+    "buy": "Buy",
+    "walletTopUp": "Top up"
   },
   "hero": {
     "badge": "Games & subscriptions · 1 hub",

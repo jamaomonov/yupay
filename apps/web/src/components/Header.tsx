@@ -2,7 +2,6 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { AccountMenu } from "./auth/AccountMenu";
-import { BalanceChip } from "./auth/BalanceChip";
 import { LocaleSwitcher } from "./LocaleSwitcher";
 import { MobileNav } from "./MobileNav";
 import { Wordmark } from "./Wordmark";
@@ -38,15 +37,6 @@ export async function Header({ locale }: { locale: string }) {
           >
             {t("how")}
           </a>
-          {/* The catalogue, not a home-page anchor: `#reviews` is only ever
-              rendered on a brand page, so this link used to do nothing at all.
-              Brand cards carry real ratings (drawn only when count > 0). */}
-          <Link
-            href={pathFor(locale, "/store")}
-            className="text-tx-mute hover:text-foreground text-sm font-medium transition"
-          >
-            {t("reviews")}
-          </Link>
           <a
             href="https://t.me/yupay_support"
             target="_blank"
@@ -60,13 +50,16 @@ export async function Header({ locale }: { locale: string }) {
         {/* Desktop controls */}
         <div className="hidden items-center gap-2.5 md:flex">
           {/* The one filled control in the header belongs to the action that
-              earns money. This is what the docstrings in Header/MobileNav have
-              described all along; the code had it on "Войти" instead. */}
+              earns money. It says "Купить", not "Пополнить": with a wallet in
+              the product the latter promises a balance top-up and delivered
+              the catalogue — which the nav's own "Магазин" already links to. */}
           <Link href={pathFor(locale, "/store")} className={buttonStyles({ size: "md" })}>
-            {t("topUp")}
+            {t("buy")}
           </Link>
           <LocaleSwitcher />
-          <BalanceChip locale={locale} />
+          {/* The balance rides inside AccountMenu now — one control instead of
+              two competing for the same corner, and it reaches mobile, which
+              uses the same component. */}
           <AccountMenu locale={locale} />
         </div>
 

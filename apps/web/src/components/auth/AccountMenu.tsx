@@ -1,14 +1,19 @@
 "use client";
 
-import { LogOut, Package, Wallet } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { LogOut, Package, Plus } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 
+import { WalletMark } from "@/components/icons/WalletMark";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { listGuestOrders } from "@/lib/guest-orders";
 import { pathFor } from "@/lib/seo";
+import { formatUzs } from "@/lib/seo";
+import { getWallet, WALLET_CURRENCY } from "@/lib/wallet";
+import { spendableBalance } from "@/lib/wallet-balance";
 import { useLoginModal } from "@/store/useLoginModal";
 
 interface Props {
@@ -30,6 +35,15 @@ export function AccountMenu({ locale }: Props) {
   const { user, isLoading, logout } = useAuth();
   const openLogin = useLoginModal((s) => s.open);
   const [open, setOpen] = useState(false);
+  // Read here rather than in a sibling chip: one control is easier to place
+  // than two, and this one already exists on both the desktop and the mobile
+  // header — which is how the balance reaches a phone at all.
+  const wallet = useQuery({
+    queryKey: ["wallet"],
+    queryFn: getWallet,
+    enabled: Boolean(user),
+    staleTime: 30_000,
+  });
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -84,9 +98,15 @@ export function AccountMenu({ locale }: Props) {
   }
 
   const initial = (user.display_name ?? user.email ?? "?")[0]?.toUpperCase() ?? "?";
+  const balance = spendableBalance(wallet.data?.balances ?? null, WALLET_CURRENCY);
+  const balanceLabel = balance === null ? "" : formatUzs(locale, Math.round(balance));
 
   return (
     <div ref={wrapRef} className="relative">
+      {/* Balance and avatar in one control. Two pills side by side competed for
+          the same corner and the balance one never fit on a phone; merged, the
+          amount rides in and the avatar stays the thing you aim at. One
+          destination — the menu — so a single tap is never ambiguous. */}
       <button
         type="button"
         onClick={() => {
@@ -94,20 +114,30 @@ export function AccountMenu({ locale }: Props) {
         }}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={t("menu")}
-        className="border-border bg-muted text-tx-mute hover:bg-card-2 hover:text-foreground flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border text-sm font-bold transition"
+        aria-label={balance === null ? t("menu") : `${t("wallet")}: ${balanceLabel}, ${t("menu")}`}
+        className="border-border bg-muted hover:bg-card-2 flex h-11 items-center gap-2 overflow-hidden rounded-full border pl-3 pr-1 transition"
       >
-        {user.photo_url ? (
-          // eslint-disable-next-line @next/next/no-img-element -- external Telegram CDN avatar; a plain <img> avoids next/image remotePatterns wiring for a 38px thumbnail
-          <img
-            src={user.photo_url}
-            alt=""
-            referrerPolicy="no-referrer"
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          initial
+        {balance !== null && (
+          <>
+            <WalletMark size={15} className="text-tx-mute shrink-0" />
+            <span className="text-foreground shrink-0 whitespace-nowrap text-sm font-bold tabular-nums">
+              {balanceLabel}
+            </span>
+          </>
         )}
+        <span className="bg-card-2 text-tx-mute flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-bold">
+          {user.photo_url ? (
+            // eslint-disable-next-line @next/next/no-img-element -- external Telegram CDN avatar; a plain <img> avoids next/image remotePatterns wiring for a 36px thumbnail
+            <img
+              src={user.photo_url}
+              alt=""
+              referrerPolicy="no-referrer"
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            initial
+          )}
+        </span>
       </button>
 
       {open && (
@@ -123,8 +153,24 @@ export function AccountMenu({ locale }: Props) {
             }}
             className="text-tx-mute hover:bg-card-2 hover:text-foreground flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition"
           >
-            <Wallet size={16} />
-            {t("wallet")}
+            <WalletMark size={16} />
+            <span className="flex-1">{t("wallet")}</span>
+            {balance !== null && (
+              <span className="text-foreground text-sm font-bold tabular-nums">{balanceLabel}</span>
+            )}
+          </Link>
+          {/* The one place "Пополнить" means the wallet. The header's own
+              lime CTA sells games, which is why it no longer says this. */}
+          <Link
+            href={pathFor(locale, "/account/wallet/top-up")}
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+            }}
+            className="text-tx-mute hover:bg-card-2 hover:text-foreground flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition"
+          >
+            <Plus size={16} />
+            {t("walletTopUp")}
           </Link>
           <Link
             href={pathFor(locale, "/account/orders")}
