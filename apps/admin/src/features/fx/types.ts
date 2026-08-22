@@ -28,7 +28,10 @@ export interface ProviderChainItemOut {
   kind: string;
   enabled: boolean;
   configured: boolean;
-  role: "primary" | "fallback" | "off" | "unconfigured" | string;
+  /** `| string` was here too, which erased the union — every literal was
+   *  "overridden by string" and the exhaustive check below could never fail.
+   *  `probe_chain` assigns exactly these four. */
+  role: "primary" | "fallback" | "off" | "unconfigured";
   sort_order: number;
   quotes: ProviderQuoteOut[];
 }
