@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
@@ -16,6 +17,14 @@ vi.mock("next-intl", () => ({
 vi.mock("@/lib/auth", () => ({
   useAuth: () => ({ user: null }),
 }));
+
+/** The panel reads the wallet balance through react-query, so every render
+ *  needs a client. Retries off so a mocked 401 fails once instead of stalling
+ *  the test. */
+function renderPanel(ui: React.ReactElement) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -121,7 +130,7 @@ function makeStarsUnitProduct(): ProductDetail {
 
 it("renders Stars package tiles from the unit SKU's rate, not separate pack SKUs", async () => {
   mockProvidersResponse([{ slug: "click", status: "active" }]);
-  render(<PurchasePanel products={[makeStarsUnitProduct()]} locale="ru" />);
+  renderPanel(<PurchasePanel products={[makeStarsUnitProduct()]} locale="ru" />);
   await waitFor(() => {
     expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
   });
@@ -154,7 +163,7 @@ it("falls back to the product image when the unit SKU has none", async () => {
   const product = makeStarsUnitProduct();
   product.image_url = "/product.webp";
   product.skus[0] = { ...product.skus[0]!, image_url: null };
-  render(<PurchasePanel products={[product]} locale="ru" />);
+  renderPanel(<PurchasePanel products={[product]} locale="ru" />);
   await waitFor(() => {
     expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
   });
@@ -202,7 +211,7 @@ it("submits a tapped pack as { sku_id, qty } with no amount_usd", async () => {
     },
   );
 
-  render(<PurchasePanel products={[makeStarsUnitProduct()]} locale="ru" />);
+  renderPanel(<PurchasePanel products={[makeStarsUnitProduct()]} locale="ru" />);
   await waitFor(() => {
     expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
   });
@@ -230,7 +239,7 @@ it("puts the free-amount field above the packages and says nothing about rate or
   // field under the grid, and wrapped it in a rate / "комиссия 0%" / limit
   // panel plus a slider and its own duplicate $100/$250/$500 presets.
   mockProvidersResponse([{ slug: "click", status: "active" }]);
-  render(<PurchasePanel products={[makeUnitProduct()]} locale="ru" />);
+  renderPanel(<PurchasePanel products={[makeUnitProduct()]} locale="ru" />);
   await waitFor(() => {
     expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
   });
@@ -254,7 +263,7 @@ it("puts the free-amount field above the packages and says nothing about rate or
 
 it("makes the typed amount and a package mutually exclusive", async () => {
   mockProvidersResponse([{ slug: "click", status: "active" }]);
-  render(<PurchasePanel products={[makeUnitProduct()]} locale="ru" />);
+  renderPanel(<PurchasePanel products={[makeUnitProduct()]} locale="ru" />);
   await waitFor(() => {
     expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
   });
@@ -289,7 +298,7 @@ it("keeps the dollar wording for a SKU with no unit (Steam)", async () => {
       },
     ],
   };
-  render(<PurchasePanel products={[steam]} locale="ru" />);
+  renderPanel(<PurchasePanel products={[steam]} locale="ru" />);
   // Let the provider-status fetch settle so it doesn't resolve outside act().
   await waitFor(() => {
     expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
@@ -313,7 +322,7 @@ it("reselects the first active method when the hardcoded default (click) is unde
     // uzum omitted entirely -> admin-disabled, must not render at all.
   ]);
 
-  render(<PurchasePanel products={[makeProduct()]} locale="ru" />);
+  renderPanel(<PurchasePanel products={[makeProduct()]} locale="ru" />);
 
   await waitFor(() => {
     const click = screen.getByRole("button", { name: "Click" });
@@ -334,7 +343,7 @@ it("shows the maintenance status as an overlay chip, outside the tile's flow", a
     { slug: "payme", status: "active" },
   ]);
 
-  render(<PurchasePanel products={[makeProduct()]} locale="ru" />);
+  renderPanel(<PurchasePanel products={[makeProduct()]} locale="ru" />);
 
   const click = await screen.findByRole("button", { name: "Click" });
   const chip = await screen.findByText("paymentMaintenanceShort");
@@ -354,7 +363,7 @@ it("disables Pay when no payment provider is active", async () => {
     // uzum omitted -> hidden too, so literally nothing is selectable.
   ]);
 
-  render(<PurchasePanel products={[makeProduct()]} locale="ru" />);
+  renderPanel(<PurchasePanel products={[makeProduct()]} locale="ru" />);
 
   await waitFor(() => {
     expect(screen.getByRole("button", { name: "Click" })).toBeDisabled();
@@ -383,7 +392,7 @@ it("does not block checkout on an attestation checkbox for a gift card with no a
   mockProvidersResponse([{ slug: "click", status: "active" }]);
   const product: ProductDetail = { ...makeProduct(), kind: "voucher" };
 
-  render(<PurchasePanel products={[product]} locale="ru" />);
+  renderPanel(<PurchasePanel products={[product]} locale="ru" />);
 
   fireEvent.change(screen.getByPlaceholderText("emailPlaceholder"), {
     target: { value: "buyer@example.com" },
@@ -421,7 +430,7 @@ it("hides a plain field's help text behind a button instead of always showing it
     ],
   };
 
-  render(<PurchasePanel products={[product]} locale="ru" />);
+  renderPanel(<PurchasePanel products={[product]} locale="ru" />);
 
   expect(screen.queryByText(helpCopy)).not.toBeInTheDocument();
 
@@ -455,7 +464,7 @@ it("disables the check button and explains why until the paired server field is 
     ],
   };
 
-  render(<PurchasePanel products={[product]} locale="ru" />);
+  renderPanel(<PurchasePanel products={[product]} locale="ru" />);
 
   // Let the async provider-status fetch settle before touching state, so its
   // resolution isn't left dangling outside act() by the rest of this test.
@@ -496,7 +505,7 @@ it("keeps the check blocked when only the server id is filled in", async () => {
   // Reported from prod as an asymmetry: id-without-server correctly refused,
   // server-without-id happily ran. Both halves are needed either way round.
   mockProvidersResponse([{ slug: "click", status: "active" }]);
-  render(
+  renderPanel(
     <PurchasePanel products={[{ ...makeProduct(), required_fields: MLBB_FIELDS }]} locale="ru" />,
   );
   await waitFor(() => {
@@ -543,7 +552,7 @@ it("will not check a region-split brand until a package is picked", async () => 
       { ...base.skus[0]!, id: "sku-2b", sku_code: "MLBB-RU-172" },
     ],
   };
-  render(<PurchasePanel products={[global, ru]} locale="ru" />);
+  renderPanel(<PurchasePanel products={[global, ru]} locale="ru" />);
   await waitFor(() => {
     expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
   });
@@ -564,7 +573,7 @@ it("checks straight away on a single-product brand", async () => {
   // Nothing to disambiguate, so requiring a package here would be a pointless
   // extra step.
   mockProvidersResponse([{ slug: "click", status: "active" }]);
-  render(
+  renderPanel(
     <PurchasePanel products={[{ ...makeProduct(), required_fields: MLBB_FIELDS }]} locale="ru" />,
   );
   await waitFor(() => {
@@ -585,7 +594,7 @@ it("keeps Pay disabled until the checkable field passes verification", async () 
   // landed the top-up on a stranger's account with no way back. Pay must
   // stay blocked until "Проверить" actually confirms the id.
   mockProvidersResponse([{ slug: "click", status: "active" }]);
-  render(
+  renderPanel(
     <PurchasePanel products={[{ ...makeProduct(), required_fields: MLBB_FIELDS }]} locale="ru" />,
   );
   await waitFor(() => {
@@ -619,7 +628,7 @@ it("enables Pay once the checkable field's check comes back valid", async () => 
       }),
     );
   });
-  render(
+  renderPanel(
     <PurchasePanel products={[{ ...makeProduct(), required_fields: MLBB_FIELDS }]} locale="ru" />,
   );
   await waitFor(() => {
@@ -685,7 +694,7 @@ it("drops a confirmed nickname when the package switches to another product", as
     slug: "mlbb-diamonds-ru",
     skus: ruSkus,
   };
-  render(<PurchasePanel products={[globalProduct, ruProduct]} locale="ru" />);
+  renderPanel(<PurchasePanel products={[globalProduct, ruProduct]} locale="ru" />);
   await waitFor(() => {
     expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
   });
@@ -704,4 +713,51 @@ it("drops a confirmed nickname when the package switches to another product", as
   fireEvent.click(screen.getByRole("button", { name: /GL 86/ }));
 
   expect(screen.queryByText("blood moon")).not.toBeInTheDocument();
+});
+
+// ---------- pay from balance ----------
+
+/**
+ * The tile has three states and each is wrong in a different way if mixed up:
+ * offering a payment the gateway will refuse, hiding one the customer could
+ * have used, or asking a guest to pay from an account they do not have.
+ */
+function mockWallet(balance: string | null): void {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/wallet")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              balances:
+                balance === null
+                  ? []
+                  : [
+                      {
+                        account_id: "acc-1",
+                        kind: "user_wallet",
+                        currency: "UZS",
+                        balance,
+                      },
+                    ],
+            }),
+        });
+      }
+      return Promise.resolve({
+        json: () => Promise.resolve({ providers: [{ slug: "click", status: "active" }] }),
+      });
+    }),
+  );
+}
+
+it("asks a guest to sign in rather than offering an account they do not have", async () => {
+  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  renderPanel(<PurchasePanel products={[makeProduct()]} locale="ru" />);
+
+  const tile = await screen.findByRole("button", { name: /payFromBalance/ });
+  expect(tile).not.toBeDisabled();
+  expect(tile).toHaveTextContent("payFromBalanceGuest");
 });

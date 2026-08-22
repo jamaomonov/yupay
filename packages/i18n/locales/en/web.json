@@ -34,7 +34,8 @@
     "primaryLabel": "Main navigation",
     "footerLabel": "Footer navigation",
     "breadcrumbLabel": "Breadcrumb",
-    "closeMenu": "Close menu"
+    "closeMenu": "Close menu",
+    "wallet": "Wallet"
   },
   "hero": {
     "badge": "Games & subscriptions · 1 hub",
@@ -287,7 +288,11 @@
     "confirmCta": "All correct, pay",
     "confirmCancel": "Edit",
     "confirmItem": "Item",
-    "payErrorSupportWord": "support"
+    "payErrorSupportWord": "support",
+    "payFromBalance": "Balance",
+    "payFromBalanceGuest": "Sign in to pay from your balance",
+    "payFromBalanceShort": "{amount} short",
+    "payFromBalanceUnknown": "Choose a package"
   },
   "how": {
     "eyebrow": "Flow",
@@ -656,5 +661,33 @@
     "deliveredTitle": "Top-up successful",
     "deliveredBody": "Your order has been delivered. Check your balance or the code you received.",
     "close": "Close"
+  },
+  "wallet": {
+    "title": "Wallet",
+    "balanceLabel": "Balance",
+    "balanceNote": "Pay from your balance in one tap — no card details each time.",
+    "topUpCta": "Top up",
+    "guestBody": "Sign in to use the wallet.",
+    "toCatalog": "Browse catalogue",
+    "historyTitle": "Activity",
+    "historyEmpty": "Nothing yet",
+    "historyError": "Couldn't load activity",
+    "topUpTitle": "Top up",
+    "amountLabel": "Amount",
+    "methodLabel": "Payment method",
+    "minAmount": "Minimum {amount}",
+    "maxAmount": "Maximum {amount}",
+    "topUpSubmit": "Top up {amount}",
+    "topUpEnterAmount": "Enter an amount",
+    "topUpPending": "Taking you to payment…",
+    "topUpFailed": "Couldn't start the top-up",
+    "topUpNote": "The balance updates once the bank confirms the payment.",
+    "txAdminAdjust": "Adjustment",
+    "txRefund": "Refund",
+    "txOrderPayment": "Order payment",
+    "txPromo": "Promo code",
+    "txCashback": "Cashback",
+    "txTopUp": "Top-up",
+    "txTopUpRefund": "Top-up refund"
   }
 }

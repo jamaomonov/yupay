@@ -1,6 +1,6 @@
 "use client";
 
-import { LogOut, Package } from "lucide-react";
+import { LogOut, Package, Wallet } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
@@ -115,6 +115,17 @@ export function AccountMenu({ locale }: Props) {
           role="menu"
           className="border-border bg-card/95 absolute right-0 top-11 z-40 min-w-[11rem] overflow-hidden rounded-xl border p-1 shadow-2xl backdrop-blur-xl"
         >
+          <Link
+            href={pathFor(locale, "/account/wallet")}
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+            }}
+            className="text-tx-mute hover:bg-card-2 hover:text-foreground flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition"
+          >
+            <Wallet size={16} />
+            {t("wallet")}
+          </Link>
           <Link
             href={pathFor(locale, "/account/orders")}
             role="menuitem"

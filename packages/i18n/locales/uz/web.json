@@ -34,7 +34,8 @@
     "primaryLabel": "Asosiy navigatsiya",
     "footerLabel": "Pastki qism navigatsiyasi",
     "breadcrumbLabel": "Yoʻl xaritasi",
-    "closeMenu": "Menyuni yopish"
+    "closeMenu": "Menyuni yopish",
+    "wallet": "Hamyon"
   },
   "hero": {
     "badge": "Oʻyin va obunalar · 1 markaz",
@@ -287,7 +288,11 @@
     "confirmCta": "Hammasi toʻgʻri, toʻlash",
     "confirmCancel": "Oʻzgartirish",
     "confirmItem": "Mahsulot",
-    "payErrorSupportWord": "qoʻllab-quvvatlashga"
+    "payErrorSupportWord": "qoʻllab-quvvatlashga",
+    "payFromBalance": "Balans",
+    "payFromBalanceGuest": "Balansdan toʻlash uchun kiring",
+    "payFromBalanceShort": "{amount} yetmaydi",
+    "payFromBalanceUnknown": "Paketni tanlang"
   },
   "how": {
     "eyebrow": "Flow",
@@ -656,5 +661,33 @@
     "deliveredTitle": "Toʻldirish muvaffaqiyatli",
     "deliveredBody": "Buyurtmangiz yetkazildi. Balansingizni yoki olingan kodni tekshiring.",
     "close": "Yopish"
+  },
+  "wallet": {
+    "title": "Hamyon",
+    "balanceLabel": "Balans",
+    "balanceNote": "Balansdan bir bosishda toʻlang — har safar karta kiritmasdan.",
+    "topUpCta": "Toʻldirish",
+    "guestBody": "Hamyondan foydalanish uchun tizimga kiring.",
+    "toCatalog": "Katalogga",
+    "historyTitle": "Amallar",
+    "historyEmpty": "Hozircha boʻsh",
+    "historyError": "Amallarni yuklab boʻlmadi",
+    "topUpTitle": "Toʻldirish",
+    "amountLabel": "Summa",
+    "methodLabel": "Toʻlov usuli",
+    "minAmount": "Eng kami {amount}",
+    "maxAmount": "Koʻpi bilan {amount}",
+    "topUpSubmit": "{amount} toʻldirish",
+    "topUpEnterAmount": "Summani kiriting",
+    "topUpPending": "Toʻlovga oʻtilmoqda…",
+    "topUpFailed": "Toʻldirishni boshlab boʻlmadi",
+    "topUpNote": "Bank toʻlovni tasdiqlagach balans yangilanadi.",
+    "txAdminAdjust": "Tuzatish",
+    "txRefund": "Qaytarish",
+    "txOrderPayment": "Buyurtma toʻlovi",
+    "txPromo": "Promokod",
+    "txCashback": "Keshbek",
+    "txTopUp": "Toʻldirish",
+    "txTopUpRefund": "Toʻldirish qaytarildi"
   }
 }

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { AccountMenu } from "./auth/AccountMenu";
+import { BalanceChip } from "./auth/BalanceChip";
 import { LocaleSwitcher } from "./LocaleSwitcher";
 import { MobileNav } from "./MobileNav";
 import { Wordmark } from "./Wordmark";
@@ -65,6 +66,7 @@ export async function Header({ locale }: { locale: string }) {
             {t("topUp")}
           </Link>
           <LocaleSwitcher />
+          <BalanceChip locale={locale} />
           <AccountMenu locale={locale} />
         </div>
 

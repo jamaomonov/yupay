@@ -1,7 +1,8 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { formatMoney } from "@yupay/utils";
-import { ArrowUpRight, Check, Info, Loader2, X } from "lucide-react";
+import { ArrowUpRight, Check, Info, Loader2, Wallet as WalletIcon, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
@@ -47,6 +48,9 @@ import {
   unitAmountError,
   unitsPerUsd,
 } from "@/lib/variable-amount";
+import { getWallet, WALLET_CURRENCY } from "@/lib/wallet";
+import { spendableBalance, walletTile } from "@/lib/wallet-balance";
+import { useLoginModal } from "@/store/useLoginModal";
 
 const API = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
 
@@ -62,6 +66,12 @@ interface Method {
 /** In-scope acquirers (UZ rails). Real gateways are still stubs in dev,
  * so checkout falls back to the live `mock` provider when the chosen one isn't
  * available yet — the UI stays honest while the flow works end-to-end. */
+/** Not an acquirer: the balance is our own ledger, and `WalletGateway`
+ *  settles it synchronously inside `create_intent`. Kept out of `METHODS`
+ *  so provider-availability logic, which is about upstream acquirers,
+ *  never reasons about it. */
+const WALLET_METHOD_ID = "wallet";
+
 const METHODS: Method[] = [
   {
     id: "click",
@@ -1061,6 +1071,36 @@ export function PurchasePanel({
         ? t("pickPackOrAmount")
         : t("amountTitle");
 
+  // The same figure `selectedPriceLabel` formats, kept numeric so the wallet
+  // tile compares against exactly what checkout will bill rather than parsing
+  // a currency string back out.
+  const orderTotalUzs: number | null = !selSku
+    ? null
+    : selSkuVariable
+      ? variableTotal
+      : selSkuUnit
+        ? qtyTotal
+        : selSku.display_price
+          ? Number(selSku.display_price.amount)
+          : null;
+
+  // Only fetched for signed-in customers: a guest has no wallet, and asking
+  // would 401 on every brand page.
+  const walletQuery = useQuery({
+    queryKey: ["wallet"],
+    queryFn: getWallet,
+    enabled: user !== null,
+    staleTime: 30_000,
+  });
+  const walletState = walletTile({
+    isLoggedIn: user !== null,
+    balance: spendableBalance(walletQuery.data?.balances ?? null, WALLET_CURRENCY),
+    total: orderTotalUzs,
+  });
+  const payingFromBalance = methodId === WALLET_METHOD_ID;
+
+  const openLogin = useLoginModal((st) => st.open);
+
   const emailOk = EMAIL_RE.test(email);
   const fieldsOk = fields.every((f) => !f.required || (form[f.key]?.trim() ?? "") !== "");
   // A checkable field (`f.check`) with something typed that the check has not
@@ -1080,10 +1120,16 @@ export function PurchasePanel({
   // is the belt-and-suspenders guarantee that Pay can never submit a
   // maintenance/admin-disabled provider (`methodVisibility` fails open while
   // `providerStatus` is still loading, matching the method grid's own render).
-  const selectedProvider = METHODS.find((m) => m.id === methodId)?.provider;
-  const selectedMethodActive =
-    selectedProvider !== undefined &&
-    methodVisibility(selectedProvider, providerStatus) === "active";
+  // The balance is not an acquirer: `providerStatus` describes upstream
+  // availability, and our own ledger is up whenever the API is. Its readiness
+  // is `walletState` instead.
+  const selectedProvider = payingFromBalance
+    ? WALLET_METHOD_ID
+    : METHODS.find((m) => m.id === methodId)?.provider;
+  const selectedMethodActive = payingFromBalance
+    ? walletState.state === "ready"
+    : selectedProvider !== undefined &&
+      methodVisibility(selectedProvider, providerStatus) === "active";
   // When every acquirer is admin-disabled/unavailable the grid renders empty;
   // show an explicit "no methods" line instead of a bare heading. Fails open
   // while `providerStatus` loads, so it never flashes during the initial fetch.
@@ -1599,6 +1645,52 @@ export function PurchasePanel({
                   {t("paymentNone")}
                 </p>
               )}
+              {/* Full width, above the acquirer grid: this tile carries a
+                  balance and a status line, and squeezing that into a third of
+                  the row is what made the grid go ragged when an acquirer was
+                  down. It also separates "your own money" from "a card". */}
+              <button
+                type="button"
+                aria-pressed={payingFromBalance}
+                disabled={walletState.state === "short" || walletState.state === "unknown"}
+                onClick={() => {
+                  if (walletState.state === "guest") {
+                    openLogin();
+                    return;
+                  }
+                  setMethodId(WALLET_METHOD_ID);
+                }}
+                className={`focus-visible:ring-primary focus-visible:ring-offset-bg rounded-btn mb-2 flex w-full items-center gap-3 border px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed ${
+                  payingFromBalance
+                    ? "border-primary bg-primary/10"
+                    : "border-border bg-card hover:border-border-2"
+                }`}
+              >
+                <span
+                  className={`bg-muted flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${
+                    walletState.state === "ready" || walletState.state === "guest"
+                      ? "text-primary"
+                      : "text-tx-dim"
+                  }`}
+                >
+                  <WalletIcon size={18} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] font-semibold">{t("payFromBalance")}</span>
+                  <span className="text-tx-dim block text-[12px]">
+                    {walletState.state === "guest"
+                      ? t("payFromBalanceGuest")
+                      : walletState.state === "short"
+                        ? t("payFromBalanceShort", {
+                            amount: formatUzs(locale, walletState.missing),
+                          })
+                        : walletState.state === "ready"
+                          ? formatUzs(locale, Math.round(walletState.balance))
+                          : t("payFromBalanceUnknown")}
+                  </span>
+                </span>
+              </button>
+
               <div className="grid grid-cols-3 gap-2">
                 {METHODS.map((m) => {
                   // Absent from the providers response → admin-disabled, not

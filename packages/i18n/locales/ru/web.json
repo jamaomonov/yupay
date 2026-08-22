@@ -34,7 +34,8 @@
     "primaryLabel": "Основная навигация",
     "footerLabel": "Навигация в подвале",
     "breadcrumbLabel": "Хлебные крошки",
-    "closeMenu": "Закрыть меню"
+    "closeMenu": "Закрыть меню",
+    "wallet": "Кошелёк"
   },
   "hero": {
     "badge": "Игры и подписки · 1 центр",
@@ -287,7 +288,11 @@
     "confirmCta": "Всё верно, оплатить",
     "confirmCancel": "Изменить",
     "confirmItem": "Товар",
-    "payErrorSupportWord": "поддержку"
+    "payErrorSupportWord": "поддержку",
+    "payFromBalance": "Баланс",
+    "payFromBalanceGuest": "Войдите, чтобы платить с баланса",
+    "payFromBalanceShort": "Не хватает {amount}",
+    "payFromBalanceUnknown": "Выберите пакет"
   },
   "how": {
     "eyebrow": "Flow",
@@ -656,5 +661,33 @@
     "deliveredTitle": "Пополнение успешно",
     "deliveredBody": "Ваш заказ доставлен. Проверьте баланс или полученный код.",
     "close": "Закрыть"
+  },
+  "wallet": {
+    "title": "Кошелёк",
+    "balanceLabel": "Баланс",
+    "balanceNote": "Платите с баланса в один клик — без ввода карты каждый раз.",
+    "topUpCta": "Пополнить",
+    "guestBody": "Войдите, чтобы пользоваться кошельком.",
+    "toCatalog": "В каталог",
+    "historyTitle": "Операции",
+    "historyEmpty": "Пока пусто",
+    "historyError": "Не удалось загрузить операции",
+    "topUpTitle": "Пополнение",
+    "amountLabel": "Сумма",
+    "methodLabel": "Способ оплаты",
+    "minAmount": "Минимум {amount}",
+    "maxAmount": "Максимум {amount}",
+    "topUpSubmit": "Пополнить на {amount}",
+    "topUpEnterAmount": "Введите сумму",
+    "topUpPending": "Переходим к оплате…",
+    "topUpFailed": "Не удалось начать пополнение",
+    "topUpNote": "Баланс пополнится, когда банк подтвердит платёж.",
+    "txAdminAdjust": "Корректировка",
+    "txRefund": "Возврат",
+    "txOrderPayment": "Оплата заказа",
+    "txPromo": "Промокод",
+    "txCashback": "Кэшбэк",
+    "txTopUp": "Пополнение",
+    "txTopUpRefund": "Возврат пополнения"
   }
 }
