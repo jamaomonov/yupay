@@ -9,6 +9,7 @@ crypto pairs via ``supports``.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -144,6 +145,43 @@ async def write_chain_cache(redis: Redis, items: list[ChainItem]) -> None:
         [{"slug": i.slug, "enabled": i.enabled, "sort_order": i.sort_order} for i in items]
     )
     await redis.set(_CHAIN_KEY, payload)
+
+
+def assert_chain_covers_quotes(
+    items: Sequence[ChainItem],
+    *,
+    providers: Sequence[FxProvider],
+    quotes: Sequence[str],
+) -> None:
+    """Refuse a chain that leaves a currency with nobody to price it.
+
+    Disabling a provider used to be advisory — the ordering code swept
+    disabled slugs back in as a last-resort fallback, so unticking one could
+    never take a quote off the air. Now that "off" means off, it can: only
+    CoinGecko answers USD→USDT, and only the fiat adapters answer USD→UZS, so
+    one unticked box can leave a quote uncovered. Nothing fails at that moment
+    — the fresh cache still answers — and then the stale entry expires and
+    checkout starts returning 503 for that currency.
+
+    A provider that is not configured (no API key) cannot cover anything, and
+    ``supports`` already says so, which is the same question
+    ``get_market_rate`` asks.
+
+    Raises:
+        ValidationError: some supported quote has no enabled provider.
+    """
+    enabled = {item.slug for item in items if item.enabled}
+    by_slug = {provider_slug(p): p for p in providers}
+    orphaned = [
+        quote
+        for quote in quotes
+        if not any(slug in enabled and by_slug[slug].supports("USD", quote) for slug in by_slug)
+    ]
+    if orphaned:
+        raise ValidationError(
+            "every currency needs at least one enabled provider",
+            extra={"field": "items", "uncovered": orphaned},
+        )
 
 
 async def save_chain(db: AsyncSession, *, items: list[ChainItem]) -> list[ChainItem]:

@@ -171,3 +171,13 @@ async def read_probe(redis: Redis) -> str | None:
 
 async def write_probe(redis: Redis, payload: str) -> None:
     await redis.set(_PROBE_KEY, payload, ex=PROBE_TTL_SECONDS)
+
+
+async def clear_probe(redis: Redis) -> None:
+    """Drop the cached probe so the next read really goes upstream.
+
+    "Обновить" exists to answer "did my fix land?" — a fixed API key, a
+    re-enabled account — and a minute of cached errors is the one answer that
+    is useless there.
+    """
+    await redis.delete(_PROBE_KEY)

@@ -30,6 +30,7 @@ import {
 import {
   blocksCheckout,
   checkBlocker,
+  checkUnavailable,
   IDLE,
   mergeCheckResult,
   runPlayerCheck,
@@ -331,7 +332,7 @@ function CheckablePlayerField({
           onClose={closeHelp}
         />
       )}
-      {done?.status === "error" && (
+      {checkUnavailable(done) && (
         <p className="text-tx-dim mt-2 px-1 text-[13px]">
           {t("checkFailed")} ·{" "}
           <button

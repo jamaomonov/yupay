@@ -323,3 +323,93 @@ async def test_a_deposit_on_an_admin_cancelled_order_is_not_credited(
     ]
     assert "order.paid_after_expiry" in kinds
     assert "order.held_for_review" in kinds
+
+
+async def test_a_retried_callback_does_not_undo_the_hold(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """`settle_provider_payment` is the second door into the same credit.
+
+    Click, Payme and Uzum settle through it, and its already-succeeded branch
+    finishes any top-up whose order is not yet ``delivered`` — which is exactly
+    what a held one looks like. Without a guard there, one retried callback
+    quietly credits the balance a human was asked to decide about.
+    """
+    from yupay.modules.payments import service as pay_svc
+    from yupay.modules.payments.models import Payment
+
+    token = await _login(integration_client, tg_id=9715)
+    created = await _topup(
+        integration_client, token=token, amount="10000", key="late-topup-retry-hold"
+    )
+    order_id = created["order_id"]
+    assert isinstance(order_id, str)
+    external_id = created["external_id"]
+    assert isinstance(external_id, str)
+
+    await db_session.execute(
+        update(Order).where(Order.id == order_id).values(status="cancelled", cancelled_at=now())
+    )
+    await db_session.commit()
+    await _settle_mock(integration_client, external_id=external_id, tag="late-retry-hold-a")
+
+    payment = (
+        await db_session.execute(select(Payment).where(Payment.order_id == order_id))
+    ).scalar_one()
+    await db_session.refresh(payment)
+    await pay_svc.settle_provider_payment(db_session, payment=payment, external_event_id="retry-1")
+    await db_session.commit()
+
+    wallet = await integration_client.get(
+        "/api/v1/wallet", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert _wallet_uzs(wallet.json()) == Decimal("0"), "a retry must not release the hold"
+
+
+async def test_a_held_deposit_cannot_be_released_to_fulfilment(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """ "Выдать" is the wrong verb for a deposit, and it used to strand the order.
+
+    A held deposit looks exactly like a held catalogue order to the admin
+    banner — ``paid``, no tasks, a ``held_for_review`` event. Releasing it made
+    no tasks, flipped the order to ``fulfilling`` anyway, and left it there for
+    good, still uncredited.
+    """
+    from yupay.modules.users.models import TelegramLink, User
+
+    token = await _login(integration_client, tg_id=9716)
+    created = await _topup(
+        integration_client, token=token, amount="10000", key="late-topup-release-1"
+    )
+    order_id = created["order_id"]
+    assert isinstance(order_id, str)
+    external_id = created["external_id"]
+    assert isinstance(external_id, str)
+
+    await db_session.execute(
+        update(Order).where(Order.id == order_id).values(status="cancelled", cancelled_at=now())
+    )
+    await db_session.commit()
+    await _settle_mock(integration_client, external_id=external_id, tag="late-release-1")
+
+    admin_token = await _login(integration_client, tg_id=9717)
+    admin_id = (
+        await db_session.execute(
+            select(User.id)
+            .join(TelegramLink, TelegramLink.user_id == User.id)
+            .where(TelegramLink.tg_user_id == 9717)
+        )
+    ).scalar_one()
+    await db_session.execute(update(User).where(User.id == admin_id).values(roles=["admin"]))
+    await db_session.commit()
+
+    released = await integration_client.post(
+        f"/api/v1/admin/fulfillment/orders/{order_id}/release",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert released.status_code == 409, released.text
+
+    order = (await db_session.execute(select(Order).where(Order.id == order_id))).scalar_one()
+    await db_session.refresh(order)
+    assert order.status == "paid", "the order must not be stranded in fulfilling"

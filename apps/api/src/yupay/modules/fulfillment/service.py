@@ -248,6 +248,16 @@ async def start_for_order(db: AsyncSession, *, order_id: str) -> list[Fulfillmen
             "order is not in a fulfilment-ready state",
             extra={"status": order.status},
         )
+    # A wallet deposit has no items, so this would create no tasks, still flip
+    # the order to ``fulfilling``, and then strand it there — ``_try_settle_order``
+    # returns early when there is nothing to settle. A held deposit is resolved
+    # by crediting or refunding the customer, not by releasing it to fulfilment;
+    # see docs/runbooks/paid-after-expiry.md.
+    if order.purpose != "catalog":
+        raise ConflictError(
+            "a wallet top-up has nothing to fulfil",
+            extra={"purpose": order.purpose},
+        )
 
     existing = {t.order_item_id: t for t in await _existing_tasks_for_order(db, order_id)}
     new_tasks: list[FulfillmentTask] = []

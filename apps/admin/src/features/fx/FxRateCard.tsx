@@ -27,7 +27,11 @@ export function FxRateCard({ row, saving, error, onSave }: Props) {
     (manualRate.trim() === "" ? null : manualRate.trim()) !== (row.manual_rate ?? "");
   const canSave = dirty && (!useManual || parsed !== null);
   const drift = useManual ? deviation(parsed, row.fx_rate) : null;
-  const needsConfirm = drift !== null && drift > CONFIRM_DEVIATION;
+  // No live rate means no sanity check — and FX being down is exactly when
+  // somebody pins a rate by hand, so that is the wrong moment for the guard to
+  // disappear. Ask either way.
+  const noReference = useManual && parsed !== null && row.fx_rate === null;
+  const needsConfirm = noReference || (drift !== null && drift > CONFIRM_DEVIATION);
 
   const save = () => {
     onSave({
@@ -101,9 +105,10 @@ export function FxRateCard({ row, saving, error, onSave }: Props) {
 
       {needsConfirm ? (
         <p className="mb-2 text-sm text-[var(--warning,var(--danger))]">
-          Это на {formatPercent(drift)} от курса FX (
-          {row.fx_rate ? formatRate(row.fx_rate) : "недоступен"}). Наш курс идёт в цены без проверки
-          на отклонение — убедитесь, что не потеряли ноль.
+          {noReference
+            ? "Курс FX недоступен — сверить не с чем."
+            : `Это на ${formatPercent(drift)} от курса FX (${formatRate(row.fx_rate ?? "")}).`}{" "}
+          Наш курс идёт в цены без проверки на отклонение — убедитесь, что не потеряли ноль.
         </p>
       ) : null}
 

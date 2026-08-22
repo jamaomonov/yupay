@@ -293,6 +293,21 @@ async def create_intent(
     return payment
 
 
+async def _is_held_for_review(db: AsyncSession, order_id: str) -> bool:
+    """Whether a human has been asked to decide about this order.
+
+    Read from the event log rather than a column: the hold is already recorded
+    there by ``risk.hold_for_review``, and a second source of truth for "is
+    this waiting on somebody" is a second thing to keep in sync.
+    """
+    stmt = (
+        select(func.count())
+        .select_from(OrderEvent)
+        .where(OrderEvent.order_id == order_id, OrderEvent.kind == "order.held_for_review")
+    )
+    return bool((await db.execute(stmt)).scalar_one() or 0)
+
+
 async def _complete_wallet_topup(db: AsyncSession, *, order: Order, payment: Payment) -> None:
     """Credit ``user_wallet`` and close the funding order. Idempotent.
 
@@ -411,16 +426,14 @@ async def _settle_late_payment(
     if order.purpose == "wallet_topup" and lapsed:
         await _complete_wallet_topup(db, order=order, payment=payment)
         alert += "\nБаланс пополнен."
-    else:
-        from yupay.modules.orders.risk import REASON_PAID_AFTER_EXPIRY, hold_for_review
+        schedule_after_commit(db, lambda: send_admin_alert(alert, kind="paid_after_expiry"))
+        return
 
-        await hold_for_review(db, order=order, reason=REASON_PAID_AFTER_EXPIRY)
-        alert += (
-            "\nБаланс НЕ пополнен — заказ отменял оператор, решите вручную."
-            if order.purpose == "wallet_topup"
-            else "\nВыдача не запускалась — решите, выдавать или вернуть деньги."
-        )
-    schedule_after_commit(db, lambda: send_admin_alert(alert, kind="paid_after_expiry"))
+    # `hold_for_review` pages ops itself, with the wording for this reason, so
+    # alerting here too would be the same event told twice.
+    from yupay.modules.orders.risk import REASON_PAID_AFTER_EXPIRY, hold_for_review
+
+    await hold_for_review(db, order=order, reason=REASON_PAID_AFTER_EXPIRY)
 
 
 async def _mark_payment_succeeded(
@@ -1152,7 +1165,15 @@ async def settle_provider_payment(
     await db.refresh(payment, with_for_update=True)
     if payment.status == "succeeded":
         order = (await db.execute(select(Order).where(Order.id == payment.order_id))).scalar_one()
-        if order.purpose == "wallet_topup" and order.status != "delivered":
+        # Finish a walk that crashed between ``paid`` and ``delivered``. A
+        # deposit waiting on an operator looks identical by status, so ask
+        # whether anyone was told to decide about it first — otherwise one
+        # retried callback releases a hold nobody released.
+        if (
+            order.purpose == "wallet_topup"
+            and order.status != "delivered"
+            and not await _is_held_for_review(db, order.id)
+        ):
             await _complete_wallet_topup(db, order=order, payment=payment)
         return
     event = WebhookEvent(

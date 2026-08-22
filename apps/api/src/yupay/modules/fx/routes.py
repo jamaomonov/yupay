@@ -20,7 +20,13 @@ from yupay.modules.admin.api import require_admin
 from yupay.modules.fx import cache
 from yupay.modules.fx.factory import build_default_service
 from yupay.modules.fx.probe import probe_chain
-from yupay.modules.fx.provider_chain import ChainItem, list_chain, save_chain, write_chain_cache
+from yupay.modules.fx.provider_chain import (
+    ChainItem,
+    assert_chain_covers_quotes,
+    list_chain,
+    save_chain,
+    write_chain_cache,
+)
 from yupay.modules.fx.providers.base import Quote
 from yupay.modules.fx.quote_settings import list_overrides, override_to_quote
 from yupay.modules.fx.schemas import (
@@ -181,6 +187,9 @@ async def admin_refresh_rates(
     is hooked on ``after_commit`` inside :func:`refresh_and_trip`.
     """
     await commit_refresh_and_trip(db)
+    # The page refetches the adapter probe right after this, and a cached one
+    # would answer with the errors the operator just went and fixed.
+    await cache.clear_probe(build_default_service()._redis)
     return await _collect_admin_rates(db, force=False)
 
 
@@ -290,6 +299,11 @@ async def admin_set_providers(
         ChainItem(slug=row.slug, enabled=row.enabled, sort_order=i)
         for i, row in enumerate(body.items)
     ]
+    assert_chain_covers_quotes(
+        items,
+        providers=service._providers,
+        quotes=service._settings.fx_supported_quotes,
+    )
     saved = await save_chain(db, items=items)
     await db.commit()
     await write_chain_cache(service._redis, saved)

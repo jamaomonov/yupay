@@ -259,10 +259,13 @@ export function OrderDetailPage() {
   // (ADR-0047), so it is invisible on the Fulfilment screen and indistinguishable
   // from a just-paid one by status alone — the event is the only marker. Tasks
   // existing means it was already released, so the banner retires itself.
-  const heldForReview =
-    order.status === "paid" &&
-    tasks.length === 0 &&
-    order.events.some((e) => e.kind === "order.held_for_review");
+  const holdEvent = order.events.find((e) => e.kind === "order.held_for_review");
+  const heldForReview = order.status === "paid" && tasks.length === 0 && holdEvent !== undefined;
+  const holdReason = typeof holdEvent?.payload?.reason === "string" ? holdEvent.payload.reason : "";
+  // A deposit has nothing to fulfil: releasing it would create no tasks, flip
+  // the order to `fulfilling` and strand it there, still uncredited. The API
+  // refuses it too; this keeps the button from offering a dead end.
+  const canRelease = order.purpose !== "wallet_topup";
 
   return (
     <div>
@@ -343,23 +346,29 @@ export function OrderDetailPage() {
           <AlertTriangle className="mt-0.5 size-5 shrink-0 text-[var(--warning-fg)]" />
           <div className="min-w-[16rem] flex-1">
             <h2 className="text-sm font-semibold text-[var(--warning-fg)]">
-              Заказ на проверке — выдача не запускалась
+              {holdReason === "paid_after_order_expired"
+                ? "Оплата пришла на закрытый заказ"
+                : "Заказ на проверке — выдача не запускалась"}
             </h2>
             <p className="mt-1 text-sm text-[var(--text-secondary)]">
-              Оплата прошла, но сумма не ниже порога ручной проверки, поэтому товар автоматически не
-              выдан. Проверьте плательщика, затем выдайте товар — или верните деньги в блоке
-              платежей.
+              {holdReason === "paid_after_order_expired"
+                ? canRelease
+                  ? "Заказ уже был закрыт, когда пришли деньги, поэтому товар автоматически не выдан. Проверьте наличие и цену, затем выдайте товар — или верните деньги в блоке платежей."
+                  : "Пополнение оплачено после того, как заказ закрыли. Баланс НЕ зачислен. Зачислите вручную через «Кошелёк → корректировка» — или верните деньги в блоке платежей."
+                : "Оплата прошла, но сумма не ниже порога ручной проверки, поэтому товар автоматически не выдан. Проверьте плательщика, затем выдайте товар — или верните деньги в блоке платежей."}
             </p>
           </div>
-          <Button
-            onClick={() => {
-              setConfirmRelease(true);
-            }}
-            disabled={release.isPending}
-          >
-            <PackageCheck className="size-4" />
-            {release.isPending ? "Запускаем…" : "Выдать"}
-          </Button>
+          {canRelease ? (
+            <Button
+              onClick={() => {
+                setConfirmRelease(true);
+              }}
+              disabled={release.isPending}
+            >
+              <PackageCheck className="size-4" />
+              {release.isPending ? "Запускаем…" : "Выдать"}
+            </Button>
+          ) : null}
         </div>
       )}
 

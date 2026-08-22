@@ -38,6 +38,24 @@ REASON_LARGE_AMOUNT = "amount_at_or_above_threshold"
 REASON_PAID_AFTER_EXPIRY = "paid_after_order_expired"
 
 
+#: reason -> (alert title, what the operator should do). Kept beside the
+#: reasons rather than inside ``hold_for_review`` so adding a rule without
+#: wording it is a visible omission: the old text said "крупный заказ"
+#: whatever the reason was, and the second rule made it a lie.
+HOLD_ALERT_TEXT: dict[str, tuple[str, str]] = {
+    REASON_LARGE_AMOUNT: (
+        "🔍 Крупный заказ — на проверке",
+        "Оплачен, выдача НЕ запущена. Проверь плательщика, затем выдай или верни деньги.",
+    ),
+    REASON_PAID_AFTER_EXPIRY: (
+        "🔍 Оплата пришла на истёкший заказ",
+        "Заказ уже был закрыт, когда пришли деньги. Выдача НЕ запущена — "
+        "реши, выдавать или вернуть. Для пополнения кошелька: зачислить вручную "
+        "или вернуть, см. runbook paid-after-expiry.",
+    ),
+}
+
+
 def review_reason(order: Order, *, settings: Settings | None = None) -> str | None:
     """Why this order must not be fulfilled automatically, or ``None``.
 
@@ -88,15 +106,21 @@ async def hold_for_review(db: AsyncSession, *, order: Order, reason: str) -> Non
     from yupay.modules.notifications.alerts import send_admin_alert
 
     charged = f"{order.total_charged:,.0f}".replace(",", " ")
+    title, what_to_do = HOLD_ALERT_TEXT.get(reason, HOLD_ALERT_TEXT[REASON_LARGE_AMOUNT])
     with contextlib.suppress(Exception):
         await send_admin_alert(
-            "<b>🔍 Крупный заказ — на проверке</b>\n"
+            f"<b>{title}</b>\n"
             f"Заказ: <code>{order.id[:8]}…</code>\n"
             f"Сумма: <b>{charged} {order.currency}</b> (${order.total_usd})\n"
-            "<i>Оплачен, выдача НЕ запущена. Проверь плательщика, "
-            "затем выдай или верни деньги.</i>",
+            f"<i>{what_to_do}</i>",
             kind="order_held_for_review",
         )
 
 
-__all__ = ["REASON_LARGE_AMOUNT", "hold_for_review", "review_reason"]
+__all__ = [
+    "HOLD_ALERT_TEXT",
+    "REASON_LARGE_AMOUNT",
+    "REASON_PAID_AFTER_EXPIRY",
+    "hold_for_review",
+    "review_reason",
+]

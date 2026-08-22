@@ -22,7 +22,13 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useT } from "@/lib/i18n";
-import { canCheck, IDLE, runPlayerCheck, type CheckState } from "@/lib/player-check-state";
+import {
+  canCheck,
+  checkUnavailable,
+  IDLE,
+  runPlayerCheck,
+  type CheckState,
+} from "@/lib/player-check-state";
 import { haptic } from "@/lib/telegram";
 
 /** Picks the active-locale value out of a server-provided multilingual map,
@@ -439,7 +445,7 @@ function TextLikeField({
           </button>
         )}
       </div>
-      {checkConfig && check.phase === "done" && check.result.status === "error" && (
+      {checkConfig && check.phase === "done" && checkUnavailable(check.result) && (
         <p className="mt-1.5 px-1 text-[12px] text-white/40">
           {t("field.checkFailed")} ·{" "}
           <button

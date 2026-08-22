@@ -150,3 +150,49 @@ async def test_a_disabled_primary_does_not_answer_even_when_the_rest_fail(
 
     with pytest.raises(FxUnavailableError):
         await svc.get_rate("USD", "RUB", allow_stale=False)
+
+
+@pytest.mark.asyncio
+async def test_a_chain_may_not_leave_a_quote_uncovered() -> None:
+    """Now that "off" means off, one unticked box can take a currency off sale.
+
+    Only CoinGecko answers USD→USDT; the fiat adapters reject it. Disabling it
+    used to be harmless because the ordering code swept disabled slugs back in
+    as a last resort. Nothing breaks at save time either — the fresh cache
+    still answers — and then the stale entry expires and checkout 503s.
+    """
+    from yupay.modules.fx.provider_chain import assert_chain_covers_quotes
+
+    class _Fiat(StubProvider):
+        def supports(self, base: str, quote: str) -> bool:
+            return quote.upper() in {"UZS", "RUB"}
+
+    class _Crypto(StubProvider):
+        def supports(self, base: str, quote: str) -> bool:
+            return quote.upper() == "USDT"
+
+    providers = [_Fiat(slug="exchangerate-host"), _Crypto(slug="coingecko")]
+    quotes = ["UZS", "RUB", "USDT"]
+
+    assert_chain_covers_quotes(
+        [
+            ChainItem(slug="exchangerate-host", enabled=True, sort_order=0),
+            ChainItem(slug="coingecko", enabled=True, sort_order=1),
+        ],
+        providers=providers,
+        quotes=quotes,
+    )
+
+    with pytest.raises(ValidationError) as caught:
+        assert_chain_covers_quotes(
+            [
+                ChainItem(slug="exchangerate-host", enabled=True, sort_order=0),
+                ChainItem(slug="coingecko", enabled=False, sort_order=1),
+            ],
+            providers=providers,
+            quotes=quotes,
+        )
+    # `AppError(detail, **extra)` nests the kwarg, so the payload the client
+    # sees as `extra` lives at `.extra["extra"]` — house convention, see
+    # `core.errors`.
+    assert caught.value.extra["extra"]["uncovered"] == ["USDT"]
