@@ -13,6 +13,7 @@ from yupay.core.clock import now
 from yupay.modules.catalog.models import Brand, Product, Sku
 from yupay.modules.orders.models import Order, OrderItem
 from yupay.modules.orders.revenue import order_charged_usd_subq
+from yupay.modules.orders.scope import IS_SALE
 from yupay.modules.stats.analytics._common import _PAID_LIKE
 from yupay.modules.stats.schemas import (
     AnalyticsRange,
@@ -113,7 +114,7 @@ async def _business_summary(
             select(func.coalesce(func.sum(gross.c.charged_usd), 0))
             .select_from(Order)
             .join(gross, gross.c.order_id == Order.id, isouter=True)
-            .where(Order.paid_at >= since, Order.status.in_(_PAID_LIKE))
+            .where(IS_SALE, Order.paid_at >= since, Order.status.in_(_PAID_LIKE))
         )
     ).scalar_one()
     gmv = Decimal(str(gmv_raw or 0))
@@ -199,7 +200,7 @@ async def _revenue_series(db: AsyncSession, since: datetime) -> list[RevenuePoin
         )
         .select_from(Order)
         .join(gross, gross.c.order_id == Order.id, isouter=True)
-        .where(Order.paid_at >= since, Order.status.in_(_PAID_LIKE))
+        .where(IS_SALE, Order.paid_at >= since, Order.status.in_(_PAID_LIKE))
         .group_by(day)
         .order_by(day)
     )
@@ -222,7 +223,9 @@ async def _status_counts_since(db: AsyncSession, since: datetime) -> dict[str, i
     orders" / "delivered orders" KPI headlines — see ``build_business_analytics``.
     """
     stmt = (
-        select(Order.status, func.count()).where(Order.created_at >= since).group_by(Order.status)
+        select(Order.status, func.count())
+        .where(IS_SALE, Order.created_at >= since)
+        .group_by(Order.status)
     )
     return {s: int(c) for s, c in (await db.execute(stmt)).all()}
 
@@ -340,7 +343,7 @@ async def _customers(db: AsyncSession, since: datetime) -> CustomersOut:
         (
             await db.execute(
                 select(func.count(Order.id)).where(
-                    Order.created_at >= since, Order.user_id.is_(None)
+                    IS_SALE, Order.created_at >= since, Order.user_id.is_(None)
                 )
             )
         ).scalar_one()
@@ -350,7 +353,7 @@ async def _customers(db: AsyncSession, since: datetime) -> CustomersOut:
         (
             await db.execute(
                 select(func.count(Order.id)).where(
-                    Order.created_at >= since, Order.user_id.isnot(None)
+                    IS_SALE, Order.created_at >= since, Order.user_id.isnot(None)
                 )
             )
         ).scalar_one()
@@ -361,7 +364,7 @@ async def _customers(db: AsyncSession, since: datetime) -> CustomersOut:
     per_user = (
         await db.execute(
             select(Order.user_id, func.count(Order.id))
-            .where(Order.created_at >= since, Order.user_id.isnot(None))
+            .where(IS_SALE, Order.created_at >= since, Order.user_id.isnot(None))
             .group_by(Order.user_id)
         )
     ).all()

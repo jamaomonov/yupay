@@ -19,6 +19,7 @@ from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.inventory.models import InventoryCode
 from yupay.modules.orders.models import Order
 from yupay.modules.orders.revenue import order_charged_usd_subq
+from yupay.modules.orders.scope import IS_SALE
 from yupay.modules.payments.models import Payment
 from yupay.modules.stats.schemas import (
     CurrencyAmount,
@@ -80,7 +81,7 @@ async def build_dashboard(
 
 
 async def _count_orders_in_window(db: AsyncSession, since: datetime) -> int:
-    stmt = select(func.count()).select_from(Order).where(Order.created_at >= since)
+    stmt = select(func.count()).select_from(Order).where(IS_SALE, Order.created_at >= since)
     return int((await db.execute(stmt)).scalar_one() or 0)
 
 
@@ -90,7 +91,7 @@ async def _count_orders_with_status_in_window(
     stmt = (
         select(func.count())
         .select_from(Order)
-        .where(Order.created_at >= since, Order.status.in_(statuses))
+        .where(IS_SALE, Order.created_at >= since, Order.status.in_(statuses))
     )
     return int((await db.execute(stmt)).scalar_one() or 0)
 
@@ -102,7 +103,7 @@ async def _revenue_in_window(db: AsyncSession, since: datetime) -> list[Currency
     paid_like = ("paid", "fulfilling", "fulfilled", "delivered")
     stmt = (
         select(Order.currency, func.sum(Order.total_charged))
-        .where(Order.created_at >= since, Order.status.in_(paid_like))
+        .where(IS_SALE, Order.created_at >= since, Order.status.in_(paid_like))
         .group_by(Order.currency)
     )
     rows = (await db.execute(stmt)).all()
@@ -112,7 +113,7 @@ async def _revenue_in_window(db: AsyncSession, since: datetime) -> list[Currency
 async def _status_breakdown(db: AsyncSession, since: datetime) -> list[StatusCount]:
     stmt = (
         select(Order.status, func.count())
-        .where(Order.created_at >= since)
+        .where(IS_SALE, Order.created_at >= since)
         .group_by(Order.status)
         .order_by(func.count().desc())
     )
@@ -143,6 +144,7 @@ async def _count_pending_orders(db: AsyncSession, older_than: datetime) -> int:
         select(func.count())
         .select_from(Order)
         .where(
+            IS_SALE,
             Order.status == "pending_payment",
             Order.created_at < older_than,
         )
@@ -192,7 +194,7 @@ async def _orders_last_7_days(db: AsyncSession, anchor: datetime) -> list[DayBuc
         )
         .select_from(Order)
         .join(gross, gross.c.order_id == Order.id, isouter=True)
-        .where(Order.created_at >= seven_days_ago)
+        .where(IS_SALE, Order.created_at >= seven_days_ago)
         .group_by(day)
         .order_by(day)
     )

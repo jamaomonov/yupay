@@ -30,6 +30,7 @@ from yupay.modules.catalog.unit_sku import assert_qty_allowed, is_unit_sku
 from yupay.modules.fx.models import FxSnapshot
 from yupay.modules.orders.models import Order, OrderEvent, OrderItem
 from yupay.modules.orders.schemas import OrderCreate, OrderItemDisplay, OrderItemIn
+from yupay.modules.orders.scope import IS_SALE
 from yupay.modules.orders.validation import validate_fulfillment_data
 from yupay.modules.payments.models import Payment, PaymentAttempt
 from yupay.modules.pricing.fx_guard import RateRejected, guarded_usd_rate
@@ -759,7 +760,7 @@ async def list_orders_for_actor(db: AsyncSession, *, actor: Actor, limit: int = 
     stmt = (
         select(Order)
         .options(*_order_load_options())
-        .where(Order.purpose == "catalog")
+        .where(IS_SALE)
         .order_by(Order.created_at.desc())
         .limit(limit)
     )
