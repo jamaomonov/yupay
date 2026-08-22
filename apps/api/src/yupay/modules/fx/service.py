@@ -29,6 +29,7 @@ from yupay.modules.fx.quote_settings import (
     ManualOverride,
     load_override,
     override_to_quote,
+    publish_override,
     upsert_override,
 )
 
@@ -76,18 +77,24 @@ class FxService:
             return list(self._providers)
         by_slug = {provider_slug(p): p for p in self._providers}
         ordered: list[FxProvider] = []
-        seen: set[str] = set()
+        # Every slug the chain has an opinion about, enabled or not. The
+        # trailing loop exists to pick up an adapter the stored chain predates,
+        # and it used to sweep the disabled ones back in with them — so
+        # unticking a source in the admin UI moved it to the end of the chain
+        # instead of removing it, and its rate still shipped whenever the
+        # enabled ones failed. Recording the slug here regardless of `enabled`
+        # is what makes "off" mean off.
+        decided: set[str] = set()
         for item in chain:
+            decided.add(item.slug)
             if not item.enabled:
                 continue
             provider = by_slug.get(item.slug)
             if provider is None:
                 continue
             ordered.append(provider)
-            seen.add(item.slug)
         for provider in self._providers:
-            slug = provider_slug(provider)
-            if slug not in seen:
+            if provider_slug(provider) not in decided:
                 ordered.append(provider)
         return ordered
 
@@ -192,7 +199,12 @@ class FxService:
         manual_rate: Decimal | None,
         updated_by: str | None,
     ) -> ManualOverride:
-        """Persist the admin toggle/rate for ``quote`` and refresh the Redis copy."""
+        """Persist the admin toggle/rate for ``quote``.
+
+        Postgres only. The caller publishes to Redis with
+        :func:`publish_quote_setting` once it has committed — see
+        ``quote_settings.upsert_override``.
+        """
         quote_u = quote.upper()
         supported = {q.upper() for q in self._settings.fx_supported_quotes}
         if quote_u not in supported:
@@ -208,7 +220,6 @@ class FxService:
             )
         override = await upsert_override(
             db,
-            self._redis,
             quote=quote_u,
             use_manual=use_manual,
             manual_rate=manual_rate,
@@ -221,6 +232,10 @@ class FxService:
             has_rate=override.manual_rate is not None,
         )
         return override
+
+    async def publish_quote_setting(self, override: ManualOverride) -> None:
+        """Make a **committed** override visible to the hot path."""
+        await publish_override(self._redis, override)
 
     async def convert(self, amount: Decimal, *, base: str, quote: str) -> ConversionResult:
         """Convert ``amount`` from ``base`` to ``quote`` using the latest cached rate."""

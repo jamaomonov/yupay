@@ -90,6 +90,12 @@ async def invalidate_fresh_many(redis: Redis, quotes: Sequence[str], *, base: st
 
 MANUAL_ABSENT_TTL_SECONDS = 60
 
+#: The override itself. Postgres is the source of truth, so an entry that
+#: outlives its row is a rate nothing supports — and one that never expires
+#: outlives it forever. An hour is long enough that the hot path effectively
+#: never touches Postgres, and short enough that any divergence heals itself.
+MANUAL_TTL_SECONDS = 3600
+
 
 def _manual_key(quote: str) -> str:
     return f"fx:manual:{quote.upper()}"

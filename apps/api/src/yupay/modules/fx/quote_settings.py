@@ -99,13 +99,7 @@ async def load_override(
         await cache.write_manual_absent(redis, quote)
         return None
     override = _from_row(row)
-    await cache.write_manual(
-        redis,
-        quote=override.quote,
-        use_manual=override.use_manual,
-        manual_rate=override.manual_rate,
-        updated_at=override.updated_at,
-    )
+    await publish_override(redis, override)
     return override
 
 
@@ -117,14 +111,21 @@ async def list_overrides(db: AsyncSession) -> list[ManualOverride]:
 
 async def upsert_override(
     db: AsyncSession,
-    redis: Redis,
     *,
     quote: str,
     use_manual: bool,
     manual_rate: Decimal | None,
     updated_by: str | None,
 ) -> ManualOverride:
-    """Write Postgres + Redis. Leaves the provider rate cache alone."""
+    """Write Postgres only. Leaves both caches alone.
+
+    Publishing to Redis is the caller's job, **after** it commits. Writing the
+    override here meant an uncommitted rate was already live: if anything after
+    the flush failed — the commit itself, the idempotency-replay write, the 503
+    when FX is unavailable — Postgres rolled back and Redis kept serving a rate
+    no row supported. The admin page reads the toggle from Postgres, so the
+    divergence would not even have been visible.
+    """
     quote_u = quote.upper()
     row = await db.get(FxQuoteSetting, quote_u)
     if row is None:
@@ -136,12 +137,16 @@ async def upsert_override(
     row.updated_at = now()
     row.updated_by = updated_by
     await db.flush()
-    override = _from_row(row)
+    return _from_row(row)
+
+
+async def publish_override(redis: Redis, override: ManualOverride) -> None:
+    """Push a committed override into Redis."""
     await cache.write_manual(
         redis,
         quote=override.quote,
         use_manual=override.use_manual,
         manual_rate=override.manual_rate,
         updated_at=override.updated_at,
+        ttl_seconds=cache.MANUAL_TTL_SECONDS,
     )
-    return override

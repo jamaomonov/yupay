@@ -13,11 +13,12 @@ from yupay.modules.fx.probe import probe_chain
 from yupay.modules.fx.provider_chain import (
     DEFAULT_SLUGS,
     ChainItem,
+    provider_slug,
     save_chain,
     write_chain_cache,
 )
 from yupay.modules.fx.providers.base import FxProvider, FxProviderError, Quote
-from yupay.modules.fx.service import FxService
+from yupay.modules.fx.service import FxService, FxUnavailableError
 
 
 class StubProvider(FxProvider):
@@ -100,3 +101,52 @@ async def test_probe_marks_primary_and_captures_errors() -> None:
     assert uzs.rate == Decimal("11853")
     rub = next(q for q in fxr.quotes if q.quote == "RUB")
     assert rub.error == "не обслуживает эту пару"
+
+
+@pytest.mark.asyncio
+async def test_a_disabled_provider_is_not_queried(redis: object) -> None:
+    """Unticking "В цепочке" must mean it, not "ask it last".
+
+    `_ordered_providers` skipped a disabled item before recording its slug as
+    seen, and the trailing "append whatever the chain did not mention" loop
+    then put it straight back at the end. An operator who switched off a
+    source for returning bad data still had it answering as the last fallback.
+    """
+    disabled = StubProvider(rate=Decimal("111"), slug="fxratesapi")
+    kept = StubProvider(rate=Decimal("222"), slug="exchangerate-host")
+    svc = FxService(providers=[disabled, kept], redis=redis)  # type: ignore[arg-type]
+    await write_chain_cache(
+        redis,  # type: ignore[arg-type]
+        [
+            ChainItem(slug="fxratesapi", enabled=False, sort_order=0),
+            ChainItem(slug="exchangerate-host", enabled=True, sort_order=1),
+        ],
+    )
+
+    ordered = await svc._ordered_providers()
+    assert [provider_slug(p) for p in ordered] == ["exchangerate-host"]
+
+
+@pytest.mark.asyncio
+async def test_a_disabled_primary_does_not_answer_even_when_the_rest_fail(
+    redis: object,
+) -> None:
+    """The point of switching a source off is that its number never ships."""
+
+    class _Failing(StubProvider):
+        async def get_rate(self, base: str, quote: str) -> Quote:
+            raise FxProviderError("upstream down")
+
+    disabled = StubProvider(rate=Decimal("111"), slug="fxratesapi")
+    failing = _Failing(slug="exchangerate-host")
+    svc = FxService(providers=[disabled, failing], redis=redis)  # type: ignore[arg-type]
+    await write_chain_cache(
+        redis,  # type: ignore[arg-type]
+        [
+            ChainItem(slug="fxratesapi", enabled=False, sort_order=0),
+            ChainItem(slug="exchangerate-host", enabled=True, sort_order=1),
+        ],
+    )
+
+    with pytest.raises(FxUnavailableError):
+        await svc.get_rate("USD", "RUB", allow_stale=False)

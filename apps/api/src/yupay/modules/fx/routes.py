@@ -211,6 +211,14 @@ async def admin_set_rate(
         manual_rate=body.manual_rate,
         updated_by=admin.id,
     )
+    # Commit before the rate goes live. Publishing from inside the transaction
+    # meant a later failure here — the 503 below, the replay write, the commit
+    # itself — rolled Postgres back while Redis kept serving the new rate, with
+    # nothing to expire it and an admin page reading the old row from Postgres.
+    # Same order as `admin_set_providers`.
+    await db.commit()
+    await service.publish_quote_setting(override)
+
     market = await _market_or_none(service, quote)
     manual_q = override_to_quote(override)
     effective = manual_q or market
