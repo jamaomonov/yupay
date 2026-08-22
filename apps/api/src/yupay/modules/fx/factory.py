@@ -9,6 +9,7 @@ from __future__ import annotations
 from redis.asyncio import Redis
 
 from yupay.core.config import Settings, get_settings
+from yupay.core.db import get_session_factory
 from yupay.core.redis import get_redis
 from yupay.modules.fx.providers import (
     CoingeckoProvider,
@@ -56,4 +57,9 @@ def build_default_service(
     providers.append(
         CoingeckoProvider(s.fx_crypto_url, timeout_seconds=s.fx_provider_timeout_seconds)
     )
-    return FxService(providers=providers, redis=redis or get_redis(), settings=s)
+    return FxService(
+        providers=providers,
+        redis=redis or get_redis(),
+        settings=s,
+        session_factory=get_session_factory(),
+    )

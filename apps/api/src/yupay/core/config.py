@@ -228,6 +228,12 @@ class Settings(BaseSettings):
     pricing_fx_max_deviation_pct: Decimal = Field(default=Decimal("15"))
     pricing_fx_min_rate_uzs: Decimal = Field(default=Decimal("8000"))
     pricing_fx_max_rate_uzs: Decimal = Field(default=Decimal("25000"))
+    # Kill-switch: a drop bigger than this (fiat quotes only) puts every
+    # *active* payment provider — including wallet — into maintenance and
+    # pages ops. Rise is ignored. Recovery is manual. See ADR-0056.
+    fx_drop_tripwire_pct: Decimal = Field(default=Decimal("6"))
+    fx_drop_watched_quotes: list[str] = Field(default_factory=lambda: ["UZS", "RUB"])
+    fx_refresh_interval_minutes: int = Field(default=5)
 
     # --- observability ---
     sentry_dsn: str | None = Field(default=None)

@@ -204,6 +204,7 @@ function WalletPayOption({
   balance,
   shortfall,
   currency,
+  visibility,
   onSelect,
 }: {
   active: boolean;
@@ -212,10 +213,13 @@ function WalletPayOption({
   balance: number | null;
   shortfall: number;
   currency: string;
+  visibility: "active" | "maintenance" | "hidden";
   onSelect: () => void;
 }) {
   const { t } = useT();
-  const disabled = !loading && !enough;
+  if (visibility === "hidden") return null;
+  const maintenance = visibility === "maintenance";
+  const disabled = maintenance || (!loading && !enough);
   return (
     <button
       type="button"
@@ -248,11 +252,13 @@ function WalletPayOption({
             color: disabled ? "rgb(252, 165, 165)" : "rgba(255,255,255,0.55)",
           }}
         >
-          {loading
-            ? t("topup.walletLoading")
-            : disabled
-              ? t("topup.walletShort", { amount: formatBalance(shortfall, currency) })
-              : t("topup.walletBalance", { amount: formatBalance(balance ?? 0, currency) })}
+          {maintenance
+            ? t("payment.maintenance")
+            : loading
+              ? t("topup.walletLoading")
+              : disabled
+                ? t("topup.walletShort", { amount: formatBalance(shortfall, currency) })
+                : t("topup.walletBalance", { amount: formatBalance(balance ?? 0, currency) })}
         </span>
       </span>
       {active && !disabled && (
@@ -365,9 +371,6 @@ export default function TopUp() {
     [providerStatusBySlug],
   );
   const isMethodAvailable = (methodId: string): boolean => {
-    // Wallet eligibility is computed below from the user's balance — the
-    // payment-provider list on the server does not know about it.
-    if (methodId === WALLET_METHOD_ID) return true;
     // Variable-amount SKUs (Steam wallet top-up) are priced in UZS only —
     // see catalog.service._resolve_variable_price. A non-UZS acquirer would
     // set an order currency the display price was never computed for, so it
@@ -1368,6 +1371,7 @@ export default function TopUp() {
                 balance={walletBalance}
                 shortfall={walletShortfall}
                 currency={priceCode}
+                visibility={methodVisibility("wallet", providerStatusBySlug)}
                 onSelect={() => {
                   setPaymentMethod(WALLET_METHOD_ID);
                 }}

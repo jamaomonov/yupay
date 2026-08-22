@@ -69,7 +69,7 @@ async def test_admin_can_list_and_set_provider_state(
     lst = await integration_client.get("/api/v1/admin/payments/providers", headers=h)
     assert lst.status_code == 200
     names = {p["provider"] for p in lst.json()["providers"]}
-    assert {"click", "payme", "uzum", "octo", "crypto"} <= names
+    assert {"click", "payme", "uzum", "octo", "crypto", "wallet"} <= names
     click = next(p for p in lst.json()["providers"] if p["provider"] == "click")
     assert click["slugs"] == ["click", "click_miniapp"]
     assert click["state"] == "active"

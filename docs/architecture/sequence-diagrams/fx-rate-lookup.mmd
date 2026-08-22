@@ -8,6 +8,11 @@ sequenceDiagram
     participant P3 as Provider 3 (coingecko)
 
     Caller->>Svc: get_rate(USD, RUB)
+    Svc->>Redis: GET fx:manual:RUB
+    alt manual toggle on
+        Redis-->>Svc: {use_manual, manual_rate}
+        Svc-->>Caller: Quote (source=manual)
+    else no override
     Svc->>Redis: GET fx:rate:USD:RUB
     alt fresh hit
         Redis-->>Svc: Quote
@@ -35,4 +40,5 @@ sequenceDiagram
                 end
             end
         end
+    end
     end

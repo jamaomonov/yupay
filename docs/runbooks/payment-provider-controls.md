@@ -1,11 +1,11 @@
 # Runbook — Admin payment-provider controls
 
 Operator-facing procedure for pausing, marking under maintenance, and
-re-enabling a payment provider (Click, Payme, Uzum, or Octo — plus `crypto`,
-a reserved slug for the not-yet-launched USDT acquirer) without a deploy —
-plus how to read the per-provider analytics that inform that decision.
-Background and design rationale:
-[ADR-0041](../decisions/0041-admin-payment-provider-controls.md).
+re-enabling a payment provider (Click, Payme, Uzum, Octo, **Кошелёк**, or
+`crypto`) without a deploy — plus how to read the per-provider analytics
+that inform that decision. Background:
+[ADR-0041](../decisions/0041-admin-payment-provider-controls.md),
+[ADR-0056](../decisions/0056-fx-drop-tripwire.md).
 
 **Before touching anything, read the caution below** — disabling a provider
 does not cancel money already in flight.
@@ -148,6 +148,27 @@ shows, for the selected time window:
 Use the window switcher (Сегодня / 7 дней / 30 дней) to distinguish a
 short-lived blip from a sustained problem before deciding whether to
 disable, mark maintenance, or leave the provider alone.
+
+## FX drop tripwire (automatic maintenance)
+
+Every 5 minutes (and on admin «Обновить курс FX») the scheduler compares the
+new market rate to the last `fx_rates` row for UZS and RUB. If either
+**falls** more than 6%:
+
+1. Every **active** provider — including **Кошелёк** — is set to
+   `maintenance`. Already-`disabled` rows are left alone.
+2. After that commit, the ops Telegram group gets an alert (`kind=fx_drop`).
+   The alert is not sent if the transaction rolls back.
+
+**Recovery:** look at Курсы, then on **Провайдеры оплаты** click **Включить**
+on each row you want back. The tripwire will not turn them back on by
+itself. If the market is still >6% below the last stored tick, the next
+refresh will put the ones you just enabled back into maintenance and page
+again — wait until the rate is stable.
+
+Wallet (оплата с баланса) is the same three buttons as Click. `disabled`
+hides it from the miniapp; `maintenance` greys it out with «Технические
+работы».
 
 ## Related
 

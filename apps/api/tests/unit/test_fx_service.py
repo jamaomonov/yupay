@@ -120,3 +120,94 @@ async def test_unsupported_pair_falls_to_stale_or_raises(redis) -> None:
     svc = FxService(providers=[only_rub], redis=redis)
     with pytest.raises(FxUnavailableError):
         await svc.get_rate("USD", "USDT")  # provider doesn't support it
+
+
+async def test_get_rate_uses_manual_override_over_provider(redis) -> None:
+    from yupay.core.clock import now as _now
+    from yupay.modules.fx import cache as fx_cache
+
+    provider = StubProvider(rate=Decimal("90"))
+    svc = FxService(providers=[provider], redis=redis)
+    await fx_cache.write_manual(
+        redis,
+        quote="UZS",
+        use_manual=True,
+        manual_rate=Decimal("12500"),
+        updated_at=_now(),
+    )
+    q = await svc.get_rate("USD", "UZS")
+    assert q.rate == Decimal("12500")
+    assert q.source == "manual"
+    assert provider.calls == 0
+
+
+async def test_get_rate_manual_wins_over_warm_provider_cache(redis) -> None:
+    from yupay.core.clock import now as _now
+    from yupay.modules.fx import cache as fx_cache
+
+    provider = StubProvider(rate=Decimal("90"))
+    svc = FxService(providers=[provider], redis=redis)
+    await svc.get_rate("USD", "RUB")
+    await fx_cache.write_manual(
+        redis,
+        quote="RUB",
+        use_manual=True,
+        manual_rate=Decimal("100"),
+        updated_at=_now(),
+    )
+    q = await svc.get_rate("USD", "RUB")
+    assert q.rate == Decimal("100")
+    assert q.source == "manual"
+
+
+async def test_get_rate_uses_provider_when_manual_toggle_off(redis) -> None:
+    from yupay.core.clock import now as _now
+    from yupay.modules.fx import cache as fx_cache
+
+    provider = StubProvider(rate=Decimal("90"))
+    svc = FxService(providers=[provider], redis=redis)
+    await fx_cache.write_manual(
+        redis,
+        quote="RUB",
+        use_manual=False,
+        manual_rate=Decimal("100"),
+        updated_at=_now(),
+    )
+    q = await svc.get_rate("USD", "RUB")
+    assert q.rate == Decimal("90")
+    assert q.source == "stub"
+
+
+async def test_get_market_rate_ignores_manual_override(redis) -> None:
+    from yupay.core.clock import now as _now
+    from yupay.modules.fx import cache as fx_cache
+
+    provider = StubProvider(rate=Decimal("90"))
+    svc = FxService(providers=[provider], redis=redis)
+    await fx_cache.write_manual(
+        redis,
+        quote="RUB",
+        use_manual=True,
+        manual_rate=Decimal("100"),
+        updated_at=_now(),
+    )
+    q = await svc.get_market_rate("USD", "RUB")
+    assert q.rate == Decimal("90")
+    assert q.source == "stub"
+
+
+async def test_convert_uses_manual_rate(redis) -> None:
+    from yupay.core.clock import now as _now
+    from yupay.modules.fx import cache as fx_cache
+
+    svc = FxService(providers=[StubProvider(rate=Decimal("90"))], redis=redis)
+    await fx_cache.write_manual(
+        redis,
+        quote="RUB",
+        use_manual=True,
+        manual_rate=Decimal("80"),
+        updated_at=_now(),
+    )
+    result = await svc.convert(Decimal("10"), base="USD", quote="RUB")
+    assert result.amount == Decimal("800")
+    assert result.source == "manual"

@@ -520,6 +520,120 @@
         "title": "AdminProviderSummary",
         "type": "object"
       },
+      "AdminRateOut": {
+        "description": "Effective rate plus the live FX and the admin override fields.",
+        "properties": {
+          "base": {
+            "title": "Base",
+            "type": "string"
+          },
+          "fetched_at": {
+            "format": "date-time",
+            "title": "Fetched At",
+            "type": "string"
+          },
+          "fx_fetched_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fx Fetched At"
+          },
+          "fx_rate": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fx Rate"
+          },
+          "fx_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fx Source"
+          },
+          "manual_rate": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Rate"
+          },
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          },
+          "rate": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Rate",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "use_manual": {
+            "title": "Use Manual",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "base",
+          "quote",
+          "rate",
+          "fetched_at",
+          "source",
+          "use_manual",
+          "manual_rate",
+          "fx_rate",
+          "fx_source",
+          "fx_fetched_at"
+        ],
+        "title": "AdminRateOut",
+        "type": "object"
+      },
+      "AdminRatesOut": {
+        "description": "Admin listing: effective rate, live FX, and the per-quote toggle.",
+        "properties": {
+          "base": {
+            "title": "Base",
+            "type": "string"
+          },
+          "rates": {
+            "items": {
+              "$ref": "#/components/schemas/AdminRateOut"
+            },
+            "title": "Rates",
+            "type": "array"
+          }
+        },
+        "required": [
+          "base",
+          "rates"
+        ],
+        "title": "AdminRatesOut",
+        "type": "object"
+      },
       "AdminReviewListOut": {
         "properties": {
           "items": {
@@ -7391,6 +7505,35 @@
         "title": "RateOut",
         "type": "object"
       },
+      "RateSettingIn": {
+        "description": "Admin toggle + optional typed rate for one quote.",
+        "properties": {
+          "manual_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Rate"
+          },
+          "use_manual": {
+            "title": "Use Manual",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "use_manual"
+        ],
+        "title": "RateSettingIn",
+        "type": "object"
+      },
       "RatesOut": {
         "description": "List of supported rates for the storefront.",
         "properties": {
@@ -13667,7 +13810,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RatesOut"
+                  "$ref": "#/components/schemas/AdminRatesOut"
                 }
               }
             },
@@ -13684,7 +13827,91 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Same as public, but admin-only and useful for the admin dashboard",
+        "summary": "Effective rate, live FX, and the per-quote manual toggle",
+        "tags": [
+          "admin:fx"
+        ]
+      }
+    },
+    "/api/v1/admin/fx/rates/{quote}": {
+      "patch": {
+        "operationId": "admin_set_rate_api_v1_admin_fx_rates__quote__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "quote",
+            "required": true,
+            "schema": {
+              "title": "Quote",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RateSettingIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminRateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set the per-quote toggle and optional typed rate",
         "tags": [
           "admin:fx"
         ]
@@ -13692,6 +13919,7 @@
     },
     "/api/v1/admin/fx/refresh": {
       "post": {
+        "description": "Refresh, persist the tripwire, then shape the dashboard.\n\nThe kill-switch commits on its own so a later 503 while listing quotes\ncannot undo ``maintenance`` or the ``fx_rates`` history. The ops alert\nis hooked on ``after_commit`` inside :func:`refresh_and_trip`.",
         "operationId": "admin_refresh_rates_api_v1_admin_fx_refresh_post",
         "parameters": [
           {
@@ -13716,7 +13944,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RatesOut"
+                  "$ref": "#/components/schemas/AdminRatesOut"
                 }
               }
             },
@@ -13733,7 +13961,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Force-refetch all supported pairs (bypasses fresh cache)",
+        "summary": "Force-refetch provider rates (does not overwrite a manual toggle)",
         "tags": [
           "admin:fx"
         ]
@@ -19118,7 +19346,7 @@
     },
     "/api/v1/fx/rates": {
       "get": {
-        "description": "Public endpoint used by the storefront to render local prices.\n\nReads through cache: 99% of calls under steady state never hit a provider.",
+        "description": "Public endpoint used by the storefront to render local prices.\n\nReads through cache: 99% of calls under steady state never hit a provider.\nWhen an admin toggle is on, the typed rate is what this returns.",
         "operationId": "get_rates_api_v1_fx_rates_get",
         "responses": {
           "200": {

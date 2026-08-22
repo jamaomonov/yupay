@@ -146,3 +146,28 @@ async def test_fx_unavailable_surfaces_as_rate_rejected_unavailable(
         await guarded_usd_rate(db_session, quote="UZS")
 
     assert exc.value.reason == "unavailable"
+
+
+async def test_manual_rate_skips_deviation_and_band(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from yupay.modules.fx import cache as fx_cache
+
+    redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    svc = FxService(providers=[_StubProvider({"UZS": Decimal("6500")})], redis=redis)
+    await fx_cache.write_manual(
+        redis,
+        quote="UZS",
+        use_manual=True,
+        manual_rate=Decimal("90"),
+        updated_at=now(),
+    )
+    monkeypatch.setattr(
+        "yupay.modules.pricing.fx_guard.build_default_service",
+        lambda: svc,
+    )
+    await _insert_fx_rate(db_session, quote="UZS", rate=Decimal("13000"))
+
+    rate = await guarded_usd_rate(db_session, quote="UZS")
+
+    assert rate == Decimal("90")

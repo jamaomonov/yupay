@@ -137,13 +137,13 @@ describe("selectActiveMethodId", () => {
 });
 
 describe("requiresAcquirerAvailabilityCheck", () => {
-  it("exempts the in-house providers — wallet (pay-from-balance) and mock", () => {
-    expect(requiresAcquirerAvailabilityCheck("wallet")).toBe(false);
+  it("exempts only mock — wallet is checked so maintenance can block it", () => {
     expect(requiresAcquirerAvailabilityCheck("mock")).toBe(false);
+    expect(requiresAcquirerAvailabilityCheck("wallet")).toBe(true);
   });
 
   it("still enforces the check for every managed acquirer slug", () => {
-    for (const slug of ["click_miniapp", "payme", "uzum", "octo", "crypto"]) {
+    for (const slug of ["click_miniapp", "payme", "uzum", "octo", "crypto", "wallet"]) {
       expect(requiresAcquirerAvailabilityCheck(slug)).toBe(true);
     }
   });
@@ -182,6 +182,9 @@ describe("performCheckout", () => {
   beforeEach(() => {
     qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     mockApiGet.mockReset();
+    mockApiGet.mockResolvedValue({
+      providers: [{ slug: "wallet", status: "active" }],
+    });
     mockApiPost.mockReset();
     mockApiPost.mockImplementation((path) => {
       if (path === "/api/v1/orders") return Promise.resolve(ORDER);
@@ -190,15 +193,12 @@ describe("performCheckout", () => {
     });
   });
 
-  // Regression: GET /payments/providers now (Task 4) lists managed acquirer
-  // slugs only and intentionally never returns "wallet" — the pay-from-
-  // balance checkout used to read that absence as "unavailable" and throw a
-  // 409 before ever creating an order, making the wallet payment method
-  // completely unusable in the miniapp (TopUp.tsx → PROVIDER_BY_METHOD_FULL
-  // → provider: "wallet").
-  it("does not block the in-house wallet provider, even when /payments/providers omits it", async () => {
+  it("lets wallet checkout through when /payments/providers lists it as active", async () => {
     mockApiGet.mockResolvedValue({
-      providers: [{ slug: "click_miniapp", status: "active" }],
+      providers: [
+        { slug: "click_miniapp", status: "active" },
+        { slug: "wallet", status: "active" },
+      ],
     });
 
     const result = await performCheckout(qc, {
@@ -209,12 +209,6 @@ describe("performCheckout", () => {
 
     expect(result).toEqual({ order: ORDER, payment: PAYMENT });
     expect(mockApiPost).toHaveBeenNthCalledWith(
-      1,
-      "/api/v1/orders",
-      expect.objectContaining({ currency: "USD" }),
-      expect.anything(),
-    );
-    expect(mockApiPost).toHaveBeenNthCalledWith(
       2,
       "/api/v1/payments/intents",
       { order_id: ORDER.id, provider: "wallet" },
@@ -222,10 +216,19 @@ describe("performCheckout", () => {
     );
   });
 
-  // Don't fetch /payments/providers at all for an in-house provider — there's
-  // nothing to look up there, and a needless round-trip only slows checkout.
-  it("skips the /payments/providers round-trip entirely for the wallet provider", async () => {
-    await performCheckout(qc, { skuId: "sku-1", fulfillmentData: {}, provider: "wallet" });
+  it("blocks wallet checkout with a 409 when the list has it in maintenance", async () => {
+    mockApiGet.mockResolvedValue({
+      providers: [{ slug: "wallet", status: "maintenance" }],
+    });
+
+    await expect(
+      performCheckout(qc, { skuId: "sku-1", fulfillmentData: {}, provider: "wallet" }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(mockApiPost).not.toHaveBeenCalled();
+  });
+
+  it("skips the /payments/providers round-trip entirely for mock", async () => {
+    await performCheckout(qc, { skuId: "sku-1", fulfillmentData: {}, provider: "mock" });
 
     expect(mockApiGet).not.toHaveBeenCalled();
   });

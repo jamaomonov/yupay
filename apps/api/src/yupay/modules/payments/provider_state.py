@@ -34,13 +34,15 @@ class LogicalProvider:
     slugs: list[str]
 
 
-# Real acquirers only. Click spans two surface slugs but is one control.
+# Click spans two surface slugs but is one control. Wallet is in-house but
+# rides the same lever so an FX drop (ADR-0056) can stop pay-from-balance too.
 LOGICAL_PROVIDERS: dict[str, LogicalProvider] = {
     "click": LogicalProvider("Click", ["click", "click_miniapp"]),
     "payme": LogicalProvider("Payme", ["payme"]),
     "uzum": LogicalProvider("Uzum", ["uzum"]),
     "octo": LogicalProvider("Octo", ["octo"]),
     "crypto": LogicalProvider("USDT (crypto)", ["crypto"]),
+    "wallet": LogicalProvider("Кошелёк", ["wallet"]),
 }
 
 SLUG_TO_LOGICAL: dict[str, str] = {
@@ -97,6 +99,27 @@ async def set_logical_state(
             row.changed_by = changed_by
             row.changed_at = stamp
     await db.flush()
+
+
+async def trip_active_to_maintenance(
+    db: AsyncSession, *, changed_by: str | None = None
+) -> list[str]:
+    """Put every currently-``active`` logical provider into ``maintenance``.
+
+    ``disabled`` is left alone so a later «Включить» does not resurrect a
+    provider the operator had already taken off the storefront. Already in
+    ``maintenance`` is a no-op. Returns the logical keys that changed.
+    """
+    changed: list[str] = []
+    for logical, lp in LOGICAL_PROVIDERS.items():
+        states = await get_states(db, lp.slugs)
+        if any(state == "disabled" for state in states.values()):
+            continue
+        if all(state == "maintenance" for state in states.values()):
+            continue
+        await set_logical_state(db, provider=logical, state="maintenance", changed_by=changed_by)
+        changed.append(logical)
+    return changed
 
 
 async def get_state_rows(db: AsyncSession, slugs: list[str]) -> dict[str, PaymentProviderState]:

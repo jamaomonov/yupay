@@ -11,6 +11,10 @@ from yupay.modules.payments.gateways import (
     get_gateway,
 )
 from yupay.modules.payments.models import Payment, PaymentAttempt, PaymentWebhook
+from yupay.modules.payments.provider_state import (
+    set_logical_state,
+    trip_active_to_maintenance,
+)
 from yupay.modules.payments.routes import (
     admin_router,
     admin_webhook_router,
@@ -68,6 +72,8 @@ __all__ = [
     "list_webhooks_admin",
     "refund_admin",
     "router",
+    "set_logical_state",
     "simulate_webhook",
+    "trip_active_to_maintenance",
     "webhook_router",
 ]

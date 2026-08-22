@@ -1,12 +1,13 @@
 """Redis-backed cache for FX rates.
 
-Two keys per pair:
+Keys per pair:
 
 - ``fx:rate:{base}:{quote}`` — fresh value (TTL = ``fx_cache_fresh_seconds``).
 - ``fx:rate:{base}:{quote}:stale`` — last-known-good (TTL = ``fx_cache_stale_seconds``).
+- ``fx:manual:{quote}`` — admin override (no TTL; written on save / first DB load).
 
 A fresh cache hit short-circuits the provider chain. A stale hit is the graceful
-degradation when every provider fails.
+degradation when every provider fails. A manual override short-circuits both.
 """
 
 from __future__ import annotations
@@ -76,3 +77,59 @@ async def write(
 async def invalidate(redis: Redis, base: str, quote: str) -> None:
     """Drop the fresh cache entry (keep stale as a safety net)."""
     await redis.delete(_key(base, quote))
+
+
+MANUAL_ABSENT_TTL_SECONDS = 60
+
+
+def _manual_key(quote: str) -> str:
+    return f"fx:manual:{quote.upper()}"
+
+
+async def read_manual(redis: Redis, quote: str) -> dict[str, object] | None:
+    """Return the cached admin override payload, or ``None`` on a miss.
+
+    A payload with ``use_manual`` false and no rate is a negative cache: we
+    already looked in Postgres and there is nothing to apply.
+    """
+    raw = await redis.get(_manual_key(quote))
+    if not raw:
+        return None
+    data: dict[str, object] = json.loads(raw)
+    return data
+
+
+async def write_manual(
+    redis: Redis,
+    *,
+    quote: str,
+    use_manual: bool,
+    manual_rate: Decimal | None,
+    updated_at: datetime | None,
+    ttl_seconds: int | None = None,
+) -> None:
+    """Persist the admin override. ``ttl_seconds=None`` means no expiry."""
+    payload = json.dumps(
+        {
+            "quote": quote.upper(),
+            "use_manual": use_manual,
+            "manual_rate": str(manual_rate) if manual_rate is not None else None,
+            "updated_at": updated_at.isoformat() if updated_at is not None else None,
+        }
+    )
+    if ttl_seconds is None:
+        await redis.set(_manual_key(quote), payload)
+    else:
+        await redis.set(_manual_key(quote), payload, ex=ttl_seconds)
+
+
+async def write_manual_absent(redis: Redis, quote: str) -> None:
+    """Negative-cache a missing settings row so get_rate does not hit Postgres."""
+    await write_manual(
+        redis,
+        quote=quote,
+        use_manual=False,
+        manual_rate=None,
+        updated_at=None,
+        ttl_seconds=MANUAL_ABSENT_TTL_SECONDS,
+    )

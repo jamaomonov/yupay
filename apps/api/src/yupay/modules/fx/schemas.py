@@ -27,4 +27,28 @@ class RatesOut(BaseModel):
     rates: list[RateOut]
 
 
-__all__ = ["RateOut", "RatesOut"]
+class RateSettingIn(BaseModel):
+    """Admin toggle + optional typed rate for one quote."""
+
+    use_manual: bool
+    manual_rate: Decimal | None = None
+
+
+class AdminRateOut(RateOut):
+    """Effective rate plus the live FX and the admin override fields."""
+
+    use_manual: bool
+    manual_rate: Decimal | None
+    fx_rate: Decimal | None
+    fx_source: str | None
+    fx_fetched_at: datetime | None
+
+
+class AdminRatesOut(BaseModel):
+    """Admin listing: effective rate, live FX, and the per-quote toggle."""
+
+    base: str
+    rates: list[AdminRateOut]
+
+
+__all__ = ["AdminRateOut", "AdminRatesOut", "RateOut", "RateSettingIn", "RatesOut"]

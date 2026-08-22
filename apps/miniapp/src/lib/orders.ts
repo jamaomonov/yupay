@@ -220,15 +220,12 @@ export interface CheckoutResult {
 }
 
 /**
- * In-house providers that never appear in `GET /payments/providers`
- * (Task 4): that endpoint enumerates managed acquirer slugs only
- * (click_miniapp, payme, uzum, octo, crypto). ``wallet`` (pay-from-balance)
- * and ``mock`` are validated authoritatively by the backend's
- * `create_intent`, not by the acquirer-availability list — so the checkout
- * guard below must never treat their absence from `/payments/providers` as
- * "unavailable".
+ * Providers that never appear in `GET /payments/providers`. ``mock`` is
+ * test-only and is validated by ``create_intent``. ``wallet`` *does* appear
+ * on that list now (ADR-0056) so pay-from-balance can be put in maintenance
+ * with the acquirers.
  */
-const IN_HOUSE_PROVIDERS = new Set(["wallet", "mock"]);
+const IN_HOUSE_PROVIDERS = new Set(["mock"]);
 
 /**
  * Whether `performCheckout` must fetch `/payments/providers` and require
@@ -253,8 +250,9 @@ export function requiresAcquirerAvailabilityCheck(provider: string): boolean {
  * requested provider isn't available. Without that guard a fast tap would
  * race the providers useQuery hook on the calling page and leave an orphan
  * ``pending_payment`` order whenever the user picked a stub gateway.
- * In-house providers (`wallet`, `mock`) skip this check entirely — see
- * `requiresAcquirerAvailabilityCheck`.
+ * ``mock`` skips this check entirely — see
+ * `requiresAcquirerAvailabilityCheck`. ``wallet`` is checked like an
+ * acquirer so an FX-drop maintenance flag actually blocks checkout.
  */
 export async function performCheckout(
   qc: QueryClient,

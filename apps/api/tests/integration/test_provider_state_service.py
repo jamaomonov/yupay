@@ -71,6 +71,24 @@ def test_customer_status_unknown_gateway_hides() -> None:
     assert ps.customer_status("nonexistent-provider", "active") is None
 
 
+async def test_trip_active_skips_disabled_and_already_maintenance(
+    db_session: AsyncSession,
+) -> None:
+    await ps.set_logical_state(db_session, provider="payme", state="disabled", changed_by=None)
+    await ps.set_logical_state(db_session, provider="uzum", state="maintenance", changed_by=None)
+    await db_session.commit()
+
+    changed = await ps.trip_active_to_maintenance(db_session)
+    await db_session.commit()
+
+    assert "payme" not in changed
+    assert "uzum" not in changed
+    assert "wallet" in changed
+    assert await ps.get_state(db_session, "wallet") == "maintenance"
+    assert await ps.get_state(db_session, "payme") == "disabled"
+    assert await ps.get_state(db_session, "uzum") == "maintenance"
+
+
 def test_customer_status_available_gateway_delegates_to_state_status() -> None:
     # "mock" is always config-available under ENVIRONMENT=test (see tests/conftest.py) —
     # it only checks `not is_prod`, so this exercises the "gateway available" branch

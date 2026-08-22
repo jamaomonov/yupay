@@ -137,17 +137,14 @@ async def _create_order(client: AsyncClient, *, token: str, sku_id: str, key: st
 # ---------- intents ----------
 
 
-async def test_list_providers_excludes_in_house_providers(
+async def test_list_providers_excludes_mock_but_includes_wallet(
     integration_client: AsyncClient,
 ) -> None:
     r = await integration_client.get("/api/v1/payments/providers")
     assert r.status_code == 200
-    # This endpoint lists only managed real-acquirer slugs (Task 4); ``mock``
-    # and ``wallet`` are in-house providers and are never returned here, even
-    # though they're always "available" to ``POST /payments/intents``.
     slugs = {p["slug"] for p in r.json()["providers"]}
     assert "mock" not in slugs
-    assert "wallet" not in slugs
+    assert "wallet" in slugs
 
 
 async def test_create_intent_for_owned_order(

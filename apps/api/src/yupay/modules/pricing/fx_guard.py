@@ -21,6 +21,7 @@ from yupay.core.config import Settings, get_settings
 from yupay.core.logging import get_logger
 from yupay.modules.fx.factory import build_default_service
 from yupay.modules.fx.models import FxRate
+from yupay.modules.fx.quote_settings import MANUAL_SOURCE
 from yupay.modules.fx.service import FxUnavailableError
 
 if TYPE_CHECKING:
@@ -119,6 +120,11 @@ async def guarded_usd_rate(db: AsyncSession, *, quote: str) -> Decimal:
         # operationally significant failure this gate can hit.
         log.exception("pricing.rate_rejected", reason="unavailable", quote=quote, detail=str(exc))
         raise RateRejected("unavailable", str(exc)) from exc
+
+    if snap.source == MANUAL_SOURCE:
+        if snap.rate <= 0:
+            raise RateRejected("non_positive", f"rate={snap.rate}")
+        return snap.rate
 
     previous = await _previous_rate(db, quote=quote)
     try:
