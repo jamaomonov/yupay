@@ -1687,7 +1687,10 @@ export function PurchasePanel({
                   down. It also separates "your own money" from "a card". */}
               <button
                 type="button"
-                aria-pressed={payingFromBalance}
+                // Only a toggle when there is something to toggle: in the
+                // guest state this button signs you in, and announcing it as
+                // "not pressed" describes a choice that is not on offer.
+                aria-pressed={walletState.state === "guest" ? undefined : payingFromBalance}
                 disabled={walletState.state !== "ready" && walletState.state !== "guest"}
                 onClick={() => {
                   if (walletState.state === "guest") {
@@ -1728,6 +1731,21 @@ export function PurchasePanel({
                   </span>
                 </span>
               </button>
+
+              {/* "Не хватает 45 000" is a fact; this is what to do about it.
+                  A new tab so the typed player id and the chosen package
+                  survive the trip. */}
+              {walletState.state === "short" && (
+                <Link
+                  href={pathFor(locale, "/account/wallet/top-up")}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary hover:text-primary-2 mb-2 inline-flex items-center gap-1 text-[13px] font-semibold"
+                >
+                  {t("payFromBalanceTopUp")}
+                  <ArrowUpRight size={14} />
+                </Link>
+              )}
 
               <div className="grid grid-cols-3 gap-2">
                 {METHODS.map((m) => {

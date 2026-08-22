@@ -295,7 +295,8 @@
     "payFromBalanceUnknown": "Выберите пакет",
     "successPaidTitle": "Оплачено с баланса",
     "successPaidNote": "Заказ оплачен — выдаём товар. Следите за статусом ниже.",
-    "payFromBalanceLoading": "Загружаем баланс…"
+    "payFromBalanceLoading": "Загружаем баланс…",
+    "payFromBalanceTopUp": "Пополнить баланс"
   },
   "how": {
     "eyebrow": "Flow",
@@ -694,7 +695,9 @@
     "txTopUp": "Пополнение",
     "txTopUpRefund": "Возврат пополнения",
     "amountRange": "От {min} до {max}",
-    "balanceError": "Не удалось загрузить баланс"
+    "balanceError": "Не удалось загрузить баланс",
+    "historyMore": "Показать ещё",
+    "methodUnavailable": "Технические работы"
   },
   "checkoutReturn": {
     "title": "Платёж обрабатывается",

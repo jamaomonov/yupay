@@ -1,13 +1,20 @@
 "use client";
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { use, useId, useRef, useState } from "react";
+import { use, useEffect, useId, useRef, useState } from "react";
 
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
+import { ApiError, apiFetch } from "@/lib/client";
+import {
+  methodVisibility,
+  providerStatusMap,
+  selectActiveMethodId,
+  type ProvidersOut,
+} from "@/lib/payment-providers";
 import { formatUzs, pathFor } from "@/lib/seo";
 import {
   createWalletTopUp,
@@ -16,18 +23,20 @@ import {
   topUpAttemptKey,
   WALLET_CURRENCY,
 } from "@/lib/wallet";
+import { useLoginModal } from "@/store/useLoginModal";
 
 /** The acquirers that settle a soum deposit. `click_miniapp` is the mini app's
  *  own merchant service and must not appear here — see payment-methods. */
 const METHODS = [
-  { id: "click", name: "Click", icon: "/payment/click-mark.png" },
-  { id: "payme", name: "Payme", icon: "/payment/payme-mark.png" },
-  { id: "uzum", name: "Uzum", icon: "/payment/uzum-mark.png" },
+  { id: "click", provider: "click", name: "Click", icon: "/payment/click-mark.png" },
+  { id: "payme", provider: "payme", name: "Payme", icon: "/payment/payme-mark.png" },
+  { id: "uzum", provider: "uzum", name: "Uzum", icon: "/payment/uzum-mark.png" },
 ] as const;
 
 export default function WalletTopUpPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = use(params);
   const t = useTranslations("web.wallet");
+  const tNav = useTranslations("web.nav");
   const { user, isLoading: authLoading } = useAuth();
 
   const [amount, setAmount] = useState("");
@@ -37,6 +46,24 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
   // that request instead of opening another top-up order.
   const attempt = useRef<{ signature: string; key: string } | null>(null);
   const boundsId = useId();
+  const openLogin = useLoginModal((st) => st.open);
+
+  // The same availability the checkout respects. Offering an acquirer that is
+  // admin-disabled or in maintenance only buys the customer a refusal from
+  // `_ensure_provider_accepting_intents` and a generic failure line.
+  const providers = useQuery({
+    queryKey: ["payment-providers"],
+    queryFn: () => apiFetch<ProvidersOut>("/payments/providers", { anonymous: true }),
+    staleTime: 60_000,
+  });
+  const providerStatus = providers.data ? providerStatusMap(providers.data) : null;
+
+  // A hardcoded default can itself be down; move off it once status lands.
+  useEffect(() => {
+    if (!providerStatus) return;
+    setMethod((current) => selectActiveMethodId([...METHODS], current, providerStatus) ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the map is rebuilt each render; the query data is the real dependency
+  }, [providers.data]);
 
   const limits = TOP_UP_LIMITS[WALLET_CURRENCY];
   // Soum has no minor unit — the server refuses 10 000.5 rather than rounding
@@ -67,8 +94,11 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
       // renders a deposit, so send them there rather than nowhere.
       window.location.href = pathFor(locale, `/orders/${payment.order_id}`);
     },
-    onError: () => {
-      setError(t("topUpFailed"));
+    onError: (err) => {
+      // The server's reason is written for the customer (amount out of range,
+      // provider not accepting). Collapsing every failure into one line hid
+      // the half they could act on.
+      setError(err instanceof ApiError && err.detail ? err.detail : t("topUpFailed"));
     },
   });
 
@@ -77,11 +107,24 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
   if (!user) {
     return (
       <main className="mx-auto max-w-[640px] px-4 pb-24 pt-[120px]">
+        <h1 className="font-display mb-6 text-3xl font-bold tracking-[-0.02em]">
+          {t("topUpTitle")}
+        </h1>
         <div className="border-border bg-card rounded-2xl border p-10 text-center">
           <p className="text-tx-mute mb-5">{t("guestBody")}</p>
-          <Link href={pathFor(locale, "/store")} className={buttonStyles({ size: "sm" })}>
-            {t("toCatalog")}
-          </Link>
+          {/* Signing in is the action; the catalogue is the way out. Offering
+              only "В каталог" left the customer nothing to do about it. */}
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+            <button type="button" onClick={openLogin} className={buttonStyles({ size: "md" })}>
+              {tNav("login")}
+            </button>
+            <Link
+              href={pathFor(locale, "/store")}
+              className={buttonStyles({ variant: "ghost", size: "md" })}
+            >
+              {t("toCatalog")}
+            </Link>
+          </div>
         </div>
       </main>
     );
@@ -162,11 +205,15 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
         </p>
         <ul className="space-y-2">
           {METHODS.map((m) => {
-            const active = m.id === method;
+            const visibility = methodVisibility(m.provider, providerStatus);
+            if (visibility === "hidden") return null;
+            const unavailable = visibility === "maintenance";
+            const active = !unavailable && m.id === method;
             return (
               <li key={m.id}>
                 <button
                   type="button"
+                  disabled={unavailable}
                   onClick={() => {
                     setMethod(m.id);
                   }}
@@ -184,7 +231,12 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
                       className="h-full w-full object-cover"
                     />
                   </span>
-                  <span className="text-sm font-bold">{m.name}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-bold">{m.name}</span>
+                    {unavailable && (
+                      <span className="text-tx-dim block text-xs">{t("methodUnavailable")}</span>
+                    )}
+                  </span>
                 </button>
               </li>
             );

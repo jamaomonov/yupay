@@ -295,7 +295,8 @@
     "payFromBalanceUnknown": "Paketni tanlang",
     "successPaidTitle": "Balansdan toʻlandi",
     "successPaidNote": "Buyurtma toʻlandi — yetkazmoqdamiz. Holatni quyida kuzating.",
-    "payFromBalanceLoading": "Balans yuklanmoqda…"
+    "payFromBalanceLoading": "Balans yuklanmoqda…",
+    "payFromBalanceTopUp": "Balansni toʻldirish"
   },
   "how": {
     "eyebrow": "Flow",
@@ -694,7 +695,9 @@
     "txTopUp": "Toʻldirish",
     "txTopUpRefund": "Toʻldirish qaytarildi",
     "amountRange": "{min} dan {max} gacha",
-    "balanceError": "Balansni yuklab boʻlmadi"
+    "balanceError": "Balansni yuklab boʻlmadi",
+    "historyMore": "Yana koʻrsatish",
+    "methodUnavailable": "Texnik ishlar"
   },
   "checkoutReturn": {
     "title": "Toʻlov qayta ishlanmoqda",

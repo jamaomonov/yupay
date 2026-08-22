@@ -76,6 +76,13 @@ export class ApiError extends Error {
      * distinguish error kinds should check this rather than status alone.
      */
     public type?: string,
+    /**
+     * The problem+json `detail` — the API writes these for the customer
+     * ("amount is below the minimum", "payment provider is not accepting new
+     * payments"), so a caller that shows one tells them something they can act
+     * on instead of a single house error string.
+     */
+    public detail?: string,
   ) {
     super(`API ${String(status)} on ${path}`);
     this.name = "ApiError";
@@ -160,15 +167,17 @@ export async function apiFetch<T>(path: string, opts: ReqOpts = {}): Promise<T> 
   }
   if (!res.ok) {
     let type: string | undefined;
+    let detail: string | undefined;
     try {
       const body: unknown = await res.json();
-      if (body && typeof body === "object" && "type" in body && typeof body.type === "string") {
-        type = body.type;
+      if (body && typeof body === "object") {
+        if ("type" in body && typeof body.type === "string") type = body.type;
+        if ("detail" in body && typeof body.detail === "string") detail = body.detail;
       }
     } catch {
-      /* non-JSON or empty error body — leave `type` undefined */
+      /* non-JSON or empty error body — leave both undefined */
     }
-    throw new ApiError(res.status, path, type);
+    throw new ApiError(res.status, path, type, detail);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;

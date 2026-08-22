@@ -1,6 +1,12 @@
 import { describe, expect, test } from "vitest";
 
-import { summarizeForUser, TX_KIND_LABEL, txKindLabelKey, type WalletTransaction } from "./wallet";
+import {
+  formatLedgerAmount,
+  summarizeForUser,
+  TX_KIND_LABEL,
+  txKindLabelKey,
+  type WalletTransaction,
+} from "./wallet";
 
 /**
  * Every `kind=` the backend passes to `wallet.post` today. Grep for
@@ -115,5 +121,34 @@ describe("txKindLabelKey", () => {
   test("no label is mapped twice — each kind reads distinctly in the history", () => {
     const keys = Object.values(TX_KIND_LABEL);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+describe("formatLedgerAmount", () => {
+  test("soum has no minor unit", () => {
+    expect(formatLedgerAmount("ru", 150000, "UZS")).not.toContain(",00");
+  });
+
+  test("a USDT row is not rendered as soum", () => {
+    // `formatUzs` is hardcoded to UZS; the API supports a USDT wallet, and $25
+    // shown as "25 UZS" is off by four orders of magnitude.
+    const out = formatLedgerAmount("en", 25, "USDT");
+    expect(out).toContain("25");
+    expect(out).not.toContain("UZS");
+  });
+});
+
+describe("summarizeForUser order reference", () => {
+  test("carries the order id when the transaction references one", () => {
+    const view = summarizeForUser(
+      tx({ reference_type: "order", reference_id: "order-7" }),
+      new Set([MY_ACCOUNT]),
+    );
+    expect(view?.orderId).toBe("order-7");
+  });
+
+  test("null for a payment reference — there is no order page for it", () => {
+    const view = summarizeForUser(tx({ reference_type: "payment" }), new Set([MY_ACCOUNT]));
+    expect(view?.orderId).toBeNull();
   });
 });

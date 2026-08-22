@@ -295,7 +295,8 @@
     "payFromBalanceUnknown": "Choose a package",
     "successPaidTitle": "Paid from your balance",
     "successPaidNote": "The order is paid — we're delivering it. Track it below.",
-    "payFromBalanceLoading": "Loading your balance…"
+    "payFromBalanceLoading": "Loading your balance…",
+    "payFromBalanceTopUp": "Top up your balance"
   },
   "how": {
     "eyebrow": "Flow",
@@ -694,7 +695,9 @@
     "txTopUp": "Top-up",
     "txTopUpRefund": "Top-up refund",
     "amountRange": "From {min} to {max}",
-    "balanceError": "Couldn't load the balance"
+    "balanceError": "Couldn't load the balance",
+    "historyMore": "Show more",
+    "methodUnavailable": "Under maintenance"
   },
   "checkoutReturn": {
     "title": "Payment is being processed",

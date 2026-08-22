@@ -55,6 +55,10 @@ export interface UserTransactionView {
   currency: string;
   kind: string;
   createdAt: string;
+  /** The order this movement belongs to, when it has one. Dropping it made
+   *  "Оплата заказа −150 000" a dead end on a page one click from the order
+   *  list, whose rows are links. */
+  orderId: string | null;
 }
 
 /**
@@ -80,6 +84,7 @@ export function summarizeForUser(
     currency: leg.currency,
     kind: tx.kind,
     createdAt: leg.created_at,
+    orderId: tx.reference_type === "order" ? tx.reference_id : null,
   };
 }
 
@@ -169,3 +174,30 @@ export const TOP_UP_LIMITS: Record<string, { min: number; max: number }> = {
 export const QUICK_AMOUNTS: Record<string, number[]> = {
   UZS: [50_000, 100_000, 250_000, 500_000, 1_000_000],
 };
+
+/** Format a ledger amount in its own currency.
+ *
+ * `formatUzs` is hardcoded to soum, and the API supports a USDT wallet — a $25
+ * movement would have rendered as "25 UZS". Rows carry their currency; use it.
+ */
+export function formatLedgerAmount(locale: string, amount: number, currency: string): string {
+  const intlLocale = locale === "ru" ? "ru-RU" : locale === "uz" ? "uz-UZ" : "en-US";
+  const maximumFractionDigits = currency === "UZS" ? 0 : 2;
+  try {
+    return new Intl.NumberFormat(intlLocale, {
+      style: "currency",
+      currency,
+      maximumFractionDigits,
+      minimumFractionDigits: 0,
+    }).format(amount);
+  } catch {
+    // `Intl` only knows ISO 4217, and USDT is a ticker rather than a currency
+    // code. Falling back keeps the number readable instead of throwing inside
+    // a render.
+    const number = new Intl.NumberFormat(intlLocale, {
+      maximumFractionDigits,
+      minimumFractionDigits: 0,
+    }).format(amount);
+    return `${number} ${currency}`;
+  }
+}
