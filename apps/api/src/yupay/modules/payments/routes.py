@@ -226,7 +226,10 @@ async def admin_list_payments(
         offset=max(0, offset),
     )
     return PaymentAdminListOut(
-        items=[PaymentAdminOut.model_validate(p) for p in rows],
+        items=[
+            PaymentAdminOut.model_validate(payment).model_copy(update={"order_purpose": purpose})
+            for payment, purpose in rows
+        ],
         total=total,
     )
 

@@ -5938,6 +5938,11 @@
             "title": "Order Id",
             "type": "string"
           },
+          "order_purpose": {
+            "default": "catalog",
+            "title": "Order Purpose",
+            "type": "string"
+          },
           "provider": {
             "title": "Provider",
             "type": "string"
@@ -7667,15 +7672,16 @@
         "type": "object"
       },
       "RateSettingIn": {
-        "description": "Admin toggle + optional typed rate for one quote.",
+        "description": "Admin toggle + optional typed rate for one quote.\n\nBounded at the edge as well as in the service: the column is\n``Numeric(20, 10)``, so an unbounded Decimal reaches Postgres as a 500\nrather than a 422, and a pinned rate skips the pricing band by design\n(ADR-0055) \u2014 this field deserves what checking it can get. The admin UI\nasks for confirmation when the number is far from the live FX rate.",
         "properties": {
           "manual_rate": {
             "anyOf": [
               {
+                "exclusiveMinimum": 0.0,
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,21}0*$)\\d{0,10}\\.\\d{0,10}0*$)",
                 "type": "string"
               },
               {
@@ -13978,6 +13984,7 @@
     },
     "/api/v1/admin/fx/providers": {
       "get": {
+        "description": "Probe every adapter, cached for a minute.\n\nEach probe is a real call per adapter per quote against quotas measured in\nthousands per month, and this endpoint is read by a page that several\noperators may have open at once. Serving one probe to all of them keeps the\npage honest without paying for the same answer repeatedly; saving the chain\nclears the entry so a reorder shows its effect at once.",
         "operationId": "admin_get_providers_api_v1_admin_fx_providers_get",
         "parameters": [
           {

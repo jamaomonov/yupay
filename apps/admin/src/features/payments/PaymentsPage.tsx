@@ -123,6 +123,14 @@ export function PaymentsPage() {
             to={`/orders/${p.order_id}`}
             className="text-[var(--text-secondary)]"
           />
+          {/* A deposit and a sale are the same shape here — a payment against
+              an order id — so without this an operator cannot tell why the
+              money moved. */}
+          {p.order_purpose === "wallet_topup" ? (
+            <span className="mt-0.5 font-sans text-[10px] text-[var(--text-secondary)]">
+              Пополнение кошелька
+            </span>
+          ) : null}
         </div>
       ),
     },

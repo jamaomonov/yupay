@@ -29,6 +29,8 @@ export interface PaymentAdminOut {
   succeeded_at: string | null;
   failed_at: string | null;
   attempts: PaymentAttempt[];
+  /** `catalog` (a sale) or `wallet_topup` (a 1:1 balance deposit). */
+  order_purpose?: string;
 }
 
 export interface PaymentAdminListOut {

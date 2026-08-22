@@ -64,6 +64,10 @@ class PaymentAdminOut(PaymentOut):
 
     extra_metadata: dict[str, Any] = Field(default_factory=dict)
     attempts: list[PaymentAttemptOut]
+    #: What the money was for — ``catalog`` (a sale) or ``wallet_topup`` (a
+    #: deposit). Without it an operator scanning the list cannot tell a
+    #: purchase from a balance top-up: both are a payment against an order id.
+    order_purpose: str = "catalog"
 
 
 class PaymentListOut(BaseModel):

@@ -293,3 +293,29 @@ async def test_checkout_refuses_a_key_already_spent_on_a_deposit(
         },
     )
     assert order.status_code == 409, order.text
+
+
+async def test_admin_payment_list_says_a_deposit_is_a_deposit(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Otherwise a deposit and a sale look identical in the payments list."""
+    token, _ = await _login_user(integration_client, tg_id=911)
+    payment = await _topup(
+        integration_client,
+        token=token,
+        amount="10000",
+        provider="mock",
+        key="wallet-topup-adminlist-1",
+    )
+    admin, _ = await _login_user(integration_client, tg_id=912)
+    await _grant_admin(db_session, tg_id=912)
+
+    listing = await integration_client.get(
+        "/api/v1/admin/payments",
+        headers={"Authorization": f"Bearer {admin}"},
+        params={"order_id": payment["order_id"]},
+    )
+    assert listing.status_code == 200, listing.text
+    rows = listing.json()["items"]
+    assert len(rows) == 1
+    assert rows[0]["order_purpose"] == "wallet_topup"

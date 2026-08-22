@@ -1299,9 +1299,18 @@ async def list_payments_admin(
     status_filter: str | None = None,
     limit: int = 50,
     offset: int = 0,
-) -> tuple[list[Payment], int]:
-    """Paged admin listing. Returns ``(rows, total_matching_filter)``."""
-    base = select(Payment).options(selectinload(Payment.attempts))
+) -> tuple[list[tuple[Payment, str]], int]:
+    """Paged admin listing. Returns ``([(payment, order_purpose)], total)``.
+
+    The purpose rides along because a deposit and a sale are the same shape
+    here — a payment against an order id — and an operator scanning the list
+    has no other way to tell them apart.
+    """
+    base = (
+        select(Payment, Order.purpose)
+        .join(Order, Order.id == Payment.order_id)
+        .options(selectinload(Payment.attempts))
+    )
     count_stmt = select(func.count()).select_from(Payment)
     if order_id is not None:
         base = base.where(Payment.order_id == order_id)
@@ -1312,11 +1321,8 @@ async def list_payments_admin(
     if status_filter is not None:
         base = base.where(Payment.status == status_filter)
         count_stmt = count_stmt.where(Payment.status == status_filter)
-    rows = list(
-        (await db.execute(base.order_by(Payment.created_at.desc()).limit(limit).offset(offset)))
-        .scalars()
-        .all()
-    )
+    result = await db.execute(base.order_by(Payment.created_at.desc()).limit(limit).offset(offset))
+    rows = [(payment, purpose) for payment, purpose in result.all()]
     total = int((await db.execute(count_stmt)).scalar_one() or 0)
     return rows, total
 
