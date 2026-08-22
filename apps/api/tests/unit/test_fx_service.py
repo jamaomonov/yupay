@@ -211,3 +211,21 @@ async def test_convert_uses_manual_rate(redis) -> None:
     result = await svc.convert(Decimal("10"), base="USD", quote="RUB")
     assert result.amount == Decimal("800")
     assert result.source == "manual"
+
+
+def test_from_row_strips_numeric_scale() -> None:
+    from types import SimpleNamespace
+
+    from yupay.modules.fx.quote_settings import _from_row
+
+    row = SimpleNamespace(
+        quote="uzs",
+        use_manual=True,
+        manual_rate=Decimal("12500.0000000000"),
+        updated_at=None,
+    )
+    override = _from_row(row)  # type: ignore[arg-type]
+    rate = override.manual_rate
+    assert rate is not None
+    assert rate == Decimal("12500")
+    assert format(rate, "f") == "12500"

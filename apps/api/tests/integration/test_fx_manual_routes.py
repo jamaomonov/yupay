@@ -78,10 +78,12 @@ def _stub_service(monkeypatch: pytest.MonkeyPatch) -> None:
         {"RUB": Decimal("90.5"), "UZS": Decimal("12700.25"), "USDT": Decimal("1.0001")}
     )
 
+    shared_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+
     def _build(*, settings=None, redis=None) -> FxService:
         return FxService(
             providers=[provider],
-            redis=redis or fakeredis.aioredis.FakeRedis(decode_responses=True),
+            redis=shared_redis,
             session_factory=get_session_factory(),
         )
 

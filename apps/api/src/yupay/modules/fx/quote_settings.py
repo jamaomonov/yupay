@@ -22,6 +22,14 @@ from yupay.modules.fx.providers.base import Quote
 MANUAL_SOURCE = "manual"
 
 
+def _compact_rate(value: Decimal | None) -> Decimal | None:
+    """Drop ``Numeric(20, 10)`` trailing zeros so JSON stays ``12500``."""
+    if value is None:
+        return None
+    text = format(value, "f").rstrip("0").rstrip(".")
+    return Decimal(text or "0")
+
+
 @dataclass(frozen=True)
 class ManualOverride:
     """Admin setting for one USD→quote pair."""
@@ -60,7 +68,7 @@ def _from_row(row: FxQuoteSetting) -> ManualOverride:
     return ManualOverride(
         quote=row.quote.upper(),
         use_manual=row.use_manual,
-        manual_rate=row.manual_rate,
+        manual_rate=_compact_rate(row.manual_rate),
         updated_at=row.updated_at,
     )
 
