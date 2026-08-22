@@ -104,6 +104,7 @@
   "walletTopUp.toWallet": "Back to wallet",
   "walletTopUp.payAgain": "Pay",
   "walletTopUp.minAmount": "Minimum {amount}",
+  "walletTopUp.maxAmount": "Maximum {amount}",
   "wallet.tx.topupRefund": "Top-up refund",
   "walletTopUp.disclaimerBefore": "Money lands in your",
   "walletTopUp.walletName": "Wallet",

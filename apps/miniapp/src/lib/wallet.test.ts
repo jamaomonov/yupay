@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { txKindLabelKey } from "./wallet";
+import { topUpAttemptKey, txKindLabelKey } from "./wallet";
 
 /**
  * Every `kind=` the backend passes to `wallet.post` today. Grep for
@@ -39,5 +39,25 @@ describe("txKindLabelKey", () => {
 
   test("returns null for an unknown kind (caller shows the raw kind)", () => {
     expect(txKindLabelKey("something.else")).toBeNull();
+  });
+});
+
+describe("topUpAttemptKey", () => {
+  test("the same request keeps its key, so a retry replays it", () => {
+    const store: { current: { signature: string; key: string } | null } = { current: null };
+    const first = topUpAttemptKey(store, "50000:click_miniapp");
+    expect(topUpAttemptKey(store, "50000:click_miniapp")).toBe(first);
+  });
+
+  test("a different amount is a different request", () => {
+    const store: { current: { signature: string; key: string } | null } = { current: null };
+    const first = topUpAttemptKey(store, "50000:click_miniapp");
+    expect(topUpAttemptKey(store, "60000:click_miniapp")).not.toBe(first);
+  });
+
+  test("a different acquirer is a different request", () => {
+    const store: { current: { signature: string; key: string } | null } = { current: null };
+    const first = topUpAttemptKey(store, "50000:click_miniapp");
+    expect(topUpAttemptKey(store, "50000:payme")).not.toBe(first);
   });
 });

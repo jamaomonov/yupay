@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Shield, Wallet as WalletIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 
 import { useToast } from "@/hooks/use-toast";
@@ -17,7 +17,7 @@ import {
 import { PAYMENT_METHODS, PROVIDER_BY_METHOD } from "@/lib/payment-methods";
 import { openExternalLink } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
-import { createWalletTopUp, formatBalance } from "@/lib/wallet";
+import { createWalletTopUp, formatBalance, topUpAttemptKey } from "@/lib/wallet";
 
 /**
  * Quick-amount chips per currency. The shape is "round numbers a
@@ -36,11 +36,14 @@ const QUICK_AMOUNTS: Record<string, number[]> = {
  *  unambiguous currency before the user has touched the list. */
 const DEFAULT_METHOD_ID = PAYMENT_METHODS[0]?.id ?? "click";
 
-const MIN_AMOUNT: Record<string, number> = {
-  UZS: 10_000,
-  USDT: 5,
-  USD: 5,
-  RUB: 500,
+/** Mirrors `wallet.topup_limits._LIMITS` on the API — the server is still the
+ *  authority, this only spares the customer a round trip to be told no. Only
+ *  the currencies an acquirer can actually settle in appear: `PROVIDER_CURRENCY`
+ *  knows UZS and USDT, and a top-up in anything else is a 422, so an unknown
+ *  currency here blocks rather than guessing a limit. */
+const AMOUNT_LIMITS: Record<string, { min: number; max: number }> = {
+  UZS: { min: 10_000, max: 5_000_000 },
+  USDT: { min: 5, max: 500 },
 };
 
 export default function WalletTopUp() {
@@ -50,6 +53,9 @@ export default function WalletTopUp() {
   const toast = useToast();
   const qc = useQueryClient();
   const [, setLocation] = useLocation();
+  // Survives re-renders so a second tap after a timed-out first one replays
+  // that request instead of opening another top-up order.
+  const attemptKey = useRef<{ signature: string; key: string } | null>(null);
 
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState<string>(DEFAULT_METHOD_ID);
@@ -81,8 +87,8 @@ export default function WalletTopUp() {
   const quickAmounts = QUICK_AMOUNTS[currency] ?? QUICK_AMOUNTS.USD!;
 
   const numericAmount = Number.parseFloat(amount) || 0;
-  const minAmount = MIN_AMOUNT[currency] ?? MIN_AMOUNT.USD!;
-  const amountOk = numericAmount >= minAmount;
+  const limits = AMOUNT_LIMITS[currency] ?? null;
+  const amountOk = limits !== null && numericAmount >= limits.min && numericAmount <= limits.max;
   const canSubmit = amountOk && me.data !== undefined && method !== "";
 
   // Switching methods between different currencies (UZS → USDT) would leave a
@@ -102,7 +108,11 @@ export default function WalletTopUp() {
       if (!provider) {
         throw new Error("missing provider");
       }
-      return createWalletTopUp(numericAmount, provider);
+      return createWalletTopUp(
+        numericAmount,
+        provider,
+        topUpAttemptKey(attemptKey, `${numericAmount.toString()}:${provider}`),
+      );
     },
     onSuccess: (payment) => {
       void qc.invalidateQueries({ queryKey: ["wallet"] });
@@ -294,9 +304,11 @@ export default function WalletTopUp() {
             ? t("walletTopUp.processing")
             : canSubmit
               ? t("walletTopUp.submit", { amount: formatBalance(numericAmount, currency) })
-              : numericAmount > 0 && !amountOk
-                ? t("walletTopUp.minAmount", { amount: formatBalance(minAmount, currency) })
-                : t("walletTopUp.enterAmount")}
+              : numericAmount > 0 && limits !== null && numericAmount > limits.max
+                ? t("walletTopUp.maxAmount", { amount: formatBalance(limits.max, currency) })
+                : numericAmount > 0 && !amountOk && limits !== null
+                  ? t("walletTopUp.minAmount", { amount: formatBalance(limits.min, currency) })
+                  : t("walletTopUp.enterAmount")}
         </button>
 
         <p className="mt-3 flex items-start gap-2 text-[11px] text-white/40">

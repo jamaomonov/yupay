@@ -104,6 +104,7 @@
   "walletTopUp.toWallet": "К кошельку",
   "walletTopUp.payAgain": "Оплатить",
   "walletTopUp.minAmount": "Минимум {amount}",
+  "walletTopUp.maxAmount": "Максимум {amount}",
   "wallet.tx.topupRefund": "Возврат пополнения",
   "walletTopUp.disclaimerBefore": "Деньги попадают на счёт",
   "walletTopUp.walletName": "Кошелёк",

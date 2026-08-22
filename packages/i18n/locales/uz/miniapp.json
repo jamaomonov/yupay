@@ -104,6 +104,7 @@
   "walletTopUp.toWallet": "Hamyonga",
   "walletTopUp.payAgain": "To'lash",
   "walletTopUp.minAmount": "Minimum {amount}",
+  "walletTopUp.maxAmount": "Koʻpi bilan {amount}",
   "wallet.tx.topupRefund": "To'ldirishni qaytarish",
   "walletTopUp.disclaimerBefore": "Pul",
   "walletTopUp.walletName": "Hamyon",

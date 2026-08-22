@@ -76,13 +76,39 @@ export function useWallet() {
   });
 }
 
-/** Start an acquirer payment that will credit ``user_wallet`` 1:1 when it settles. */
-export function createWalletTopUp(amount: number, provider: string): Promise<PaymentOut> {
+/** Start an acquirer payment that will credit ``user_wallet`` 1:1 when it settles.
+ *
+ * The key is the caller's to own, and deliberately not minted here: a fresh key
+ * per call is a key that never deduplicates anything. A customer whose request
+ * times out after the server accepted it would tap again and open a *second*
+ * top-up order — the header would be present and useless. `topUpAttemptKey`
+ * keeps one key alive for as long as the customer is asking for the same thing.
+ */
+export function createWalletTopUp(
+  amount: number,
+  provider: string,
+  idempotencyKey: string,
+): Promise<PaymentOut> {
   return apiPost<PaymentOut>(
     "/api/v1/wallet/topup",
     { amount: amount.toString(), provider },
-    { idempotencyKey: newIdempotencyKey("wallet-topup") },
+    { idempotencyKey },
   );
+}
+
+/** One idempotency key per (amount, provider) the customer is asking for.
+ *
+ * Retrying the same request reuses it, so the server replays the original
+ * payment instead of creating another. Changing the amount or the acquirer is
+ * a different request and mints a new one. */
+export function topUpAttemptKey(
+  store: { current: { signature: string; key: string } | null },
+  signature: string,
+): string {
+  if (store.current?.signature !== signature) {
+    store.current = { signature, key: newIdempotencyKey("wallet-topup") };
+  }
+  return store.current.key;
 }
 
 // ---------- transactions / history ----------
