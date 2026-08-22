@@ -192,7 +192,7 @@
     "outOfStock": "Out of stock",
     "checking": "Checking…",
     "checkNickname": "Nickname: {name}",
-    "checkFailed": "Could not verify",
+    "checkFailed": "ID check is temporarily unavailable — make sure the ID is correct",
     "checkNeedsId": "Enter {label} first",
     "checkNeedsSku": "Pick a package first — it decides which account we check",
     "checkNeedsServer": "Enter {label} first",

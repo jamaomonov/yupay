@@ -50,6 +50,27 @@ rejected as needless complexity for a lookup that is already sub-second and
 whose failure is invisible to the order flow. Option 3 is rejected outright —
 G2B availability must never become a checkout dependency.
 
+### What blocks Pay, and what never does (amended 2026-08-22)
+
+The storefront later grew a gate on the check, and it was written as
+`status !== "valid"` — which quietly turned Option 3 back on, because `error`
+is not `valid`. With the check live on a brand, a G2B outage, a 5xx of ours or
+a rate-limited buyer left the Pay button dead and no way past it. The rejected
+option had arrived by the back door.
+
+The rule the code now holds, in `blocksCheckout` on both storefronts:
+
+| Outcome         | Pay         | Why                                                                                    |
+| --------------- | ----------- | -------------------------------------------------------------------------------------- |
+| not checked yet | blocked     | the customer has not asked the question                                                |
+| `valid`         | allowed     |                                                                                        |
+| `invalid`       | blocked     | the provider positively says no such player — this is the typo protection worth having |
+| `error`         | **allowed** | our fault or the supplier's, never the customer's                                      |
+
+On `error` the field says the check is unavailable and asks the customer to
+re-read what they typed. That keeps the typo protection Option 3 wanted for
+the case where an answer exists, without making a sale depend on G2B being up.
+
 ### The `check` descriptor (`FormField.check`)
 
 `Product.required_fields` is a jsonb list of `FormField`. One optional nested

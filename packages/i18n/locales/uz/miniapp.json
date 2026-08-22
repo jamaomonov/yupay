@@ -45,7 +45,7 @@
   "field.check": "Tekshirish",
   "field.checking": "Tekshirilmoqda…",
   "field.checkNickname": "Nik: {name}",
-  "field.checkFailed": "Tekshirib bo'lmadi",
+  "field.checkFailed": "ID tekshiruvi vaqtincha ishlamayapti — ID toʻgʻri kiritilganiga ishonch hosil qiling",
   "field.checkNeedsServer": "Avval «{label}»ni kiriting",
   "field.checkNotFound": "Oʻyinchi topilmadi",
   "field.checkEdit": "Tahrirlash",

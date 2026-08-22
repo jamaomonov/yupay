@@ -78,3 +78,27 @@ export function mergeCheckResult(
       current.name === result.name);
   return unchanged ? prev : { ...prev, [key]: result };
 }
+
+/** Whether a check outcome still stands between the customer and Pay.
+ *
+ * `error` does not. It means our side or the provider failed — that is what
+ * `runPlayerCheck` folds a network fault, a 5xx and a 429 into, deliberately
+ * refusing to call the id `invalid`. Blocking on it anyway made the sale
+ * hostage to G2B's uptime and punished the customer for a fault that was
+ * never theirs: with the check enabled on a brand, a supplier outage left the
+ * Pay button dead with no way past it.
+ *
+ * So only `invalid` blocks — the provider positively answering "no such
+ * player" — and so does an id that has not been checked at all. On `error`
+ * the field says the check is unavailable and asks the customer to re-read
+ * what they typed, which is the best either of us can do.
+ */
+export function blocksCheckout(result: PlayerCheckResult | null | undefined): boolean {
+  return result == null || result.status === "invalid";
+}
+
+/** True when the check could not run and the customer should re-read the id
+ *  themselves. Drives the advisory line under the field. */
+export function checkUnavailable(result: PlayerCheckResult | null | undefined): boolean {
+  return result?.status === "error";
+}

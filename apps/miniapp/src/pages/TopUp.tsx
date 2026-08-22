@@ -44,7 +44,7 @@ import {
   useCheckout,
 } from "@/lib/orders";
 import { ACQUIRER_BY_METHOD, PAYMENT_METHODS, PROVIDER_BY_METHOD } from "@/lib/payment-methods";
-import { mergeCheckResult } from "@/lib/player-check-state";
+import { blocksCheckout, mergeCheckResult } from "@/lib/player-check-state";
 import { getRecentFulfillment, rememberFulfillment } from "@/lib/recent-checkout";
 import { packagePrice, visibleStarPackages } from "@/lib/star-packages";
 import { haptic, isInsideTelegram, openExternalLink, setClosingConfirmation } from "@/lib/telegram";
@@ -678,15 +678,16 @@ export default function TopUp() {
   })?.key;
   // A checkable field (`f.check`) with something typed into it but no
   // successful "Проверить" behind that value yet — either it was never
-  // pressed, it came back "not found"/errored, or an edit after a pass
-  // reset the result to stale (see DynamicFields' `onCheckResult`). Checked
-  // after `missingFieldKey` on purpose: an empty required field is "nothing
-  // to verify yet", not "unverified".
+  // pressed, it came back "not found", or an edit after a pass reset the
+  // result to stale (see DynamicFields' `onCheckResult`). A check that could
+  // not *run* does not count — see `blocksCheckout`. Checked after
+  // `missingFieldKey` on purpose: an empty required field is "nothing to
+  // verify yet", not "unverified".
   const uncheckedFieldKey = requiredFields.find((f) => {
     if (!f.check) return false;
     const v = (fulfillment[f.key] ?? "").trim();
     if (v.length === 0) return false;
-    return checkResults[f.key]?.status !== "valid";
+    return blocksCheckout(checkResults[f.key]);
   })?.key;
 
   // One expression for the CTA's disabled state, used by both its styling and

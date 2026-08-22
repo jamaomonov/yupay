@@ -45,7 +45,7 @@
   "field.check": "Check",
   "field.checking": "Checking…",
   "field.checkNickname": "Nickname: {name}",
-  "field.checkFailed": "Could not verify",
+  "field.checkFailed": "ID check is temporarily unavailable — make sure the ID is correct",
   "field.checkNeedsServer": "Enter {label} first",
   "field.checkNotFound": "Player not found",
   "field.checkEdit": "Edit",

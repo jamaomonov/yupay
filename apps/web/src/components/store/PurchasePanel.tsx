@@ -28,6 +28,7 @@ import {
   type ProvidersOut,
 } from "@/lib/payment-providers";
 import {
+  blocksCheckout,
   checkBlocker,
   IDLE,
   mergeCheckResult,
@@ -1061,15 +1062,16 @@ export function PurchasePanel({
 
   const emailOk = EMAIL_RE.test(email);
   const fieldsOk = fields.every((f) => !f.required || (form[f.key]?.trim() ?? "") !== "");
-  // A checkable field (`f.check`) with something typed but no successful
-  // "Проверить" behind that value — never pressed, came back not-found or
-  // errored, or a later edit reset a previous pass (`CheckablePlayerField`'s
-  // own effect resets `state`, and its `onCheckResult` mirrors that here).
+  // A checkable field (`f.check`) with something typed that the check has not
+  // cleared — never pressed, came back not-found, or a later edit reset a
+  // previous pass (`CheckablePlayerField`'s own effect resets `state`, and its
+  // `onCheckResult` mirrors that here). A check that could not *run* does not
+  // count: see `blocksCheckout`.
   const uncheckedFieldKey = fields.find((f) => {
     if (!f.check) return false;
     const v = (form[f.key] ?? "").trim();
     if (v.length === 0) return false;
-    return checkResults[f.key]?.status !== "valid";
+    return blocksCheckout(checkResults[f.key]);
   })?.key;
   const fieldsVerified = uncheckedFieldKey === undefined;
   // Not just "a method id is set" — the selected method's *provider* must

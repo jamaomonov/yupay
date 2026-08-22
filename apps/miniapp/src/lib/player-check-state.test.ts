@@ -1,6 +1,12 @@
 import { describe, expect, test, vi } from "vitest";
 
-import { canCheck, mergeCheckResult, runPlayerCheck } from "./player-check-state";
+import {
+  blocksCheckout,
+  canCheck,
+  checkUnavailable,
+  mergeCheckResult,
+  runPlayerCheck,
+} from "./player-check-state";
 
 describe("canCheck", () => {
   test("false when blank", () => expect(canCheck("   ")).toBe(false));
@@ -83,5 +89,27 @@ describe("mergeCheckResult", () => {
       server: { status: "valid", name: "S1" },
       player_id: { status: "valid", name: "Neo" },
     });
+  });
+});
+
+describe("blocksCheckout", () => {
+  test("an unchecked id blocks", () => {
+    expect(blocksCheckout(undefined)).toBe(true);
+    expect(blocksCheckout(null)).toBe(true);
+  });
+  test("a valid id does not block", () =>
+    expect(blocksCheckout({ status: "valid", name: "Neo" })).toBe(false));
+  test("an invalid id blocks — the provider said no such player", () =>
+    expect(blocksCheckout({ status: "invalid", name: null })).toBe(true));
+  test("a failed check does NOT block: the outage is ours, not the customer's", () =>
+    expect(blocksCheckout({ status: "error", name: null })).toBe(false));
+});
+
+describe("checkUnavailable", () => {
+  test("only error asks the customer to re-read the id", () => {
+    expect(checkUnavailable({ status: "error", name: null })).toBe(true);
+    expect(checkUnavailable({ status: "invalid", name: null })).toBe(false);
+    expect(checkUnavailable({ status: "valid", name: "Neo" })).toBe(false);
+    expect(checkUnavailable(undefined)).toBe(false);
   });
 });

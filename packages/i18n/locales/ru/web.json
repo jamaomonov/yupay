@@ -192,7 +192,7 @@
     "outOfStock": "Нет в наличии",
     "checking": "Проверяем…",
     "checkNickname": "Ник: {name}",
-    "checkFailed": "Не удалось проверить",
+    "checkFailed": "Проверка ID временно недоступна — убедитесь, что ввели ID верно",
     "checkNeedsId": "Сначала укажите «{label}»",
     "checkNeedsSku": "Сначала выберите пакет — от него зависит, какой аккаунт мы проверяем",
     "checkNeedsServer": "Сначала укажите «{label}»",

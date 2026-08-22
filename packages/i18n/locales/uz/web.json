@@ -192,7 +192,7 @@
     "outOfStock": "Mavjud emas",
     "checking": "Tekshirilmoqda…",
     "checkNickname": "Nik: {name}",
-    "checkFailed": "Tekshirib boʻlmadi",
+    "checkFailed": "ID tekshiruvi vaqtincha ishlamayapti — ID toʻgʻri kiritilganiga ishonch hosil qiling",
     "checkNeedsId": "Avval «{label}»ni kiriting",
     "checkNeedsSku": "Avval paketni tanlang — qaysi hisobni tekshirishimiz shunga bogʻliq",
     "checkNeedsServer": "Avval «{label}»ni kiriting",
