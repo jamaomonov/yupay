@@ -34,6 +34,12 @@ Redis `fx:provider_chain` mirrors it. `FxService.get_market_rate` walks the
 enabled slugs; the first adapter whose `supports` is true and whose fetch
 succeeds wins. CoinGecko stays in the list but only answers crypto pairs.
 
+If that first adapter fails, the next one that supports the pair is used and
+ops get `send_admin_alert(..., kind="fx_failover")`. Stepping from fallback A
+to fallback B (or to the stale cache) pages again. The same hop is not
+re-sent on the next refresh — Redis `fx:failover:{base}:{quote}` stores the
+last fingerprint. Recovery onto the primary is silent (the key is cleared).
+
 `GET /admin/fx/providers` calls every adapter in parallel (no rate cache) so
 the dashboard shows the raw quote. `PUT` replaces the whole permutation of
 known slugs, then drops `fx:rate:{base}:{quote}` so the next customer read

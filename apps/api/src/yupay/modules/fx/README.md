@@ -48,6 +48,7 @@ so the chain skips that adapter.
 | `fx:rate:{base}:{quote}:stale` | 24 h                       | Same as above (parallel write)     |
 | `fx:manual:{quote}`            | none (60 s if row missing) | Admin save, or first Postgres load |
 | `fx:provider_chain`            | none                       | Admin save, or first Postgres load |
+| `fx:failover:{base}:{quote}`   | none                       | Cleared when the primary answers   |
 
 The scheduled job `fx_refresh` (`apps/scheduler/.../jobs/fx_refresh.py`) walks
 the matrix every `FX_REFRESH_INTERVAL_MINUTES` (default 5) so demand reads

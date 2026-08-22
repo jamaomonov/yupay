@@ -6,6 +6,7 @@ Keys per pair:
 - ``fx:rate:{base}:{quote}:stale`` — last-known-good (TTL = ``fx_cache_stale_seconds``).
 - ``fx:manual:{quote}`` — admin override (no TTL; written on save / first DB load).
 - ``fx:provider_chain`` — ordered adapter list (no TTL).
+- ``fx:failover:{base}:{quote}`` — last failover fingerprint (no TTL).
 
 A fresh cache hit short-circuits the provider chain. A stale hit is the graceful
 degradation when every provider fails. A manual override short-circuits both.

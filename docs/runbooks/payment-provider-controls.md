@@ -160,6 +160,11 @@ new market rate to the last `fx_rates` row for UZS and RUB. If either
 2. After that commit, the ops Telegram group gets an alert (`kind=fx_drop`).
    The alert is not sent if the transaction rolls back.
 
+If the **primary FX adapter** dies, the chain takes the next one and the same
+ops group gets `kind=fx_failover` (also when fallback A dies and fallback B
+takes over, or when we serve the 24h stale cache). The same hop is not
+repeated every 5 minutes.
+
 **Recovery:** look at Курсы, then on **Провайдеры оплаты** click **Включить**
 on each row you want back. The tripwire will not turn them back on by
 itself. If the market is still >6% below the last stored tick, the next

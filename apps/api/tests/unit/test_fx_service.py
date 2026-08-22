@@ -6,6 +6,7 @@ Providers are stubbed; Redis is faked via ``fakeredis``. No network, no DB.
 from __future__ import annotations
 
 from decimal import Decimal
+from unittest.mock import AsyncMock
 
 import fakeredis.aioredis
 import pytest
@@ -229,3 +230,58 @@ def test_from_row_strips_numeric_scale() -> None:
     assert rate is not None
     assert rate == Decimal("12500")
     assert format(rate, "f") == "12500"
+
+
+async def test_failover_alerts_once_then_dedupes(redis, monkeypatch: pytest.MonkeyPatch) -> None:
+    alert = AsyncMock(return_value=True)
+    monkeypatch.setattr("yupay.modules.fx.failover_alert.send_admin_alert", alert)
+    failing = StubProvider(fail=True, name="failing")
+    good = StubProvider(rate=Decimal("90"), name="good")
+    svc = FxService(providers=[failing, good], redis=redis)
+
+    await svc.get_rate("USD", "RUB")
+    alert.assert_awaited_once()
+    assert alert.await_args is not None
+    assert alert.await_args.kwargs["kind"] == "fx_failover"
+    assert "failing → good" in alert.await_args.args[0]
+
+    await redis.delete("fx:rate:USD:RUB")
+    await svc.get_rate("USD", "RUB")
+    alert.assert_awaited_once()
+
+
+async def test_second_fallback_pages_again(redis, monkeypatch: pytest.MonkeyPatch) -> None:
+    alert = AsyncMock(return_value=True)
+    monkeypatch.setattr("yupay.modules.fx.failover_alert.send_admin_alert", alert)
+    a = StubProvider(fail=True, name="a")
+    b = StubProvider(rate=Decimal("80"), name="b")
+    c = StubProvider(rate=Decimal("70"), name="c")
+    svc = FxService(providers=[a, b, c], redis=redis)
+
+    q = await svc.get_rate("USD", "RUB")
+    assert q.source == "b"
+    assert alert.await_count == 1
+
+    b._fail = True
+    await redis.delete("fx:rate:USD:RUB")
+    q2 = await svc.get_rate("USD", "RUB")
+    assert q2.source == "c"
+    assert alert.await_count == 2
+    assert alert.await_args is not None
+    assert "b → c" in alert.await_args.args[0]
+
+
+async def test_stale_after_all_fail_pages_ops(redis, monkeypatch: pytest.MonkeyPatch) -> None:
+    alert = AsyncMock(return_value=True)
+    monkeypatch.setattr("yupay.modules.fx.failover_alert.send_admin_alert", alert)
+    good = StubProvider(rate=Decimal("90"), name="primary")
+    svc = FxService(providers=[good], redis=redis)
+    await svc.get_rate("USD", "RUB")
+    alert.assert_not_called()
+
+    good._fail = True
+    await redis.delete("fx:rate:USD:RUB")
+    await svc.get_rate("USD", "RUB")
+    alert.assert_awaited_once()
+    assert alert.await_args is not None
+    assert "stale" in alert.await_args.args[0]

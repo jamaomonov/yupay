@@ -20,6 +20,7 @@ from yupay.core.errors import NotFoundError, ValidationError
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.modules.fx import cache
+from yupay.modules.fx.failover_alert import notify_failover, provider_label
 from yupay.modules.fx.models import FxRate, FxSnapshot
 from yupay.modules.fx.provider_chain import load_chain, provider_slug
 from yupay.modules.fx.providers.base import FxProvider, FxProviderError, Quote
@@ -122,6 +123,7 @@ class FxService:
         if fresh is not None:
             return fresh
 
+        failed: list[str] = []
         for provider in await self._ordered_providers():
             if not provider.supports(base_u, quote_u):
                 continue
@@ -129,6 +131,7 @@ class FxService:
                 q = await provider.get_rate(base_u, quote_u)
             except FxProviderError as exc:
                 log.warning("fx.provider.failed", provider=provider.name, error=str(exc))
+                failed.append(provider_label(provider))
                 continue
 
             await cache.write(
@@ -137,14 +140,38 @@ class FxService:
                 fresh_ttl_seconds=self._settings.fx_cache_fresh_seconds,
                 stale_ttl_seconds=self._settings.fx_cache_stale_seconds,
             )
+            await notify_failover(
+                self._redis,
+                base=base_u,
+                quote=quote_u,
+                failed=failed,
+                winner=provider_label(provider),
+            )
             return q
 
         if allow_stale:
             stale = await cache.read_stale(self._redis, base_u, quote_u)
             if stale is not None:
                 log.warning("fx.serving_stale", base=base_u, quote=quote_u)
+                if failed:
+                    await notify_failover(
+                        self._redis,
+                        base=base_u,
+                        quote=quote_u,
+                        failed=failed,
+                        winner=stale.source,
+                        stale=True,
+                    )
                 return stale
 
+        if failed:
+            await notify_failover(
+                self._redis,
+                base=base_u,
+                quote=quote_u,
+                failed=failed,
+                winner=None,
+            )
         raise FxUnavailableError(f"no provider could serve {base_u}->{quote_u}")
 
     async def _manual_quote(self, base: str, quote: str) -> Quote | None:
