@@ -18,6 +18,8 @@ from yupay.core.config import get_settings
 from yupay.core.logging import get_logger
 from yupay.modules.integrations.price_refresh import refresh_all_mappings
 
+from yupay_scheduler.startup import first_run_after
+
 log = get_logger("yupay.scheduler.refresh_supplier_prices")
 
 _JOB_ID = "integrations.refresh_supplier_prices"
@@ -43,6 +45,9 @@ def register(scheduler: AsyncIOScheduler) -> None:
         trigger="interval",
         minutes=minutes,
         id=_JOB_ID,
+        # Without this the first run is a whole interval after boot, so a
+        # restart more often than that means the job never runs at all.
+        next_run_time=first_run_after(90),
         replace_existing=True,
         coalesce=True,
         max_instances=1,

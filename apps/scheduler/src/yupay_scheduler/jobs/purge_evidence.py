@@ -20,6 +20,8 @@ from yupay.core.logging import get_logger
 # Same reasoning as ``expire_orders``.
 from yupay.modules.evidence.service import purge_expired
 
+from yupay_scheduler.startup import first_run_after
+
 log = get_logger("yupay.scheduler.purge_evidence")
 
 _JOB_ID = "evidence.purge_expired"
@@ -43,6 +45,9 @@ def register(scheduler: AsyncIOScheduler) -> None:
         trigger="interval",
         hours=_INTERVAL_HOURS,
         id=_JOB_ID,
+        # Without this the first run is a whole interval after boot, so a
+        # restart more often than that means the job never runs at all.
+        next_run_time=first_run_after(210),
         replace_existing=True,
         max_instances=1,
         coalesce=True,

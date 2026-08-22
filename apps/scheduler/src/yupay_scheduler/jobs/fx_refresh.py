@@ -13,6 +13,8 @@ from yupay.core.db import get_session_factory
 from yupay.core.logging import get_logger
 from yupay.modules.fx.tripwire import refresh_and_trip
 
+from yupay_scheduler.startup import first_run_after
+
 log = get_logger("yupay.scheduler.fx_refresh")
 
 _JOB_ID = "fx.refresh"
@@ -37,6 +39,9 @@ def register(scheduler: AsyncIOScheduler) -> None:
         trigger="interval",
         minutes=minutes,
         id=_JOB_ID,
+        # Without this the first run is a whole interval after boot, so a
+        # restart more often than that means the job never runs at all.
+        next_run_time=first_run_after(30),
         replace_existing=True,
         coalesce=True,
         max_instances=1,
