@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Final
 from urllib.parse import urlparse
 
 from sqlalchemy import func, select
@@ -336,6 +336,79 @@ async def _complete_wallet_topup(db: AsyncSession, *, order: Order, payment: Pay
     await _publish_status_changed(order)
 
 
+#: Statuses an order reaches when we gave up waiting for the money. The
+#: acquirer does not know that — nothing cancels its side when we expire ours —
+#: so a callback can still arrive against one of these.
+_ABANDONED_STATUSES: Final[frozenset[str]] = frozenset({"expired", "cancelled"})
+
+
+async def _settle_late_payment(
+    db: AsyncSession, *, order: Order, payment: Payment, event: WebhookEvent
+) -> None:
+    """The customer was debited after we had written the order off.
+
+    Leaving the order ``expired`` was the worst of the options: the money is
+    ours, the customer has nothing, and ``list_stuck_paid_orders`` — the one
+    watchdog for exactly that situation — keys on ``paid_at`` and so never
+    looked. The order therefore moves to ``paid`` whatever we had decided
+    earlier, and from there the two purposes diverge:
+
+    * a **deposit** is credited outright. There is nothing to source, nothing
+      to price, and no reason a late payment should be worth less than a
+      punctual one.
+    * a **catalogue order** is held. Its price and stock were settled ten
+      minutes ago and no longer bind, so a human chooses between delivering
+      and refunding — the same one-click release a large order already gets.
+
+    ``cancelled_at`` is deliberately left where it is: it records that we did
+    expire this order, which is the fact that explains the event beside it.
+    """
+    moment = now()
+    order.status = "paid"
+    if order.paid_at is None:
+        order.paid_at = moment
+    order.updated_at = moment
+    db.add(
+        OrderEvent(
+            id=new_id(),
+            order_id=order.id,
+            kind="order.paid_after_expiry",
+            payload={
+                "payment_id": payment.id,
+                "provider": payment.provider,
+                "external_event_id": event.external_event_id,
+                "expired_at": order.cancelled_at.isoformat() if order.cancelled_at else None,
+            },
+            actor="payments",
+        )
+    )
+    await db.flush()
+    await _publish_status_changed(order)
+
+    log.warning(
+        "payments.paid_after_expiry",
+        order_id=order.id,
+        provider=payment.provider,
+        purpose=order.purpose,
+    )
+    from yupay.modules.notifications.api import schedule_after_commit, send_admin_alert
+
+    alert = (
+        f"<b>Оплата пришла на истёкший заказ</b>\n"
+        f"Заказ {order.id} ({order.purpose}), {payment.amount} {payment.currency} "
+        f"через {payment.provider}."
+    )
+    if order.purpose == "wallet_topup":
+        await _complete_wallet_topup(db, order=order, payment=payment)
+        alert += "\nБаланс пополнен."
+    else:
+        from yupay.modules.orders.risk import REASON_PAID_AFTER_EXPIRY, hold_for_review
+
+        await hold_for_review(db, order=order, reason=REASON_PAID_AFTER_EXPIRY)
+        alert += "\nВыдача не запускалась — решите, выдавать или вернуть деньги."
+    schedule_after_commit(db, lambda: send_admin_alert(alert, kind="paid_after_expiry"))
+
+
 async def _mark_payment_succeeded(
     db: AsyncSession, *, payment: Payment, event: WebhookEvent
 ) -> None:
@@ -346,6 +419,10 @@ async def _mark_payment_succeeded(
     payment.updated_at = moment
 
     order = (await db.execute(select(Order).where(Order.id == payment.order_id))).scalar_one()
+
+    if order.status in _ABANDONED_STATUSES:
+        await _settle_late_payment(db, order=order, payment=payment, event=event)
+        return
 
     if order.status == "pending_payment":
         order.status = "paid"

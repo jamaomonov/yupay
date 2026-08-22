@@ -31,6 +31,12 @@ log = get_logger("yupay.orders.risk")
 #: Written to ``order_events`` and shown in the alert.
 REASON_LARGE_AMOUNT = "amount_at_or_above_threshold"
 
+#: The acquirer debited the customer after we had already written the order
+#: off as expired. The sale is real, but it was priced and stocked ten minutes
+#: ago and nobody expected it any more, so a human decides whether to deliver
+#: or refund.
+REASON_PAID_AFTER_EXPIRY = "paid_after_order_expired"
+
 
 def review_reason(order: Order, *, settings: Settings | None = None) -> str | None:
     """Why this order must not be fulfilled automatically, or ``None``.

@@ -186,6 +186,7 @@ async def test_topup_refund_reverses_when_unspent(
     await _settle_mock(integration_client, payment)
 
     admin, _ = await _login_user(integration_client, tg_id=907)
+    await _grant_admin(db_session, tg_id=907)
     refund = await integration_client.post(
         f"/api/v1/admin/payments/{payment['id']}/refund",
         headers={
@@ -240,6 +241,7 @@ async def test_topup_refund_refused_after_spend(
     await db_session.commit()
 
     admin, _ = await _login_user(integration_client, tg_id=909)
+    await _grant_admin(db_session, tg_id=909)
     refund = await integration_client.post(
         f"/api/v1/admin/payments/{payment['id']}/refund",
         headers={
