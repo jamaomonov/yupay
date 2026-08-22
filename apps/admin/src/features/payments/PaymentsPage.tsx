@@ -214,7 +214,7 @@ export function PaymentsPage() {
               disabled={refundMutation.isPending}
               onClick={() => {
                 const reason = window.prompt(
-                  `Возврат ${formatMoney(p.amount, p.currency)}.\nПричина (видна в audit log):`,
+                  `Возврат ${formatMoney(p.amount, p.currency)}.\nПричина — только для нас, клиент её не увидит:`,
                   "",
                 );
                 if (reason === null) return;

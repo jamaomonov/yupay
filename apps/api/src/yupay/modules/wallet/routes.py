@@ -23,6 +23,8 @@ from yupay.modules.wallet.schemas import (
     AdminAdjustIn,
     AdminUserLedgerOut,
     BalanceOut,
+    CustomerTransactionListOut,
+    CustomerTransactionOut,
     TransactionListOut,
     TransactionOut,
     WalletOverviewOut,
@@ -60,17 +62,26 @@ async def my_wallet(
 
 @router.get(
     "/transactions",
-    response_model=TransactionListOut,
+    response_model=CustomerTransactionListOut,
     summary="My wallet — recent transactions",
 )
 async def my_transactions(
     db: Annotated[AsyncSession, Depends(db_session)],
     user: Annotated[User, Depends(current_user)],
     limit: int = 50,
-) -> TransactionListOut:
+) -> CustomerTransactionListOut:
+    """The customer's own movements, without the operator's notes.
+
+    ``CustomerTransactionOut`` rather than ``TransactionOut``: the latter
+    carries ``actor`` and the whole of ``extra_metadata``, which is where a
+    manual adjustment's reason lives — written on a form that calls it an
+    audit entry, and read by the customer in their history.
+    """
     capped = max(1, min(limit, 200))
     txns = await svc.transactions_for_user(db, user.id, limit=capped)
-    return TransactionListOut(items=[TransactionOut.model_validate(t) for t in txns])
+    return CustomerTransactionListOut(
+        items=[CustomerTransactionOut.from_transaction(t) for t in txns]
+    )
 
 
 @router.post(

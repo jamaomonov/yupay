@@ -394,3 +394,55 @@ async def test_a_deposit_cannot_be_paid_from_the_wallet_itself(
         "a deposit must not be payable from the balance it is meant to fund; "
         f"got {intent.status_code}: {intent.text}"
     )
+
+
+async def test_the_operators_note_stays_out_of_the_customers_history(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The admin form calls this reason an audit entry; it was reaching the
+    customer's wallet history through ``extra_metadata``.
+
+    The operator still needs it, so the admin ledger keeps carrying it.
+    """
+    token, user_id = await _login_user(integration_client, tg_id=914)
+    admin, _ = await _login_user(integration_client, tg_id=915)
+    await _grant_admin(db_session, tg_id=915)
+
+    note = "INCIDENT_CREDIT: клиент скандалил, дали компенсацию"
+    adjust = await integration_client.post(
+        "/api/v1/admin/wallet/adjust",
+        headers={"Authorization": f"Bearer {admin}"},
+        json={
+            "user_id": user_id,
+            "kind": "user_wallet",
+            "currency": "UZS",
+            "amount": "50000",
+            "reason": note,
+            "idempotency_key": "wallet-note-privacy-1",
+        },
+    )
+    assert adjust.status_code == 200, adjust.text
+
+    mine = await integration_client.get(
+        "/api/v1/wallet/transactions",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert mine.status_code == 200, mine.text
+    body = mine.text
+    assert "скандалил" not in body, "the operator's note reached the customer"
+    assert "INCIDENT_CREDIT" not in body
+    rows = mine.json()["items"]
+    assert len(rows) == 1
+    assert rows[0]["extra_metadata"] == {}
+    assert rows[0]["actor"] is None, "who moved the money is an internal fact"
+    # The movement itself is still fully described.
+    assert rows[0]["kind"] == "admin.adjust"
+    assert rows[0]["postings"]
+
+    # The operator has lost nothing.
+    ledger = await integration_client.get(
+        f"/api/v1/admin/wallet/{user_id}",
+        headers={"Authorization": f"Bearer {admin}"},
+    )
+    assert ledger.status_code == 200, ledger.text
+    assert note in ledger.text

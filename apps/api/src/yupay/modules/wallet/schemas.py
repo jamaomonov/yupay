@@ -92,6 +92,58 @@ class TransactionOut(BaseModel):
     postings: list[PostingOut]
 
 
+#: Ledger metadata keys a customer may see. Everything a `wallet.post` call
+#: writes today is otherwise internal: `reason` is the operator's note (the
+#: admin UI asks for it as an audit entry), `credited_account` and `user_id`
+#: are our own row ids, `external_id` is an acquirer handle, and `full` is a
+#: refund bookkeeping flag. `provider` is the one a customer would recognise.
+CUSTOMER_SAFE_METADATA: frozenset[str] = frozenset({"provider"})
+
+
+class CustomerTransactionOut(BaseModel):
+    """A ledger movement as the customer may see it.
+
+    Deliberately not :class:`TransactionOut`. That one carries ``actor`` —
+    ``admin:<uuid>`` for a manual adjustment — and the whole of
+    ``extra_metadata``, which holds the note an operator writes while the admin
+    UI tells them it is "видна в audit log". It reached the customer's history
+    instead.
+
+    The field names match ``TransactionOut`` so no client has to learn a second
+    shape; what changes is what is in them.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    kind: str
+    reference_type: str | None
+    reference_id: str | None
+    #: Always ``None`` here. Who moved the money is an internal fact.
+    actor: None = None
+    extra_metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    postings: list[PostingOut]
+
+    @classmethod
+    def from_transaction(cls, txn: Any) -> CustomerTransactionOut:
+        """Build from a ``WalletTransaction``, keeping only safe metadata."""
+        raw: dict[str, Any] = txn.extra_metadata or {}
+        return cls(
+            id=txn.id,
+            kind=txn.kind,
+            reference_type=txn.reference_type,
+            reference_id=txn.reference_id,
+            extra_metadata={k: v for k, v in raw.items() if k in CUSTOMER_SAFE_METADATA},
+            created_at=txn.created_at,
+            postings=[PostingOut.model_validate(p) for p in txn.postings],
+        )
+
+
+class CustomerTransactionListOut(BaseModel):
+    items: list[CustomerTransactionOut]
+
+
 class TransactionListOut(BaseModel):
     items: list[TransactionOut]
 
@@ -136,6 +188,8 @@ __all__ = [
     "AdminAdjustIn",
     "AdminUserLedgerOut",
     "BalanceOut",
+    "CustomerTransactionListOut",
+    "CustomerTransactionOut",
     "Direction",
     "OwnerType",
     "PostingOut",

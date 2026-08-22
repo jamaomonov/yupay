@@ -3298,6 +3298,88 @@
         "title": "CustomerTaskSummary",
         "type": "object"
       },
+      "CustomerTransactionListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CustomerTransactionOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CustomerTransactionListOut",
+        "type": "object"
+      },
+      "CustomerTransactionOut": {
+        "description": "A ledger movement as the customer may see it.\n\nDeliberately not :class:`TransactionOut`. That one carries ``actor`` \u2014\n``admin:<uuid>`` for a manual adjustment \u2014 and the whole of\n``extra_metadata``, which holds the note an operator writes while the admin\nUI tells them it is \"\u0432\u0438\u0434\u043d\u0430 \u0432 audit log\". It reached the customer's history\ninstead.\n\nThe field names match ``TransactionOut`` so no client has to learn a second\nshape; what changes is what is in them.",
+        "properties": {
+          "actor": {
+            "title": "Actor",
+            "type": "null"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "extra_metadata": {
+            "additionalProperties": true,
+            "title": "Extra Metadata",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "postings": {
+            "items": {
+              "$ref": "#/components/schemas/PostingOut"
+            },
+            "title": "Postings",
+            "type": "array"
+          },
+          "reference_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Id"
+          },
+          "reference_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Type"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "reference_type",
+          "reference_id",
+          "created_at",
+          "postings"
+        ],
+        "title": "CustomerTransactionOut",
+        "type": "object"
+      },
       "CustomersOut": {
         "properties": {
           "guest_orders": {
@@ -20995,6 +21077,7 @@
     },
     "/api/v1/wallet/transactions": {
       "get": {
+        "description": "The customer's own movements, without the operator's notes.\n\n``CustomerTransactionOut`` rather than ``TransactionOut``: the latter\ncarries ``actor`` and the whole of ``extra_metadata``, which is where a\nmanual adjustment's reason lives \u2014 written on a form that calls it an\naudit entry, and read by the customer in their history.",
         "operationId": "my_transactions_api_v1_wallet_transactions_get",
         "parameters": [
           {
@@ -21029,7 +21112,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TransactionListOut"
+                  "$ref": "#/components/schemas/CustomerTransactionListOut"
                 }
               }
             },

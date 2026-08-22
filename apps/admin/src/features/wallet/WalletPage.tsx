@@ -368,7 +368,7 @@ function LookupTab() {
                   {reasonPreset === "OTHER" ? (
                     <span className="text-[var(--danger-fg)]">(обязательно для «Другое»)</span>
                   ) : (
-                    <span>(опционально, попадёт в audit-feed)</span>
+                    <span>(опционально; только для нас — клиент не увидит)</span>
                   )}
                 </label>
                 <Input
