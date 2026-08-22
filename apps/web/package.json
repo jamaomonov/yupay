@@ -30,7 +30,7 @@
     "zustand": "^5.0.1"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.0.0-beta.5",
+    "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.0.1",
     "@types/node": "^22.9.0",
@@ -40,8 +40,8 @@
     "@yupay/config-tailwind": "workspace:*",
     "@yupay/config-tsconfig": "workspace:*",
     "jsdom": "^25.0.1",
-    "postcss": "^8.4.49",
-    "tailwindcss": "^4.0.0-beta.5",
+    "postcss": "^8.5.26",
+    "tailwindcss": "^4.3.3",
     "typescript": "^5.6.3",
     "vitest": "^2.1.4"
   }
