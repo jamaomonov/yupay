@@ -15,11 +15,12 @@ import { NOINDEX, pathFor } from "@/lib/seo";
  * wallet top-up, which now names the balance page, and the mini app, whose own
  * origin the same-origin check would reject.
  *
- * Deliberately vague about what was paid for: an acquirer's return carries no
- * order id we can trust, and a confident "your order is on its way" here would
- * be a guess. Both destinations are one tap away instead.
+ * Deliberately vague about the outcome, not just about what was bought: every
+ * acquirer sends the customer here when they press *cancel* too, so the one
+ * visitor who certainly did not pay must not be told to go wait for an order.
+ * The copy covers both, and both destinations are one tap away.
  */
-export const metadata: Metadata = { robots: NOINDEX };
+export const metadata: Metadata = { title: "YuPay", robots: NOINDEX };
 
 export default async function CheckoutReturnPage({
   params,

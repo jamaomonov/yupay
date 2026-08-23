@@ -34,20 +34,38 @@ _SURFACE_BOUND: dict[str, str] = {
     "click_miniapp": "miniapp",
 }
 
+#: The merchant a caller gets when it does not say which surface it is. The
+#: storefront's, because that is the one a stranger with a curl is least able
+#: to misuse: it is where a web deposit belongs anyway.
+_DEFAULT_CLICK_SLUG = "click"
+
 
 def assert_provider_matches_surface(provider: str, source: str) -> None:
     """Refuse an acquirer slug that belongs to a different surface.
 
-    ``source`` is ``normalise_source``'s output, so an absent or unreadable
-    header is ``unknown`` — that is allowed through rather than refused, since
-    a missing header must not be able to block a deposit (the bot and future
-    surfaces have no Click merchant of their own).
+    ``X-Yupay-Surface`` is client-supplied and unauthenticated, so this is not
+    a security boundary and cannot be made into one here — a caller who wants
+    the other merchant can always claim to be the other surface. What it does
+    is stop the *wrong* merchant being credited by accident, and stop the
+    cheapest deliberate route to it.
+
+    Which is why an unreadable header is not treated as permission. It used to
+    be: ``normalise_source`` answers ``unknown`` for a missing or junk value,
+    ``unknown`` was allowed for every slug, and so omitting the header entirely
+    reached the mini app's merchant from anywhere — the very thing the check
+    was added to stop, arrived at by not asking rather than by asking wrong.
+
+    An unknown surface now gets the default merchant and nothing else. Money is
+    never refused for want of a header: ``click`` stays available to any caller,
+    and only the surface-specific slug needs its surface named.
 
     Raises:
-        ValidationError: the slug is bound to another surface.
+        ValidationError: the slug names a surface this request did not.
     """
     required = _SURFACE_BOUND.get(provider)
-    if required is not None and source not in {"unknown", required}:
+    if required is None:
+        return
+    if source != required and not (source == "unknown" and provider == _DEFAULT_CLICK_SLUG):
         raise ValidationError(
             "this payment method belongs to another surface",
             extra={"provider": provider, "surface": source},

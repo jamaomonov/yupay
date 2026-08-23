@@ -697,11 +697,14 @@
     "amountRange": "From {min} to {max}",
     "balanceError": "Couldn't load the balance",
     "historyMore": "Show more",
-    "methodUnavailable": "Under maintenance"
+    "methodUnavailable": "Under maintenance",
+    "topUpBadAmount": "Check the amount — it is outside the allowed range",
+    "topUpProviderDown": "That payment method is unavailable right now, pick another",
+    "methodNoneAvailable": "No payment methods are available right now"
   },
   "checkoutReturn": {
-    "title": "Payment is being processed",
-    "body": "The bank confirms within a minute. Check your orders or your wallet — it will show up there.",
+    "title": "Checking the payment",
+    "body": "If you paid, the order appears in your list within a minute. If you cancelled, nothing was charged — try again.",
     "toOrders": "My orders",
     "toWallet": "Wallet"
   }

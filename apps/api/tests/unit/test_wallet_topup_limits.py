@@ -74,11 +74,20 @@ def test_click_slugs_are_bound_to_their_surface() -> None:
         assert_provider_matches_surface("click", "miniapp")
 
 
-def test_an_unreadable_surface_header_does_not_block_a_deposit() -> None:
-    """`normalise_source` answers "unknown" for a missing or junk header, and a
-    missing header must not be able to refuse money."""
+def test_an_unreadable_surface_header_still_buys_through_the_default_merchant() -> None:
+    """Money is never refused for want of a header — but the header is also not
+    a way to reach the other merchant.
+
+    `X-Yupay-Surface` is client-supplied, so omitting it used to be the cheapest
+    bypass of this whole rule: `unknown` was allowed for every slug, and a caller
+    reached the mini app's merchant from anywhere by simply not saying where it
+    was. The default slug stays open to anyone; the surface-specific one has to
+    be asked for by a surface that admits to being it.
+    """
     assert_provider_matches_surface("click", "unknown")
-    assert_provider_matches_surface("click_miniapp", "unknown")
+
+    with pytest.raises(ValidationError):
+        assert_provider_matches_surface("click_miniapp", "unknown")
 
 
 def test_single_merchant_acquirers_are_not_surface_bound() -> None:

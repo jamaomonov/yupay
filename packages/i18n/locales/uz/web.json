@@ -697,11 +697,14 @@
     "amountRange": "{min} dan {max} gacha",
     "balanceError": "Balansni yuklab boʻlmadi",
     "historyMore": "Yana koʻrsatish",
-    "methodUnavailable": "Texnik ishlar"
+    "methodUnavailable": "Texnik ishlar",
+    "topUpBadAmount": "Summani tekshiring — u ruxsat etilgan chegaradan tashqarida",
+    "topUpProviderDown": "Bu toʻlov usuli hozir mavjud emas, boshqasini tanlang",
+    "methodNoneAvailable": "Hozircha mavjud toʻlov usullari yoʻq"
   },
   "checkoutReturn": {
-    "title": "Toʻlov qayta ishlanmoqda",
-    "body": "Bank bir daqiqa ichida tasdiqlaydi. Buyurtmalar yoki hamyonga qarang — u yerda koʻrinadi.",
+    "title": "Toʻlov tekshirilmoqda",
+    "body": "Agar toʻlagan boʻlsangiz, buyurtma bir daqiqada roʻyxatda paydo boʻladi. Bekor qilgan boʻlsangiz, hech narsa yechilmadi — qaytadan urinib koʻring.",
     "toOrders": "Buyurtmalarim",
     "toWallet": "Hamyon"
   }

@@ -11,10 +11,36 @@
  * and the API wants a number.
  */
 
-/** Strip everything that is not a digit. Soum has no minor unit, so a decimal
- *  separator is not a rounding question — the server refuses 10 000.5 outright. */
+/**
+ * Keystroke handling: keep the digits, drop everything else.
+ *
+ * Deliberately does not try to read a fraction. It cannot: in `en` the field's
+ * own group separator is a comma, so `250,000` minus one character is
+ * `250,00` — indistinguishable, by string alone, from two-hundred-fifty point
+ * zero zero. A version of this that guessed turned one Backspace into a
+ * thousandfold cut, silently, on a money field. Paste is where a fraction
+ * actually arrives, and paste is where it is handled — see `pastedDigits`.
+ */
 export function toDigits(raw: string): string {
   return raw.replace(/\D/g, "");
+}
+
+/**
+ * Paste handling: drop a trailing fraction, keep the grouping.
+ *
+ * `"50000.00"` is what an invoice or a bank statement puts on the clipboard —
+ * most software shows two decimals whether or not the currency has them. Read
+ * as digits it becomes `5000000`: a hundredfold inflation landing exactly on
+ * the 5 000 000 ceiling, past every bound and quantum check on both sides,
+ * with the field showing the inflated figure as if it had been asked for.
+ *
+ * Both separators are accepted regardless of locale, because a paste comes
+ * from wherever the customer copied it and a Russian customer can perfectly
+ * well paste an English-formatted number. Grouping is only ever three digits,
+ * so a run of one or two behind a separator is not grouping.
+ */
+export function pastedDigits(raw: string): string {
+  return toDigits(raw.replace(/[.,](\d{1,2})\s*$/, ""));
 }
 
 /**
@@ -36,4 +62,34 @@ export function groupDigits(digits: string, locale: string): string {
 export function amountValue(raw: string): number {
   const digits = toDigits(raw);
   return digits === "" ? 0 : Number(digits);
+}
+
+/**
+ * Where the caret belongs after regrouping.
+ *
+ * Rewriting the field's value on every keystroke throws the caret to the end,
+ * so correcting a digit in the middle of `1 923 456` was impossible: the next
+ * character landed at the far end instead of beside the one being fixed. The
+ * separators move as the number grows, so the position cannot be reused —
+ * what survives an edit is *how many digits are to the left of it*.
+ *
+ * @param formatted the grouped string now in the field
+ * @param digitsBefore how many digits were left of the caret after the edit
+ * @returns the offset just past the `digitsBefore`-th digit
+ */
+export function caretAfterDigits(formatted: string, digitsBefore: number): number {
+  if (digitsBefore <= 0) return 0;
+  let seen = 0;
+  for (let i = 0; i < formatted.length; i += 1) {
+    if (/\d/.test(formatted[i] ?? "")) {
+      seen += 1;
+      if (seen === digitsBefore) return i + 1;
+    }
+  }
+  return formatted.length;
+}
+
+/** How many digits sit left of `caret` in `raw`. */
+export function digitsBeforeCaret(raw: string, caret: number): number {
+  return toDigits(raw.slice(0, caret)).length;
 }

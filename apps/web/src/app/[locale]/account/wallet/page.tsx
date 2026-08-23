@@ -1,12 +1,13 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { ArrowDownLeft, ArrowUpRight, Wallet } from "lucide-react";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { use, useState } from "react";
+import { Suspense, use, useEffect, useState } from "react";
 
+import { WalletMark } from "@/components/icons/WalletMark";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
@@ -42,11 +43,11 @@ export default function WalletPage({ params }: { params: Promise<{ locale: strin
     queryKey: ["wallet", "transactions", limit],
     queryFn: () => getWalletTransactions(limit),
     enabled: Boolean(user),
+    // "Показать ещё" mounts a new key, so without this the list unmounts, the
+    // page collapses to a skeleton and re-expands — pagination that erases
+    // what you were reading is worse than the cap it replaced.
+    placeholderData: keepPreviousData,
   });
-  // The acquirer returns here after a top-up. The ledger only posts on
-  // settlement, so for a beat the balance is the old one and the history is
-  // unchanged — say so rather than let it read as a payment that vanished.
-  const justToppedUp = useSearchParams().get("topup") !== null;
   const openLogin = useLoginModal((st) => st.open);
 
   if (authLoading) {
@@ -65,7 +66,7 @@ export default function WalletPage({ params }: { params: Promise<{ locale: strin
       <main className="mx-auto max-w-[640px] px-4 pb-24 pt-[120px]">
         <h1 className="font-display mb-6 text-3xl font-bold tracking-[-0.02em]">{t("title")}</h1>
         <div className="border-border bg-card rounded-2xl border p-10 text-center">
-          <Wallet size={32} className="text-tx-dim mx-auto mb-4" />
+          <WalletMark size={32} className="text-tx-dim mx-auto mb-4" />
           <p className="text-tx-mute mb-5">{t("guestBody")}</p>
           <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
             <button type="button" onClick={openLogin} className={buttonStyles({ size: "md" })}>
@@ -84,13 +85,12 @@ export default function WalletPage({ params }: { params: Promise<{ locale: strin
   }
 
   const balance = spendableBalance(wallet.data?.balances ?? null, WALLET_CURRENCY);
-  // Only the account the headline counts. Building this from every balance
-  // put cashback and promo movements above a figure that never moved.
-  const accountIds = new Set(
-    (wallet.data?.balances ?? [])
-      .filter((b) => b.kind === "user_wallet" && b.currency === WALLET_CURRENCY)
-      .map((b) => b.account_id),
-  );
+  // Every account the customer owns. Narrowing this to `user_wallet` kept
+  // cashback and promo movements from sitting above a headline that had not
+  // moved — but it also made them vanish from the history entirely, and a
+  // credit the customer received should not be invisible. Each row carries
+  // its own amount and currency, so the two can differ honestly.
+  const accountIds = new Set((wallet.data?.balances ?? []).map((b) => b.account_id));
   const rows = (history.data?.items ?? [])
     .map((tx) => summarizeForUser(tx, accountIds))
     .filter((v): v is UserTransactionView => v !== null);
@@ -99,11 +99,12 @@ export default function WalletPage({ params }: { params: Promise<{ locale: strin
     <main className="mx-auto max-w-[640px] px-4 pb-24 pt-[120px]">
       <h1 className="font-display mb-6 text-3xl font-bold tracking-[-0.02em]">{t("title")}</h1>
 
-      {justToppedUp && (
-        <p className="border-primary/30 bg-primary/10 text-tx-mute mb-4 rounded-2xl border p-4 text-sm leading-relaxed">
-          {t("topUpNote")}
-        </p>
-      )}
+      {/* `useSearchParams` bails this page out of the static export unless it
+          sits behind a boundary — every other call site in this app is wrapped
+          the same way. */}
+      <Suspense fallback={null}>
+        <ReturnedFromAcquirer note={t("topUpNote")} />
+      </Suspense>
 
       <section className="border-border bg-card mb-8 rounded-2xl border p-6">
         <p className="text-tx-dim mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.16em]">
@@ -131,10 +132,10 @@ export default function WalletPage({ params }: { params: Promise<{ locale: strin
         {t("historyTitle")}
       </h2>
 
-      {history.isLoading && <Skeleton className="h-24 rounded-2xl" />}
+      {history.isPending && <Skeleton className="h-24 rounded-2xl" />}
       {history.isError && <p className="text-sm text-red-400">{t("historyError")}</p>}
 
-      {!history.isLoading && !history.isError && rows.length === 0 && (
+      {!history.isPending && !history.isError && rows.length === 0 && (
         <div className="border-border bg-card rounded-2xl border p-8 text-center">
           <p className="text-tx-mute text-sm">{t("historyEmpty")}</p>
         </div>
@@ -150,7 +151,9 @@ export default function WalletPage({ params }: { params: Promise<{ locale: strin
         </ul>
       )}
 
-      {rows.length >= limit && (
+      {/* Keyed on what the server returned, not on what survived projection:
+          a filtered-out row would otherwise hide the button early. */}
+      {(history.data?.items.length ?? 0) >= limit && (
         <button
           type="button"
           onClick={() => {
@@ -221,5 +224,40 @@ function RowBody({
     </Link>
   ) : (
     body
+  );
+}
+
+/** The line shown when an acquirer has just sent the customer back.
+ *
+ * Its own component so `useSearchParams` sits behind the Suspense boundary the
+ * static export needs.
+ */
+function ReturnedFromAcquirer({ note }: { note: string }) {
+  const justToppedUp = useSearchParams().get("topup") !== null;
+  const qc = useQueryClient();
+
+  // The ledger posts when the acquirer's webhook lands, which is seconds after
+  // the customer is already looking at this page. Saying "the balance will
+  // update" beside a figure that then never moves is worse than saying
+  // nothing, so watch for it — briefly, and only on the trip back.
+  useEffect(() => {
+    if (!justToppedUp) return;
+    const tick = setInterval(() => {
+      void qc.invalidateQueries({ queryKey: ["wallet"] });
+    }, 5000);
+    const stop = setTimeout(() => {
+      clearInterval(tick);
+    }, 60_000);
+    return () => {
+      clearInterval(tick);
+      clearTimeout(stop);
+    };
+  }, [justToppedUp, qc]);
+
+  if (!justToppedUp) return null;
+  return (
+    <p className="border-primary/30 bg-primary/10 text-tx-mute mb-4 rounded-2xl border p-4 text-sm leading-relaxed">
+      {note}
+    </p>
   );
 }

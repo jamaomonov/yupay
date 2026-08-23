@@ -14,8 +14,6 @@ import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { TELEGRAM_MINIAPP_URL } from "@/lib/links";
 import { formatUzs, pathFor } from "@/lib/seo";
-import { getWallet, WALLET_CURRENCY } from "@/lib/wallet";
-import { spendableBalance } from "@/lib/wallet-balance";
 
 const LOCALES: { code: AppLocale; label: string }[] = [
   { code: "ru", label: "Русский" },
@@ -32,13 +30,6 @@ const LOCALES: { code: AppLocale; label: string }[] = [
 export function MobileNav() {
   const t = useTranslations("web.nav");
   const { user } = useAuth();
-  const wallet = useQuery({
-    queryKey: ["wallet"],
-    queryFn: getWallet,
-    enabled: Boolean(user),
-    staleTime: 30_000,
-  });
-  const balance = spendableBalance(wallet.data?.balances ?? null, WALLET_CURRENCY);
   const tShow = useTranslations("web.showcase");
   const router = useRouter();
   const pathname = usePathname();
@@ -129,17 +120,12 @@ export function MobileNav() {
                 <Link
                   href={pathFor(current, "/account/wallet")}
                   onClick={close}
-                  className={`${linkClass} flex items-center justify-between gap-3`}
+                  className={linkClass}
                 >
-                  <span>{t("wallet")}</span>
-                  {/* The header chip is desktop-only and this traffic is
-                      mostly phones, so without the amount here most customers
-                      never see their balance without navigating twice. */}
-                  {balance !== null && (
-                    <span className="text-tx-mute text-base font-bold tabular-nums">
-                      {formatUzs(current, Math.round(balance))}
-                    </span>
-                  )}
+                  {/* No amount here: `AccountMenu` carries it now, and the
+                      sheet opens below that header — both would be on screen
+                      at once, saying the same thing twice. */}
+                  {t("wallet")}
                 </Link>
               )}
             </nav>

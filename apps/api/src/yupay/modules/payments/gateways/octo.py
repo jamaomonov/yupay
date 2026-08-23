@@ -130,7 +130,18 @@ class OctoClient:
                 delay *= 2
                 continue
             if resp.status_code >= 400:
-                raise PaymentGatewayError(f"octo HTTP {resp.status_code}: {resp.text[:200]}")
+                # The body is logged, not raised. `create_intent` puts a
+                # gateway's message into the error it returns, and the
+                # storefront now shows that to the customer — so echoing an
+                # upstream response here would put Octo's arbitrary text on
+                # our screen, which the comment beside that wrapping already
+                # says we never do.
+                log.warning(
+                    "octo.http_error",
+                    status=resp.status_code,
+                    body=resp.text[:200],
+                )
+                raise PaymentGatewayError(f"octo HTTP {resp.status_code}")
 
             try:
                 data: dict[str, Any] = resp.json()

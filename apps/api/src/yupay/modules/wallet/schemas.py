@@ -64,8 +64,11 @@ class WalletTopUpIn(BaseModel):
     #: Where the acquirer sends the customer back to. Without it the server
     #: falls back to ``{web_base_url}/checkout/return``, which is generic by
     #: design — a deposit wants to land on the balance it just changed.
-    #: Validated same-origin by ``payments._safe_return_url``.
-    return_url: str | None = None
+    #: Validated same-origin by ``payments._safe_return_url``. Bounded like its
+    #: sibling on ``PaymentIntentIn``: for Click this ends up inside the hosted
+    #: checkout URL and is stored on the payment row, so an unbounded
+    #: same-origin string is still a string we keep.
+    return_url: str | None = Field(default=None, max_length=2048)
 
 
 class PostingOut(BaseModel):

@@ -518,7 +518,6 @@ function FinanceRow({ row, index }: { row: UserTransactionView; index: number })
         <h3 className="truncate text-sm font-bold text-white">{label}</h3>
         <p className="text-muted-foreground mt-0.5 truncate text-[11px]">
           {shortTime(row.createdAt, locale)}
-          {row.reason ? ` · ${row.reason}` : ""}
         </p>
       </div>
 

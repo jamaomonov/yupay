@@ -20,20 +20,23 @@ export async function Header({ locale }: { locale: string }) {
   return (
     <header className="border-border/60 bg-bg/70 fixed inset-x-0 top-0 z-50 h-[72px] border-b backdrop-blur-xl">
       <div className="mx-auto flex h-full max-w-[1200px] items-center justify-between px-6 sm:px-10">
-        <Link href={pathFor(locale)} aria-label="yupay" className="flex items-center">
+        {/* `shrink-0`: the logo has a pinned height and an auto width, so as a
+            shrinkable flex item it absorbed the balance pill's growth by
+            condensing its own letterforms — 27% narrower at 360px. */}
+        <Link href={pathFor(locale)} aria-label="yupay" className="flex shrink-0 items-center">
           <Wordmark />
         </Link>
 
         <nav aria-label={t("primaryLabel")} className="hidden items-center gap-8 md:flex">
           <Link
             href={pathFor(locale, "/store")}
-            className="text-tx-mute hover:text-foreground text-sm font-medium transition"
+            className="text-tx-mute hover:text-foreground whitespace-nowrap text-sm font-medium transition"
           >
             {t("store")}
           </Link>
           <a
             href={`${pathFor(locale)}#how`}
-            className="text-tx-mute hover:text-foreground text-sm font-medium transition"
+            className="text-tx-mute hover:text-foreground whitespace-nowrap text-sm font-medium transition"
           >
             {t("how")}
           </a>
@@ -41,7 +44,7 @@ export async function Header({ locale }: { locale: string }) {
             href="https://t.me/yupay_support"
             target="_blank"
             rel="noreferrer noopener"
-            className="text-tx-mute hover:text-foreground text-sm font-medium transition"
+            className="text-tx-mute hover:text-foreground whitespace-nowrap text-sm font-medium transition"
           >
             {t("support")}
           </a>

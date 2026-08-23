@@ -51,9 +51,16 @@ export function AccountMenu({ locale }: Props) {
     const onDown = (e: MouseEvent) => {
       if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
     };
+    // Escape too: the mobile sheet twenty lines away has always closed on it,
+    // and a dropdown that only answers the mouse strands a keyboard user.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
     document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
     };
   }, [open]);
 
@@ -62,7 +69,10 @@ export function AccountMenu({ locale }: Props) {
   // Reserve the geometry instead of rendering nothing: returning null left the
   // header's right side empty until auth resolved, then inserted a 44px button
   // and shoved the burger sideways — on every page load.
-  if (isLoading) return <div className="h-11 w-[92px]" aria-hidden />;
+  // Matches the signed-in pill's resting width so the row does not jump when
+  // auth resolves. (Guests get a narrower control; that swap is one shift,
+  // not the three this used to produce.)
+  if (isLoading) return <div className="h-11 w-[92px] lg:w-[164px]" aria-hidden />;
 
   if (!user) {
     // Guests have no account, but their orders are remembered in this browser's
@@ -112,19 +122,27 @@ export function AccountMenu({ locale }: Props) {
         onClick={() => {
           setOpen((v) => !v);
         }}
-        aria-haspopup="menu"
+        aria-haspopup="true"
         aria-expanded={open}
         aria-label={balance === null ? t("menu") : `${t("wallet")}: ${balanceLabel}, ${t("menu")}`}
         className="border-border bg-muted hover:bg-card-2 flex h-11 items-center gap-2 overflow-hidden rounded-full border pl-3 pr-1 transition"
       >
-        {balance !== null && (
-          <>
-            <WalletMark size={15} className="text-tx-mute shrink-0" />
-            <span className="text-foreground shrink-0 whitespace-nowrap text-sm font-bold tabular-nums">
+        {/* The amount is the one part of this row that may yield: below `lg`
+            the bar is already full, and letting it push made the logo condense
+            rather than the pill wrap. */}
+        <span className="hidden shrink items-center gap-2 lg:flex">
+          <WalletMark size={15} className="text-tx-mute shrink-0" />
+          {balance === null ? (
+            // A fixed slot, not nothing: the pill was born at 54px and grew to
+            // 126+ when the balance landed, moving the lime CTA 62px sideways
+            // after first paint — under a finger already on its way down.
+            <span className="bg-card-2 h-4 w-[72px] animate-pulse rounded" aria-hidden />
+          ) : (
+            <span className="text-foreground whitespace-nowrap text-sm font-bold tabular-nums">
               {balanceLabel}
             </span>
-          </>
-        )}
+          )}
+        </span>
         <span className="bg-card-2 text-tx-mute flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-bold">
           {user.photo_url ? (
             // eslint-disable-next-line @next/next/no-img-element -- external Telegram CDN avatar; a plain <img> avoids next/image remotePatterns wiring for a 36px thumbnail
@@ -141,13 +159,9 @@ export function AccountMenu({ locale }: Props) {
       </button>
 
       {open && (
-        <div
-          role="menu"
-          className="border-border bg-card/95 absolute right-0 top-11 z-40 min-w-[11rem] overflow-hidden rounded-xl border p-1 shadow-2xl backdrop-blur-xl"
-        >
+        <div className="border-border bg-card/95 absolute right-0 top-11 z-40 min-w-[11rem] overflow-hidden rounded-xl border p-1 shadow-2xl backdrop-blur-xl">
           <Link
             href={pathFor(locale, "/account/wallet")}
-            role="menuitem"
             onClick={() => {
               setOpen(false);
             }}
@@ -163,7 +177,6 @@ export function AccountMenu({ locale }: Props) {
               lime CTA sells games, which is why it no longer says this. */}
           <Link
             href={pathFor(locale, "/account/wallet/top-up")}
-            role="menuitem"
             onClick={() => {
               setOpen(false);
             }}
@@ -174,7 +187,6 @@ export function AccountMenu({ locale }: Props) {
           </Link>
           <Link
             href={pathFor(locale, "/account/orders")}
-            role="menuitem"
             onClick={() => {
               setOpen(false);
             }}
@@ -186,7 +198,6 @@ export function AccountMenu({ locale }: Props) {
           <div className="border-border my-1 border-t" />
           <button
             type="button"
-            role="menuitem"
             onClick={() => {
               setOpen(false);
               logout();

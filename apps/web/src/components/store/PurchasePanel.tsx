@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatMoney } from "@yupay/utils";
-import { ArrowUpRight, Check, Info, Loader2, Wallet as WalletIcon, X } from "lucide-react";
+import { ArrowUpRight, Check, Info, Loader2, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
@@ -14,6 +14,7 @@ import { WhereToFindModal } from "./WhereToFindModal";
 import type { FormField, ProductDetail, SkuOut } from "@/lib/catalog";
 import type { PlayerCheckResult } from "@/lib/player-check";
 
+import { WalletMark } from "@/components/icons/WalletMark";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { getAccessToken } from "@/lib/client";
@@ -1712,7 +1713,7 @@ export function PurchasePanel({
                       : "text-tx-dim"
                   }`}
                 >
-                  <WalletIcon size={18} />
+                  <WalletMark size={18} />
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-[13px] font-semibold">{t("payFromBalance")}</span>

@@ -446,3 +446,79 @@ async def test_the_operators_note_stays_out_of_the_customers_history(
     )
     assert ledger.status_code == 200, ledger.text
     assert note in ledger.text
+
+
+async def test_a_replayed_key_with_a_different_amount_is_refused(
+    integration_client: AsyncClient,
+) -> None:
+    """A key names one request. Reusing it for another is not a replay.
+
+    Checking only the purpose meant a client with a stale key was handed a
+    hosted checkout for the previous figure — money moving on an amount nobody
+    asked for on this call.
+    """
+    token, _ = await _login_user(integration_client, tg_id=916)
+    await _topup(
+        integration_client,
+        token=token,
+        amount="10000",
+        provider="mock",
+        key="wallet-replay-amount-01",
+    )
+
+    again = await integration_client.post(
+        "/api/v1/wallet/topup",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "wallet-replay-amount-01",
+            "X-Yupay-Surface": "miniapp",
+        },
+        json={"amount": "500000", "provider": "mock"},
+    )
+    assert again.status_code == 409, again.text
+
+
+async def test_a_replayed_key_with_a_different_acquirer_is_refused(
+    integration_client: AsyncClient,
+) -> None:
+    """Same amount, different rail — the customer would be sent to the first
+    acquirer's page while believing they had picked the second."""
+    token, _ = await _login_user(integration_client, tg_id=917)
+    await _topup(
+        integration_client,
+        token=token,
+        amount="10000",
+        provider="mock",
+        key="wallet-replay-rail-001",
+    )
+
+    again = await integration_client.post(
+        "/api/v1/wallet/topup",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "wallet-replay-rail-001",
+            "X-Yupay-Surface": "miniapp",
+        },
+        json={"amount": "10000", "provider": "payme"},
+    )
+    assert again.status_code == 409, again.text
+
+
+async def test_the_same_request_still_replays(integration_client: AsyncClient) -> None:
+    """The guard must not break what idempotency is for."""
+    token, _ = await _login_user(integration_client, tg_id=918)
+    first = await _topup(
+        integration_client,
+        token=token,
+        amount="10000",
+        provider="mock",
+        key="wallet-replay-same-001",
+    )
+    again = await _topup(
+        integration_client,
+        token=token,
+        amount="10000",
+        provider="mock",
+        key="wallet-replay-same-001",
+    )
+    assert first["id"] == again["id"]

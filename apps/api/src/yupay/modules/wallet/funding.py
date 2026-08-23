@@ -37,6 +37,52 @@ async def _existing_topup_order(
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
+def _assert_replay_matches(
+    existing: Order,
+    *,
+    currency: str,
+    charged: Decimal,
+    provider: str,
+) -> None:
+    """A replayed key must name the same request, or it is not a replay.
+
+    Checking only the purpose meant a client reusing a stale key for a
+    different amount was handed a hosted checkout for the old one — money
+    moving on a figure nobody asked for. The provider is compared too: the same
+    key with a different acquirer used to return the first one's payment and
+    send the customer to its page. ``payments._validate_intent_replay`` holds
+    the same line for intents.
+
+    Raises:
+        ConflictError: the key belongs to a different request.
+    """
+    same = (
+        existing.purpose == PURPOSE_WALLET_TOPUP
+        and existing.currency == currency
+        and existing.total_charged == charged
+        and _provider_of(existing) in (None, provider)
+    )
+    if not same:
+        raise ConflictError(
+            "Idempotency-Key was already used for a different request",
+            extra={"order_id": existing.id},
+        )
+
+
+def _provider_of(order: Order) -> str | None:
+    """The acquirer recorded on the order's creation event, if it is loaded.
+
+    ``orders`` has no provider column — the deposit's is written into the
+    ``order.created`` payload — so this reads what is there and answers ``None``
+    when it cannot tell, which the caller treats as "no disagreement".
+    """
+    for event in order.events:
+        if event.kind == "order.created":
+            value = event.payload.get("provider")
+            return value if isinstance(value, str) else None
+    return None
+
+
 async def create_topup(
     db: AsyncSession,
     *,
@@ -57,19 +103,7 @@ async def create_topup(
 
     existing = await _existing_topup_order(db, user_id=user_id, idempotency_key=idempotency_key)
     if existing is not None:
-        # A replay must be the *same* request. Checking only the purpose meant a
-        # client reusing a stale key for a different amount got a hosted
-        # checkout for the old one — money moving on a figure nobody asked for.
-        # `payments._validate_intent_replay` holds the same line for intents.
-        if (
-            existing.purpose != PURPOSE_WALLET_TOPUP
-            or existing.currency != currency
-            or existing.total_charged != charged
-        ):
-            raise ConflictError(
-                "Idempotency-Key was already used for a different request",
-                extra={"order_id": existing.id},
-            )
+        _assert_replay_matches(existing, currency=currency, charged=charged, provider=provider)
         return await _payment_for_order(db, existing.id)
 
     created = now()
@@ -108,6 +142,12 @@ async def create_topup(
     except IntegrityError as exc:
         replay = await _existing_topup_order(db, user_id=user_id, idempotency_key=idempotency_key)
         if replay is not None:
+            # The same check as above, not a looser one: this is the race path
+            # of the very case that check exists for. Two concurrent calls with
+            # one key and different amounts both miss the pre-check; the loser
+            # arrives here and would otherwise be handed a checkout for the
+            # winner's figure without comparing anything.
+            _assert_replay_matches(replay, currency=currency, charged=charged, provider=provider)
             return await _payment_for_order(db, replay.id)
         raise ConflictError("order conflict") from exc
 

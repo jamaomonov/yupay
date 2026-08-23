@@ -108,10 +108,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       removeGuestOrders(listGuestOrders().map((o) => o.orderId));
       void qc.invalidateQueries({ queryKey: ["orders"] });
-      // Signing in without a reload keeps the previous account's cache: the
-      // balance chip renders before this query settles, so a stale entry would
-      // show the wrong person's money.
-      void qc.invalidateQueries({ queryKey: ["wallet"] });
+      // Remove, not invalidate: an invalidated entry is still served while the
+      // refetch is in flight, and the account control renders `wallet.data`
+      // ungated — so the previous person's balance would show first. Signing in
+      // without a reload keeps the same QueryClient, which is what makes this
+      // reachable at all.
+      qc.removeQueries({ queryKey: ["wallet"] });
     },
     [qc],
   );

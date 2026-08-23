@@ -157,7 +157,6 @@ export interface UserTransactionView {
   currency: string;
   /** Transaction kind from the backend (admin.adjust, payment.refund, …). */
   kind: string;
-  reason: string | null;
   createdAt: string;
 }
 
@@ -211,14 +210,12 @@ export function summarizeForUser(
   const delta = userLeg.direction === "D" ? amount : -amount;
   const kind = accountKindById.get(userLeg.account_id);
   if (!kind) return null;
-  const reasonRaw = tx.extra_metadata.reason;
   return {
     id: tx.id,
     accountKind: kind,
     delta,
     currency: userLeg.currency,
     kind: tx.kind,
-    reason: typeof reasonRaw === "string" ? reasonRaw : null,
     createdAt: userLeg.created_at,
   };
 }

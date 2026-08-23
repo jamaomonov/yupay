@@ -9,6 +9,10 @@
  *
  * `currentColor` throughout so it inherits whatever the control around it is
  * doing, including the accent when the wallet is the selected payment method.
+ *
+ * The box is sized to lucide's optical one — its neighbours in the account
+ * menu fill about 89% of the 24 viewBox vertically, and a first draft at 62%
+ * read as a small flat bar in the same column.
  */
 export function WalletMark({ size = 16, className }: { size?: number; className?: string }) {
   return (
@@ -26,11 +30,11 @@ export function WalletMark({ size = 16, className }: { size?: number; className?
       className={className}
     >
       {/* The body: the same corner radius family as the payment marks. */}
-      <rect x="2.5" y="5.5" width="19" height="13" rx="3.5" />
+      <rect x="2" y="4.5" width="20" height="15" rx="3.5" />
       {/* The pocket the card slots into — one straight line, no clasp. */}
-      <path d="M2.5 10.5h19" />
+      <path d="M2 10h20" />
       {/* The coin. Filled, because an outline at 16px turns to mush. */}
-      <circle cx="17" cy="14.5" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="17.5" cy="15" r="1.4" fill="currentColor" stroke="none" />
     </svg>
   );
 }

@@ -4,9 +4,16 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { use, useEffect, useId, useRef, useState } from "react";
+import { use, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 
-import { amountValue, groupDigits, toDigits } from "@/lib/amount-input";
+import {
+  amountValue,
+  caretAfterDigits,
+  digitsBeforeCaret,
+  groupDigits,
+  pastedDigits,
+  toDigits,
+} from "@/lib/amount-input";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { ApiError, apiFetch } from "@/lib/client";
@@ -47,6 +54,20 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
   // that request instead of opening another top-up order.
   const attempt = useRef<{ signature: string; key: string } | null>(null);
   const boundsId = useId();
+  const fieldRef = useRef<HTMLInputElement>(null);
+  // Where the caret should land once the value regroups. Rewriting the field
+  // on every keystroke otherwise throws it to the end, which makes correcting
+  // a digit in the middle of "1 923 456" impossible.
+  const caretDigits = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    const field = fieldRef.current;
+    const wanted = caretDigits.current;
+    if (!field || wanted === null) return;
+    caretDigits.current = null;
+    const at = caretAfterDigits(field.value, wanted);
+    field.setSelectionRange(at, at);
+  });
   const openLogin = useLoginModal((st) => st.open);
 
   // The same availability the checkout respects. Offering an acquirer that is
@@ -80,7 +101,9 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
         topUpAttemptKey(attempt, `${typed.toString()}:${method}`),
         // Land the customer back on the balance they just changed. Without
         // this the server falls back to a generic return page.
-        `${window.location.origin}${pathFor(locale, "/account/wallet")}`,
+        // `?topup` is what tells the wallet page the customer is coming back
+        // from an acquirer, so it can say the balance is still settling.
+        `${window.location.origin}${pathFor(locale, "/account/wallet")}?topup=1`,
       ),
     onSuccess: (payment) => {
       if (payment.intent_url) {
@@ -92,10 +115,19 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
       window.location.href = pathFor(locale, `/orders/${payment.order_id}`);
     },
     onError: (err) => {
-      // The server's reason is written for the customer (amount out of range,
-      // provider not accepting). Collapsing every failure into one line hid
-      // the half they could act on.
-      setError(err instanceof ApiError && err.detail ? err.detail : t("topUpFailed"));
+      // Distinguish what the customer can act on, without echoing the server's
+      // own wording: those strings are English, and this storefront is Russian
+      // and Uzbek first (AGENTS.md §11). The status is enough here — the
+      // amount and the acquirer are both already checked before submit, so a
+      // 422 or 409 means one of them changed under us.
+      const status = err instanceof ApiError ? err.status : 0;
+      setError(
+        status === 422
+          ? t("topUpBadAmount")
+          : status === 409
+            ? t("topUpProviderDown")
+            : t("topUpFailed"),
+      );
     },
   });
 
@@ -150,12 +182,33 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
             // and ten times different, which in a bold 24px field is the same
             // shape. The stored value stays plain digits.
             value={groupDigits(amount, locale)}
+            ref={fieldRef}
             onChange={(e) => {
+              caretDigits.current = digitsBeforeCaret(
+                e.target.value,
+                e.target.selectionStart ?? e.target.value.length,
+              );
               setAmount(toDigits(e.target.value));
               setError(null);
             }}
-            placeholder={limits ? formatUzs(locale, limits.min) : ""}
+            onPaste={(e) => {
+              // Handled here, not in `onChange`: a pasted "50000.00" carries a
+              // fraction that must be dropped, while a typed comma is the
+              // field's own grouping and must not be. Only the paste knows
+              // which it is.
+              e.preventDefault();
+              setAmount(pastedDigits(e.clipboardData.getData("text")));
+              setError(null);
+            }}
+            // Not the minimum: rendered in the same 24px bold as a real
+            // value it read as a pre-filled field while the button below
+            // said "Введите сумму". The bounds line three rows down
+            // already states it.
+            placeholder="0"
             aria-label={t("amountLabel")}
+            // Past ~16 digits `Number()` starts rounding and the field
+            // shows digits nobody typed.
+            maxLength={String(limits?.max ?? "").length + 2}
             aria-invalid={belowMin || aboveMax}
             aria-describedby={belowMin || aboveMax ? boundsId : undefined}
             className="border-border bg-card focus:border-primary rounded-btn h-14 w-full border px-4 text-2xl font-bold tabular-nums outline-none transition"
@@ -203,6 +256,11 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
         <p className="text-tx-dim mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.16em]">
           {t("methodLabel")}
         </p>
+        {/* Resolved and all down — distinct from the fetch failing, which
+            fails open above. An empty list under a heading explains nothing. */}
+        {providerStatus !== null && method === "" && (
+          <p className="text-tx-mute text-sm">{t("methodNoneAvailable")}</p>
+        )}
         <ul className="space-y-2">
           {METHODS.map((m) => {
             const visibility = methodVisibility(m.provider, providerStatus);
@@ -244,11 +302,15 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
         </ul>
       </section>
 
-      {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
+      {error && (
+        <p role="alert" className="mb-3 text-sm text-[#FF6B6B]">
+          {error}
+        </p>
+      )}
 
       <button
         type="button"
-        disabled={!amountOk || topUp.isPending}
+        disabled={!amountOk || method === "" || topUp.isPending}
         onClick={() => {
           setError(null);
           topUp.mutate();
@@ -257,13 +319,15 @@ export default function WalletTopUpPage({ params }: { params: Promise<{ locale: 
       >
         {topUp.isPending
           ? t("topUpPending")
-          : amountOk
-            ? t("topUpSubmit", { amount: formatUzs(locale, typed) })
-            : aboveMax && limits !== undefined
-              ? t("maxAmount", { amount: formatUzs(locale, limits.max) })
-              : belowMin && limits !== undefined
-                ? t("minAmount", { amount: formatUzs(locale, limits.min) })
-                : t("topUpEnterAmount")}
+          : method === ""
+            ? t("methodNoneAvailable")
+            : amountOk
+              ? t("topUpSubmit", { amount: formatUzs(locale, typed) })
+              : aboveMax && limits !== undefined
+                ? t("maxAmount", { amount: formatUzs(locale, limits.max) })
+                : belowMin && limits !== undefined
+                  ? t("minAmount", { amount: formatUzs(locale, limits.min) })
+                  : t("topUpEnterAmount")}
       </button>
 
       <p className="text-tx-dim mt-3 text-center text-xs leading-relaxed">{t("topUpNote")}</p>
