@@ -9,7 +9,7 @@
  *   ``/auth/me`` round-trip succeeds. Pages gate "needs login" behaviour on this.
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 
 import { ApiError, apiGet, apiPost, clearTokens, getAccessToken, setTokens } from "./api";
 import {
@@ -115,6 +115,25 @@ export async function bootstrapAuth({
     const err = exc instanceof Error ? exc : new Error(String(exc));
     return { status: "failed", error: err };
   }
+}
+
+/**
+ * Forget any ``me`` answered before this session existed.
+ *
+ * ``I18nProvider`` sits above ``BootstrapGate`` and calls ``useMe()``, whose
+ * query answers ``null`` when no token is stored. On a cold launch that lands
+ * before the Telegram login finishes, and it is cached with the same 60-second
+ * ``staleTime`` the gate uses to warm ``me`` afterwards — so the warm-up finds
+ * a fresh ``null``, fetches nothing, and the app is released signed out for a
+ * minute. That is the "sometimes opens logged out, fine after a reload" report:
+ * a race, so intermittent, and a reopen starts a new cache.
+ *
+ * Removing rather than invalidating: an invalidated entry is still served while
+ * the refetch is in flight, and every consumer here renders ``me.data``
+ * ungated.
+ */
+export function discardPreSessionMe(qc: QueryClient): void {
+  qc.removeQueries({ queryKey: ["me"] });
 }
 
 export function useMe() {

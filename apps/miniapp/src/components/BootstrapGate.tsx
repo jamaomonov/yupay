@@ -16,7 +16,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 
 import { SplashWordmark } from "@/components/SplashWordmark";
 import { ApiError, apiGet, getAccessToken } from "@/lib/api";
-import { bootstrapAuth, decideBoot } from "@/lib/auth";
+import { bootstrapAuth, decideBoot, discardPreSessionMe } from "@/lib/auth";
 import { brandsQueryOptions, categoriesQueryOptions } from "@/lib/catalog";
 import { useT, type MessageKey } from "@/lib/i18n";
 import { launchedFromTelegram } from "@/lib/telegram";
@@ -167,6 +167,13 @@ export function BootstrapGate({ children }: { children: ReactNode }) {
       // decision is "ready" (authenticated) or "anonymous" (plain-browser dev).
       setStage("bootstrap.loadingCatalog");
       const hasAuth = Boolean(getAccessToken());
+
+      // A `me` answered before this session existed is not about this session.
+      // `I18nProvider` sits above this gate and asks for one on mount, so on a
+      // cold launch it caches `null` while the login is still in flight — and
+      // the warm-up below shares its `staleTime`, so it would find that `null`
+      // fresh and fetch nothing. The app then opened signed out until a reload.
+      if (hasAuth) discardPreSessionMe(qc);
 
       // Catalog warms in the BACKGROUND — every page renders skeletons for
       // it, so blocking the whole splash on it just turned a slow network

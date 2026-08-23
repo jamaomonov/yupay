@@ -90,12 +90,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Only the access token is in the body now; the refresh token arrived as an
       // HttpOnly cookie (set by the browser from the login/register response).
       setTokens(tokens.access_token);
-      // Fetch /auth/me imperatively and seed the cache. `invalidateQueries`
-      // would no-op here because the `me` query is still `enabled: false` (its
-      // gate was evaluated before the in-memory token was set); fetchQuery
-      // ignores that gate, so `user` is populated before the caller navigates
-      // to an auth-gated route.
-      await qc.fetchQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/auth/me") });
+      // Seed the cache before the caller navigates to an auth-gated route.
+      // `setTokens` above has already told the provider it is signed in, so by
+      // the time this lands the `me` observer is enabled and publishes it.
+      //
+      // Failure must not abort: the session is already real by this point —
+      // the token is held and the refresh cookie is set — so throwing here left
+      // a signed-in browser showing a signed-out app, and `TelegramLoginButton`
+      // calls this as `void loginWithTelegram(u)`, so nothing surfaced. A
+      // reload then "fixed" it by taking the cookie path instead. The enabled
+      // `me` query owns the retry; this is only a head start.
+      await qc
+        .fetchQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/auth/me") })
+        .catch(() => {
+          // Drop the failed entry rather than leave it: the query is
+          // `retry: false`, so an observer enabling onto an errored `me` would
+          // inherit the error and never ask again. Removed, it starts clean and
+          // fetches — which is the recovery this whole branch exists for.
+          qc.removeQueries({ queryKey: ["me"] });
+        });
 
       // Migrate this browser's guest orders (if any) onto the now-authenticated
       // account, then drop the local copies — they're either claimed onto this

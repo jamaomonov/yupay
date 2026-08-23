@@ -153,3 +153,64 @@ it("leaves nothing of the previous account in the cache after logout", async () 
   expect(qc.getQueryData(["wallet", "transactions"])).toBeUndefined();
   expect(qc.getQueryData(["orders"])).toBeUndefined();
 });
+
+it("recovers when the post-login `me` fetch fails, instead of stranding a real session", async () => {
+  // The reported bug: signing in appeared to do nothing until the page was
+  // reloaded. `setTokens` had already run — the session was real and the
+  // refresh cookie was set, which is why a reload fixed it — but a failure
+  // anywhere after it aborted `afterTokens`, so the user record was never
+  // cached and nothing re-rendered. `TelegramLoginButton` calls this as
+  // `void loginWithTelegram(u)`, so the rejection was swallowed in silence.
+  let meCalls = 0;
+  fetchMock.mockImplementation((url: string) => {
+    if (url.includes("/auth/telegram/widget")) {
+      return Promise.resolve(jsonResponse(200, { access_token: "tok" }));
+    }
+    if (url.includes("/auth/me")) {
+      meCalls += 1;
+      // The first call — the one inside `afterTokens` — fails.
+      if (meCalls === 1) return Promise.resolve(jsonResponse(500, { detail: "boom" }));
+      return Promise.resolve(jsonResponse(200, ME));
+    }
+    if (url.includes("/orders/claim")) return Promise.resolve(jsonResponse(200, { claimed: 0 }));
+    return Promise.resolve(jsonResponse(200, {}));
+  });
+
+  const { result } = renderAuth();
+  await waitFor(() => {
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  await act(async () => {
+    await result.current.loginWithTelegram({ id: 1 });
+  });
+
+  // The session is real, so the app must end up signed in without a reload.
+  await waitFor(() => {
+    expect(result.current.user).not.toBeNull();
+  });
+});
+
+it("does not reject the caller when the guest-order claim fails", async () => {
+  fetchMock.mockImplementation((url: string) => {
+    if (url.includes("/auth/login")) {
+      return Promise.resolve(jsonResponse(200, { access_token: "tok" }));
+    }
+    if (url.includes("/auth/me")) return Promise.resolve(jsonResponse(200, ME));
+    if (url.includes("/orders/claim")) return Promise.resolve(jsonResponse(500, {}));
+    return Promise.resolve(jsonResponse(200, {}));
+  });
+
+  const { result } = renderAuth();
+  await waitFor(() => {
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  await act(async () => {
+    await result.current.login("b@e.com", "pw");
+  });
+
+  await waitFor(() => {
+    expect(result.current.user).not.toBeNull();
+  });
+});
