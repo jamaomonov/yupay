@@ -11,6 +11,7 @@ happen at all.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from itertools import pairwise
 
 import pytest
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -56,7 +57,7 @@ def test_the_stagger_keeps_them_off_each_other() -> None:
         module.register(scheduler)  # type: ignore[attr-defined]
 
     starts = sorted(job.next_run_time for job in scheduler.get_jobs())
-    gaps = [b - a for a, b in zip(starts, starts[1:], strict=False)]
+    gaps = [b - a for a, b in pairwise(starts)]
     assert all(gap >= timedelta(seconds=15) for gap in gaps), f"too tight: {gaps}"
 
 

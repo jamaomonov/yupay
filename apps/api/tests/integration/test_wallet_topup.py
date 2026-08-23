@@ -15,6 +15,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.modules.orders.models import Order
 from yupay.modules.users.models import TelegramLink, User
+from yupay.modules.wallet import funding
 from yupay.modules.wallet import service as wallet_svc
 from yupay.modules.wallet.service import Leg
 
@@ -522,3 +523,157 @@ async def test_the_same_request_still_replays(integration_client: AsyncClient) -
         key="wallet-replay-same-001",
     )
     assert first["id"] == again["id"]
+
+
+def _blind_precheck_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make the next duplicate-key lookup miss, the way a real race does.
+
+    Two concurrent calls carrying one key both run the pre-check before either
+    has inserted, so both see nothing and both try to insert. The loser is the
+    one the unique index rejects, and it lands in the ``IntegrityError`` branch
+    — the only place the guard runs for it. Blinding exactly the first lookup
+    reproduces that ordering deterministically; the re-select inside the branch
+    is the second call and sees the winner's row, as it would in production.
+    """
+    real = funding._existing_topup_order
+    seen = {"n": 0}
+
+    async def flaky(*args: object, **kwargs: object) -> Order | None:
+        seen["n"] += 1
+        if seen["n"] == 1:
+            return None
+        return await real(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(funding, "_existing_topup_order", flaky)
+
+
+async def test_the_losing_side_of_a_race_is_still_checked(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The race path applies the same guard, not a looser one.
+
+    Both callers miss the pre-check, so the one the unique index rejects
+    reaches the ``IntegrityError`` branch. Without the check there it would be
+    handed a hosted checkout for the winner's figure — the customer paying an
+    amount this call never named.
+    """
+    token, _ = await _login_user(integration_client, tg_id=940)
+    await _topup(
+        integration_client,
+        token=token,
+        amount="10000",
+        provider="mock",
+        key="wallet-race-amount-01",
+    )
+
+    _blind_precheck_once(monkeypatch)
+    again = await integration_client.post(
+        "/api/v1/wallet/topup",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "wallet-race-amount-01",
+            "X-Yupay-Surface": "miniapp",
+        },
+        json={"amount": "500000", "provider": "mock"},
+    )
+    assert again.status_code == 409, again.text
+
+
+async def test_the_losing_side_of_a_race_still_replays_when_it_agrees(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The guard on the race path must not break idempotency either.
+
+    A genuine double-submit — one key, one amount, one rail — is what
+    idempotency exists for, and losing the insert race is not a reason to
+    refuse it. The loser gets the winner's payment, and no second order.
+    """
+    token, _ = await _login_user(integration_client, tg_id=941)
+    first = await _topup(
+        integration_client,
+        token=token,
+        amount="10000",
+        provider="mock",
+        key="wallet-race-same-0001",
+    )
+
+    _blind_precheck_once(monkeypatch)
+    again = await _topup(
+        integration_client,
+        token=token,
+        amount="10000",
+        provider="mock",
+        key="wallet-race-same-0001",
+    )
+    assert first["id"] == again["id"]
+
+
+async def test_a_race_that_cannot_find_the_winner_refuses(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A duplicate the re-select cannot explain is refused, not retried.
+
+    If the insert is rejected and the row still cannot be read, something other
+    than an ordinary replay is going on. The one thing this must not do is
+    carry on and create a second deposit for a key that already has one.
+    """
+    token, _ = await _login_user(integration_client, tg_id=942)
+    await _topup(
+        integration_client,
+        token=token,
+        amount="10000",
+        provider="mock",
+        key="wallet-race-blind-001",
+    )
+
+    async def blind(*args: object, **kwargs: object) -> Order | None:
+        return None
+
+    monkeypatch.setattr(funding, "_existing_topup_order", blind)
+    again = await integration_client.post(
+        "/api/v1/wallet/topup",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "wallet-race-blind-001",
+            "X-Yupay-Surface": "miniapp",
+        },
+        json={"amount": "10000", "provider": "mock"},
+    )
+    assert again.status_code == 409, again.text
+
+
+async def test_replaying_a_key_after_the_money_landed_returns_the_paid_payment(
+    integration_client: AsyncClient,
+) -> None:
+    """A replay after settlement returns the settled payment, and credits once.
+
+    Once the webhook has landed there is no *active* intent left to hand back —
+    the payment is ``succeeded`` — so the lookup that serves every other replay
+    finds nothing. Falling through to "create one" would open a second checkout
+    for a deposit already paid; the customer would be invited to pay twice for
+    a balance already credited.
+    """
+    token, _ = await _login_user(integration_client, tg_id=943)
+    first = await _topup(
+        integration_client,
+        token=token,
+        amount="10000",
+        provider="mock",
+        key="wallet-replay-paid-01",
+    )
+    await _settle_mock(integration_client, first)
+
+    again = await _topup(
+        integration_client,
+        token=token,
+        amount="10000",
+        provider="mock",
+        key="wallet-replay-paid-01",
+    )
+    assert again["id"] == first["id"]
+    assert again["status"] == "succeeded"
+
+    wallet = await integration_client.get(
+        "/api/v1/wallet", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert _wallet_uzs(wallet.json()) == Decimal("10000")
