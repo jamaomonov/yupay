@@ -658,6 +658,14 @@ async def create_order(
                 sku_id=sku.id,
                 qty=line.qty,
                 unit_price_usd=unit_price_usd,
+                # Frozen here for the same reason as the rate (ADR-0051): the
+                # hourly supplier-price job rewrites ``Sku.cost_usdt`` as
+                # upstream prices move, so reporting that read it live
+                # re-valued every past sale of this SKU whenever the supplier
+                # moved. ``None`` on a variable line is not an omission — its
+                # cost is the face value the customer chose, which
+                # ``unit_price_usd`` already records.
+                cost_usdt=None if sku.variable_amount else sku.cost_usdt,
                 fulfillment_data=cleaned,
             )
         )

@@ -149,6 +149,18 @@ class OrderItem(Base):
     # recorded", which ``orders.revenue`` resolves against the SKU.
     rate_multiplier: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
     fx_rate: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
+    # What this line cost us, frozen at checkout — the same treatment ADR-0051
+    # gave ``rate_multiplier``, on the column it did not cover. ``Sku.cost_usdt``
+    # is live: the hourly supplier-price job rewrites it as upstream prices
+    # move, so valuing a sale against it re-priced every past order of that SKU
+    # every time the supplier moved. NULL on rows written before this column
+    # existed, which ``orders.revenue`` resolves against the price history.
+    #
+    # INTERNAL. Never add this to an ``*Out`` schema that a customer can reach:
+    # it is our purchase price, and the order response it would ride on is
+    # public to the buyer. ``OrderItemOut`` lists its fields explicitly and
+    # forbids extras, so the leak has to be written deliberately — do not.
+    cost_usdt: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
     fulfillment_data: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
@@ -171,6 +183,9 @@ class OrderItem(Base):
             name="ck_order_items_rate_multiplier_positive",
         ),
         CheckConstraint("fx_rate IS NULL OR fx_rate > 0", name="ck_order_items_fx_rate_positive"),
+        CheckConstraint(
+            "cost_usdt IS NULL OR cost_usdt > 0", name="ck_order_items_cost_usdt_positive"
+        ),
     )
 
 

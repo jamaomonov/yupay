@@ -32,15 +32,13 @@ indistinguishable from a recorded fact. See the ADR for why the pre-existing
 from __future__ import annotations
 
 from decimal import ROUND_HALF_UP, Decimal
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from sqlalchemy import Case, Subquery, case, func, select
+from sqlalchemy import Case, ScalarSelect, Subquery, case, func, select
 
 from yupay.modules.catalog.models import Sku
-from yupay.modules.orders.models import OrderItem
-
-if TYPE_CHECKING:  # pragma: no cover -- type hints only
-    from yupay.modules.orders.models import Order
+from yupay.modules.integrations.models import SupplierPriceHistory
+from yupay.modules.orders.models import Order, OrderItem
 
 _CENTS = Decimal("0.01")
 
@@ -72,6 +70,27 @@ def charged_usd_expr() -> Case[Any]:
     )
 
 
+def _cost_when_ordered() -> ScalarSelect[Any]:
+    """The cost ``supplier_price_history`` says was in force at order time.
+
+    Only reached for lines with no frozen cost of their own — everything from
+    ADR-0053 onwards carries one, so this set stops growing at deploy and the
+    correlated lookup goes cold. ``NULL`` when the SKU has no history reaching
+    back that far, which the caller falls through on rather than treating as
+    "free".
+    """
+    return (
+        select(SupplierPriceHistory.cost_usdt)
+        .where(
+            SupplierPriceHistory.sku_id == OrderItem.sku_id,
+            SupplierPriceHistory.captured_at <= Order.created_at,
+        )
+        .order_by(SupplierPriceHistory.captured_at.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+
+
 def margin_usd_expr() -> Case[Any]:
     """Per-order-item margin in USD, for use inside ``func.sum(...)``.
 
@@ -97,6 +116,22 @@ def margin_usd_expr() -> Case[Any]:
     the gross reads the frozen one is how ``gross - margin == cost`` quietly
     stops holding the first time somebody edits a SKU's markup.
 
+    Cost resolves in the same three-step shape, for the same reason (ADR-0053).
+    ``Sku.cost_usdt`` is live — the hourly supplier-price job rewrites it as
+    upstream prices move, up or down — so reading it here re-valued every past
+    sale of a SKU every time its supplier moved. Measured on prod before the
+    fix: 21 of 144 costed lines disagreed with the cost recorded against them,
+    understating margin by $2.63 of $119.47.
+
+    So: the cost frozen on the line at checkout wins. Failing that (rows
+    written before that column existed) the cost that ``supplier_price_history``
+    says was in force when the order was created. Failing that — a SKU whose
+    price predates the history table — the live SKU, which is where this
+    started and is still the best that can honestly be said about such a row.
+    The history lookup only runs for lines with no snapshot, a set that stops
+    growing at deploy: ``CASE`` does not evaluate branches past the one that
+    matched.
+
     Returns:
         A SQLAlchemy ``CASE``. Typed ``Case[Any]`` because SQLAlchemy's
         ``case()`` stub always returns ``Case[Any]`` regardless of branch type.
@@ -106,6 +141,14 @@ def margin_usd_expr() -> Case[Any]:
         (
             Sku.variable_amount.is_(True),
             OrderItem.qty * OrderItem.unit_price_usd * (variable_multiplier - 1),
+        ),
+        (
+            OrderItem.cost_usdt.isnot(None),
+            OrderItem.qty * (OrderItem.unit_price_usd - OrderItem.cost_usdt),
+        ),
+        (
+            _cost_when_ordered().isnot(None),
+            OrderItem.qty * (OrderItem.unit_price_usd - _cost_when_ordered()),
         ),
         (
             Sku.cost_usdt.isnot(None),

@@ -12,6 +12,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.ids import new_id
@@ -24,7 +25,10 @@ from yupay.modules.catalog.models import (
     ProductTranslation,
     Sku,
 )
+from yupay.modules.integrations.models import SupplierPriceHistory
 from yupay.modules.orders.models import Order, OrderItem
+from yupay.modules.orders.schemas import OrderCreate, OrderItemIn
+from yupay.modules.orders.service import Actor, create_order
 from yupay.modules.stats.service import build_dashboard
 
 pytestmark = pytest.mark.asyncio
@@ -73,7 +77,8 @@ async def _order(
     unit: str,
     status: str = "delivered",
     created_ago: timedelta = timedelta(hours=1),
-) -> None:
+    cost: str | None = None,
+) -> str:
     moment = now() - created_ago
     order = Order(
         id=new_id(),
@@ -97,9 +102,11 @@ async def _order(
             sku_id=sku_id,
             qty=qty,
             unit_price_usd=Decimal(unit),
+            cost_usdt=Decimal(cost) if cost is not None else None,
         )
     )
     await db.flush()
+    return str(order.id)
 
 
 async def test_margin_is_gross_minus_cost(db_session: AsyncSession) -> None:
@@ -148,3 +155,94 @@ async def test_margin_covers_the_same_orders_as_the_revenue_beside_it(
     after = await build_dashboard(db_session, window_hours=24)
     assert after.margin_in_window.amount_usd == before.margin_in_window.amount_usd
     assert after.margin_in_window.unknown_units == before.margin_in_window.unknown_units
+
+
+async def test_a_supplier_price_move_does_not_revalue_a_past_sale(
+    db_session: AsyncSession,
+) -> None:
+    """The cost frozen on the line wins over whatever the SKU says today.
+
+    ``Sku.cost_usdt`` is rewritten hourly as upstream prices move, so reading
+    it live meant every past sale of a SKU was re-valued whenever its supplier
+    moved — a margin that changed after the fact, on orders long since closed.
+    """
+    known, _ = await _seed_skus(db_session)
+    before = await build_dashboard(db_session, window_hours=24)
+
+    # Sold at a cost of 8.00: 2 units at 10.00 retail -> margin 4.00.
+    await _order(db_session, sku_id=known, qty=2, unit="10.00", cost="8.00")
+    after_sale = await build_dashboard(db_session, window_hours=24)
+    assert after_sale.margin_in_window.amount_usd - before.margin_in_window.amount_usd == Decimal(
+        "4.00"
+    )
+
+    # The supplier raises the price. The sale above already happened.
+    sku = await db_session.get(Sku, known)
+    assert sku is not None
+    sku.cost_usdt = Decimal("9.50")
+    await db_session.flush()
+
+    after_move = await build_dashboard(db_session, window_hours=24)
+    assert after_move.margin_in_window.amount_usd == after_sale.margin_in_window.amount_usd
+
+
+async def test_a_line_with_no_snapshot_falls_back_to_the_price_history(
+    db_session: AsyncSession,
+) -> None:
+    """Rows written before the snapshot column keep their real cost.
+
+    Not backfilled, deliberately — a reconstructed cost written into the
+    column would be indistinguishable from one recorded at checkout. It is
+    resolved at read time instead, against the history that already records
+    every upstream move.
+    """
+    known, _ = await _seed_skus(db_session)
+    before = await build_dashboard(db_session, window_hours=24)
+
+    order_id = await _order(db_session, sku_id=known, qty=2, unit="10.00", cost=None)
+    order = await db_session.get(Order, order_id)
+    assert order is not None
+    db_session.add(
+        SupplierPriceHistory(
+            id=new_id(),
+            sku_id=known,
+            supplier_slug="g2b",
+            kind="voucher",
+            external_product_id="x",
+            cost_usdt=Decimal("7.00"),
+            previous_cost_usdt=None,
+            source="job",
+            captured_at=order.created_at - timedelta(hours=1),
+        )
+    )
+    await db_session.flush()
+
+    # The SKU now says 8.00, but 7.00 was in force when the order was created.
+    after = await build_dashboard(db_session, window_hours=24)
+    gained = after.margin_in_window.amount_usd - before.margin_in_window.amount_usd
+    assert gained == Decimal("6.00"), "expected 2 x (10.00 - 7.00) from the history, not the SKU"
+
+
+async def test_checkout_records_the_cost_it_bought_at(db_session: AsyncSession) -> None:
+    """The snapshot has to be written, not merely available.
+
+    Everything above tests how margin *reads* cost. If checkout never wrote it,
+    every one of those tests would still pass on the history fallback while
+    production quietly kept drifting.
+    """
+    known, _ = await _seed_skus(db_session)
+    sku = await db_session.get(Sku, known)
+    assert sku is not None
+    assert sku.cost_usdt == Decimal("8.00")
+
+    order = await create_order(
+        db_session,
+        OrderCreate(currency="USD", items=[OrderItemIn(sku_id=known, qty=1)]),
+        actor=Actor(user_id=None, email="g@example.com"),
+        idempotency_key=new_id(),
+        source="web",
+    )
+    line = (
+        await db_session.execute(select(OrderItem).where(OrderItem.order_id == order.id))
+    ).scalar_one()
+    assert line.cost_usdt == Decimal("8.00"), "checkout did not freeze the cost"
