@@ -5,6 +5,8 @@ import { expect, it, vi } from "vitest";
 
 import { OrdersListPage } from "./OrdersListPage";
 
+import { formatMoney } from "@/lib/money";
+
 import type { OrderAdminListOut, OrderAdminOut } from "./types";
 
 import { apiGet } from "@/lib/api";
@@ -115,12 +117,22 @@ it("labels a wallet top-up row instead of an empty item count", async () => {
     makeOrder({
       purpose: "wallet_topup",
       items: [],
-      total_charged: "50000",
+      // As the API actually serialises it: NUMERIC(20, 6). The old assertion
+      // used "50000", which reads the same formatted or not and so passed
+      // while an operator saw "10000.000000 UZS".
+      total_charged: "10000.000000",
       currency: "UZS",
     }),
   ]);
 
   const row = await findDataRow();
-  expect(within(row).getByText(/Пополнение кошелька/)).toBeInTheDocument();
-  expect(within(row).getByText(/50000 UZS/)).toBeInTheDocument();
+  // Scoped to the label itself, not the row: the Сумма column two cells over
+  // already formats correctly, so asserting on the whole row passed happily
+  // while this cell rendered "10000.000000 UZS".
+  const label = within(row).getByText(/Пополнение кошелька/);
+  // Against the shared formatter rather than a literal, so the test cannot
+  // disagree with that column about the separator — and via `textContent`,
+  // because the query normaliser collapses the NBSP that
+  // `Intl.NumberFormat("ru-RU")` actually emits.
+  expect(label.textContent).toContain(formatMoney("10000.000000", "UZS"));
 });

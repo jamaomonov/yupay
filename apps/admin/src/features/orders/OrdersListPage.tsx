@@ -198,7 +198,10 @@ export function OrdersListPage() {
         if (o.purpose === "wallet_topup") {
           return (
             <span className="text-sm">
-              Пополнение кошелька · {o.total_charged} {o.currency}
+              {/* Through the shared formatter, like the Сумма column two cells
+                  over: the raw value is NUMERIC(20, 6), so this read
+                  "10000.000000 UZS" beside a properly grouped "10 000 UZS". */}
+              Пополнение кошелька · {formatMoney(o.total_charged, o.currency)}
             </span>
           );
         }
