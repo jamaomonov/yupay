@@ -4949,6 +4949,18 @@
             "title": "Created At",
             "type": "string"
           },
+          "delivery_email": {
+            "anyOf": [
+              {
+                "format": "email",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Email"
+          },
           "display_currency": {
             "title": "Display Currency",
             "type": "string"
@@ -5408,6 +5420,18 @@
             "minLength": 3,
             "title": "Currency",
             "type": "string"
+          },
+          "delivery_email": {
+            "anyOf": [
+              {
+                "format": "email",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Email"
           },
           "guest_email": {
             "anyOf": [
@@ -10291,6 +10315,22 @@
         "additionalProperties": false,
         "description": "Customer-facing ``PATCH /users/me`` body. All fields optional.",
         "properties": {
+          "delivery_email": {
+            "anyOf": [
+              {
+                "format": "email",
+                "type": "string"
+              },
+              {
+                "const": "",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Email"
+          },
           "display_currency": {
             "anyOf": [
               {
@@ -10496,6 +10536,18 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "delivery_email": {
+            "anyOf": [
+              {
+                "format": "email",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Email"
           },
           "display_currency": {
             "title": "Display Currency",

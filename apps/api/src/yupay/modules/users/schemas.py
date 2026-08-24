@@ -36,6 +36,9 @@ class UserOut(BaseModel):
 
     id: str
     email: EmailStr | None
+    #: Where this customer's order mail goes. Distinct from ``email``, which
+    #: is the login identity — a settings screen writes this one, never that.
+    delivery_email: EmailStr | None = None
     locale: str
     display_currency: str
     display_name: str | None
@@ -53,6 +56,10 @@ class UpdateMeIn(BaseModel):
 
     display_currency: DisplayCurrencyLiteral | None = None
     locale: LocaleLiteral | None = None
+    #: Where to mail orders. ``None`` leaves it untouched (partial patch);
+    #: an empty string clears it, which is the only way back to "use my
+    #: account address" once one has been set.
+    delivery_email: EmailStr | Literal[""] | None = None
 
 
 class TelegramLinkOut(BaseModel):

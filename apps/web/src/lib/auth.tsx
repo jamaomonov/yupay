@@ -25,6 +25,9 @@ import { listGuestOrders, removeGuestOrders } from "./guest-orders";
 export interface Me {
   id: string;
   email: string | null;
+  /** Where this customer's orders are mailed, when they have set one.
+   *  Distinct from `email`, which is the login identity. */
+  delivery_email?: string | null;
   locale: string;
   display_currency: string;
   display_name: string | null;

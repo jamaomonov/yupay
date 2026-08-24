@@ -9,8 +9,9 @@ import {
   Info,
   Languages,
   LifeBuoy,
+  Mail,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import enFlag from "@/assets/flags/en.png";
 import ruFlag from "@/assets/flags/ru.png";
@@ -24,6 +25,7 @@ import { useUpdateLocale } from "@/lib/i18n/use-update-locale";
 import { legalUrl } from "@/lib/legal";
 import { getWebApp, openExternalLink } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { useUpdateDeliveryEmail } from "@/lib/use-update-delivery-email";
 
 // Language autonyms — shown in their own language regardless of UI locale,
 // which is the conventional way to present a language picker.
@@ -87,6 +89,14 @@ export default function Settings() {
 
   const [aboutOpen, setAboutOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailDraft, setEmailDraft] = useState("");
+  const updateDeliveryEmail = useUpdateDeliveryEmail();
+  // Seed the field each time the sheet opens, not on every render: the saved
+  // value arriving mid-edit would otherwise overwrite what is being typed.
+  useEffect(() => {
+    if (emailOpen) setEmailDraft(user?.delivery_email ?? "");
+  }, [emailOpen, user?.delivery_email]);
   const [tgIdCopied, setTgIdCopied] = useState(false);
 
   // The Telegram user id is what every operator / support agent will
@@ -229,6 +239,15 @@ export default function Settings() {
             }}
           />
           <SettingsRow
+            icon={Mail}
+            iconClass="text-emerald-400"
+            label={t("settings.deliveryEmail")}
+            value={user?.delivery_email ?? t("settings.deliveryEmailUnset")}
+            onClick={() => {
+              setEmailOpen(true);
+            }}
+          />
+          <SettingsRow
             icon={LifeBuoy}
             iconClass="text-blue-400"
             label={t("settings.support")}
@@ -324,6 +343,54 @@ export default function Settings() {
               );
             })}
           </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Delivery email sheet */}
+      <Sheet open={emailOpen} onOpenChange={setEmailOpen}>
+        <SheetContent side="bottom" className="rounded-t-3xl">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <Mail size={16} className="text-primary" aria-hidden="true" />
+              {t("settings.deliveryEmailSheetTitle")}
+            </SheetTitle>
+          </SheetHeader>
+          <p className="text-muted-foreground mt-2 text-[13px] leading-relaxed">
+            {t("settings.deliveryEmailHint")}
+          </p>
+          <form
+            className="mt-4 space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              updateDeliveryEmail.mutate(emailDraft.trim(), {
+                onSuccess: () => {
+                  setEmailOpen(false);
+                },
+              });
+            }}
+          >
+            <input
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              value={emailDraft}
+              onChange={(e) => {
+                setEmailDraft(e.target.value);
+              }}
+              placeholder={t("settings.deliveryEmailPlaceholder")}
+              aria-label={t("settings.deliveryEmail")}
+              data-testid="delivery-email-input"
+              className="border-border bg-background/60 focus:border-primary w-full rounded-2xl border px-4 py-3 text-sm outline-none transition-colors"
+            />
+            <button
+              type="submit"
+              disabled={updateDeliveryEmail.isPending}
+              data-testid="delivery-email-save"
+              className="bg-primary text-primary-foreground w-full rounded-2xl py-3 text-sm font-semibold disabled:opacity-60"
+            >
+              {t("settings.deliveryEmailSave")}
+            </button>
+          </form>
         </SheetContent>
       </Sheet>
 

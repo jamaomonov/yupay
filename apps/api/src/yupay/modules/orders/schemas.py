@@ -54,8 +54,17 @@ class OrderCreate(BaseModel):
 
     currency: str = Field(min_length=3, max_length=8, default="USD")
     items: list[OrderItemIn] = Field(min_length=1, max_length=20)
-    # Required for guest checkout; ignored when the caller is an authenticated user.
+    # Required for guest checkout; ignored when the caller is an authenticated
+    # user, for whom it is also their identity on the order and cannot be
+    # redirected. See ``delivery_email`` for where a signed-in buyer's mail goes.
     guest_email: EmailStr | None = None
+    # Where to mail this order's confirmation and codes when the buyer is
+    # signed in. Checkout has always shown a required email field to everyone
+    # and dropped what signed-in customers typed into it, so they received
+    # nothing. Ignored for guests: ``guest_email`` is both their address and
+    # their claim on the order, and letting the two differ would mail the codes
+    # somewhere the order does not belong.
+    delivery_email: EmailStr | None = None
     # Passive browser signals kept for chargeback defence (ADR-0044). Optional
     # on purpose: a client that sends nothing still gets to buy, it just leaves
     # a thinner record behind.

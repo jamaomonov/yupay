@@ -110,9 +110,19 @@ link without losing their account.
 
 **Order emails** are wired into the existing `notifications/service.py` dispatch next
 to the Telegram notification branch, gated on `order.guest_email` (or the registered
-user's email). The email branch is placed **before** the Telegram `chat is None`
-early-return so that guests who have no Telegram account always receive an email. Both
-branches are best-effort: exceptions are caught and logged, never propagated.
+user's email).
+
+> **Correction (2026-08-25).** The parenthetical described an intent the code never
+> had: the branch read `order.guest_email` alone, which is NULL on every signed-in
+> order by construction (`ck_orders_actor_exclusive`), so registered buyers were
+> mailed nothing — 107 delivered orders on prod, 36 of them belonging to accounts
+> with an address on file. Resolution now runs `order.guest_email` →
+> `order.delivery_email` (what was typed at checkout) → `users.delivery_email` (the
+> mini app's settings screen) → `users.email`. `users.delivery_email` is separate
+> from the login identity on purpose; see the column comment for why a settings
+> screen must not write `users.email`. The email branch is placed **before** the Telegram `chat is None`
+> early-return so that guests who have no Telegram account always receive an email. Both
+> branches are best-effort: exceptions are caught and logged, never propagated.
 
 **Testing.** `respx`-mocked contract tests cover: `send_email` success (asserts
 `Authorization: Bearer <key>` header and returns the Resend `id`); 4xx raises

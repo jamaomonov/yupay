@@ -85,8 +85,15 @@ async def _ensure_order_owner(db: AsyncSession, *, actor: Actor, order_id: str) 
         raise HTTPException(status_code=404, detail="order not found")
     if actor.user_id is not None and order.user_id != actor.user_id:
         raise HTTPException(status_code=404, detail="order not found")
-    if actor.user_id is None and (order.guest_email or "").lower() != (actor.email or "").lower():
-        raise HTTPException(status_code=404, detail="order not found")
+    if actor.user_id is None:
+        # A magic-link bearer. The token is order-scoped and bound to the hash
+        # of the address we mailed (ADR-0042), so matching ``delivery_email``
+        # here is exactly as tight as matching ``guest_email`` — and without it
+        # the link we send a signed-in buyer 404s, because ``guest_email`` is
+        # NULL on their order by construction.
+        addressed_to = (order.guest_email or order.delivery_email or "").lower()
+        if addressed_to != (actor.email or "").lower():
+            raise HTTPException(status_code=404, detail="order not found")
     return order
 
 

@@ -134,6 +134,10 @@ class MeOut(BaseModel):
 
     id: str
     email: EmailStr | None
+    #: Where this customer's order mail goes, when they have set one.
+    #: The storefront prefills the checkout field from it, and the mini
+    #: app's settings screen is the only place it is written.
+    delivery_email: EmailStr | None = None
     locale: str
     display_currency: str
     display_name: str | None

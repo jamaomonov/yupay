@@ -23,6 +23,11 @@ class User(Base):
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
     email: Mapped[str | None] = mapped_column(CITEXT(), nullable=True)
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Where this customer's codes go. Separate from ``email`` on purpose: that
+    # one is the login identity (unique, resolved by the auth service), so a
+    # settings screen must never write to it. This is a mailing address —
+    # never a credential, never looked up to find an account.
+    delivery_email: Mapped[str | None] = mapped_column(CITEXT(), nullable=True)
     email_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

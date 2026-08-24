@@ -28,6 +28,10 @@ interface TokensOut {
 export interface Me {
   id: string;
   email: string | null;
+  /** Where this customer's order codes are mailed, when they have set one.
+   *  Distinct from `email`, which is the login identity — a Telegram-only
+   *  account has none, which is why the settings screen writes this instead. */
+  delivery_email: string | null;
   locale: string;
   /** Storefront/wallet display currency the customer picked (default ``USD``). */
   display_currency: string;

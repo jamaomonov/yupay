@@ -687,6 +687,9 @@ async def create_order(
         id=order_id,
         user_id=actor.user_id,
         guest_email=actor.email,
+        # Only meaningful for a signed-in buyer: a guest's address is
+        # ``guest_email`` and doubles as their claim on the order.
+        delivery_email=(body.delivery_email if actor.user_id is not None else None),
         status="pending_payment",
         currency=currency,
         total_usd=total_usd,

@@ -35,7 +35,7 @@ from yupay.modules.notifications.templates import (
 )
 from yupay.modules.orders.models import Order, OrderItem
 from yupay.modules.orders.service import build_item_display
-from yupay.modules.users.models import TelegramLink
+from yupay.modules.users.models import TelegramLink, User
 
 log = get_logger("yupay.notifications.service")
 
@@ -181,6 +181,35 @@ def _summarise_order(order: Order, *, locale: str = "ru") -> str:
     return headline
 
 
+async def _delivery_recipient(db: AsyncSession, order: Order) -> str | None:
+    """Where this order's mail goes, or ``None`` when we have no address.
+
+    Used to be ``order.guest_email`` alone, which is NULL on every signed-in
+    order by construction (``ck_orders_actor_exclusive``). So a signed-in
+    customer typed an address into a required checkout field and was emailed
+    nothing — 107 delivered orders on prod, 36 of them belonging to accounts
+    that had a perfectly good address on file. Telegram covered it for whoever
+    had linked a chat, and silently did not for anyone who had not.
+
+    Most specific first: what this order was told, then what the account asks
+    for by default, then the login address. Login is last because it is a
+    credential that happens to be deliverable, not a stated preference.
+    """
+    if order.guest_email:
+        return order.guest_email
+    if order.delivery_email:
+        return order.delivery_email
+    if order.user_id is None:
+        return None
+    row = (
+        await db.execute(select(User.delivery_email, User.email).where(User.id == order.user_id))
+    ).one_or_none()
+    if row is None:
+        return None
+    delivery, login = row
+    return str(delivery) if delivery else (str(login) if login else None)
+
+
 async def _send_guest_email_confirmation(
     *,
     order_id: str,
@@ -281,13 +310,13 @@ async def notify_order_paid(order_id: str) -> bool:
         if order is None:
             return False
         chat = await _resolve_chat_id(db, user_id=order.user_id)
-        guest_email: str | None = order.guest_email
+        recipient = await _delivery_recipient(db, order)
 
-    # Email confirmation for guest buyers — best-effort, independent of Telegram.
+    # Email confirmation — best-effort, independent of Telegram.
     settings = get_settings()
     await _send_guest_email_confirmation(
         order_id=order_id,
-        guest_email=guest_email,
+        guest_email=recipient,
         web_base=settings.web_base_url or None,
     )
 
@@ -319,7 +348,7 @@ async def notify_order_delivered(order_id: str) -> bool:
         if order is None:
             return False
         chat = await _resolve_chat_id(db, user_id=order.user_id)
-        guest_email: str | None = order.guest_email
+        recipient = await _delivery_recipient(db, order)
 
         # Inline-render up to N voucher codes for the smallest-friction UX.
         # Real top-up receipts and license keys also surface here.
@@ -338,12 +367,12 @@ async def notify_order_delivered(order_id: str) -> bool:
 
     settings = get_settings()
 
-    # Email notification for guest buyers — best-effort, independent of Telegram.
-    # Inline the same voucher codes / top-up receipts the Telegram message shows.
+    # Email notification — best-effort, independent of Telegram. Inline the same
+    # voucher codes / top-up receipts the Telegram message shows.
     email_codes, email_credited = _delivery_lines_for_email(deliveries)
     await _send_guest_email_delivered(
         order_id=order_id,
-        guest_email=guest_email,
+        guest_email=recipient,
         web_base=settings.web_base_url or None,
         codes=email_codes,
         credited=email_credited,

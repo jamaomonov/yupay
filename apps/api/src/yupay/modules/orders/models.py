@@ -62,6 +62,11 @@ class Order(Base):
         String(16), nullable=False, server_default=text("'catalog'"), default="catalog"
     )
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Where to send this order's codes when the buyer is signed in. ``guest_email``
+    # cannot hold it — it is half of ``ck_orders_actor_exclusive`` and stays NULL
+    # on a signed-in order — which is why a signed-in customer typed an address
+    # into a required checkout field and received nothing.
+    delivery_email: Mapped[str | None] = mapped_column(CITEXT(), nullable=True)
     ip_hash: Mapped[str | None] = mapped_column(CHAR(64), nullable=True)
     ua_hash: Mapped[str | None] = mapped_column(CHAR(64), nullable=True)
 

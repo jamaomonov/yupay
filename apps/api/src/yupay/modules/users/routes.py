@@ -54,6 +54,7 @@ async def update_me_route(
         user.id,
         display_currency=body.display_currency,
         locale=body.locale,
+        delivery_email=body.delivery_email,
     )
     return UserOut.model_validate(updated)
 

@@ -875,6 +875,19 @@ export function PurchasePanel({
   // to the acquirer, and the refund policy says that's unrecoverable.
   const [checkResults, setCheckResults] = useState<Record<string, PlayerCheckResult | null>>({});
   const [email, setEmail] = useState("");
+  // Signed-in customers were shown the same required email field and had what
+  // they typed dropped on the way out, so they were asked for an address and
+  // then mailed nothing. Prefill it from the account — their delivery address
+  // if they have set one, else the address they sign in with — and leave it
+  // editable, because one order going somewhere else is a normal thing to want.
+  // Only seeds an untouched field: re-running on every `user` change would
+  // overwrite what they are in the middle of typing.
+  const [emailTouched, setEmailTouched] = useState(false);
+  useEffect(() => {
+    if (emailTouched || email !== "") return;
+    const fromAccount = user?.delivery_email ?? user?.email ?? "";
+    if (fromAccount) setEmail(fromAccount);
+  }, [user, email, emailTouched]);
   // The dollar amount typed for a variable-amount SKU. Raw string, not a
   // number — see `@/lib/variable-amount` for parsing/validation.
   const [amountInput, setAmountInput] = useState("");
@@ -1304,7 +1317,10 @@ export function PurchasePanel({
       const orderBody = {
         currency: "UZS",
         items: [orderItem],
-        ...(isLoggedIn ? {} : { guest_email: email }),
+        // `guest_email` is the guest's identity on the order and cannot be
+        // set for a signed-in buyer; `delivery_email` is where their mail
+        // goes. Sending neither is what left them without their codes.
+        ...(isLoggedIn ? { delivery_email: email } : { guest_email: email }),
         ...(hints ? { client_hints: hints } : {}),
       };
 
@@ -1612,6 +1628,7 @@ export function PurchasePanel({
                 value={email}
                 placeholder={t("emailPlaceholder")}
                 onChange={(e) => {
+                  setEmailTouched(true);
                   setEmail(e.target.value);
                 }}
                 className="border-border bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition"

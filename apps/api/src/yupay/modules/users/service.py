@@ -240,6 +240,7 @@ async def update_me(
     *,
     display_currency: str | None = None,
     locale: str | None = None,
+    delivery_email: str | None = None,
 ) -> User:
     """Patch the authenticated user's preferences.
 
@@ -270,6 +271,12 @@ async def update_me(
                 allowed=sorted(_ALLOWED_LOCALES),
             )
         user.locale = cleaned
+    if delivery_email is not None:
+        # Empty string is the documented "clear it" signal — the only way back
+        # to "use my account address" once one is set. Never touches
+        # ``user.email``: that is the login identity, unique and resolved by
+        # the auth service, and a settings screen must not be able to move it.
+        user.delivery_email = delivery_email.strip().lower() or None
     user.updated_at = now()
     await session.flush()
     return user
