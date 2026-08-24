@@ -13,7 +13,9 @@
 /** Candidate Stars pack sizes, largest-inclusive. An admin's `min_qty`/
  *  `max_qty` on the SKU narrows this down per product — see
  *  `visibleStarPackages`. */
-export const STAR_PACKAGES = [50, 75, 100, 150, 250, 350, 500, 750, 1000, 1500, 2500] as const;
+export const STAR_PACKAGES = [
+  50, 75, 100, 150, 250, 350, 500, 750, 1000, 1500, 2500, 5000,
+] as const;
 
 /**
  * The packs a customer is actually allowed to tap, given the SKU's

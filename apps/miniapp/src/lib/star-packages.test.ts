@@ -8,7 +8,18 @@ describe("visibleStarPackages", () => {
   });
 
   test("includes every pack when the bounds cover the whole list", () => {
-    expect(visibleStarPackages(50, 2500)).toEqual([...STAR_PACKAGES]);
+    // Derived from the list, not a literal: the old `2500` was the largest
+    // pack at the time, so adding a bigger one broke a test whose point has
+    // nothing to do with which packs exist.
+    const widest = Math.max(...STAR_PACKAGES);
+    expect(visibleStarPackages(Math.min(...STAR_PACKAGES), widest)).toEqual([...STAR_PACKAGES]);
+  });
+
+  test("offers the 5000 pack at the SKU's configured ceiling", () => {
+    // `tg-stars-any` on prod is min_qty 50 / max_qty 5000. A pack the admin
+    // has raised the ceiling for but the storefront never draws is invisible
+    // to the customer, which is the only way this list can be wrong.
+    expect(visibleStarPackages(50, 5000)).toContain(5000);
   });
 
   test("is empty when no pack falls in range", () => {
