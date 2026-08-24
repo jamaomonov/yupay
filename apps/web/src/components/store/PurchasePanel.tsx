@@ -17,7 +17,7 @@ import type { PlayerCheckResult } from "@/lib/player-check";
 import { WalletMark } from "@/components/icons/WalletMark";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
-import { getAccessToken } from "@/lib/client";
+import { getAccessToken, SURFACE } from "@/lib/client";
 import { collectClientHints } from "@/lib/client-hints";
 import { mintGuestToken } from "@/lib/guest";
 import { saveGuestOrder } from "@/lib/guest-orders";
@@ -933,7 +933,7 @@ export function PurchasePanel({
   // the customer ever tries to pay.
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API}/api/v1/payments/providers`)
+    fetch(`${API}/api/v1/payments/providers`, { headers: { "X-Yupay-Surface": SURFACE } })
       .then((r) => r.json() as Promise<ProvidersOut>) // narrows a known-shape JSON response
       .then((data) => {
         if (!cancelled) setProviderStatus(providerStatusMap(data));
@@ -1314,6 +1314,10 @@ export function PurchasePanel({
           "Content-Type": "application/json",
           "Accept-Language": locale,
           "Idempotency-Key": crypto.randomUUID(),
+          // This is the call that writes `orders.source`. Without it the row
+          // records `unknown`, which is what every web order did while the
+          // mini app — which sends the header — recorded `miniapp`.
+          "X-Yupay-Surface": SURFACE,
           ...auth,
         },
         body: JSON.stringify(orderBody),
@@ -1336,6 +1340,10 @@ export function PurchasePanel({
         headers: {
           "Content-Type": "application/json",
           "Idempotency-Key": crypto.randomUUID(),
+          // Not read here today, but the deposit path already picks Click's
+          // per-surface merchant off this header; sending it keeps the two
+          // sides of checkout declaring the same thing.
+          "X-Yupay-Surface": SURFACE,
           ...auth,
         },
         body: JSON.stringify({ order_id: order.id, provider, return_url: returnUrl }),

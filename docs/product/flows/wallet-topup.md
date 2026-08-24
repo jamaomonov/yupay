@@ -42,8 +42,14 @@ Both storefronts run the same endpoints; only the entry points differ.
 | Acquirers | `click_miniapp`, Payme, Uzum | `click`, Payme, Uzum                                   |
 
 Click bills through a per-surface merchant service, so the web must send
-`click` and the mini app `click_miniapp`. `X-Yupay-Surface` (set by each
-app's API client) is what records the order's `source`.
+`click` and the mini app `click_miniapp`. `X-Yupay-Surface` is what records
+the order's `source`.
+
+Every call must carry it, not only the ones that go through the app's API
+client. Checkout on the web calls `fetch` directly, and because only
+`apiFetch` set the header, every web order recorded `source = unknown` while
+the mini app's recorded `miniapp`. Web now imports `SURFACE` from
+`lib/client.ts` at each raw call site; a new one must do the same.
 
 ## Paying an order from the balance
 

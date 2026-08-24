@@ -234,6 +234,60 @@ it("submits a tapped pack as { sku_id, qty } with no amount_usd", async () => {
   expect(captured.orderItems?.[0]).not.toHaveProperty("amount_usd");
 });
 
+it("declares the web surface on the call that records where an order came from", async () => {
+  // `orders.source` is written from `X-Yupay-Surface` on this POST. Checkout
+  // calls `fetch` directly rather than going through `apiFetch`, which is the
+  // only place that used to set the header — so every web order landed as
+  // `unknown` while the mini app's landed as `miniapp`, and the admin could
+  // not tell a storefront sale from a script.
+  const captured: { surface: string | null } = { surface: null };
+  vi.spyOn(globalThis, "fetch").mockImplementation(
+    (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes("/payments/providers")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ providers: [{ slug: "click", status: "active" }] }), {
+            status: 200,
+          }),
+        );
+      }
+      if (url.includes("/auth/guest")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ access_token: "guest-token" }), { status: 200 }),
+        );
+      }
+      if (url.includes("/api/v1/orders") && init?.method === "POST") {
+        captured.surface = new Headers(init.headers).get("X-Yupay-Surface");
+        return Promise.resolve(new Response(JSON.stringify({ id: "order-1" }), { status: 200 }));
+      }
+      if (url.includes("/payments/intents")) {
+        return Promise.resolve(new Response(JSON.stringify({ intent_url: null }), { status: 200 }));
+      }
+      return Promise.resolve(new Response("{}", { status: 200 }));
+    },
+  );
+
+  renderPanel(<PurchasePanel products={[makeStarsUnitProduct()]} locale="ru" />);
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: /^50 Stars\b/ }));
+  fireEvent.change(screen.getByPlaceholderText("emailPlaceholder"), {
+    target: { value: "buyer@example.com" },
+  });
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: /^pay ·/i })).not.toBeDisabled();
+  });
+  fireEvent.click(screen.getByRole("button", { name: /^pay ·/i }));
+  fireEvent.click(await screen.findByRole("button", { name: "confirmCta" }));
+
+  await waitFor(() => {
+    expect(captured.surface).not.toBeNull();
+  });
+  expect(captured.surface).toBe("web");
+});
+
 it("puts the free-amount field above the packages and says nothing about rate or fees", async () => {
   // The old card asked for dollars while the customer was buying Stars, hid the
   // field under the grid, and wrapped it in a rate / "комиссия 0%" / limit

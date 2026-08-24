@@ -141,8 +141,14 @@ interface ReqOpts {
  *  record where it came from — nothing stored it before, and the only hint was
  *  Click's per-surface merchant service, which covered a tenth of orders and
  *  said nothing about the ones never paid. Advisory: the server gates nothing
- *  on it. */
-const SURFACE = "web";
+ *  on it.
+ *
+ *  Exported because `apiFetch` is not the only way this app reaches the API:
+ *  checkout and the guest helpers call `fetch` directly, and every one of them
+ *  was omitting the header — which is why every web order landed as `unknown`
+ *  while the mini app's landed as `miniapp`. Import this rather than repeating
+ *  the literal, so the next raw call site has one obvious thing to reach for. */
+export const SURFACE = "web";
 
 export async function apiFetch<T>(path: string, opts: ReqOpts = {}): Promise<T> {
   const headers = new Headers(opts.headers);

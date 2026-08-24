@@ -1,3 +1,5 @@
+import { SURFACE } from "./client";
+
 const API = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
 
 /** Mint a short-lived guest token for an email (freely mintable; carries the
@@ -5,7 +7,7 @@ const API = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").re
 export async function mintGuestToken(email: string): Promise<string> {
   const r = await fetch(`${API}/api/v1/auth/guest`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Yupay-Surface": SURFACE },
     body: JSON.stringify({ email: email.trim().toLowerCase() }),
   });
   if (!r.ok) throw new Error("guest-token");
@@ -20,7 +22,7 @@ export async function mintGuestToken(email: string): Promise<string> {
 export async function requestCodeAccess(orderId: string, email: string): Promise<void> {
   const r = await fetch(`${API}/api/v1/orders/${orderId}/code-access`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Yupay-Surface": SURFACE },
     body: JSON.stringify({ email: email.trim().toLowerCase() }),
   });
   if (!r.ok) throw new Error("code-access");
