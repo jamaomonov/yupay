@@ -185,13 +185,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       /* best-effort logout — ignore network/revocation errors */
     });
     clearTokens();
-    // Everything cached belonged to the account that just left. On a shared
+    // `me` is written, not dropped — and written *before* anything is removed.
+    //
+    // The obvious version of this (`qc.clear()`, then re-seed `me` to null)
+    // signed nobody out: pressing "sign out" changed nothing on screen until
+    // the page was reloaded. `clear()` destroys every query object in the
+    // cache, and this provider's live observer stays attached to the destroyed
+    // one; the `setQueryData` that follows *builds a new query object* — a
+    // different instance, with zero observers — so the signed-out state landed
+    // somewhere nothing was listening. Verified rather than assumed: after
+    // that pair the new query has no observers and the old observer still
+    // reports the previous account's data.
+    //
+    // Writing to the still-live query notifies the observer that is actually
+    // subscribed, which is what re-renders the header and every auth gate.
+    qc.setQueryData(["me"], null);
+    // Everything else did belong to the account that just left. On a shared
     // device the next person signs in without a reload, so the same
     // QueryClient survives — and TanStack serves cached data while it
     // refetches, which for the wallet means one customer briefly seeing
-    // another's balance and ledger history. Drop it all, then re-seed `me`.
-    qc.clear();
-    qc.setQueryData(["me"], null);
+    // another's balance and ledger history. `me` is excluded because it now
+    // holds the signed-out state published above, not stale account data.
+    qc.removeQueries({ predicate: (q) => q.queryKey[0] !== "me" });
+    // `qc.clear()` used to take the mutation cache with it; keep that.
+    qc.getMutationCache().clear();
   }, [qc]);
 
   const value = useMemo<AuthValue>(

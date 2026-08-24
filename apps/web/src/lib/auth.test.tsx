@@ -154,6 +154,37 @@ it("leaves nothing of the previous account in the cache after logout", async () 
   expect(qc.getQueryData(["orders"])).toBeUndefined();
 });
 
+it("signs the user out of the UI, not just the cache", async () => {
+  // The reported bug: pressing "Выйти" changed nothing on screen until the
+  // page was reloaded. The sibling test above proves the cache is emptied —
+  // but every auth-gated component reads `user`, and that is what stayed put,
+  // so the header kept showing the account that had just left.
+  fetchMock
+    .mockResolvedValueOnce(jsonResponse(200, { access_token: "tok1" })) // /auth/login
+    .mockResolvedValueOnce(jsonResponse(200, ME)) // /auth/me
+    .mockResolvedValueOnce(jsonResponse(200, { claimed: 0 })) // /orders/claim
+    .mockResolvedValue(jsonResponse(204, null)); // /auth/logout
+
+  const { result } = renderAuth();
+  await act(async () => {
+    await result.current.login("buyer@example.com", "pw");
+  });
+  await waitFor(() => {
+    expect(result.current.user?.id).toBe("user-1");
+  });
+
+  await act(async () => {
+    result.current.logout();
+  });
+
+  // `waitFor`, not a bare assertion: TanStack notifies through its scheduler,
+  // so the re-render lands a tick after the cache write. Asserting straight
+  // after `act` reads the previous render and fails on working code.
+  await waitFor(() => {
+    expect(result.current.user).toBeNull();
+  });
+});
+
 it("recovers when the post-login `me` fetch fails, instead of stranding a real session", async () => {
   // The reported bug: signing in appeared to do nothing until the page was
   // reloaded. `setTokens` had already run — the session was real and the
