@@ -15,14 +15,20 @@ from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.clock import now
+from yupay.modules.catalog.models import Sku
 from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.inventory.models import InventoryCode
-from yupay.modules.orders.models import Order
-from yupay.modules.orders.revenue import order_charged_usd_subq
+from yupay.modules.orders.models import Order, OrderItem
+from yupay.modules.orders.revenue import (
+    charged_usd_expr,
+    margin_usd_expr,
+    order_charged_usd_subq,
+)
 from yupay.modules.orders.scope import IS_SALE
 from yupay.modules.payments.models import Payment
 from yupay.modules.stats.schemas import (
     CurrencyAmount,
+    DashboardMargin,
     DashboardOut,
     DayBucket,
     InventorySummary,
@@ -34,6 +40,10 @@ _DEFAULT_WINDOW_HOURS = 24
 _STUCK_PAYMENT_AFTER = timedelta(hours=1)
 _PENDING_ORDER_AFTER = timedelta(minutes=5)
 _LOW_STOCK_THRESHOLD = 10
+#: Statuses that count as "this order produced money". Shared by the revenue
+#: and margin queries on purpose: the two sit side by side on the card, so a
+#: figure either appears in both or in neither.
+_PAID_LIKE = ("paid", "fulfilling", "fulfilled", "delivered")
 
 
 async def build_dashboard(
@@ -52,6 +62,7 @@ async def build_dashboard(
     )
 
     revenue = await _revenue_in_window(db, window_start)
+    margin = await _margin_in_window(db, window_start)
     status_mix = await _status_breakdown(db, window_start)
 
     in_flight = await _count_in_flight_tasks(db)
@@ -68,6 +79,7 @@ async def build_dashboard(
         orders_delivered_in_window=orders_delivered,
         orders_failed_in_window=orders_failed,
         revenue_in_window=revenue,
+        margin_in_window=margin,
         status_breakdown=status_mix,
         in_flight_tasks=in_flight,
         stuck_payments=stuck,
@@ -100,14 +112,53 @@ async def _revenue_in_window(db: AsyncSession, since: datetime) -> list[Currency
     """Sum of ``total_charged`` per currency for orders that actually generated
     money in the window. We count anything past ``paid`` — refunds are not
     netted out here because the dashboard shows gross revenue."""
-    paid_like = ("paid", "fulfilling", "fulfilled", "delivered")
     stmt = (
         select(Order.currency, func.sum(Order.total_charged))
-        .where(IS_SALE, Order.created_at >= since, Order.status.in_(paid_like))
+        .where(IS_SALE, Order.created_at >= since, Order.status.in_(_PAID_LIKE))
         .group_by(Order.currency)
     )
     rows = (await db.execute(stmt)).all()
     return [CurrencyAmount(currency=cur, amount=Decimal(str(amt or 0))) for cur, amt in rows]
+
+
+async def _margin_in_window(db: AsyncSession, since: datetime) -> DashboardMargin:
+    """What the window's revenue actually left us, in USD.
+
+    Deliberately the same orders as :func:`_revenue_in_window` — same window,
+    same statuses, same ``IS_SALE`` — because the two render side by side. A
+    margin scoped even slightly differently from the revenue beside it is worse
+    than no margin at all: it invites a comparison that does not hold.
+
+    USD rather than the charged currency: cost is recorded in USD on the SKU,
+    so a per-currency margin would need an FX rate to exist at all, and which
+    rate (today's? the order's?) is a question the card cannot answer. The
+    percentage is the figure that survives the currency mismatch, which is why
+    it is here rather than left to the reader.
+
+    ``unknown_units`` are units whose SKU has no recorded cost. They are absent
+    from both the margin and the gross it is a percentage of — counting them at
+    zero cost would report an unknown as a 100% margin — so the card can say
+    the number is partial instead of implying it is complete.
+    """
+    priced = select(
+        func.coalesce(func.sum(charged_usd_expr()).filter(margin_usd_expr().isnot(None)), 0),
+        func.coalesce(func.sum(margin_usd_expr()), 0),
+        func.coalesce(func.sum(OrderItem.qty).filter(margin_usd_expr().is_(None)), 0),
+    ).select_from(OrderItem)
+    stmt = (
+        priced.join(Order, Order.id == OrderItem.order_id)
+        .join(Sku, Sku.id == OrderItem.sku_id)
+        .where(IS_SALE, Order.created_at >= since, Order.status.in_(_PAID_LIKE))
+    )
+    gross_raw, margin_raw, unknown_raw = (await db.execute(stmt)).one()
+    gross = Decimal(str(gross_raw or 0))
+    margin = Decimal(str(margin_raw or 0))
+    pct = float(margin / gross * 100) if gross > 0 else 0.0
+    return DashboardMargin(
+        amount_usd=margin.quantize(Decimal("0.01")),
+        pct=round(pct, 2),
+        unknown_units=int(unknown_raw or 0),
+    )
 
 
 async def _status_breakdown(db: AsyncSession, since: datetime) -> list[StatusCount]:

@@ -16,8 +16,8 @@ whole markup — which is exactly the margin the business runs on.
 
 The corrected figure is ``qty * unit_price_usd * rate_multiplier`` for variable
 lines and ``qty * unit_price_usd`` for the rest. That is the same shape
-``stats.analytics.business._margin_expr`` already uses for margin, and the two
-stay consistent by construction: ``gross - margin == cost``.
+:func:`margin_usd_expr` below uses for margin, and the two stay consistent by
+construction: ``gross - margin == cost``.
 
 The multiplier comes from the order line itself, frozen at checkout
 (``OrderItem.rate_multiplier``, ADR-0051) — an order's worth must not be a
@@ -72,6 +72,49 @@ def charged_usd_expr() -> Case[Any]:
     )
 
 
+def margin_usd_expr() -> Case[Any]:
+    """Per-order-item margin in USD, for use inside ``func.sum(...)``.
+
+    The twin of :func:`charged_usd_expr`: that one is the gross, this one the
+    part of it we keep, and ``gross - margin == cost``. Change the treatment of
+    a SKU kind in one and it has to change in the other — which is why they now
+    live side by side instead of one being a private helper in ``stats``.
+
+    Fixed SKUs with a known cost: ``qty * (unit_price_usd - cost_usdt)``.
+    Variable-amount (Steam) SKUs: ``unit_price_usd`` is the raw dollar cost
+    basis and the multiplier is the markup, so margin is
+    ``qty * unit_price_usd * (multiplier - 1)``. See
+    ``docs/superpowers/specs/2026-08-04-steam-margin-analytics-design.md``.
+
+    Fixed SKUs without a known cost evaluate to ``NULL``, so ``func.sum`` skips
+    them rather than valuing them at zero — an unknown cost must not read as a
+    100% margin. Callers that show the total are expected to count those units
+    separately and say so.
+
+    Uses the same multiplier precedence as its twin: the rate frozen on the
+    line at checkout (ADR-0051) wins, the live SKU is only the fallback for
+    lines written before that column existed. Reading the live SKU here while
+    the gross reads the frozen one is how ``gross - margin == cost`` quietly
+    stops holding the first time somebody edits a SKU's markup.
+
+    Returns:
+        A SQLAlchemy ``CASE``. Typed ``Case[Any]`` because SQLAlchemy's
+        ``case()`` stub always returns ``Case[Any]`` regardless of branch type.
+    """
+    variable_multiplier = func.coalesce(OrderItem.rate_multiplier, Sku.rate_multiplier)
+    return case(
+        (
+            Sku.variable_amount.is_(True),
+            OrderItem.qty * OrderItem.unit_price_usd * (variable_multiplier - 1),
+        ),
+        (
+            Sku.cost_usdt.isnot(None),
+            OrderItem.qty * (OrderItem.unit_price_usd - Sku.cost_usdt),
+        ),
+        else_=None,
+    )
+
+
 def order_charged_usd_subq() -> Subquery:
     """Per-order gross USD, as a joinable ``(order_id, charged_usd)`` subquery.
 
@@ -119,4 +162,9 @@ def order_charged_usd(order: Order) -> Decimal | None:
     return total.quantize(_CENTS, rounding=ROUND_HALF_UP)
 
 
-__all__ = ["charged_usd_expr", "order_charged_usd", "order_charged_usd_subq"]
+__all__ = [
+    "charged_usd_expr",
+    "margin_usd_expr",
+    "order_charged_usd",
+    "order_charged_usd_subq",
+]

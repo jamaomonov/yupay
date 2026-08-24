@@ -26,6 +26,10 @@ interface DashboardOut {
   orders_delivered_in_window: number;
   orders_failed_in_window: number;
   revenue_in_window: { currency: string; amount: string }[];
+  /** Optional on purpose: the admin ships separately from the API, so a
+   *  bundle can reach a deployment that predates this field. Rendering must
+   *  degrade to "no margin line", never take the whole dashboard down. */
+  margin_in_window?: { amount_usd: string; pct: number; unknown_units: number };
   status_breakdown: { status: string; count: number }[];
   in_flight_tasks: number;
   stuck_payments: number;
@@ -141,6 +145,7 @@ export function DashboardPage() {
               : "—"
           }
           accent
+          hint={marginHint(d?.margin_in_window)}
           sparkline={d?.orders_last_7_days.map((b) => Number.parseFloat(b.revenue_usd) || 0) ?? []}
         />
       </section>
@@ -221,12 +226,30 @@ export function DashboardPage() {
   );
 }
 
+/**
+ * The margin line under the revenue figure.
+ *
+ * Revenue is charged per currency and cost is recorded in USD, so the two
+ * cannot share a unit — the percentage is what lets an operator read them as
+ * one thought. Uncosted units are named rather than folded in: the figure
+ * describes part of the window's sales, and a card that does not say so is
+ * read as if it described all of them.
+ */
+function marginHint(
+  m: { amount_usd: string; pct: number; unknown_units: number } | undefined,
+): string | undefined {
+  if (!m) return undefined;
+  const base = `Маржа ${formatMoney(m.amount_usd, "USD")} · ${m.pct.toFixed(1)}%`;
+  return m.unknown_units > 0 ? `${base} · без себестоимости: ${m.unknown_units} шт.` : base;
+}
+
 function Kpi({
   icon: Icon,
   label,
   value,
   accent,
   tone,
+  hint,
   sparkline,
 }: {
   icon: typeof Receipt;
@@ -234,6 +257,8 @@ function Kpi({
   value: number | string;
   accent?: boolean;
   tone?: "warn" | "success" | "muted";
+  /** Secondary line under the value, for a figure that qualifies it. */
+  hint?: string | undefined;
   /** Optional 7-day series rendered as a mini sparkline under the value. */
   sparkline?: number[];
 }) {
@@ -268,6 +293,7 @@ function Kpi({
         </span>
       </div>
       <div className={`mt-3 text-2xl font-semibold ${valueCls}`}>{value}</div>
+      {hint && <div className="mt-1 text-xs text-[var(--text-secondary)]">{hint}</div>}
       {sparkline && sparkline.length > 0 && <MiniSparkline values={sparkline} />}
     </article>
   );

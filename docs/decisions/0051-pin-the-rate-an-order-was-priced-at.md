@@ -124,9 +124,12 @@ separate cleanup.
 - "What rate did this customer get?" becomes answerable per line — useful for
   support and for the chargeback evidence pack (ADR-0044).
 - The mixed-order case is correct by construction rather than by assumption.
-- The margin/gross pair (`analytics.business._margin_expr` and
+- The margin/gross pair (`orders.revenue.margin_usd_expr` and
   `orders.revenue.charged_usd_expr`) can move to the snapshot together and stay
-  each other's twin.
+  each other's twin. Since done: margin was a private helper in
+  `stats.analytics.business` reading the live SKU while the gross read the
+  frozen line, so the pair only held until somebody edited a markup. Both now
+  live in `orders.revenue` and share the precedence.
 
 ## Negative consequences
 

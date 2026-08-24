@@ -3419,6 +3419,32 @@
         "title": "CustomersOut",
         "type": "object"
       },
+      "DashboardMargin": {
+        "additionalProperties": false,
+        "description": "What the window's revenue left us, beside the revenue itself.\n\nUSD-only by necessity: cost is recorded in USD on the SKU, while revenue is\ncharged per currency. ``pct`` is what makes the two comparable on one card.",
+        "properties": {
+          "amount_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount Usd",
+            "type": "string"
+          },
+          "pct": {
+            "title": "Pct",
+            "type": "number"
+          },
+          "unknown_units": {
+            "title": "Unknown Units",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "amount_usd",
+          "pct",
+          "unknown_units"
+        ],
+        "title": "DashboardMargin",
+        "type": "object"
+      },
       "DashboardOut": {
         "additionalProperties": false,
         "description": "Single payload behind ``GET /admin/stats/dashboard``.",
@@ -3434,6 +3460,9 @@
           },
           "inventory": {
             "$ref": "#/components/schemas/InventorySummary"
+          },
+          "margin_in_window": {
+            "$ref": "#/components/schemas/DashboardMargin"
           },
           "orders_delivered_in_window": {
             "title": "Orders Delivered In Window",
@@ -3488,6 +3517,7 @@
           "orders_delivered_in_window",
           "orders_failed_in_window",
           "revenue_in_window",
+          "margin_in_window",
           "status_breakdown",
           "in_flight_tasks",
           "stuck_payments",

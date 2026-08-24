@@ -35,6 +35,23 @@ class InventorySummary(BaseModel):
     low_stock_skus: int  # SKUs with available < threshold
 
 
+class DashboardMargin(BaseModel):
+    """What the window's revenue left us, beside the revenue itself.
+
+    USD-only by necessity: cost is recorded in USD on the SKU, while revenue is
+    charged per currency. ``pct`` is what makes the two comparable on one card.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    amount_usd: Decimal
+    pct: float
+    #: Units sold whose SKU has no recorded cost. Excluded from both figures
+    #: above, so a non-zero value means they describe part of the window's
+    #: sales, not all of it.
+    unknown_units: int
+
+
 class DashboardOut(BaseModel):
     """Single payload behind ``GET /admin/stats/dashboard``."""
 
@@ -48,6 +65,7 @@ class DashboardOut(BaseModel):
     orders_failed_in_window: int
 
     revenue_in_window: list[CurrencyAmount]
+    margin_in_window: DashboardMargin
     status_breakdown: list[StatusCount]
 
     in_flight_tasks: int

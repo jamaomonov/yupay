@@ -123,7 +123,7 @@ adjustable from the admin UI without a deploy.
 > this customer spend" or "what was revenue" silently drops the entire markup.
 > Use `orders.revenue.charged_usd_expr` / `order_charged_usd` instead — they
 > apply `rate_multiplier` for variable lines and are the twin of
-> `stats.analytics.business._margin_expr`.
+> `orders.revenue.margin_usd_expr`.
 >
 > The multiplier they apply is the one **frozen on the order line** at checkout
 > (`order_items.rate_multiplier`, [ADR-0051](../../../../../../docs/decisions/0051-pin-the-rate-an-order-was-priced-at.md)),

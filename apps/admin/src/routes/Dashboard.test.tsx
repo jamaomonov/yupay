@@ -34,6 +34,7 @@ function renderDashboard(over: Record<string, unknown> = {}) {
     orders_delivered_in_window: 2,
     orders_failed_in_window: 4,
     revenue_in_window: [{ currency: "UZS", amount: "147818.00" }],
+    margin_in_window: { amount_usd: "12.50", pct: 8.4, unknown_units: 0 },
     status_breakdown: [
       { status: "expired", count: 4 },
       { status: "delivered", count: 2 },
@@ -77,4 +78,27 @@ it("still shows a dash when nothing was earned in the window", async () => {
   renderDashboard({ revenue_in_window: [] });
 
   expect(await screen.findByText("—")).toBeInTheDocument();
+});
+
+it("shows the margin beside the revenue it belongs to", async () => {
+  renderDashboard();
+  expect(await screen.findByText(/Маржа/)).toHaveTextContent("8.4%");
+});
+
+it("names uncosted units instead of folding them into the margin", async () => {
+  // Silence about them reads as "this covers everything", and the figure is
+  // exactly the one an operator would price the next batch off.
+  renderDashboard({
+    margin_in_window: { amount_usd: "12.50", pct: 8.4, unknown_units: 6 },
+  });
+  expect(await screen.findByText(/без себестоимости: 6/)).toBeInTheDocument();
+});
+
+it("still renders against an API that has no margin yet", async () => {
+  // The admin ships separately from the API, so a bundle can reach a
+  // deployment that predates the field. Losing the line is acceptable;
+  // taking the whole dashboard down with it is not.
+  renderDashboard({ margin_in_window: undefined });
+  expect(await screen.findByText("147 818 UZS")).toBeInTheDocument();
+  expect(screen.queryByText(/Маржа/)).not.toBeInTheDocument();
 });

@@ -4,15 +4,14 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Any
 
-from sqlalchemy import Case, case, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.clock import now
 from yupay.modules.catalog.models import Brand, Product, Sku
 from yupay.modules.orders.models import Order, OrderItem
-from yupay.modules.orders.revenue import order_charged_usd_subq
+from yupay.modules.orders.revenue import margin_usd_expr, order_charged_usd_subq
 from yupay.modules.orders.scope import IS_SALE
 from yupay.modules.stats.analytics._common import _PAID_LIKE
 from yupay.modules.stats.schemas import (
@@ -29,42 +28,6 @@ from yupay.modules.stats.schemas import (
     range_to_days,
 )
 from yupay.modules.users.models import User
-
-
-def _margin_expr() -> Case[Any]:
-    """Per-order-item margin (USD), for use inside ``func.sum(...)``.
-
-    Fixed SKUs with a known cost: ``qty * (unit_price_usd - cost_usdt)``.
-    Variable-amount (Steam) SKUs: ``unit_price_usd`` is the raw dollar cost
-    basis and ``rate_multiplier`` is the SKU's markup (always set for
-    variable SKUs — see ``ck_skus_variable_amount_complete``), so margin is
-    ``qty * unit_price_usd * (rate_multiplier - 1)``. See
-    ``docs/superpowers/specs/2026-08-04-steam-margin-analytics-design.md``.
-
-    Fixed SKUs without a known cost evaluate to ``NULL``, so
-    ``func.sum(_margin_expr())`` naturally excludes them from a group's
-    total (NULL when a group has no costable rows at all).
-
-    Twin of ``orders.revenue.charged_usd_expr`` — that one is the gross, this
-    one the part of it we keep, and ``gross - margin == cost``. Change the
-    treatment of a SKU kind in one and it has to change in the other.
-
-    Returns:
-        A SQLAlchemy ``CASE`` expression. Typed ``Case[Any]`` because
-        SQLAlchemy's ``case()`` stub always returns ``Case[Any]``,
-        regardless of the branch value types.
-    """
-    return case(
-        (
-            Sku.variable_amount.is_(True),
-            OrderItem.qty * OrderItem.unit_price_usd * (Sku.rate_multiplier - 1),
-        ),
-        (
-            Sku.cost_usdt.isnot(None),
-            OrderItem.qty * (OrderItem.unit_price_usd - Sku.cost_usdt),
-        ),
-        else_=None,
-    )
 
 
 async def build_business_analytics(db: AsyncSession, *, r: AnalyticsRange) -> BusinessAnalyticsOut:
@@ -129,7 +92,7 @@ async def _business_summary(
 
     # Margin (approx): join items→sku, split fixed-known-cost / variable
     # (Steam, priced off rate_multiplier) / unknown (fixed, cost_usdt NULL).
-    # See ``_margin_expr`` and the design doc referenced there.
+    # See ``orders.revenue.margin_usd_expr`` and the design doc referenced there.
     m = (
         select(
             func.coalesce(
@@ -266,8 +229,8 @@ async def _top_brands(db: AsyncSession, since: datetime) -> list[BrandRevenueOut
             func.coalesce(func.sum(OrderItem.qty * OrderItem.unit_price_usd), 0),
             func.coalesce(func.sum(OrderItem.qty), 0),
             # Margin (fixed known-cost + variable/Steam) — NULL when the group
-            # has no costable rows. See ``_margin_expr``.
-            func.sum(_margin_expr()),
+            # has no costable rows. See ``orders.revenue.margin_usd_expr``.
+            func.sum(margin_usd_expr()),
         )
         .select_from(OrderItem)
         .join(Order, Order.id == OrderItem.order_id)
@@ -299,8 +262,8 @@ async def _top_skus(db: AsyncSession, since: datetime) -> list[SkuRevenueOut]:
             func.coalesce(func.sum(OrderItem.qty * OrderItem.unit_price_usd), 0),
             func.coalesce(func.sum(OrderItem.qty), 0),
             # Margin (fixed known-cost + variable/Steam) — NULL when the group
-            # has no costable rows. See ``_margin_expr``.
-            func.sum(_margin_expr()),
+            # has no costable rows. See ``orders.revenue.margin_usd_expr``.
+            func.sum(margin_usd_expr()),
         )
         .select_from(OrderItem)
         .join(Order, Order.id == OrderItem.order_id)
