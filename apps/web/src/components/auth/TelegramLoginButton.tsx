@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-import { useAuth } from "@/lib/auth";
+import { useTelegramSignIn } from "@/hooks/useTelegramSignIn";
 
 /**
  * Injects Telegram's Login Widget <script>. The widget calls a global callback
@@ -11,7 +11,7 @@ import { useAuth } from "@/lib/auth";
  */
 export function TelegramLoginButton() {
   const ref = useRef<HTMLDivElement>(null);
-  const { loginWithTelegram } = useAuth();
+  const signInWithTelegram = useTelegramSignIn();
   const bot = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME;
 
   useEffect(() => {
@@ -20,7 +20,9 @@ export function TelegramLoginButton() {
     const w = window as unknown as {
       onTelegramAuth?: (u: Record<string, unknown>) => void;
     };
-    w.onTelegramAuth = (u) => void loginWithTelegram(u);
+    w.onTelegramAuth = (u) => {
+      signInWithTelegram(u);
+    };
     const s = document.createElement("script");
     s.src = "https://telegram.org/js/telegram-widget.js?22";
     s.async = true;
@@ -33,7 +35,7 @@ export function TelegramLoginButton() {
     return () => {
       el.replaceChildren();
     };
-  }, [bot, loginWithTelegram]);
+  }, [bot, signInWithTelegram]);
 
   if (!bot) return null;
   return <div ref={ref} />;

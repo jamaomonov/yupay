@@ -149,7 +149,9 @@
     "terms": "Terms of Use",
     "and": "va",
     "back": "Orqaga",
-    "close": "Yopish"
+    "close": "Yopish",
+    "signedIn": "Hisobingizga kirdingiz",
+    "signInFailed": "Kirib boʻlmadi. Qayta urinib koʻring"
   },
   "store": {
     "meta": {

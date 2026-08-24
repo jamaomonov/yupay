@@ -9,11 +9,13 @@ import { AuthForm } from "./AuthForm";
 import { ProviderButton } from "./ProviderButton";
 import { GoogleIcon, SteamIcon, TelegramIcon } from "./ProviderIcons";
 
+import { useTelegramSignIn } from "@/hooks/useTelegramSignIn";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { ApiError, apiFetch } from "@/lib/client";
 import { pathFor } from "@/lib/seo";
 import { useLoginModal } from "@/store/useLoginModal";
+import { toast } from "@/store/useToast";
 
 interface TelegramAuth {
   Login?: {
@@ -29,7 +31,8 @@ const BOT_ID = process.env.NEXT_PUBLIC_TELEGRAM_BOT_ID;
 export function LoginModal({ locale }: { locale: string }) {
   const t = useTranslations("web.auth");
   const { isOpen, close } = useLoginModal();
-  const { login, register, loginWithTelegram } = useAuth();
+  const { login, register } = useAuth();
+  const signInWithTelegram = useTelegramSignIn();
   const [screen, setScreen] = useState<"providers" | "email" | "verify">("providers");
   const [mode, setMode] = useState<"login" | "register">("login");
   // Populated when register succeeds (verification_required) or login is
@@ -90,10 +93,12 @@ export function LoginModal({ locale }: { locale: string }) {
     const tg = (window as unknown as { Telegram?: TelegramAuth }).Telegram;
     if (BOT_ID && tg?.Login?.auth) {
       tg.Login.auth({ bot_id: Number(BOT_ID), request_access: "write" }, (user) => {
-        if (user) void loginWithTelegram(user);
+        // `false` is Telegram's "the customer closed the popup" — not a
+        // failure, so it gets no toast; they are still looking at the modal.
+        if (user) signInWithTelegram(user);
       });
     }
-  }, [loginWithTelegram]);
+  }, [signInWithTelegram]);
 
   const handleResend = useCallback(async () => {
     setResendStatus("sending");
@@ -262,8 +267,11 @@ export function LoginModal({ locale }: { locale: string }) {
                   throw err;
                 }
                 // Stay on the current page — the header reflects the signed-in
-                // state; no dedicated account page to navigate to.
+                // state; no dedicated account page to navigate to. The toast
+                // matches what Telegram sign-in now says, so the confirmation
+                // does not depend on which tile was pressed.
                 close();
+                toast.success(t("signedIn"));
               }}
             />
           </div>

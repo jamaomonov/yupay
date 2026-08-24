@@ -149,7 +149,9 @@
     "terms": "Terms of Use",
     "and": "and",
     "back": "Back",
-    "close": "Close"
+    "close": "Close",
+    "signedIn": "You're signed in",
+    "signInFailed": "Couldn't sign you in — please try again"
   },
   "store": {
     "meta": {
