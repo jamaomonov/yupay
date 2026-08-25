@@ -710,6 +710,30 @@
         "title": "AdminRatesOut",
         "type": "object"
       },
+      "AdminRefsOut": {
+        "additionalProperties": false,
+        "description": "Batched display data for ids a page already holds.\n\nOne request per page instead of a join on every endpoint that happens to\ncarry a user or order id.",
+        "properties": {
+          "orders": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/OrderRefOut"
+            },
+            "title": "Orders",
+            "type": "array"
+          },
+          "users": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/UserRefOut"
+            },
+            "title": "Users",
+            "type": "array"
+          }
+        },
+        "title": "AdminRefsOut",
+        "type": "object"
+      },
       "AdminReviewListOut": {
         "properties": {
           "items": {
@@ -6080,6 +6104,45 @@
         "title": "OrderOut",
         "type": "object"
       },
+      "OrderRefOut": {
+        "additionalProperties": false,
+        "description": "Just enough to recognise an order: what was in it.\n\nThe first line's artwork, because that is what an operator remembers about\nan order \u2014 not its id. An order with no items (a wallet deposit) has no\nimage and says so by omission.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "required": [
+          "id",
+          "image_url",
+          "label"
+        ],
+        "title": "OrderRefOut",
+        "type": "object"
+      },
       "OwnReviewListOut": {
         "properties": {
           "items": {
@@ -10746,6 +10809,45 @@
           "created_at"
         ],
         "title": "UserOut",
+        "type": "object"
+      },
+      "UserRefOut": {
+        "additionalProperties": false,
+        "description": "Just enough to draw a person: a face and a name.\n\nThe panel linked to profiles by raw UUID in seven places. An id says\nnothing an operator can recognise, and every one of those call sites would\notherwise have to grow its own join.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Url"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "photo_url"
+        ],
+        "title": "UserRefOut",
         "type": "object"
       },
       "UserRolesIn": {
@@ -17194,6 +17296,80 @@
         "summary": "Who redeemed this promo code",
         "tags": [
           "admin:promo"
+        ]
+      }
+    },
+    "/api/v1/admin/refs": {
+      "get": {
+        "description": "Resolve ids to something an operator can recognise.\n\nExists so a page that carries a user or order id does not need its own join\n\u2014 there are fifteen such places in the panel, and widening fifteen DTOs to\nkeep them in step is the version of this that rots.",
+        "operationId": "admin_refs_api_v1_admin_refs_get",
+        "parameters": [
+          {
+            "description": "Comma-separated user ids",
+            "in": "query",
+            "name": "users",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "Comma-separated user ids",
+              "title": "Users",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated order ids",
+            "in": "query",
+            "name": "orders",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "Comma-separated order ids",
+              "title": "Orders",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminRefsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Display data (name, avatar, order artwork) for ids a page already holds",
+        "tags": [
+          "admin"
         ]
       }
     },

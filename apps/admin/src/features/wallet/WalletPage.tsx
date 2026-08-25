@@ -22,9 +22,11 @@ import { PageHeader } from "@/components/PageHeader";
 import { StatusChip } from "@/components/StatusChip";
 import { Tabs, type TabDescriptor } from "@/components/Tabs";
 import { useToast } from "@/components/Toast";
+import { UserRef } from "@/components/UserRef";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
 import { formatMoney, formatMoneyValue } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
+import { useAdminRefs } from "@/lib/useAdminRefs";
 
 const ADJUST_KINDS = [
   { value: "user_wallet", label: "user_wallet" },
@@ -501,6 +503,7 @@ function MineTab() {
 function AdjustmentsFeed({ items }: { items: Transaction[] }) {
   // Each tx has 2 postings: user-side and house-side. The user-side line
   // gives us the amount delta (+/-) and the user_id from reference_id.
+  const refs = useAdminRefs(items.map((tx) => tx.reference_id ?? null));
   return (
     <ul className="space-y-3">
       {items.map((tx) => {
@@ -519,12 +522,7 @@ function AdjustmentsFeed({ items }: { items: Transaction[] }) {
                   {presetCode || "—"}
                 </code>
                 {userId ? (
-                  <Link
-                    to={`/customers/${userId}`}
-                    className="font-mono text-xs underline-offset-2 hover:underline"
-                  >
-                    user {userId.slice(0, 8)}…
-                  </Link>
+                  <UserRef id={userId} data={refs.user(userId)} className="text-xs" />
                 ) : (
                   <span className="font-mono text-xs text-[var(--text-secondary)]">user —</span>
                 )}

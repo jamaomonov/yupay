@@ -27,6 +27,8 @@ import { PageHeader } from "@/components/PageHeader";
 import { manualQueueQuery } from "@/features/fulfillment/inboxQueries";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
+import { OrderRef } from "@/components/OrderRef";
+import { useAdminRefs } from "@/lib/useAdminRefs";
 
 interface QueueRow {
   task: TaskAdminOut;
@@ -57,6 +59,12 @@ export function ManualQueuePage() {
     orderLoading: orderQueries[idx]?.isPending ?? false,
   }));
 
+  // One lookup for the page: the task carries an order id and nothing to see.
+  const refs = useAdminRefs(
+    [],
+    tasks.map((t) => t.order_id),
+  );
+
   const [openTask, setOpenTask] = useState<TaskAdminOut | null>(null);
 
   const columns: Column<QueueRow>[] = [
@@ -65,9 +73,10 @@ export function ManualQueuePage() {
       header: "Заказ",
       render: (r) => (
         <div className="flex flex-col">
-          <CopyId
-            value={r.task.order_id}
-            to={`/orders/${r.task.order_id}`}
+          <OrderRef
+            id={r.task.order_id}
+            data={refs.order(r.task.order_id)}
+            size={18}
             className="text-xs text-[var(--text-secondary)]"
           />
           <span className="text-xs text-[var(--text-secondary)]">

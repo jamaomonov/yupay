@@ -24,6 +24,8 @@ import { StatCard } from "@/components/StatCard";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { useSearchParamsState } from "@/lib/useSearchParamsState";
+import { OrderRef } from "@/components/OrderRef";
+import { type OrderRefData, useAdminRefs } from "@/lib/useAdminRefs";
 
 type Source =
   | "order_event"
@@ -111,6 +113,11 @@ export function AuditPage() {
   });
 
   const rows = q.data?.items ?? [];
+  // Only order targets need resolving; the feed mixes many entity kinds.
+  const refs = useAdminRefs(
+    [],
+    rows.filter((e) => e.target_kind === "order").map((e) => e.target_id),
+  );
 
   const stats = useMemo(() => {
     const bySource: Partial<Record<Source, number>> = {};
@@ -258,6 +265,7 @@ export function AuditPage() {
             key={e.id + i}
             event={e}
             expanded={expanded === e.id}
+            orderRef={refs.order(e.target_kind === "order" ? e.target_id : null)}
             onToggle={() => {
               setExpanded(expanded === e.id ? null : e.id);
             }}
@@ -278,10 +286,14 @@ function TimelineRow({
   event,
   expanded,
   onToggle,
+  orderRef,
 }: {
   event: AuditEvent;
   expanded: boolean;
   onToggle: () => void;
+  /** Artwork when this entry points at an order. Resolved once for the whole
+   *  feed rather than per row — the timeline is long. */
+  orderRef?: OrderRefData | undefined;
 }) {
   const meta = SOURCE_META[event.source];
   const Icon = meta.icon;
@@ -328,7 +340,8 @@ function TimelineRow({
             )}
             {event.target_id && event.target_kind && (
               <span>
-                {event.target_kind} <TargetLink kind={event.target_kind} id={event.target_id} />
+                {event.target_kind}{" "}
+                <TargetLink kind={event.target_kind} id={event.target_id} orderRef={orderRef} />
               </span>
             )}
           </div>
@@ -358,17 +371,20 @@ function TimelineRow({
   );
 }
 
-function TargetLink({ kind, id }: { kind: string; id: string }) {
+function TargetLink({
+  kind,
+  id,
+  orderRef,
+}: {
+  kind: string;
+  id: string;
+  orderRef?: OrderRefData | undefined;
+}) {
   const shortened = id.length > 18 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
   if (kind === "order") {
-    return (
-      <Link
-        to={`/orders/${id}`}
-        className="font-mono text-[var(--accent)] underline-offset-2 hover:underline"
-      >
-        {shortened}
-      </Link>
-    );
+    // The feed is a wall of ids; the artwork is what tells an operator which
+    // order an entry is about without opening it.
+    return <OrderRef id={id} data={orderRef} size={18} className="text-[var(--accent)]" />;
   }
   return <code className="text-[var(--text-primary)]">{shortened}</code>;
 }

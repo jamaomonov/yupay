@@ -16,6 +16,7 @@ from yupay.api.v1.deps import db_session
 from yupay.modules.admin import service as svc
 from yupay.modules.admin.deps import require_admin
 from yupay.modules.admin.schemas import (
+    AdminRefsOut,
     CustomerOverviewOut,
     PaymentTriageOut,
     SavedSegmentIn,
@@ -45,6 +46,30 @@ async def admin_search(
 ) -> SearchOut:
     """Return up to ``limit`` matches per source for the given query."""
     return await svc.search(db, q=q, limit=limit)
+
+
+@admin_router.get(
+    "/refs",
+    response_model=AdminRefsOut,
+    summary="Display data (name, avatar, order artwork) for ids a page already holds",
+)
+async def admin_refs(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+    users: Annotated[str, Query(description="Comma-separated user ids")] = "",
+    orders: Annotated[str, Query(description="Comma-separated order ids")] = "",
+) -> AdminRefsOut:
+    """Resolve ids to something an operator can recognise.
+
+    Exists so a page that carries a user or order id does not need its own join
+    — there are fifteen such places in the panel, and widening fifteen DTOs to
+    keep them in step is the version of this that rots.
+    """
+
+    def _ids(raw: str) -> list[str]:
+        return [p for p in (x.strip() for x in raw.split(",")) if p]
+
+    return await svc.get_refs(db, user_ids=_ids(users), order_ids=_ids(orders))
 
 
 @admin_router.get(

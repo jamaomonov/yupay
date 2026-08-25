@@ -15,6 +15,8 @@ import { ErrorState } from "@/components/States";
 import { apiGet } from "@/lib/api";
 import { extractApiMessage } from "@/lib/apiError";
 import { qk } from "@/lib/queryKeys";
+import { UserRef } from "@/components/UserRef";
+import { useAdminRefs } from "@/lib/useAdminRefs";
 
 const STATUS_FILTERS: { value: BroadcastStatus | ""; label: string }[] = [
   { value: "", label: "Все" },
@@ -56,6 +58,7 @@ export function BroadcastsListPage() {
   });
 
   const items = listQuery.data?.items ?? [];
+  const refs = useAdminRefs(items.map((b) => b.created_by));
 
   const columns: Column<BroadcastOut>[] = [
     {
@@ -107,7 +110,7 @@ export function BroadcastsListPage() {
       key: "created_by",
       header: "Автор",
       render: (b) => (
-        <CopyId value={b.created_by} to={`/customers/${b.created_by}`} className="text-xs" />
+        <UserRef id={b.created_by} data={refs.user(b.created_by)} className="text-xs" />
       ),
       className: "w-28",
     },

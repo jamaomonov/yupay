@@ -239,3 +239,48 @@ __all__ = [
     "SearchOut",
     "WebhookTriageRow",
 ]
+
+
+class UserRefOut(BaseModel):
+    """Just enough to draw a person: a face and a name.
+
+    The panel linked to profiles by raw UUID in seven places. An id says
+    nothing an operator can recognise, and every one of those call sites would
+    otherwise have to grow its own join.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    #: Display name, falling back to the login email — whichever the account has.
+    name: str | None
+    photo_url: str | None
+
+
+class OrderRefOut(BaseModel):
+    """Just enough to recognise an order: what was in it.
+
+    The first line's artwork, because that is what an operator remembers about
+    an order — not its id. An order with no items (a wallet deposit) has no
+    image and says so by omission.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    image_url: str | None
+    #: "Free Fire · 110 Diamonds" — the same label the orders list prints.
+    label: str | None
+
+
+class AdminRefsOut(BaseModel):
+    """Batched display data for ids a page already holds.
+
+    One request per page instead of a join on every endpoint that happens to
+    carry a user or order id.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    users: list[UserRefOut] = []
+    orders: list[OrderRefOut] = []

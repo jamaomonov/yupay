@@ -25,6 +25,8 @@ import { ErrorState } from "@/components/States";
 import { useToast } from "@/components/Toast";
 import { type ApiError, apiPost } from "@/lib/api";
 import { extractApiMessage } from "@/lib/apiError";
+import { useAdminRefs } from "@/lib/useAdminRefs";
+import { OrderRef } from "@/components/OrderRef";
 
 const LOW_BALANCE_ERROR = "supplier_low_balance";
 
@@ -45,6 +47,10 @@ export function FailedAutomaticTab() {
   const query = useQuery<TaskListOut>(failedTasksQuery);
 
   const rows = useMemo(() => selectFailedRows(query.data), [query.data]);
+  const refs = useAdminRefs(
+    [],
+    rows.map((t) => t.order_id),
+  );
 
   const bulkRetry = useMutation<BulkRetryResponse, ApiError, string[]>({
     mutationFn: (ids) =>
@@ -100,7 +106,7 @@ export function FailedAutomaticTab() {
     {
       key: "order",
       header: "Order",
-      render: (t) => <CopyId value={t.order_id} to={`/orders/${t.order_id}`} className="text-xs" />,
+      render: (t) => <OrderRef id={t.order_id} data={refs.order(t.order_id)} className="text-xs" />,
       className: "w-28",
     },
     {

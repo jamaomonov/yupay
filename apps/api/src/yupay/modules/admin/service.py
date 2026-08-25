@@ -21,21 +21,24 @@ from yupay.core.errors import ConflictError, NotFoundError
 from yupay.core.ids import new_id
 from yupay.modules.admin.models import AdminSavedSegment
 from yupay.modules.admin.schemas import (
+    AdminRefsOut,
     CustomerBalanceOut,
     CustomerOrderSummary,
     CustomerOverviewOut,
     CustomerPaymentSummary,
     CustomerStatsOut,
     CustomerTaskSummary,
+    OrderRefOut,
     PaymentTriageOut,
     PaymentTriageRow,
     RiskFlag,
     SavedSegmentIn,
     SearchHit,
     SearchOut,
+    UserRefOut,
     WebhookTriageRow,
 )
-from yupay.modules.catalog.models import Sku
+from yupay.modules.catalog.models import BrandTranslation, Product, Sku
 from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.orders.models import Order, OrderItem
 from yupay.modules.orders.revenue import order_charged_usd_subq
@@ -509,3 +512,78 @@ __all__ = [
     "search",
     "triage_payments",
 ]
+
+
+#: Hard bound on one refs lookup. A page shows a page's worth of rows; anything
+#: past this is a caller that meant to paginate and did not.
+_REFS_MAX = 100
+
+
+async def get_refs(db: AsyncSession, *, user_ids: list[str], order_ids: list[str]) -> AdminRefsOut:
+    """Display data for ids a page already holds.
+
+    One request per page instead of a join on every endpoint that happens to
+    carry a user or an order id — there are fifteen such call sites, and the
+    alternative is fifteen DTOs to widen and keep in step.
+
+    Missing ids are simply absent from the response rather than an error: a
+    deleted user or a purged order is exactly the kind of row an admin page
+    still has to render.
+    """
+    users: list[UserRefOut] = []
+    if user_ids:
+        rows = (
+            await db.execute(
+                select(User.id, User.display_name, User.email, User.photo_url).where(
+                    User.id.in_(user_ids[:_REFS_MAX])
+                )
+            )
+        ).all()
+        users = [
+            UserRefOut(id=str(r.id), name=r.display_name or r.email, photo_url=r.photo_url)
+            for r in rows
+        ]
+
+    orders: list[OrderRefOut] = []
+    if order_ids:
+        # One line per order — the first one, which is what the orders list
+        # already shows as the order's face.
+        #
+        # DISTINCT ON rather than a MIN() subquery: ids are UUIDs and Postgres
+        # has no min() for them. Ordering by id is chronological anyway, since
+        # these are UUIDv7.
+        stmt = (
+            select(
+                OrderItem.order_id.label("order_id"),
+                Sku.image_url.label("sku_image"),
+                Product.image_url.label("product_image"),
+                BrandTranslation.name.label("brand_name"),
+                Sku.denomination.label("denomination"),
+                Sku.sku_code.label("sku_code"),
+            )
+            .distinct(OrderItem.order_id)
+            .select_from(OrderItem)
+            .where(OrderItem.order_id.in_(order_ids[:_REFS_MAX]))
+            .order_by(OrderItem.order_id, OrderItem.id)
+            .join(Sku, Sku.id == OrderItem.sku_id, isouter=True)
+            .join(Product, Product.id == Sku.product_id, isouter=True)
+            .join(
+                BrandTranslation,
+                (BrandTranslation.brand_id == Product.brand_id) & (BrandTranslation.locale == "ru"),
+                isouter=True,
+            )
+        )
+        for r in (await db.execute(stmt)).all():
+            name = r.brand_name
+            denom = r.denomination or r.sku_code
+            orders.append(
+                OrderRefOut(
+                    id=str(r.order_id),
+                    # The SKU's own art when it has any, else the product's —
+                    # the same fallback the storefront grid uses.
+                    image_url=r.sku_image or r.product_image,
+                    label=f"{name} · {denom}" if name else denom,
+                )
+            )
+
+    return AdminRefsOut(users=users, orders=orders)

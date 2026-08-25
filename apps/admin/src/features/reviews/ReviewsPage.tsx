@@ -29,6 +29,7 @@ import { Thumb } from "@/components/Thumb";
 import { useToast } from "@/components/Toast";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
 import { extractApiMessage } from "@/lib/apiError";
+import { useAdminRefs } from "@/lib/useAdminRefs";
 import { useSearchParamsState } from "@/lib/useSearchParamsState";
 
 type StatusFilter = "all" | "published" | "hidden" | "removed";
@@ -153,6 +154,15 @@ export function ReviewsPage() {
   });
 
   const rows = brands.data?.items ?? [];
+  // Order artwork for whatever is on screen — one lookup per list, not per row.
+  const refs = useAdminRefs(
+    [],
+    (feed.data?.items ?? []).map((r) => r.order_id),
+  );
+  const brandRefs = useAdminRefs(
+    [],
+    (brandFeed.data?.items ?? []).map((r) => r.order_id),
+  );
   const totals = useMemo(() => {
     const total = rows.reduce((s, b) => s + b.total, 0);
     const reportedSum = rows.reduce((s, b) => s + b.reported, 0);
@@ -285,6 +295,8 @@ export function ReviewsPage() {
                 <ReviewRow
                   key={r.id}
                   review={r}
+                  orderRef={refs.order(r.order_id)}
+                  userRef={refs.user(r.user_id)}
                   onPickBrand={setOpenBrand}
                   onModerate={onModerate(r.id)}
                   busy={busyFor(r.id)}
@@ -392,6 +404,8 @@ export function ReviewsPage() {
                               <ReviewRow
                                 key={r.id}
                                 review={r}
+                                orderRef={brandRefs.order(r.order_id)}
+                                userRef={brandRefs.user(r.user_id)}
                                 showBrand={false}
                                 onModerate={onModerate(r.id)}
                                 busy={busyFor(r.id)}

@@ -22,7 +22,9 @@ import { StatCard } from "@/components/StatCard";
 import { SaveSegmentButton } from "@/features/segments/SaveSegmentButton";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
 import { formatMoney } from "@/lib/money";
+import { UserRef } from "@/components/UserRef";
 import { qk } from "@/lib/queryKeys";
+import { useAdminRefs } from "@/lib/useAdminRefs";
 import { numberCodec, useSearchParamsState } from "@/lib/useSearchParamsState";
 
 const PAGE_SIZE = 50;
@@ -147,6 +149,9 @@ export function OrdersListPage() {
   // Memoised so the empty-array fallback doesn't produce a new identity on
   // every render and re-run the two derived tallies below for nothing.
   const rows = useMemo(() => ordersQuery.data?.items ?? [], [ordersQuery.data]);
+  // One lookup for the whole page: the list carries user ids but no names, and
+  // an id is not something an operator recognises.
+  const refs = useAdminRefs(rows.map((o) => o.user_id));
   const total = ordersQuery.data?.total ?? 0;
 
   const counters = useMemo(() => {
@@ -174,16 +179,11 @@ export function OrdersListPage() {
         <div className="flex flex-col font-mono text-xs">
           <CopyId value={o.id} />
           {o.user_id ? (
-            <Link
-              to={`/customers/${o.user_id}`}
-              title={o.user_id}
-              onClick={(e) => {
-                e.stopPropagation();
-              }}
-              className="text-[var(--text-secondary)] underline-offset-2 hover:text-[var(--text-primary)] hover:underline"
-            >
-              user {o.user_id.slice(0, 8)}…
-            </Link>
+            <UserRef
+              id={o.user_id}
+              data={refs.user(o.user_id)}
+              className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            />
           ) : (
             <span className="text-[var(--text-secondary)]">{o.guest_email ?? "—"}</span>
           )}

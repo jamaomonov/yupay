@@ -25,11 +25,13 @@ import { CopyId } from "@/components/CopyId";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { Tabs, type TabDescriptor } from "@/components/Tabs";
+import { UserRef } from "@/components/UserRef";
 import { SaveSegmentButton } from "@/features/segments/SaveSegmentButton";
 import { type ApiError, apiGet } from "@/lib/api";
 import { formatMoney } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
 import { numberCodec, useSearchParamsState } from "@/lib/useSearchParamsState";
+import { useAdminRefs } from "@/lib/useAdminRefs";
 import { Select } from "@yupay/ui";
 
 type TriageTab = "stuck" | "webhooks";
@@ -132,6 +134,9 @@ function StuckSection({
     return sum;
   }, [rows]);
 
+  // Only this section has user ids; the webhook table has none.
+  const refs = useAdminRefs(rows.map((p) => p.user_id));
+
   const columns: Column<PaymentTriageRow>[] = [
     {
       key: "payment",
@@ -149,16 +154,7 @@ function StuckSection({
       header: "Клиент",
       render: (p) =>
         p.user_id ? (
-          <Link
-            to={`/customers/${p.user_id}`}
-            title={p.user_id}
-            onClick={(e) => {
-              e.stopPropagation();
-            }}
-            className="font-mono text-xs underline-offset-2 hover:underline"
-          >
-            user {p.user_id.slice(0, 8)}…
-          </Link>
+          <UserRef id={p.user_id} data={refs.user(p.user_id)} className="text-xs" />
         ) : (
           <span className="text-xs text-[var(--text-secondary)]">{p.guest_email ?? "—"}</span>
         ),

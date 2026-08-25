@@ -15,11 +15,14 @@ import { Flag } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import type { AdminReview } from "./types";
+import { UserRef } from "@/components/UserRef";
+import type { OrderRefData, UserRefData } from "@/lib/useAdminRefs";
 
 import { Badge } from "@/components/Badge";
 import { CopyId } from "@/components/CopyId";
 import { StatusChip } from "@/components/StatusChip";
 import { Thumb } from "@/components/Thumb";
+import { OrderRef } from "@/components/OrderRef";
 
 /** `★★★☆☆` — five slots always, so the rating reads as a shape rather than
  *  something to count. A bare `"★".repeat(n)` makes 3 and 4 look alike. */
@@ -52,15 +55,16 @@ function reportLabel(n: number): string {
  * guest's email is never a link — there is nowhere to go, and a dead link is
  * worse than none.
  */
-function Author({ review }: { review: AdminReview }) {
+function Author({ review, userRef }: { review: AdminReview; userRef?: UserRefData | undefined }) {
   if (review.user_id && review.user_name) {
     return (
-      <Link
-        to={`/customers/${review.user_id}`}
-        className="font-medium text-[var(--text-primary)] underline-offset-2 hover:underline"
-      >
-        {review.user_name}
-      </Link>
+      <UserRef
+        id={review.user_id}
+        // The queue already resolved the name; the lookup adds only the face.
+        data={userRef ?? { id: review.user_id, name: review.user_name, photo_url: null }}
+        size={18}
+        className="font-medium text-[var(--text-primary)]"
+      />
     );
   }
   if (review.guest_email) {
@@ -76,6 +80,12 @@ function Author({ review }: { review: AdminReview }) {
 
 export interface ReviewRowProps {
   review: AdminReview;
+  /** Artwork for the order this review is about. Passed in rather than fetched
+   *  here: the row is rendered in a list, and one request per row is not a
+   *  list, it is a stampede. */
+  orderRef?: OrderRefData | undefined;
+  /** Avatar for a signed-in author. The name already rides on the review. */
+  userRef?: UserRefData | undefined;
   showBrand?: boolean;
   /** Focus this brand in the by-brand block. Omitted inside a brand's own list. */
   onPickBrand?: (slug: string) => void;
@@ -87,6 +97,8 @@ export interface ReviewRowProps {
 
 export function ReviewRow({
   review: r,
+  orderRef,
+  userRef,
   showBrand = true,
   onPickBrand,
   onModerate,
@@ -161,9 +173,9 @@ export function ReviewRow({
         )}
 
         <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--text-secondary)]">
-          <Author review={r} />
+          <Author review={r} userRef={userRef} />
           <span aria-hidden>·</span>
-          <CopyId value={r.order_id} to={`/orders/${r.order_id}`} />
+          <OrderRef id={r.order_id} data={orderRef} />
           <span aria-hidden>·</span>
           <time dateTime={r.created_at}>
             {new Date(r.created_at).toLocaleString("ru", {

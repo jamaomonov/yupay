@@ -18,6 +18,8 @@ import type { TaskAdminOut, TaskListOut } from "./types";
 import { Badge } from "@/components/Badge";
 import { CopyId } from "@/components/CopyId";
 import { DataTable, type Column } from "@/components/DataTable";
+import { OrderRef } from "@/components/OrderRef";
+import { useAdminRefs } from "@/lib/useAdminRefs";
 
 export function StuckTab() {
   const navigate = useNavigate();
@@ -25,12 +27,17 @@ export function StuckTab() {
   const query = useQuery<TaskListOut>(stuckTasksQuery);
 
   const stuck = useMemo(() => selectStuckRows(query.data), [query.data]);
+  // One lookup per page: the task rows carry an order id and nothing to see.
+  const refs = useAdminRefs(
+    [],
+    stuck.map((t) => t.order_id),
+  );
 
   const columns: Column<TaskAdminOut>[] = [
     {
       key: "order",
       header: "Order",
-      render: (t) => <CopyId value={t.order_id} to={`/orders/${t.order_id}`} className="text-xs" />,
+      render: (t) => <OrderRef id={t.order_id} data={refs.order(t.order_id)} className="text-xs" />,
       className: "w-28",
     },
     {

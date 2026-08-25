@@ -49,6 +49,8 @@ import { useToast } from "@/components/Toast";
 import { type ApiError, api, apiGet } from "@/lib/api";
 import { formatMoney, formatMoneyValue } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
+import { useAdminRefs } from "@/lib/useAdminRefs";
+import { OrderRef } from "@/components/OrderRef";
 
 export function CustomerPage() {
   const params = useParams<{ id: string }>();
@@ -466,11 +468,15 @@ function RecentOrders({
   rows: CustomerOrderSummary[];
   onOpen: (orderId: string) => void;
 }) {
+  const refs = useAdminRefs(
+    [],
+    rows.map((o) => o.id),
+  );
   const columns: Column<CustomerOrderSummary>[] = [
     {
       key: "id",
       header: "ID",
-      render: (o) => <CopyId value={o.id} to={`/orders/${o.id}`} className="text-xs" />,
+      render: (o) => <OrderRef id={o.id} data={refs.order(o.id)} className="text-xs" />,
       className: "w-24",
     },
     {

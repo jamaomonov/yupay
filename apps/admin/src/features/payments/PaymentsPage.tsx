@@ -23,6 +23,8 @@ import { extractApiMessage } from "@/lib/apiError";
 import { formatMoney } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
 import { useSearchParamsState } from "@/lib/useSearchParamsState";
+import { OrderRef } from "@/components/OrderRef";
+import { useAdminRefs } from "@/lib/useAdminRefs";
 
 const PAGE_SIZE = 50;
 
@@ -76,6 +78,11 @@ export function PaymentsPage() {
       return apiGet<PaymentAdminListOut>(`/api/v1/admin/payments?${params.toString()}`);
     },
   });
+  const rows = listQuery.data?.items ?? [];
+  const refs = useAdminRefs(
+    [],
+    rows.map((p) => p.order_id),
+  );
 
   const simulateMutation = useMutation<
     PaymentAdminOut,
@@ -117,10 +124,10 @@ export function PaymentsPage() {
       render: (p) => (
         <div className="flex flex-col font-mono text-xs">
           <CopyId value={p.id} />
-          <CopyId
-            value={p.order_id}
-            label="order"
-            to={`/orders/${p.order_id}`}
+          <OrderRef
+            id={p.order_id}
+            data={refs.order(p.order_id)}
+            size={18}
             className="text-[var(--text-secondary)]"
           />
           {/* A deposit and a sale are the same shape here — a payment against
@@ -307,7 +314,7 @@ export function PaymentsPage() {
         />
       ) : (
         <DataTable
-          rows={listQuery.data?.items ?? []}
+          rows={rows}
           columns={columns}
           rowKey={(p) => p.id}
           loading={listQuery.isPending}

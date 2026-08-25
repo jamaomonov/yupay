@@ -41,6 +41,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Spinner } from "@/components/States";
 import { StatusChip } from "@/components/StatusChip";
 import { useToast } from "@/components/Toast";
+import { UserRef } from "@/components/UserRef";
 import { ForceCompleteModal } from "@/features/fulfillment/ForceCompleteModal";
 import {
   STATUS_LABEL as PAYMENT_STATUS_LABEL,
@@ -50,6 +51,7 @@ import { type ApiError, apiGet, apiPost } from "@/lib/api";
 import { extractApiMessage } from "@/lib/apiError";
 import { formatMoney, formatMoneyValue } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
+import { useAdminRefs } from "@/lib/useAdminRefs";
 
 /** Statuses where "close as failed" is offered — mirrors the server guard
  *  (`orders.service._FAILABLE_STATUSES`): money in, goods not out. */
@@ -82,6 +84,11 @@ export function OrderDetailPage() {
       return false;
     },
   });
+
+  // Above every early return: React counts hooks per render, and a hook placed
+  // after `if (isLoading) return …` runs on the second render but not the
+  // first — "Rendered more hooks than during the previous render".
+  const refs = useAdminRefs([orderQuery.data?.user_id]);
 
   const paymentsQuery = useQuery<PaymentAdminListOut>({
     queryKey: ["admin", "payments", { orderId }],
@@ -279,15 +286,13 @@ export function OrderDetailPage() {
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <CopyId value={order.id} chars={13} label="id" className="text-xs" />
             {order.user_id ? (
-              <span>
+              <span className="inline-flex items-center gap-1.5">
                 Пользователь{" "}
-                <Link
-                  to={`/customers/${order.user_id}`}
-                  title={order.user_id}
-                  className="font-mono text-[var(--text-primary)] underline-offset-2 hover:underline"
-                >
-                  {order.user_id.slice(0, 8)}…
-                </Link>
+                <UserRef
+                  id={order.user_id}
+                  data={refs.user(order.user_id)}
+                  className="text-[var(--text-primary)]"
+                />
               </span>
             ) : (
               <span>{order.guest_email ?? "Гость"}</span>

@@ -12,10 +12,12 @@ import { PageHeader } from "@/components/PageHeader";
 import { Pagination } from "@/components/Pagination";
 import { StatusChip } from "@/components/StatusChip";
 import { useToast } from "@/components/Toast";
+import { OrderRef } from "@/components/OrderRef";
 import { FULFILMENT_ROUTES } from "@/features/integrations/types";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { useSearchParamsState } from "@/lib/useSearchParamsState";
+import { useAdminRefs } from "@/lib/useAdminRefs";
 
 const PAGE_SIZE = 50;
 
@@ -126,6 +128,10 @@ export function FulfillmentPage() {
   // Resolved from the page in hand rather than refetched: the row is already
   // loaded, and a selection can only point at something on this page.
   const selectedTask = (tasksQuery.data?.items ?? []).find((t) => t.id === expanded) ?? null;
+  const refs = useAdminRefs(
+    [],
+    (tasksQuery.data?.items ?? []).map((t) => t.order_id),
+  );
 
   const columns: Column<TaskAdminOut>[] = [
     {
@@ -133,7 +139,7 @@ export function FulfillmentPage() {
       header: "Order / item",
       render: (t) => (
         <div className="flex flex-col font-mono text-xs">
-          <CopyId value={t.order_id} to={`/orders/${t.order_id}`} />
+          <OrderRef id={t.order_id} data={refs.order(t.order_id)} />
           <CopyId value={t.order_item_id} label="item" className="text-[var(--text-secondary)]" />
         </div>
       ),
