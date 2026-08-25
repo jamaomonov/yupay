@@ -10,6 +10,7 @@
  */
 
 import { apiFetch } from "@/lib/client";
+import { collectClientHints } from "@/lib/client-hints";
 import { type WalletBalance } from "@/lib/wallet-balance";
 
 /** The charge currency for every acquirer the storefront offers. */
@@ -140,10 +141,20 @@ export function createWalletTopUp(
   idempotencyKey: string,
   returnUrl: string,
 ): Promise<PaymentOut> {
+  // Collected at submit, not at module load: the value that matters is the
+  // one in force when the deposit was made. Omitted entirely when the browser
+  // yields nothing, so the server stores {} rather than a bag of nulls — the
+  // same shape checkout sends (ADR-0044).
+  const hints = collectClientHints();
   return apiFetch<PaymentOut>("/wallet/topup", {
     method: "POST",
     headers: { "Idempotency-Key": idempotencyKey },
-    body: { amount: amount.toString(), provider, return_url: returnUrl },
+    body: {
+      amount: amount.toString(),
+      provider,
+      return_url: returnUrl,
+      ...(hints ? { client_hints: hints } : {}),
+    },
   });
 }
 

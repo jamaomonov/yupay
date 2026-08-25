@@ -10746,6 +10746,16 @@
             ],
             "title": "Amount"
           },
+          "client_hints": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClientHints"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "provider": {
             "maxLength": 32,
             "minLength": 2,

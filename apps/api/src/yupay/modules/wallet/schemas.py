@@ -8,6 +8,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from yupay.modules.evidence.schemas import ClientHints
+
 AccountKind = Literal[
     "user_wallet",
     "user_cashback",
@@ -69,6 +71,11 @@ class WalletTopUpIn(BaseModel):
     #: checkout URL and is stored on the payment row, so an unbounded
     #: same-origin string is still a string we keep.
     return_url: str | None = Field(default=None, max_length=2048)
+    #: Passive browser signals kept for chargeback defence (ADR-0044), the same
+    #: ones checkout sends. A deposit needs them more than a sale does, not
+    #: less: there are no goods, no delivery and no player id to point at, so
+    #: the request context is most of what an acquirer can be shown.
+    client_hints: ClientHints | None = None
 
 
 class PostingOut(BaseModel):

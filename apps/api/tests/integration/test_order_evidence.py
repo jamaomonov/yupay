@@ -365,3 +365,43 @@ async def test_reading_the_pack_is_written_to_the_order_timeline(
     assert len(viewed) == 1
     assert viewed[0]["actor"].startswith("admin:")
     assert viewed[0]["payload"] == {"has_capture": True}
+
+
+async def test_a_deposit_records_the_request_context_too(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A wallet deposit is an order, and it reached the evidence panel empty.
+
+    ``POST /wallet/topup`` builds its order in its own service and never called
+    ``capture_for_order``, so every deposit showed the admin "контекст не
+    записан". A deposit needs the pack more than a sale does, not less: there
+    are no goods, no delivery and no player id to point at, so the request
+    context is most of what an acquirer can be shown.
+    """
+    token = await _login_user(integration_client, tg_id=9151)
+    r = await integration_client.post(
+        "/api/v1/wallet/topup",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "idem-evidence-topup-01",
+            "X-Yupay-Surface": "miniapp",
+            "X-Forwarded-For": "203.0.113.9, 10.0.0.2",
+            "User-Agent": "Mozilla/5.0 (Linux; Android 13; Pixel 7)",
+            "Accept-Language": "ru-RU,ru;q=0.9",
+        },
+        json={
+            "amount": "50000",
+            "provider": "mock",
+            "client_hints": {"timezone": "Asia/Tashkent", "locale": "ru-RU"},
+        },
+    )
+    assert r.status_code == 201, r.text
+    order_id = r.json()["order_id"]
+
+    row = (
+        await db_session.execute(select(OrderEvidence).where(OrderEvidence.order_id == order_id))
+    ).scalar_one()
+    # The leftmost forwarded entry, not our own proxy hop — same as a sale.
+    assert row.ip == "203.0.113.9"
+    assert row.accept_language == "ru-RU,ru;q=0.9"
+    assert row.client_hints["timezone"] == "Asia/Tashkent"

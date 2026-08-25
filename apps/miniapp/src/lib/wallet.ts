@@ -14,6 +14,7 @@ import type { MessageKey } from "@/lib/i18n";
 import { getActiveLocale } from "@/lib/i18n/core";
 
 import { apiGet, apiPost, newIdempotencyKey } from "./api";
+import { collectClientHints } from "./client-hints";
 import { useMe } from "./auth";
 import { CURRENCY_SYMBOL, type DisplayCurrency } from "./currency";
 import type { PaymentOut } from "./orders";
@@ -89,9 +90,18 @@ export function createWalletTopUp(
   provider: string,
   idempotencyKey: string,
 ): Promise<PaymentOut> {
+  // Collected at submit, not at module load: the value that matters is the
+  // one in force when the deposit was made. Omitted entirely when the runtime
+  // yields nothing, so the server stores {} rather than a bag of nulls — the
+  // same shape checkout sends (ADR-0044).
+  const hints = collectClientHints();
   return apiPost<PaymentOut>(
     "/api/v1/wallet/topup",
-    { amount: amount.toString(), provider },
+    {
+      amount: amount.toString(),
+      provider,
+      ...(hints ? { client_hints: hints } : {}),
+    },
     { idempotencyKey },
   );
 }

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
@@ -12,6 +12,7 @@ from yupay.core.errors import ValidationError
 from yupay.core.idempotency import IDEMPOTENCY_HEADER, MIN_IDEMPOTENCY_KEY_LENGTH
 from yupay.modules.admin.api import require_admin
 from yupay.modules.auth.deps import current_user
+from yupay.modules.evidence.service import capture_for_order
 from yupay.modules.orders.service import normalise_source
 from yupay.modules.payments.schemas import PaymentOut
 from yupay.modules.users.models import User
@@ -92,6 +93,7 @@ async def my_transactions(
 )
 async def topup_wallet(
     body: WalletTopUpIn,
+    request: Request,
     db: Annotated[AsyncSession, Depends(db_session)],
     user: Annotated[User, Depends(current_user)],
     idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
@@ -111,6 +113,17 @@ async def topup_wallet(
         idempotency_key=idempotency_key,
         source=normalise_source(surface),
         return_url=body.return_url,
+    )
+    # Same placement as checkout's: after the order exists, so a failed capture
+    # can never be the reason a deposit is refused, and idempotent, so a
+    # retried key keeps the context the deposit was actually created under
+    # rather than the retry's. A deposit was the one order kind that reached
+    # the admin's evidence panel empty. See ADR-0044.
+    await capture_for_order(
+        db,
+        order_id=payment.order_id,
+        request=request,
+        hints=body.client_hints,
     )
     return PaymentOut.model_validate(payment)
 
