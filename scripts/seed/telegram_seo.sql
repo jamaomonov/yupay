@@ -44,7 +44,7 @@ UPDATE brand_translations SET
 Пароль, код входа и доступ к аккаунту не нужны — мы спрашиваем только публичное имя пользователя. Курс и итоговая сумма в сумах видны до оплаты, а звёзды зачисляются автоматически после подтверждения платежа. Минимальный пакет — 50 звёзд: это ограничение самого Telegram, меньше перевести нельзя.$c$,
     instructions = $c$Как купить Telegram Stars:
 
-1. Выберите пакет звёзд — от 50 до 2500.
+1. Выберите пакет звёзд — от 50 до 5000.
 2. Введите свой username в Telegram (например, @username) — пароль и код входа не нужны.
 3. Выберите способ оплаты: Click, Payme или Uzum. Курс и итог в сумах показываются до оплаты.
 4. Оплатите — звёзды зачисляются на аккаунт автоматически после подтверждения платежа.
@@ -64,7 +64,7 @@ Buying Stars inside Telegram from Uzbekistan runs into payment: the official rou
 No password, no login code, no account access — we ask only for your public username. The rate and the total in sum are shown before you pay, and Stars are credited automatically once the payment is confirmed. The smallest pack is 50 Stars: that is Telegram's own floor, not ours.$c$,
     instructions = $c$How to buy Telegram Stars:
 
-1. Pick a pack — from 50 to 2500 Stars.
+1. Pick a pack — from 50 to 5000 Stars.
 2. Enter your Telegram username (for example @username) — no password, no login code.
 3. Choose how to pay: Click, Payme or Uzum. The rate and the total in sum appear before you pay.
 4. Pay — Stars are credited automatically once your payment is confirmed.
@@ -84,7 +84,7 @@ Oʻzbekistondan Telegramning oʻzida yulduz sotib olishga toʻlov toʻsqinlik qi
 Parol ham, kirish kodi ham, akkauntga kirish ham kerak emas — bizga faqat ochiq foydalanuvchi nomi kifoya. Kurs va soʻmdagi yakuniy summa toʻlovdan oldin koʻrinadi, yulduzlar esa toʻlov tasdiqlangach avtomatik tushadi. Eng kichik paket — 50 yulduz: bu Telegramning oʻz cheklovi, bizniki emas.$c$,
     instructions = $c$Telegram Stars qanday sotib olinadi:
 
-1. Paketni tanlang — 50 tadan 2500 tagacha yulduz.
+1. Paketni tanlang — 50 tadan 5000 tagacha yulduz.
 2. Telegramdagi username'ingizni kiriting (masalan, @username) — parol va kirish kodi kerak emas.
 3. Toʻlov usulini tanlang: Click, Payme yoki Uzum. Kurs va soʻmdagi yakun toʻlovdan oldin koʻrsatiladi.
 4. Toʻlovni amalga oshiring — yulduzlar toʻlov tasdiqlangach avtomatik tushadi.
