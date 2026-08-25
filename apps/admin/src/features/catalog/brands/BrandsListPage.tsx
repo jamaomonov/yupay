@@ -7,6 +7,7 @@ import type { Brand } from "../types";
 
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
+import { Thumb } from "@/components/Thumb";
 import { Spinner } from "@/components/States";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
@@ -24,6 +25,10 @@ export function BrandsListPage() {
       header: "Бренд",
       render: (b) => (
         <div className="flex items-center gap-2">
+          <Thumb
+            src={b.logo_url}
+            name={b.translations.find((t) => t.locale === "ru")?.name ?? b.slug}
+          />
           {b.accent_color && (
             <span
               className="inline-block size-3 rounded-full"

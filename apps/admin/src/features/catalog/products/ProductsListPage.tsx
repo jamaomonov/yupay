@@ -7,6 +7,7 @@ import type { Brand, Product } from "../types";
 
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
+import { Thumb } from "@/components/Thumb";
 import { Spinner } from "@/components/States";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
@@ -28,14 +29,28 @@ export function ProductsListPage() {
     {
       key: "name",
       header: "Продукт",
-      render: (p) => p.translations.find((t) => t.locale === "ru")?.name ?? p.slug,
+      render: (p) => {
+        const name = p.translations.find((t) => t.locale === "ru")?.name ?? p.slug;
+        return (
+          <span className="flex items-center gap-2">
+            <Thumb src={p.image_url} name={name} />
+            <span>{name}</span>
+          </span>
+        );
+      },
     },
     {
       key: "brand",
       header: "Бренд",
       render: (p) => {
         const b = brandsById.get(p.brand_id);
-        return b?.translations.find((t) => t.locale === "ru")?.name ?? b?.slug ?? p.brand_id;
+        const name = b?.translations.find((t) => t.locale === "ru")?.name ?? b?.slug ?? p.brand_id;
+        return (
+          <span className="flex items-center gap-2">
+            <Thumb src={b?.logo_url} name={name} />
+            <span>{name}</span>
+          </span>
+        );
       },
     },
     { key: "kind", header: "Тип", render: (p) => p.kind, className: "w-24" },

@@ -4,7 +4,7 @@ import { Button, Input, Select } from "@yupay/ui";
 import { Eye, Plus, Trash2, Wand2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { Controller, useForm, useFieldArray } from "react-hook-form";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { z } from "zod";
 
 import type { Brand, Product, Sku } from "../types";
@@ -277,6 +277,11 @@ export function SkuEditPage() {
   const [search] = useSearchParams();
   const isNew = !params.id;
   const navigate = useNavigate();
+  // Back to the list the operator came from, filters and all. The list
+  // keeps its search in the URL and hands it over on the way in; a direct
+  // link into this page has no such state and falls back to the bare list.
+  const listSearch = (useLocation().state as { listSearch?: string } | null)?.listSearch;
+  const backToList = `/skus${listSearch ?? ""}`;
   const qc = useQueryClient();
 
   const productsQuery = useQuery<Product[]>({
@@ -535,7 +540,7 @@ export function SkuEditPage() {
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: qk.skus() });
-      navigate("/skus");
+      navigate(backToList);
     },
   });
 
@@ -543,7 +548,7 @@ export function SkuEditPage() {
     mutationFn: () => apiDelete(`/api/v1/admin/catalog/skus/${params.id ?? ""}`),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: qk.skus() });
-      navigate("/skus");
+      navigate(backToList);
     },
   });
 
@@ -567,7 +572,7 @@ export function SkuEditPage() {
         }
         actions={
           <>
-            <Button type="button" variant="ghost" onClick={() => navigate("/skus")}>
+            <Button type="button" variant="ghost" onClick={() => navigate(backToList)}>
               Отмена
             </Button>
             {!isNew && (

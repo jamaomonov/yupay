@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input } from "@yupay/ui";
 import { Pencil, Plus, RefreshCcw, Search, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useMemo } from "react";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import type { Brand, Product, Sku } from "../types";
 
 import { PageHeader } from "@/components/PageHeader";
+import { Thumb } from "@/components/Thumb";
 import { useToast } from "@/components/Toast";
 import { StatCard } from "@/components/StatCard";
 import { type ApiError, apiDelete, apiPatch, apiGet, apiPost } from "@/lib/api";
@@ -30,8 +31,25 @@ export function SkusListPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const toast = useToast();
-  const [query, setQuery] = useState("");
-  const [onlyInactive, setOnlyInactive] = useState(false);
+  // In the URL, not in component state. Editing a SKU navigates away and back,
+  // and state died with the unmount — so an operator working through search
+  // results retyped the query after every single edit. The address bar already
+  // survives that trip, and it makes a filtered list something you can send to
+  // someone.
+  const location = useLocation();
+  const [params, setParams] = useSearchParams();
+  const query = params.get("q") ?? "";
+  const onlyInactive = params.get("inactive") === "1";
+  const patchParams = (next: Record<string, string | null>) => {
+    const merged = new URLSearchParams(params);
+    for (const [k, v] of Object.entries(next)) {
+      if (v === null || v === "") merged.delete(k);
+      else merged.set(k, v);
+    }
+    // Replace, so a search does not bury the previous page under history
+    // entries the back button then has to walk through character by character.
+    setParams(merged, { replace: true });
+  };
 
   const productsQuery = useQuery<Product[]>({
     queryKey: qk.products(),
@@ -212,7 +230,7 @@ export function SkusListPage() {
           <Input
             value={query}
             onChange={(e) => {
-              setQuery(e.target.value);
+              patchParams({ q: e.target.value });
             }}
             placeholder="Поиск по бренду, продукту, sku-code, региону…"
             className="pl-9"
@@ -223,7 +241,7 @@ export function SkusListPage() {
             type="checkbox"
             checked={onlyInactive}
             onChange={(e) => {
-              setOnlyInactive(e.target.checked);
+              patchParams({ inactive: e.target.checked ? "1" : null });
             }}
             className="size-4"
           />
@@ -258,6 +276,9 @@ export function SkusListPage() {
             onDelete={(sku) => {
               if (confirm(`Удалить SKU «${sku.sku_code}»?`)) remove.mutate(sku);
             }}
+            // Carried into the editor so its Cancel/Save can come back to the
+            // list the operator was actually looking at, not to a bare one.
+            listSearch={location.search}
             isToggling={toggleActive.isPending}
             isDeleting={remove.isPending}
           />
@@ -271,12 +292,14 @@ function ProductGroup({
   group,
   onToggle,
   onDelete,
+  listSearch,
   isToggling,
   isDeleting,
 }: {
   group: GroupedProduct;
   onToggle: (sku: Sku, next: boolean) => void;
   onDelete: (sku: Sku) => void;
+  listSearch: string;
   isToggling: boolean;
   isDeleting: boolean;
 }) {
@@ -295,7 +318,8 @@ function ProductGroup({
             : "var(--bg-muted)",
         }}
       >
-        <div className="flex items-baseline gap-2">
+        <div className="flex items-center gap-2">
+          <Thumb src={group.brand?.logo_url} name={brandName || group.product.slug} />
           <span className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">
             {brandName || "—"}
           </span>
@@ -319,7 +343,9 @@ function ProductGroup({
         <Button
           variant="secondary"
           size="sm"
-          onClick={() => navigate(`/skus/new?product_id=${group.product.id}`)}
+          onClick={() =>
+            navigate(`/skus/new?product_id=${group.product.id}`, { state: { listSearch } })
+          }
         >
           <Plus className="size-4" />
           Добавить SKU
@@ -355,7 +381,7 @@ function ProductGroup({
                 onToggle={(next) => {
                   onToggle(sku, next);
                 }}
-                onEdit={() => navigate(`/skus/${sku.id}`)}
+                onEdit={() => navigate(`/skus/${sku.id}`, { state: { listSearch } })}
                 onDelete={() => {
                   onDelete(sku);
                 }}
@@ -390,7 +416,10 @@ function SkuRow({
       }`}
     >
       <td className="px-5 py-2.5">
-        <span className="font-medium">{sku.denomination ?? "—"}</span>
+        <span className="flex items-center gap-2">
+          <Thumb src={sku.image_url} name={sku.denomination ?? sku.sku_code} />
+          <span className="font-medium">{sku.denomination ?? "—"}</span>
+        </span>
       </td>
       <td className="px-3 py-2.5">
         <span className="rounded-md bg-[var(--bg-muted)] px-1.5 py-0.5 font-mono text-xs">
