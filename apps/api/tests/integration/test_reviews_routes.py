@@ -252,3 +252,153 @@ async def test_eligibility_wrong_guest_forbidden(
         headers={"Authorization": f"Guest {token}", "X-Guest-Email": "someone-else@x.com"},
     )
     assert r.status_code == 403
+
+
+async def test_the_queue_carries_names_not_just_ids(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The moderation queue used to hand the panel three bare UUIDs.
+
+    Brand, order and author were ids, so an operator had to open each one to
+    find out what the row was about. Resolving them in the query that already
+    touches these tables is one join instead of a page of round trips.
+    """
+    buyer = await _make_user(db_session, display_name="Дарья")
+    admin = await _make_admin(db_session)
+    brand, sku = await _seed_brand(db_session, "oxide-q")
+    brand.logo_url = "https://cdn.example/oxide.png"
+    order = await _make_order(db_session, user_id=buyer.id, sku_id=sku.id)
+    await db_session.commit()
+
+    await integration_client.post(
+        "/api/v1/reviews",
+        headers={"Authorization": f"Bearer {_token(buyer.id)}", "Idempotency-Key": _KEY},
+        json={"order_id": order.id, "brand_slug": brand.slug, "rating": 5},
+    )
+
+    r = await integration_client.get(
+        "/api/v1/admin/reviews", headers={"Authorization": f"Bearer {_token(admin.id)}"}
+    )
+    assert r.status_code == 200, r.text
+    row = next(x for x in r.json()["items"] if x["order_id"] == order.id)
+    assert row["brand_slug"] == brand.slug
+    assert row["brand_name"] == "Oxide-Q"
+    assert row["brand_logo_url"] == "https://cdn.example/oxide.png"
+    # The author is a signed-in customer, so the panel labels them by name.
+    assert row["user_name"] == "Дарья"
+    assert row["guest_email"] is None
+
+
+async def test_a_guest_review_is_labelled_as_a_guest(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Exactly one of ``user_name`` / ``guest_email`` is set on every row.
+
+    That is what lets the panel say "гость" honestly instead of printing an
+    address that looks like an account.
+    """
+    admin = await _make_admin(db_session)
+    brand, sku = await _seed_brand(db_session, "oxide-g")
+    email = "guest@example.com"
+    from tests.integration.test_reviews_service import _make_guest_order
+
+    order = await _make_guest_order(db_session, guest_email=email, sku_id=sku.id)
+    await db_session.commit()
+
+    token = await _guest_token(integration_client, email)
+    posted = await integration_client.post(
+        "/api/v1/reviews",
+        headers={
+            "Authorization": f"Guest {token}",
+            "X-Guest-Email": email,
+            "Idempotency-Key": "guest-key-0123456",
+        },
+        json={"order_id": order.id, "brand_slug": brand.slug, "rating": 4},
+    )
+    assert posted.status_code == 201, posted.text
+
+    r = await integration_client.get(
+        "/api/v1/admin/reviews", headers={"Authorization": f"Bearer {_token(admin.id)}"}
+    )
+    row = next(x for x in r.json()["items"] if x["order_id"] == order.id)
+    assert row["user_id"] is None
+    assert row["user_name"] is None
+    assert row["guest_email"] == email
+
+
+async def test_brand_rollup_counts_every_review_not_just_the_page(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The by-brand block is aggregated in SQL on purpose.
+
+    The queue is capped at 200 rows; counting on the client would describe that
+    slice as if it were all of them, and this is the number an operator uses to
+    decide which brand to open.
+    """
+    admin = await _make_admin(db_session)
+    brand, sku = await _seed_brand(db_session, "oxide-s")
+    for i, rating in enumerate((5, 3)):
+        buyer = await _make_user(db_session, display_name=f"B{i}")
+        order = await _make_order(db_session, user_id=buyer.id, sku_id=sku.id)
+        await db_session.commit()
+        await integration_client.post(
+            "/api/v1/reviews",
+            headers={
+                "Authorization": f"Bearer {_token(buyer.id)}",
+                "Idempotency-Key": f"stats-key-{i}-0123",
+            },
+            json={"order_id": order.id, "brand_slug": brand.slug, "rating": rating},
+        )
+
+    r = await integration_client.get(
+        "/api/v1/admin/reviews/by-brand",
+        headers={"Authorization": f"Bearer {_token(admin.id)}"},
+    )
+    assert r.status_code == 200, r.text
+    row = next(x for x in r.json()["items"] if x["brand_slug"] == brand.slug)
+    assert row["total"] == 2
+    assert row["avg_rating"] == 4.0
+    assert row["reported"] == 0
+    assert row["brand_name"] == "Oxide-S"
+
+
+async def test_the_queue_can_be_narrowed_to_one_brand(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The by-brand block asks the server, not the loaded page.
+
+    The queue is capped, so filtering client-side would show whichever of a
+    brand's reviews happened to fit in the last N rows and call that all of
+    them — under the brand's own heading, which is where an operator trusts the
+    number most.
+    """
+    admin = await _make_admin(db_session)
+    mine, mine_sku = await _seed_brand(db_session, "oxide-mine")
+    other, other_sku = await _seed_brand(db_session, "oxide-other")
+
+    ids: dict[str, str] = {}
+    for key, brand, sku in (("mine", mine, mine_sku), ("other", other, other_sku)):
+        buyer = await _make_user(db_session, display_name=f"U-{key}")
+        order = await _make_order(db_session, user_id=buyer.id, sku_id=sku.id)
+        await db_session.commit()
+        posted = await integration_client.post(
+            "/api/v1/reviews",
+            headers={
+                "Authorization": f"Bearer {_token(buyer.id)}",
+                "Idempotency-Key": f"brandfilter-{key}-01",
+            },
+            json={"order_id": order.id, "brand_slug": brand.slug, "rating": 5},
+        )
+        assert posted.status_code == 201, posted.text
+        ids[key] = posted.json()["id"]
+
+    r = await integration_client.get(
+        f"/api/v1/admin/reviews?brand={mine.slug}",
+        headers={"Authorization": f"Bearer {_token(admin.id)}"},
+    )
+    assert r.status_code == 200, r.text
+    got = {x["id"] for x in r.json()["items"]}
+    assert ids["mine"] in got
+    assert ids["other"] not in got
+    # The total describes the brand, not the page it was sliced from.
+    assert r.json()["total"] == 1

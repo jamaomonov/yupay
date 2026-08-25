@@ -65,6 +65,12 @@ class ReviewReportIn(BaseModel):
 
 
 class AdminReviewOut(BaseModel):
+    """One row of the moderation queue, readable without opening anything.
+
+    The ids stay because the panel links on them; the names and the logo are
+    what let an operator scan the queue instead of decoding it.
+    """
+
     id: str
     brand_id: str
     user_id: str | None
@@ -74,6 +80,32 @@ class AdminReviewOut(BaseModel):
     status: str
     report_count: int
     created_at: datetime
+
+    #: Resolved brand. ``None`` only when the brand row is gone — a state the
+    #: queue must still be able to show, since it is the page that cleans up.
+    brand_slug: str | None = None
+    brand_name: str | None = None
+    brand_logo_url: str | None = None
+    #: The signed-in author's display name, or their login email when unset.
+    #: ``None`` for a guest — read ``guest_email`` instead. Exactly one of the
+    #: two is set, which is what lets the panel label the row honestly.
+    user_name: str | None = None
+    guest_email: str | None = None
+
+
+class AdminBrandReviewStatsOut(BaseModel):
+    """Per-brand rollup behind the by-brand block."""
+
+    brand_slug: str | None
+    brand_name: str | None
+    brand_logo_url: str | None
+    total: int
+    avg_rating: float
+    reported: int
+
+
+class AdminBrandReviewStatsListOut(BaseModel):
+    items: list[AdminBrandReviewStatsOut]
 
 
 class AdminReviewListOut(BaseModel):

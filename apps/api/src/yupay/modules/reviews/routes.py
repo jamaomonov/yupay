@@ -15,6 +15,8 @@ from yupay.modules.auth.deps import current_user, resolve_request_actor
 from yupay.modules.reviews import service as svc
 from yupay.modules.reviews.models import BrandRatingStats, Review
 from yupay.modules.reviews.schemas import (
+    AdminBrandReviewStatsListOut,
+    AdminBrandReviewStatsOut,
     AdminReviewListOut,
     AdminReviewOut,
     OwnReviewListOut,
@@ -172,14 +174,53 @@ async def admin_list_reviews(
     _admin: Annotated[User, Depends(require_admin)],
     review_status: Annotated[str | None, Query(alias="status")] = None,
     reported: bool = False,
+    brand: Annotated[str | None, Query()] = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> AdminReviewListOut:
     rows, total = await svc.admin_list(
-        db, status=review_status, reported_only=reported, limit=limit, offset=offset
+        db,
+        status=review_status,
+        reported_only=reported,
+        limit=limit,
+        offset=offset,
+        brand_slug=brand,
     )
     return AdminReviewListOut(
-        items=[_admin_out(review, count) for review, count in rows], total=total
+        items=[
+            AdminReviewOut.model_validate(
+                {
+                    **row.review.__dict__,
+                    "report_count": row.report_count,
+                    "brand_slug": row.brand_slug,
+                    "brand_name": row.brand_name,
+                    "brand_logo_url": row.brand_logo_url,
+                    "user_name": row.user_name,
+                }
+            )
+            for row in rows
+        ],
+        total=total,
+    )
+
+
+@admin_router.get(
+    "/by-brand",
+    response_model=AdminBrandReviewStatsListOut,
+    summary="Reviews grouped by brand",
+)
+async def admin_reviews_by_brand(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+) -> AdminBrandReviewStatsListOut:
+    """Counts, average rating and complaint count per brand.
+
+    Aggregated server-side because the queue itself is capped: counting on the
+    client would describe the first 200 reviews as if they were all of them.
+    """
+    rows = await svc.admin_brand_stats(db)
+    return AdminBrandReviewStatsListOut(
+        items=[AdminBrandReviewStatsOut(**row._asdict()) for row in rows]
     )
 
 

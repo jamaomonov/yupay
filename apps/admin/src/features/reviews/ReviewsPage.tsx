@@ -1,66 +1,98 @@
 /**
- * Review moderation queue. Lists reviews (optionally filtered by status or
- * "reported only") and offers hide / unhide / remove actions. Post-moderation:
- * reviews publish immediately; this is where an operator pulls abusive ones.
+ * Review moderation. Post-moderation: reviews publish immediately, and this is
+ * where an operator pulls the abusive ones.
+ *
+ * Two blocks over one queue. The feed answers "what came in just now", which is
+ * the daily job; the by-brand block answers "which brand is having a problem",
+ * which is the weekly one. Both render the same row component, so an action
+ * behaves identically wherever it is taken.
+ *
+ * The page used to be a single flat table whose brand column held two raw
+ * UUIDs — an operator had to open each one to learn what the row was about.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { ChevronDown, Filter, MessageSquare, ShieldCheck } from "lucide-react";
+import { useMemo } from "react";
 
-import type { AdminReview, AdminReviewList } from "./types";
+import { ReviewRow } from "./ReviewRow";
+import type { AdminBrandReviewStatsList, AdminReviewList } from "./types";
 
-import { CopyId } from "@/components/CopyId";
-import { DataTable, type Column } from "@/components/DataTable";
+import { Badge } from "@/components/Badge";
 import { PageHeader } from "@/components/PageHeader";
-import { ErrorState } from "@/components/States";
-import { StatusChip, localizeStatus } from "@/components/StatusChip";
+import { StatCard } from "@/components/StatCard";
+import { EmptyState, ErrorState, Skeleton, Spinner } from "@/components/States";
+import { localizeStatus } from "@/components/StatusChip";
+import { Tabs } from "@/components/Tabs";
+import { Thumb } from "@/components/Thumb";
 import { useToast } from "@/components/Toast";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
 import { extractApiMessage } from "@/lib/apiError";
+import { useSearchParamsState } from "@/lib/useSearchParamsState";
 
 type StatusFilter = "all" | "published" | "hidden" | "removed";
-
 const FILTERS: StatusFilter[] = ["all", "published", "hidden", "removed"];
 
-function filterLabel(f: StatusFilter): string {
-  return f === "all" ? "Все" : localizeStatus("reviewStatus", f).label;
-}
-
-function idemHeaders(): Record<string, string> {
-  return { "Idempotency-Key": crypto.randomUUID() };
-}
-
 type ModerateAction = "hide" | "unhide" | "remove";
-
 const MODERATE_DONE: Record<ModerateAction, string> = {
   hide: "Отзыв скрыт",
   unhide: "Отзыв возвращён на витрину",
   remove: "Отзыв удалён",
 };
 
+/** How many rows the feed shows. "Recent" stops meaning anything past a screenful
+ *  or two; the by-brand block is where the rest is reached. */
+const FEED_LIMIT = 30;
+
+function filterLabel(f: StatusFilter): string {
+  return f === "all" ? "Все" : localizeStatus("reviewStatus", f).label;
+}
+
+function reviewsUrl(params: Record<string, string>): string {
+  return `/api/v1/admin/reviews?${new URLSearchParams(params).toString()}`;
+}
+
 export function ReviewsPage() {
   const qc = useQueryClient();
   const toast = useToast();
-  const [status, setStatus] = useState<StatusFilter>("all");
-  const [reported, setReported] = useState(false);
+  // In the URL, like the other admin lists: a filtered view survives the trip
+  // to a customer card and back, and can be pasted into a ticket.
+  const [status, setStatus] = useSearchParamsState<StatusFilter>("status", "all");
+  const [reportedRaw, setReportedRaw] = useSearchParamsState("reported", "");
+  const [openBrand, setOpenBrand] = useSearchParamsState("brand", "");
+  const reported = reportedRaw === "1";
 
-  const query = useQuery<AdminReviewList>({
-    queryKey: ["admin", "reviews", status, reported],
-    queryFn: () => {
-      const params = new URLSearchParams({ limit: "200" });
-      if (status !== "all") params.set("status", status);
-      if (reported) params.set("reported", "true");
-      return apiGet<AdminReviewList>(`/api/v1/admin/reviews?${params.toString()}`);
-    },
+  const listParams: Record<string, string> = { limit: String(FEED_LIMIT) };
+  if (status !== "all") listParams.status = status;
+  if (reported) listParams.reported = "true";
+
+  const feed = useQuery<AdminReviewList>({
+    queryKey: ["admin", "reviews", "feed", status, reported],
+    queryFn: () => apiGet<AdminReviewList>(reviewsUrl(listParams)),
     refetchInterval: 30_000,
   });
 
-  // A plain async function swallowed every failure into an unhandled rejection:
-  // hiding or deleting a review looked identical whether it worked or 500'd.
-  // useMutation gives the operator a result and a pending state to key off.
+  const brands = useQuery<AdminBrandReviewStatsList>({
+    queryKey: ["admin", "reviews", "by-brand"],
+    queryFn: () => apiGet<AdminBrandReviewStatsList>("/api/v1/admin/reviews/by-brand"),
+  });
+
+  // Only when a brand is open: the queue is capped, so a brand's own list is
+  // its own request rather than a filter over what the feed happened to load.
+  const brandFeed = useQuery<AdminReviewList>({
+    queryKey: ["admin", "reviews", "brand", openBrand, status, reported],
+    queryFn: () =>
+      apiGet<AdminReviewList>(reviewsUrl({ ...listParams, limit: "200", brand: openBrand })),
+    enabled: openBrand !== "",
+  });
+
   const moderate = useMutation<void, ApiError, { id: string; action: ModerateAction }>({
     mutationFn: async ({ id, action }) => {
-      await apiPost(`/api/v1/admin/reviews/${id}/${action}`, {}, idemHeaders());
+      await apiPost(
+        `/api/v1/admin/reviews/${id}/${action}`,
+        {},
+        { "Idempotency-Key": crypto.randomUUID() },
+      );
     },
     onSuccess: (_data, { action }) => {
       toast.success(MODERATE_DONE[action]);
@@ -71,142 +103,248 @@ export function ReviewsPage() {
     },
   });
 
-  const columns: Column<AdminReview>[] = [
-    {
-      key: "rating",
-      header: "Оценка",
-      render: (r) => <span className="font-mono text-sm">{"★".repeat(r.rating)}</span>,
-      sortAccessor: (r) => r.rating,
-    },
-    {
-      key: "body",
-      header: "Текст",
-      render: (r) => (
-        <span className="line-clamp-2 max-w-[360px] text-sm">
-          {r.body ?? <span className="text-[var(--text-secondary)]">—</span>}
-        </span>
-      ),
-    },
-    {
-      key: "brand",
-      header: "Бренд / заказ",
-      render: (r) => (
-        <div className="flex flex-col font-mono text-xs text-[var(--text-secondary)]">
-          <CopyId value={r.brand_id} to={`/brands/${r.brand_id}`} />
-          <CopyId value={r.order_id} to={`/orders/${r.order_id}`} />
-        </div>
-      ),
-    },
-    {
-      key: "reports",
-      header: "Жалобы",
-      className: "text-right",
-      render: (r) => (
-        <span className={r.report_count > 0 ? "font-semibold text-amber-400" : ""}>
-          {r.report_count}
-        </span>
-      ),
-      sortAccessor: (r) => r.report_count,
-    },
-    {
-      key: "status",
-      header: "Статус",
-      render: (r) => <StatusChip domain="reviewStatus" value={r.status} />,
-    },
-    {
-      key: "actions",
-      header: "",
-      render: (r) => (
-        <div className="flex gap-2 text-xs">
-          {r.status === "published" ? (
-            <button
-              type="button"
-              className="text-amber-400 hover:underline"
-              onClick={() => {
-                moderate.mutate({ id: r.id, action: "hide" });
-              }}
-              disabled={moderate.isPending}
-            >
-              Скрыть
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="text-emerald-400 hover:underline"
-              onClick={() => {
-                moderate.mutate({ id: r.id, action: "unhide" });
-              }}
-              disabled={moderate.isPending}
-            >
-              Вернуть
-            </button>
-          )}
-          {r.status !== "removed" && (
-            <button
-              type="button"
-              className="text-red-400 hover:underline"
-              onClick={() => {
-                if (!confirm("Удалить отзыв? Он исчезнет с витрины бренда.")) return;
-                moderate.mutate({ id: r.id, action: "remove" });
-              }}
-              disabled={moderate.isPending}
-            >
-              Удалить
-            </button>
-          )}
-        </div>
-      ),
-    },
-  ];
+  const rows = brands.data?.items ?? [];
+  const totals = useMemo(() => {
+    const total = rows.reduce((s, b) => s + b.total, 0);
+    const reportedSum = rows.reduce((s, b) => s + b.reported, 0);
+    // Weighted, not an average of averages — a brand with two reviews must not
+    // count as much as one with two hundred.
+    const weighted = rows.reduce((s, b) => s + b.avg_rating * b.total, 0);
+    return { total, reported: reportedSum, avg: total ? weighted / total : 0, brands: rows.length };
+  }, [rows]);
+
+  const filtered = status !== "all" || reported;
+  const resetFilters = () => {
+    setStatus("all");
+    setReportedRaw("");
+  };
+
+  const onModerate = (id: string) => (action: ModerateAction) => {
+    if (action === "remove" && !confirm("Удалить отзыв? Он исчезнет с витрины бренда.")) return;
+    moderate.mutate({ id, action });
+  };
+  const busyFor = (id: string) => moderate.isPending && moderate.variables?.id === id;
 
   return (
     <div>
-      <PageHeader title="Отзывы" description="Модерация отзывов: скрыть, вернуть или удалить." />
+      <PageHeader
+        title="Отзывы"
+        description="Отзывы публикуются сразу. Здесь их снимают с витрины."
+      />
 
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        {FILTERS.map((f) => (
-          <button
-            key={f}
-            type="button"
-            onClick={() => {
-              setStatus(f);
-            }}
-            className={`rounded-full px-3 py-1 text-xs font-semibold ${
-              status === f
-                ? "bg-[var(--accent)] text-black"
-                : "bg-[var(--surface-2)] text-[var(--text-secondary)]"
-            }`}
-          >
-            {filterLabel(f)}
-          </button>
-        ))}
-        <label className="ml-2 flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+      <section className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatCard label="Всего отзывов" value={brands.isLoading ? "—" : totals.total} accent />
+        <StatCard
+          label="Средняя оценка"
+          value={brands.isLoading ? "—" : totals.avg.toFixed(1)}
+          mono
+        />
+        {/* The one tile that asks for work, so it is also the way into it. */}
+        <button
+          type="button"
+          onClick={() => {
+            setReportedRaw(reported ? "" : "1");
+          }}
+          className="text-left"
+          title={reported ? "Показать все отзывы" : "Показать только отзывы с жалобами"}
+        >
+          <StatCard
+            label="С жалобами"
+            value={brands.isLoading ? "—" : totals.reported}
+            tone={totals.reported > 0 ? "warn" : "muted"}
+          />
+        </button>
+        <StatCard
+          label="Брендов с отзывами"
+          value={brands.isLoading ? "—" : totals.brands}
+          tone="muted"
+        />
+      </section>
+
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        <Tabs
+          value={status}
+          onChange={setStatus}
+          ariaLabel="Фильтр по статусу отзыва"
+          tabs={FILTERS.map((f) => ({ id: f, label: filterLabel(f) }))}
+        />
+        <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
           <input
             type="checkbox"
             checked={reported}
             onChange={(e) => {
-              setReported(e.target.checked);
+              setReportedRaw(e.target.checked ? "1" : "");
             }}
+            className="size-4"
           />
           Только с жалобами
         </label>
+        {filtered && (
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="ml-auto text-xs text-[var(--text-secondary)] hover:underline"
+          >
+            Сбросить фильтры
+          </button>
+        )}
       </div>
 
-      {query.isError ? (
-        <ErrorState
-          description={(query.error as Error | undefined)?.message ?? "Ошибка сети."}
-          onRetry={() => void query.refetch()}
-          retryPending={query.isFetching}
-        />
-      ) : (
-        <DataTable
-          rows={query.data?.items ?? []}
-          columns={columns}
-          rowKey={(r) => r.id}
-          loading={query.isLoading}
-          empty="Нет отзывов под фильтр."
-        />
-      )}
+      {/* ---------- Последние отзывы ---------- */}
+      <section className="mb-8">
+        <header className="mb-2 flex items-center gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--text-secondary)]">
+            Последние отзывы
+          </h2>
+          {feed.isFetching && !feed.isLoading && <Spinner size="sm" />}
+        </header>
+
+        {feed.isError ? (
+          <ErrorState
+            description={extractApiMessage(feed.error)}
+            onRetry={() => void feed.refetch()}
+            retryPending={feed.isFetching}
+          />
+        ) : feed.isLoading ? (
+          <div className="rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
+            <Skeleton rows={5} className="h-12" />
+          </div>
+        ) : (feed.data?.items.length ?? 0) === 0 ? (
+          reported ? (
+            /* Good news, and it must not be dressed as "nothing found". */
+            <EmptyState
+              icon={ShieldCheck}
+              title="Жалоб нет"
+              description="Ничего не требует модерации."
+              tone="muted"
+            />
+          ) : filtered ? (
+            <EmptyState icon={Filter} title="Под фильтр ничего не подошло" />
+          ) : (
+            <EmptyState
+              icon={MessageSquare}
+              title="Отзывов пока нет"
+              description="Они появятся, когда покупатели начнут оценивать заказы."
+            />
+          )
+        ) : (
+          <ul className="divide-y divide-[var(--border-subtle)] overflow-hidden rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]">
+            {(feed.data?.items ?? []).map((r) => (
+              <ReviewRow
+                key={r.id}
+                review={r}
+                onPickBrand={setOpenBrand}
+                onModerate={onModerate(r.id)}
+                busy={busyFor(r.id)}
+              />
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* ---------- По брендам ---------- */}
+      <section>
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-[var(--text-secondary)]">
+          По брендам
+        </h2>
+
+        {brands.isError ? (
+          <ErrorState
+            description={extractApiMessage(brands.error)}
+            onRetry={() => void brands.refetch()}
+            retryPending={brands.isFetching}
+          />
+        ) : brands.isLoading ? (
+          <Skeleton rows={5} className="h-14" />
+        ) : rows.length === 0 ? (
+          <EmptyState icon={MessageSquare} title="Ни у одного бренда пока нет отзывов" />
+        ) : (
+          <div className="space-y-2">
+            {rows.map((b) => {
+              const slug = b.brand_slug ?? "";
+              const isOpen = openBrand !== "" && openBrand === slug;
+              const label = b.brand_name ?? b.brand_slug ?? "бренд удалён";
+              return (
+                <article
+                  key={slug || label}
+                  id={`brand-${slug}`}
+                  className={`overflow-hidden rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)] ${
+                    b.reported > 0 ? "shadow-[inset_3px_0_0_0_var(--danger)]" : ""
+                  }`}
+                >
+                  <button
+                    type="button"
+                    aria-expanded={isOpen}
+                    onClick={() => {
+                      setOpenBrand(isOpen ? "" : slug);
+                    }}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-[var(--bg-accent-soft)]"
+                  >
+                    <Thumb src={b.brand_logo_url} name={label} size={32} />
+                    <span className="font-medium">{label}</span>
+                    <code className="hidden text-xs text-[var(--text-secondary)] sm:inline">
+                      {b.brand_slug}
+                    </code>
+                    <span className="ml-auto flex items-center gap-3 text-xs">
+                      <span className="font-mono text-[var(--text-secondary)]">
+                        ★ {b.avg_rating.toFixed(1)}
+                      </span>
+                      <span className="hidden text-[var(--text-secondary)] sm:inline">
+                        {b.total} отзывов
+                      </span>
+                      {b.reported > 0 && (
+                        <Badge tone="bg-[var(--danger-soft)] text-[var(--danger-fg)]">
+                          {b.reported}
+                        </Badge>
+                      )}
+                      <ChevronDown
+                        aria-hidden
+                        className={`size-4 text-[var(--text-secondary)] transition-transform ${
+                          isOpen ? "rotate-180" : ""
+                        }`}
+                      />
+                    </span>
+                  </button>
+
+                  {isOpen && (
+                    <div className="border-t">
+                      {filtered && (
+                        <p className="border-b px-4 py-2 text-xs text-[var(--text-secondary)]">
+                          Показаны только: {status !== "all" ? filterLabel(status) : "все статусы"}
+                          {reported ? " · с жалобами" : ""}
+                        </p>
+                      )}
+                      {brandFeed.isLoading ? (
+                        <div className="py-8">
+                          <Spinner label="Загрузка отзывов…" />
+                        </div>
+                      ) : (brandFeed.data?.items.length ?? 0) === 0 ? (
+                        /* A full-size empty state inside an accordion reads as
+                           a broken panel; one line does the job. */
+                        <p className="px-4 py-6 text-center text-sm text-[var(--text-secondary)]">
+                          У бренда нет отзывов под текущий фильтр.
+                        </p>
+                      ) : (
+                        <ul className="divide-y divide-[var(--border-subtle)]">
+                          {(brandFeed.data?.items ?? []).map((r) => (
+                            <ReviewRow
+                              key={r.id}
+                              review={r}
+                              showBrand={false}
+                              onModerate={onModerate(r.id)}
+                              busy={busyFor(r.id)}
+                            />
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

@@ -5,13 +5,16 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 import { ReviewsPage } from "./ReviewsPage";
 
-import type { AdminReviewList } from "./types";
+import type { AdminBrandReviewStatsList, AdminReviewList } from "./types";
 
 import { apiGet, apiPost } from "@/lib/api";
 
 vi.mock("@/lib/api", () => ({
   apiGet: vi.fn(),
   apiPost: vi.fn(),
+  // The page reads the error text through `extractApiMessage`, which narrows on
+  // `ApiError`; without it here the error branch throws instead of rendering.
+  ApiError: class ApiError extends Error {},
 }));
 
 const mockedApiGet = vi.mocked(apiGet);
@@ -29,10 +32,51 @@ const LIST: AdminReviewList = {
       status: "published",
       report_count: 2,
       created_at: "2026-07-01T08:00:00Z",
+      brand_slug: "roblox",
+      brand_name: "Roblox",
+      brand_logo_url: "https://cdn.example/roblox.png",
+      user_name: "Дарья",
+      guest_email: null,
+    },
+    {
+      id: "rev-2",
+      brand_id: "brand-aaaa1111",
+      user_id: null,
+      order_id: "order-dddd4444",
+      rating: 3,
+      body: null,
+      status: "published",
+      report_count: 0,
+      created_at: "2026-07-02T08:00:00Z",
+      brand_slug: "roblox",
+      brand_name: "Roblox",
+      brand_logo_url: "https://cdn.example/roblox.png",
+      user_name: null,
+      guest_email: "guest@example.com",
     },
   ],
-  total: 1,
+  total: 2,
 };
+
+const BY_BRAND: AdminBrandReviewStatsList = {
+  items: [
+    {
+      brand_slug: "roblox",
+      brand_name: "Roblox",
+      brand_logo_url: "https://cdn.example/roblox.png",
+      total: 2,
+      avg_rating: 4,
+      reported: 1,
+    },
+  ],
+};
+
+/** Both blocks fetch; route by URL so each gets its own shape. */
+function mockApi(list: AdminReviewList = LIST): void {
+  mockedApiGet.mockImplementation((path: string) =>
+    Promise.resolve(path.includes("by-brand") ? BY_BRAND : list),
+  );
+}
 
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -52,17 +96,18 @@ beforeEach(() => {
 });
 
 it("renders a review row with rating, body and report count", async () => {
-  mockedApiGet.mockResolvedValue(LIST);
+  mockApi();
   renderPage();
   expect(await screen.findByText("Отличный сервис")).toBeInTheDocument();
   expect(screen.getByText("★★★★★")).toBeInTheDocument();
-  expect(screen.getByText("2")).toBeInTheDocument();
+  expect(screen.getByText(/2 жалобы/)).toBeInTheDocument();
 });
 
 it("hides a published review via the moderation endpoint", async () => {
-  mockedApiGet.mockResolvedValue(LIST);
+  mockApi();
   renderPage();
-  const hideBtn = await screen.findByText("Скрыть");
+  // Two rows, so two Hide buttons — the first belongs to rev-1.
+  const hideBtn = (await screen.findAllByText("Скрыть"))[0]!;
   fireEvent.click(hideBtn);
   await waitFor(() => {
     expect(mockedApiPost).toHaveBeenCalledWith(
@@ -77,13 +122,72 @@ it("shows an error state with Retry — never the empty state — when the fetch
   mockedApiGet.mockRejectedValue(new Error("network down"));
   renderPage();
 
-  expect(await screen.findByRole("alert")).toBeInTheDocument();
-  expect(screen.getByText("Не удалось загрузить данные")).toBeInTheDocument();
-  expect(screen.queryByText("Нет отзывов под фильтр.")).not.toBeInTheDocument();
+  // One per section, on purpose: the two blocks fetch independently, so the
+  // by-brand summary going down must not blank the feed as well.
+  expect(await screen.findAllByRole("alert")).toHaveLength(2);
+  expect(screen.getAllByText("Не удалось загрузить данные")).toHaveLength(2);
+  expect(screen.queryByText("Отзывов пока нет")).not.toBeInTheDocument();
 
-  const retryBtn = screen.getByRole("button", { name: "Повторить" });
-  mockedApiGet.mockResolvedValueOnce(LIST);
+  const retryBtn = screen.getAllByRole("button", { name: "Повторить" })[0]!;
+  mockApi();
   fireEvent.click(retryBtn);
 
   expect(await screen.findByText("Отличный сервис")).toBeInTheDocument();
+});
+
+it("names the brand and shows its logo instead of a raw id", async () => {
+  // The column used to hold two UUIDs, so an operator had to open each one to
+  // learn what the row was about.
+  mockApi();
+  renderPage();
+  await screen.findByText("Отличный сервис");
+  expect(screen.getAllByText("Roblox").length).toBeGreaterThan(0);
+  const logos = Array.from(document.querySelectorAll("img")).map((i) => i.getAttribute("src"));
+  expect(logos).toContain("https://cdn.example/roblox.png");
+});
+
+it("labels a guest as a guest and never links their email", async () => {
+  // A dead link is worse than none, and a guest must not be mistakable for an
+  // account at a glance.
+  mockApi();
+  renderPage();
+  await screen.findByText("Отличный сервис");
+
+  expect(screen.getByText("Гость")).toBeInTheDocument();
+  const email = screen.getByText("guest@example.com");
+  expect(email.closest("a")).toBeNull();
+
+  // The signed-in author, by contrast, is a link to their card.
+  expect(screen.getByText("Дарья").closest("a")).toHaveAttribute(
+    "href",
+    "/customers/user-bbbb2222",
+  );
+});
+
+it("says a review has no text rather than printing a dash", async () => {
+  mockApi();
+  renderPage();
+  expect(await screen.findByText("Без текста — только оценка")).toBeInTheDocument();
+});
+
+it("lists brands with their own totals and opens one on click", async () => {
+  mockApi();
+  renderPage();
+
+  // The row carries a brand button too; the accordion header is the one
+  // that owns aria-expanded.
+  const header = (await screen.findAllByRole("button", { name: /Roblox/ })).find((b) =>
+    b.hasAttribute("aria-expanded"),
+  )!;
+  expect(screen.getByText("2 отзывов")).toBeInTheDocument();
+  expect(screen.getByText("★ 4.0")).toBeInTheDocument();
+
+  fireEvent.click(header);
+  await waitFor(() => {
+    expect(header).toHaveAttribute("aria-expanded", "true");
+  });
+  // The brand's own list is a separate request, not a slice of the feed.
+  await waitFor(() => {
+    expect(mockedApiGet.mock.calls.some(([p]) => String(p).includes("brand=roblox"))).toBe(true);
+  });
 });

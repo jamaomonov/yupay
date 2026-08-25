@@ -209,6 +209,82 @@
         "title": "AdminBrandOut",
         "type": "object"
       },
+      "AdminBrandReviewStatsListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminBrandReviewStatsOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AdminBrandReviewStatsListOut",
+        "type": "object"
+      },
+      "AdminBrandReviewStatsOut": {
+        "description": "Per-brand rollup behind the by-brand block.",
+        "properties": {
+          "avg_rating": {
+            "title": "Avg Rating",
+            "type": "number"
+          },
+          "brand_logo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Logo Url"
+          },
+          "brand_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Name"
+          },
+          "brand_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Slug"
+          },
+          "reported": {
+            "title": "Reported",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "brand_slug",
+          "brand_name",
+          "brand_logo_url",
+          "total",
+          "avg_rating",
+          "reported"
+        ],
+        "title": "AdminBrandReviewStatsOut",
+        "type": "object"
+      },
       "AdminCategoryOut": {
         "description": "Admin-side category view including inactive rows + per-locale translations.",
         "properties": {
@@ -656,6 +732,7 @@
         "type": "object"
       },
       "AdminReviewOut": {
+        "description": "One row of the moderation queue, readable without opening anything.\n\nThe ids stay because the panel links on them; the names and the logo are\nwhat let an operator scan the queue instead of decoding it.",
         "properties": {
           "body": {
             "anyOf": [
@@ -672,10 +749,54 @@
             "title": "Brand Id",
             "type": "string"
           },
+          "brand_logo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Logo Url"
+          },
+          "brand_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Name"
+          },
+          "brand_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Slug"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "guest_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guest Email"
           },
           "id": {
             "title": "Id",
@@ -707,6 +828,17 @@
               }
             ],
             "title": "User Id"
+          },
+          "user_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Name"
           }
         },
         "required": [
@@ -17097,6 +17229,22 @@
           },
           {
             "in": "query",
+            "name": "brand",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brand"
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
@@ -17158,6 +17306,56 @@
           }
         },
         "summary": "Moderation queue",
+        "tags": [
+          "admin:reviews"
+        ]
+      }
+    },
+    "/api/v1/admin/reviews/by-brand": {
+      "get": {
+        "description": "Counts, average rating and complaint count per brand.\n\nAggregated server-side because the queue itself is capped: counting on the\nclient would describe the first 200 reviews as if they were all of them.",
+        "operationId": "admin_reviews_by_brand_api_v1_admin_reviews_by_brand_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminBrandReviewStatsListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reviews grouped by brand",
         "tags": [
           "admin:reviews"
         ]

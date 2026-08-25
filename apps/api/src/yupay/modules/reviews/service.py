@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from decimal import Decimal
 from html.parser import HTMLParser
-from typing import overload
+from typing import NamedTuple, overload
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -24,7 +24,7 @@ from yupay.core.clock import now
 from yupay.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
-from yupay.modules.catalog.models import Brand, Product, Sku
+from yupay.modules.catalog.models import Brand, BrandTranslation, Product, Sku
 from yupay.modules.orders.models import Order, OrderItem
 from yupay.modules.reviews.models import (
     REVIEW_STATUSES,
@@ -367,9 +367,41 @@ async def report_review(
         log.info("review.auto_hidden", review_id=review_id, reports=total)
 
 
+#: Locale the admin panel itself is written in. Brand names are localised, and
+#: the queue has to print one of them; the operator reads Russian, so that is
+#: the one it asks for — with the slug as the fallback when a brand has no
+#: Russian row rather than an empty cell.
+_ADMIN_LOCALE = "ru"
+
+
+class AdminReviewRow(NamedTuple):
+    """One moderation-queue row: the review plus what it takes to read it.
+
+    The queue used to hand the panel three bare UUIDs — brand, order, user — and
+    an operator had to open each one to find out what they were looking at.
+    Resolving them here, in the query that already touches these tables, is one
+    join instead of a page of round trips.
+    """
+
+    review: Review
+    report_count: int
+    brand_slug: str | None
+    brand_name: str | None
+    brand_logo_url: str | None
+    #: Display name of the signed-in author, or their login email when they have
+    #: no name set. ``None`` for a guest, whose address is on the review itself.
+    user_name: str | None
+
+
 async def admin_list(
-    db: AsyncSession, *, status: str | None, reported_only: bool, limit: int, offset: int
-) -> tuple[list[tuple[Review, int]], int]:
+    db: AsyncSession,
+    *,
+    status: str | None,
+    reported_only: bool,
+    limit: int,
+    offset: int,
+    brand_slug: str | None = None,
+) -> tuple[list[AdminReviewRow], int]:
     """List reviews for moderation with each review's report count + total row count."""
     report_count = (
         select(func.count())
@@ -378,7 +410,27 @@ async def admin_list(
         .correlate(Review)
         .scalar_subquery()
     )
-    stmt = select(Review, report_count.label("report_count"))
+    stmt = (
+        select(
+            Review,
+            report_count.label("report_count"),
+            Brand.slug.label("brand_slug"),
+            Brand.logo_url.label("brand_logo_url"),
+            BrandTranslation.name.label("brand_name"),
+            func.coalesce(User.display_name, User.email).label("user_name"),
+        )
+        # Outer joins throughout: a review whose brand row was deleted, or whose
+        # author is a guest, is exactly the kind of row moderation exists for.
+        # An inner join would hide it from the only page that can act on it.
+        .join(Brand, Brand.id == Review.brand_id, isouter=True)
+        .join(
+            BrandTranslation,
+            (BrandTranslation.brand_id == Review.brand_id)
+            & (BrandTranslation.locale == _ADMIN_LOCALE),
+            isouter=True,
+        )
+        .join(User, User.id == Review.user_id, isouter=True)
+    )
     count_stmt = select(func.count()).select_from(Review)
     if status is not None:
         stmt = stmt.where(Review.status == status)
@@ -386,11 +438,92 @@ async def admin_list(
     if reported_only:
         stmt = stmt.where(report_count > 0)
         count_stmt = count_stmt.where(report_count > 0)
+    if brand_slug is not None:
+        # By slug, not brand_id: the panel groups on the slug it already has on
+        # every row, and a subquery here keeps the count honest — filtering the
+        # loaded page instead would report a brand's total as whatever happened
+        # to fit in the queue.
+        brand_ids = select(Brand.id).where(Brand.slug == brand_slug).scalar_subquery()
+        stmt = stmt.where(Review.brand_id.in_(brand_ids))
+        count_stmt = count_stmt.where(Review.brand_id.in_(brand_ids))
     stmt = stmt.order_by(Review.created_at.desc()).limit(limit).offset(offset)
 
     rows = (await db.execute(stmt)).all()
     total = (await db.execute(count_stmt)).scalar_one()
-    return [(r.Review, r.report_count) for r in rows], total
+    return [
+        AdminReviewRow(
+            review=r.Review,
+            report_count=r.report_count,
+            brand_slug=r.brand_slug,
+            brand_name=r.brand_name,
+            brand_logo_url=r.brand_logo_url,
+            user_name=r.user_name,
+        )
+        for r in rows
+    ], total
+
+
+class AdminBrandReviewStats(NamedTuple):
+    """Per-brand rollup for the by-brand block."""
+
+    brand_slug: str | None
+    brand_name: str | None
+    brand_logo_url: str | None
+    total: int
+    avg_rating: float
+    reported: int
+
+
+async def admin_brand_stats(db: AsyncSession) -> list[AdminBrandReviewStats]:
+    """Reviews grouped by brand: how many, how well rated, how many complained about.
+
+    Aggregated in SQL rather than folded out of the queue on the client: the
+    queue is capped at 200 rows, so counting there would quietly describe a
+    slice of the reviews as if it were all of them — and the number an operator
+    uses to decide which brand to open is exactly the one that must not lie.
+
+    Sorted by "needs attention" first: brands with reports, then by volume.
+    """
+    # Counted over DISTINCT ids on both sides: the outer join to reports fans a
+    # review out into one row per report, so a plain COUNT would multiply the
+    # review total by the number of complaints against it.
+    reported_count = func.count(func.distinct(ReviewReport.review_id))
+    review_count = func.count(func.distinct(Review.id))
+    stmt = (
+        select(
+            Brand.slug.label("brand_slug"),
+            BrandTranslation.name.label("brand_name"),
+            Brand.logo_url.label("brand_logo_url"),
+            review_count.label("total"),
+            func.avg(Review.rating).label("avg_rating"),
+            reported_count.label("reported"),
+        )
+        .select_from(Review)
+        .join(Brand, Brand.id == Review.brand_id, isouter=True)
+        .join(
+            BrandTranslation,
+            (BrandTranslation.brand_id == Review.brand_id)
+            & (BrandTranslation.locale == _ADMIN_LOCALE),
+            isouter=True,
+        )
+        .join(ReviewReport, ReviewReport.review_id == Review.id, isouter=True)
+        .group_by(Brand.slug, BrandTranslation.name, Brand.logo_url)
+        # Needs-attention first, then by volume — the order an operator would
+        # work the list in.
+        .order_by(reported_count.desc(), review_count.desc())
+    )
+    rows = (await db.execute(stmt)).all()
+    return [
+        AdminBrandReviewStats(
+            brand_slug=r.brand_slug,
+            brand_name=r.brand_name,
+            brand_logo_url=r.brand_logo_url,
+            total=int(r.total or 0),
+            avg_rating=round(float(r.avg_rating or 0), 2),
+            reported=int(r.reported or 0),
+        )
+        for r in rows
+    ]
 
 
 async def count_reports(db: AsyncSession, review_id: str) -> int:
