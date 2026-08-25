@@ -41,7 +41,7 @@ export async function Footer({ locale }: { locale: string }) {
   return (
     <footer className="border-border border-t pt-[72px]">
       <div className="mx-auto max-w-[1200px] px-6 pb-10 sm:px-10">
-        <div className="mb-14 grid grid-cols-2 gap-10 md:grid-cols-3 lg:grid-cols-[1.6fr_1fr_1fr_1fr_1fr_1fr]">
+        <div className="mb-10 grid grid-cols-2 gap-10 md:grid-cols-3 lg:grid-cols-[1.6fr_1fr_1fr_1fr_1fr]">
           <div className="col-span-2 md:col-span-3 lg:col-span-1">
             <Wordmark />
             <p className="text-tx-mute mt-5 max-w-[300px] text-sm leading-relaxed">
@@ -65,16 +65,6 @@ export async function Footer({ locale }: { locale: string }) {
               ))}
             </div>
           </div>
-
-          {brands.length > 0 && (
-            <FooterCol title={t("gamesTitle")}>
-              {brands.map((b) => (
-                <FooterLink key={b.slug} href={pathFor(locale, `/store/${b.slug}`)}>
-                  {b.name}
-                </FooterLink>
-              ))}
-            </FooterCol>
-          )}
 
           <FooterCol title={t("productTitle")}>
             <FooterLink href={pathFor(locale, "/store")}>{nav("store")}</FooterLink>
@@ -123,6 +113,35 @@ export async function Footer({ locale }: { locale: string }) {
             </FooterLink>
           </FooterCol>
         </div>
+
+        {/* Its own strip rather than a sixth column. Seventeen brands stacked
+            vertically made the whole footer as tall as its longest column —
+            three times what the other five needed — and narrowing that column
+            instead only moved the problem: "Arena Breakout: Infinite" and
+            "Magic Chess: Go Go" wrap onto two lines well before the height
+            comes down. Laid out wide, every name fits on one line and the
+            block is four rows.
+
+            Every brand still ships. The column exists so the money pages get
+            the same site-wide reach the legal ones have (see below), and
+            capping the list at N would spend exactly what it was built for to
+            buy back height a layout change gives for free. */}
+        {brands.length > 0 && (
+          <div className="border-border mb-10 border-t pt-8">
+            <FooterCol title={t("gamesTitle")}>
+              {/* `break-inside-avoid` on the rows: each link is a 44px flex row, and a
+                  column break through one splits the tap target across two
+                  columns. */}
+              <div className="columns-2 gap-x-8 sm:columns-3 lg:columns-5 [&_a]:break-inside-avoid">
+                {brands.map((b) => (
+                  <FooterLink key={b.slug} href={pathFor(locale, `/store/${b.slug}`)}>
+                    {b.name}
+                  </FooterLink>
+                ))}
+              </div>
+            </FooterCol>
+          </div>
+        )}
 
         <div className="border-border flex flex-col items-start justify-between gap-4 border-t pt-8 md:flex-row md:items-center">
           <span className="text-tx-mute font-mono text-[12px]">
