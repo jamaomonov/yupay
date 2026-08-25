@@ -45,7 +45,7 @@ import {
 import { ACQUIRER_BY_METHOD, PAYMENT_METHODS, PROVIDER_BY_METHOD } from "@/lib/payment-methods";
 import { blocksCheckout, mergeCheckResult } from "@/lib/player-check-state";
 import { getRecentFulfillment, rememberFulfillment } from "@/lib/recent-checkout";
-import { packagePrice, visibleStarPackages } from "@/lib/star-packages";
+import { packagePrice, starLayers, visibleStarPackages } from "@/lib/star-packages";
 import { haptic, isInsideTelegram, openExternalLink, setClosingConfirmation } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { cn } from "@/lib/utils";
@@ -2048,7 +2048,9 @@ function UnitPackTiles({
             data-testid={`btn-pkg-unit-${n}`}
           >
             <div className="mb-1.5">
-              <PackageThumb pkg={pkg} fallback={fallbackImage} />
+              <StarStack src={pkg.imageUrl ?? fallbackImage} layers={starLayers(n)}>
+                <PackageThumb pkg={pkg} fallback={fallbackImage} />
+              </StarStack>
             </div>
             <span className="block text-sm font-bold leading-none text-white">
               {n.toLocaleString(getActiveLocale())} {pkg.amountUnit}
@@ -2059,6 +2061,58 @@ function UnitPackTiles({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * The pack thumbnail: one star image, piled up.
+ *
+ * Every tile used to carry the same single star, so the art said nothing about
+ * size and the number underneath did all the work. Copies of the *same* asset
+ * offset behind each other give the thumbnail a second reading of the pack
+ * size — no new artwork, and it scales to whatever packs the list holds.
+ *
+ * Falls back to `children` (the ordinary `PackageThumb`, which handles the
+ * missing-image and broken-URL cases) whenever there is no image to stack or
+ * only one copy to draw, so this adds a visual and takes no behaviour away.
+ *
+ * Drawn back-to-front so the front copy sits on top without z-index juggling,
+ * and each one further back is smaller, dimmer and nudged up-left, which is
+ * how a stack of physical things actually recedes. `aria-hidden`: the pile
+ * restates the label beside it, and four images called "" would be noise.
+ */
+function StarStack({
+  src,
+  layers,
+  children,
+}: {
+  src: string | null;
+  layers: number;
+  children: React.ReactNode;
+}) {
+  if (!src || layers <= 1) return <>{children}</>;
+  // Back-to-front: index 0 renders last and sits on top.
+  const depths = Array.from({ length: layers }, (_, i) => layers - 1 - i);
+  return (
+    <div className="relative h-9 w-9 flex-shrink-0" aria-hidden="true">
+      {depths.map((depth) => (
+        <img
+          key={depth}
+          src={src}
+          alt=""
+          className="absolute inset-0 h-full w-full rounded-xl object-cover"
+          style={{
+            transform: `translate(${String(depth * -14)}%, ${String(depth * -10)}%) scale(${String(1 - depth * 0.09)})`,
+            // Darkened rather than faded. Fading a gold star toward a dark
+            // tile turns it grey — the pile stopped reading as stars at all.
+            // Brightness keeps the hue and still recedes, which is what an
+            // overlapped object actually does.
+            filter: `brightness(${String(1 - depth * 0.18)})`,
+            opacity: 1 - depth * 0.08,
+          }}
+        />
+      ))}
     </div>
   );
 }

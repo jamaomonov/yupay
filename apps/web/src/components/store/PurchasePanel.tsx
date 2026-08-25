@@ -39,7 +39,7 @@ import {
   type CheckState,
 } from "@/lib/player-check-state";
 import { formatUzs, pathFor } from "@/lib/seo";
-import { packagePrice, visibleStarPackages } from "@/lib/star-packages";
+import { packagePrice, starLayers, visibleStarPackages } from "@/lib/star-packages";
 import {
   amountError,
   boundToUnits,
@@ -770,6 +770,50 @@ function UnitPackCard({
  * separate SKUs (there are none): tapping one just sets `UnitPackCard`'s
  * quantity, the same field both render into.
  */
+/**
+ * The pack thumbnail: one star image, piled up.
+ *
+ * Every tile used to carry the same single star, so the art said nothing about
+ * size and the number underneath did all the work. Copies of the *same* asset
+ * offset behind each other give the thumbnail a second reading of the pack
+ * size — no new artwork, and it scales to whatever packs the list holds.
+ *
+ * Drawn back-to-front so the front copy sits on top without z-index juggling,
+ * and each one further back is smaller, dimmer and nudged up-left, which is
+ * how a stack of physical things actually recedes. `aria-hidden` on the lot:
+ * the pile is a restatement of the label beside it, and a screen reader
+ * announcing four images called "" would be noise.
+ */
+function StarStack({ src, layers }: { src: string | null; layers: number }) {
+  if (!src) return <span className="rounded-btn block h-12 w-12" />;
+  // Back-to-front: index 0 renders last and sits on top.
+  const depths = Array.from({ length: layers }, (_, i) => layers - 1 - i);
+  return (
+    <span className="rounded-btn relative block h-12 w-12" aria-hidden="true">
+      {depths.map((depth) => (
+        <Image
+          key={depth}
+          src={src}
+          alt=""
+          fill
+          unoptimized={!isOptimizable(src)}
+          sizes="48px"
+          className="object-contain"
+          style={{
+            transform: `translate(${String(depth * -14)}%, ${String(depth * -10)}%) scale(${String(1 - depth * 0.09)})`,
+            // Darkened rather than faded. Fading a gold star toward a dark
+            // tile turns it grey — the pile stopped reading as stars at all.
+            // Brightness keeps the hue and still recedes, which is what an
+            // overlapped object actually does.
+            filter: `brightness(${String(1 - depth * 0.18)})`,
+            opacity: 1 - depth * 0.08,
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
 function UnitPackTiles({
   sku,
   qty,
@@ -810,18 +854,7 @@ function UnitPackTiles({
                 : "border-border bg-card hover:border-border-2"
             }`}
           >
-            <span className="rounded-btn relative h-12 w-12 overflow-hidden">
-              {img && (
-                <Image
-                  src={img}
-                  alt=""
-                  fill
-                  unoptimized={!isOptimizable(img)}
-                  sizes="48px"
-                  className="object-contain"
-                />
-              )}
-            </span>
+            <StarStack src={img} layers={starLayers(n)} />
             <span className="font-display block text-[14px] font-semibold tracking-[-0.01em]">
               {n.toLocaleString(locale)} {sku.amount_unit}
             </span>

@@ -1,6 +1,12 @@
 import { describe, expect, test } from "vitest";
 
-import { packagePrice, STAR_PACKAGES, visibleStarPackages } from "./star-packages";
+import {
+  MAX_STAR_LAYERS,
+  packagePrice,
+  STAR_PACKAGES,
+  starLayers,
+  visibleStarPackages,
+} from "./star-packages";
 
 describe("visibleStarPackages", () => {
   test("hides packs outside admin bounds", () => {
@@ -39,5 +45,36 @@ describe("packagePrice", () => {
   test("scales linearly — no volume-discount bands for a unit SKU", () => {
     expect(packagePrice(100, 250)).toBe(25000);
     expect(packagePrice(1000, 250)).toBe(250000);
+  });
+});
+
+describe("starLayers", () => {
+  test("grows the pile with the pack's magnitude", () => {
+    expect(starLayers(50)).toBe(1);
+    expect(starLayers(100)).toBe(2);
+    expect(starLayers(500)).toBe(3);
+    expect(starLayers(5000)).toBe(4);
+  });
+
+  test("never draws more than the stack allows", () => {
+    // The offsets are tuned for MAX_STAR_LAYERS; a fifth copy would sit
+    // outside the 48px box rather than behind the others.
+    for (const n of STAR_PACKAGES) {
+      expect(starLayers(n)).toBeGreaterThanOrEqual(1);
+      expect(starLayers(n)).toBeLessThanOrEqual(MAX_STAR_LAYERS);
+    }
+  });
+
+  test("uses every pile, so neighbouring tiles usually differ", () => {
+    // Thresholds that bunch most packs onto one step make the art say nothing
+    // again, which is the thing this replaced.
+    expect(new Set(STAR_PACKAGES.map(starLayers)).size).toBe(MAX_STAR_LAYERS);
+  });
+
+  test("is monotonic — a bigger pack never shows a smaller pile", () => {
+    // The whole point is that the art reads as size; a dip anywhere would say
+    // the opposite of the number beside it.
+    const piles = STAR_PACKAGES.map(starLayers);
+    expect([...piles].sort((a, b) => a - b)).toEqual(piles);
   });
 });
