@@ -221,58 +221,66 @@ export default async function BrandPage({
           <span className="text-tx-mute">{brand.name}</span>
         </nav>
 
-        {/* hero banner — mirrors the design reference: the brand image bleeds
-            in from the right while a left-to-right scrim keeps the copy
-            readable; content is bottom-aligned over it. */}
+        {/* Hero: the art gets a band of its own, the copy sits under it.
+            Overlaying the two is what this replaced, and it failed twice. The
+            container was ~3.8:1 while every hero in the catalogue is 16:9 (one
+            is 4:3), so `object-cover` threw away more than half the frame; and
+            on a phone the box turns portrait, where a left-to-right scrim
+            keeps nothing readable — the copy simply sat on the artwork.
+
+            The band is 16:9 on a phone, which is the native ratio of most of
+            these images, so there the frame is shown whole. From `sm` it goes
+            to 2.6:1 — still a crop, but half of what it was, and the subject
+            of game key art is centred. Nothing overlaps the copy at any width,
+            by construction rather than by tuning a gradient. */}
         <div className="border-border bg-card relative overflow-hidden rounded-xl border">
           {heroImg ? (
-            <Image
-              src={heroImg}
-              alt={brand.name}
-              fill
-              priority
-              // `priority` alone does not raise the request's priority: in Next
-              // 15 it only disables lazy loading and emits the preload, and the
-              // preload copies `fetchPriority` straight from this prop. Without
-              // it the LCP image queues behind the fonts and scripts already in
-              // flight — which is exactly what Lighthouse reports here.
-              fetchPriority="high"
-              unoptimized={!isOptimizable(heroImg)}
-              sizes="(max-width: 1024px) 100vw, 1040px"
-              className="object-cover"
-              style={{ objectPosition: "50% 30%", opacity: 0.6 }}
-            />
+            <div className="relative aspect-[16/9] w-full overflow-hidden sm:aspect-[2.6/1]">
+              <Image
+                src={heroImg}
+                alt={brand.name}
+                fill
+                priority
+                // `priority` alone does not raise the request's priority: in Next
+                // 15 it only disables lazy loading and emits the preload, and the
+                // preload copies `fetchPriority` straight from this prop. Without
+                // it the LCP image queues behind the fonts and scripts already in
+                // flight — which is exactly what Lighthouse reports here.
+                fetchPriority="high"
+                unoptimized={!isOptimizable(heroImg)}
+                sizes="(max-width: 1024px) 100vw, 1040px"
+                className="object-cover"
+                // Slightly above centre: game key art puts faces in the upper
+                // half, and a centred crop of a 16:9 into 2.6:1 cuts them.
+                style={{ objectPosition: "50% 42%" }}
+              />
+              {/* Only a bottom fade now. The copy is below the image, so this
+                  is here to land the band on the card rather than to rescue
+                  text from the artwork. */}
+              <div
+                aria-hidden
+                className="absolute inset-0"
+                style={{
+                  background:
+                    "linear-gradient(0deg, hsl(var(--card)) 1%, hsl(var(--card)/0.22) 38%, transparent 72%)",
+                }}
+              />
+            </div>
           ) : (
+            /* No hero art. The logo is a square icon and stretching it across
+               a 2.6:1 band looks like a mistake, so this gets the accent wash
+               and no band at all. */
             <div
               aria-hidden
-              className="absolute inset-0"
+              className="h-24 w-full sm:h-32"
               style={{
-                background: `radial-gradient(120% 120% at 80% 0%, ${brand.accent_color ?? "#AAFF33"}33, transparent 62%)`,
+                background: `radial-gradient(120% 140% at 70% 0%, ${brand.accent_color ?? "#AAFF33"}2E, transparent 68%)`,
               }}
             />
           )}
-          {/* left-to-right scrim (copy side dark, image visible on the right) */}
-          <div
-            aria-hidden
-            className="absolute inset-0"
-            style={{
-              background:
-                "linear-gradient(90deg, hsl(var(--bg)) 0%, hsl(var(--bg)/0.93) 32%, hsl(var(--bg)/0.55) 66%, hsl(var(--bg)/0.18) 100%)",
-            }}
-          />
-          {/* bottom fade so the pills always sit on solid ground */}
-          <div
-            aria-hidden
-            className="absolute inset-0"
-            style={{
-              background: "linear-gradient(0deg, hsl(var(--bg)) 0%, hsl(var(--bg)/0.05) 58%)",
-            }}
-          />
-          {/* `min-h` only from `sm`: on a 390px phone the hero plus the SEO
-              paragraph pushed the first denomination past the fold — a buyer
-              who arrived from search for prices got a paragraph they had
-              already read in the snippet. */}
-          <div className="relative z-10 flex flex-col justify-end gap-4 p-6 sm:min-h-[272px] sm:p-8">
+          {/* Pulled up so the logo breaks the band's edge — without it the
+              picture and the copy read as two unrelated blocks stacked. */}
+          <div className="relative z-10 -mt-7 flex flex-col gap-4 p-6 pt-0 sm:-mt-9 sm:p-8 sm:pt-0">
             <div className="flex items-center gap-4">
               {brand.logo_url && (
                 <span className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-black/40 shadow-[0_12px_32px_rgba(0,0,0,0.55)] backdrop-blur">
