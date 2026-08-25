@@ -55,7 +55,8 @@ const LIST: AdminReviewList = {
       guest_email: "guest@example.com",
     },
   ],
-  total: 2,
+  // Larger than one page, so the pager renders and its counts are checked.
+  total: 45,
 };
 
 const BY_BRAND: AdminBrandReviewStatsList = {
@@ -190,4 +191,63 @@ it("lists brands with their own totals and opens one on click", async () => {
   await waitFor(() => {
     expect(mockedApiGet.mock.calls.some(([p]) => String(p).includes("brand=roblox"))).toBe(true);
   });
+});
+
+it("pages the feed instead of capping it silently", async () => {
+  mockApi();
+  renderPage();
+  await screen.findByText("Отличный сервис");
+
+  // The count is shown even before anyone pages — it is the only confirmation
+  // that a filter did what the operator meant.
+  expect(screen.getAllByText(/из 45/).length).toBeGreaterThan(0);
+
+  const next = screen.getAllByRole("button", { name: "Следующая страница" })[0]!;
+  fireEvent.click(next);
+
+  await waitFor(() => {
+    expect(mockedApiGet.mock.calls.some(([p]) => String(p).includes("offset=20"))).toBe(true);
+  });
+});
+
+it("returns to the first page when the filter changes", async () => {
+  // A page number only means something against the filter it was counted under;
+  // staying on page 3 of a shorter result set reads as "nothing matched".
+  mockApi();
+  renderPage();
+  await screen.findByText("Отличный сервис");
+
+  fireEvent.click(screen.getAllByRole("button", { name: "Следующая страница" })[0]!);
+  await waitFor(() => {
+    expect(mockedApiGet.mock.calls.some(([p]) => String(p).includes("offset=20"))).toBe(true);
+  });
+
+  mockedApiGet.mockClear();
+  fireEvent.click(screen.getByLabelText("Только с жалобами"));
+
+  await waitFor(() => {
+    expect(mockedApiGet.mock.calls.length).toBeGreaterThan(0);
+  });
+  const feedCalls = mockedApiGet.mock.calls
+    .map(([p]) => String(p))
+    .filter((p) => p.includes("/admin/reviews?") && !p.includes("brand="));
+  expect(feedCalls.every((p) => !p.includes("offset=20"))).toBe(true);
+});
+
+it("gives an opened brand its own pager, counted under the filter", async () => {
+  mockApi();
+  renderPage();
+  const header = (await screen.findAllByRole("button", { name: /Roblox/ })).find((b) =>
+    b.hasAttribute("aria-expanded"),
+  )!;
+  fireEvent.click(header);
+
+  await waitFor(() => {
+    expect(mockedApiGet.mock.calls.some(([p]) => String(p).includes("brand=roblox"))).toBe(true);
+  });
+  // A page-sized request, not the whole brand in one silent slab.
+  const brandCall = mockedApiGet.mock.calls
+    .map(([p]) => String(p))
+    .find((p) => p.includes("brand=roblox"))!;
+  expect(brandCall).toContain("limit=20");
 });

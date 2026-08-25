@@ -11,15 +11,16 @@
  * UUIDs — an operator had to open each one to learn what the row was about.
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Filter, MessageSquare, ShieldCheck } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { ReviewRow } from "./ReviewRow";
 import type { AdminBrandReviewStatsList, AdminReviewList } from "./types";
 
 import { Badge } from "@/components/Badge";
 import { PageHeader } from "@/components/PageHeader";
+import { Pagination } from "@/components/Pagination";
 import { StatCard } from "@/components/StatCard";
 import { EmptyState, ErrorState, Skeleton, Spinner } from "@/components/States";
 import { localizeStatus } from "@/components/StatusChip";
@@ -40,9 +41,9 @@ const MODERATE_DONE: Record<ModerateAction, string> = {
   remove: "Отзыв удалён",
 };
 
-/** How many rows the feed shows. "Recent" stops meaning anything past a screenful
- *  or two; the by-brand block is where the rest is reached. */
-const FEED_LIMIT = 30;
+/** One page. Small enough that a page is scannable, large enough that paging
+ *  is rare at today's volume — 16 reviews across 6 brands, growing with orders. */
+const PAGE = 20;
 
 function filterLabel(f: StatusFilter): string {
   return f === "all" ? "Все" : localizeStatus("reviewStatus", f).label;
@@ -61,15 +62,55 @@ export function ReviewsPage() {
   const [reportedRaw, setReportedRaw] = useSearchParamsState("reported", "");
   const [openBrand, setOpenBrand] = useSearchParamsState("brand", "");
   const reported = reportedRaw === "1";
+  const [feedOffset, setFeedOffset] = useState(0);
+  const [brandOffset, setBrandOffset] = useState(0);
 
-  const listParams: Record<string, string> = { limit: String(FEED_LIMIT) };
-  if (status !== "all") listParams.status = status;
-  if (reported) listParams.reported = "true";
+  // A page number only means something against the filter it was counted under.
+  // Changing the filter while on page 3 would otherwise land the operator on an
+  // empty page of a shorter result set and read as "nothing matched".
+  //
+  // Reset in the handler, not in an effect on `[status, reported]`: an effect
+  // runs after the render that already fired the query, so the new filter would
+  // go out once with the old offset — a wasted round trip and, briefly, the
+  // wrong page.
+  const changeStatus = (next: StatusFilter) => {
+    setFeedOffset(0);
+    setBrandOffset(0);
+    setStatus(next);
+  };
+  const changeReported = (next: boolean) => {
+    setFeedOffset(0);
+    setBrandOffset(0);
+    setReportedRaw(next ? "1" : "");
+  };
+  // The filter also changes when the browser goes Back, where no handler runs.
+  // A no-op whenever the handlers already did it.
+  useEffect(() => {
+    setFeedOffset(0);
+    setBrandOffset(0);
+  }, [status, reported]);
+  // Same for switching brands: page 3 of a brand with 7 reviews is blank.
+  useEffect(() => {
+    setBrandOffset(0);
+  }, [openBrand]);
+
+  const filterParams: Record<string, string> = {};
+  if (status !== "all") filterParams.status = status;
+  if (reported) filterParams.reported = "true";
 
   const feed = useQuery<AdminReviewList>({
-    queryKey: ["admin", "reviews", "feed", status, reported],
-    queryFn: () => apiGet<AdminReviewList>(reviewsUrl(listParams)),
-    refetchInterval: 30_000,
+    queryKey: ["admin", "reviews", "feed", status, reported, feedOffset],
+    queryFn: () =>
+      apiGet<AdminReviewList>(
+        reviewsUrl({ ...filterParams, limit: String(PAGE), offset: String(feedOffset) }),
+      ),
+    // Without this the list unmounts on every page turn: a skeleton flashes and
+    // the page height collapses, which reads as a reload rather than a step.
+    placeholderData: keepPreviousData,
+    // Poll only on the first page. A background refetch further in would shift
+    // rows under the operator as new reviews arrive — the row they were about
+    // to hide moves, and they hide the wrong one.
+    refetchInterval: feedOffset === 0 ? 30_000 : false,
   });
 
   const brands = useQuery<AdminBrandReviewStatsList>({
@@ -80,9 +121,17 @@ export function ReviewsPage() {
   // Only when a brand is open: the queue is capped, so a brand's own list is
   // its own request rather than a filter over what the feed happened to load.
   const brandFeed = useQuery<AdminReviewList>({
-    queryKey: ["admin", "reviews", "brand", openBrand, status, reported],
+    queryKey: ["admin", "reviews", "brand", openBrand, status, reported, brandOffset],
     queryFn: () =>
-      apiGet<AdminReviewList>(reviewsUrl({ ...listParams, limit: "200", brand: openBrand })),
+      apiGet<AdminReviewList>(
+        reviewsUrl({
+          ...filterParams,
+          limit: String(PAGE),
+          offset: String(brandOffset),
+          brand: openBrand,
+        }),
+      ),
+    placeholderData: keepPreviousData,
     enabled: openBrand !== "",
   });
 
@@ -115,6 +164,8 @@ export function ReviewsPage() {
 
   const filtered = status !== "all" || reported;
   const resetFilters = () => {
+    setFeedOffset(0);
+    setBrandOffset(0);
     setStatus("all");
     setReportedRaw("");
   };
@@ -143,7 +194,7 @@ export function ReviewsPage() {
         <button
           type="button"
           onClick={() => {
-            setReportedRaw(reported ? "" : "1");
+            changeReported(!reported);
           }}
           className="text-left"
           title={reported ? "Показать все отзывы" : "Показать только отзывы с жалобами"}
@@ -164,7 +215,7 @@ export function ReviewsPage() {
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <Tabs
           value={status}
-          onChange={setStatus}
+          onChange={changeStatus}
           ariaLabel="Фильтр по статусу отзыва"
           tabs={FILTERS.map((f) => ({ id: f, label: filterLabel(f) }))}
         />
@@ -173,7 +224,7 @@ export function ReviewsPage() {
             type="checkbox"
             checked={reported}
             onChange={(e) => {
-              setReportedRaw(e.target.checked ? "1" : "");
+              changeReported(e.target.checked);
             }}
             className="size-4"
           />
@@ -228,17 +279,27 @@ export function ReviewsPage() {
             />
           )
         ) : (
-          <ul className="divide-y divide-[var(--border-subtle)] overflow-hidden rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]">
-            {(feed.data?.items ?? []).map((r) => (
-              <ReviewRow
-                key={r.id}
-                review={r}
-                onPickBrand={setOpenBrand}
-                onModerate={onModerate(r.id)}
-                busy={busyFor(r.id)}
-              />
-            ))}
-          </ul>
+          <>
+            <ul className="divide-y divide-[var(--border-subtle)] overflow-hidden rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]">
+              {(feed.data?.items ?? []).map((r) => (
+                <ReviewRow
+                  key={r.id}
+                  review={r}
+                  onPickBrand={setOpenBrand}
+                  onModerate={onModerate(r.id)}
+                  busy={busyFor(r.id)}
+                />
+              ))}
+            </ul>
+            {/* Always rendered, even on a single page: "12 из 12" is the only
+                confirmation the operator gets that a filter did what they meant. */}
+            <Pagination
+              total={feed.data?.total ?? 0}
+              limit={PAGE}
+              offset={feedOffset}
+              onPageChange={setFeedOffset}
+            />
+          </>
         )}
       </section>
 
@@ -325,17 +386,30 @@ export function ReviewsPage() {
                           У бренда нет отзывов под текущий фильтр.
                         </p>
                       ) : (
-                        <ul className="divide-y divide-[var(--border-subtle)]">
-                          {(brandFeed.data?.items ?? []).map((r) => (
-                            <ReviewRow
-                              key={r.id}
-                              review={r}
-                              showBrand={false}
-                              onModerate={onModerate(r.id)}
-                              busy={busyFor(r.id)}
+                        <>
+                          <ul className="divide-y divide-[var(--border-subtle)]">
+                            {(brandFeed.data?.items ?? []).map((r) => (
+                              <ReviewRow
+                                key={r.id}
+                                review={r}
+                                showBrand={false}
+                                onModerate={onModerate(r.id)}
+                                busy={busyFor(r.id)}
+                              />
+                            ))}
+                          </ul>
+                          {/* Its own pager. The header count is every review the
+                              brand has; this one counts what the filter left, and
+                              the two differing is information, not a mismatch. */}
+                          <div className="px-4 pb-3">
+                            <Pagination
+                              total={brandFeed.data?.total ?? 0}
+                              limit={PAGE}
+                              offset={brandOffset}
+                              onPageChange={setBrandOffset}
                             />
-                          ))}
-                        </ul>
+                          </div>
+                        </>
                       )}
                     </div>
                   )}
