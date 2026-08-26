@@ -38,6 +38,7 @@ from yupay.modules.auth.models import AuthSession
 from yupay.modules.auth.security import (
     email_hash,
     hash_password,
+    hash_password_sync,
     hash_token,
     new_refresh_token,
     verify_password,
@@ -59,7 +60,9 @@ from yupay.modules.users.service import (
 # against this when the account is absent (or has no password) so the response time is
 # indistinguishable from a wrong-password attempt on a real account — closing the
 # account-enumeration timing side-channel.
-_DUMMY_HASH = hash_password("x")
+# Built at import, before any event loop exists, so it uses the blocking
+# helper directly — a one-off ~100ms at startup while nothing is being served.
+_DUMMY_HASH = hash_password_sync("x")
 
 
 @dataclass(frozen=True)
@@ -168,7 +171,7 @@ async def register_user(
         id=new_id(),
         email=normalised,
         locale=locale,
-        password_hash=hash_password(password),
+        password_hash=await hash_password(password),
     )
     db.add(user)
     try:
@@ -221,7 +224,7 @@ async def login_password(
     # constant dummy hash — so an absent/Telegram-only account can't be distinguished
     # from a wrong password by response time. Result is discarded in those branches.
     stored_hash = user.password_hash if (user is not None and user.password_hash) else _DUMMY_HASH
-    password_ok = verify_password(password, stored_hash)
+    password_ok = await verify_password(password, stored_hash)
     if user is None or not user.password_hash or not password_ok:
         raise UnauthorizedError("invalid email or password")
     if user.email_verified_at is None:
@@ -686,7 +689,7 @@ async def reset_password(
     user = await get_user_by_id(db, claims.sub)
     if user is None:
         raise NotFoundError("user not found")
-    user.password_hash = hash_password(new_password)
+    user.password_hash = await hash_password(new_password)
     await db.flush()
     await _revoke_all_for_user(db, user.id, settings=s)
 

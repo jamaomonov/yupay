@@ -239,9 +239,9 @@ async def test_login_unknown_email_still_runs_password_verify(
 
     seen_hashes: list[str] = []
 
-    def _counting_verify(plain: str, hashed: str) -> bool:
+    async def _counting_verify(plain: str, hashed: str) -> bool:
         seen_hashes.append(hashed)
-        return real_verify(plain, hashed)
+        return await real_verify(plain, hashed)
 
     monkeypatch.setattr(auth_service, "verify_password", _counting_verify)
 
