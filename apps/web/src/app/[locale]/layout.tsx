@@ -153,6 +153,17 @@ export default async function LocaleLayout({
       className={`${sans.variable} ${display.variable} ${mono.variable}`}
     >
       {apiOrigin && <link rel="preconnect" href={apiOrigin} crossOrigin="anonymous" />}
+      {/* Metrika's tag.js is 111 KB gzipped — the heaviest asset on the page,
+          heavier than any first-party chunk — and it comes from an origin the
+          browser has never spoken to. Measured cold from outside: 1.4s to first
+          byte, most of it DNS + TCP + TLS. The counter is injected async by the
+          inline snippet below, so the handshake only starts once the parser
+          reaches it; this hint moves it to the head of the load, in parallel
+          with the document. Production only, matching <YandexMetrika />, so dev
+          does not open a connection to a counter it never reports to. */}
+      {process.env.NODE_ENV === "production" && (
+        <link rel="preconnect" href="https://mc.yandex.ru" crossOrigin="anonymous" />
+      )}
       <body className="bg-bg text-foreground min-h-screen font-sans antialiased">
         <JsonLd data={organizationLd} />
         <JsonLd data={websiteLd} />
