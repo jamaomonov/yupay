@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import lazyload, selectinload
 
 from yupay.modules.catalog.models import Brand, BrandFaq, Category, Product, Sku
 from yupay.modules.catalog.schemas import (
@@ -307,7 +307,19 @@ async def list_brands(
     stmt = (
         select(Brand)
         .join(Brand.category)
-        .options(selectinload(Brand.translations))
+        .options(
+            selectinload(Brand.translations),
+            # Suppressed explicitly. `Brand.products` and `Brand.faqs` are
+            # declared ``lazy="selectin"`` on the model, so they fire on every
+            # query touching a Brand no matter what the caller wants — and the
+            # products chain on to their own SKUs and price overrides. A
+            # response of eighteen brand summaries was therefore hydrating the
+            # entire catalogue: 14 statements and 58ms of CPU, measured on the
+            # production box, which on a single event loop caps the whole API
+            # near 17 requests a second.
+            lazyload(Brand.products),
+            lazyload(Brand.faqs),
+        )
         .where(Brand.active.is_(True), Category.active.is_(True))
         .order_by(Brand.sort_order, Brand.slug)
     )

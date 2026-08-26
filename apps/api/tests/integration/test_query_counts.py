@@ -375,3 +375,66 @@ async def test_admin_payments_listing_is_o1(
         integration_client, sql_counter, "/api/v1/admin/payments", headers
     )
     assert with_five == with_one, f"admin payments grew from {with_one} to {with_five} queries"
+
+
+@pytest.fixture
+async def sql_log(db_engine) -> AsyncIterator[list[str]]:
+    """Every statement the app issues, verbatim. `sql_counter` only counts, and
+    a count cannot tell you *which* tables a request dragged in."""
+    seen: list[str] = []
+
+    def _before(conn, cursor, statement, parameters, context, executemany) -> None:
+        seen.append(" ".join(statement.split()).lower())
+
+    sync_engine = db_engine.sync_engine
+    event.listen(sync_engine, "before_cursor_execute", _before)
+    try:
+        yield seen
+    finally:
+        event.remove(sync_engine, "before_cursor_execute", _before)
+
+
+async def test_brand_listing_does_not_drag_in_the_whole_catalog(
+    integration_client: AsyncClient, db_session: AsyncSession, sql_log: list[str]
+) -> None:
+    """`GET /catalog/brands` returns brand summaries — id, slug, name, logo. It
+    must not touch products, SKUs, price overrides or FAQs.
+
+    It did, because `Brand.products` and `Brand.faqs` are declared
+    `lazy="selectin"` at the *model* level, so they fire on every query touching
+    a Brand regardless of what the caller asked for — and the products then
+    chain to their own SKUs. Measured on the production box: 14 statements and
+    58ms of CPU for 18 brands, which on one event loop is a ceiling of about 17
+    requests a second for the entire API.
+
+    Asserted by table rather than by a count, because a count stays constant
+    while the rows read grow with the catalog — which is exactly how this hid
+    behind the O(1) test above.
+    """
+    for i in (1, 2, 3):
+        _seed_catalog_unit(db_session, i)
+    await db_session.commit()
+
+    await integration_client.get("/api/v1/catalog/brands")  # warm-up, untracked
+    sql_log.clear()
+    r = await integration_client.get("/api/v1/catalog/brands")
+    assert r.status_code == 200, r.text
+
+    selects = [s for s in sql_log if s.startswith("select")]
+    assert selects, "no statements captured — listener not wired to the app engine"
+
+    unwanted = {
+        "skus": "SKU rows",
+        "brand_faqs": "FAQ rows",
+        "brand_faq_translations": "FAQ translations",
+        "sku_price_overrides": "price overrides",
+    }
+    touched = {
+        table: why for table, why in unwanted.items() if any(f" {table}" in s for s in selects)
+    }
+    assert not touched, (
+        "the brand list pulled in "
+        + ", ".join(touched.values())
+        + f" — {len(selects)} statements: "
+        + "; ".join(s[:60] for s in selects)
+    )
