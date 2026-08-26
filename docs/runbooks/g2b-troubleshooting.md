@@ -92,6 +92,42 @@ on 429 and 5xx. If we're consistently hitting 429:
 - Rate limit is 1000 req / 10 sec per key. We don't approach this in
   normal traffic; a sudden spike means something is wrong.
 
+## The player check went quiet ("couldn't check" for everyone)
+
+The storefront player check sits behind a circuit breaker (ADR-0059). After
+**3 consecutive** upstream failures it stops calling G2B for **30 seconds** and
+answers `error` immediately, so customers get told in ~150ms instead of sitting
+through the ~15s retry backoff. Fulfilment is _not_ behind this breaker and
+keeps its full retry budget.
+
+What to look for:
+
+- `breaker_open` in the api container logs, with `circuit=g2b:player_check`.
+  A matching `breaker_closed` means it recovered on its own.
+- The circuit lives in Redis under `breaker:g2b:player_check:open` (presence =
+  open) and `breaker:g2b:player_check:fails` (the current run).
+
+To force it closed right now — e.g. G2B is confirmed healthy and you don't want
+to wait out the cooldown:
+
+```
+docker exec yupay-prod-redis-1 redis-cli \
+  DEL breaker:g2b:player_check:open breaker:g2b:player_check:fails
+```
+
+If a circuit opens while G2B is healthy, the threshold is too tight for the
+current failure rate — raise `_BREAKER_THRESHOLD` in
+`modules/integrations/player_check.py`. To disable the breaker entirely
+without a revert, set that threshold to `0`.
+
+**Note the two different limits.** A customer being told "слишком много
+попыток" is the _IP guard_, not the breaker: that's `auth:ipguard:check_player:{ip}`
+in Redis, 30 per 60s by default. It has its own ceiling precisely because the
+shared `AUTH_IP_GUARD_MAX` (10) is written for login brute force, and Uzbek
+mobile carriers put many subscribers behind one address. Retune one bucket
+without touching the others via `AUTH_IP_GUARD_BUCKET_MAX`, e.g.
+`{"check_player": 45}`.
+
 ## Catalog drift
 
 `POST /api/v1/admin/integrations/g2b/sync-catalog` populates

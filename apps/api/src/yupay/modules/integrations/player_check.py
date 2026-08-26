@@ -23,6 +23,7 @@ from yupay.core.logging import get_logger
 from yupay.core.redis import get_redis
 from yupay.modules.catalog.models import Product, Sku
 from yupay.modules.fulfillment.suppliers.g2b import _hash_short
+from yupay.modules.integrations.breaker import SupplierBreaker
 from yupay.modules.integrations.models import SkuSupplierMapping
 from yupay.modules.integrations.schemas import PlayerCheckOut
 
@@ -34,6 +35,15 @@ if TYPE_CHECKING:
 logger = get_logger("yupay.integrations.player_check")
 
 _CACHE_TTL_SECONDS = 300
+
+#: Consecutive upstream failures that stop us calling G2B for a while, and how
+#: long that lasts. Tuned for an *advisory* check: three is short enough that a
+#: real outage is caught within a few customers, and 30s is short enough that a
+#: brief blip costs almost nobody a check — the first request after it expires
+#: goes through for real and closes the circuit if the supplier recovered.
+#: See ADR-0059 for why this guards the check and not fulfilment.
+_BREAKER_THRESHOLD = 3
+_BREAKER_COOLDOWN_SECONDS = 30
 
 _KNOWN_PROVIDERS = ("g2b", "waxpeer")
 
@@ -168,6 +178,45 @@ async def _check_waxpeer_login(
     return out
 
 
+def _counts_against_supplier(exc: BaseException) -> bool:
+    """Whether ``exc`` says something about G2B's *health*.
+
+    The breaker exists to stop customers paying the client's 1→2→4→8s retry
+    budget, so what it must react to is failures that involve that budget:
+    network errors and exhausted retries, both of which surface as
+    ``UpstreamUnavailableError``.
+
+    A non-retryable 4xx does not qualify. "Unknown game" is one brand's broken
+    mapping, it is raised immediately with no backoff to save, and counting it
+    would let a single misconfigured product silence the check for every other
+    brand — the circuit is shared across the supplier, not per game.
+
+    401 is the exception to that exception. It also fails fast, so no customer
+    is waiting on it, but the client's own warning is that a few in a row get
+    our IP banned at G2B — and that ban would take order *fulfilment* down
+    with it. Backing off a rejected key protects the money path.
+    """
+    from yupay.modules.fulfillment.suppliers.g2b_client import G2bError
+
+    if isinstance(exc, G2bError):
+        return exc.status == 401
+    return True
+
+
+def _breaker_for_g2b() -> SupplierBreaker:
+    """The circuit guarding the G2B player check.
+
+    Built per call rather than held as a module global: the object carries no
+    state of its own (it all lives in Redis), and a module-level instance
+    would freeze the thresholds at import time, which the tests re-read.
+    """
+    return SupplierBreaker(
+        "g2b:player_check",
+        threshold=_BREAKER_THRESHOLD,
+        cooldown_seconds=_BREAKER_COOLDOWN_SECONDS,
+    )
+
+
 async def check_player_for_product(
     session: AsyncSession,
     *,
@@ -182,10 +231,7 @@ async def check_player_for_product(
     than propagating the driver's ``DBAPIError`` — see ADR-0031: unknown
     product -> 404, and this endpoint never 5xx's.
     """
-    from yupay.modules.integrations.routes import (
-        _g2b_fulfiller_or_none,
-        _waxpeer_fulfiller_or_none,
-    )
+    from yupay.modules.integrations.routes import _waxpeer_fulfiller_or_none
 
     try:
         uuid.UUID(product_id)
@@ -201,6 +247,26 @@ async def check_player_for_product(
 
     if provider == "waxpeer":
         return await _check_waxpeer_login(_waxpeer_fulfiller_or_none(), steam_login=player_id)
+    return await _check_g2b_player(
+        session, product_id=product_id, player_id=player_id, server_id=server_id
+    )
+
+
+async def _check_g2b_player(
+    session: AsyncSession,
+    *,
+    product_id: str,
+    player_id: str,
+    server_id: str | None,
+) -> PlayerCheckOut:
+    """The G2B half of the check: game code, cache, circuit, upstream call.
+
+    Split out of ``check_player_for_product`` so that function stays a
+    provider dispatcher. Every exit here is an advisory verdict — this never
+    raises, because a lookup the customer did not ask to be blocked on must
+    not be able to fail their checkout.
+    """
+    from yupay.modules.integrations.routes import _g2b_fulfiller_or_none
 
     game_code = await resolve_g2b_game_code(session, product_id)
     if game_code is None:
@@ -219,11 +285,21 @@ async def check_player_for_product(
     if fulfiller is None:
         return PlayerCheckOut(status="error")
 
+    breaker = _breaker_for_g2b()
+    if await breaker.is_open():
+        # Same answer the retries would have produced, ~15s sooner. The
+        # storefront reads `error` as "couldn't check", never as a bad id, so
+        # skipping the call costs the customer nothing but the wait.
+        logger.info("player_check_short_circuited", game_code=game_code)
+        return PlayerCheckOut(status="error")
+
     try:
         resp = await fulfiller._client().games_check_player(
             game_code=game_code, player_id=player_id, server_id=server_id, charname=None
         )
     except Exception as exc:  # noqa: BLE001 — advisory; degrade, never 500
+        if _counts_against_supplier(exc):
+            await breaker.record_failure()
         logger.warning(
             "player_check_failed",
             game_code=game_code,
@@ -231,6 +307,8 @@ async def check_player_for_product(
             error=str(exc)[:200],
         )
         return PlayerCheckOut(status="error")
+
+    await breaker.record_success()
 
     out = _map_response(resp)
     with contextlib.suppress(Exception):  # cache is best-effort

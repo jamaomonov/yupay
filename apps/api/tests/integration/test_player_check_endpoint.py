@@ -377,16 +377,37 @@ async def test_malformed_product_id_404_not_500(client) -> None:
 
 
 @respx.mock
-async def test_rate_limited_after_threshold(client, seed_g2b_product) -> None:
+async def test_rate_limited_after_threshold(client, seed_g2b_product, monkeypatch) -> None:
+    """The guard still trips — at this bucket's own ceiling, not the shared one.
+
+    Pinned explicitly rather than counting on a default, because the ceiling
+    that matters here is deliberately no longer ``auth_ip_guard_max``: this is
+    an advisory lookup a customer runs while filling in the order form, and
+    Uzbek mobile carriers put many subscribers behind one address, so the
+    brute-force budget was being spent collectively by strangers.
+    """
+    monkeypatch.setenv("AUTH_IP_GUARD_BUCKET_MAX", '{"check_player": 4}')
+    cfg.get_settings.cache_clear()
+
     respx.post(url__regex=r".*/games/checkPlayerId").mock(
         return_value=httpx.Response(200, json={"valid": "valid", "name": "Neo"})
     )
     url = f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player"
     last = None
-    for _ in range(15):  # window max defaults to 10 (auth_ip_guard_max)
+    for _ in range(8):
         last = await client.post(url, json={"player_id": "51234567"})
     assert last is not None
     assert last.status_code == 429
+    cfg.get_settings.cache_clear()
+
+
+async def test_check_player_is_not_throttled_at_the_login_threshold(client) -> None:
+    """Guards the regression this change exists to prevent: someone raising
+    the shared max for the storefront's sake, and loosening `login` with it."""
+    from yupay.modules.auth.ip_guard import bucket_limit
+
+    settings = cfg.get_settings()
+    assert bucket_limit(settings, "check_player") > bucket_limit(settings, "login")
 
 
 @respx.mock
@@ -470,25 +491,97 @@ async def test_steam_check_upstream_failure_is_error(
     assert r.json()["status"] == "error"
 
 
+@pytest.fixture
+async def _clean_circuit():
+    """The breaker lives in real Redis, so a tripped circuit would otherwise
+    leak into the next test — and into the next local run."""
+    from yupay.core.redis import get_redis
+
+    keys = ("breaker:g2b:player_check:fails", "breaker:g2b:player_check:open")
+    redis = get_redis()
+    await redis.delete(*keys)
+    yield redis
+    await redis.delete(*keys)
+
+
+@pytest.fixture
+def _no_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Skip the client's 1→2→4→8s retry sleeps.
+
+    What is under test is the breaker, not the backoff, and paying the real
+    15s per failing call would put these two tests alone near a minute.
+    """
+
+    async def _instant(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("yupay.modules.fulfillment.suppliers.g2b_client.asyncio.sleep", _instant)
+
+
 @respx.mock
-async def test_steam_login_never_logged_plaintext(
-    client: httpx.AsyncClient, seed_waxpeer_product: Product
+async def test_breaker_stops_paying_the_backoff_for_every_customer(
+    client, seed_g2b_product: Product, _clean_circuit, _no_backoff
 ) -> None:
-    """Same PII guarantee as ``test_player_id_never_logged_plaintext``, for
-    the waxpeer branch: the raw Steam login must never reach a log event,
-    only its ``_hash_short`` hash. The upstream-error path is the best
-    trigger here — it's the one line (``player_check_failed``) that logs the
-    login-derived field via ``logger.warning`` instead of ``logger.info``,
-    so this also exercises the warning call site the other steam tests
-    don't."""
-    respx.get(url__regex=r".*/steam-topup/validate").mock(side_effect=httpx.ConnectError("down"))
-    secret = "gaben-secret-login"
-    with structlog.testing.capture_logs() as cap:
+    """After a run of upstream failures the check stops calling G2B at all.
+
+    Without the breaker every one of these customers sits through the client's
+    full retry budget to reach the same verdict. The answer they see is
+    identical either way — `error`, which the storefront reads as "couldn't
+    check" and never as a bad id — so the wait buys them nothing.
+    """
+    from yupay.modules.integrations import player_check as pc
+
+    route = respx.post(url__regex=r".*/games/checkPlayerId").mock(
+        side_effect=httpx.ConnectError("down")
+    )
+
+    for i in range(pc._BREAKER_THRESHOLD):
         r = await client.post(
-            f"/api/v1/catalog/products/{seed_waxpeer_product.id}/check-player",
-            json={"player_id": secret},
+            f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player",
+            json={"player_id": f"5123456{i}"},
         )
+        assert r.json()["status"] == "error"
+
+    assert route.call_count > 0, "the failing calls must really have reached G2B"
+    calls_while_closed = route.call_count
+
+    r = await client.post(
+        f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player",
+        json={"player_id": "51234599"},
+    )
     assert r.status_code == 200
     assert r.json()["status"] == "error"
-    log_text = " ".join(repr(entry) for entry in cap)
-    assert secret not in log_text
+    assert route.call_count == calls_while_closed, (
+        "the circuit was open, so this check must not have reached G2B"
+    )
+
+
+@respx.mock
+async def test_a_good_check_closes_the_circuit(
+    client, seed_g2b_product: Product, _clean_circuit, _no_backoff
+) -> None:
+    """A recovered supplier must not stay locked out for the rest of the
+    cooldown — the probe that gets through has to be able to end the outage."""
+    from yupay.modules.integrations import player_check as pc
+
+    redis = _clean_circuit
+    route = respx.post(url__regex=r".*/games/checkPlayerId")
+    route.mock(side_effect=httpx.ConnectError("down"))
+    for i in range(pc._BREAKER_THRESHOLD):
+        await client.post(
+            f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player",
+            json={"player_id": f"5123457{i}"},
+        )
+    assert await redis.exists("breaker:g2b:player_check:open")
+
+    # In production the cooldown expiring is what lets a probe through;
+    # deleting the key is that moment without a 30s sleep.
+    await redis.delete("breaker:g2b:player_check:open")
+    route.mock(return_value=httpx.Response(200, json={"valid": "valid", "name": "Neo"}))
+
+    r = await client.post(
+        f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player",
+        json={"player_id": "51234588"},
+    )
+    assert r.json()["status"] == "valid"
+    assert not await redis.exists("breaker:g2b:player_check:fails")

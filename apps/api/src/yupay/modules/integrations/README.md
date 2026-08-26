@@ -17,6 +17,11 @@ health probes, and supplier-cost refresh. Supplier adapter code itself lives in
   re-pricing never starts selling below cost — see
   [ADR-0050](../../../../../../docs/decisions/0050-sku-margin-percent.md).
 - Probe supplier connectivity (`GET /{slug}/health`).
+- Resolve a player id to a nickname for the storefront (`player_check.py`),
+  behind a per-supplier circuit breaker (`breaker.py`) so a G2B outage costs
+  each customer ~150ms rather than the client's full ~15s retry backoff. The
+  breaker guards this advisory path only — fulfilment keeps its retry budget,
+  see [ADR-0059](../../../../../../docs/decisions/0059-player-check-circuit-breaker.md).
 - **Import** a G2B game into the catalog (Brand + Product + SKUs + mappings).
 
 ## Public interface
