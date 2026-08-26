@@ -92,7 +92,6 @@ async def test_the_limiter_actually_serialises_beyond_its_capacity() -> None:
     """Guard the wiring, not just the number: the limiter has to be passed to
     `run_sync`, and forgetting that argument is silent."""
     import anyio
-
     from yupay.modules.auth import security
 
     # CapacityLimiter.total_tokens is typed float (it accepts math.inf).
