@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import timedelta
 from decimal import Decimal
 
-from sqlalchemy import String, case, cast, func, or_, select
+from sqlalchemy import Text, case, cast, false, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
@@ -54,6 +54,67 @@ from yupay.modules.users.schemas import UserAdminOut
 from yupay.modules.wallet.models import WalletAccount, WalletPosting
 from yupay.modules.wallet.service import NORMAL_SIDE
 
+#: Below this a prefix matches a large slice of the table and is never what an
+#: operator meant. Mirrors ``orders/service._admin_search_clause``.
+_MIN_SEARCH_LEN = 3
+
+
+def order_search_clause(q: str) -> ColumnElement[bool] | None:
+    """Match an order by id prefix or by an email fragment, index-ably.
+
+    Spelled to match migration 0039's indexes exactly, because that is the only
+    way they get used: ``ix_orders_id_prefix`` is ``(id::text)
+    text_pattern_ops`` and serves an anchored ``LIKE`` prefix;
+    ``ix_orders_guest_email_trgm`` is a trigram GIN over
+    ``lower(guest_email::text)``.
+
+    ``ILIKE`` — what this used to be — compiles to ``~~*``, which can use
+    neither. Production bore that out: ``ix_orders_guest_email_trgm`` had
+    ``idx_scan = 0`` after months of support searches, every one of them a
+    sequential scan holding a pool connection.
+
+    Returns ``None`` for a term too short to be worth running.
+    """
+    term = q.strip()
+    if len(term) < _MIN_SEARCH_LEN:
+        return None
+    if "@" in term:
+        return func.lower(cast(Order.guest_email, Text)).like(f"%{term.lower()}%")
+    return cast(Order.id, Text).like(f"{term.lower()}%")
+
+
+def payment_search_clause(q: str) -> ColumnElement[bool] | None:
+    """Match a payment by id prefix or provider reference. See
+    ``order_search_clause`` for why this is ``LIKE`` over a lowered cast."""
+    term = q.strip()
+    if len(term) < _MIN_SEARCH_LEN:
+        return None
+    return or_(
+        cast(Payment.id, Text).like(f"{term.lower()}%"),
+        func.lower(cast(Payment.external_id, Text)).like(f"%{term.lower()}%"),
+    )
+
+
+def user_search_clause(q: str, *, tg_id: int | None) -> ColumnElement[bool] | None:
+    """Match a user by email, display name or Telegram handle.
+
+    ``users.email`` is CITEXT, so a lowered cast is both correct and the shape a
+    future trigram index would need — none exists yet, which is worth knowing
+    when this search starts to hurt.
+    """
+    term = q.strip()
+    if len(term) < _MIN_SEARCH_LEN and tg_id is None:
+        return None
+    needle = f"%{term.lower()}%"
+    predicates: list[ColumnElement[bool]] = [
+        func.lower(cast(User.email, Text)).like(needle),
+        func.lower(cast(User.display_name, Text)).like(needle),
+        func.lower(cast(TelegramLink.tg_username, Text)).like(needle),
+    ]
+    if tg_id is not None:
+        predicates.append(TelegramLink.tg_user_id == tg_id)
+    return or_(*predicates)
+
 
 async def search(db: AsyncSession, *, q: str, limit: int) -> SearchOut:
     """Fan out a single query string across user/order/payment/sku sources.
@@ -65,8 +126,6 @@ async def search(db: AsyncSession, *, q: str, limit: int) -> SearchOut:
     """
 
     q_norm = q.strip()
-    like = f"%{q_norm}%"
-    prefix_like = f"{q_norm}%"
     tg_id_int: int | None = None
     if q_norm.isdigit():
         try:
@@ -74,47 +133,39 @@ async def search(db: AsyncSession, *, q: str, limit: int) -> SearchOut:
         except ValueError:  # pragma: no cover -- isdigit guarantees parse
             tg_id_int = None
 
-    user_predicates: list[ColumnElement[bool]] = [
-        User.email.ilike(like),
-        User.display_name.ilike(like),
-        TelegramLink.tg_username.ilike(like),
-    ]
-    if tg_id_int is not None:
-        user_predicates.append(TelegramLink.tg_user_id == tg_id_int)
-
+    user_clause = user_search_clause(q_norm, tg_id=tg_id_int)
     users_stmt = (
         select(User)
         .outerjoin(TelegramLink, TelegramLink.user_id == User.id)
-        .where(or_(*user_predicates))
+        .where(user_clause if user_clause is not None else false())
         .order_by(User.created_at.desc())
         .limit(limit)
     )
 
+    order_clause = order_search_clause(q_norm)
     orders_stmt = (
         select(Order)
-        .where(
-            or_(
-                cast(Order.id, String).ilike(prefix_like),
-                Order.guest_email.ilike(like),
-            )
-        )
+        .where(order_clause if order_clause is not None else false())
         .order_by(Order.created_at.desc())
         .limit(limit)
     )
 
+    payment_clause = payment_search_clause(q_norm)
     payments_stmt = (
         select(Payment)
-        .where(
-            or_(
-                cast(Payment.id, String).ilike(prefix_like),
-                Payment.external_id.ilike(like),
-            )
-        )
+        .where(payment_clause if payment_clause is not None else false())
         .order_by(Payment.created_at.desc())
         .limit(limit)
     )
 
-    skus_stmt = select(Sku).where(Sku.sku_code.ilike(like)).order_by(Sku.sort_order).limit(limit)
+    # Same lowered-cast spelling as the rest: `skus.sku_code` has no search
+    # index today, but ILIKE would rule one out in advance.
+    skus_stmt = (
+        select(Sku)
+        .where(func.lower(cast(Sku.sku_code, Text)).like(f"%{q_norm.lower()}%"))
+        .order_by(Sku.sort_order)
+        .limit(limit)
+    )
 
     # Sequential awaits: asyncpg connections aren't safe for concurrent use within the same
     # session, and per-source LIMIT keeps total cost bounded.
