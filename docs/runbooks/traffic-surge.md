@@ -165,8 +165,11 @@ alerting is supposed to remove, not reproduce.
 
 Alertmanager renders its config at start-up from
 `infra/alertmanager/alertmanager.tmpl.yml`, substituting `ALERT_BOT_TOKEN` and
-`ALERT_CHAT_ID` from `secrets/alertmanager.env` (reuse the values already in
-`api.env`). Alertmanager performs no environment expansion of its own, so a
+`ALERT_CHAT_ID` from `secrets/alertmanager.env`. Both come from `api.env`:
+`TG_ALERT_BOT_TOKEN` and `TG_ALERT_CHAT_ID`. It must be that token and not the
+storefront or admin bot — ops alerts run on their own bot deliberately, and it
+is the one that is actually a member of the alert chat. Another bot's token
+authenticates fine and then fails to post, which looks exactly like no alerts. Alertmanager performs no environment expansion of its own, so a
 `${VAR}` written directly into the config would load, validate, and then
 authenticate to Telegram as the literal string — every alert silently lost. A
 test guards that.
