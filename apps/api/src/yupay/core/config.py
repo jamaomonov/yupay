@@ -154,6 +154,18 @@ class Settings(BaseSettings):
         default=10, description="Max sensitive auth hits per window per IP."
     )
     auth_ip_guard_window_seconds: int = Field(default=60)
+    auth_ip_guard_bucket_max: dict[str, int] = Field(
+        default_factory=lambda: {"check_player": 30},
+        description=(
+            "Per-bucket overrides for auth_ip_guard_max. The default is written for "
+            "brute-force endpoints (login, register, forgot): ten tries a minute is "
+            "generous there. The storefront player check is not one of those -- it is "
+            "an advisory lookup a customer runs while filling in the order form, and "
+            "Uzbek mobile carriers put many subscribers behind one address, so they "
+            "spend a shared budget collectively. Values <= 0 are ignored, so a typo "
+            "falls back to the default instead of disabling the guard."
+        ),
+    )
 
     # --- Manual review of large orders (ADR-0047) ---
     manual_review_threshold_usd: Decimal = Field(
