@@ -23,6 +23,7 @@ from yupay.core.db import dispose_engine
 from yupay.core.errors import AppError, app_error_handler
 from yupay.core.logging import configure_logging, get_logger
 from yupay.core.redis import close_redis
+from yupay.modules.fulfillment.suppliers.g2b_client import close_g2b_pool
 
 
 def _build_limiter(settings: Settings) -> Limiter:
@@ -147,6 +148,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        await close_g2b_pool()
         await close_redis()
         await dispose_engine()
         logger.info("shutdown")

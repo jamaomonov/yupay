@@ -61,8 +61,10 @@ class G2bFulfiller(Fulfiller):
     supplier = "g2b"
 
     def __init__(self, client: G2bClient | None = None) -> None:
-        # ``client`` injectable for tests; in prod we build a transient one
-        # from settings each call so a hot-reloaded key is picked up.
+        # ``client`` injectable for tests. In prod a fresh wrapper is built
+        # from settings on each call so a hot-reloaded key is picked up — the
+        # wrapper is cheap; the connection pool underneath it is shared
+        # process-wide (see ``g2b_client._pool``), so this costs no handshake.
         self._client_override = client
 
     def client_for_reads(self) -> G2bClient:

@@ -30,6 +30,37 @@ from yupay.core.logging import get_logger
 
 log = get_logger("yupay.fulfillment.g2b")
 
+#: One connection pool for every G2B call in the process.
+#:
+#: Each request used to open its own ``httpx.AsyncClient``, so every player
+#: check and every fulfilment step paid a TCP + TLS handshake before it could
+#: ask anything. The comment defending that — "so a hot-reloaded key is picked
+#: up" — was aimed at the wrong object: the API key travels in a per-request
+#: header, so sharing the pool does not pin credentials to it. The timeout does
+#: differ between callers, so it moved onto the request instead.
+#:
+#: Created lazily because an ``AsyncClient`` binds to the running event loop,
+#: and import time has none.
+_pool: httpx.AsyncClient | None = None
+
+
+def _get_pool() -> httpx.AsyncClient:
+    """The shared pool, opened on first use."""
+    global _pool
+    if _pool is None or _pool.is_closed:
+        _pool = httpx.AsyncClient()
+    return _pool
+
+
+async def close_g2b_pool() -> None:
+    """Close the shared pool. Wired into the app's shutdown; safe to call when
+    nothing ever opened one."""
+    global _pool
+    if _pool is not None:
+        await _pool.aclose()
+        _pool = None
+
+
 VoucherOutcome = Literal["completed", "pending", "failed"]
 
 
@@ -96,17 +127,23 @@ class G2bClient:
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout_seconds
         self._max_retries = max_retries
-        self._client = client  # for tests; None ⇒ transient per request
+        self._client = client  # for tests; None ⇒ the shared pool
 
     # ---------- core request ----------
 
     @asynccontextmanager
     async def _http(self):  # type: ignore[no-untyped-def]
+        """Yield a client to issue one request on.
+
+        An injected client (tests) always wins. Otherwise this hands out the
+        module-wide pool rather than dialling a fresh connection per call —
+        see ``_pool``. The pool is deliberately not closed here: it outlives
+        the request, which is the entire point.
+        """
         if self._client is not None:
             yield self._client
             return
-        async with httpx.AsyncClient(timeout=self._timeout) as c:
-            yield c
+        yield _get_pool()
 
     async def _request(
         self,
@@ -129,7 +166,7 @@ class G2bClient:
             async with self._http() as client:
                 try:
                     resp: httpx.Response = await client.request(
-                        method, url, json=json, headers=headers
+                        method, url, json=json, headers=headers, timeout=self._timeout
                     )
                 except httpx.RequestError as exc:
                     log.warning(

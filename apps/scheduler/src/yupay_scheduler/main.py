@@ -20,6 +20,7 @@ from yupay.modules.broadcasts import models as _broadcasts_models  # noqa: F401
 from yupay.modules.catalog import models as _catalog_models  # noqa: F401
 from yupay.modules.click import models as _click_models  # noqa: F401
 from yupay.modules.fulfillment import models as _fulfillment_models  # noqa: F401
+from yupay.modules.fulfillment.suppliers.g2b_client import close_g2b_pool
 from yupay.modules.fx import models as _fx_models  # noqa: F401
 from yupay.modules.integrations import models as _integrations_models  # noqa: F401
 from yupay.modules.inventory import models as _inventory_models  # noqa: F401
@@ -92,6 +93,10 @@ async def run() -> None:
     await stop.wait()
 
     scheduler.shutdown(wait=True)
+    # The G2B jobs share one connection pool for the process lifetime (see
+    # ``g2b_client._pool``); the API closes it in its lifespan, this is the
+    # same courtesy here.
+    await close_g2b_pool()
     log.info("scheduler.stopped")
 
 
