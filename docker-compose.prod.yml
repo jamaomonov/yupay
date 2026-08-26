@@ -17,6 +17,20 @@ x-app-env: &app-env
 # helped fill the disk (which wedged Loki), and got replayed on every promtail
 # restart. Promtail already ships everything to Loki, so a small local buffer
 # is all we need. 10MB × 3 files ≈ 30MB/container max.
+# Memory ceilings on every container. This VPS is shared with an unrelated
+# production stack and has NO swap, so memory pressure goes straight to the
+# kernel OOM killer — which picks its victim by size, not by owner. Without
+# these, one leaking container of ours can evict the neighbour's database.
+#
+# They are ceilings, not reservations: each is roughly 3-4x the measured
+# steady state, so the point is to stop runaway growth, not to pack the box.
+# Set one too tight and the container exits 137 into a `restart: unless-stopped`
+# crash loop, which for postgres means repeated crash recovery — err loose.
+#
+# Deliberately NO cpu quotas on api/web/worker: a hard quota caps throughput
+# during exactly the spike it was provisioned for. Contention there should be
+# resolved by shares, not ceilings.
+
 x-logging: &default-logging
   driver: json-file
   options:
@@ -35,6 +49,7 @@ services:
   postgres:
     image: postgres:16-alpine
     logging: *default-logging
+    mem_limit: 4g
     restart: unless-stopped
     env_file: ./secrets/postgres.env
     volumes:
@@ -51,6 +66,7 @@ services:
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.19.1
     logging: *default-logging
+    mem_limit: 128m
     restart: unless-stopped
     env_file: ./secrets/postgres-exporter.env
     depends_on:
@@ -59,6 +75,7 @@ services:
   redis:
     image: redis:7-alpine
     logging: *default-logging
+    mem_limit: 768m
     restart: unless-stopped
     # requirepass: the VPS is shared with another stack and Redis holds the task
     # queue and rate-limit state, so it must not be an open door to anything that
@@ -68,13 +85,26 @@ services:
     # REDIS_URL/DRAMATIQ_BROKER_URL in api.env — see
     # docs/runbooks/redis-auth-rollout.md before deploying this change.
     env_file: ./secrets/redis.env
-    command: ["sh", "-c", 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"']
+    # --maxmemory bounds it; the eviction policy stays `noeviction` ON PURPOSE.
+    # `allkeys-lru` looks like the safe default and is the dangerous one here:
+    # Redis holds the Dramatiq queue, so evicting to make room would silently
+    # drop fulfilment jobs for orders customers have already paid for. Refusing
+    # writes is the correct failure — pair it with an alert at 70% so a human
+    # intervenes before that happens. mem_limit above is deliberately higher, so
+    # Redis hits its own ceiling before the OOM killer sees it.
+    command:
+      [
+        "sh",
+        "-c",
+        'exec redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy noeviction --requirepass "$$REDIS_PASSWORD"',
+      ]
     volumes:
       - redis-data:/data
 
   redis-exporter:
     image: oliver006/redis_exporter:v1.86.0
     logging: *default-logging
+    mem_limit: 128m
     restart: unless-stopped
     # Reads REDIS_PASSWORD straight from the shared redis.env.
     env_file: ./secrets/redis.env
@@ -93,6 +123,16 @@ services:
   api:
     image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-api:${IMAGE_TAG:-main}
     logging: *default-logging
+    mem_limit: 2g
+    # Every signed-in miniapp session holds a WebSocket for its whole life, and
+    # each costs two descriptors (the socket, plus its own Redis pub/sub
+    # connection). The inherited default is 1024, i.e. a hard wall at roughly
+    # 490 concurrent sessions — past which uvicorn stops accepting ANY
+    # connection, HTTP included, and does not recover on its own.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     restart: unless-stopped
     environment:
       <<: *app-env
@@ -107,6 +147,7 @@ services:
   worker:
     image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-worker:${IMAGE_TAG:-main}
     logging: *default-logging
+    mem_limit: 1.5g
     restart: unless-stopped
     environment:
       <<: *app-env
@@ -116,6 +157,7 @@ services:
   scheduler:
     image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-scheduler:${IMAGE_TAG:-main}
     logging: *default-logging
+    mem_limit: 512m
     restart: unless-stopped
     environment:
       <<: *app-env
@@ -125,6 +167,7 @@ services:
   bot:
     image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-bot:${IMAGE_TAG:-main}
     logging: *default-logging
+    mem_limit: 512m
     restart: unless-stopped
     environment:
       <<: *app-env
@@ -134,18 +177,41 @@ services:
   web:
     image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-web:${IMAGE_TAG:-main}
     logging: *default-logging
+    mem_limit: 1.5g
+    # Same inherited 1024 default; Next.js holds sockets for SSR fetches and
+    # keep-alives.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     restart: unless-stopped
+    environment:
+      # Server Components and ISR revalidation talk to the API directly over
+      # the compose network. Without this they fall back to
+      # NEXT_PUBLIC_API_BASE_URL — the public hostname — so every server render
+      # left the box, traversed Cloudflare and Caddy, and came back to the
+      # container next door. Besides the wasted round trip, that traffic
+      # arrived carrying the VPS's own egress address, which put all server
+      # rendering into a single per-IP rate-limit bucket that grows with the
+      # catalog. Not a secret: it is an internal hostname, so it belongs here
+      # rather than in secrets/web.env (which is documented as public-only,
+      # since NEXT_PUBLIC_* values are inlined into the browser bundle).
+      API_INTERNAL_URL: http://api:8000
     env_file: ./secrets/web.env
+    depends_on:
+      api: { condition: service_started }
 
   miniapp:
     image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-miniapp:${IMAGE_TAG:-main}
     logging: *default-logging
+    mem_limit: 128m
     restart: unless-stopped
     env_file: ./secrets/miniapp.env
 
   admin:
     image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-admin:${IMAGE_TAG:-main}
     logging: *default-logging
+    mem_limit: 128m
     restart: unless-stopped
     # admin is a static Vite build served by nginx — no env file
     # because every config is baked into the build at CI time.
@@ -153,6 +219,7 @@ services:
   caddy:
     image: caddy:2-alpine
     logging: *default-logging
+    mem_limit: 256m
     restart: unless-stopped
     # GRAFANA_BASIC_AUTH_HASH lives in grafana.env — Caddy substitutes
     # it into the {$GRAFANA_BASIC_AUTH_HASH} placeholder on
@@ -178,6 +245,7 @@ services:
   prometheus:
     image: prom/prometheus:v3.12.0
     logging: *default-logging
+    mem_limit: 1g
     restart: unless-stopped
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -190,6 +258,7 @@ services:
   node-exporter:
     image: prom/node-exporter:v1.11.1
     logging: *default-logging
+    mem_limit: 128m
     restart: unless-stopped
     pid: host
     volumes:
@@ -204,6 +273,7 @@ services:
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.55.1
     logging: *default-logging
+    mem_limit: 512m
     restart: unless-stopped
     volumes:
       - /:/rootfs:ro
@@ -214,6 +284,7 @@ services:
   grafana:
     image: grafana/grafana:13.0.2
     logging: *default-logging
+    mem_limit: 512m
     restart: unless-stopped
     env_file: ./secrets/grafana.env
     volumes:
@@ -225,6 +296,7 @@ services:
   loki:
     image: grafana/loki:3.7.2
     logging: *default-logging
+    mem_limit: 1g
     restart: unless-stopped
     command: ["-config.file=/etc/loki/loki-config.yml"]
     volumes:
@@ -234,6 +306,7 @@ services:
   promtail:
     image: grafana/promtail:3.6.11
     logging: *default-logging
+    mem_limit: 256m
     restart: unless-stopped
     command: ["-config.file=/etc/promtail/promtail-config.yml"]
     volumes:
@@ -248,6 +321,7 @@ services:
   backup:
     image: alpine:3.20
     logging: *default-logging
+    mem_limit: 512m
     # Long-running: run_nightly.sh sleeps until BACKUP_HOUR_UTC (default 02:00)
     # and runs pg_backup.sh daily. unless-stopped keeps the schedule alive
     # across reboots. One-off runs override the command (see `make backup`).
