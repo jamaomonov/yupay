@@ -1,0 +1,68 @@
+# Alertmanager: turns Prometheus rules into a message a human actually sees.
+#
+# Before this, all eleven rules evaluated into a UI nobody watches —
+# `/api/v1/alertmanagers` returned an empty list. An alert that reaches no one
+# is worse than no alert, because it reads on the dashboard as coverage.
+#
+# Telegram, not email or PagerDuty: the ops chat already exists, the bot
+# already posts fulfilment failures there, and adding a channel nobody has open
+# would recreate the same problem in a new place.
+#
+# This is a TEMPLATE, not the config. Alertmanager does no environment
+# expansion of its own, so `${VAR}` here would be taken literally and the bot
+# token would silently be the string "${ALERT_BOT_TOKEN}". The compose
+# entrypoint renders the two placeholders below with `sed` at start-up and
+# writes the result to the container's private volume — so neither the token
+# nor the chat id ever lives in this repository or in the image.
+
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: telegram
+  # Wait a moment before the first send so a burst of related alerts arrives as
+  # one message rather than five.
+  group_by: [alertname]
+  group_wait: 30s
+  group_interval: 5m
+  # How often a still-firing alert is repeated. Four hours is deliberately long:
+  # this chat is also where fulfilment failures land, and an alert that repeats
+  # every few minutes trains people to mute the chat — which is how a real
+  # incident gets missed.
+  repeat_interval: 4h
+
+  routes:
+    # `page` severity repeats sooner. Nothing here pages a phone yet, so the
+    # repeat interval is the only urgency signal available.
+    - matchers: [severity="page"]
+      receiver: telegram
+      repeat_interval: 1h
+
+receivers:
+  - name: telegram
+    telegram_configs:
+      - bot_token: "__ALERT_BOT_TOKEN__"
+        chat_id: __ALERT_CHAT_ID__
+        api_url: https://api.telegram.org
+        parse_mode: HTML
+        send_resolved: true
+        message: |
+          {{ if eq .Status "firing" }}🔴{{ else }}✅{{ end }} <b>{{ .CommonLabels.alertname }}</b> ({{ .Status }})
+          {{ range .Alerts }}
+          {{ .Annotations.summary }}
+          {{ if .Annotations.description }}{{ .Annotations.description }}{{ end }}
+          {{ if .Annotations.runbook }}{{ .Annotations.runbook }}{{ end }}
+          {{ end }}
+
+inhibit_rules:
+  # If the API is down, its saturation, latency and error-rate alerts are
+  # consequences rather than information.
+  - source_matchers: [alertname="ApiDown"]
+    target_matchers:
+      [alertname=~"ApiSaturated|ApiHighLatency|ApiHighErrorRate|ApiFileDescriptorsHigh"]
+    equal: [service]
+
+  # Same for Postgres: everything downstream will be shouting.
+  - source_matchers: [alertname="PostgresDown"]
+    target_matchers: [alertname="PostgresConnectionsHigh"]
+    equal: [service]

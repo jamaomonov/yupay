@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_fastapi_instrumentator import Instrumentator, metrics
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -24,6 +24,12 @@ from yupay.core.errors import AppError, app_error_handler
 from yupay.core.logging import configure_logging, get_logger
 from yupay.core.redis import close_redis
 from yupay.modules.fulfillment.suppliers.g2b_client import close_g2b_pool
+
+#: Latency histogram bounds, in seconds. Dense below 250ms because most
+#: traffic is fast (a catalog read is tens of milliseconds), and reaching 10s
+#: because the supplier-touching endpoints genuinely go there — that upper
+#: range is the part that has to be visible during an incident.
+_LATENCY_BUCKETS = (0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
 
 
 def _build_limiter(settings: Settings) -> Limiter:
@@ -299,6 +305,16 @@ def create_app() -> FastAPI:
 
     app.include_router(v1_router, prefix="/api/v1")
 
-    Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+    # Explicit buckets. The library's per-handler default is (0.1, 0.5, 1),
+    # which makes `histogram_quantile` unable to return anything above 1.0 —
+    # the top finite bound is the ceiling. On production that showed up as
+    # several handlers reporting a p95 of exactly "1000ms" (meaning "slower
+    # than a second, unmeasurable"; `check-player` alone averages 1.69s), and
+    # as the `ApiHighLatency` rule being dead code: it fires above 1.5s, which
+    # the metric could never report. The series cost is handlers x buckets,
+    # which is nothing at this size.
+    Instrumentator().add(metrics.default(latency_lowr_buckets=_LATENCY_BUCKETS)).instrument(
+        app
+    ).expose(app, endpoint="/metrics", include_in_schema=False)
 
     return app

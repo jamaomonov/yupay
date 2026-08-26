@@ -281,6 +281,33 @@ services:
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
 
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    logging: *default-logging
+    mem_limit: 256m
+    restart: unless-stopped
+    # ALERT_BOT_TOKEN / ALERT_CHAT_ID are read from the same secrets the API
+    # uses for its own ops messages, so the alerts land in the chat that is
+    # already being watched rather than in a new one nobody has open.
+    env_file: ./secrets/alertmanager.env
+    volumes:
+      - ./infra/alertmanager/alertmanager.tmpl.yml:/etc/alertmanager/alertmanager.tmpl.yml:ro
+      - alertmanager-data:/alertmanager
+    # Alertmanager does no env expansion of its own, so the template's two
+    # placeholders are rendered here at start-up. The result goes to the
+    # private volume, never to the bind mount, so the credentials stay out of
+    # the repo and out of the image. `chat_id` is unquoted on purpose —
+    # Alertmanager wants an integer there.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        sed -e "s|__ALERT_BOT_TOKEN__|$$ALERT_BOT_TOKEN|"
+        -e "s|__ALERT_CHAT_ID__|$$ALERT_CHAT_ID|"
+        /etc/alertmanager/alertmanager.tmpl.yml > /alertmanager/alertmanager.yml &&
+        exec /bin/alertmanager --config.file=/alertmanager/alertmanager.yml
+        --storage.path=/alertmanager
+
   grafana:
     image: grafana/grafana:13.0.2
     logging: *default-logging
@@ -347,6 +374,7 @@ volumes:
   caddy-config:
   prometheus-data:
   grafana-data:
+  alertmanager-data:
   loki-data:
   backup-tmp:
 

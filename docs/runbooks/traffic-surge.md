@@ -156,3 +156,43 @@ A blocked request gets Cloudflare's own response, which carries no CORS header
 — so the browser reports a network error rather than a 429. That is tolerable
 at this threshold (real login volume is a few per hour) but it is the reason
 the threshold is generous.
+
+## Alerting
+
+Alerts go to the ops Telegram chat — the same one the bot posts fulfilment
+failures to. That is deliberate: a channel nobody has open is the failure mode
+alerting is supposed to remove, not reproduce.
+
+Alertmanager renders its config at start-up from
+`infra/alertmanager/alertmanager.tmpl.yml`, substituting `ALERT_BOT_TOKEN` and
+`ALERT_CHAT_ID` from `secrets/alertmanager.env` (reuse the values already in
+`api.env`). Alertmanager performs no environment expansion of its own, so a
+`${VAR}` written directly into the config would load, validate, and then
+authenticate to Telegram as the literal string — every alert silently lost. A
+test guards that.
+
+**If alerts stop arriving**, check in this order:
+
+1. `curl -s localhost:9090/api/v1/alertmanagers` inside the prometheus
+   container — an empty `activeAlertmanagers` means Prometheus is not wired to
+   it at all, which was the state until August 2026.
+2. `docker logs yupay-prod-alertmanager-1` — a bad token shows as a Telegram
+   API rejection here and nowhere else.
+3. `docker exec yupay-prod-alertmanager-1 cat /alertmanager/alertmanager.yml` —
+   if it still contains `__ALERT_BOT_TOKEN__`, the entrypoint substitution did
+   not run.
+
+**Repeat intervals are long on purpose** — 4h, and 1h for `page`. This chat also
+carries fulfilment failures, and an alert that repeats every few minutes trains
+people to mute the chat, which is how a real incident gets missed.
+
+**Two alerts inhibit others**: `ApiDown` suppresses the API's saturation,
+latency, error-rate and descriptor alerts, and `PostgresDown` suppresses the
+connection-count alert. Those are consequences, not information.
+
+**There is no queue-depth alert.** The old one watched `redis_list_length`,
+which nothing emits — the exporter only reports it for keys listed in
+`REDIS_EXPORTER_CHECK_KEYS`, and Dramatiq does not store queues as plain lists,
+so no configuration could have made it fire. It is not worth rebuilding while
+the worker has no actors; when the saga moves to Dramatiq, expose depth from
+the worker rather than inferring it from Redis key shapes.

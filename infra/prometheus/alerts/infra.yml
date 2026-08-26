@@ -2,14 +2,20 @@ groups:
   - name: infra
     rules:
       - alert: DiskSpaceLow
-        expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.10
+        # 20%, not 10%. This box has a documented history of a disk fill
+        # wedging Loki, and it is shared with another production stack — by the
+        # time 10% is left there is no room to manoeuvre.
+        expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.20
         for: 10m
         labels: { severity: page }
         annotations:
           summary: "Root filesystem < 10% free"
 
       - alert: HostHighMemory
-        expr: (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) < 0.10
+        # 20%, not 10%: the host has NO swap, so there is no grace period
+        # between pressure and the OOM killer — which picks its victim by size
+        # rather than by owner, and may take the neighbour stack's database.
+        expr: (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) < 0.20
         for: 15m
         labels: { severity: warn }
         annotations:

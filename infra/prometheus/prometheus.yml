@@ -5,6 +5,14 @@ global:
     service: yupay
     env: prod
 
+# Without this block every rule below evaluates into a UI nobody watches.
+# `/api/v1/alertmanagers` returned an empty list until it was added, which is
+# the failure mode where a dashboard full of green rules reads as coverage.
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
 rule_files:
   - /etc/prometheus/alerts/*.yml
 

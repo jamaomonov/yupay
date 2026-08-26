@@ -1,27 +1,117 @@
 groups:
   - name: api
     rules:
-      - alert: ApiHighErrorRate
-        expr: |
-          sum(rate(http_requests_total{job="api",status_code=~"5.."}[5m]))
-            / sum(rate(http_requests_total{job="api"}[5m])) > 0.05
+      # Saturation first. With a single uvicorn process the event loop is one
+      # core, so CPU is the signal that leads every symptom by minutes —
+      # latency and errors are what it looks like once it is already too late.
+      # If --workers is ever set, divide the threshold by the worker count.
+      - alert: ApiSaturated
+        expr: rate(process_cpu_seconds_total{job="api"}[5m]) > 0.85
+        for: 3m
+        labels: { severity: page }
+        annotations:
+          summary: "API process is using >85% of a core"
+          description: >
+            One uvicorn process means one event loop on one core. Past this the
+            queue grows and everything behind it slows together.
+          runbook: "https://github.com/yupay/yupay/blob/main/docs/runbooks/traffic-surge.md"
+
+      # A hard wall, not a slowdown: at the limit uvicorn stops accepting every
+      # connection, HTTP included, and does not recover on its own. Each
+      # signed-in miniapp session holds a WebSocket plus its own Redis pub/sub
+      # connection for its whole life, so this climbs with concurrent sessions.
+      - alert: ApiFileDescriptorsHigh
+        expr: process_open_fds{job="api"} / process_max_fds{job="api"} > 0.7
         for: 5m
         labels: { severity: page }
         annotations:
-          summary: "API 5xx rate > 5%"
+          summary: "API has used >70% of its file descriptors"
+          runbook: "https://github.com/yupay/yupay/blob/main/docs/runbooks/traffic-surge.md"
+
+      - alert: ApiDown
+        expr: up{job="api"} == 0
+        for: 1m
+        labels: { severity: page }
+        annotations:
+          summary: "API is not being scraped"
+
+      # 2%, not 5%. Customers feel one request in fifty; five in a hundred is
+      # an outage that has been running for a while.
+      - alert: ApiHighErrorRate
+        expr: |
+          sum(rate(http_requests_total{job="api",status_code=~"5.."}[5m]))
+            / sum(rate(http_requests_total{job="api"}[5m])) > 0.02
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: "API 5xx rate > 2%"
           runbook: "https://github.com/yupay/yupay/blob/main/docs/runbooks/incident-template.md"
 
+      # Only meaningful since the histogram gained buckets past 1s. It used to
+      # be dead code: the buckets were (0.1, 0.5, 1, +Inf), so the quantile
+      # could never exceed 1.0 and this threshold of 1.5 was unreachable.
       - alert: ApiHighLatency
         expr: |
-          histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="api"}[5m])) by (le)) > 1.5
+          histogram_quantile(
+            0.95,
+            sum(rate(http_request_duration_seconds_bucket{job="api"}[5m])) by (le)
+          ) > 1.5
         for: 10m
         labels: { severity: warn }
         annotations:
           summary: "API p95 latency > 1.5s"
 
-      - alert: QueueBacklog
-        expr: redis_list_length{key=~"dramatiq:.*"} > 1000
-        for: 10m
+      # The pool is 20 connections per process and it is shared by every
+      # request; a supplier call holds one for its whole round trip. Exhaustion
+      # surfaces as 500s on every surface at once, which is hard to read as a
+      # connection problem unless something says so.
+      - alert: PostgresConnectionsHigh
+        expr: |
+          sum(pg_stat_database_numbackends) / max(pg_settings_max_connections) > 0.8
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "Postgres is above 80% of max_connections"
+          runbook: "https://github.com/yupay/yupay/blob/main/docs/runbooks/traffic-surge.md"
+
+      # Redis holds the Dramatiq queue and the eviction policy is `noeviction`
+      # on purpose, so filling it means writes start failing rather than jobs
+      # being silently dropped. That is the correct failure and it needs a
+      # human before it happens, not after.
+      - alert: RedisMemoryHigh
+        # Guarded on maxmemory being set at all. Unset it reports 0, and
+        # `used / 0` is +Inf — so without the guard this rule fires
+        # continuously on any stack that has not configured a ceiling, which
+        # is a false alarm about the one thing it is supposed to detect.
+        expr: |
+          redis_memory_max_bytes > 0
+            and redis_memory_used_bytes / redis_memory_max_bytes > 0.7
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "Redis is above 70% of maxmemory"
+          description: >
+            Policy is noeviction: at 100% Redis refuses writes. Check for a
+            worker backlog before raising the ceiling.
+          runbook: "https://github.com/yupay/yupay/blob/main/docs/runbooks/traffic-surge.md"
+
+      - alert: RedisCeilingUnset
+        # The companion to the rule above: a Redis with no ceiling on a host
+        # with no swap grows until the OOM killer intervenes, and on this
+        # shared box that may be the neighbour stack's database rather than us.
+        expr: redis_memory_max_bytes == 0
+        for: 30m
         labels: { severity: warn }
         annotations:
-          summary: "Dramatiq queue backlog > 1000"
+          summary: "Redis has no maxmemory configured"
+          runbook: "https://github.com/yupay/yupay/blob/main/docs/runbooks/traffic-surge.md"
+# NOTE: there is no queue-depth alert. The rule that used to sit here watched
+# `redis_list_length{key=~"dramatiq:.*"}`, a metric nothing emits — the
+# redis-exporter only reports it for keys named in REDIS_EXPORTER_CHECK_KEYS,
+# and Dramatiq's Redis broker does not store queues as plain lists anyway, so
+# no configuration could have made it fire.
+#
+# It is not worth reconstructing yet: the worker has no actors (fulfilment
+# still runs inline in the request, see ADR-0013's open follow-through), so the
+# queue is always empty. When the saga moves to Dramatiq, expose the depth from
+# the worker itself rather than trying to infer it from Redis key shapes.
