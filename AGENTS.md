@@ -222,7 +222,13 @@ yupay/
   cents), never floats.
 - Auth tokens: short-lived access (15 min EdDSA JWT), rotating refresh (30 days), revocable
   via a server-side hash blocklist.
-- Rate limit every public endpoint at both Caddy and FastAPI (slowapi).
+- Rate limit every public endpoint. In practice this lives **only in FastAPI**
+  (slowapi, bucketed per route — see ADR-0028), plus the Redis-backed two-axis
+  `ip_guard` on credential endpoints. Caddy's `rate_limit` needs a community module
+  and a custom build, so it was declined — the Caddyfile says so at the site block.
+  The edge tier is Cloudflare's WAF, configured in its dashboard, not in this repo.
+  **Provider and supplier callbacks are exempt on purpose**: a 429 to an acquirer
+  costs money and buys nothing (`bootstrap._exempt_provider_callbacks`).
 - `gitleaks` runs pre-commit; CodeQL is wired up but manual-only while the repo is private without GHAS (the scan API rejects it) — switch `codeql.yml` to a weekly cron when the repo goes public or GHAS is purchased.
 
 ---
@@ -236,8 +242,12 @@ yupay/
 - Cache reads in Redis with explicit TTLs; tag-based invalidation. **Every cache key is
   documented in `docs/architecture/cache-keys.md`.**
 - DB indices are added in the same migration as the query that needs them.
-- Frontend bundle budget per route: web ≤ **180 KB JS gzipped**, miniapp ≤ **120 KB**. CI
-  threshold enforced via `@next/bundle-analyzer`.
+- Frontend bundle budget per route: web ≤ **180 KB JS gzipped**, miniapp ≤ **120 KB**.
+  ⚠️ **Nothing enforces this today** — there is no bundle step in CI and no analyzer
+  wired up, which is why both surfaces drifted over budget unnoticed (measured
+  2026-08-26: web 189 KB, miniapp 231 KB). Treat the numbers as a target to measure
+  against by hand until a CI check exists; land the check _after_ the miniapp split,
+  or it blocks every PR.
 
 ---
 

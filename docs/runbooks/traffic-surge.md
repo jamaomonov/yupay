@@ -1,0 +1,122 @@
+# Runbook: a traffic surge
+
+Written before the first paid campaign (August 2026), when measured customer
+load was **0.019 req/s** on the busiest endpoint and the design target was 200.
+The box was idle; what limits throughput is software, not hardware.
+
+## The ceilings, measured on prod
+
+| Ceiling                            | Why                                                                                             | Status           |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------- |
+| **~10 req/s** whole API            | argon2 takes 98 ms per password check and blocks the single event loop                          | open — see below |
+| **~17 req/s** on `/catalog/brands` | 58 ms CPU, 14 SQL queries for 18 brands (model-level `lazy="selectin"` drags the whole catalog) | open             |
+| **20 connections**                 | the DB pool, held across supplier HTTP calls                                                    | open             |
+
+One uvicorn process means one event loop on one of eight cores. Any CPU an
+endpoint burns is a ceiling for the _whole_ API, not for that route.
+
+## First checks when the site is slow
+
+Our Prometheus is internal-only. Port 9090 on the host belongs to the
+**neighbour stack** — querying it returns their traffic, not ours.
+
+```
+ssh ubuntu@<host>
+docker exec yupay-prod-prometheus-1 wget -qO- \
+  'http://localhost:9090/api/v1/query?query=<urlencoded>'
+```
+
+In order:
+
+1. **CPU of the API process.** With one worker this is the saturation signal and
+   it leads every symptom by minutes.
+   `rate(process_cpu_seconds_total{job="api"}[5m])` — above 0.85 means the loop
+   is full.
+2. **File descriptors.** `process_open_fds{job="api"} / process_max_fds{job="api"}`.
+   Past ~0.7 you are approaching a hard wall: at the limit uvicorn stops
+   accepting _every_ connection, HTTP included, and does not recover on its own.
+3. **DB connections.** `sum(pg_stat_database_numbackends)` against
+   `max_connections`. Saturation here surfaces as 500s on every surface at once,
+   because the pool is shared by the whole process.
+4. **429 rate.** A spike means our own limiter is shedding real customers —
+   check which bucket before raising anything.
+
+Note the latency histogram cannot see past one second: buckets are
+`0.1 / 0.5 / 1.0 / +Inf`, so a p95 of "1000 ms" means "somewhere above a
+second, unmeasurable". Do not size anything on it.
+
+## Rate limits, and which one is biting
+
+There are two independent mechanisms. Both answer 429, and telling them apart
+is the first thing to do.
+
+**The global limiter** (`bootstrap._build_limiter`) is in-process memory,
+`RATE_LIMIT_DEFAULT` per IP, bucketed **per route** (`key_style="endpoint"`).
+Every acquirer and supplier callback is exempt — see
+`bootstrap._exempt_provider_callbacks`, and do not remove an entry without
+reading ADR-0028's amendment: a 429 to G2B loses a delivery notification for
+good.
+
+**The ip guard** (`modules/auth/ip_guard.py`) is Redis-backed and throttles on
+two axes:
+
+- per IP, per bucket — `auth:ipguard:{bucket}:{ip}`, sized for a mobile-carrier
+  NAT (many real subscribers share one address);
+- per identity — `auth:ipguard:{bucket}:{ip}:s:{sha256(email)[:32]}`, tight,
+  `AUTH_IP_GUARD_SUBJECT_MAX`. This is the axis that blunts brute force.
+
+To see whether a specific address is being throttled:
+
+```
+docker exec yupay-prod-redis-1 redis-cli -a "$REDIS_PASSWORD" \
+  --scan --pattern 'auth:ipguard:*:<ip>*'
+```
+
+To loosen one bucket without touching the others, set
+`AUTH_IP_GUARD_BUCKET_MAX` in `secrets/api.env` and `up -d api`. Values `<= 0`
+are ignored, so a typo falls back to the default rather than disabling the
+guard. **Do not** raise `AUTH_IP_GUARD_SUBJECT_MAX` to fix a lockout complaint —
+that is the brute-force control; raise the IP bucket instead.
+
+## Redis is full
+
+`maxmemory` is 512 MB and the policy is **`noeviction` on purpose**: Redis holds
+the Dramatiq queue, so evicting to make room would silently drop fulfilment
+jobs for orders customers have already paid for. Writes failing is the correct
+behaviour.
+
+If it fills, the cause is almost always a worker backlog. Check queue depth
+first, drain it, and only then consider raising the ceiling — the container's
+`mem_limit` (768m) is deliberately higher so Redis refuses writes before the
+OOM killer sees it.
+
+## Memory pressure on the host
+
+The VPS is shared with an unrelated production stack and **has no swap**, so
+pressure goes straight to the OOM killer, which picks by size rather than by
+owner. Every container now declares a `mem_limit` — a test asserts it, so a new
+service cannot quietly arrive without one.
+
+If a container is being killed (exit 137), resist tightening its neighbours:
+check what actually grew. A too-tight limit produces a crash loop under
+`restart: unless-stopped`, and for postgres that means repeated crash recovery
+and a hard outage.
+
+## What degrades on its own, and what does not
+
+- **Player check** — advisory, circuit-broken (ADR-0059). During a G2B outage it
+  answers "couldn't check" in ~150 ms instead of ~15 s. Nothing to do.
+- **FX rates** — on the checkout path. If the whole provider chain fails,
+  customers **cannot buy**. There is no single-flight lock, so a cache miss
+  under load means every concurrent request calls the provider.
+- **Fulfilment** — still runs inline in the request transaction (the ADR-0013
+  follow-through is open), so a slow supplier consumes DB connections directly.
+  This is the mechanism behind most "everything is 500ing" incidents.
+- **Storefront HTML** — the brand pages render on the origin per request today
+  and Cloudflare caches no HTML, so ad traffic lands on Next.js unbuffered.
+
+## Deploys during a campaign
+
+Deploys are stop-start, not rolling: expect 5–15 seconds of 502s. Migrations run
+_before_ the new version comes up, so the old code briefly serves against the
+new schema. Schedule outside campaign hours and tell the agency the window.
