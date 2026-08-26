@@ -1,4 +1,13 @@
-"""Async Redis client singleton."""
+"""Async Redis client singleton.
+
+Timeouts are deliberate and short. Everything guarding the request path — the
+ip guard, the supplier circuit breaker, every cache read — is written to fail
+open, so a Redis *error* degrades to "no throttling, no cache" and the request
+proceeds. That is the right posture, but it only covers an error: with no
+socket timeout a wedged Redis stalls each of those awaits indefinitely, on the
+single event loop the whole API shares, and the fail-open branch never runs.
+A bounded timeout is what turns a hang back into an error it can handle.
+"""
 
 from __future__ import annotations
 
@@ -17,6 +26,15 @@ def get_redis() -> Redis:
             get_settings().redis_url,
             encoding="utf-8",
             decode_responses=True,
+            # Redis is local to the box; half a second is already an eternity
+            # for it, and anything longer is time the event loop spends serving
+            # nobody.
+            socket_timeout=0.5,
+            socket_connect_timeout=0.5,
+            # Notice a connection that died quietly instead of handing it out
+            # and failing on first use, which reads as an outage rather than
+            # the reconnect it should have been.
+            health_check_interval=30,
         )
     return _client
 
