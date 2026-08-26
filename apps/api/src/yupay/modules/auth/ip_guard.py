@@ -9,13 +9,25 @@ written for brute force, which made it wrong for the one bucket that is not a
 credential endpoint: the storefront player check. A customer runs that while
 filling in the order form, and Uzbek mobile carriers put many subscribers
 behind a single address — so ten a minute is spent collectively by strangers,
-and the loser sees "couldn't check" on a perfectly good id. Raising the shared
-value instead would have loosened `login` in the same stroke.
+and the loser sees "couldn't check" on a perfectly good id.
+
+The same carrier NAT is why credential endpoints throttle on two axes rather
+than one. A single per-IP number cannot serve both purposes: low enough to stop
+someone guessing one account's password, it locks out a whole carrier; high
+enough for the carrier, it stops blunting brute force. So the IP bucket is
+sized for a crowd, and a second, tight bucket counts attempts against one
+*identity* — ``(ip, email)``. Between them:
+
+* many guesses at one account  -> the subject bucket trips first;
+* one guess at many accounts (credential stuffing, which the subject bucket
+  cannot see) -> the IP bucket still catches it;
+* six neighbours signing in behind one address -> neither trips.
 """
 
 from __future__ import annotations
 
 import contextlib
+import hashlib
 
 from fastapi import Request
 
@@ -40,16 +52,61 @@ def bucket_limit(settings: Settings, bucket: str) -> int:
     return settings.auth_ip_guard_max
 
 
-async def guard_ip(request: Request, *, bucket: str) -> None:
-    """Increment a per-IP counter; raise ``RateLimitedError`` past the threshold."""
-    settings = get_settings()
-    ip = client_ip(request)
-    key = f"auth:ipguard:{bucket}:{ip}"
-    redis = get_redis()
+def subject_key(bucket: str, ip: str, subject: str) -> str:
+    """Redis key for the per-identity counter.
+
+    ``subject`` is hashed, never stored raw: an email in a Redis key is PII in
+    plaintext to anything running ``MONITOR`` or ``SCAN`` (§9). The IP is part
+    of the key too, so one attacker cannot lock a victim out of their own
+    account from somewhere else — the limit follows the pair, not the person.
+    """
+    digest = hashlib.sha256(subject.strip().lower().encode()).hexdigest()[:32]
+    return f"auth:ipguard:{bucket}:{ip}:s:{digest}"
+
+
+async def _hit(key: str, *, limit: int, window: int) -> bool:
+    """Count one attempt. True when it puts the caller over ``limit``.
+
+    Best-effort by design: a Redis error counts as "under the limit" so a cache
+    hiccup degrades to no throttling rather than locking everyone out of auth.
+    """
     count = 0
     with contextlib.suppress(Exception):  # fail open on Redis trouble
+        redis = get_redis()
         count = await redis.incr(key)
         if count == 1:
-            await redis.expire(key, settings.auth_ip_guard_window_seconds)
-    if count > bucket_limit(settings, bucket):
+            await redis.expire(key, window)
+    return count > limit
+
+
+async def guard_ip(request: Request, *, bucket: str, subject: str | None = None) -> None:
+    """Throttle this attempt; raise ``RateLimitedError`` past a threshold.
+
+    Args:
+        request: the incoming request, for the real client address.
+        bucket: which counter to charge, e.g. ``"login"``.
+        subject: the identity being attempted — an email for the credential
+            endpoints. When given, a second and much tighter counter is charged
+            for ``(ip, subject)``, which is what keeps brute-force protection
+            meaningful on an address a whole carrier shares. Omit it for
+            buckets that guard a resource rather than a secret.
+    """
+    settings = get_settings()
+    ip = client_ip(request)
+    window = settings.auth_ip_guard_window_seconds
+
+    # Charge both counters before deciding, so an attempt is never counted
+    # against one axis and not the other depending on which trips first.
+    over_ip = await _hit(
+        f"auth:ipguard:{bucket}:{ip}", limit=bucket_limit(settings, bucket), window=window
+    )
+    over_subject = False
+    if subject:
+        over_subject = await _hit(
+            subject_key(bucket, ip, subject),
+            limit=settings.auth_ip_guard_subject_max,
+            window=window,
+        )
+
+    if over_ip or over_subject:
         raise RateLimitedError("too many attempts, slow down")

@@ -104,7 +104,7 @@ async def register_route(
     # Per-IP throttle like login/forgot: registration sends a verification email
     # to an arbitrary address, so without this it is an unbounded
     # account-enumeration and verification-email-bomb relay.
-    await guard_ip(request, bucket="register")
+    await guard_ip(request, bucket="register", subject=body.email)
     user = await register_user(
         db,
         email=body.email,
@@ -128,7 +128,10 @@ async def login_route(
     db: Annotated[AsyncSession, Depends(db_session)],
 ) -> TokensOut:
     """Authenticate an existing email/password account and return a session."""
-    await guard_ip(request, bucket="login")
+    # ``subject`` is what keeps this a brute-force guard: the per-IP number is
+    # sized for a carrier NAT, so on its own it would let someone hammer one
+    # account 60 times a minute.
+    await guard_ip(request, bucket="login", subject=body.email)
     tokens = await login_password(db, email=body.email, password=body.password)
     return _session_response(response, tokens)
 
@@ -281,7 +284,7 @@ async def resend_verification_route(
     db: Annotated[AsyncSession, Depends(db_session)],
 ) -> None:
     """Non-enumerating: always returns 204 regardless of whether the email is known."""
-    await guard_ip(request, bucket="resend-verification")
+    await guard_ip(request, bucket="resend-verification", subject=body.email)
     await resend_verification(db, email=body.email, verify_link_base=_web_base(request, "ru"))
 
 
@@ -296,7 +299,7 @@ async def forgot_route(
     db: Annotated[AsyncSession, Depends(db_session)],
 ) -> None:
     """Non-enumerating: always returns 204 regardless of whether the email is known."""
-    await guard_ip(request, bucket="forgot")
+    await guard_ip(request, bucket="forgot", subject=body.email)
     await request_password_reset(db, email=body.email, reset_link_base=_web_base(request, "ru"))
 
 

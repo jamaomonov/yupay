@@ -154,8 +154,31 @@ class Settings(BaseSettings):
         default=10, description="Max sensitive auth hits per window per IP."
     )
     auth_ip_guard_window_seconds: int = Field(default=60)
+    auth_ip_guard_subject_max: int = Field(
+        default=10,
+        description=(
+            "Max attempts per window against ONE identity (ip + email) on the "
+            "credential endpoints. This is the axis that actually blunts brute "
+            "force, which is what lets the per-IP numbers below be sized for a "
+            "carrier NAT instead of for a single attacker."
+        ),
+    )
     auth_ip_guard_bucket_max: dict[str, int] = Field(
-        default_factory=lambda: {"check_player": 30},
+        default_factory=lambda: {
+            # Sized for the crowd behind one mobile-carrier address, not for one
+            # attacker — see auth_ip_guard_subject_max for the other axis.
+            "check_player": 200,
+            # A campaign promo code is handed to a crowd on purpose, and one
+            # user can only redeem it once (uq_promo_redemptions_code_user), so
+            # this bucket guards throughput, not a secret.
+            "promo-redeem": 120,
+            "register": 60,
+            "login": 60,
+            "forgot": 60,
+            "resend-verification": 60,
+            # Guests re-fetching codes they already paid for.
+            "code-access": 60,
+        },
         description=(
             "Per-bucket overrides for auth_ip_guard_max. The default is written for "
             "brute-force endpoints (login, register, forgot): ten tries a minute is "

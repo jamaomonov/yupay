@@ -25,15 +25,19 @@ def _clear_settings_cache():
 
 
 def test_unlisted_bucket_keeps_the_brute_force_default(monkeypatch) -> None:
+    """``admin-dev`` is deliberately not in the defaults: it is a dev-only
+    login with no crowd behind it, so it keeps the tight shared number."""
     monkeypatch.setenv("AUTH_IP_GUARD_MAX", "10")
-    assert bucket_limit(get_settings(), "login") == 10
+    assert bucket_limit(get_settings(), "admin-dev") == 10
 
 
-def test_player_check_gets_its_own_looser_budget(monkeypatch) -> None:
-    """The whole point: raising it must not raise `login` with it."""
+def test_crowd_buckets_are_looser_than_the_shared_default(monkeypatch) -> None:
+    """Every bucket a crowd behind one carrier address shares is sized for the
+    crowd; the unlisted ones keep the tight brute-force number."""
     monkeypatch.setenv("AUTH_IP_GUARD_MAX", "10")
     s = get_settings()
-    assert bucket_limit(s, "check_player") > bucket_limit(s, "login")
+    for bucket in ("check_player", "promo-redeem", "login", "register", "code-access"):
+        assert bucket_limit(s, bucket) > bucket_limit(s, "admin-dev"), bucket
 
 
 def test_an_operator_can_retune_one_bucket(monkeypatch) -> None:
@@ -60,7 +64,7 @@ def test_a_malformed_override_never_disables_the_guard(monkeypatch) -> None:
     "allow everything".
     """
     monkeypatch.setenv("AUTH_IP_GUARD_MAX", "10")
-    monkeypatch.setenv("AUTH_IP_GUARD_BUCKET_MAX", '{"login": 0, "register": -5}')
+    monkeypatch.setenv("AUTH_IP_GUARD_BUCKET_MAX", '{"admin-dev": 0, "verify": -5}')
     s = get_settings()
-    assert bucket_limit(s, "login") == 10
-    assert bucket_limit(s, "register") == 10
+    assert bucket_limit(s, "admin-dev") == 10
+    assert bucket_limit(s, "verify") == 10

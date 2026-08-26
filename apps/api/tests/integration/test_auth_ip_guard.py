@@ -9,7 +9,10 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_login_ip_guard_trips(integration_client, monkeypatch) -> None:
-    monkeypatch.setenv("AUTH_IP_GUARD_MAX", "3")
+    """The per-IP axis still trips. Pinned explicitly: `login`'s default is now
+    sized for a carrier NAT, with brute force handled by the per-identity
+    counter instead (see test_ip_guard_identity.py)."""
+    monkeypatch.setenv("AUTH_IP_GUARD_BUCKET_MAX", '{"login": 3}')
     from yupay.core.config import get_settings
 
     get_settings.cache_clear()  # type: ignore[attr-defined]
@@ -41,7 +44,7 @@ async def test_login_ip_guard_trips(integration_client, monkeypatch) -> None:
 async def test_register_ip_guard_trips(integration_client, monkeypatch) -> None:
     """Registration must be per-IP throttled too — otherwise it's an unbounded
     account-enumeration / verification-email-bomb relay."""
-    monkeypatch.setenv("AUTH_IP_GUARD_MAX", "3")
+    monkeypatch.setenv("AUTH_IP_GUARD_BUCKET_MAX", '{"register": 3}')
     from yupay.core.config import get_settings
 
     get_settings.cache_clear()  # type: ignore[attr-defined]

@@ -152,8 +152,14 @@ async def test_redeem_is_ip_rate_limited(
 ) -> None:
     """Redemption must be per-IP throttled so an attacker can't brute-force
     guessable codes via the 404-vs-409 oracle. The guard runs before the
-    lookup, so even unknown-code misses count toward the limit."""
-    monkeypatch.setenv("AUTH_IP_GUARD_MAX", "3")
+    lookup, so even unknown-code misses count toward the limit.
+
+    The bucket is pinned explicitly because its default is deliberately no
+    longer ``auth_ip_guard_max``: a campaign code is handed to a crowd on
+    purpose, and one user can only redeem it once, so the shared brute-force
+    number locked out genuine buyers behind a carrier NAT.
+    """
+    monkeypatch.setenv("AUTH_IP_GUARD_BUCKET_MAX", '{"promo-redeem": 3}')
     from yupay.core.config import get_settings
 
     get_settings.cache_clear()
