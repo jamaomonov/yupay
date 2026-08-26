@@ -47,7 +47,65 @@ def _build_limiter(settings: Settings) -> Limiter:
         storage_uri="memory://",
         enabled=enabled,
         headers_enabled=True,
+        # Bucket by route, not by URL. slowapi's default is ``"url"``, which
+        # gives ``/orders/aaa`` and ``/orders/bbb`` separate budgets — so every
+        # route carrying a path parameter was effectively unlimited (a caller
+        # sweeping distinct ids never tripped anything), while the whole load
+        # fell on the fixed-path endpoints every session touches: auth, the
+        # catalog lists, the provider webhooks. That is the opposite of what
+        # ADR-0028 describes. It also made key cardinality ``IPs x distinct
+        # URLs``, and MemoryStorage sweeps every live key on a timer — so a
+        # surge inflated the limiter into a load source of its own.
+        key_style="endpoint",
     )
+
+
+def _exempt_provider_callbacks(limiter: Limiter) -> None:
+    """Take every acquirer and supplier callback out of the per-IP limiter.
+
+    A 429 here costs money rather than buying safety. G2B fires each callback
+    once with a single retry, so a throttled one is a delivery notification
+    lost for good and the order sits at ``fulfilling`` until a reconcile sweep
+    finds it. Payme reads a 429 as a transport failure and retries, which
+    produces more 429s — and its whole documented source range is sixteen
+    addresses sharing one bucket, four calls per order.
+
+    Nothing is weakened by this: each of these routes authenticates the caller
+    itself (JSON-RPC Basic auth, an MD5 signature, a path secret), and Payme is
+    additionally IP-restricted at Caddy. The per-IP limit was never the control
+    protecting them.
+
+    Registered here, as a list, rather than as ``@limiter.exempt`` decorators
+    spread over four modules: the limiter is built per app instance, the routes
+    are declared at import time, and a security-relevant exemption is easier to
+    audit when every entry sits in one place. ``exempt()`` keys off
+    ``module.name``, which is what the middleware resolves per request.
+    """
+    from yupay.api.webhooks.g2b import receive_g2b_webhook
+    from yupay.modules.click.routes import click_complete, click_prepare
+    from yupay.modules.payme.routes import payme_merchant
+    from yupay.modules.uzum.routes import (
+        uzum_check,
+        uzum_confirm,
+        uzum_create,
+        uzum_reverse,
+        uzum_status,
+    )
+
+    for endpoint in (
+        receive_g2b_webhook,
+        payme_merchant,
+        uzum_check,
+        uzum_create,
+        uzum_confirm,
+        uzum_reverse,
+        uzum_status,
+        click_prepare,
+        click_complete,
+    ):
+        # slowapi ships no types for this decorator; the return value is a
+        # wrapper we discard — the side effect on the exempt set is the point.
+        limiter.exempt(endpoint)  # type: ignore[no-untyped-call]
 
 
 def _init_sentry(settings: Settings) -> None:
@@ -169,6 +227,20 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    limiter = _build_limiter(settings)
+    _exempt_provider_callbacks(limiter)
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+    app.add_middleware(SlowAPIMiddleware)
+
+    # Registered AFTER SlowAPIMiddleware on purpose. ``add_middleware``
+    # prepends, so the last registration is the OUTERMOST layer — and CORS has
+    # to be outermost because the limiter *short-circuits*: it returns its 429
+    # without calling the rest of the stack. With CORS inside, that 429 reached
+    # the browser bare, the browser blocked it, and ``fetch`` rejected as a
+    # network error — so the client could not tell throttling from an outage
+    # and its default retry fired three more times, multiplying exactly the
+    # traffic that was already over the line.
     # ``["*"]`` plus credentials is rejected by browsers; route through
     # ``allow_origin_regex`` so the actual Origin is echoed back while still
     # allowing cookies / Authorization headers. Useful for ngrok / cloudflared
@@ -209,11 +281,6 @@ def create_app() -> FastAPI:
         )
 
     app.add_exception_handler(AppError, app_error_handler)  # type: ignore[arg-type]
-
-    limiter = _build_limiter(settings)
-    app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
-    app.add_middleware(SlowAPIMiddleware)
 
     @app.get("/healthz", tags=["meta"], summary="Liveness probe")
     @limiter.exempt  # type: ignore[untyped-decorator]  # slowapi ships no decorator types
