@@ -21,34 +21,37 @@ from yupay.core import config as cfg
 
 
 @pytest.fixture
-async def app_metrics(monkeypatch: pytest.MonkeyPatch) -> list[float]:
-    """Bucket bounds of the per-handler latency histogram.
+def app_metrics(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """Bucket bounds of the per-handler latency histogram, as registered.
 
-    One request has to happen first: the metric carries a `handler` label, so
-    its child series — and therefore its `le` samples — do not exist until
-    something has been observed.
+    Read from the collector rather than from collected samples, for two
+    reasons discovered the hard way when the full suite ran:
+
+    * the metric carries a `handler` label, so no `le` sample exists until some
+      request has been observed;
+    * and observing one is not something a test can arrange, because **only the
+      first `create_app()` in a process is actually instrumented**. Prometheus'
+      registry is global, so a second app hits a duplicate registration and
+      silently ends up with no instrumentation at all. Harmless in production —
+      one process builds one app — but it means a test that builds its own app
+      and hits it records nothing whenever another module got there first.
+
+    `_upper_bounds` is private, and used deliberately: it is the only way to
+    assert what Prometheus will actually scrape without depending on test
+    ordering.
     """
     monkeypatch.setenv("ENVIRONMENT", "test")
     cfg.get_settings.cache_clear()
-    from httpx import ASGITransport, AsyncClient
     from prometheus_client import REGISTRY
     from yupay.bootstrap import create_app
 
-    app = create_app()
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
-        await ac.get("/healthz")
-
-    bounds: list[float] = []
-    for metric in REGISTRY.collect():
-        if metric.name == "http_request_duration_seconds":
-            bounds = [
-                float(le)
-                for sample in metric.samples
-                if (le := sample.labels.get("le")) is not None
-            ]
-            break
+    create_app()
+    collector = REGISTRY._names_to_collectors.get("http_request_duration_seconds")
+    assert collector is not None, "the latency histogram is not registered at all"
+    bounds = getattr(collector, "_upper_bounds", None)
+    assert bounds, "the registered collector is not a histogram"
     cfg.get_settings.cache_clear()
-    return sorted(set(bounds))
+    return sorted(float(b) for b in bounds)
 
 
 def test_the_histogram_can_measure_a_slow_request(app_metrics: list[float]) -> None:
