@@ -585,3 +585,54 @@ async def test_a_good_check_closes_the_circuit(
     )
     assert r.json()["status"] == "valid"
     assert not await redis.exists("breaker:g2b:player_check:fails")
+
+
+async def test_the_db_connection_is_released_before_the_supplier_call(
+    client, seed_g2b_product: Product, _clean_circuit
+) -> None:
+    """A pool connection must not be held across a G2B round trip.
+
+    The pool is twenty connections for the whole process. This check is
+    storefront-facing — a customer runs it while filling in the order form —
+    and G2B takes 830ms to 4.9s *when healthy*, measured on production. At the
+    slow end, four concurrent checks a second occupy every connection, and once
+    the twentieth is taken every other endpoint waits `pool_timeout` and then
+    500s: browsing, login, checkout, admin, payment webhooks, all at once.
+
+    All the DB work this path needs (the product, its supplier mapping) is done
+    before the call, so the connection has no reason to still be checked out.
+    """
+    from yupay.core.db import get_engine
+
+    seen: list[int] = []
+
+    async def _spy_check_player(**kwargs: object) -> dict[str, object]:
+        # `checkedout` lives on QueuePool, which the base Pool type does
+        # not declare; the async engine uses one.
+        seen.append(get_engine().pool.checkedout())  # type: ignore[attr-defined]
+        return {"valid": "valid", "name": "Neo"}
+
+    from yupay.modules.integrations.routes import _g2b_fulfiller_or_none
+
+    fulfiller = _g2b_fulfiller_or_none()
+    assert fulfiller is not None
+    client_obj = fulfiller._client()
+    original = client_obj.games_check_player
+    client_obj.games_check_player = _spy_check_player  # type: ignore[method-assign]
+    fulfiller._client_override = client_obj
+
+    try:
+        r = await client.post(
+            f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player",
+            json={"player_id": "51230001"},
+        )
+    finally:
+        client_obj.games_check_player = original  # type: ignore[method-assign]
+        fulfiller._client_override = None
+
+    assert r.status_code == 200, r.text
+    assert seen, "the supplier call never happened — the spy was not reached"
+    assert seen[0] == 0, (
+        f"{seen[0]} pool connection(s) were still checked out during the G2B call; "
+        "a slow supplier therefore consumes the pool and takes the whole API down with it"
+    )

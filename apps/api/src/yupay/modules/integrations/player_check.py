@@ -246,6 +246,11 @@ async def check_player_for_product(
         raise ValidationError("product is not checkable")
 
     if provider == "waxpeer":
+        # Same reason as the g2b branch below: the product lookup above checked
+        # out a pool connection, and `_check_waxpeer_login` needs no database at
+        # all — so holding it across a Steam round trip buys nothing and costs
+        # one of twenty.
+        await session.rollback()
         return await _check_waxpeer_login(_waxpeer_fulfiller_or_none(), steam_login=player_id)
     return await _check_g2b_player(
         session, product_id=product_id, player_id=player_id, server_id=server_id
@@ -284,6 +289,21 @@ async def _check_g2b_player(
     fulfiller = _g2b_fulfiller_or_none()
     if fulfiller is None:
         return PlayerCheckOut(status="error")
+
+    # Every database read this path needs is done. Ending the transaction here
+    # returns the connection to the pool *before* the supplier round trip,
+    # which is the difference between one slow supplier and an outage.
+    #
+    # The pool is twenty connections for the whole process, and a healthy G2B
+    # check takes 830ms to 4.9s (measured on production). Held across the call,
+    # four concurrent checks a second exhaust it — and the twenty-first request
+    # to arrive is not another player check, it is somebody's checkout.
+    #
+    # `rollback` rather than `commit`: nothing here writes, and this must not
+    # be the thing that flushes a caller's pending changes as a side effect.
+    # The session stays usable — SQLAlchemy simply begins a new transaction if
+    # anything asks it to.
+    await session.rollback()
 
     breaker = _breaker_for_g2b()
     if await breaker.is_open():
