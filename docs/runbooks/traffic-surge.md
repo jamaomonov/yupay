@@ -112,11 +112,47 @@ and a hard outage.
 - **Fulfilment** — still runs inline in the request transaction (the ADR-0013
   follow-through is open), so a slow supplier consumes DB connections directly.
   This is the mechanism behind most "everything is 500ing" incidents.
-- **Storefront HTML** — the brand pages render on the origin per request today
-  and Cloudflare caches no HTML, so ad traffic lands on Next.js unbuffered.
+- **Storefront HTML** — prerendered at build and served from the Cloudflare
+  edge. See ADR-0060; the health check is `cf-cache-status` on a brand page,
+  which should read `HIT`. `BYPASS` means a rule matched but something on the
+  response blocks caching (a `Set-Cookie` is the usual culprit); `DYNAMIC`
+  means no cache rule matched at all.
 
 ## Deploys during a campaign
 
 Deploys are stop-start, not rolling: expect 5–15 seconds of 502s. Migrations run
 _before_ the new version comes up, so the old code briefly serves against the
 new schema. Schedule outside campaign hours and tell the agency the window.
+
+## Cloudflare, and what is configured there
+
+None of this lives in the repo — it is zone configuration. Recorded here so an
+incident does not start with archaeology.
+
+**Cache rules** (zone `yupay.uz`, phase `http_request_cache_settings`), in order:
+
+1. `cdn.yupay.uz` — one year, override origin. R2 media, ULID-named and never
+   mutated.
+2. `/_next/image` — cache eligible, edge TTL from origin. The query string
+   stays in the key: `url`/`w`/`q` select the variant.
+3. Storefront HTML — `/`, `/store*`, `/legal*` and their `/en` and `/uz`
+   prefixes. Cache eligible, edge TTL from origin, and the **cache key excludes
+   the query string entirely**. That exclusion is load-bearing: ad traffic
+   arrives as `?utm_source=…&fbclid=…`, and with the default key every click
+   would be a unique entry and a miss.
+
+Nothing user-specific is in that set. `/account/*`, `/checkout/*` and
+`/orders/*` are excluded, and the storefront pages read no cookies or headers
+during server rendering — auth state lives in localStorage.
+
+**Rate limiting** (phase `http_ratelimit`): one rule, 20 requests / 10s per IP,
+on `login`, `register`, `password/reset` and `admin-dev` only. The Free plan
+allows exactly one rule, a 10s window and a 10s block, so those numbers are the
+plan's rather than a judgement. `/refresh` and `/me` are deliberately not
+matched — they fire during ordinary browsing, and throttling them would break
+signed-in visitors behind a carrier NAT.
+
+A blocked request gets Cloudflare's own response, which carries no CORS header
+— so the browser reports a network error rather than a 429. That is tolerable
+at this threshold (real login volume is a few per hour) but it is the reason
+the threshold is generous.

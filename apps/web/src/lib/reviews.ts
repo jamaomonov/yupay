@@ -43,7 +43,20 @@ async function guestHeaders(email: string): Promise<Record<string, string>> {
   return { Authorization: `Guest ${token}`, "X-Guest-Email": email.trim().toLowerCase() };
 }
 
-/** Server-side (RSC) fetch of a brand's published reviews + aggregate. */
+/**
+ * Server-side (RSC) fetch of a brand's published reviews + aggregate.
+ *
+ * 300s, matching the brand page's own `revalidate`, because a segment takes the
+ * *lowest* revalidate of everything it fetches — and a segment-level `export
+ * const revalidate` does not override it. At 60s this one call was quietly
+ * regenerating the pages ads point at five times more often than intended, and
+ * each regeneration fans out to a brand call plus one per product.
+ *
+ * The cost is that a newly published review shows up within five minutes
+ * instead of one. There is no `revalidateTag("reviews")` anywhere yet, so this
+ * interval is the only freshness mechanism — worth revisiting if on-demand
+ * invalidation lands.
+ */
 export function getBrandReviews(
   slug: string,
   locale: string,
@@ -52,7 +65,7 @@ export function getBrandReviews(
   const q = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
   return apiGet<ReviewPage>(`/reviews/brands/${encodeURIComponent(slug)}${q}`, {
     locale,
-    revalidate: 60,
+    revalidate: 300,
     tags: ["reviews"],
   });
 }

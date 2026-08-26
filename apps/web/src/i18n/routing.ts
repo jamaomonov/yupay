@@ -19,9 +19,16 @@ export const routing = defineRouting({
   // visitor's choice lives in the URL they end up on, so it survives in history
   // and bookmarks. What is lost is the bare-domain case — someone who once
   // switched to Uzbek and later types yupay.uz now lands on Russian and picks
-  // again. next-intl bundles the cookie into this same flag, so that part is
-  // not separable.
+  // again.
   localeDetection: false,
+
+  // Stop writing NEXT_LOCALE at all. next-intl set it on every page response,
+  // and Cloudflare will not cache a response carrying Set-Cookie — so every ad
+  // click paid for an origin render of a page that is identical for every
+  // anonymous visitor. Nothing read the cookie: detection is off above, and a
+  // grep across apps/ and packages/ finds no consumer. (In older next-intl this
+  // was bundled into `localeDetection`; since v4 it is its own flag.)
+  localeCookie: false,
 });
 
 export type AppLocale = (typeof routing.locales)[number];

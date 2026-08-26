@@ -9,6 +9,7 @@ import type { Metadata } from "next";
 import { JsonLd } from "@/components/JsonLd";
 import { TrustBand } from "@/components/sections/TrustBand";
 import { BrandTile } from "@/components/store/BrandTile";
+import { StoreFilter } from "@/components/store/StoreFilter";
 import { routing } from "@/i18n/routing";
 import { getBrands, getCategories, type BrandSummary, type CategoryOut } from "@/lib/catalog";
 import { alternates, GEO_META, localeUrl, ogLocale, pathFor, ROBOTS } from "@/lib/seo";
@@ -49,21 +50,16 @@ export async function generateMetadata({
   };
 }
 
-export default async function StorePage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ locale: string }>;
-  searchParams: Promise<{ cat?: string }>;
-}) {
+export default async function StorePage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
   setRequestLocale(locale);
-  const { cat } = await searchParams;
   const t = await getTranslations("web.store");
   const tn = await getTranslations("web.nav");
 
-  // Fetch the whole catalog once; filter in-render by the ?cat= segment so the
-  // page stays server-rendered per URL without an extra round-trip.
+  // Fetch the whole catalog once and hand every tile to `StoreFilter`, which
+  // picks the visible ones from `?cat=`. Reading that here instead opts the
+  // route into dynamic rendering — which is what silently disabled the
+  // `revalidate` above and put an origin render behind every visitor.
   let allBrands: BrandSummary[] = [];
   let categories: CategoryOut[] = [];
   try {
@@ -77,9 +73,6 @@ export default async function StorePage({
   for (const b of allBrands) {
     if (!present.includes(b.category_slug)) present.push(b.category_slug);
   }
-  const active = cat && present.includes(cat) ? cat : "all";
-  const brands = active === "all" ? allBrands : allBrands.filter((b) => b.category_slug === active);
-
   const chips = [
     { slug: "all", label: t("filterAll") },
     ...present.map((slug) => ({ slug, label: catName.get(slug) ?? slug })),
@@ -194,41 +187,16 @@ export default async function StorePage({
           ))}
         </div>
 
-        {chips.length > 1 && (
-          <div className="mt-10 flex flex-wrap gap-2.5">
-            {chips.map((f) => {
-              const isActive = f.slug === active;
-              const href =
-                f.slug === "all"
-                  ? pathFor(locale, "/store")
-                  : pathFor(locale, `/store?cat=${f.slug}`);
-              return (
-                <Link
-                  key={f.slug}
-                  href={href}
-                  aria-current={isActive ? "page" : undefined}
-                  className={`inline-flex h-11 items-center rounded-full border px-4 text-sm font-semibold transition ${
-                    isActive
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border bg-muted text-tx-mute hover:text-foreground"
-                  }`}
-                >
-                  {f.label}
-                </Link>
-              );
-            })}
-          </div>
-        )}
-
-        {brands.length > 0 ? (
-          <div className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {brands.map((brand) => (
-              <BrandTile key={brand.slug} brand={brand} locale={locale} className="h-[240px]" />
-            ))}
-          </div>
-        ) : (
-          <p className="text-tx-mute mt-10 text-base">{t("empty")}</p>
-        )}
+        <StoreFilter
+          locale={locale}
+          chips={chips}
+          emptyLabel={t("empty")}
+          items={allBrands.map((brand) => ({
+            key: brand.slug,
+            category: brand.category_slug,
+            node: <BrandTile brand={brand} locale={locale} className="h-[240px]" />,
+          }))}
+        />
 
         {/* How it works */}
         <section className="mt-20">

@@ -35,6 +35,15 @@ import {
 
 const CURRENCY = "UZS";
 
+/**
+ * Declared rather than inherited. Without this the segment takes the *lowest*
+ * revalidate of everything it fetches, which was the 60s on `getBrandReviews`
+ * — so the landing pages ads point at regenerated five times more often than
+ * the 300s this file's own JSON-LD comment assumes, and every regeneration
+ * fans out to a brand call plus one per product.
+ */
+export const revalidate = 300;
+
 export async function generateStaticParams() {
   return (await getBrandSlugs()).map((brandSlug) => ({ brandSlug }));
 }
