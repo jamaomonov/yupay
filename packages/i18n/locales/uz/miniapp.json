@@ -370,5 +370,20 @@
   "topup.confirmCta": "Hammasi toʻgʻri, toʻlash",
   "topup.confirmCancel": "Oʻzgartirish",
   "topup.fillFieldCta": "{field} kiriting",
-  "topup.verifyFieldCta": "{field}ni tekshiring"
+  "topup.verifyFieldCta": "{field}ni tekshiring",
+  "topup.promoLabel": "Promokod",
+  "topup.promoPlaceholder": "Kodni kiriting",
+  "topup.promoApply": "Qo'llash",
+  "topup.promoChecking": "Tekshiryapmiz…",
+  "topup.promoRemove": "Olib tashlash",
+  "topup.promoApplied": "{percent}% chegirma",
+  "topup.promoSaved": "{amount} tejaysiz",
+  "topup.promoSignIn": "Promokod uchun tizimga kiring",
+  "topup.promoErrUnknown": "Bunday promokod topilmadi yoki amal qilmaydi",
+  "topup.promoErrAlreadyUsed": "Siz allaqachon hamkor promokodini ishlatgansiz",
+  "topup.promoErrNotFirstOrder": "Promokod faqat birinchi buyurtmaga amal qiladi",
+  "topup.promoErrOwnCode": "O'z promokodingizni ishlata olmaysiz",
+  "topup.promoErrPending": "Sizda promokodli to'lanmagan buyurtma bor",
+  "topup.promoErrGeneric": "Promokodni tekshirib bo'lmadi. Qaytadan urinib ko'ring",
+  "topup.promoDropped": "Promokod amal qilmaydi — buyurtma chegirmasiz rasmiylashtirildi"
 }

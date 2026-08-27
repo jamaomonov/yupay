@@ -370,5 +370,20 @@
   "topup.confirmCta": "All correct, pay",
   "topup.confirmCancel": "Edit",
   "topup.fillFieldCta": "Enter {field}",
-  "topup.verifyFieldCta": "Verify {field}"
+  "topup.verifyFieldCta": "Verify {field}",
+  "topup.promoLabel": "Promo code",
+  "topup.promoPlaceholder": "Enter code",
+  "topup.promoApply": "Apply",
+  "topup.promoChecking": "Checking…",
+  "topup.promoRemove": "Remove",
+  "topup.promoApplied": "{percent}% off",
+  "topup.promoSaved": "You save {amount}",
+  "topup.promoSignIn": "Sign in to use a promo code",
+  "topup.promoErrUnknown": "This code was not found or is no longer active",
+  "topup.promoErrAlreadyUsed": "You have already used a partner code",
+  "topup.promoErrNotFirstOrder": "The code works on your first order only",
+  "topup.promoErrOwnCode": "You cannot use your own code",
+  "topup.promoErrPending": "You already have an unpaid order with a code",
+  "topup.promoErrGeneric": "Could not check the code. Please try again",
+  "topup.promoDropped": "The code is no longer valid — the order was placed without a discount"
 }

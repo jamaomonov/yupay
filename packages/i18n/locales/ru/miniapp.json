@@ -370,5 +370,20 @@
   "topup.confirmCta": "Всё верно, оплатить",
   "topup.confirmCancel": "Изменить",
   "topup.fillFieldCta": "Укажите {field}",
-  "topup.verifyFieldCta": "Проверьте {field}"
+  "topup.verifyFieldCta": "Проверьте {field}",
+  "topup.promoLabel": "Промокод",
+  "topup.promoPlaceholder": "Введите код",
+  "topup.promoApply": "Применить",
+  "topup.promoChecking": "Проверяем…",
+  "topup.promoRemove": "Убрать",
+  "topup.promoApplied": "Скидка {percent}%",
+  "topup.promoSaved": "Вы экономите {amount}",
+  "topup.promoSignIn": "Войдите, чтобы применить промокод",
+  "topup.promoErrUnknown": "Такой промокод не найден или больше не действует",
+  "topup.promoErrAlreadyUsed": "Вы уже активировали партнёрский промокод",
+  "topup.promoErrNotFirstOrder": "Промокод действует только на первый заказ",
+  "topup.promoErrOwnCode": "Нельзя активировать собственный промокод",
+  "topup.promoErrPending": "У вас уже есть неоплаченный заказ с промокодом",
+  "topup.promoErrGeneric": "Не удалось проверить промокод. Попробуйте ещё раз",
+  "topup.promoDropped": "Промокод больше не действует — заказ оформлен без скидки"
 }
