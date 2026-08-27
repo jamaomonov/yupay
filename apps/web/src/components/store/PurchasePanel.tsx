@@ -9,6 +9,7 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { ConfirmPurchaseModal } from "./ConfirmPurchaseModal";
+import { type AppliedPromo, PromoField } from "./PromoField";
 import { WhereToFindModal } from "./WhereToFindModal";
 
 import type { FormField, ProductDetail, SkuOut } from "@/lib/catalog";
@@ -1142,6 +1143,35 @@ export function PurchasePanel({
           ? Number(selSku.display_price.amount)
           : null;
 
+  // The cart line, built once. The promo preview and the order that follows
+  // must price the *same* thing — two places assembling this is exactly how a
+  // quote and its order come to disagree.
+  const orderItem = useMemo(
+    () =>
+      !selSku
+        ? null
+        : {
+            sku_id: selSku.id,
+            // A unit SKU (Telegram Stars) is bought as a real quantity, not the
+            // usual single line + `amount_usd`.
+            qty: selSkuUnit ? (parsedQty ?? 1) : 1,
+            fulfillment_data: form,
+            ...(selSkuVariable && amountAsUsd !== null
+              ? // Always dollars on the wire. Six decimals because one unit is
+                // rarely a round cent; the server snaps it back to a whole unit.
+                { amount_usd: amountAsUsd.toFixed(perUsd !== null ? 6 : 2) }
+              : {}),
+          },
+    [selSku, selSkuUnit, parsedQty, form, selSkuVariable, amountAsUsd, perUsd],
+  );
+
+  // A render-time signal for the promo field. Deliberately *not* the handler's
+  // own `isLoggedIn`, which also checks the access token at submit time: that
+  // check stays exactly as it was, because it guards the money path.
+  const isSignedIn = user !== null;
+  const [promo, setPromo] = useState<AppliedPromo | null>(null);
+  const [promoDropped, setPromoDropped] = useState(false);
+
   // Only fetched for signed-in customers: a guest has no wallet, and asking
   // would 401 on every brand page.
   const walletQuery = useQuery({
@@ -1326,23 +1356,9 @@ export function PurchasePanel({
         emailSuffix = `?email=${encodeURIComponent(email)}`;
       }
 
-      // Sent as a fixed-2-decimal string so the server never has to round-trip
-      // a client float — the server re-validates and re-prices from it
-      // regardless (see `pricing.variable.validate_amount`).
-      const orderItem = {
-        sku_id: selSku.id,
-        // A unit SKU (Telegram Stars) is bought as a real quantity, not the
-        // usual single line + `amount_usd` — `qtyOk` (part of `canPay`)
-        // already guarantees `parsedQty` is set by the time we get here; the
-        // fallback is an unreachable sentinel, same pattern as `provider` above.
-        qty: selSkuUnit ? (parsedQty ?? 1) : 1,
-        fulfillment_data: form,
-        ...(selSkuVariable && amountAsUsd !== null
-          ? // Always dollars on the wire. Six decimals because one unit is
-            // rarely a round cent; the server snaps it back to a whole unit.
-            { amount_usd: amountAsUsd.toFixed(perUsd !== null ? 6 : 2) }
-          : {}),
-      };
+      // Built above, so the promo preview and this order price the same cart.
+      // `canPay` already guarantees it is non-null by the time we get here.
+      if (!orderItem) return;
       // Collected at submit, not at mount: the value that matters is the one in
       // force when the purchase was made. Omitted entirely when the browser
       // yields nothing, so the server stores {} rather than a bag of nulls.
@@ -1355,6 +1371,10 @@ export function PurchasePanel({
         // goes. Sending neither is what left them without their codes.
         ...(isLoggedIn ? { delivery_email: email } : { guest_email: email }),
         ...(hints ? { client_hints: hints } : {}),
+        // The server resolves this again for itself — the preview above was
+        // for display only, so a code that went stale in between yields an
+        // order at full price rather than the price the button showed.
+        ...(promo ? { affiliate_code: promo.code } : {}),
       };
 
       const ord = await fetch(`${API}/api/v1/orders`, {
@@ -1372,7 +1392,12 @@ export function PurchasePanel({
         body: JSON.stringify(orderBody),
       });
       if (!ord.ok) throw new Error("order");
-      const order = (await ord.json()) as { id: string };
+      const order = (await ord.json()) as { id: string; discount_charged?: string };
+      // Authoritative. A code the server refused leaves this at zero, and
+      // saying so beats silently charging more than the button promised.
+      if (promo && Number(order.discount_charged ?? 0) === 0) {
+        setPromoDropped(true);
+      }
 
       const intentsUrl = isLoggedIn
         ? `${API}/api/v1/payments/intents`
@@ -1879,6 +1904,19 @@ export function PurchasePanel({
               </div>
             </div>
 
+            {orderItem && (
+              <PromoField
+                locale={locale}
+                items={[orderItem]}
+                currency="UZS"
+                isLoggedIn={isSignedIn}
+                onChange={(next) => {
+                  setPromo(next);
+                  setPromoDropped(false);
+                }}
+              />
+            )}
+
             <button
               type="button"
               disabled={!canPay}
@@ -1892,14 +1930,23 @@ export function PurchasePanel({
               ) : (
                 <>
                   {t("pay")}
-                  {selSku &&
-                    selectedPriceLabel &&
-                    selectedPriceLabel !== "—" &&
-                    !priceUnavailable &&
-                    ` · ${selectedPriceLabel}`}
+                  {/* The discounted total once a code applies — and it is the
+                      server's number, not one computed here, so the button
+                      cannot promise a price the order will not honour. */}
+                  {promo
+                    ? ` · ${formatUzs(locale, Math.round(Number(promo.totalAfter)))}`
+                    : selSku &&
+                      selectedPriceLabel &&
+                      selectedPriceLabel !== "—" &&
+                      !priceUnavailable &&
+                      ` · ${selectedPriceLabel}`}
                 </>
               )}
             </button>
+
+            {promoDropped && (
+              <p className="text-danger mt-2.5 text-center text-[12px]">{t("promoDropped")}</p>
+            )}
 
             {!canPay && !loading && !error && payHint && (
               <p className="text-tx-dim mt-2.5 text-center text-[12px]">{payHint}</p>
