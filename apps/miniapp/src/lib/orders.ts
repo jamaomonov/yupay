@@ -338,9 +338,32 @@ export function useCheckout() {
  * Exported (pure, no hooks) so the gating logic is unit-testable without
  * mounting the hook.
  */
+//: Base gap between polls, and the ceiling the backoff climbs to.
+//
+// 8s rather than the 3s this used to be. The fallback switches on exactly when
+// the socket drops, and the socket drops exactly when the API is struggling —
+// so at 3s a hundred customers waiting on an order produced roughly 33 req/s
+// of pure polling, plus the deliveries poll on top, arriving precisely when
+// there was no capacity for it. That is a feedback loop, not a fallback.
+const POLL_BASE_MS = 8_000;
+const POLL_MAX_MS = 60_000;
+
+/** Base interval for `failures` consecutive failed fetches, doubling and capped. */
+function backoff(failures: number): number {
+  return Math.min(POLL_BASE_MS * 2 ** Math.min(failures, 3), POLL_MAX_MS);
+}
+
+/** Up to +100%, so clients that dropped together do not retry together.
+ *  Without it the herd stays a herd for as long as the outage lasts.
+ *  Capped after jittering, not before — otherwise the jitter walks straight
+ *  back through the ceiling it was supposed to respect. */
+function jitter(ms: number): number {
+  return Math.min(Math.round(ms * (1 + Math.random())), POLL_MAX_MS);
+}
+
 export function orderRefetchInterval(
   status: OrderStatus | undefined,
-  opts: { appActive: boolean; realtimeConnected: boolean },
+  opts: { appActive: boolean; realtimeConnected: boolean; failures?: number },
 ): number | false {
   if (!status) return false;
   // Minimised app: stop burning the customer's battery and our API on an
@@ -351,7 +374,8 @@ export function orderRefetchInterval(
   // for no fresher data.
   if (opts.realtimeConnected) return false;
   // Poll while the order is in motion. Once terminal, stop.
-  return ["pending_payment", "paid", "fulfilling", "fulfilled"].includes(status) ? 3_000 : false;
+  if (!["pending_payment", "paid", "fulfilling", "fulfilled"].includes(status)) return false;
+  return jitter(backoff(opts.failures ?? 0));
 }
 
 export function useOrder(orderId: string | undefined) {
@@ -364,6 +388,10 @@ export function useOrder(orderId: string | undefined) {
       orderRefetchInterval(q.state.data?.status, {
         appActive: isAppActive(),
         realtimeConnected,
+        // Consecutive failures widen the gap. Without this, a client keeps
+        // knocking at the same rate at an API that is already refusing —
+        // which is the moment the rate matters most.
+        failures: q.state.fetchFailureCount,
       }),
   });
 }
@@ -419,11 +447,20 @@ export function useDeliveries(orderId: string | undefined, parentStatus: OrderSt
       const data = await apiGet<DeliveryListOut>(`/api/v1/orders/${orderId ?? ""}/deliveries`);
       return data.items;
     },
-    refetchInterval: () => {
+    refetchInterval: (q) => {
       if (!parentStatus) return false;
       if (parentStatus === "delivered") return false;
       if (!isAppActive()) return false;
-      return ["paid", "fulfilling", "fulfilled"].includes(parentStatus) ? 2_000 : false;
+      if (!["paid", "fulfilling", "fulfilled"].includes(parentStatus)) return false;
+      // Was a flat 2s, on top of the order poll — so one waiting customer was
+      // ~0.8 req/s on their own. Same backoff and jitter as the order query;
+      // `orderRefetchInterval` is reused rather than reimplemented so the two
+      // cannot drift apart.
+      return orderRefetchInterval("paid", {
+        appActive: true,
+        realtimeConnected: false,
+        failures: q.state.fetchFailureCount,
+      });
     },
   });
 }

@@ -23,6 +23,7 @@ import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { apiFetch } from "@/lib/client";
 import { mintGuestToken, requestCodeAccess } from "@/lib/guest";
+import { pollInterval } from "@/lib/poll";
 import { getMyReviews } from "@/lib/reviews";
 import { formatUzs, pathFor } from "@/lib/seo";
 import { useRealtimeStatus } from "@/store/useRealtimeStatus";
@@ -116,8 +117,14 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
     queryKey: ["order", orderId],
     queryFn: () => apiFetch<OrderOut>(`/orders/${orderId}`, guestAuth),
     enabled: authReady,
+    // 4s was a flat rate that switched on exactly when the socket dropped —
+    // which is when the API is struggling. Jittered 8s and up, widening on
+    // consecutive failures, so a hundred waiting customers stop being the
+    // load. Capped so a recovered API is still noticed within a minute.
     refetchInterval: (q) =>
-      !connected && q.state.data && IN_MOTION.has(q.state.data.status) ? 4000 : false,
+      !connected && q.state.data && IN_MOTION.has(q.state.data.status)
+        ? pollInterval(q.state.fetchFailureCount)
+        : false,
   });
 
   const status = order.data?.status;

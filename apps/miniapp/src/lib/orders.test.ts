@@ -56,11 +56,14 @@ describe("orderRefetchInterval", () => {
     }
   });
 
-  it("polls every 3s for in-motion statuses when there is no live socket", () => {
+  it("polls in-motion statuses when there is no live socket", () => {
+    // The exact number moved from a flat 3s to a jittered 8s and up — see
+    // POLL_BASE_MS and the backoff tests below. What this pins is which
+    // statuses poll at all.
     for (const status of ["pending_payment", "paid", "fulfilling", "fulfilled"] as const) {
-      expect(orderRefetchInterval(status, { appActive: true, realtimeConnected: false })).toBe(
-        3_000,
-      );
+      const ms = orderRefetchInterval(status, { appActive: true, realtimeConnected: false });
+      expect(typeof ms).toBe("number");
+      expect(ms as number).toBeGreaterThan(0);
     }
   });
 
@@ -296,5 +299,52 @@ describe("performCheckout", () => {
       }),
       expect.anything(),
     );
+  });
+});
+
+describe("polling backs off instead of piling on", () => {
+  const opts = { appActive: true, realtimeConnected: false };
+
+  it("the interval is long enough that a crowd does not become the load", () => {
+    // The socket drops exactly when the API is struggling, which is when this
+    // fallback switches on. At 3s, a hundred customers waiting on an order
+    // produced ~33 req/s of pure polling — plus the deliveries poll on top —
+    // arriving precisely when there is no capacity for it. That is a positive
+    // feedback loop, not a fallback.
+    const interval = orderRefetchInterval("paid", opts);
+    expect(typeof interval).toBe("number");
+    expect(interval as number).toBeGreaterThanOrEqual(8_000);
+  });
+
+  it("consecutive failures widen the gap", () => {
+    const first = orderRefetchInterval("paid", opts) as number;
+    const later = orderRefetchInterval("paid", { ...opts, failures: 3 }) as number;
+    expect(later).toBeGreaterThan(first);
+  });
+
+  it("the backoff is capped, so a recovered API is noticed", () => {
+    const far = orderRefetchInterval("paid", { ...opts, failures: 50 }) as number;
+    expect(far).toBeLessThanOrEqual(60_000);
+  });
+
+  it("two clients do not line up", () => {
+    // Without jitter every client that dropped at the same moment retries at
+    // the same moment, forever — the herd stays a herd.
+    const samples = new Set(
+      Array.from({ length: 40 }, () => orderRefetchInterval("paid", opts) as number),
+    );
+    expect(samples.size).toBeGreaterThan(1);
+  });
+
+  it("jitter stays within a sane band", () => {
+    const values = Array.from({ length: 200 }, () => orderRefetchInterval("paid", opts) as number);
+    expect(Math.min(...values)).toBeGreaterThanOrEqual(8_000);
+    expect(Math.max(...values)).toBeLessThanOrEqual(16_000);
+  });
+
+  it("everything that stopped polling before still does", () => {
+    expect(orderRefetchInterval("delivered", opts)).toBe(false);
+    expect(orderRefetchInterval("paid", { ...opts, appActive: false })).toBe(false);
+    expect(orderRefetchInterval("paid", { ...opts, realtimeConnected: true })).toBe(false);
   });
 });
