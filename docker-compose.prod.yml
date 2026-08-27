@@ -97,14 +97,26 @@ services:
       - "max_connections=200"
       # A connection idle *inside a transaction* is the pool-exhaustion shape:
       # a request that opened a transaction and then went off to wait on a
-      # supplier. Two minutes is far longer than any legitimate one.
+      # supplier. This is a safety net for a leaked connection, NOT a policy
+      # for slow work — and the distinction is what sets the number.
+      #
+      # Fulfilment still runs inline in the request transaction (ADR-0013's
+      # open follow-through), and one G2B call is worst-case 115s: a 20s
+      # timeout, five attempts, 1+2+4+8s of backoff. An order makes two or
+      # three of them inside a single transaction. The first value here was
+      # 120s, which would have aborted legitimate fulfilment mid-flight the
+      # moment the supplier got slow — trading a pinned connection for a paid
+      # order left waiting on the reconcile sweep. Ten minutes sits above any
+      # real fulfilment and still bounds a genuine leak.
+      #
+      # Revisit down to something tight once the saga moves to the worker.
       #
       # statement_timeout is deliberately NOT set. It would also apply to
       # migrations, which run as this same role, and killing a CREATE INDEX
       # halfway is a worse outcome than the runaway query it would prevent.
       # Revisit once migrations use CONCURRENTLY as a matter of course.
       - "-c"
-      - "idle_in_transaction_session_timeout=120s"
+      - "idle_in_transaction_session_timeout=600s"
       # Query-level observability. Without it, "the database got slow" is a
       # conversation with no evidence in it.
       - "-c"
