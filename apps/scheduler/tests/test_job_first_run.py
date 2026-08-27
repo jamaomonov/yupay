@@ -18,6 +18,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from yupay_scheduler.jobs import (
     fx_refresh,
     purge_evidence,
+    purge_sessions,
     refresh_supplier_prices,
     refresh_voucher_stock,
     sync_supplier_catalog,
@@ -29,6 +30,7 @@ LONG_PERIOD_JOBS = [
     refresh_supplier_prices,
     refresh_voucher_stock,
     purge_evidence,
+    purge_sessions,
     fx_refresh,
 ]
 
