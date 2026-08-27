@@ -35,6 +35,27 @@ NORMAL_SIDE: dict[str, str] = {
     # marketing spend) so reports separate "money customers paid us"
     # from "money we gave away as promos".
     "house_payments_received": "D",
+    # Affiliate program (see
+    # docs/superpowers/specs/2026-08-27-affiliate-program-design.md).
+    # Partner money is split across three accounts so that "available to
+    # withdraw" is a ledger balance rather than a sum computed over the
+    # commissions table — one source of truth, and a payout request that
+    # reserves its money cannot be raced into an overdraft.
+    #
+    # `partner_pending`     commission accrued, still inside the hold period
+    # `partner_balance`     matured, withdrawable
+    # `partner_payout_hold` reserved by an open payout request
+    #
+    # The house side mirrors the promo pair: `house_affiliate_expense` is
+    # credited when commission is earned, `house_affiliate_paid` is debited
+    # when it actually leaves for a partner's card. Two accounts, because
+    # "what we owe partners" and "what we have paid partners" answer
+    # different questions.
+    "partner_pending": "D",
+    "partner_balance": "D",
+    "partner_payout_hold": "D",
+    "house_affiliate_expense": "D",
+    "house_affiliate_paid": "D",
     "house_revenue": "C",
     "house_fx_pnl": "C",
     "provider_clearing": "C",

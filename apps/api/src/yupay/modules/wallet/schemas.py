@@ -21,9 +21,17 @@ AccountKind = Literal[
     "house_refunds",
     "house_fx_pnl",
     "provider_clearing",
+    # Affiliate program. Deliberately absent from USER_VISIBLE_KINDS below:
+    # that tuple is the allow-list for what a customer sees in their own
+    # wallet, and partner money must never appear there.
+    "partner_pending",
+    "partner_balance",
+    "partner_payout_hold",
+    "house_affiliate_expense",
+    "house_affiliate_paid",
 ]
 
-OwnerType = Literal["user", "house", "provider"]
+OwnerType = Literal["user", "house", "provider", "partner"]
 Direction = Literal["D", "C"]
 USER_VISIBLE_KINDS: tuple[AccountKind, ...] = (
     "user_wallet",
