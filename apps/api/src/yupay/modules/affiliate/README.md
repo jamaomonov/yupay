@@ -6,6 +6,8 @@ order and are permanently attributed to that partner, and the partner earns
 
 **Spec:** `docs/superpowers/specs/2026-08-27-affiliate-program-design.md`
 **ADR:** `docs/decisions/0061-affiliate-commission-by-sweep.md`
+**Plans:** `docs/superpowers/plans/2026-08-27-affiliate-core.md` (schema, ledger, sweep),
+`docs/superpowers/plans/2026-08-28-affiliate-discount.md` (the discount on the order path)
 
 ## Why this is not part of `promo`
 
@@ -25,7 +27,7 @@ different postings, different ownership.
 | Payout rejected                          | `D partner_balance / C partner_payout_hold`      |
 | Commission voided (refund, pre-maturity) | `D house_affiliate_expense / C partner_pending`  |
 
-The last three rows are not implemented yet — they land with the payout API.
+The payout rows are not implemented yet — they land with the payout API.
 
 **"Available to withdraw" is the balance of `partner_balance`** — not a sum
 computed over `affiliate_commissions`. One source of truth, and a payout
@@ -34,6 +36,14 @@ request that reserves its money cannot be raced into an overdraft.
 There is no posting for the discount, and there must not be one. The buyer
 simply pays less; cost of goods is unchanged, so our margin is genuinely lower.
 That is a fact about revenue, not an expense.
+
+It does have to reach the **reports**, though, and that is subtler than it
+sounds. Dashboard revenue comes from the order total, so it drops on its own.
+Margin is computed per line in `orders/revenue.py` and does not — which left two
+figures on one card disagreeing about cost, on exactly the orders with the least
+margin to spare. Both expressions now subtract `order_items.discount_usd`;
+`gross - margin == cost` survives because a discount lowers what we received and
+what we kept by the same amount.
 
 ## Adding an account kind takes three edits, not one
 
@@ -67,7 +77,18 @@ from yupay.modules.affiliate import api as affiliate_api
 await affiliate_api.accrue_commissions(db, hold_days=14, limit=500)  # -> int
 await affiliate_api.mature_commissions(db, limit=500)                # -> int
 await affiliate_api.void_commission(db, order_id=order_id)           # -> bool
+await affiliate_api.resolve_code(db, code=..., user_id=..., purpose="catalog")
+affiliate_api.discount_amount(total, percent, currency)              # -> Decimal
+affiliate_api.distribute_discount_usd(line_totals, discount)         # -> list
 ```
+
+Two things are deliberately **not** on the facade:
+
+- `routes.router` — `api/v1` imports it from `affiliate.routes` directly.
+  Re-exporting it here would close an import cycle, because `orders.service`
+  and `payments.service` both import this module.
+- `attribution.bind_attribution` — same reason; `payments.service` imports
+  `affiliate.attribution` directly.
 
 `void_commission` deliberately refuses a matured commission — it may already
 sit inside a payout request, and clawing back money a partner can see is an
@@ -78,6 +99,16 @@ The wallet facade imports its router, which pulls in the whole v1 route stack
 and circles back — an `ImportError` for any caller not already inside the app,
 and dead weight in the scheduler process. The existing `purge_sessions` and
 `purge_evidence` jobs reach past their facades for the same reason.
+
+## SAVEPOINT, and the order of two lines
+
+Both `accrual` and `attribution` insert a row that a `UNIQUE` may reject, and
+both wrap it in `db.begin_nested()`. The row must be added **inside** that
+block. Added before it, a failed flush leaves the doomed object in
+`session.new` and SQLAlchemy poisons the whole session with
+`PendingRollbackError` — so losing one race would abandon the entire sweep pass,
+or roll back the payment settlement that owns the outer transaction. This was
+shipped wrong once and caught by the second-coded-order test.
 
 ## Test coverage note
 
