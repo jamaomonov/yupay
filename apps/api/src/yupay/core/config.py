@@ -112,6 +112,23 @@ class Settings(BaseSettings):
     # email). Longer than checkout because the buyer may open the order days
     # later; the token unlocks only that one order's codes — see ADR-0042.
     jwt_guest_order_ttl_seconds: int = Field(default=60 * 60 * 24 * 7)  # 7 days
+    # Affiliate program. See
+    # docs/superpowers/specs/2026-08-27-affiliate-program-design.md.
+    #: Days between an order being delivered and its commission becoming
+    #: withdrawable. Covers the acquirers' dispute window without making a
+    #: partner wait a month for a first payout.
+    affiliate_hold_days: int = Field(default=14)
+    #: How often the accrual sweep runs. Freshness costs nothing here — the
+    #: hold period dominates — but the panel should never look stalled.
+    affiliate_sweep_minutes: int = Field(default=5)
+    #: Rows processed per sweep pass, per step. A backlog drains over several
+    #: passes rather than in one long transaction.
+    affiliate_sweep_batch: int = Field(default=500)
+    #: Smallest withdrawal, in the partner's own currency. Each payout is a
+    #: manual bank transfer, so there is a floor. Estimated, not measured —
+    #: revisit once real partner volumes exist.
+    affiliate_min_payout: Decimal = Field(default=Decimal("50000"))
+
     jwt_ws_ttl_seconds: int = Field(default=60)  # 60 s for WS handshake
     jwt_email_token_ttl_seconds: int = Field(default=60 * 30)  # 30 min for verify/reset links
     auth_email_pepper: str = Field(

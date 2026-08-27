@@ -7,6 +7,8 @@ on mocking a scheduler.
 
 from __future__ import annotations
 
+import secrets
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
@@ -18,6 +20,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # one more: the scheduler imports it, and a scheduler process has no business
 # loading FastAPI routes.
 from yupay.modules.wallet import service as wallet_service
+
+
+def _unique_code(prefix: str) -> str:
+    """A collision-free test code.
+
+    Not derived from ``new_id()``: it is a UUIDv7, so its leading characters
+    are a timestamp and three codes minted inside one test share them.
+    """
+    return f"{prefix}{secrets.token_hex(5).upper()}"
+
 
 pytestmark = pytest.mark.asyncio
 
@@ -65,14 +77,14 @@ async def test_attribution_is_unique_per_user(db_session: AsyncSession) -> None:
     code_a = AffiliateCode(
         id=new_id(),
         partner_id=partner_a.id,
-        code=f"A{new_id().replace('-', '')[:10].upper()}",
+        code=_unique_code("A"),
         discount_percent=Decimal("5"),
         commission_percent=Decimal("2"),
     )
     code_b = AffiliateCode(
         id=new_id(),
         partner_id=partner_b.id,
-        code=f"B{new_id().replace('-', '')[:10].upper()}",
+        code=_unique_code("B"),
         discount_percent=Decimal("5"),
         commission_percent=Decimal("2"),
     )
@@ -93,3 +105,130 @@ async def test_attribution_is_unique_per_user(db_session: AsyncSession) -> None:
     )
     with pytest.raises(IntegrityError):
         await db_session.flush()
+
+
+async def _seed_delivered_order(
+    db: AsyncSession,
+    *,
+    total_charged: Decimal,
+    commission_percent: Decimal = Decimal("2"),
+    currency: str = "UZS",
+    delivered: bool = True,
+    purpose: str = "catalog",
+    with_attribution: bool = True,
+) -> tuple[str, str, str]:
+    """Create partner + code + user + (optionally) attribution + one order.
+
+    Returns:
+        ``(order_id, partner_id, user_id)``.
+    """
+    from yupay.core.clock import now
+    from yupay.core.ids import new_id
+    from yupay.modules.affiliate.models import (
+        AffiliateAttribution,
+        AffiliateCode,
+        AffiliatePartner,
+    )
+    from yupay.modules.orders.models import Order
+    from yupay.modules.users.models import User
+
+    partner = AffiliatePartner(id=new_id(), email=f"p-{new_id()}@example.test", status="active")
+    user = User(id=new_id())
+    db.add_all([partner, user])
+    await db.flush()
+
+    code = AffiliateCode(
+        id=new_id(),
+        partner_id=partner.id,
+        code=_unique_code("C"),
+        discount_percent=Decimal("5"),
+        commission_percent=commission_percent,
+    )
+    db.add(code)
+    await db.flush()
+
+    moment = now()
+    order = Order(
+        id=new_id(),
+        user_id=user.id,
+        status="delivered" if delivered else "paid",
+        currency=currency,
+        total_usd=Decimal("1"),
+        total_charged=total_charged,
+        purpose=purpose,
+        expires_at=moment + timedelta(days=1),
+        delivered_at=moment if delivered else None,
+    )
+    db.add(order)
+    await db.flush()
+
+    if with_attribution:
+        db.add(
+            AffiliateAttribution(
+                id=new_id(),
+                user_id=user.id,
+                partner_id=partner.id,
+                code_id=code.id,
+                first_order_id=order.id,
+            )
+        )
+        await db.flush()
+
+    return order.id, partner.id, user.id
+
+
+async def _partner_balance(db: AsyncSession, partner_id: str, kind: str) -> Decimal:
+    account = await wallet_service.ensure_account(
+        db, owner_type="partner", owner_id=partner_id, kind=kind, currency="UZS"
+    )
+    return await wallet_service.balance(db, account.id)
+
+
+async def test_accrual_posts_commission_to_pending(db_session: AsyncSession) -> None:
+    """A delivered, attributed order accrues 2% into the partner's pending account."""
+    from sqlalchemy import select
+    from yupay.modules.affiliate.accrual import accrue_commissions
+    from yupay.modules.affiliate.models import AffiliateCommission
+
+    order_id, partner_id, _ = await _seed_delivered_order(
+        db_session, total_charged=Decimal("100000")
+    )
+
+    assert await accrue_commissions(db_session, hold_days=14) == 1
+
+    row = (
+        await db_session.execute(
+            select(AffiliateCommission).where(AffiliateCommission.order_id == order_id)
+        )
+    ).scalar_one()
+    assert row.amount == Decimal("2000")
+    assert row.status == "pending"
+    assert row.currency == "UZS"
+
+    assert await _partner_balance(db_session, partner_id, "partner_pending") == Decimal("2000")
+
+
+async def test_accrual_is_idempotent(db_session: AsyncSession) -> None:
+    """Running the sweep twice pays once. This is the property the whole
+    accrue-by-sweep design rests on."""
+    from yupay.modules.affiliate.accrual import accrue_commissions
+
+    _, partner_id, _ = await _seed_delivered_order(db_session, total_charged=Decimal("100000"))
+
+    assert await accrue_commissions(db_session, hold_days=14) == 1
+    assert await accrue_commissions(db_session, hold_days=14) == 0
+
+    assert await _partner_balance(db_session, partner_id, "partner_pending") == Decimal("2000")
+
+
+async def test_accrual_skips_undelivered_unattributed_and_topups(
+    db_session: AsyncSession,
+) -> None:
+    """Three orders that must not earn commission."""
+    from yupay.modules.affiliate.accrual import accrue_commissions
+
+    await _seed_delivered_order(db_session, total_charged=Decimal("100000"), delivered=False)
+    await _seed_delivered_order(db_session, total_charged=Decimal("100000"), with_attribution=False)
+    await _seed_delivered_order(db_session, total_charged=Decimal("100000"), purpose="wallet_topup")
+
+    assert await accrue_commissions(db_session, hold_days=14) == 0
