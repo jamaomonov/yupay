@@ -27,7 +27,12 @@
               "house_payments_received",
               "house_refunds",
               "house_fx_pnl",
-              "provider_clearing"
+              "provider_clearing",
+              "partner_pending",
+              "partner_balance",
+              "partner_payout_hold",
+              "house_affiliate_expense",
+              "house_affiliate_paid"
             ],
             "title": "Kind",
             "type": "string"
@@ -40,7 +45,8 @@
             "enum": [
               "user",
               "house",
-              "provider"
+              "provider",
+              "partner"
             ],
             "title": "Owner Type",
             "type": "string"
@@ -1323,7 +1329,12 @@
               "house_payments_received",
               "house_refunds",
               "house_fx_pnl",
-              "provider_clearing"
+              "provider_clearing",
+              "partner_pending",
+              "partner_balance",
+              "partner_payout_hold",
+              "house_affiliate_expense",
+              "house_affiliate_paid"
             ],
             "title": "Kind",
             "type": "string"
@@ -5407,6 +5418,12 @@
             ],
             "title": "Delivered At"
           },
+          "discount_charged": {
+            "default": "0",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Discount Charged",
+            "type": "string"
+          },
           "events": {
             "items": {
               "$ref": "#/components/schemas/yupay__modules__orders__schemas__OrderEventOut"
@@ -5560,6 +5577,18 @@
         "additionalProperties": false,
         "description": "Body of ``POST /api/v1/orders``.",
         "properties": {
+          "affiliate_code": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Affiliate Code"
+          },
           "client_hints": {
             "anyOf": [
               {
@@ -5991,6 +6020,12 @@
               }
             ],
             "title": "Delivered At"
+          },
+          "discount_charged": {
+            "default": "0",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Discount Charged",
+            "type": "string"
           },
           "expires_at": {
             "format": "date-time",
@@ -6865,6 +6900,120 @@
           "max_bytes"
         ],
         "title": "PresignUploadOut",
+        "type": "object"
+      },
+      "PreviewIn": {
+        "additionalProperties": false,
+        "description": "A code and the cart it would apply to.",
+        "properties": {
+          "code": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "currency": {
+            "default": "USD",
+            "maxLength": 8,
+            "minLength": 3,
+            "title": "Currency",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OrderItemIn"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "code",
+          "items"
+        ],
+        "title": "PreviewIn",
+        "type": "object"
+      },
+      "PreviewOut": {
+        "description": "Whether the code applies, and what it would do to the total.\n\n``reason`` is only set when ``applicable`` is false, and it is deliberately\ncoarse: a code that does not exist, one that is switched off, and one whose\npartner is suspended all report ``unknown``. Telling them apart would make\nthis endpoint a lookup service for other people's promo codes.\n\nThe amounts are for display. The order is priced again when it is actually\ncreated, so a code deactivated in between cannot be spent at the price\nshown here.",
+        "properties": {
+          "applicable": {
+            "title": "Applicable",
+            "type": "boolean"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "discount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Discount",
+            "type": "string"
+          },
+          "percent": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "unknown",
+                  "guest",
+                  "already_used",
+                  "not_first_order",
+                  "own_code",
+                  "pending_coded_order",
+                  "not_catalog"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "total_after": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total After",
+            "type": "string"
+          },
+          "total_before": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total Before",
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicable",
+          "currency",
+          "total_before",
+          "total_after",
+          "discount"
+        ],
+        "title": "PreviewOut",
         "type": "object"
       },
       "PriceHistoryOut": {
@@ -19122,6 +19271,66 @@
         "summary": "Admin: ack a rejected / stuck webhook record",
         "tags": [
           "admin:webhooks"
+        ]
+      }
+    },
+    "/api/v1/affiliate/preview": {
+      "post": {
+        "description": "Price the cart, then say whether the code applies to it.\n\nSigned-in only, because a partner code binds a buyer to a partner and a\nguest has nothing durable to bind. That also gives the throttle a subject:\nthe two-axis guard keys on the buyer, so one account cannot grind through\nthe code space from a rotating address.\n\nThe amounts are for display only. ``create_order`` resolves the code again\nand prices the order itself, so nothing here can be spent.",
+        "operationId": "preview_api_v1_affiliate_preview_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "What a partner code would do to this cart",
+        "tags": [
+          "affiliate"
         ]
       }
     },

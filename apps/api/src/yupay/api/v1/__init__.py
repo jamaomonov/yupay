@@ -9,6 +9,11 @@ from fastapi import APIRouter
 
 from yupay.api.webhooks.g2b import router as g2b_webhook_router
 from yupay.modules.admin.api import admin_router as admin_admin_router
+
+# Imported from ``routes`` rather than the module facade on purpose: the
+# affiliate facade is imported by orders.service and payments.service, and
+# a router re-exported from it would close a cycle back through here.
+from yupay.modules.affiliate.routes import router as affiliate_router
 from yupay.modules.audit.api import admin_router as audit_admin_router
 from yupay.modules.auth.api import router as auth_router
 from yupay.modules.broadcasts.api import admin_router as broadcasts_admin_router
@@ -75,6 +80,7 @@ router.include_router(storage_admin_router)
 router.include_router(users_router)
 router.include_router(users_admin_router)
 router.include_router(wallet_router)
+router.include_router(affiliate_router)
 router.include_router(promo_router)
 router.include_router(promo_admin_router)
 router.include_router(reviews_router)

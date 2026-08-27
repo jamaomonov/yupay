@@ -608,6 +608,77 @@ async def _compute_total_charged(
     return _round_to_payable(total_charged, currency), fx_snapshot_id
 
 
+@dataclass(frozen=True)
+class CartQuote:
+    """What a cart would cost, without creating anything."""
+
+    total_usd: Decimal
+    total_charged: Decimal
+    currency: str
+
+
+async def quote_cart(db: AsyncSession, body: OrderCreate) -> CartQuote:
+    """Price a cart without persisting an order.
+
+    Shares ``_resolve_line_unit_price`` and ``_compute_total_charged`` with
+    :func:`create_order`, so a quote and the order that follows it cannot
+    disagree about price. A second implementation of "what does this cost" is
+    the one thing this function exists to avoid.
+
+    Fulfillment data is deliberately not validated: a quote is about money, and
+    the buyer may not have typed their player ID yet when they try a promo code.
+
+    Args:
+        db: Session.
+        body: The same payload ``create_order`` takes. Only ``items`` and
+            ``currency`` are read.
+
+    Returns:
+        The cart's totals, before any affiliate discount.
+
+    Raises:
+        ValidationError: If any SKU is unknown, inactive, or hidden behind an
+            inactive product or brand — the same rule checkout applies.
+    """
+    sku_ids = [item.sku_id for item in body.items]
+    skus = await _fetch_skus_with_product(db, sku_ids)
+    missing = [sid for sid in sku_ids if sid not in skus or not _sku_is_buyable(skus[sid])]
+    if missing:
+        raise ValidationError("unknown or inactive SKU", extra={"sku_ids": missing})
+
+    currency = body.currency.upper()
+    items: list[OrderItem] = []
+    total_usd = Decimal("0")
+    for line in body.items:
+        sku = skus[line.sku_id]
+        unit_price_usd = _resolve_line_unit_price(sku, line, currency)
+        items.append(
+            OrderItem(
+                id=new_id(),
+                order_id=new_id(),
+                sku_id=sku.id,
+                qty=line.qty,
+                unit_price_usd=unit_price_usd,
+                cost_usdt=None if sku.variable_amount else sku.cost_usdt,
+                fulfillment_data={},
+            )
+        )
+        total_usd += unit_price_usd * line.qty
+
+    total_charged, _snapshot = await _compute_total_charged(
+        db,
+        body=body,
+        skus=skus,
+        items=items,
+        total_usd=total_usd,
+        currency=currency,
+    )
+    # The OrderItems above are never added to the session — they exist only to
+    # give the shared pricing helpers the shape they expect, and are discarded
+    # when this function returns.
+    return CartQuote(total_usd=total_usd, total_charged=total_charged, currency=currency)
+
+
 async def create_order(
     db: AsyncSession,
     body: OrderCreate,
