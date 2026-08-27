@@ -270,32 +270,127 @@ async def test_resolve_rejects_while_an_unpaid_coded_order_is_open(
     )
 
 
-class TestDistribution:
-    """Synchronous arithmetic, kept out of the module-level asyncio mark."""
+async def _seed_sku(db: AsyncSession, *, price_usd: str, cost_usdt: str | None) -> str:
+    """One buyable SKU, with the whole category → brand → product chain it needs."""
+    from yupay.core.ids import new_id
+    from yupay.modules.catalog.models import (
+        Brand,
+        BrandTranslation,
+        Category,
+        CategoryTranslation,
+        Product,
+        ProductTranslation,
+        Sku,
+    )
 
-    def test_splits_proportionally_and_loses_nothing(self) -> None:
-        """The parts must sum to the whole — a dropped remainder is money that
-        silently reappears as margin."""
-        from yupay.modules.affiliate.discount import distribute_discount_usd
+    cat = Category(id=new_id(), slug=f"c-{new_id()[:8]}", sort_order=0, active=True)
+    cat.translations = [CategoryTranslation(locale="ru", name="Игры")]
+    db.add(cat)
+    await db.flush()
 
-        shares = distribute_discount_usd(
-            [Decimal("10"), Decimal("20"), Decimal("30")], Decimal("6")
-        )
-        assert sum(shares) == Decimal("6")
-        assert shares[2] > shares[0]
+    brand = Brand(
+        id=new_id(), slug=f"b-{new_id()[:8]}", category_id=cat.id, sort_order=0, active=True
+    )
+    brand.translations = [BrandTranslation(locale="ru", name="B")]
+    db.add(brand)
+    await db.flush()
 
-    def test_awkward_thirds_still_sum_exactly(self) -> None:
-        """Three equal lines and a discount that does not divide evenly."""
-        from yupay.modules.affiliate.discount import distribute_discount_usd
+    product = Product(id=new_id(), slug=f"p-{new_id()[:8]}", brand_id=brand.id, kind="top_up")
+    product.translations = [ProductTranslation(locale="ru", name="P")]
+    db.add(product)
+    await db.flush()
 
-        shares = distribute_discount_usd(
-            [Decimal("1"), Decimal("1"), Decimal("1")], Decimal("0.0000010")
-        )
-        assert sum(shares) == Decimal("0.0000010")
+    sku = Sku(
+        id=new_id(),
+        product_id=product.id,
+        sku_code=f"s-{new_id()[:8]}",
+        price_usd=Decimal(price_usd),
+        cost_usdt=Decimal(cost_usdt) if cost_usdt is not None else None,
+    )
+    db.add(sku)
+    await db.flush()
+    return sku.id
 
-    def test_handles_one_line_and_no_lines(self) -> None:
-        from yupay.modules.affiliate.discount import distribute_discount_usd
 
-        assert distribute_discount_usd([Decimal("10")], Decimal("1")) == [Decimal("1")]
-        assert distribute_discount_usd([], Decimal("1")) == []
-        assert distribute_discount_usd([Decimal("0")], Decimal("1")) == [Decimal("0")]
+async def test_create_order_applies_the_discount(db_session: AsyncSession) -> None:
+    """The server prices the order; the client only names a code."""
+    from yupay.core.ids import new_id
+    from yupay.modules.affiliate.discount import discount_amount
+    from yupay.modules.orders.schemas import OrderCreate, OrderItemIn
+    from yupay.modules.orders.service import Actor, create_order
+
+    code_id, code = await _seed_partner_and_code(db_session, discount_percent=Decimal("10"))
+    user_id = await _new_user(db_session)
+    sku_id = await _seed_sku(db_session, price_usd="10.00", cost_usdt="8.00")
+
+    order = await create_order(
+        db_session,
+        OrderCreate(
+            currency="USD",
+            items=[OrderItemIn(sku_id=sku_id, qty=2)],
+            affiliate_code=code,
+        ),
+        actor=Actor(user_id=user_id, email=None),
+        idempotency_key=new_id(),
+    )
+
+    full = Decimal("20.00")
+    expected_discount = discount_amount(full, Decimal("10"), "USD")
+    assert expected_discount == Decimal("2.00")
+    assert order.discount_charged == expected_discount
+    assert order.total_charged == full - expected_discount
+    assert order.affiliate_code_id == code_id
+    # The order-level discount has to reach the lines, or every margin report
+    # keeps showing the pre-discount number.
+    assert sum(item.discount_usd for item in order.items) == expected_discount
+
+
+async def test_create_order_ignores_an_unusable_code(db_session: AsyncSession) -> None:
+    """A code that no longer applies must not fail the checkout.
+
+    The buyer saw the verdict at preview time; losing a sale over a discount
+    that expired thirty seconds ago is the worse trade.
+    """
+    from yupay.core.ids import new_id
+    from yupay.modules.orders.schemas import OrderCreate, OrderItemIn
+    from yupay.modules.orders.service import Actor, create_order
+
+    _, code = await _seed_partner_and_code(db_session, active=False)
+    user_id = await _new_user(db_session)
+    sku_id = await _seed_sku(db_session, price_usd="10.00", cost_usdt="8.00")
+
+    order = await create_order(
+        db_session,
+        OrderCreate(
+            currency="USD",
+            items=[OrderItemIn(sku_id=sku_id, qty=1)],
+            affiliate_code=code,
+        ),
+        actor=Actor(user_id=user_id, email=None),
+        idempotency_key=new_id(),
+    )
+
+    assert order.total_charged == Decimal("10.00")
+    assert order.discount_charged == Decimal("0")
+    assert order.affiliate_code_id is None
+
+
+async def test_create_order_without_a_code_is_unchanged(db_session: AsyncSession) -> None:
+    """The overwhelmingly common path must not have moved."""
+    from yupay.core.ids import new_id
+    from yupay.modules.orders.schemas import OrderCreate, OrderItemIn
+    from yupay.modules.orders.service import Actor, create_order
+
+    sku_id = await _seed_sku(db_session, price_usd="10.00", cost_usdt="8.00")
+
+    order = await create_order(
+        db_session,
+        OrderCreate(currency="USD", items=[OrderItemIn(sku_id=sku_id, qty=1)]),
+        actor=Actor(user_id=None, email="g@example.test"),
+        idempotency_key=new_id(),
+    )
+
+    assert order.total_charged == Decimal("10.00")
+    assert order.discount_charged == Decimal("0")
+    assert order.affiliate_code_id is None
+    assert all(item.discount_usd == Decimal("0") for item in order.items)

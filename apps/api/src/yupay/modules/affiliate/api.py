@@ -16,5 +16,21 @@ from yupay.modules.affiliate.accrual import (
     mature_commissions,
     void_commission,
 )
+from yupay.modules.affiliate.discount import (
+    DiscountRejection,
+    ResolvedDiscount,
+    discount_amount,
+    distribute_discount_usd,
+    resolve_code,
+)
 
-__all__ = ["accrue_commissions", "mature_commissions", "void_commission"]
+__all__ = [
+    "DiscountRejection",
+    "ResolvedDiscount",
+    "accrue_commissions",
+    "discount_amount",
+    "distribute_discount_usd",
+    "mature_commissions",
+    "resolve_code",
+    "void_commission",
+]

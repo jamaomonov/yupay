@@ -69,6 +69,12 @@ class OrderCreate(BaseModel):
     # on purpose: a client that sends nothing still gets to buy, it just leaves
     # a thinner record behind.
     client_hints: ClientHints | None = None
+    #: An affiliate partner's code, as typed. Validated server-side, and an
+    #: unusable one is **ignored** rather than failing the order: the buyer
+    #: already saw the verdict at preview time, and losing a sale over a
+    #: discount that expired thirty seconds ago is the worse trade. The
+    #: response's ``discount_charged`` says what actually happened.
+    affiliate_code: str | None = Field(default=None, max_length=32)
 
 
 class OrderItemDisplay(BaseModel):
@@ -139,6 +145,9 @@ class OrderOut(BaseModel):
     currency: str
     total_usd: Decimal
     total_charged: Decimal
+    #: What an affiliate discount took off, in ``currency``. Zero when none —
+    #: which is how the client tells that a code it sent was not applied.
+    discount_charged: Decimal = Decimal("0")
     fx_snapshot_id: str | None
     expires_at: datetime
     created_at: datetime

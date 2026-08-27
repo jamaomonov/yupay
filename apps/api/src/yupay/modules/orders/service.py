@@ -25,6 +25,11 @@ from yupay.core.errors import (
     ValidationError,
 )
 from yupay.core.ids import new_id
+
+# Imported as the submodule rather than through ``affiliate.api``: that
+# facade gains a router in a later step, and importing a router from here
+# would close a cycle back through the v1 route stack.
+from yupay.modules.affiliate import discount as affiliate_discount
 from yupay.modules.catalog.models import Brand, Product, Sku
 from yupay.modules.catalog.unit_sku import assert_qty_allowed, is_unit_sku
 from yupay.modules.fx.models import FxSnapshot
@@ -681,6 +686,39 @@ async def create_order(
         currency=currency,
     )
 
+    # 3a) Affiliate discount. The client names a code; the server decides
+    # whether it applies and by how much. An unusable code is ignored rather
+    # than raised — see OrderCreate.affiliate_code.
+    affiliate_code_id: str | None = None
+    discount_charged = Decimal("0")
+    if body.affiliate_code:
+        resolved = await affiliate_discount.resolve_code(
+            db,
+            code=body.affiliate_code,
+            user_id=actor.user_id,
+            # This function only ever builds catalog orders — a wallet top-up
+            # is assembled in wallet/funding.py and never reaches here. Passed
+            # explicitly so the guard stays meaningful.
+            purpose="catalog",
+        )
+        if isinstance(resolved, affiliate_discount.ResolvedDiscount):
+            discount_charged = affiliate_discount.discount_amount(
+                total_charged, resolved.percent, currency
+            )
+            total_charged -= discount_charged
+            affiliate_code_id = resolved.code_id
+            # The order-level discount has to reach the line level, or every
+            # margin report keeps reporting the pre-discount number. See
+            # orders.revenue.
+            discount_usd_total = (total_usd * resolved.percent / Decimal(100)).quantize(
+                Decimal("0.000001"), rounding=ROUND_HALF_UP
+            )
+            shares = affiliate_discount.distribute_discount_usd(
+                [item.unit_price_usd * item.qty for item in items], discount_usd_total
+            )
+            for item, share in zip(items, shares, strict=True):
+                item.discount_usd = share
+
     # 4) Persist the order.
     created = now()
     order = Order(
@@ -694,6 +732,8 @@ async def create_order(
         currency=currency,
         total_usd=total_usd,
         total_charged=total_charged,
+        affiliate_code_id=affiliate_code_id,
+        discount_charged=discount_charged,
         fx_snapshot_id=fx_snapshot_id,
         expires_at=created + timedelta(seconds=ORDER_EXPIRY_SECONDS),
         idempotency_key=idempotency_key,
@@ -712,6 +752,7 @@ async def create_order(
             "currency": currency,
             "total_usd": str(total_usd),
             "total_charged": str(total_charged),
+            "discount_charged": str(discount_charged),
             "item_count": len(items),
         },
     )
