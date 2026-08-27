@@ -34,6 +34,7 @@ from yupay.modules.uzum import models as _uzum_models  # noqa: F401
 from yupay.modules.wallet import models as _wallet_models  # noqa: F401
 
 from yupay_scheduler.jobs import (
+    affiliate_accrual,
     broadcast_dispatch,
     click_timeout,
     expire_orders,
@@ -63,6 +64,7 @@ def build_scheduler() -> AsyncIOScheduler:
     registration to each ``jobs/<name>.register(scheduler)`` helper.
     """
     scheduler = AsyncIOScheduler(timezone="UTC")
+    affiliate_accrual.register(scheduler)
     broadcast_dispatch.register(scheduler)
     click_timeout.register(scheduler)
     expire_orders.register(scheduler)
