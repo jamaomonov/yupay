@@ -24,6 +24,9 @@ Copied from `CLAUDE.md` and the spec. Every task's requirements implicitly inclu
 - **All money is `Decimal` in the database, never float.**
 - **This module moves money, so the coverage gate is 95%, not 80%** (`CLAUDE.md` §8).
 - Never log PII. Order ids and amounts are fine to log; emails, phones and Telegram ids are not.
+- **Alembic revision ids must be at most 32 characters** — `alembic_version.version_num`
+  is `varchar(32)` and a longer id fails at the very end of `upgrade`, after the
+  migration body has already run.
 - Conventional Commits, scope `api/affiliate` or `scheduler/affiliate`.
 - Commit after every green test run. Do not push — this repository's rule is that pushing and deploying happen only on explicit instruction.
 - Parameters from the spec, all as settings with these defaults: hold period **14 days**, sweep interval **5 minutes**, commission percent range **1–2%**, discount percent range **3–10%**, minimum payout **50 000 UZS**, code format **4–32 chars of `A-Z0-9-`, stored uppercase**.
@@ -32,18 +35,18 @@ Copied from `CLAUDE.md` and the spec. Every task's requirements implicitly inclu
 
 **Created:**
 
-| File                                                           | Responsibility                                                                                    |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `apps/api/src/yupay/modules/affiliate/__init__.py`             | Package marker.                                                                                   |
-| `apps/api/src/yupay/modules/affiliate/models.py`               | The six ORM models. Nothing else.                                                                 |
-| `apps/api/src/yupay/modules/affiliate/ledger.py`               | Account-kind constants and the three posting helpers. The only file that calls `wallet.api.post`. |
-| `apps/api/src/yupay/modules/affiliate/accrual.py`              | `accrue_commissions`, `mature_commissions`, `void_commission`. Pure service logic, no HTTP.       |
-| `apps/api/src/yupay/modules/affiliate/api.py`                  | The module's public facade — what other modules and the scheduler import.                         |
-| `apps/api/src/yupay/modules/affiliate/README.md`               | Module documentation, required by `CLAUDE.md` §5.                                                 |
-| `apps/api/migrations/versions/0056_affiliate_program.py`       | The six tables.                                                                                   |
-| `apps/scheduler/src/yupay_scheduler/jobs/affiliate_accrual.py` | The periodic job wrapper.                                                                         |
-| `apps/api/tests/integration/test_affiliate_accrual.py`         | Integration tests against a real Postgres.                                                        |
-| `docs/decisions/0061-affiliate-commission-by-sweep.md`         | ADR for accrual-by-sweep.                                                                         |
+| File                                                           | Responsibility                                                                                        |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `apps/api/src/yupay/modules/affiliate/__init__.py`             | Package marker.                                                                                       |
+| `apps/api/src/yupay/modules/affiliate/models.py`               | The six ORM models. Nothing else.                                                                     |
+| `apps/api/src/yupay/modules/affiliate/ledger.py`               | Account-kind constants and the three posting helpers. The only file that calls `wallet.service.post`. |
+| `apps/api/src/yupay/modules/affiliate/accrual.py`              | `accrue_commissions`, `mature_commissions`, `void_commission`. Pure service logic, no HTTP.           |
+| `apps/api/src/yupay/modules/affiliate/api.py`                  | The module's public facade — what other modules and the scheduler import.                             |
+| `apps/api/src/yupay/modules/affiliate/README.md`               | Module documentation, required by `CLAUDE.md` §5.                                                     |
+| `apps/api/migrations/versions/0057_affiliate_program.py`       | The six tables.                                                                                       |
+| `apps/scheduler/src/yupay_scheduler/jobs/affiliate_accrual.py` | The periodic job wrapper.                                                                             |
+| `apps/api/tests/integration/test_affiliate_accrual.py`         | Integration tests against a real Postgres.                                                            |
+| `docs/decisions/0061-affiliate-commission-by-sweep.md`         | ADR for accrual-by-sweep.                                                                             |
 
 **Modified:**
 
@@ -66,12 +69,13 @@ The `wallet` module refuses to create an account whose `kind` is not in `NORMAL_
 
 - Modify: `apps/api/src/yupay/modules/wallet/service.py:24-41` (the `NORMAL_SIDE` dict)
 - Modify: `apps/api/src/yupay/modules/wallet/schemas.py:13-32` (the `AccountKind` and `OwnerType` literals)
+- Create: `apps/api/migrations/versions/0056_wallet_partner_accounts.py`
 - Test: `apps/api/tests/integration/test_affiliate_accrual.py`
 
 **Interfaces:**
 
 - Consumes: nothing.
-- Produces: the string constants `"partner_pending"`, `"partner_balance"`, `"partner_payout_hold"`, `"house_affiliate_expense"`, `"house_affiliate_paid"`, all accepted by `wallet.api.ensure_account(db, owner_type=..., owner_id=..., kind=..., currency=...)` and all nameable as `wallet.api.AccountKind`. Also `"partner"` as a `wallet.api.OwnerType`.
+- Produces: the string constants `"partner_pending"`, `"partner_balance"`, `"partner_payout_hold"`, `"house_affiliate_expense"`, `"house_affiliate_paid"`, all accepted by `wallet.service.ensure_account(db, owner_type=..., owner_id=..., kind=..., currency=...)` and all nameable as `wallet.schemas.AccountKind`. Also `"partner"` as a `wallet.schemas.OwnerType`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -91,7 +95,7 @@ from decimal import Decimal
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
-from yupay.modules.wallet import api as wallet_api
+from yupay.modules.wallet import service as wallet_service
 
 pytestmark = pytest.mark.asyncio
 
@@ -108,7 +112,7 @@ AFFILIATE_KINDS = [
 async def test_affiliate_account_kinds_are_postable(db_session: AsyncSession, kind: str) -> None:
     """Every affiliate account kind can be created through the wallet facade."""
     owner_type = "house" if kind.startswith("house_") else "partner"
-    account = await wallet_api.ensure_account(
+    account = await wallet_service.ensure_account(
         db_session,
         owner_type=owner_type,
         owner_id="house" if owner_type == "house" else "00000000-0000-0000-0000-000000000001",
@@ -116,7 +120,7 @@ async def test_affiliate_account_kinds_are_postable(db_session: AsyncSession, ki
         currency="UZS",
     )
     assert account.kind == kind
-    assert await wallet_api.balance(db_session, account.id) == Decimal("0")
+    assert await wallet_service.balance(db_session, account.id) == Decimal("0")
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -193,20 +197,40 @@ literals are the vocabulary the partner panel will be typed against in plan 4,
 and because a module whose declared kinds disagree with the kinds it accepts is
 a trap for the next reader.
 
-- [ ] **Step 5: Run test to verify it passes**
+- [ ] **Step 5: Widen the CHECK constraints**
+
+`NORMAL_SIDE` and `AccountKind` are not the last word. `wallet_accounts` carries
+two CHECK constraints enumerating the allowed values, created in
+`0009_wallet_init.py` and last widened by `0018_house_payments_received.py`.
+They are what actually stops the INSERT, and they fail with a constraint name
+and nothing else.
+
+Create `apps/api/migrations/versions/0056_wallet_partner_accounts.py`, following
+the drop-and-recreate shape of 0018 (no backfill is needed — nothing has ever
+written these kinds):
+
+- `ck_wallet_accounts_owner_type`: add `"partner"` to `("user", "house", "provider")`.
+- `ck_wallet_accounts_kind`: add the five new kinds to the existing ten.
+- `downgrade` deletes partner postings and accounts before narrowing the CHECKs
+  back, or the constraint cannot be recreated.
+
+Read `0018_house_payments_received.py` first — it is the precedent and its
+`_OLD_KINDS` / `_NEW_KINDS` pattern is what to copy.
+
+- [ ] **Step 6: Run test to verify it passes**
 
 Run: `cd apps/api && uv run pytest tests/integration/test_affiliate_accrual.py -v`
 Expected: PASS, 5 passed.
 
-- [ ] **Step 6: Typecheck and lint**
+- [ ] **Step 7: Typecheck and lint**
 
 Run: `cd apps/api && uv run mypy src && uv run ruff check src tests && uv run ruff format --check src tests`
 Expected: no errors.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add apps/api/src/yupay/modules/wallet/service.py apps/api/src/yupay/modules/wallet/schemas.py apps/api/tests/integration/test_affiliate_accrual.py
+git add apps/api/src/yupay/modules/wallet/service.py apps/api/src/yupay/modules/wallet/schemas.py apps/api/migrations/versions/0056_wallet_partner_accounts.py apps/api/tests/integration/test_affiliate_accrual.py
 git commit -m "feat(api/affiliate): five ledger account kinds for partner money
 
 Partner money splits across pending / balance / payout_hold so that
@@ -222,7 +246,7 @@ table. A payout request reserves its money, so two requests cannot overdraw."
 
 - Create: `apps/api/src/yupay/modules/affiliate/__init__.py`
 - Create: `apps/api/src/yupay/modules/affiliate/models.py`
-- Create: `apps/api/migrations/versions/0056_affiliate_program.py`
+- Create: `apps/api/migrations/versions/0057_affiliate_program.py`
 - Test: `apps/api/tests/integration/test_affiliate_accrual.py`
 
 **Interfaces:**
@@ -561,7 +585,7 @@ __all__ = [
 
 - [ ] **Step 5: Write the migration**
 
-Create `apps/api/migrations/versions/0056_affiliate_program.py`:
+Create `apps/api/migrations/versions/0057_affiliate_program.py`:
 
 ```python
 """Affiliate program: partners, codes, attribution, commission, payouts, sessions.
@@ -579,8 +603,8 @@ margin on price is 14.0% at worst; break-even on that SKU including commission
 is a discount of about 12.2%, so a code outside 3-10% is a data-entry mistake
 that costs money, not a preference.
 
-Revision ID: 0056_affiliate_program
-Revises: 0055_admin_list_sort_indexes
+Revision ID: 0057_affiliate_program
+Revises: 0056_wallet_partner_accounts
 """
 
 from __future__ import annotations
@@ -589,8 +613,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0056_affiliate_program"
-down_revision: str | None = "0055_admin_list_sort_indexes"
+revision: str = "0057_affiliate_program"
+down_revision: str | None = "0056_wallet_partner_accounts"
 branch_labels: str | None = None
 depends_on: str | None = None
 
@@ -802,7 +826,7 @@ Expected: both succeed. Requires a local Postgres on `DATABASE_URL`; if none is 
 
 ```bash
 cd apps/api && uv run mypy src && uv run ruff check src tests && uv run ruff format --check src tests
-cd ../.. && git add apps/api/src/yupay/modules/affiliate apps/api/migrations/versions/0056_affiliate_program.py apps/api/tests/integration/test_affiliate_accrual.py
+cd ../.. && git add apps/api/src/yupay/modules/affiliate apps/api/migrations/versions/0057_affiliate_program.py apps/api/tests/integration/test_affiliate_accrual.py
 git commit -m "feat(api/affiliate): schema for partners, codes, attribution and commission
 
 UNIQUE(user_id) on attributions makes 'one buyer, one partner, forever' a
@@ -954,14 +978,14 @@ async def test_accrual_posts_commission_to_pending(db_session: AsyncSession) -> 
     assert row.status == "pending"
     assert row.currency == "UZS"
 
-    pending = await wallet_api.ensure_account(
+    pending = await wallet_service.ensure_account(
         db_session,
         owner_type="partner",
         owner_id=partner_id,
         kind="partner_pending",
         currency="UZS",
     )
-    assert await wallet_api.balance(db_session, pending.id) == Decimal("2000")
+    assert await wallet_service.balance(db_session, pending.id) == Decimal("2000")
 
 
 async def test_accrual_is_idempotent(db_session: AsyncSession) -> None:
@@ -974,14 +998,14 @@ async def test_accrual_is_idempotent(db_session: AsyncSession) -> None:
     assert await accrue_commissions(db_session, hold_days=14) == 1
     assert await accrue_commissions(db_session, hold_days=14) == 0
 
-    pending = await wallet_api.ensure_account(
+    pending = await wallet_service.ensure_account(
         db_session,
         owner_type="partner",
         owner_id=partner_id,
         kind="partner_pending",
         currency="UZS",
     )
-    assert await wallet_api.balance(db_session, pending.id) == Decimal("2000")
+    assert await wallet_service.balance(db_session, pending.id) == Decimal("2000")
 
 
 async def test_accrual_skips_undelivered_unattributed_and_topups(
@@ -1023,7 +1047,7 @@ bookkeeping here.
 
 Idempotency keys are derived from the row id rather than random, so a retry
 after a timeout replays the original posting instead of making a second one —
-``wallet.api.post`` returns the existing transaction for a key it has seen.
+``wallet.service.post`` returns the existing transaction for a key it has seen.
 """
 
 from __future__ import annotations
@@ -1032,7 +1056,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from yupay.modules.wallet import api as wallet_api
+from yupay.modules.wallet import service as wallet_service
 
 #: Smallest payable unit per currency. UZS has no subunit in practice — Payme
 #: and Click both reject fractions — so commission is whole sums.
@@ -1060,14 +1084,14 @@ def commission_amount(total: Decimal, percent: Decimal, currency: str) -> Decima
 async def _partner_account(
     db: AsyncSession, *, partner_id: str, kind: str, currency: str
 ) -> str:
-    account = await wallet_api.ensure_account(
+    account = await wallet_service.ensure_account(
         db, owner_type="partner", owner_id=partner_id, kind=kind, currency=currency
     )
     return account.id
 
 
 async def _house_account(db: AsyncSession, *, kind: str, currency: str) -> str:
-    account = await wallet_api.ensure_account(
+    account = await wallet_service.ensure_account(
         db, owner_type=_HOUSE_OWNER, owner_id=_HOUSE_OWNER, kind=kind, currency=currency
     )
     return account.id
@@ -1087,15 +1111,15 @@ async def post_accrual(
         db, partner_id=partner_id, kind="partner_pending", currency=currency
     )
     expense = await _house_account(db, kind="house_affiliate_expense", currency=currency)
-    await wallet_api.post(
+    await wallet_service.post(
         db,
         kind="affiliate.accrue",
         legs=[
-            wallet_api.Leg(account_id=pending, direction="D", amount=amount, currency=currency),
-            wallet_api.Leg(account_id=expense, direction="C", amount=amount, currency=currency),
+            wallet_service.Leg(account_id=pending, direction="D", amount=amount, currency=currency),
+            wallet_service.Leg(account_id=expense, direction="C", amount=amount, currency=currency),
         ],
         idempotency_key=f"affiliate.accrue:{commission_id}",
-        reference=wallet_api.Reference(type="order", id=order_id),
+        reference=wallet_service.Reference(type="order", id=order_id),
         actor="scheduler",
     )
 
@@ -1294,22 +1318,22 @@ async def test_maturation_moves_pending_to_balance(db_session: AsyncSession) -> 
     row = (await db_session.execute(select(AffiliateCommission))).scalar_one()
     assert row.status == "available"
 
-    pending = await wallet_api.ensure_account(
+    pending = await wallet_service.ensure_account(
         db_session,
         owner_type="partner",
         owner_id=partner_id,
         kind="partner_pending",
         currency="UZS",
     )
-    balance = await wallet_api.ensure_account(
+    balance = await wallet_service.ensure_account(
         db_session,
         owner_type="partner",
         owner_id=partner_id,
         kind="partner_balance",
         currency="UZS",
     )
-    assert await wallet_api.balance(db_session, pending.id) == Decimal("0")
-    assert await wallet_api.balance(db_session, balance.id) == Decimal("2000")
+    assert await wallet_service.balance(db_session, pending.id) == Decimal("0")
+    assert await wallet_service.balance(db_session, balance.id) == Decimal("2000")
 ```
 
 Add `from datetime import timedelta` to the test module's imports.
@@ -1343,12 +1367,12 @@ async def post_maturation(
     balance = await _partner_account(
         db, partner_id=partner_id, kind="partner_balance", currency=currency
     )
-    await wallet_api.post(
+    await wallet_service.post(
         db,
         kind="affiliate.mature",
         legs=[
-            wallet_api.Leg(account_id=balance, direction="D", amount=amount, currency=currency),
-            wallet_api.Leg(account_id=pending, direction="C", amount=amount, currency=currency),
+            wallet_service.Leg(account_id=balance, direction="D", amount=amount, currency=currency),
+            wallet_service.Leg(account_id=pending, direction="C", amount=amount, currency=currency),
         ],
         idempotency_key=f"affiliate.mature:{commission_id}",
         actor="scheduler",
@@ -1458,18 +1482,18 @@ async def test_void_reverses_a_pending_commission(db_session: AsyncSession) -> N
     row = (await db_session.execute(select(AffiliateCommission))).scalar_one()
     assert row.status == "void"
 
-    pending = await wallet_api.ensure_account(
+    pending = await wallet_service.ensure_account(
         db_session,
         owner_type="partner",
         owner_id=partner_id,
         kind="partner_pending",
         currency="UZS",
     )
-    assert await wallet_api.balance(db_session, pending.id) == Decimal("0")
+    assert await wallet_service.balance(db_session, pending.id) == Decimal("0")
 
     # Voiding again is a no-op, not a second reversal.
     assert await affiliate_api.void_commission(db_session, order_id=order_id) is False
-    assert await wallet_api.balance(db_session, pending.id) == Decimal("0")
+    assert await wallet_service.balance(db_session, pending.id) == Decimal("0")
 
 
 async def test_void_refuses_an_already_matured_commission(db_session: AsyncSession) -> None:
@@ -1521,12 +1545,12 @@ async def post_void(
         db, partner_id=partner_id, kind="partner_pending", currency=currency
     )
     expense = await _house_account(db, kind="house_affiliate_expense", currency=currency)
-    await wallet_api.post(
+    await wallet_service.post(
         db,
         kind="affiliate.void",
         legs=[
-            wallet_api.Leg(account_id=expense, direction="D", amount=amount, currency=currency),
-            wallet_api.Leg(account_id=pending, direction="C", amount=amount, currency=currency),
+            wallet_service.Leg(account_id=expense, direction="D", amount=amount, currency=currency),
+            wallet_service.Leg(account_id=pending, direction="C", amount=amount, currency=currency),
         ],
         idempotency_key=f"affiliate.void:{commission_id}",
         actor="system",
@@ -1824,7 +1848,8 @@ one where a customer is waiting."
 
 - [ ] `cd apps/api && uv run pytest -q` passes.
 - [ ] Coverage of `yupay/modules/affiliate/*` is ≥ 95%.
-- [ ] `uv run mypy src` clean; `uv run ruff check src tests` clean; `uv run ruff format --check src tests` clean.
+- [ ] `uv run ruff check src tests migrations` and `uv run ruff format --check src tests migrations` clean.
+- [ ] `uv run mypy src` reports **no more errors than the baseline on `main`** (1026 in 179 files as of 2026-08-27 — `CLAUDE.md` claims `mypy --strict` is clean, and it is not). Compare with `git stash`, do not chase the pre-existing ones.
 - [ ] `npx prettier --check .` clean (CI's `lint-ts` fails on unformatted markdown, docs included).
 - [ ] `alembic downgrade 0055_admin_list_sort_indexes` then `alembic upgrade head` both succeed.
 - [ ] The scheduler builds and lists `affiliate.accrual`.
