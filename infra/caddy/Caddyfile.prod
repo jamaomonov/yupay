@@ -66,7 +66,34 @@ http://yupay.uz, http://www.yupay.uz {
 	# Force the canonical apex so SEO does not split between yupay.uz / www.
 	@redirectWww host www.yupay.uz
 	redir @redirectWww https://yupay.uz{uri} permanent
-	reverse_proxy web:3000
+	# Access log. There was none — Caddy 2 logs no request lines by default —
+	# so the edge produced six lines in twenty-four hours and there was no way
+	# to see which URLs traffic actually hit, spot a bot flood, or tell "the
+	# origin is erroring" apart from "Cloudflare is". Going into a paid
+	# campaign blind to that is the thing you regret on day one.
+	#
+	# To stdout, because promtail already ships container output to Loki; the
+	# container's json-file driver caps it at 10MB x 3.
+	log {
+		output stdout
+		format json
+	}
+	# Hold and retry across a restart instead of answering 502.
+	#
+	# Deploys are stop-then-start, not rolling: `docker compose up -d` recreates
+	# every service whose image changed, and Caddy answers 502 for the whole gap
+	# — measured at roughly 5-15 seconds per deploy, which lands on customers
+	# rather than on CI (the workflow's own health poll tolerates 120s and never
+	# sees it). With one upstream, `lb_try_duration` turns that outage into
+	# elevated latency: Caddy keeps the connection and retries until the new
+	# container answers.
+	#
+	# Not a substitute for a rolling deploy, which is the real fix — but it is
+	# three lines and it removes the customer-visible half of the problem.
+	reverse_proxy web:3000 {
+		lb_try_duration 15s
+		lb_try_interval 250ms
+	}
 }
 
 # ---------- Telegram Mini App ----------
@@ -81,7 +108,10 @@ http://app.yupay.uz {
 		# the policy for the storefront.
 		Content-Security-Policy "frame-ancestors https://web.telegram.org https://*.telegram.org;"
 	}
-	reverse_proxy miniapp:80
+	reverse_proxy miniapp:80 {
+		lb_try_duration 15s
+		lb_try_interval 250ms
+	}
 }
 
 # ---------- internal admin SPA ----------
@@ -94,7 +124,10 @@ http://admin.yupay.uz {
 		X-Frame-Options "DENY"
 	}
 	# admin is a static Vite build served by an nginx container.
-	reverse_proxy admin:80
+	reverse_proxy admin:80 {
+		lb_try_duration 15s
+		lb_try_interval 250ms
+	}
 }
 
 # ---------- API + websockets ----------
@@ -176,7 +209,22 @@ http://api.yupay.uz {
 	# real problem, swap to ``caddy/forward-auth`` or front Caddy
 	# with Cloudflare's rate-limit rules.
 
-	reverse_proxy api:8000
+	# Access log. There was none — Caddy 2 logs no request lines by default —
+	# so the edge produced six lines in twenty-four hours and there was no way
+	# to see which URLs traffic actually hit, spot a bot flood, or tell "the
+	# origin is erroring" apart from "Cloudflare is". Going into a paid
+	# campaign blind to that is the thing you regret on day one.
+	#
+	# To stdout, because promtail already ships container output to Loki; the
+	# container's json-file driver caps it at 10MB x 3.
+	log {
+		output stdout
+		format json
+	}
+	reverse_proxy api:8000 {
+		lb_try_duration 15s
+		lb_try_interval 250ms
+	}
 }
 
 # ---------- Grafana (operators only) ----------
