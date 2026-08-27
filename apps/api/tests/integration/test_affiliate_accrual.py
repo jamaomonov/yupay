@@ -259,3 +259,76 @@ async def test_maturation_moves_pending_to_balance(db_session: AsyncSession) -> 
 
     assert await _partner_balance(db_session, partner_id, "partner_pending") == Decimal("0")
     assert await _partner_balance(db_session, partner_id, "partner_balance") == Decimal("2000")
+
+
+async def test_void_reverses_a_pending_commission(db_session: AsyncSession) -> None:
+    """A refund before maturity takes the money back out of pending."""
+    from sqlalchemy import select
+    from yupay.modules.affiliate import api as affiliate_api
+    from yupay.modules.affiliate.models import AffiliateCommission
+
+    order_id, partner_id, _ = await _seed_delivered_order(
+        db_session, total_charged=Decimal("100000")
+    )
+    assert await affiliate_api.accrue_commissions(db_session, hold_days=14) == 1
+
+    assert await affiliate_api.void_commission(db_session, order_id=order_id) is True
+
+    row = (await db_session.execute(select(AffiliateCommission))).scalar_one()
+    assert row.status == "void"
+    assert await _partner_balance(db_session, partner_id, "partner_pending") == Decimal("0")
+
+    # Voiding again is a no-op, not a second reversal.
+    assert await affiliate_api.void_commission(db_session, order_id=order_id) is False
+    assert await _partner_balance(db_session, partner_id, "partner_pending") == Decimal("0")
+
+
+async def test_void_refuses_an_already_matured_commission(db_session: AsyncSession) -> None:
+    """After maturity the money may already be inside a payout request, so an
+    automatic clawback is refused and left to an admin."""
+    from sqlalchemy import select, update
+    from yupay.core.clock import now
+    from yupay.modules.affiliate import api as affiliate_api
+    from yupay.modules.affiliate.models import AffiliateCommission
+
+    order_id, _, _ = await _seed_delivered_order(db_session, total_charged=Decimal("100000"))
+    assert await affiliate_api.accrue_commissions(db_session, hold_days=14) == 1
+    await db_session.execute(
+        update(AffiliateCommission).values(available_at=now() - timedelta(seconds=1))
+    )
+    assert await affiliate_api.mature_commissions(db_session) == 1
+
+    assert await affiliate_api.void_commission(db_session, order_id=order_id) is False
+    row = (await db_session.execute(select(AffiliateCommission))).scalar_one()
+    assert row.status == "available"
+
+
+async def test_void_on_an_order_with_no_commission_is_a_no_op(db_session: AsyncSession) -> None:
+    """Cancelling an order nobody earned on must not raise."""
+    from yupay.modules.affiliate import api as affiliate_api
+
+    order_id, _, _ = await _seed_delivered_order(
+        db_session, total_charged=Decimal("100000"), with_attribution=False
+    )
+    assert await affiliate_api.void_commission(db_session, order_id=order_id) is False
+
+
+async def test_accrual_skips_an_order_too_small_to_earn_anything(
+    db_session: AsyncSession,
+) -> None:
+    """A commission that rounds to zero is skipped, not posted.
+
+    Not merely tidiness: ``wallet_postings`` carries
+    ``ck_wallet_postings_amount_positive``, so a zero-amount posting is a crash,
+    not a harmless no-op. At the 1% floor that means any order under 50 UZS.
+    """
+    from sqlalchemy import select
+    from yupay.modules.affiliate.accrual import accrue_commissions
+    from yupay.modules.affiliate.models import AffiliateCommission
+
+    await _seed_delivered_order(
+        db_session, total_charged=Decimal("40"), commission_percent=Decimal("1")
+    )
+
+    assert await accrue_commissions(db_session, hold_days=14) == 0
+    assert (await db_session.execute(select(AffiliateCommission))).first() is None

@@ -141,4 +141,42 @@ async def post_maturation(
     )
 
 
-__all__ = ["commission_amount", "post_accrual", "post_maturation"]
+async def post_void(
+    db: AsyncSession,
+    *,
+    commission_id: str,
+    partner_id: str,
+    amount: Decimal,
+    currency: str,
+) -> None:
+    """Reverse an accrual: ``D house_affiliate_expense / C partner_pending``.
+
+    The mirror image of :func:`post_accrual`, and only valid while the money is
+    still held. Once matured it may already be reserved by a payout request,
+    which is why :func:`~yupay.modules.affiliate.accrual.void_commission`
+    refuses that case rather than posting this.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        commission_id: The row being reversed; also the idempotency key.
+        partner_id: Whose accrual is being taken back.
+        amount: The commission, as accrued.
+        currency: The commission's currency.
+    """
+    pending = await _partner_account(
+        db, partner_id=partner_id, kind="partner_pending", currency=currency
+    )
+    expense = await _house_account(db, kind="house_affiliate_expense", currency=currency)
+    await wallet_service.post(
+        db,
+        kind="affiliate.void",
+        legs=[
+            wallet_service.Leg(account_id=expense, direction="D", amount=amount, currency=currency),
+            wallet_service.Leg(account_id=pending, direction="C", amount=amount, currency=currency),
+        ],
+        idempotency_key=f"affiliate.void:{commission_id}",
+        actor="system",
+    )
+
+
+__all__ = ["commission_amount", "post_accrual", "post_maturation", "post_void"]

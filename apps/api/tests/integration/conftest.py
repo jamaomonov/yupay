@@ -126,6 +126,13 @@ async def db_engine():
                     "review_reports, reviews, brand_rating_stats, "
                     "broadcast_recipients, broadcasts, "
                     "promo_redemptions, promo_codes, "
+                    # Listed explicitly rather than left to CASCADE. They would
+                    # be reached today through affiliate_partners.user_id, but
+                    # that column is nullable and exists only for the
+                    # own-code check — drop it one day and partner rows would
+                    # quietly start surviving between tests.
+                    "affiliate_sessions, affiliate_payouts, affiliate_commissions, "
+                    "affiliate_attributions, affiliate_codes, affiliate_partners, "
                     "wallet_postings, wallet_transactions, wallet_accounts, "
                     "inventory_codes, inventory_uploads, sku_sourcing_rules, "
                     "sku_supplier_mapping, supplier_catalog_cache, supplier_price_history, "

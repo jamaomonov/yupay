@@ -24,7 +24,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
-from yupay.modules.affiliate.ledger import commission_amount, post_accrual, post_maturation
+from yupay.modules.affiliate.ledger import (
+    commission_amount,
+    post_accrual,
+    post_maturation,
+    post_void,
+)
 from yupay.modules.affiliate.models import (
     AffiliateAttribution,
     AffiliateCode,
@@ -154,4 +159,40 @@ async def mature_commissions(db: AsyncSession, *, limit: int = 500) -> int:
     return matured
 
 
-__all__ = ["accrue_commissions", "mature_commissions"]
+async def void_commission(db: AsyncSession, *, order_id: str) -> bool:
+    """Reverse the commission on a refunded order, if it is still held.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        order_id: The order that was refunded or cancelled.
+
+    Returns:
+        ``True`` if a commission was reversed; ``False`` if there was none, or
+        it had already matured, or it was already void. A matured commission is
+        deliberately left alone — it may already sit inside a payout request,
+        and clawing back money a partner can see is an admin's decision, not a
+        sweep's. See the spec's "Refunds" note.
+    """
+    commission = (
+        await db.execute(
+            select(AffiliateCommission)
+            .where(AffiliateCommission.order_id == order_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if commission is None or commission.status != "pending":
+        return False
+
+    await post_void(
+        db,
+        commission_id=commission.id,
+        partner_id=commission.partner_id,
+        amount=commission.amount,
+        currency=commission.currency,
+    )
+    commission.status = "void"
+    log.info("affiliate.accrual.voided", order_id=order_id)
+    return True
+
+
+__all__ = ["accrue_commissions", "mature_commissions", "void_commission"]
