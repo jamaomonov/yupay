@@ -85,8 +85,19 @@ class Settings(BaseSettings):
         ),
     )
     rate_limit_default: str = Field(
-        default="120/minute",
-        description="Default per-IP limit applied to every route (slowapi syntax).",
+        default="600/minute",
+        description=(
+            "Default per-IP limit on every route (slowapi syntax). A coarse "
+            "flood-stopper, not a per-endpoint policy: anything that needs a "
+            "real limit has its own Redis-backed two-axis guard in "
+            "modules/auth/ip_guard.py, and provider callbacks are exempt "
+            "entirely. Raised from 120/minute, which was sized for form posts "
+            "and throttled ordinary reads — prerendering the storefront fetches "
+            "every brand, product and review across three locales, hundreds of "
+            "requests from one address in half a minute, and it failed a "
+            "production image build. A carrier NAT or a crawler produces the "
+            "same shape."
+        ),
     )
 
     # --- auth ---
@@ -178,6 +189,8 @@ class Settings(BaseSettings):
             "resend-verification": 60,
             # Guests re-fetching codes they already paid for.
             "code-access": 60,
+            # Sixty a minute is far above any person and far below a script.
+            "order-create": 60,
         },
         description=(
             "Per-bucket overrides for auth_ip_guard_max. The default is written for "

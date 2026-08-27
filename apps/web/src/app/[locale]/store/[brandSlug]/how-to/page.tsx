@@ -72,7 +72,9 @@ export async function generateMetadata({
   const { locale, brandSlug } = await params;
   if (!hasLocale(routing.locales, locale)) return {};
   setRequestLocale(locale);
-  const brand = await getBrandDetail(brandSlug, locale);
+  // Same currency as the page body: otherwise the two calls are different
+  // Data-Cache keys and the brand is fetched twice per locale.
+  const brand = await getBrandDetail(brandSlug, locale, CURRENCY);
   if (!brand) return {};
   const t = await getTranslations("web.store");
   const title = t("howToMetaTitle", { name: brand.name });

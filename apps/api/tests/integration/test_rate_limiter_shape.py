@@ -120,3 +120,50 @@ async def test_click_callbacks_are_never_rate_limited(limited_client) -> None:
             r = await limited_client.post(path, data={"click_trans_id": "1"})
             statuses.append(r.status_code)
         assert 429 not in statuses, f"{path} was throttled: {statuses}"
+
+
+# --- the coarse net, and what it does not police --------------------------
+
+
+async def test_the_global_limit_is_a_flood_stopper_not_a_policy() -> None:
+    """The 120/minute default was sized for endpoints that do something.
+
+    Prerendering the storefront fetches every brand, its products and its
+    reviews across three locales — hundreds of requests from one address in
+    half a minute. Before the store pages were prerendered that traffic did not
+    exist, and before the limiter was bucketed per route each brand slug had
+    its own budget, so neither half was visible alone. Together they failed the
+    production image build with a 429 on
+    `/catalog/brands/oxide-survival-island`. A carrier NAT or a crawler
+    produces the same shape.
+
+    So the global number is deliberately loose, and the endpoints that need a
+    real limit carry their own.
+    """
+    from yupay.core.config import get_settings
+
+    get_settings.cache_clear()
+    limit = get_settings().rate_limit_default
+    per_minute = int(limit.split("/")[0])
+    assert per_minute >= 500, (
+        f"{limit} is tight enough to throttle a build or a shared carrier address"
+    )
+    get_settings.cache_clear()
+
+
+async def test_order_creation_carries_its_own_budget() -> None:
+    """Loosening the coarse net must not loosen the write path with it.
+
+    Order creation had no guard of its own — it relied on the global 120/minute.
+    Raising that to 600 without this would have handed one address six hundred
+    orders a minute.
+    """
+    from yupay.core.config import get_settings
+    from yupay.modules.auth.ip_guard import bucket_limit
+
+    get_settings.cache_clear()
+    settings = get_settings()
+    assert bucket_limit(settings, "order-create") < int(
+        settings.rate_limit_default.split("/")[0]
+    ), "order creation is not tighter than the coarse global net"
+    get_settings.cache_clear()

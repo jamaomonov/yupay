@@ -56,7 +56,11 @@ export async function generateMetadata({
   const { locale, brandSlug } = await params;
   if (!hasLocale(routing.locales, locale)) return {};
   setRequestLocale(locale);
-  const brand = await getBrandDetail(brandSlug, locale);
+  // Same currency as the page body below. Without it the two calls are
+  // different URLs and therefore different Data-Cache keys, so every brand was
+  // fetched twice per locale — 108 extra API calls in a build that prerenders
+  // 111 store pages, which is what pushed it over the rate limit.
+  const brand = await getBrandDetail(brandSlug, locale, CURRENCY);
   if (!brand) return {};
   const t = await getTranslations("web.store");
   const title = t("brandMetaTitle", { name: brand.name });

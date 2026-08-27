@@ -19,6 +19,7 @@ from yupay.core.ids import new_id
 from yupay.modules.admin.api import require_admin
 from yupay.modules.auth.deps import current_user
 from yupay.modules.auth.dev_login import DEV_ADMIN_ID
+from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.auth.jwt import verify as verify_jwt
 from yupay.modules.evidence.service import capture_for_order
 from yupay.modules.fulfillment.schemas import DeliveryListOut, DeliveryOut
@@ -136,6 +137,12 @@ async def create_order_route(
     surface: Annotated[str | None, Header(alias=SURFACE_HEADER)] = None,
 ) -> OrderOut:
     """Create a new order on behalf of the authenticated user or guest."""
+    # Its own bucket, because the global limiter is a coarse flood-stopper
+    # sized for public reads (600/minute) — loose enough that order creation
+    # needs its own number. Sixty a minute is far above what a person does and
+    # far below what a script would want; a carrier NAT is the reason it is not
+    # tighter still.
+    await guard_ip(request, bucket="order-create")
     if not idempotency_key or len(idempotency_key) < _MIN_IDEMPOTENCY_KEY_LEN:
         raise ValidationError(
             f"Idempotency-Key header is required (>={_MIN_IDEMPOTENCY_KEY_LEN} chars)",
