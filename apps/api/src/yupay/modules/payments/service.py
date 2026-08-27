@@ -22,6 +22,11 @@ from yupay.core.config import Settings, get_settings
 from yupay.core.errors import ConflictError, NotFoundError, ValidationError
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
+
+# Imported as the submodule rather than through ``affiliate.api``: that
+# facade gains a router in a later step, and a router imported from here
+# closes a cycle back through the v1 route stack.
+from yupay.modules.affiliate import attribution as affiliate_attribution
 from yupay.modules.orders.models import Order, OrderEvent
 from yupay.modules.payments import provider_state
 from yupay.modules.payments.gateways import (
@@ -420,6 +425,7 @@ async def _settle_late_payment(
     if order.paid_at is None:
         order.paid_at = moment
     order.updated_at = moment
+    await affiliate_attribution.bind_attribution(db, order=order)
     db.add(
         OrderEvent(
             id=new_id(),
@@ -482,6 +488,11 @@ async def _mark_payment_succeeded(
         order.status = "paid"
         order.paid_at = moment
         order.updated_at = moment
+        # Binds the buyer to the partner whose code they used, if any. Never
+        # raises and returns False when there is nothing to do, so the
+        # affiliate program can never be the reason a settled payment fails to
+        # record.
+        await affiliate_attribution.bind_attribution(db, order=order)
         db.add(
             OrderEvent(
                 id=new_id(),

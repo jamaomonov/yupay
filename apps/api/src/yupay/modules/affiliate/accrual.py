@@ -89,13 +89,17 @@ async def accrue_commissions(db: AsyncSession, *, hold_days: int, limit: int = 5
             status="pending",
             available_at=now() + timedelta(days=hold_days),
         )
-        db.add(commission)
         try:
             # Settle the UNIQUE before posting: if a concurrent pass already
             # took this order, we must not put money in the ledger for it.
-            # SAVEPOINT rather than a bare flush, because the outer transaction
-            # belongs to the caller and losing this race must not end it.
+            #
+            # The row is added *inside* the SAVEPOINT. Added before it, a
+            # failed flush leaves the doomed object in ``session.new`` and
+            # SQLAlchemy poisons the session with PendingRollbackError, so
+            # losing one race would abandon the whole sweep instead of
+            # skipping one order.
             async with db.begin_nested():
+                db.add(commission)
                 await db.flush()
         except IntegrityError:
             continue

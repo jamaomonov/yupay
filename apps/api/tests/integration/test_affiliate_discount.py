@@ -394,3 +394,95 @@ async def test_create_order_without_a_code_is_unchanged(db_session: AsyncSession
     assert order.discount_charged == Decimal("0")
     assert order.affiliate_code_id is None
     assert all(item.discount_usd == Decimal("0") for item in order.items)
+
+
+async def test_attribution_is_bound_when_a_coded_order_is_paid(
+    db_session: AsyncSession,
+) -> None:
+    """The binding happens at payment, not at order creation: an abandoned cart
+    must not tie a buyer to a partner who sold them nothing."""
+    from sqlalchemy import select
+    from yupay.modules.affiliate.attribution import bind_attribution
+    from yupay.modules.affiliate.models import AffiliateAttribution, AffiliateCode
+    from yupay.modules.orders.models import Order
+
+    code_id, _ = await _seed_partner_and_code(db_session)
+    user_id = await _new_user(db_session)
+    order_id = await _order(
+        db_session, user_id=user_id, status="paid", affiliate_code_id=code_id, paid=True
+    )
+    order = await db_session.get(Order, order_id)
+    assert order is not None
+
+    assert await bind_attribution(db_session, order=order) is True
+
+    row = (
+        await db_session.execute(
+            select(AffiliateAttribution).where(AffiliateAttribution.user_id == user_id)
+        )
+    ).scalar_one()
+    code = await db_session.get(AffiliateCode, code_id)
+    assert code is not None
+    assert row.partner_id == code.partner_id
+    assert row.first_order_id == order_id
+
+
+async def test_a_second_coded_order_does_not_rebind(db_session: AsyncSession) -> None:
+    """UNIQUE(user_id) is the guarantee; binding must report it, not raise."""
+    from sqlalchemy import func, select
+    from yupay.modules.affiliate.attribution import bind_attribution
+    from yupay.modules.affiliate.models import AffiliateAttribution
+    from yupay.modules.orders.models import Order
+
+    first_code, _ = await _seed_partner_and_code(db_session)
+    second_code, _ = await _seed_partner_and_code(db_session)
+    user_id = await _new_user(db_session)
+
+    for code_id in (first_code, second_code):
+        order_id = await _order(
+            db_session, user_id=user_id, status="paid", affiliate_code_id=code_id, paid=True
+        )
+        order = await db_session.get(Order, order_id)
+        assert order is not None
+        await bind_attribution(db_session, order=order)
+
+    count = await db_session.scalar(
+        select(func.count())
+        .select_from(AffiliateAttribution)
+        .where(AffiliateAttribution.user_id == user_id)
+    )
+    assert count == 1
+
+
+async def test_binding_is_a_no_op_without_a_code_or_without_a_user(
+    db_session: AsyncSession,
+) -> None:
+    """A payment webhook must never fail because of the affiliate program."""
+    from yupay.core.clock import now
+    from yupay.core.ids import new_id
+    from yupay.modules.affiliate.attribution import bind_attribution
+    from yupay.modules.orders.models import Order
+
+    user_id = await _new_user(db_session)
+    plain_id = await _order(db_session, user_id=user_id, status="paid", paid=True)
+    plain = await db_session.get(Order, plain_id)
+    assert plain is not None
+    assert await bind_attribution(db_session, order=plain) is False
+
+    code_id, _ = await _seed_partner_and_code(db_session)
+    moment = now()
+    guest = Order(
+        id=new_id(),
+        guest_email=f"g-{new_id()}@example.test",
+        status="paid",
+        currency="UZS",
+        total_usd=Decimal("1"),
+        total_charged=Decimal("12000"),
+        purpose="catalog",
+        expires_at=moment + timedelta(days=1),
+        paid_at=moment,
+        affiliate_code_id=code_id,
+    )
+    db_session.add(guest)
+    await db_session.flush()
+    assert await bind_attribution(db_session, order=guest) is False
