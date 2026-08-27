@@ -196,4 +196,122 @@ async def post_void(
     )
 
 
-__all__ = ["commission_amount", "post_accrual", "post_maturation", "post_void"]
+async def post_payout_hold(
+    db: AsyncSession,
+    *,
+    payout_id: str,
+    partner_id: str,
+    amount: Decimal,
+    currency: str,
+) -> None:
+    """Reserve money for a payout request: ``D partner_payout_hold / C partner_balance``.
+
+    This posting is what makes a payout request safe to race. The money leaves
+    ``partner_balance`` at request time, so a second concurrent request checks
+    against the reduced figure and cannot both be approved — no lock, no
+    read-then-write window.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        payout_id: The request being funded; also the idempotency key.
+        partner_id: Whose money is being reserved.
+        amount: The requested amount, already validated against the balance.
+        currency: The partner's currency.
+    """
+    balance = await _partner_account(
+        db, partner_id=partner_id, kind="partner_balance", currency=currency
+    )
+    hold = await _partner_account(
+        db, partner_id=partner_id, kind="partner_payout_hold", currency=currency
+    )
+    await wallet_service.post(
+        db,
+        kind="affiliate.payout_hold",
+        legs=[
+            wallet_service.Leg(account_id=hold.id, direction="D", amount=amount, currency=currency),
+            wallet_service.Leg(
+                account_id=balance.id, direction="C", amount=amount, currency=currency
+            ),
+        ],
+        idempotency_key=f"affiliate.payout_hold:{payout_id}",
+        reference=wallet_service.Reference(type="affiliate_payout", id=payout_id),
+        actor="partner",
+    )
+
+
+async def post_payout_paid(
+    db: AsyncSession,
+    *,
+    payout_id: str,
+    partner_id: str,
+    amount: Decimal,
+    currency: str,
+) -> None:
+    """Settle a transferred payout: ``D house_affiliate_paid / C partner_payout_hold``.
+
+    The money has left for a bank card. The reservation clears and the house
+    records what it has actually paid partners — a different question from what
+    it owes them, which is why ``house_affiliate_expense`` is a separate
+    account and is untouched here.
+    """
+    hold = await _partner_account(
+        db, partner_id=partner_id, kind="partner_payout_hold", currency=currency
+    )
+    paid = await _house_account(db, kind="house_affiliate_paid", currency=currency)
+    await wallet_service.post(
+        db,
+        kind="affiliate.payout_paid",
+        legs=[
+            wallet_service.Leg(account_id=paid.id, direction="D", amount=amount, currency=currency),
+            wallet_service.Leg(account_id=hold.id, direction="C", amount=amount, currency=currency),
+        ],
+        idempotency_key=f"affiliate.payout_paid:{payout_id}",
+        reference=wallet_service.Reference(type="affiliate_payout", id=payout_id),
+        actor="admin",
+    )
+
+
+async def post_payout_rejected(
+    db: AsyncSession,
+    *,
+    payout_id: str,
+    partner_id: str,
+    amount: Decimal,
+    currency: str,
+) -> None:
+    """Return a refused request's money: ``D partner_balance / C partner_payout_hold``.
+
+    The mirror of :func:`post_payout_hold`. Nothing left the business, so
+    nothing touches a house account — the money simply becomes withdrawable
+    again.
+    """
+    hold = await _partner_account(
+        db, partner_id=partner_id, kind="partner_payout_hold", currency=currency
+    )
+    balance = await _partner_account(
+        db, partner_id=partner_id, kind="partner_balance", currency=currency
+    )
+    await wallet_service.post(
+        db,
+        kind="affiliate.payout_rejected",
+        legs=[
+            wallet_service.Leg(
+                account_id=balance.id, direction="D", amount=amount, currency=currency
+            ),
+            wallet_service.Leg(account_id=hold.id, direction="C", amount=amount, currency=currency),
+        ],
+        idempotency_key=f"affiliate.payout_rejected:{payout_id}",
+        reference=wallet_service.Reference(type="affiliate_payout", id=payout_id),
+        actor="admin",
+    )
+
+
+__all__ = [
+    "commission_amount",
+    "post_accrual",
+    "post_maturation",
+    "post_payout_hold",
+    "post_payout_paid",
+    "post_payout_rejected",
+    "post_void",
+]

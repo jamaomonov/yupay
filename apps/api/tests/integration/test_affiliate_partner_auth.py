@@ -219,3 +219,99 @@ async def test_a_buyer_token_is_refused_by_the_panel(db_session: AsyncSession) -
     buyer = authjwt.mint_access(sub="u-1", sid="s-1")
     with pytest.raises(UnauthorizedError):
         await partners.resolve_partner(db_session, buyer)
+
+
+async def test_a_rejected_application_cannot_be_approved_later(
+    db_session: AsyncSession,
+) -> None:
+    """Turning one down is final until someone re-applies."""
+    from yupay.core.errors import ConflictError
+    from yupay.modules.affiliate import partners
+    from yupay.modules.affiliate.models import AffiliatePartner
+
+    partner_id = await _apply(db_session)
+    await partners.reject(db_session, partner_id=partner_id, note="no audience")
+
+    partner = await db_session.get(AffiliatePartner, partner_id)
+    assert partner is not None
+    assert partner.status == "rejected"
+    assert partner.admin_note == "no audience"
+
+    with pytest.raises(ConflictError):
+        await partners.approve(db_session, partner_id=partner_id)
+
+
+async def test_approving_or_rejecting_an_unknown_partner_is_not_found(
+    db_session: AsyncSession,
+) -> None:
+    from yupay.core.errors import NotFoundError
+    from yupay.core.ids import new_id
+    from yupay.modules.affiliate import partners
+
+    missing = new_id()
+    with pytest.raises(NotFoundError):
+        await partners.approve(db_session, partner_id=missing)
+    with pytest.raises(NotFoundError):
+        await partners.reject(db_session, partner_id=missing)
+
+
+async def test_an_already_approved_partner_cannot_be_approved_again(
+    db_session: AsyncSession,
+) -> None:
+    from yupay.core.errors import ConflictError
+    from yupay.modules.affiliate import partners
+
+    partner_id = await _apply(db_session)
+    await partners.approve(db_session, partner_id=partner_id)
+    with pytest.raises(ConflictError):
+        await partners.approve(db_session, partner_id=partner_id)
+
+
+async def test_a_short_password_is_refused(db_session: AsyncSession) -> None:
+    from yupay.core.errors import ValidationError
+    from yupay.modules.affiliate import partners
+
+    partner_id = await _apply(db_session)
+    token = await partners.approve(db_session, partner_id=partner_id)
+    with pytest.raises(ValidationError):
+        await partners.set_password(db_session, token=token, password="short")
+
+
+async def test_logging_out_an_unknown_token_is_silent(db_session: AsyncSession) -> None:
+    """Logging out twice is not an error worth reporting to a caller."""
+    from yupay.modules.affiliate import partners
+
+    await partners.logout(db_session, refresh_token="not-a-real-token")
+
+
+async def test_rotating_an_unknown_token_is_refused(db_session: AsyncSession) -> None:
+    from yupay.core.errors import UnauthorizedError
+    from yupay.modules.affiliate import partners
+
+    with pytest.raises(UnauthorizedError):
+        await partners.rotate(db_session, refresh_token="not-a-real-token")
+
+
+async def test_a_token_without_a_session_id_is_refused(db_session: AsyncSession) -> None:
+    """A well-signed token that names no session cannot be checked against a
+    revocation, so it is refused rather than trusted."""
+    from yupay.core.errors import UnauthorizedError
+    from yupay.modules.affiliate import partners
+    from yupay.modules.auth import jwt as authjwt
+
+    # `mint_guest` has the right shape but no `sid`; re-sign it as a partner
+    # token by minting with a session that is then deleted.
+    partner_id, email, password = await _approved(db_session)
+    tokens = await partners.login(db_session, email=email, password=password)
+
+    from yupay.modules.affiliate.models import AffiliateSession
+
+    claims = authjwt.verify(tokens.access_token, expected_kind="partner_access")
+    assert claims.sid is not None
+    session = await db_session.get(AffiliateSession, claims.sid)
+    assert session is not None
+    await db_session.delete(session)
+    await db_session.flush()
+
+    with pytest.raises(UnauthorizedError):
+        await partners.resolve_partner(db_session, tokens.access_token)
