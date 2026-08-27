@@ -19,14 +19,15 @@ import type { PlayerCheckResult } from "@/lib/player-check";
 
 import { ConfirmPaymentDialog } from "@/components/ConfirmPaymentDialog";
 import { DynamicFields, pickLocalized } from "@/components/DynamicFields";
+import { type AppliedPromo, PromoField } from "@/components/PromoField";
 import { ReviewsSheet } from "@/components/ReviewsSheet";
 import { SafeImage } from "@/components/ui/safe-image";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { BOT_LINK } from "@/lib/bot-link";
-import { getBrandShape, rememberBrandShape } from "@/lib/brand-shape";
 import { ApiError } from "@/lib/api";
 import { useMe } from "@/lib/auth";
+import { BOT_LINK } from "@/lib/bot-link";
+import { getBrandShape, rememberBrandShape } from "@/lib/brand-shape";
 import {
   useBrandSummary,
   useGames,
@@ -348,6 +349,8 @@ export default function TopUp() {
 
   const me = useMe();
   const checkout = useCheckout();
+  const [promo, setPromo] = useState<AppliedPromo | null>(null);
+  const [promoDropped, setPromoDropped] = useState(false);
   const isProcessing = checkout.isPending;
   // Backend tells us which gateways can actually accept a payment right now
   // (mock + whatever real acquirers have been wired). Until the response
@@ -380,7 +383,7 @@ export default function TopUp() {
     // which the server refuses in USD. Gating on the product would let the
     // customer pick a currency checkout then rejects. `selectedPkg` is
     // declared below; this closure only ever runs after it exists.
-    const variableChosen = variablePkg !== undefined && selectedPkg === variablePkg.id;
+    const variableChosen = selectedPkg === variablePkg?.id;
     if (variableChosen) {
       const method = PAYMENT_METHODS.find((m) => m.id === methodId);
       if (method && method.currency !== "UZS") return false;
@@ -834,7 +837,15 @@ export default function TopUp() {
         // `payDisabled`) already guarantees `parsedQty` is set by the time we
         // get here; the fallback is an unreachable sentinel.
         ...(isUnitSelected ? { qty: parsedQty ?? 1 } : {}),
+        // The server resolves this again for itself; the preview was for
+        // display only.
+        ...(promo ? { affiliateCode: promo.code } : {}),
       });
+      // Authoritative. A code the server refused leaves this at zero, and
+      // saying so beats silently charging more than the button promised.
+      if (promo && Number(result.order.discount_charged || "0") === 0) {
+        setPromoDropped(true);
+      }
       // Remember the fulfilment payload only after the order was accepted by
       // the API — no point caching a half-typed player_id that came back
       // 400. Subsequent visits to this brand pick it back up automatically.
@@ -1603,18 +1614,49 @@ export default function TopUp() {
                         })
                       : (variableAmountReason ?? (
                           <>
-                            {t("topup.pay")} · {formatMoney(finalPrice, priceCode)}
+                            {t("topup.pay")} ·{" "}
+                            {formatMoney(
+                              promo ? Math.round(Number(promo.totalAfter)) : finalPrice,
+                              priceCode,
+                            )}
                             <ChevronRight size={18} strokeWidth={2.5} />
                           </>
                         ))}
           </motion.button>
+        )}
+
+        {activePkg && (
+          <PromoField
+            items={[
+              {
+                sku_id: activePkg.id,
+                qty: isUnitSelected ? (parsedQty ?? 1) : 1,
+                ...(isVariableSelected && parsedAmount !== null
+                  ? {
+                      amount_usd: (amountAsUsd ?? parsedAmount).toFixed(perUsd !== null ? 6 : 2),
+                    }
+                  : {}),
+              },
+            ]}
+            currency={currency}
+            isLoggedIn={me.data != null}
+            formatAmount={(value) => formatMoney(value, priceCode)}
+            onChange={(next) => {
+              setPromo(next);
+              setPromoDropped(false);
+            }}
+          />
+        )}
+
+        {promoDropped && (
+          <p className="mt-2 text-center text-[12px] text-red-400">{t("topup.promoDropped")}</p>
         )}
       </div>
 
       <ConfirmPaymentDialog
         open={confirmOpen}
         rows={confirmRows}
-        total={formatMoney(finalPrice, priceCode)}
+        total={formatMoney(promo ? Math.round(Number(promo.totalAfter)) : finalPrice, priceCode)}
         warning={t(accountRequired ? "topup.confirmWarning" : "topup.confirmWarningVoucher")}
         // A field-less product (a gift card) has nothing to attest to — the
         // old `!hasVerifiableField` alone was true for it too (`.some()` on

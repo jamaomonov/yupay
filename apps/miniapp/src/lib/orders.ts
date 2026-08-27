@@ -63,6 +63,9 @@ export interface OrderOut {
   currency: string;
   total_usd: string;
   total_charged: string;
+  /** What an affiliate discount took off, in `currency`. "0" when none — which
+   *  is how the client learns that a code it sent was not applied. */
+  discount_charged: string;
   payment_provider: string | null;
   fx_snapshot_id: string | null;
   expires_at: string;
@@ -214,6 +217,11 @@ export interface CreateOrderInput {
    *  mirrors `yupay.modules.catalog.unit_sku.is_unit_sku` on the server.
    *  Every other line defaults to `qty: 1` when this is left unset. */
   qty?: number;
+  /** A partner promo code, as typed. The server resolves it again for itself,
+   *  so a code that went stale since the preview yields an order at full price
+   *  rather than the price the button showed — read `discount_charged` on the
+   *  response to find out which happened. */
+  affiliateCode?: string;
 }
 
 export interface CheckoutResult {
@@ -265,6 +273,7 @@ export async function performCheckout(
     provider = "mock",
     amountUsd,
     qty,
+    affiliateCode,
   }: CreateOrderInput & {
     provider?: string;
   },
@@ -293,6 +302,7 @@ export async function performCheckout(
     {
       currency,
       ...(hints ? { client_hints: hints } : {}),
+      ...(affiliateCode !== undefined ? { affiliate_code: affiliateCode } : {}),
       items: [
         {
           sku_id: skuId,
