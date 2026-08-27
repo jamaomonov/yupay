@@ -128,6 +128,11 @@ class Settings(BaseSettings):
     #: manual bank transfer, so there is a floor. Estimated, not measured —
     #: revisit once real partner volumes exist.
     affiliate_min_payout: Decimal = Field(default=Decimal("50000"))
+    #: Partner panel token lifetimes. Same shape as the buyer's — short
+    #: access, long rotating refresh — but separately configurable, because
+    #: a partner session guards money going out rather than money coming in.
+    affiliate_access_ttl_seconds: int = Field(default=900)  # 15 min
+    affiliate_refresh_ttl_seconds: int = Field(default=60 * 60 * 24 * 30)  # 30 days
 
     jwt_ws_ttl_seconds: int = Field(default=60)  # 60 s for WS handshake
     jwt_email_token_ttl_seconds: int = Field(default=60 * 30)  # 30 min for verify/reset links

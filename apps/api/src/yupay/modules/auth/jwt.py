@@ -22,7 +22,18 @@ from yupay.core.ids import new_id
 ALG: Final[str] = "EdDSA"
 
 TokenKind = Literal[
-    "access", "refresh", "guest", "guest_order", "ws", "email_verify", "password_reset"
+    "access",
+    "refresh",
+    "guest",
+    "guest_order",
+    "ws",
+    "email_verify",
+    "password_reset",
+    # Affiliate partners. A separate kind rather than reusing "access":
+    # ``verify`` rejects a kind mismatch, which is what makes a partner
+    # token structurally unusable on a buyer endpoint and a buyer token
+    # unusable on the panel.
+    "partner_access",
 ]
 
 
@@ -109,6 +120,40 @@ def mint_access(
         payload["tg_id"] = tg_id
     if email_hash is not None:
         payload["email_hash"] = email_hash
+    return _encode(payload, settings=s)
+
+
+def mint_partner_access(
+    *,
+    sub: str,
+    sid: str,
+    settings: Settings | None = None,
+) -> str:
+    """Issue a short-lived access JWT for an authenticated **partner**.
+
+    A distinct ``kind`` from :func:`mint_access` on purpose. ``verify`` rejects
+    a kind mismatch, so this token cannot be presented to a buyer endpoint and
+    a buyer's token cannot be presented to the panel. Relying instead on a
+    partner id not existing in ``users`` would be an accident that holds only
+    until something resolves a subject less strictly.
+
+    Args:
+        sub: The ``affiliate_partners`` row id.
+        sid: The ``affiliate_sessions`` row this token belongs to. The caller
+            is responsible for it being non-revoked.
+        settings: Overrides the process settings; for tests.
+
+    Returns:
+        The encoded JWT.
+    """
+    s = _settings_or(settings)
+    payload = _base_payload(
+        sub=sub,
+        kind="partner_access",
+        ttl_seconds=s.affiliate_access_ttl_seconds,
+        settings=s,
+    )
+    payload["sid"] = sid
     return _encode(payload, settings=s)
 
 
