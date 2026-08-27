@@ -28,6 +28,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.modules.wallet import service as wallet_service
+from yupay.modules.wallet.models import WalletAccount
 
 #: Smallest payable unit per currency. UZS has no subunit in practice — Payme
 #: and Click both reject fractions — so commission is whole sums.
@@ -52,18 +53,22 @@ def commission_amount(total: Decimal, percent: Decimal, currency: str) -> Decima
     return (total * percent / Decimal(100)).quantize(quantum, rounding=ROUND_HALF_UP)
 
 
-async def _partner_account(db: AsyncSession, *, partner_id: str, kind: str, currency: str) -> str:
-    account = await wallet_service.ensure_account(
+# These return the account rather than its id purely so mypy stays quiet:
+# ``Base`` is untyped, so ``account.id`` is ``Any``, and returning ``Any`` from
+# a ``-> str`` function is an error while passing it to a ``str`` parameter is
+# not. ``promo.service`` sidesteps the same thing by inlining the lookups.
+async def _partner_account(
+    db: AsyncSession, *, partner_id: str, kind: str, currency: str
+) -> WalletAccount:
+    return await wallet_service.ensure_account(
         db, owner_type="partner", owner_id=partner_id, kind=kind, currency=currency
     )
-    return account.id
 
 
-async def _house_account(db: AsyncSession, *, kind: str, currency: str) -> str:
-    account = await wallet_service.ensure_account(
+async def _house_account(db: AsyncSession, *, kind: str, currency: str) -> WalletAccount:
+    return await wallet_service.ensure_account(
         db, owner_type=_HOUSE_OWNER, owner_id=_HOUSE_OWNER, kind=kind, currency=currency
     )
-    return account.id
 
 
 async def post_accrual(
@@ -94,8 +99,12 @@ async def post_accrual(
         db,
         kind="affiliate.accrue",
         legs=[
-            wallet_service.Leg(account_id=pending, direction="D", amount=amount, currency=currency),
-            wallet_service.Leg(account_id=expense, direction="C", amount=amount, currency=currency),
+            wallet_service.Leg(
+                account_id=pending.id, direction="D", amount=amount, currency=currency
+            ),
+            wallet_service.Leg(
+                account_id=expense.id, direction="C", amount=amount, currency=currency
+            ),
         ],
         idempotency_key=f"affiliate.accrue:{commission_id}",
         reference=wallet_service.Reference(type="order", id=order_id),
@@ -133,8 +142,12 @@ async def post_maturation(
         db,
         kind="affiliate.mature",
         legs=[
-            wallet_service.Leg(account_id=balance, direction="D", amount=amount, currency=currency),
-            wallet_service.Leg(account_id=pending, direction="C", amount=amount, currency=currency),
+            wallet_service.Leg(
+                account_id=balance.id, direction="D", amount=amount, currency=currency
+            ),
+            wallet_service.Leg(
+                account_id=pending.id, direction="C", amount=amount, currency=currency
+            ),
         ],
         idempotency_key=f"affiliate.mature:{commission_id}",
         actor="scheduler",
@@ -171,8 +184,12 @@ async def post_void(
         db,
         kind="affiliate.void",
         legs=[
-            wallet_service.Leg(account_id=expense, direction="D", amount=amount, currency=currency),
-            wallet_service.Leg(account_id=pending, direction="C", amount=amount, currency=currency),
+            wallet_service.Leg(
+                account_id=expense.id, direction="D", amount=amount, currency=currency
+            ),
+            wallet_service.Leg(
+                account_id=pending.id, direction="C", amount=amount, currency=currency
+            ),
         ],
         idempotency_key=f"affiliate.void:{commission_id}",
         actor="system",
