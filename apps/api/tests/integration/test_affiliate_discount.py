@@ -486,3 +486,70 @@ async def test_binding_is_a_no_op_without_a_code_or_without_a_user(
     db_session.add(guest)
     await db_session.flush()
     assert await bind_attribution(db_session, order=guest) is False
+
+
+async def test_the_discount_reaches_the_margin_report(db_session: AsyncSession) -> None:
+    """The whole reason ``order_items.discount_usd`` exists.
+
+    Revenue and margin are computed from order lines, not from
+    ``total_charged``. A discount that stopped at the order level would leave
+    both reports showing the pre-discount figures — full margin on exactly the
+    orders that have the least of it.
+
+    Both must move by the discount, and ``revenue - margin == cost`` must
+    still hold: a discount lowers what we received and what we kept by the same
+    amount, and leaves what we paid the supplier alone. Subtracting it from
+    only one of the two expressions is the bug this asserts against.
+    """
+    from yupay.core.clock import now
+    from yupay.core.ids import new_id
+    from yupay.modules.orders.models import Order, OrderItem
+    from yupay.modules.stats.schemas import CurrencyAmount
+    from yupay.modules.stats.service import build_dashboard
+
+    sku_id = await _seed_sku(db_session, price_usd="10.00", cost_usdt="8.00")
+    before = await build_dashboard(db_session, window_hours=24)
+
+    # 3 units at 10.00 retail, 8.00 cost: gross 30.00, margin 6.00, cost 24.00.
+    # A 3.00 discount must leave gross 27.00 and margin 3.00, cost untouched.
+    moment = now()
+    order = Order(
+        id=new_id(),
+        guest_email=f"g-{new_id()}@example.test",
+        status="delivered",
+        currency="USD",
+        total_usd=Decimal("30.00"),
+        total_charged=Decimal("27.00"),
+        discount_charged=Decimal("3.00"),
+        purpose="catalog",
+        created_at=moment,
+        paid_at=moment,
+        delivered_at=moment,
+        expires_at=moment + timedelta(hours=1),
+    )
+    db_session.add(order)
+    await db_session.flush()
+    db_session.add(
+        OrderItem(
+            id=new_id(),
+            order_id=order.id,
+            sku_id=sku_id,
+            qty=3,
+            unit_price_usd=Decimal("10.00"),
+            discount_usd=Decimal("3.00"),
+            cost_usdt=Decimal("8.00"),
+        )
+    )
+    await db_session.flush()
+
+    def _usd(entries: list[CurrencyAmount]) -> Decimal:
+        return next((e.amount for e in entries if e.currency == "USD"), Decimal("0"))
+
+    after = await build_dashboard(db_session, window_hours=24)
+    margin_gained = after.margin_in_window.amount_usd - before.margin_in_window.amount_usd
+    revenue_gained = _usd(after.revenue_in_window) - _usd(before.revenue_in_window)
+
+    assert revenue_gained == Decimal("27.00")
+    assert margin_gained == Decimal("3.00")
+    # cost == revenue - margin, and the supplier was paid the same either way.
+    assert revenue_gained - margin_gained == Decimal("24.00")

@@ -19,6 +19,14 @@ lines and ``qty * unit_price_usd`` for the rest. That is the same shape
 :func:`margin_usd_expr` below uses for margin, and the two stay consistent by
 construction: ``gross - margin == cost``.
 
+Both then subtract ``order_items.discount_usd``, the line's share of any
+affiliate discount. The invariant survives because a discount lowers what we
+received and what we kept by the same amount and leaves what we paid the
+supplier alone. Subtracting it from only one of the two would overstate margin
+by exactly the discount, on precisely the orders that have the least of it —
+and it would put two figures on the same dashboard card that no longer agree
+about cost.
+
 The multiplier comes from the order line itself, frozen at checkout
 (``OrderItem.rate_multiplier``, ADR-0051) — an order's worth must not be a
 function of today's pricing config, and it used to be: editing a SKU's margin
@@ -34,13 +42,26 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from sqlalchemy import Case, ScalarSelect, Subquery, case, func, select
+from sqlalchemy import Case, ColumnElement, ScalarSelect, Subquery, case, func, select
 
 from yupay.modules.catalog.models import Sku
 from yupay.modules.integrations.models import SupplierPriceHistory
 from yupay.modules.orders.models import Order, OrderItem
 
 _CENTS = Decimal("0.01")
+
+
+def _line_discount() -> ColumnElement[Any]:
+    """This line's share of its order's affiliate discount, never NULL.
+
+    Both expressions below subtract it, and that is not a doubling: a discount
+    lowers what we received and what we kept by the same amount and leaves what
+    we paid the supplier alone, so ``gross - margin == cost`` survives with the
+    term on both sides. Taking it off only one of them would overstate margin
+    by exactly the discount — on precisely the orders that have the least of
+    it.
+    """
+    return func.coalesce(OrderItem.discount_usd, 0)
 
 
 def charged_usd_expr() -> Case[Any]:
@@ -60,13 +81,13 @@ def charged_usd_expr() -> Case[Any]:
     return case(
         (
             OrderItem.rate_multiplier.isnot(None),
-            OrderItem.qty * OrderItem.unit_price_usd * OrderItem.rate_multiplier,
+            OrderItem.qty * OrderItem.unit_price_usd * OrderItem.rate_multiplier - _line_discount(),
         ),
         (
             Sku.variable_amount.is_(True),
-            OrderItem.qty * OrderItem.unit_price_usd * Sku.rate_multiplier,
+            OrderItem.qty * OrderItem.unit_price_usd * Sku.rate_multiplier - _line_discount(),
         ),
-        else_=OrderItem.qty * OrderItem.unit_price_usd,
+        else_=OrderItem.qty * OrderItem.unit_price_usd - _line_discount(),
     )
 
 
@@ -140,20 +161,23 @@ def margin_usd_expr() -> Case[Any]:
     return case(
         (
             Sku.variable_amount.is_(True),
-            OrderItem.qty * OrderItem.unit_price_usd * (variable_multiplier - 1),
+            OrderItem.qty * OrderItem.unit_price_usd * (variable_multiplier - 1) - _line_discount(),
         ),
         (
             OrderItem.cost_usdt.isnot(None),
-            OrderItem.qty * (OrderItem.unit_price_usd - OrderItem.cost_usdt),
+            OrderItem.qty * (OrderItem.unit_price_usd - OrderItem.cost_usdt) - _line_discount(),
         ),
         (
             _cost_when_ordered().isnot(None),
-            OrderItem.qty * (OrderItem.unit_price_usd - _cost_when_ordered()),
+            OrderItem.qty * (OrderItem.unit_price_usd - _cost_when_ordered()) - _line_discount(),
         ),
         (
             Sku.cost_usdt.isnot(None),
-            OrderItem.qty * (OrderItem.unit_price_usd - Sku.cost_usdt),
+            OrderItem.qty * (OrderItem.unit_price_usd - Sku.cost_usdt) - _line_discount(),
         ),
+        # Still NULL, deliberately: a line whose cost is unknown has an unknown
+        # margin, and subtracting a discount from it would turn "we do not
+        # know" into a confident negative number.
         else_=None,
     )
 
