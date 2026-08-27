@@ -43,3 +43,53 @@ async def test_affiliate_account_kinds_are_postable(db_session: AsyncSession, ki
     )
     assert account.kind == kind
     assert await wallet_service.balance(db_session, account.id) == Decimal("0")
+
+
+async def test_attribution_is_unique_per_user(db_session: AsyncSession) -> None:
+    """A buyer belongs to exactly one partner, enforced by the database."""
+    from sqlalchemy.exc import IntegrityError
+    from yupay.core.ids import new_id
+    from yupay.modules.affiliate.models import (
+        AffiliateAttribution,
+        AffiliateCode,
+        AffiliatePartner,
+    )
+    from yupay.modules.users.models import User
+
+    user = User(id=new_id())
+    partner_a = AffiliatePartner(id=new_id(), email=f"a-{new_id()}@example.test", status="active")
+    partner_b = AffiliatePartner(id=new_id(), email=f"b-{new_id()}@example.test", status="active")
+    db_session.add_all([user, partner_a, partner_b])
+    await db_session.flush()
+
+    code_a = AffiliateCode(
+        id=new_id(),
+        partner_id=partner_a.id,
+        code=f"A{new_id().replace('-', '')[:10].upper()}",
+        discount_percent=Decimal("5"),
+        commission_percent=Decimal("2"),
+    )
+    code_b = AffiliateCode(
+        id=new_id(),
+        partner_id=partner_b.id,
+        code=f"B{new_id().replace('-', '')[:10].upper()}",
+        discount_percent=Decimal("5"),
+        commission_percent=Decimal("2"),
+    )
+    db_session.add_all([code_a, code_b])
+    await db_session.flush()
+
+    db_session.add(
+        AffiliateAttribution(
+            id=new_id(), user_id=user.id, partner_id=partner_a.id, code_id=code_a.id
+        )
+    )
+    await db_session.flush()
+
+    db_session.add(
+        AffiliateAttribution(
+            id=new_id(), user_id=user.id, partner_id=partner_b.id, code_id=code_b.id
+        )
+    )
+    with pytest.raises(IntegrityError):
+        await db_session.flush()

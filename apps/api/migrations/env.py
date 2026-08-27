@@ -18,6 +18,7 @@ from yupay.core.db import metadata
 # Import all module models so Alembic's metadata sees every table when autogenerating
 # migrations. New modules MUST add their imports here.
 from yupay.core import idempotency as _idempotency_models  # noqa: F401
+from yupay.modules.affiliate import models as _affiliate_models  # noqa: F401
 from yupay.modules.auth import models as _auth_models  # noqa: F401
 from yupay.modules.catalog import models as _catalog_models  # noqa: F401
 from yupay.modules.fulfillment import models as _fulfillment_models  # noqa: F401
