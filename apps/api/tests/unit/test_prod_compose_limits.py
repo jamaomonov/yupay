@@ -62,3 +62,51 @@ def test_redis_is_bounded_but_never_evicts(services) -> None:
     assert "--maxmemory-policy noeviction" in command, (
         "an eviction policy would silently drop paid orders' fulfilment jobs"
     )
+
+
+def test_postgres_is_not_running_on_stock_defaults(services: dict[str, Any]) -> None:
+    """The image ships settings sized for a laptop.
+
+    Measured on production before this was set: `shared_buffers` 128MB on a
+    23GB host, `random_page_cost` 4 (a spinning-disk assumption that biases the
+    planner away from the indexes migration 0055 exists to provide), and no
+    `pg_stat_statements` — so "the database got slow" was a conversation with
+    no evidence available.
+    """
+    command = " ".join(services["postgres"].get("command") or [])
+    assert command, "postgres has no command override — it is on stock defaults"
+
+    required = {
+        "shared_buffers": "128MB of cache on a 23GB host",
+        "effective_cache_size": "the planner cannot judge index vs scan without it",
+        "random_page_cost": "the default assumes a spinning disk",
+        "max_connections": "the pools alone can reach the old ceiling of 100",
+        "idle_in_transaction_session_timeout": "this is the pool-exhaustion shape",
+        "shared_preload_libraries": "no query-level observability without it",
+    }
+    missing = {k: why for k, why in required.items() if k not in command}
+    assert not missing, "unset: " + "; ".join(f"{k} ({w})" for k, w in missing.items())
+
+
+def test_postgres_has_room_for_parallel_query_shared_memory(services: dict[str, Any]) -> None:
+    """Docker's default /dev/shm is 64MB. Parallel query results go there, so
+    once tables are big enough for the planner to pick a parallel plan it fails
+    with "could not resize shared memory segment" — at exactly the scale where
+    reproducing it is hardest."""
+    assert services["postgres"].get("shm_size"), "no shm_size on postgres"
+
+
+def test_statement_timeout_stays_off(services: dict[str, Any]) -> None:
+    """Deliberate, and worth stating so nobody "fixes" it in a hurry.
+
+    It would apply to migrations too, which run as the same role — and killing
+    a CREATE INDEX halfway is a worse outcome than the runaway query it
+    prevents. `idle_in_transaction_session_timeout` covers the case that
+    actually exhausts the pool: a transaction left open while a request waits
+    on a supplier.
+    """
+    command = " ".join(services["postgres"].get("command") or [])
+    assert "statement_timeout" not in command, (
+        "statement_timeout also applies to migrations; see the comment in "
+        "docker-compose.prod.yml before enabling it"
+    )

@@ -50,7 +50,67 @@ services:
     image: postgres:16-alpine
     logging: *default-logging
     mem_limit: 4g
+    # Postgres puts parallel-query results in shared memory, and Docker's
+    # default /dev/shm is 64MB. With max_parallel_workers at 8 that produces
+    # "could not resize shared memory segment" once the tables are large enough
+    # for the planner to choose a parallel plan — a failure that appears only
+    # at the scale where it is hardest to reproduce.
+    shm_size: 1gb
     restart: unless-stopped
+    # The image ships stock defaults, which are sized for a laptop: 128MB of
+    # shared_buffers on a box with 23GB, and a planner that still believes it
+    # is talking to a spinning disk. Everything below is measured against the
+    # 4g container limit above, not against the host — the two must not be
+    # confused, or the OOM killer settles the argument.
+    command:
+      - postgres
+      # 1GB of the 4GB limit. Eight times the default, and deliberately not the
+      # 2GB a "25% of RAM" rule would suggest for the host: the rest of the
+      # limit has to cover per-connection memory, work_mem, and maintenance.
+      - "-c"
+      - "shared_buffers=1GB"
+      # A planner hint, not an allocation: how much data is likely to be in
+      # shared_buffers *or* the host page cache. The host keeps ~17GB in
+      # buff/cache, but it is shared with another stack, so 3GB is the honest
+      # number rather than the flattering one.
+      - "-c"
+      - "effective_cache_size=3GB"
+      # Doubled. It matters less than it did now that the admin lists have
+      # sorting indexes (migration 0055) — before them every list sort spilled
+      # to disk at 4MB. Kept modest because it is per-sort, per-connection.
+      - "-c"
+      - "work_mem=8MB"
+      - "-c"
+      - "maintenance_work_mem=256MB"
+      # SSD. The default of 4 tells the planner random reads cost four times a
+      # sequential one, which on this hardware is false and biases it towards
+      # sequential scans — the opposite of what the new indexes are for.
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "effective_io_concurrency=200"
+      # 19 connections are in use today, and the configured pools can reach 100
+      # (api 20 + worker 2x20 + scheduler 20 + bot 20) — exactly the old
+      # ceiling, with nothing left for psql or a migration. This is the headroom
+      # that has to exist before a second uvicorn worker is ever considered.
+      - "-c"
+      - "max_connections=200"
+      # A connection idle *inside a transaction* is the pool-exhaustion shape:
+      # a request that opened a transaction and then went off to wait on a
+      # supplier. Two minutes is far longer than any legitimate one.
+      #
+      # statement_timeout is deliberately NOT set. It would also apply to
+      # migrations, which run as this same role, and killing a CREATE INDEX
+      # halfway is a worse outcome than the runaway query it would prevent.
+      # Revisit once migrations use CONCURRENTLY as a matter of course.
+      - "-c"
+      - "idle_in_transaction_session_timeout=120s"
+      # Query-level observability. Without it, "the database got slow" is a
+      # conversation with no evidence in it.
+      - "-c"
+      - "shared_preload_libraries=pg_stat_statements"
+      - "-c"
+      - "pg_stat_statements.track=top"
     env_file: ./secrets/postgres.env
     volumes:
       - postgres-data:/var/lib/postgresql/data
