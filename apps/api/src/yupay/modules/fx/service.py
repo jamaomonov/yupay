@@ -114,11 +114,21 @@ class FxService:
             return manual
         return await self.get_market_rate(base_u, quote_u, allow_stale=allow_stale)
 
-    async def get_market_rate(self, base: str, quote: str, *, allow_stale: bool = True) -> Quote:
+    async def get_market_rate(
+        self, base: str, quote: str, *, allow_stale: bool = True, force: bool = False
+    ) -> Quote:
         """Provider/cache rate, ignoring any admin override.
 
         Used by the admin dashboard (to show the live FX next to ours) and by
         ``refresh_all`` so a manual toggle cannot pollute ``fx_rates`` history.
+
+        Args:
+            allow_stale: Fall back to the stale copy when every provider fails.
+            force: Skip the fresh-cache read and go to the providers. This is
+                how ``refresh_all`` gets a genuinely new quote *without*
+                deleting the cached one first — the old value stays readable
+                for the length of the round trip instead of leaving a hole
+                every concurrent request falls into.
         """
         base_u, quote_u = base.upper(), quote.upper()
         if base_u == quote_u:
@@ -126,9 +136,10 @@ class FxService:
                 base=base_u, quote=quote_u, rate=Decimal(1), fetched_at=now(), source="identity"
             )
 
-        fresh = await cache.read_fresh(self._redis, base_u, quote_u)
-        if fresh is not None:
-            return fresh
+        if not force:
+            fresh = await cache.read_fresh(self._redis, base_u, quote_u)
+            if fresh is not None:
+                return fresh
 
         failed: list[str] = []
         for provider in await self._ordered_providers():
@@ -304,9 +315,13 @@ class FxService:
             if q_symbol.upper() == base.upper():
                 continue
             try:
-                # Bypass the fresh cache to force network call.
-                await self._redis.delete(f"fx:rate:{base.upper()}:{q_symbol.upper()}")
-                q = await self.get_market_rate(base, q_symbol, allow_stale=False)
+                # Fetch first, then overwrite — never delete-then-fetch. Deleting
+                # left the cache empty for the length of a provider round trip
+                # (up to 1.5s, or ~7.5s if the chain has to be walked), and this
+                # runs every five minutes: 288 self-inflicted stampede windows a
+                # day, on a value that sits on the checkout path. `force` skips
+                # the fresh read without disturbing what is stored.
+                q = await self.get_market_rate(base, q_symbol, allow_stale=False, force=True)
             except FxUnavailableError:
                 log.exception("fx.refresh.unavailable", base=base, quote=q_symbol)
                 continue

@@ -306,3 +306,74 @@ async def test_stale_after_all_fail_pages_ops(redis, monkeypatch: pytest.MonkeyP
     alert.assert_awaited_once()
     assert alert.await_args is not None
     assert "stale" in alert.await_args.args[0]
+
+
+# --- the refresh must not open a window where the cache is empty -------------
+
+
+class _WatchingProvider(StubProvider):
+    """Records what the cache held while the provider was being called."""
+
+    def __init__(self, redis, key: str, **kw) -> None:
+        super().__init__(**kw)
+        self._redis = redis
+        self._key = key
+        self.cache_during_call: list[str | None] = []
+
+    async def get_rate(self, base: str, quote: str) -> Quote:
+        self.cache_during_call.append(await self._redis.get(self._key))
+        return await super().get_rate(base, quote)
+
+
+async def test_the_refresh_never_empties_the_cache_it_is_refreshing(redis) -> None:
+    """`refresh_all` used to DELETE the key and then fetch.
+
+    Between those two steps the cache is empty for the length of a provider
+    round trip — up to 1.5s, or ~7.5s if the whole chain has to be walked — and
+    every request landing in that window walks the chain itself. The refresh
+    runs every five minutes, so that is 288 self-inflicted stampede windows a
+    day, on a value that sits on the checkout path: if the chain fails, the
+    customer cannot buy.
+
+    Writing over the key instead leaves the old rate readable throughout.
+    """
+    key = "fx:rate:USD:RUB"
+    provider = _WatchingProvider(redis, key, rate=Decimal("90"))
+    svc = FxService(providers=[provider], redis=redis)
+
+    await svc.get_rate("USD", "RUB")  # warm the cache
+    assert await redis.get(key) is not None
+
+    provider._rate = Decimal("91")
+    await svc.refresh_all(AsyncMock(), base="USD", quotes=["RUB"])
+
+    assert provider.cache_during_call[-1] is not None, (
+        "the cache was empty while the provider was being called — that is the "
+        "stampede window, and every concurrent request falls into it"
+    )
+
+
+async def test_the_refresh_still_bypasses_a_fresh_cache(redis) -> None:
+    """The delete existed for a reason: without it the refresh would read its
+    own fresh cache entry and never call the provider at all, so `fx_rates`
+    history would stop moving."""
+    provider = StubProvider(rate=Decimal("90"))
+    svc = FxService(providers=[provider], redis=redis)
+
+    await svc.get_rate("USD", "RUB")
+    assert provider.calls == 1
+
+    await svc.refresh_all(AsyncMock(), base="USD", quotes=["RUB"])
+
+    assert provider.calls == 2, "the refresh served itself from cache instead of fetching"
+
+
+async def test_the_refreshed_value_replaces_the_old_one(redis) -> None:
+    provider = StubProvider(rate=Decimal("90"))
+    svc = FxService(providers=[provider], redis=redis)
+    await svc.get_rate("USD", "RUB")
+
+    provider._rate = Decimal("95")
+    await svc.refresh_all(AsyncMock(), base="USD", quotes=["RUB"])
+
+    assert (await svc.get_rate("USD", "RUB")).rate == Decimal("95")
