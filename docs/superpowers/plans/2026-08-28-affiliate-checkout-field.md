@@ -303,7 +303,33 @@ cd apps/web && pnpm build 2>&1 | tail -40
 cd ../miniapp && pnpm build 2>&1 | tail -20
 ```
 
-- [ ] **Step 2: Report the numbers**
+- [x] **Step 2: Report the numbers** — measured 2026-08-28, each against the
+      same tree with only this plan's commits removed:
+
+| Route                             | Before               | After          | Delta        | Budget                                     |
+| --------------------------------- | -------------------- | -------------- | ------------ | ------------------------------------------ |
+| web `/[locale]/store/[brandSlug]` | 150 kB First Load JS | 151 kB         | **+1 kB**    | 180 kB — under                             |
+| Mini App single bundle            | 222.31 kB gzip       | 223.30 kB gzip | **+0.99 kB** | 120 kB — **already ~2× over, before this** |
+
+The web checkout route is comfortably inside its budget, and `CLAUDE.md`'s
+recorded 189 kB (2026-08-26) no longer reproduces — it now measures 151 kB.
+Worth re-checking how that figure was taken before trusting either number.
+
+The Mini App has no route splitting at all: one 722 kB JS chunk, 223 kB
+gzipped, against a 120 kB budget. That is the pre-existing drift `CLAUDE.md`
+already records, and this field adds 1 kB to it. Splitting it is the separate
+piece of work the budget check is supposed to land after.
+
+**One thing to know about building web on the host:** `apps/web/.next` is
+bind-mounted into the dev container, so a host build corrupts the running
+`next dev` and every page 500s. Stop the container first, and afterwards
+`rm -rf apps/web/.next` and restart it.
+
+**And the first web build failed** with a 500 from the local API on
+`/catalog/products/mlbb-diamonds`, from a Redis read timeout — the build fires
+hundreds of prerender requests at the dev stack at once. A plain `curl` of the
+same path returned 200, and the retry succeeded. Transient dev-environment
+load, not a code failure, but expect it.
 
 State the before/after for the checkout routes plainly, including if they got worse. Do not add a CI check here — `CLAUDE.md` says to land that only after the Mini App split, or it blocks every PR.
 
@@ -317,7 +343,7 @@ State the before/after for the checkout routes plainly, including if they got wo
 - [ ] `pnpm tsc --noEmit` and `pnpm eslint src` clean in both.
 - [ ] All fifteen keys present in all six locale files.
 - [ ] `npx prettier --check .` clean on git-tracked files.
-- [ ] Bundle sizes for both checkout routes measured and reported.
+- [x] Bundle sizes for both checkout routes measured and reported.
 - [ ] A code applied on each surface visibly changes the pay button, and the order it creates carries the discount.
 - [ ] Nothing pushed or deployed.
 
