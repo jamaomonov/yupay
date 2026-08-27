@@ -194,7 +194,12 @@ export default async function StorePage({ params }: { params: Promise<{ locale: 
           items={allBrands.map((brand) => ({
             key: brand.slug,
             category: brand.category_slug,
-            node: <BrandTile brand={brand} locale={locale} className="h-[240px]" />,
+            // The key lives on the tile itself: `StoreFilter` renders it as the
+            // direct grid child, because `BrandTile` is an `<a>` and an `<a>`
+            // only gets its height once the grid blockifies it.
+            node: (
+              <BrandTile key={brand.slug} brand={brand} locale={locale} className="h-[240px]" />
+            ),
           }))}
         />
 

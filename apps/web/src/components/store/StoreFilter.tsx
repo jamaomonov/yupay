@@ -11,11 +11,21 @@ export interface StoreChip {
 }
 
 export interface StoreFilterItem {
-  /** Stable key — the brand slug. */
+  /** Stable key — the brand slug. Also set as the `key` on `node` itself. */
   key: string;
   /** Which chip shows this tile. */
   category: string;
-  /** The tile itself, already rendered on the server. */
+  /**
+   * The tile, already rendered on the server AND already carrying its React
+   * key. It is rendered as the direct grid child — never wrapped.
+   *
+   * `BrandTile` is a `<Link>`, so a `<a>`, and an `<a>` is `display: inline`
+   * by default: height simply does not apply to it. As a direct grid item the
+   * grid blockifies it and its `h-[240px]` takes effect. Wrapping it in a
+   * `<div>` — which an earlier version of this file did, purely to hang the
+   * key on — left the anchor inline, so the tile had no height, the `fill`
+   * image had nothing to fill, and every card collapsed into overlapping text.
+   */
   node: ReactNode;
 }
 
@@ -98,9 +108,7 @@ export function StoreFilter({
 
       {visible.length > 0 ? (
         <div className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {visible.map((item) => (
-            <div key={item.key}>{item.node}</div>
-          ))}
+          {visible.map((item) => item.node)}
         </div>
       ) : (
         <p className="text-tx-mute mt-10 text-base">{emptyLabel}</p>

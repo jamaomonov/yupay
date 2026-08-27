@@ -19,6 +19,18 @@ function supportsMarkdown(pathname: string): boolean {
   );
 }
 
+/**
+ * Is this a React Server Component payload request rather than a document?
+ *
+ * Next marks client-side navigation and prefetch with an `RSC` header, and
+ * carries a `_rsc` cache-buster in the query. Either is enough to identify it;
+ * both are checked because a header can be stripped by an intermediary and the
+ * query param can survive a redirect.
+ */
+function isFlightRequest(req: NextRequest): boolean {
+  return req.headers.has("rsc") || req.nextUrl.searchParams.has("_rsc");
+}
+
 export default function middleware(req: NextRequest): NextResponse {
   const { pathname } = req.nextUrl;
   const negotiable = supportsMarkdown(pathname);
@@ -56,6 +68,23 @@ export default function middleware(req: NextRequest): NextResponse {
   // cached HTML page to a Markdown request (or vice versa), without fragmenting
   // the cache of every other route.
   if (negotiable) res.headers.set("Vary", "Accept");
+
+  // A flight payload is not the document and must never be stored by a shared
+  // cache. Production served one AS the document for every visitor of /store:
+  // the edge had been told to ignore the query string — so that ad clicks
+  // carrying `?utm_source=…&fbclid=…` collapse into a single entry — and it
+  // duly filed the `?_rsc=` response under the key for the plain page. The
+  // whole storefront then answered with raw `text/x-component`.
+  //
+  // The edge rule is fixed too, but this is the half that does not depend on
+  // one dashboard setting staying right. `private` is the load-bearing word:
+  // browsers may still keep it, only shared caches must not. `no-store` costs
+  // little on top — Next's prefetch speed comes from its in-memory Router
+  // Cache, not from the HTTP cache.
+  if (isFlightRequest(req)) {
+    res.headers.set("Cache-Control", "private, no-store");
+  }
+
   return res;
 }
 
