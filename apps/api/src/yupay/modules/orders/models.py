@@ -42,6 +42,19 @@ class Order(Base):
     currency: Mapped[str] = mapped_column(String(8), nullable=False)
     total_usd: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
     total_charged: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
+    #: The affiliate code applied at checkout, if any. Kept for the receipt and
+    #: the order history; the money effect is already inside ``total_charged``.
+    affiliate_code_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("affiliate_codes.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    #: What the affiliate discount took off, in this order's currency.
+    #: NOT NULL DEFAULT 0 rather than nullable — every order without a code
+    #: genuinely had a zero discount, and a zero is easier to sum than a NULL.
+    discount_charged: Mapped[Decimal] = mapped_column(
+        Numeric(20, 6), nullable=False, server_default=text("0"), default=Decimal("0")
+    )
     fx_snapshot_id: Mapped[str | None] = mapped_column(
         UUID(as_uuid=False),
         ForeignKey("fx_snapshots.id", ondelete="RESTRICT"),
@@ -144,6 +157,15 @@ class OrderItem(Base):
     )
     qty: Mapped[int] = mapped_column(Integer, nullable=False)
     unit_price_usd: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
+    #: This line's share of the order's affiliate discount, in USD.
+    #:
+    #: The discount is an order-level number, but revenue and margin are
+    #: computed per line (``orders.revenue``). Distributing it down to here is
+    #: what lets those expressions subtract it once and make every report —
+    #: total, per brand, per product — correct without editing each one.
+    discount_usd: Mapped[Decimal] = mapped_column(
+        Numeric(20, 6), nullable=False, server_default=text("0"), default=Decimal("0")
+    )
     # What this line was priced at, frozen at checkout (ADR-0051). On a
     # variable-amount line ``unit_price_usd`` is only the face value the
     # customer chose; the markup that turned it into money lives in
