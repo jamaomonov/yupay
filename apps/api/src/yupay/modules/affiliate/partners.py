@@ -144,7 +144,11 @@ async def approve(
     partner.approved_at = now()
     await db.flush()
     log.info("affiliate.partner.approved", partner_id=partner.id)
-    return authjwt.mint_password_reset(sub=partner.id, settings=s)
+    # Annotated rather than returned bare: mypy skips analysing the auth
+    # package here, so the call reads as Any and returning it from a
+    # `-> str` function is an error. The annotation is the assertion.
+    token: str = authjwt.mint_password_reset(sub=partner.id, settings=s)
+    return token
 
 
 async def reject(
@@ -231,9 +235,7 @@ async def _open_session(
     )
     await db.flush()
     return PartnerTokens(
-        access_token=authjwt.mint_partner_access(
-            sub=partner.id, sid=session_id, settings=settings
-        ),
+        access_token=authjwt.mint_partner_access(sub=partner.id, sid=session_id, settings=settings),
         refresh_token=refresh,
         expires_in=settings.affiliate_access_ttl_seconds,
     )
@@ -314,9 +316,7 @@ async def logout(db: AsyncSession, *, refresh_token: str) -> None:
     logging out twice is not an error worth reporting."""
     session = (
         await db.execute(
-            select(AffiliateSession).where(
-                AffiliateSession.token_hash == hash_token(refresh_token)
-            )
+            select(AffiliateSession).where(AffiliateSession.token_hash == hash_token(refresh_token))
         )
     ).scalar_one_or_none()
     if session is not None and session.revoked_at is None:
