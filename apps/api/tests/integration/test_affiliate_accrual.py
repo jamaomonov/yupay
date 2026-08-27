@@ -232,3 +232,30 @@ async def test_accrual_skips_undelivered_unattributed_and_topups(
     await _seed_delivered_order(db_session, total_charged=Decimal("100000"), purpose="wallet_topup")
 
     assert await accrue_commissions(db_session, hold_days=14) == 0
+
+
+async def test_maturation_moves_pending_to_balance(db_session: AsyncSession) -> None:
+    """Past its hold date, commission becomes withdrawable — and 'withdrawable'
+    is the balance of ``partner_balance``, not a sum over the table."""
+    from sqlalchemy import select, update
+    from yupay.core.clock import now
+    from yupay.modules.affiliate.accrual import accrue_commissions, mature_commissions
+    from yupay.modules.affiliate.models import AffiliateCommission
+
+    _, partner_id, _ = await _seed_delivered_order(db_session, total_charged=Decimal("100000"))
+    assert await accrue_commissions(db_session, hold_days=14) == 1
+
+    # Nothing is due yet.
+    assert await mature_commissions(db_session) == 0
+
+    await db_session.execute(
+        update(AffiliateCommission).values(available_at=now() - timedelta(seconds=1))
+    )
+    assert await mature_commissions(db_session) == 1
+    assert await mature_commissions(db_session) == 0
+
+    row = (await db_session.execute(select(AffiliateCommission))).scalar_one()
+    assert row.status == "available"
+
+    assert await _partner_balance(db_session, partner_id, "partner_pending") == Decimal("0")
+    assert await _partner_balance(db_session, partner_id, "partner_balance") == Decimal("2000")

@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
-from yupay.modules.affiliate.ledger import commission_amount, post_accrual
+from yupay.modules.affiliate.ledger import commission_amount, post_accrual, post_maturation
 from yupay.modules.affiliate.models import (
     AffiliateAttribution,
     AffiliateCode,
@@ -109,4 +109,49 @@ async def accrue_commissions(db: AsyncSession, *, hold_days: int, limit: int = 5
     return accrued
 
 
-__all__ = ["accrue_commissions"]
+async def mature_commissions(db: AsyncSession, *, limit: int = 500) -> int:
+    """Release commissions whose hold period has expired.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        limit: Maximum rows handled in one pass.
+
+    Returns:
+        How many commissions became available.
+    """
+    moment = now()
+    rows = (
+        await db.execute(
+            select(AffiliateCommission)
+            .where(
+                AffiliateCommission.status == "pending",
+                AffiliateCommission.available_at <= moment,
+            )
+            .order_by(AffiliateCommission.available_at)
+            .limit(limit)
+            # Two overlapping passes must not both mature the same row. The
+            # deterministic idempotency key on the posting is the second line
+            # of defence; this is the first, and it lets the other pass get on
+            # with the rows it can have rather than blocking on ours.
+            .with_for_update(skip_locked=True)
+        )
+    ).scalars()
+
+    matured = 0
+    for commission in rows:
+        await post_maturation(
+            db,
+            commission_id=commission.id,
+            partner_id=commission.partner_id,
+            amount=commission.amount,
+            currency=commission.currency,
+        )
+        commission.status = "available"
+        matured += 1
+
+    if matured:
+        log.info("affiliate.accrual.matured", count=matured)
+    return matured
+
+
+__all__ = ["accrue_commissions", "mature_commissions"]

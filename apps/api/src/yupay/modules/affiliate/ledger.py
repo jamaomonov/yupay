@@ -103,4 +103,42 @@ async def post_accrual(
     )
 
 
-__all__ = ["commission_amount", "post_accrual"]
+async def post_maturation(
+    db: AsyncSession,
+    *,
+    commission_id: str,
+    partner_id: str,
+    amount: Decimal,
+    currency: str,
+) -> None:
+    """Release held commission: ``D partner_balance / C partner_pending``.
+
+    Both accounts belong to the partner, so this moves nothing in or out of the
+    business — it only changes what the partner is allowed to withdraw.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        commission_id: The row being released; also the idempotency key.
+        partner_id: Whose money it is.
+        amount: The commission, as accrued.
+        currency: The commission's currency.
+    """
+    pending = await _partner_account(
+        db, partner_id=partner_id, kind="partner_pending", currency=currency
+    )
+    balance = await _partner_account(
+        db, partner_id=partner_id, kind="partner_balance", currency=currency
+    )
+    await wallet_service.post(
+        db,
+        kind="affiliate.mature",
+        legs=[
+            wallet_service.Leg(account_id=balance, direction="D", amount=amount, currency=currency),
+            wallet_service.Leg(account_id=pending, direction="C", amount=amount, currency=currency),
+        ],
+        idempotency_key=f"affiliate.mature:{commission_id}",
+        actor="scheduler",
+    )
+
+
+__all__ = ["commission_amount", "post_accrual", "post_maturation"]
