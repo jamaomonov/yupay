@@ -18,7 +18,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import exists, select
+from sqlalchemy import Exists, exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.modules.affiliate.models import AffiliateAttribution, AffiliateCode, AffiliatePartner
@@ -85,6 +85,54 @@ def discount_amount(total: Decimal, percent: Decimal, currency: str) -> Decimal:
     return (total * percent / Decimal(100)).quantize(quantum, rounding=ROUND_HALF_UP)
 
 
+async def _buyer_rejection(
+    db: AsyncSession, *, user_id: str, partner: AffiliatePartner
+) -> DiscountRejection | None:
+    """Why this buyer may not use a code, or ``None`` if they may.
+
+    The three database checks are a list rather than a ladder of ``if``s so
+    their order is data: they run cheapest-first, and the reason code sits next
+    to the condition that produces it.
+
+    Args:
+        db: Session.
+        user_id: The signed-in buyer.
+        partner: The code's owner, already loaded.
+
+    Returns:
+        A :data:`DiscountRejection`, or ``None`` when nothing objects.
+    """
+    if partner.user_id is not None and partner.user_id == user_id:
+        return "own_code"
+
+    checks: tuple[tuple[DiscountRejection, Exists], ...] = (
+        ("already_used", exists().where(AffiliateAttribution.user_id == user_id)),
+        (
+            "not_first_order",
+            exists().where(
+                Order.user_id == user_id,
+                Order.purpose == "catalog",
+                Order.status.in_(_PAID_STATUSES),
+            ),
+        ),
+        # Narrows the race described in the spec: without this a buyer could
+        # open two orders carrying two different codes and pay both, taking two
+        # discounts against one attribution.
+        (
+            "pending_coded_order",
+            exists().where(
+                Order.user_id == user_id,
+                Order.affiliate_code_id.isnot(None),
+                Order.status.in_(_OPEN_STATUSES),
+            ),
+        ),
+    )
+    for reason, condition in checks:
+        if await db.scalar(select(condition)):
+            return reason
+    return None
+
+
 async def resolve_code(
     db: AsyncSession, *, code: str, user_id: str | None, purpose: str
 ) -> ResolvedDiscount | DiscountRejection:
@@ -118,38 +166,9 @@ async def resolve_code(
     if not affiliate_code.active or partner.status != "active":
         return "unknown"
 
-    if partner.user_id is not None and partner.user_id == user_id:
-        return "own_code"
-
-    if await db.scalar(select(exists().where(AffiliateAttribution.user_id == user_id))):
-        return "already_used"
-
-    has_paid_order = await db.scalar(
-        select(
-            exists().where(
-                Order.user_id == user_id,
-                Order.purpose == "catalog",
-                Order.status.in_(_PAID_STATUSES),
-            )
-        )
-    )
-    if has_paid_order:
-        return "not_first_order"
-
-    # Narrows the race described in the spec: without this a buyer could open
-    # two orders carrying two different codes and pay both, taking two
-    # discounts against one attribution.
-    has_open_coded_order = await db.scalar(
-        select(
-            exists().where(
-                Order.user_id == user_id,
-                Order.affiliate_code_id.isnot(None),
-                Order.status.in_(_OPEN_STATUSES),
-            )
-        )
-    )
-    if has_open_coded_order:
-        return "pending_coded_order"
+    rejection = await _buyer_rejection(db, user_id=user_id, partner=partner)
+    if rejection is not None:
+        return rejection
 
     return ResolvedDiscount(
         code_id=affiliate_code.id,
