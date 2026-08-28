@@ -183,3 +183,43 @@ async def test_a_code_can_be_retuned_and_switched_off(db_session: AsyncSession) 
 
     off = await admin.update_code(db_session, code_id=code.id, active=False)
     assert off.active is False
+
+
+async def test_a_reinvite_link_works_and_a_stale_one_stops(db_session: AsyncSession) -> None:
+    """For "the email never arrived", which is otherwise a database edit.
+
+    The reissued link must work; issuing it must not quietly invalidate the
+    original, because an admin who reissues while the partner is mid-signup
+    would break the very thing they were fixing.
+    """
+    from yupay.core.ids import new_id
+    from yupay.modules.affiliate import partners
+    from yupay.modules.affiliate.models import AffiliatePartner
+    from yupay.modules.affiliate.models import AffiliatePartner as P
+
+    partner = P(id=new_id(), email=f"p-{new_id()}@example.test", status="pending")
+    db_session.add(partner)
+    await db_session.flush()
+
+    first = await partners.approve(db_session, partner_id=partner.id)
+    second = await partners.reinvite(db_session, partner_id=partner.id)
+    assert second != first
+
+    await partners.set_password(db_session, token=second, password="a good password")
+    row = await db_session.get(AffiliatePartner, partner.id)
+    assert row is not None
+    assert row.password_hash is not None
+
+
+async def test_reinviting_a_suspended_partner_is_refused(db_session: AsyncSession) -> None:
+    """Issuing a login link for a switched-off account would be the wrong
+    repair — reinstating them is a separate, deliberate decision."""
+    from yupay.core.errors import ConflictError
+    from yupay.modules.affiliate import admin, partners
+
+    partner_id = await _partner(db_session, status="pending")
+    await partners.approve(db_session, partner_id=partner_id)
+    await admin.suspend_partner(db_session, partner_id=partner_id)
+
+    with pytest.raises(ConflictError):
+        await partners.reinvite(db_session, partner_id=partner_id)

@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, Header, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
+from yupay.core.config import get_settings
 from yupay.core.errors import NotFoundError, ValidationError
 from yupay.core.idempotency import IDEMPOTENCY_HEADER, MIN_IDEMPOTENCY_KEY_LENGTH
 from yupay.modules.admin.api import require_admin
@@ -50,6 +51,7 @@ from yupay.modules.affiliate.schemas import (
     PreviewOut,
     ProfileOut,
     RefreshIn,
+    ReinviteOut,
     RejectIn,
     SetPasswordIn,
     StatsOut,
@@ -365,6 +367,30 @@ async def admin_reject(
     if row is None:  # pragma: no cover -- reject() would have raised
         raise NotFoundError("partner not found")
     return _partner_out(row)
+
+
+@admin_router.post(
+    "/partners/{partner_id}/reinvite",
+    response_model=ReinviteOut,
+    summary="Re-issue a partner's set-password link",
+)
+async def admin_reinvite(
+    partner_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> ReinviteOut:
+    """For "they never got the email".
+
+    The link comes back in the response as well as going out by mail, so an
+    admin can deliver it by hand. Not an escalation: this admin can already
+    suspend the partner and send their balance to any card.
+    """
+    token = await partners.reinvite(db, partner_id=partner_id)
+    row = await db.get(AffiliatePartner, partner_id)
+    if row is None:  # pragma: no cover -- reinvite() would have raised
+        raise NotFoundError("partner not found")
+    emailed = await send_partner_invite(email=row.email, token=token)
+    base = get_settings().partners_base_url.rstrip("/")
+    return ReinviteOut(link=f"{base}/set-password?token={token}", emailed=emailed)
 
 
 @admin_router.get(

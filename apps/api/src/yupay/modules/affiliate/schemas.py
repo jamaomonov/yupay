@@ -288,6 +288,18 @@ class AdminPayoutListOut(BaseModel):
     items: list[AdminPayoutOut]
 
 
+class ReinviteOut(BaseModel):
+    """A fresh set-password link, handed to the admin who asked for it.
+
+    Returned rather than only emailed so an admin can pass it on over whatever
+    channel actually reaches the partner — the case this exists for is "the
+    email never arrived".
+    """
+
+    link: str
+    emailed: bool
+
+
 __all__ = [
     "AdminPartnerListOut",
     "AdminPartnerOut",
@@ -309,6 +321,7 @@ __all__ = [
     "PreviewOut",
     "ProfileOut",
     "RefreshIn",
+    "ReinviteOut",
     "RejectIn",
     "SetPasswordIn",
     "StatsOut",

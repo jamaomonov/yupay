@@ -11,6 +11,10 @@ import { pathFor } from "@/lib/seo";
 /** Public social channels. Instagram handle yupay.app, Telegram channel
  * yupay_channel (distinct from the @yupay_support contact above). Full-colour
  * brand marks live in public/social. */
+/** The affiliate site. Its own host, and configurable so a staging storefront
+ *  does not link visitors at production. */
+const PARTNERS_URL = process.env.NEXT_PUBLIC_PARTNERS_URL ?? "https://partners.yupay.uz";
+
 const SOCIALS = [
   { href: "https://instagram.com/yupay.app", label: "Instagram", src: "/social/instagram.svg" },
   { href: "https://t.me/yupay_channel", label: "Telegram", src: "/social/telegram.svg" },
@@ -70,6 +74,12 @@ export async function Footer({ locale }: { locale: string }) {
             <FooterLink href={pathFor(locale, "/store")}>{nav("store")}</FooterLink>
             <FooterLink href={pathFor(locale, "/store")}>{t("prices")}</FooterLink>
             <FooterLink href={`${pathFor(locale)}#how`}>{nav("how")}</FooterLink>
+            {/* Its own domain, so `external` — otherwise Next would treat it as
+                an in-app route and prefetch a page that is not part of this
+                build. */}
+            <FooterLink href={PARTNERS_URL} external>
+              {t("partners")}
+            </FooterLink>
           </FooterCol>
 
           <FooterCol title={t("helpTitle")}>

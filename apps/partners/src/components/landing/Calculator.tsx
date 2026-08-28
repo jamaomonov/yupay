@@ -79,7 +79,10 @@ export function Calculator() {
 
         <div className="border-border-2 bg-card-2 rounded-xl border p-6 lg:w-72">
           <span className="text-tx-mute text-[13px]">{t("result")}</span>
-          <p className="font-display text-primary mt-2 break-words text-3xl font-bold leading-tight sm:text-4xl">
+          <p
+            data-testid="calc-result"
+            className="font-display text-primary mt-2 break-words text-3xl font-bold leading-tight sm:text-4xl"
+          >
             {formatUzs(result.earnedUzs)}
           </p>
           <p className="text-tx-dim mt-5 text-[12px] leading-relaxed">{t("note")}</p>

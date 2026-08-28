@@ -153,6 +153,41 @@ async def approve(
     return token
 
 
+async def reinvite(
+    db: AsyncSession,
+    *,
+    partner_id: str,
+    settings: Settings | None = None,
+) -> str:
+    """Mint a fresh set-password link for a partner who already has one.
+
+    The real case is "they say the email never arrived". Without this the only
+    recovery is a database edit.
+
+    The link is returned to the **admin**, not only emailed, so they can pass
+    it on over whatever channel actually reaches the partner. That is not an
+    escalation: an admin can already suspend this partner and send their
+    balance to any card, so the partner panel grants strictly less power over
+    that account than the admin panel already does.
+
+    Raises:
+        NotFoundError: No such partner.
+        ConflictError: The partner is not active — a pending application needs
+            approving and a suspended one needs reinstating, and issuing a
+            login link for either would be the wrong repair.
+    """
+    s = _settings(settings)
+    partner = await db.get(AffiliatePartner, partner_id)
+    if partner is None:
+        raise NotFoundError("partner not found")
+    if partner.status != _LOGIN_ALLOWED:
+        raise ConflictError(f"partner is {partner.status}, not active")
+
+    log.info("affiliate.partner.reinvited", partner_id=partner_id)
+    token: str = authjwt.mint_password_reset(sub=partner.id, settings=s)
+    return token
+
+
 async def reject(
     db: AsyncSession,
     *,
@@ -375,6 +410,7 @@ __all__ = [
     "approve",
     "login",
     "logout",
+    "reinvite",
     "reject",
     "resolve_partner",
     "rotate",
