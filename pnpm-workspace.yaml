@@ -2,5 +2,6 @@ packages:
   - "apps/web"
   - "apps/miniapp"
   - "apps/admin"
+  - "apps/partners"
   - "packages/*"
   - "e2e"
