@@ -54,6 +54,23 @@ async def _login(client: AsyncClient, tg_id: int) -> str:
     return str(r.json()["access_token"])
 
 
+async def _grant_admin(db: AsyncSession, tg_id: int) -> None:
+    """Give a Telegram-linked user the admin role."""
+    from yupay.modules.users.models import User as UserModel
+
+    user_id = (
+        await db.execute(
+            select(UserModel.id)
+            .join(TelegramLink, TelegramLink.user_id == UserModel.id)
+            .where(TelegramLink.tg_user_id == tg_id)
+        )
+    ).scalar_one()
+    user = await db.get(UserModel, user_id)
+    assert user is not None
+    user.roles = ["admin"]
+    await db.flush()
+
+
 async def _seed_sku(db: AsyncSession, *, price_usd: str) -> str:
     cat = Category(id=new_id(), slug=f"c-{new_id()[:8]}", sort_order=0, active=True)
     cat.translations = [CategoryTranslation(locale="ru", name="Игры")]
@@ -361,3 +378,272 @@ async def test_a_partner_signs_in_and_reads_their_own_panel(
     # how many zeros Decimal chose to print.
     assert Decimal(balance.json()["available"]) == Decimal("0")
     assert balance.json()["currency"] == "UZS"
+
+
+ADMIN_PREFIX = "/api/v1/admin/affiliate"
+
+
+async def test_every_admin_route_refuses_a_non_admin(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Enumerated from the live app, not from a list.
+
+    A route added to the admin router later without `require_admin` would pass
+    a list-driven test by not being in the list.
+    """
+    from yupay.bootstrap import create_app
+
+    app = create_app()
+    admin_paths = {
+        route.path for route in app.routes if getattr(route, "path", "").startswith(ADMIN_PREFIX)
+    }
+    assert admin_paths, "no admin routes found — the enumeration is wrong"
+
+    buyer = await _login(integration_client, tg_id=903_001)
+    for path in sorted(admin_paths):
+        # Path params are irrelevant here: authorization runs before the
+        # handler, so a bogus id still proves the gate.
+        concrete = (
+            path.replace("{partner_id}", "x").replace("{payout_id}", "x").replace("{code_id}", "x")
+        )
+        for method in ("GET", "POST", "PATCH"):
+            anon = await integration_client.request(method, concrete)
+            assert anon.status_code != 200, f"{method} {concrete} answered an anonymous caller"
+
+            as_buyer = await integration_client.request(
+                method, concrete, headers={"Authorization": f"Bearer {buyer}"}
+            )
+            assert as_buyer.status_code != 200, f"{method} {concrete} answered a plain buyer"
+
+
+async def test_the_payout_queue_never_carries_a_full_card_number(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The whole reason the detail view is a separate endpoint.
+
+    An admin has the queue open all day and may screenshot it; the full number
+    belongs behind a deliberate second click, not in the list.
+    """
+    from decimal import Decimal
+
+    from yupay.core.clock import now
+    from yupay.core.ids import new_id
+    from yupay.modules.affiliate.models import AffiliatePartner, AffiliatePayout
+
+    card = "8600444455556666"
+    partner = AffiliatePartner(id=new_id(), email=f"p-{new_id()}@example.test", status="active")
+    db_session.add(partner)
+    await db_session.flush()
+    payout = AffiliatePayout(
+        id=new_id(),
+        partner_id=partner.id,
+        amount=Decimal("100000"),
+        currency="UZS",
+        card_number=card,
+        card_holder="QUEUE TEST",
+        status="requested",
+        created_at=now(),
+    )
+    db_session.add(payout)
+    await db_session.flush()
+    await db_session.commit()
+
+    token = await _login(integration_client, tg_id=903_002)
+    await _grant_admin(db_session, 903_002)
+    await db_session.commit()
+    admin_token = await _login(integration_client, tg_id=903_002)
+    auth = {"Authorization": f"Bearer {admin_token}"}
+    assert token != ""
+
+    queue = await integration_client.get(f"{ADMIN_PREFIX}/payouts", headers=auth)
+    assert queue.status_code == 200, queue.text
+    assert card not in queue.text
+    assert card[-4:] in queue.text
+
+    detail = await integration_client.get(f"{ADMIN_PREFIX}/payouts/{payout.id}", headers=auth)
+    assert detail.status_code == 200, detail.text
+    # The one place it is allowed to appear: the admin is about to type it into
+    # a banking app.
+    assert detail.json()["card_number"] == card
+
+
+async def _admin_auth(client: AsyncClient, db: AsyncSession, tg_id: int) -> dict[str, str]:
+    """Sign in and become an admin. Returns the Authorization header."""
+    await _login(client, tg_id=tg_id)
+    await _grant_admin(db, tg_id)
+    await db.commit()
+    token = await _login(client, tg_id=tg_id)
+    return {"Authorization": f"Bearer {token}"}
+
+
+async def test_an_admin_runs_the_whole_programme_over_http(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Application to paid partner, through the API a person actually uses.
+
+    The step this proves is the one the whole feature was missing: none of it
+    needs a shell any more.
+    """
+    from decimal import Decimal
+
+    from yupay.core.clock import now
+    from yupay.core.ids import new_id
+    from yupay.modules.affiliate.models import AffiliatePartner, AffiliatePayout
+
+    auth = await _admin_auth(integration_client, db_session, 904_001)
+
+    # 1. Someone applies.
+    applied = await integration_client.post(
+        "/api/v1/affiliate/applications",
+        json={"email": "runme@example.com", "display_name": "Run Me"},
+    )
+    assert applied.status_code == 202, applied.text
+
+    queue = await integration_client.get(f"{ADMIN_PREFIX}/applications", headers=auth)
+    assert queue.status_code == 200, queue.text
+    pending = [p for p in queue.json()["items"] if p["email"] == "runme@example.com"]
+    assert len(pending) == 1
+    partner_id = pending[0]["id"]
+
+    # 2. The admin approves. The email send is best-effort and must not be able
+    #    to fail the approval.
+    approved = await integration_client.post(
+        f"{ADMIN_PREFIX}/applications/{partner_id}/approve", headers=auth
+    )
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["status"] == "active"
+
+    # 3. And issues a code.
+    issued = await integration_client.post(
+        f"{ADMIN_PREFIX}/partners/{partner_id}/codes",
+        headers=auth,
+        json={"code": "runme7", "discount_percent": "7", "commission_percent": "2"},
+    )
+    assert issued.status_code == 201, issued.text
+    assert issued.json()["code"] == "RUNME7"
+    code_id = issued.json()["id"]
+
+    # 4. Retunes it, then switches it off.
+    retuned = await integration_client.patch(
+        f"{ADMIN_PREFIX}/codes/{code_id}", headers=auth, json={"discount_percent": "9"}
+    )
+    assert retuned.status_code == 200, retuned.text
+    # Compared as a number: how many trailing zeros a Numeric column
+    # serialises with is not part of the contract.
+    assert Decimal(retuned.json()["discount_percent"]) == Decimal("9")
+
+    off = await integration_client.patch(
+        f"{ADMIN_PREFIX}/codes/{code_id}", headers=auth, json={"active": False}
+    )
+    assert off.status_code == 200, off.text
+    assert off.json()["active"] is False
+
+    # 5. A payout arrives and is settled.
+    payout = AffiliatePayout(
+        id=new_id(),
+        partner_id=partner_id,
+        amount=Decimal("100000"),
+        currency="UZS",
+        card_number="8600777788889999",
+        card_holder="RUN ME",
+        status="requested",
+        created_at=now(),
+    )
+    db_session.add(payout)
+    await db_session.flush()
+    await db_session.commit()
+
+    paid = await integration_client.post(
+        f"{ADMIN_PREFIX}/payouts/{payout.id}/paid", headers=auth, json={"note": "sent"}
+    )
+    assert paid.status_code == 200, paid.text
+    assert paid.json()["status"] == "paid"
+
+    # 6. And the partner is switched off.
+    suspended = await integration_client.post(
+        f"{ADMIN_PREFIX}/partners/{partner_id}/suspend", headers=auth
+    )
+    assert suspended.status_code == 200, suspended.text
+    assert suspended.json()["status"] == "suspended"
+
+    partner = await db_session.get(AffiliatePartner, partner_id)
+    assert partner is not None
+
+
+async def test_an_application_can_be_turned_down_with_a_note(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    auth = await _admin_auth(integration_client, db_session, 904_002)
+
+    await integration_client.post(
+        "/api/v1/affiliate/applications", json={"email": "nope@example.com"}
+    )
+    queue = await integration_client.get(f"{ADMIN_PREFIX}/applications", headers=auth)
+    partner_id = next(p["id"] for p in queue.json()["items"] if p["email"] == "nope@example.com")
+
+    rejected = await integration_client.post(
+        f"{ADMIN_PREFIX}/applications/{partner_id}/reject",
+        headers=auth,
+        json={"note": "audience does not match"},
+    )
+    assert rejected.status_code == 200, rejected.text
+    assert rejected.json()["status"] == "rejected"
+    assert rejected.json()["admin_note"] == "audience does not match"
+
+
+async def test_a_rate_outside_the_range_is_refused_by_the_endpoint(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The admin sees the range, not a constraint name."""
+    auth = await _admin_auth(integration_client, db_session, 904_003)
+
+    await integration_client.post(
+        "/api/v1/affiliate/applications", json={"email": "rates@example.com"}
+    )
+    queue = await integration_client.get(f"{ADMIN_PREFIX}/applications", headers=auth)
+    partner_id = next(p["id"] for p in queue.json()["items"] if p["email"] == "rates@example.com")
+    await integration_client.post(f"{ADMIN_PREFIX}/applications/{partner_id}/approve", headers=auth)
+
+    bad = await integration_client.post(
+        f"{ADMIN_PREFIX}/partners/{partner_id}/codes",
+        headers=auth,
+        json={"code": "TOOMUCH", "discount_percent": "15", "commission_percent": "2"},
+    )
+    assert bad.status_code == 422, bad.text
+    assert "10" in bad.text
+
+
+async def test_rejecting_a_payout_returns_the_money_over_http(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    from decimal import Decimal
+
+    from yupay.core.clock import now
+    from yupay.core.ids import new_id
+    from yupay.modules.affiliate.models import AffiliatePartner, AffiliatePayout
+
+    auth = await _admin_auth(integration_client, db_session, 904_004)
+
+    partner = AffiliatePartner(id=new_id(), email=f"p-{new_id()}@example.test", status="active")
+    db_session.add(partner)
+    await db_session.flush()
+    payout = AffiliatePayout(
+        id=new_id(),
+        partner_id=partner.id,
+        amount=Decimal("100000"),
+        currency="UZS",
+        card_number="8600111100002222",
+        card_holder="REFUND ME",
+        status="requested",
+        created_at=now(),
+    )
+    db_session.add(payout)
+    await db_session.flush()
+    await db_session.commit()
+
+    rejected = await integration_client.post(
+        f"{ADMIN_PREFIX}/payouts/{payout.id}/reject", headers=auth, json={"note": "bad card"}
+    )
+    assert rejected.status_code == 200, rejected.text
+    assert rejected.json()["status"] == "rejected"
+    assert rejected.json()["card_last4"] == "2222"

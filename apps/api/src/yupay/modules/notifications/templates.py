@@ -214,6 +214,42 @@ def password_reset_email(*, link: str) -> EmailContent:
     )
 
 
+def partner_invite_email(*, link: str) -> EmailContent:
+    """Approval notice for a new affiliate partner, with the set-password link.
+
+    Says what happens next and how long the link lasts, because a partner who
+    opens it after it expires has no way to tell whether they were rejected or
+    simply late.
+    """
+    body = (
+        _paragraph(
+            "Ваша заявка в партнёрскую программу YuPay одобрена. Нажмите кнопку ниже, "
+            "чтобы задать пароль и войти в панель. Ссылка действует 30 минут — если не "
+            "успеете, напишите нам, и мы пришлём новую."
+        )
+        + _button(href=link, label="Задать пароль")
+        + _fallback_link(link)
+        + _paragraph(
+            f'<span style="font-size:13px;color:{_MUTED};">В панели вы найдёте свой '
+            "промокод, статистику и баланс.</span>"
+        )
+    )
+    return EmailContent(
+        subject="Заявка одобрена — партнёрская программа YuPay",
+        html=_layout(
+            preheader="Задайте пароль и войдите в партнёрскую панель.",
+            heading="Добро пожаловать в программу",
+            body_html=body,
+        ),
+        text=(
+            "Заявка одобрена — партнёрская программа YuPay\n\n"
+            "Задайте пароль и войдите в панель. Ссылка действует 30 минут:\n"
+            f"{link}\n\n"
+            "Если ссылка устарела — напишите нам, пришлём новую.\n"
+        ),
+    )
+
+
 def order_confirmation_email(*, order_id: str, link: str) -> EmailContent:
     """Order-created confirmation for guest buyers."""
     short = order_id[:8]
@@ -363,6 +399,7 @@ __all__ = [
     "EmailContent",
     "order_confirmation_email",
     "order_delivered_email",
+    "partner_invite_email",
     "password_reset_email",
     "verify_email_email",
 ]

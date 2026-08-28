@@ -220,13 +220,87 @@ class PayoutListOut(BaseModel):
     items: list[PayoutOut]
 
 
+class AdminPartnerOut(BaseModel):
+    """A partner as an admin sees them: the internal note included."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    email: str
+    display_name: str | None
+    contact: str | None
+    channel: str | None
+    status: str
+    admin_note: str | None
+    created_at: datetime
+    approved_at: datetime | None
+
+
+class AdminPartnerListOut(BaseModel):
+    items: list[AdminPartnerOut]
+
+
+class RejectIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    note: str | None = Field(default=None, max_length=1024)
+
+
+class IssueCodeIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str = Field(min_length=4, max_length=32)
+    discount_percent: Decimal
+    commission_percent: Decimal
+
+
+class UpdateCodeIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    discount_percent: Decimal | None = None
+    commission_percent: Decimal | None = None
+    active: bool | None = None
+
+
+class AdminPayoutOut(PayoutOut):
+    """The queue view. Inherits the masking from :class:`PayoutOut` on purpose.
+
+    An admin stares at this list all day and may screenshot it; the full number
+    is reachable through the detail endpoint, which is opened deliberately when
+    a transfer is about to be made.
+    """
+
+    partner_id: str
+    partner_email: str
+
+
+class AdminPayoutDetailOut(AdminPayoutOut):
+    """The one shape anywhere in the system carrying an unmasked card.
+
+    Served by a single endpoint, because the admin making the transfer is
+    typing this number into a banking app and nobody else needs it.
+    """
+
+    card_number: str
+
+
+class AdminPayoutListOut(BaseModel):
+    items: list[AdminPayoutOut]
+
+
 __all__ = [
+    "AdminPartnerListOut",
+    "AdminPartnerOut",
+    "AdminPayoutDetailOut",
+    "AdminPayoutListOut",
+    "AdminPayoutOut",
     "ApplicationIn",
     "ApplicationOut",
     "BalanceOut",
     "CodeOut",
     "CommissionListOut",
     "CommissionOut",
+    "IssueCodeIn",
     "LoginIn",
     "PayoutListOut",
     "PayoutOut",
@@ -235,7 +309,9 @@ __all__ = [
     "PreviewOut",
     "ProfileOut",
     "RefreshIn",
+    "RejectIn",
     "SetPasswordIn",
     "StatsOut",
     "TokensOut",
+    "UpdateCodeIn",
 ]

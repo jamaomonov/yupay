@@ -16,8 +16,10 @@ from fastapi import APIRouter, Depends, Header, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
-from yupay.core.errors import ValidationError
+from yupay.core.errors import NotFoundError, ValidationError
 from yupay.core.idempotency import IDEMPOTENCY_HEADER, MIN_IDEMPOTENCY_KEY_LENGTH
+from yupay.modules.admin.api import require_admin
+from yupay.modules.affiliate import admin as affiliate_admin
 from yupay.modules.affiliate import panel, partners, payouts
 from yupay.modules.affiliate.deps import current_partner
 from yupay.modules.affiliate.discount import (
@@ -25,14 +27,21 @@ from yupay.modules.affiliate.discount import (
     discount_amount,
     resolve_code,
 )
-from yupay.modules.affiliate.models import AffiliatePartner
+from yupay.modules.affiliate.models import AffiliatePartner, AffiliatePayout
+from yupay.modules.affiliate.partners import send_partner_invite
 from yupay.modules.affiliate.schemas import (
+    AdminPartnerListOut,
+    AdminPartnerOut,
+    AdminPayoutDetailOut,
+    AdminPayoutListOut,
+    AdminPayoutOut,
     ApplicationIn,
     ApplicationOut,
     BalanceOut,
     CodeOut,
     CommissionListOut,
     CommissionOut,
+    IssueCodeIn,
     LoginIn,
     PayoutListOut,
     PayoutOut,
@@ -41,9 +50,11 @@ from yupay.modules.affiliate.schemas import (
     PreviewOut,
     ProfileOut,
     RefreshIn,
+    RejectIn,
     SetPasswordIn,
     StatsOut,
     TokensOut,
+    UpdateCodeIn,
 )
 from yupay.modules.auth.deps import current_user
 from yupay.modules.auth.ip_guard import guard_ip
@@ -103,9 +114,6 @@ async def preview(
         total_after=quote.total_charged - discount,
         discount=discount,
     )
-
-
-__all__ = ["router"]
 
 
 @router.post(
@@ -292,3 +300,208 @@ async def request_payout(
         card_holder=body.card_holder,
     )
     return PayoutOut.from_row(row)
+
+
+admin_router = APIRouter(
+    prefix="/admin/affiliate",
+    tags=["admin:affiliate"],
+    dependencies=[Depends(require_admin)],
+)
+
+
+def _partner_out(row: AffiliatePartner) -> AdminPartnerOut:
+    return AdminPartnerOut.model_validate(row)
+
+
+@admin_router.get(
+    "/applications",
+    response_model=AdminPartnerListOut,
+    summary="The application queue",
+)
+async def admin_applications(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    status_filter: str = "pending",
+) -> AdminPartnerListOut:
+    rows = await affiliate_admin.list_applications(db, status=status_filter)
+    return AdminPartnerListOut(items=[_partner_out(r) for r in rows])
+
+
+@admin_router.post(
+    "/applications/{partner_id}/approve",
+    response_model=AdminPartnerOut,
+    summary="Approve an application and email the set-password link",
+)
+async def admin_approve(
+    partner_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> AdminPartnerOut:
+    """Approve, then send the link.
+
+    The send is deliberately **after** the approval and its failure is
+    swallowed: an approved partner with an undelivered email is recoverable by
+    re-sending, while an approval rolled back because the mail provider was
+    down is not, and leaves an applicant waiting on silence.
+    """
+    token = await partners.approve(db, partner_id=partner_id)
+    row = await db.get(AffiliatePartner, partner_id)
+    if row is None:  # pragma: no cover -- approve() would have raised
+        raise NotFoundError("partner not found")
+    await send_partner_invite(email=row.email, token=token)
+    return _partner_out(row)
+
+
+@admin_router.post(
+    "/applications/{partner_id}/reject",
+    response_model=AdminPartnerOut,
+    summary="Turn an application down",
+)
+async def admin_reject(
+    partner_id: str,
+    body: RejectIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> AdminPartnerOut:
+    await partners.reject(db, partner_id=partner_id, note=body.note)
+    row = await db.get(AffiliatePartner, partner_id)
+    if row is None:  # pragma: no cover -- reject() would have raised
+        raise NotFoundError("partner not found")
+    return _partner_out(row)
+
+
+@admin_router.get(
+    "/partners", response_model=AdminPartnerListOut, summary="Everyone in the programme"
+)
+async def admin_partners(
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> AdminPartnerListOut:
+    rows = await affiliate_admin.list_partners(db)
+    return AdminPartnerListOut(items=[_partner_out(r) for r in rows])
+
+
+@admin_router.post(
+    "/partners/{partner_id}/codes",
+    response_model=CodeOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Issue a code",
+)
+async def admin_issue_code(
+    partner_id: str,
+    body: IssueCodeIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> CodeOut:
+    code = await affiliate_admin.issue_code(
+        db,
+        partner_id=partner_id,
+        code=body.code,
+        discount_percent=body.discount_percent,
+        commission_percent=body.commission_percent,
+    )
+    return CodeOut.model_validate(code)
+
+
+@admin_router.patch("/codes/{code_id}", response_model=CodeOut, summary="Retune or disable a code")
+async def admin_update_code(
+    code_id: str,
+    body: UpdateCodeIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> CodeOut:
+    code = await affiliate_admin.update_code(
+        db,
+        code_id=code_id,
+        discount_percent=body.discount_percent,
+        commission_percent=body.commission_percent,
+        active=body.active,
+    )
+    return CodeOut.model_validate(code)
+
+
+@admin_router.post(
+    "/partners/{partner_id}/suspend",
+    response_model=AdminPartnerOut,
+    summary="Switch a partner off",
+)
+async def admin_suspend(
+    partner_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> AdminPartnerOut:
+    """Stops their code working and signs them out. Their accrued commission
+    is untouched — suspension is not confiscation."""
+    await affiliate_admin.suspend_partner(db, partner_id=partner_id)
+    row = await db.get(AffiliatePartner, partner_id)
+    if row is None:  # pragma: no cover -- suspend_partner() would have raised
+        raise NotFoundError("partner not found")
+    return _partner_out(row)
+
+
+async def _payout_out(db: AsyncSession, row: AffiliatePayout) -> AdminPayoutOut:
+    partner = await db.get(AffiliatePartner, row.partner_id)
+    base = PayoutOut.from_row(row)
+    return AdminPayoutOut(
+        **base.model_dump(),
+        partner_id=row.partner_id,
+        partner_email=partner.email if partner else "",
+    )
+
+
+@admin_router.get(
+    "/payouts", response_model=AdminPayoutListOut, summary="The withdrawal queue (card masked)"
+)
+async def admin_payouts(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    status_filter: str | None = None,
+) -> AdminPayoutListOut:
+    """Masked on purpose. This is the screen an admin has open all day; the
+    full number lives behind the detail endpoint below."""
+    rows = await affiliate_admin.list_payouts(db, status=status_filter)
+    return AdminPayoutListOut(items=[await _payout_out(db, r) for r in rows])
+
+
+@admin_router.get(
+    "/payouts/{payout_id}",
+    response_model=AdminPayoutDetailOut,
+    summary="One withdrawal, card unmasked",
+)
+async def admin_payout_detail(
+    payout_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> AdminPayoutDetailOut:
+    """The only response anywhere carrying a full card number.
+
+    A single deliberate door rather than a field on the queue: the admin opens
+    this when they are about to type the number into a banking app.
+    """
+    row = await affiliate_admin.get_payout(db, payout_id=payout_id)
+    masked = await _payout_out(db, row)
+    return AdminPayoutDetailOut(**masked.model_dump(), card_number=row.card_number)
+
+
+@admin_router.post(
+    "/payouts/{payout_id}/paid",
+    response_model=AdminPayoutOut,
+    summary="Record that the transfer happened",
+)
+async def admin_mark_paid(
+    payout_id: str,
+    body: RejectIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> AdminPayoutOut:
+    """The only irreversible action in the programme — rejecting returns the
+    money, but 'paid' asserts a transfer happened and has no undo."""
+    await payouts.mark_paid(db, payout_id=payout_id, note=body.note)
+    return await _payout_out(db, await affiliate_admin.get_payout(db, payout_id=payout_id))
+
+
+@admin_router.post(
+    "/payouts/{payout_id}/reject",
+    response_model=AdminPayoutOut,
+    summary="Refuse a request and return the money",
+)
+async def admin_reject_payout(
+    payout_id: str,
+    body: RejectIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> AdminPayoutOut:
+    await payouts.reject_payout(db, payout_id=payout_id, note=body.note)
+    return await _payout_out(db, await affiliate_admin.get_payout(db, payout_id=payout_id))
+
+
+__all__ = ["admin_router", "router"]

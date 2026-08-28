@@ -133,6 +133,9 @@ class Settings(BaseSettings):
     #: a partner session guards money going out rather than money coming in.
     affiliate_access_ttl_seconds: int = Field(default=900)  # 15 min
     affiliate_refresh_ttl_seconds: int = Field(default=60 * 60 * 24 * 30)  # 30 days
+    #: Where the partner site lives. The approval email links into it, so an
+    #: empty value would send a partner a href that goes nowhere.
+    partners_base_url: str = Field(default="https://partners.yupay.uz")
 
     jwt_ws_ttl_seconds: int = Field(default=60)  # 60 s for WS handshake
     jwt_email_token_ttl_seconds: int = Field(default=60 * 30)  # 30 min for verify/reset links

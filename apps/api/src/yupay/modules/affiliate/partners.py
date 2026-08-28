@@ -46,6 +46,8 @@ from yupay.modules.auth.security import (
     new_refresh_token,
     verify_password,
 )
+from yupay.modules.notifications.channels.email import EmailSendError, send_email
+from yupay.modules.notifications.templates import partner_invite_email
 
 log = get_logger("yupay.affiliate.partners")
 
@@ -376,6 +378,34 @@ __all__ = [
     "reject",
     "resolve_partner",
     "rotate",
+    "send_partner_invite",
     "set_password",
     "submit_application",
 ]
+
+
+async def send_partner_invite(*, email: str, token: str, settings: Settings | None = None) -> bool:
+    """Email an approved partner their set-password link.
+
+    Returns ``False`` rather than raising when the send fails. The caller has
+    already approved the partner, and an approval rolled back because a mail
+    provider was down leaves an applicant waiting on silence — while an
+    approved partner with an undelivered email is fixed by re-sending.
+
+    Args:
+        email: Where to send it. Not logged.
+        token: The one-time link's token.
+        settings: Overrides the process settings; for tests.
+
+    Returns:
+        Whether the message was accepted for delivery.
+    """
+    s = _settings(settings)
+    base = s.partners_base_url.rstrip("/")
+    content = partner_invite_email(link=f"{base}/set-password?token={token}")
+    try:
+        await send_email(to=email, subject=content.subject, html=content.html, text=content.text)
+    except EmailSendError:
+        log.warning("affiliate.invite.send_failed")
+        return False
+    return True
