@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
+import { ApiError, apiFetch } from "@/lib/client";
 import { formatUzs } from "@/lib/seo";
 
 /**
@@ -23,8 +24,6 @@ import { formatUzs } from "@/lib/seo";
  * not be able to stop a sale.
  */
 
-const API = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-
 /** Server rejection reasons mapped to their own sentence. An unlisted reason —
  *  one the server learned before this component did — falls through to the
  *  generic message rather than rendering an empty box. */
@@ -35,6 +34,13 @@ const REASON_KEYS: Record<string, string> = {
   own_code: "promoErrOwnCode",
   pending_coded_order: "promoErrPending",
 };
+
+/** "10.00" → "10". The API returns percentages from a Numeric(5,2) column, and
+ *  "Скидка 10.00%" reads like a rounding artefact rather than a round number. */
+function tidyPercent(raw: string): string {
+  const n = Number(raw);
+  return Number.isFinite(n) ? String(n) : raw;
+}
 
 export interface PromoCartItem {
   sku_id: string;
@@ -97,19 +103,14 @@ export function PromoField({ locale, items, currency, isLoggedIn, onChange }: Pr
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`${API}/api/v1/affiliate/preview`, {
+      // Through `apiFetch`, not a raw `fetch`. It attaches the access token
+      // and refreshes it once on a 401 — written with a bare fetch, this
+      // endpoint (which is signed-in only) answered 401 for every buyer and
+      // the field showed "could not check" to people whose code was fine.
+      const body = await apiFetch<PreviewResponse>("/affiliate/preview", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Accept-Language": locale },
-        credentials: "include",
-        body: JSON.stringify({ code: typed, currency, items }),
+        body: { code: typed, currency, items },
       });
-      if (!res.ok) {
-        setError("promoErrGeneric");
-        onChange(null);
-        return;
-      }
-      // Known shape: the response model of POST /affiliate/preview.
-      const body = (await res.json()) as PreviewResponse;
       if (!body.applicable || !body.code || !body.percent) {
         setError(REASON_KEYS[body.reason ?? ""] ?? "promoErrGeneric");
         onChange(null);
@@ -124,10 +125,12 @@ export function PromoField({ locale, items, currency, isLoggedIn, onChange }: Pr
       };
       setApplied(next);
       onChange(next);
-    } catch {
-      // A network failure must not surface as an unhandled rejection inside
-      // the checkout tree.
-      setError("promoErrGeneric");
+    } catch (err) {
+      // A guest reaches this branch through the 401 the endpoint answers, and
+      // deserves the sign-in line rather than "could not check" — the field is
+      // rendered for a signed-in buyer, but a session can expire while the
+      // page is open.
+      setError(err instanceof ApiError && err.status === 401 ? "promoSignIn" : "promoErrGeneric");
       onChange(null);
     } finally {
       setBusy(false);
@@ -151,7 +154,7 @@ export function PromoField({ locale, items, currency, isLoggedIn, onChange }: Pr
             <span className="text-primary block text-[13px] font-semibold">
               <span>{applied.code}</span>
               {" · "}
-              <span>{t("promoApplied", { percent: applied.percent })}</span>
+              <span>{t("promoApplied", { percent: tidyPercent(applied.percent) })}</span>
             </span>
             <span className="text-tx-mute mt-0.5 block text-[13px]">
               {t("promoSaved", { amount: money(applied.discount) })}

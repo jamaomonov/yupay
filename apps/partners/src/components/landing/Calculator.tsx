@@ -77,11 +77,15 @@ export function Calculator() {
           ))}
         </div>
 
-        <div className="border-border-2 bg-card-2 rounded-xl border p-6 lg:w-72">
+        <div className="border-border-2 bg-card-2 rounded-xl border p-6 lg:w-80">
           <span className="text-tx-mute text-[13px]">{t("result")}</span>
           <p
             data-testid="calc-result"
-            className="font-display text-primary mt-2 break-words text-3xl font-bold leading-tight sm:text-4xl"
+            // No `break-words`: it split the currency across lines as
+            // "23 640 UZ / S". A price that wraps mid-token reads as a
+            // rendering fault, which is a bad first impression on the page
+            // that recruits.
+            className="font-display text-primary mt-2 whitespace-nowrap text-2xl font-bold leading-tight sm:text-3xl"
           >
             {formatUzs(result.earnedUzs)}
           </p>

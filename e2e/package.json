@@ -6,6 +6,7 @@
   "scripts": {
     "test": "echo 'use `make test-e2e` — needs a running dev stack' && exit 0",
     "test:e2e": "playwright test",
+    "test:affiliate": "playwright test affiliate --workers=1",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit"
   },

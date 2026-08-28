@@ -24,6 +24,13 @@ import { useT } from "@/lib/i18n";
  * lines against a 300-line soft limit.
  */
 
+/** "10.00" → "10". The API returns percentages from a Numeric(5,2) column, and
+ *  "Скидка 10.00%" reads like a rounding artefact rather than a round number. */
+function tidyPercent(raw: string): string {
+  const n = Number(raw);
+  return Number.isFinite(n) ? String(n) : raw;
+}
+
 export interface PromoCartItem {
   sku_id: string;
   qty: number;
@@ -152,7 +159,7 @@ export function PromoField({
         <div className="flex items-center justify-between gap-3">
           <div>
             <span className="block text-[13px] font-semibold text-lime-300">
-              {applied.code} · {t("topup.promoApplied", { percent: applied.percent })}
+              {applied.code} · {t("topup.promoApplied", { percent: tidyPercent(applied.percent) })}
             </span>
             <span className="mt-0.5 block text-[13px] text-slate-400">
               {t("topup.promoSaved", { amount: money(applied.discount) })}
