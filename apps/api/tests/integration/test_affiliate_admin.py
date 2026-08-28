@@ -90,7 +90,9 @@ async def test_a_rate_outside_the_range_is_refused_with_a_readable_message(
             discount_percent=Decimal("15"),
             commission_percent=Decimal("2"),
         )
-    assert "3" in str(too_much.value) and "10" in str(too_much.value)
+    # Split so a failure says which bound is missing from the message.
+    assert "3" in str(too_much.value)
+    assert "10" in str(too_much.value)
 
     with pytest.raises(ValidationError) as too_generous:
         await admin.issue_code(
@@ -100,7 +102,8 @@ async def test_a_rate_outside_the_range_is_refused_with_a_readable_message(
             discount_percent=Decimal("5"),
             commission_percent=Decimal("9"),
         )
-    assert "1" in str(too_generous.value) and "2" in str(too_generous.value)
+    assert "1" in str(too_generous.value)
+    assert "2" in str(too_generous.value)
 
 
 async def test_suspending_a_partner_stops_their_code_working(
