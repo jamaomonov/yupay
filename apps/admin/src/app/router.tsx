@@ -4,6 +4,9 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import { Layout } from "./Layout";
 
+import { ApplicationsPage } from "@/features/affiliate/ApplicationsPage";
+import { PartnersPage } from "@/features/affiliate/PartnersPage";
+import { PayoutsPage } from "@/features/affiliate/PayoutsPage";
 import { AnalyticsPage } from "@/features/analytics/AnalyticsPage";
 import { AuditPage } from "@/features/audit/AuditPage";
 import { AuthGuard } from "@/features/auth/AuthGuard";
@@ -23,12 +26,12 @@ import { SkusListPage } from "@/features/catalog/skus/SkusListPage";
 import { CustomerPage } from "@/features/customers/CustomerPage";
 import { InboxPage } from "@/features/fulfillment/InboxPage";
 import { FxPage } from "@/features/fx/FxPage";
-import { SupplierDetailPage } from "@/features/integrations/SupplierDetailPage";
 import { GameImportPage } from "@/features/integrations/GameImportPage";
 import { IntegrationsPage } from "@/features/integrations/IntegrationsPage";
 import { MappingEditPage } from "@/features/integrations/MappingEditPage";
 import { MappingsPage } from "@/features/integrations/MappingsPage";
 import { SupplierCatalogPage } from "@/features/integrations/SupplierCatalogPage";
+import { SupplierDetailPage } from "@/features/integrations/SupplierDetailPage";
 import { InventoryPage } from "@/features/inventory/InventoryPage";
 import { OrderDetailPage } from "@/features/orders/OrderDetailPage";
 import { OrdersListPage } from "@/features/orders/OrdersListPage";
@@ -83,6 +86,9 @@ export const router = createBrowserRouter([
           { path: "/wallet", element: <WalletPage /> },
           { path: "/audit", element: <AuditPage /> },
           { path: "/fx", element: <FxPage /> },
+          { path: "/affiliate/applications", element: <ApplicationsPage /> },
+          { path: "/affiliate/partners", element: <PartnersPage /> },
+          { path: "/affiliate/payouts", element: <PayoutsPage /> },
           { path: "/promo", element: <PromoPage /> },
           { path: "/reviews", element: <ReviewsPage /> },
           { path: "/broadcasts", element: <BroadcastsListPage /> },
