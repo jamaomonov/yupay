@@ -27,7 +27,9 @@ different postings, different ownership.
 | Payout rejected                          | `D partner_balance / C partner_payout_hold`      |
 | Commission voided (refund, pre-maturity) | `D house_affiliate_expense / C partner_pending`  |
 
-The payout rows are not implemented yet — they land with the payout API.
+All six are implemented. The three payout postings are driven by
+`payouts.py`; the admin side that calls `mark_paid` / `reject_payout`
+arrives with the admin screens.
 
 **"Available to withdraw" is the balance of `partner_balance`** — not a sum
 computed over `affiliate_commissions`. One source of truth, and a payout
@@ -58,6 +60,60 @@ error:
 `USER_VISIBLE_KINDS` is deliberately **not** extended: it is the allow-list for
 what a customer sees in their own wallet, and partner money must never appear
 there.
+
+## Partner authentication
+
+A partner is not a user: separate table, separate sessions, and **a separate
+JWT kind**. `auth.jwt.verify` rejects a kind mismatch, so a `partner_access`
+token cannot be presented to a buyer endpoint and a buyer's token cannot be
+presented to the panel. Reusing `"access"` would work today only because a
+partner id is not found in `users` — an accident, not a boundary.
+
+No cryptography is reimplemented. Passwords go through `auth.security`
+(argon2id, tuned, capacity-limited) and tokens through `auth.jwt`.
+
+Three behaviours have tests that fail if they are undone:
+
+- **Sign-in answers identically** for a wrong password, an unknown address and
+  a suspended account, and runs argon2 against a dummy hash either way. Neither
+  wording nor timing may say which.
+- **The approval link is single-use** (Redis `SET NX` on the token's `jti`) and
+  re-checks status at redemption, so an account approved and then suspended is
+  not still openable by the email sent in between.
+- **Refresh tokens rotate.** Presented twice, the second fails — it is either a
+  bug or a theft.
+
+**No panel endpoint takes a `partner_id`.** Every one reads it from the token.
+`list commissions for partner X` is the natural signature and the wrong one.
+
+## Payout safety needs both halves
+
+A row lock on the partner **and** the ledger reservation. The lock serialises
+concurrent requests, so the second reads after the first has written; the
+reservation is what it then sees, because the money has already left
+`partner_balance`. Reserving without locking still races. Locking without
+reserving lets a partner queue two requests against one balance.
+
+Card numbers are stored (the transfer is manual) and are PII of the worst kind
+here. They never reach a log line, and `PayoutOut` masks to the last four —
+a full PAN in a JSON response is a PAN in a browser cache, a proxy log and a
+screenshot.
+
+## Statistics are rolling windows, not calendar periods
+
+`month` is the last 30 days. This project has no display-timezone convention,
+so a calendar month would silently be a UTC month and read wrong for a partner
+in Tashkent every evening; and a rolling figure has no cliff on the 1st. Any UI
+must label them "30 days", not "this month", so the wording matches the
+arithmetic.
+
+## Measuring coverage
+
+Run it so the **root** `pyproject.toml` is picked up, or export
+`COVERAGE_CORE=sysmon`. That file explains why: the default tracer loses the
+trace after the first `await db.execute(...)` in a frame, because SQLAlchemy's
+async engine hops through greenlets. Measured from inside `apps/api` without
+it, this module reported 79% on `routes.py` where the real figure is 100%.
 
 ## The two constraints that carry the design
 

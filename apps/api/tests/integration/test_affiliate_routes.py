@@ -234,3 +234,130 @@ async def test_preview_does_not_bind_or_create_anything(
     assert (await db_session.execute(select(AffiliateAttribution))).first() is None
     assert (await db_session.execute(select(Order))).first() is None
     assert (await db_session.execute(select(TelegramLink))).first() is not None
+
+
+# Every partner-scoped path, as (method, path). A route added to the router
+# without authentication will not appear here — which is why the next test
+# reads the live app rather than this list.
+PARTNER_PATHS = [
+    ("GET", "/api/v1/affiliate/me"),
+    ("GET", "/api/v1/affiliate/stats"),
+    ("GET", "/api/v1/affiliate/balance"),
+    ("GET", "/api/v1/affiliate/commissions"),
+    ("GET", "/api/v1/affiliate/payouts"),
+    ("POST", "/api/v1/affiliate/payouts"),
+]
+
+#: Paths under /affiliate that are public by design.
+_PUBLIC = {
+    "/api/v1/affiliate/applications",
+    "/api/v1/affiliate/auth/login",
+    "/api/v1/affiliate/auth/set-password",
+    "/api/v1/affiliate/auth/refresh",
+    "/api/v1/affiliate/auth/logout",
+    # Buyer-authenticated, not partner-authenticated — covered by its own test.
+    "/api/v1/affiliate/preview",
+}
+
+
+async def test_every_partner_route_refuses_an_anonymous_caller(
+    integration_client: AsyncClient,
+) -> None:
+    """Read from the live app, not from a hand-written list.
+
+    A route added to the partner router later without a dependency would pass a
+    list-driven test by simply not being in the list. Enumerating the app makes
+    the omission the failure.
+    """
+    from yupay.bootstrap import create_app
+
+    app = create_app()
+    partner_paths = {
+        route.path
+        for route in app.routes
+        if "affiliate" in getattr(route, "path", "") and route.path not in _PUBLIC
+    }
+    assert partner_paths, "no partner routes found — the enumeration is wrong"
+
+    for path in sorted(partner_paths):
+        for method in ("GET", "POST"):
+            r = await integration_client.request(method, path)
+            assert r.status_code != 200, f"{method} {path} answered an anonymous caller"
+
+
+async def test_a_buyer_token_cannot_read_the_panel(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The whole reason partner tokens have their own kind."""
+    token = await _login(integration_client, tg_id=902_001)
+
+    r = await integration_client.get(
+        "/api/v1/affiliate/me", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert r.status_code == 401, r.text
+
+
+async def test_the_application_endpoint_answers_the_same_for_a_repeat(
+    integration_client: AsyncClient,
+) -> None:
+    """Otherwise anyone with a list of addresses can discover the partners."""
+    body = {"email": "repeat@example.com", "display_name": "R"}
+    first = await integration_client.post("/api/v1/affiliate/applications", json=body)
+    second = await integration_client.post("/api/v1/affiliate/applications", json=body)
+
+    assert first.status_code == 202, first.text
+    assert second.status_code == 202, second.text
+    assert first.json() == second.json()
+
+
+async def test_a_partner_signs_in_and_reads_their_own_panel(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The whole flow over HTTP, end to end."""
+    from yupay.modules.affiliate import partners
+
+    r = await integration_client.post(
+        "/api/v1/affiliate/applications",
+        json={"email": "flow@example.com", "display_name": "Flow"},
+    )
+    assert r.status_code == 202, r.text
+
+    from yupay.modules.affiliate.models import AffiliatePartner
+
+    partner = (
+        await db_session.execute(
+            select(AffiliatePartner).where(AffiliatePartner.email == "flow@example.com")
+        )
+    ).scalar_one()
+    link = await partners.approve(db_session, partner_id=partner.id)
+    await db_session.commit()
+
+    r = await integration_client.post(
+        "/api/v1/affiliate/auth/set-password",
+        json={"token": link, "password": "a long enough password"},
+    )
+    assert r.status_code == 204, r.text
+
+    r = await integration_client.post(
+        "/api/v1/affiliate/auth/login",
+        json={"email": "flow@example.com", "password": "a long enough password"},
+    )
+    assert r.status_code == 200, r.text
+    access = r.json()["access_token"]
+
+    auth = {"Authorization": f"Bearer {access}"}
+    me = await integration_client.get("/api/v1/affiliate/me", headers=auth)
+    assert me.status_code == 200, me.text
+    assert me.json()["email"] == "flow@example.com"
+    # The panel must not hand a partner their own password hash or the admin's
+    # private note about them.
+    assert "password_hash" not in me.json()
+    assert "admin_note" not in me.json()
+
+    balance = await integration_client.get("/api/v1/affiliate/balance", headers=auth)
+    assert balance.status_code == 200, balance.text
+    # Compared as a number: an untouched ledger account serialises as "0",
+    # a used one at the column's scale. The value is what matters here, not
+    # how many zeros Decimal chose to print.
+    assert Decimal(balance.json()["available"]) == Decimal("0")
+    assert balance.json()["currency"] == "UZS"

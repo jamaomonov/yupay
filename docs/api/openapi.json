@@ -1102,6 +1102,70 @@
         "title": "AnalyticsRange",
         "type": "string"
       },
+      "ApplicationIn": {
+        "additionalProperties": false,
+        "description": "A request to join the program.",
+        "properties": {
+          "channel": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel"
+          },
+          "contact": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "ApplicationIn",
+        "type": "object"
+      },
+      "ApplicationOut": {
+        "description": "Deliberately contentless.\n\nAnswering \"you already applied\" \u2014 or returning the row \u2014 would let anyone\nwith an address list discover which of them are partners. The endpoint\naccepts and says so; nothing more.",
+        "properties": {
+          "accepted": {
+            "default": true,
+            "title": "Accepted",
+            "type": "boolean"
+          }
+        },
+        "title": "ApplicationOut",
+        "type": "object"
+      },
       "AttemptAdminListOut": {
         "properties": {
           "items": {
@@ -1301,52 +1365,6 @@
           "items"
         ],
         "title": "AuditListOut",
-        "type": "object"
-      },
-      "BalanceOut": {
-        "properties": {
-          "account_id": {
-            "title": "Account Id",
-            "type": "string"
-          },
-          "balance": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-            "title": "Balance",
-            "type": "string"
-          },
-          "currency": {
-            "title": "Currency",
-            "type": "string"
-          },
-          "kind": {
-            "enum": [
-              "user_wallet",
-              "user_cashback",
-              "user_promo_credit",
-              "house_revenue",
-              "house_cogs",
-              "house_promo_expense",
-              "house_payments_received",
-              "house_refunds",
-              "house_fx_pnl",
-              "provider_clearing",
-              "partner_pending",
-              "partner_balance",
-              "partner_payout_hold",
-              "house_affiliate_expense",
-              "house_affiliate_paid"
-            ],
-            "title": "Kind",
-            "type": "string"
-          }
-        },
-        "required": [
-          "account_id",
-          "kind",
-          "currency",
-          "balance"
-        ],
-        "title": "BalanceOut",
         "type": "object"
       },
       "BanUserIn": {
@@ -3068,6 +3086,126 @@
           "created_at"
         ],
         "title": "CodeAdminOut",
+        "type": "object"
+      },
+      "CodeOut": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "commission_percent": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Commission Percent",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "discount_percent": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Discount Percent",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "discount_percent",
+          "commission_percent",
+          "active",
+          "created_at"
+        ],
+        "title": "CodeOut",
+        "type": "object"
+      },
+      "CommissionListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CommissionOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "CommissionListOut",
+        "type": "object"
+      },
+      "CommissionOut": {
+        "properties": {
+          "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "available_at": {
+            "format": "date-time",
+            "title": "Available At",
+            "type": "string"
+          },
+          "base_amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Base Amount",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "order_id": {
+            "title": "Order Id",
+            "type": "string"
+          },
+          "percent": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Percent",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "order_id",
+          "base_amount",
+          "percent",
+          "amount",
+          "currency",
+          "status",
+          "available_at",
+          "created_at"
+        ],
+        "title": "CommissionOut",
         "type": "object"
       },
       "CostChangeOut": {
@@ -4978,28 +5116,6 @@
         "title": "LocaleCountOut",
         "type": "object"
       },
-      "LoginIn": {
-        "description": "Body of ``POST /auth/login``.",
-        "properties": {
-          "email": {
-            "format": "email",
-            "title": "Email",
-            "type": "string"
-          },
-          "password": {
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Password",
-            "type": "string"
-          }
-        },
-        "required": [
-          "email",
-          "password"
-        ],
-        "title": "LoginIn",
-        "type": "object"
-      },
       "LowStockOut": {
         "properties": {
           "available": {
@@ -6721,6 +6837,130 @@
         "title": "PaymentWebhookOut",
         "type": "object"
       },
+      "PayoutListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PayoutOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "PayoutListOut",
+        "type": "object"
+      },
+      "PayoutOut": {
+        "description": "A withdrawal, as the partner sees it.\n\nThe card number is masked to its last four digits. The partner already\nknows which card they typed, and a full PAN in a JSON response is a PAN in\na browser cache, a proxy log and a screenshot.",
+        "properties": {
+          "admin_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin Note"
+          },
+          "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "card_holder": {
+            "title": "Card Holder",
+            "type": "string"
+          },
+          "card_last4": {
+            "title": "Card Last4",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "processed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processed At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "amount",
+          "currency",
+          "card_last4",
+          "card_holder",
+          "status",
+          "admin_note",
+          "created_at",
+          "processed_at"
+        ],
+        "title": "PayoutOut",
+        "type": "object"
+      },
+      "PayoutRequestIn": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Amount"
+          },
+          "card_holder": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Card Holder",
+            "type": "string"
+          },
+          "card_number": {
+            "maxLength": 32,
+            "minLength": 12,
+            "title": "Card Number",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "card_number",
+          "card_holder"
+        ],
+        "title": "PayoutRequestIn",
+        "type": "object"
+      },
       "PlayerCheckIn": {
         "additionalProperties": false,
         "description": "Storefront player-verification request (no charname \u2014 it's a lookup).",
@@ -7606,6 +7846,79 @@
         "title": "ProductUpdate",
         "type": "object"
       },
+      "ProfileOut": {
+        "description": "The partner, and the codes they promote.\n\nNo ``password_hash``, and no ``admin_note`` \u2014 the second is an internal\nremark about the partner, not something to hand back to them.",
+        "properties": {
+          "channel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel"
+          },
+          "codes": {
+            "items": {
+              "$ref": "#/components/schemas/CodeOut"
+            },
+            "title": "Codes",
+            "type": "array"
+          },
+          "contact": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "display_name",
+          "contact",
+          "channel",
+          "status",
+          "created_at"
+        ],
+        "title": "ProfileOut",
+        "type": "object"
+      },
       "PromoAdminListOut": {
         "properties": {
           "items": {
@@ -8340,6 +8653,22 @@
         "title": "RecipientOut",
         "type": "object"
       },
+      "RefreshIn": {
+        "additionalProperties": false,
+        "properties": {
+          "refresh_token": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "refresh_token"
+        ],
+        "title": "RefreshIn",
+        "type": "object"
+      },
       "RefundIn": {
         "additionalProperties": false,
         "description": "Body of admin's ``POST /admin/payments/{id}/refund``.",
@@ -8893,6 +9222,29 @@
           }
         },
         "title": "SearchOut",
+        "type": "object"
+      },
+      "SetPasswordIn": {
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "maxLength": 256,
+            "minLength": 8,
+            "title": "Password",
+            "type": "string"
+          },
+          "token": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "password"
+        ],
+        "title": "SetPasswordIn",
         "type": "object"
       },
       "SetProviderStateIn": {
@@ -9960,6 +10312,42 @@
         "title": "SourcingRuleOut",
         "type": "object"
       },
+      "StatsOut": {
+        "description": "Earnings over a rolling window.\n\n``period`` names the window and ``since`` says where it starts, because\n\"month\" here means the last 30 days rather than the calendar month \u2014 see\n``affiliate.panel`` for why.",
+        "properties": {
+          "activations": {
+            "title": "Activations",
+            "type": "integer"
+          },
+          "earned": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Earned",
+            "type": "string"
+          },
+          "orders": {
+            "title": "Orders",
+            "type": "integer"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period",
+          "since",
+          "earned",
+          "orders",
+          "activations"
+        ],
+        "title": "StatsOut",
+        "type": "object"
+      },
       "StatusCount": {
         "properties": {
           "count": {
@@ -10471,30 +10859,6 @@
           "hash"
         ],
         "title": "TelegramWidgetIn",
-        "type": "object"
-      },
-      "TokensOut": {
-        "description": "Response for any endpoint that mints a user session.\n\nThe refresh token is intentionally absent: it is delivered as an ``HttpOnly``\ncookie (see :mod:`yupay.modules.auth.cookies`) so JS cannot read it. Only the\nshort-lived access token \u2014 which the browser needs to attach as a Bearer header\n\u2014 is returned in the body.",
-        "properties": {
-          "access_token": {
-            "title": "Access Token",
-            "type": "string"
-          },
-          "expires_in": {
-            "title": "Expires In",
-            "type": "integer"
-          },
-          "token_type": {
-            "default": "Bearer",
-            "title": "Token Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "access_token",
-          "expires_in"
-        ],
-        "title": "TokensOut",
         "type": "object"
       },
       "TransactionListOut": {
@@ -11100,7 +11464,7 @@
         "properties": {
           "balances": {
             "items": {
-              "$ref": "#/components/schemas/BalanceOut"
+              "$ref": "#/components/schemas/yupay__modules__wallet__schemas__BalanceOut"
             },
             "title": "Balances",
             "type": "array"
@@ -11230,6 +11594,134 @@
         "title": "WebhookTriageRow",
         "type": "object"
       },
+      "yupay__modules__affiliate__schemas__BalanceOut": {
+        "description": "Straight from the ledger.\n\n``available`` is the only figure a withdrawal can draw on. ``held`` is\ncommission still inside its hold period; ``reserved`` is already claimed by\nan open request.",
+        "properties": {
+          "available": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Available",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "held": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Held",
+            "type": "string"
+          },
+          "reserved": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Reserved",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currency",
+          "available",
+          "held",
+          "reserved"
+        ],
+        "title": "BalanceOut",
+        "type": "object"
+      },
+      "yupay__modules__affiliate__schemas__LoginIn": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginIn",
+        "type": "object"
+      },
+      "yupay__modules__affiliate__schemas__TokensOut": {
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "refresh_token": {
+            "title": "Refresh Token",
+            "type": "string"
+          },
+          "token_type": {
+            "default": "Bearer",
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "refresh_token",
+          "expires_in"
+        ],
+        "title": "TokensOut",
+        "type": "object"
+      },
+      "yupay__modules__auth__schemas__LoginIn": {
+        "description": "Body of ``POST /auth/login``.",
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginIn",
+        "type": "object"
+      },
+      "yupay__modules__auth__schemas__TokensOut": {
+        "description": "Response for any endpoint that mints a user session.\n\nThe refresh token is intentionally absent: it is delivered as an ``HttpOnly``\ncookie (see :mod:`yupay.modules.auth.cookies`) so JS cannot read it. Only the\nshort-lived access token \u2014 which the browser needs to attach as a Bearer header\n\u2014 is returned in the body.",
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "token_type": {
+            "default": "Bearer",
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "expires_in"
+        ],
+        "title": "TokensOut",
+        "type": "object"
+      },
       "yupay__modules__evidence__schemas__OrderEventOut": {
         "description": "One entry of the order's own timeline, replayed into the pack.",
         "properties": {
@@ -11304,6 +11796,52 @@
           "created_at"
         ],
         "title": "OrderEventOut",
+        "type": "object"
+      },
+      "yupay__modules__wallet__schemas__BalanceOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "balance": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balance",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "user_wallet",
+              "user_cashback",
+              "user_promo_credit",
+              "house_revenue",
+              "house_cogs",
+              "house_promo_expense",
+              "house_payments_received",
+              "house_refunds",
+              "house_fx_pnl",
+              "provider_clearing",
+              "partner_pending",
+              "partner_balance",
+              "partner_payout_hold",
+              "house_affiliate_expense",
+              "house_affiliate_paid"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id",
+          "kind",
+          "currency",
+          "balance"
+        ],
+        "title": "BalanceOut",
         "type": "object"
       }
     }
@@ -19274,6 +19812,514 @@
         ]
       }
     },
+    "/api/v1/affiliate/applications": {
+      "post": {
+        "description": "Record an application.\n\nAnswers the same whether the address is new or has already applied. The\nalternative leaks the partner list to anyone with a list of addresses.\n\nGuarded on both axes \u2014 a public write endpoint that creates rows keyed by\nan attacker-chosen address needs the email axis as much as the IP one.",
+        "operationId": "apply_api_v1_affiliate_applications_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplicationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply to join the partner program",
+        "tags": [
+          "affiliate"
+        ]
+      }
+    },
+    "/api/v1/affiliate/auth/login": {
+      "post": {
+        "description": "Open a partner session.\n\nGuarded on the email axis as well as the IP one: without it, one address\ncan be attacked from many.",
+        "operationId": "login_api_v1_affiliate_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/yupay__modules__affiliate__schemas__LoginIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/yupay__modules__affiliate__schemas__TokensOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sign in as a partner",
+        "tags": [
+          "affiliate"
+        ]
+      }
+    },
+    "/api/v1/affiliate/auth/logout": {
+      "post": {
+        "description": "Revoke one session. Silent if it was already unusable.",
+        "operationId": "logout_api_v1_affiliate_auth_logout_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "End a partner session",
+        "tags": [
+          "affiliate"
+        ]
+      }
+    },
+    "/api/v1/affiliate/auth/refresh": {
+      "post": {
+        "description": "Exchange a refresh token for a new pair. The old one stops working.",
+        "operationId": "refresh_api_v1_affiliate_auth_refresh_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/yupay__modules__affiliate__schemas__TokensOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rotate a partner session",
+        "tags": [
+          "affiliate"
+        ]
+      }
+    },
+    "/api/v1/affiliate/auth/set-password": {
+      "post": {
+        "description": "Consume the one-time link from the approval email.",
+        "operationId": "set_password_api_v1_affiliate_auth_set_password_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPasswordIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set a password using the approval link",
+        "tags": [
+          "affiliate"
+        ]
+      }
+    },
+    "/api/v1/affiliate/balance": {
+      "get": {
+        "description": "Read from the ledger, never summed from the commissions table.",
+        "operationId": "balance_api_v1_affiliate_balance_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/yupay__modules__affiliate__schemas__BalanceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Available, held and reserved",
+        "tags": [
+          "affiliate"
+        ]
+      }
+    },
+    "/api/v1/affiliate/commissions": {
+      "get": {
+        "operationId": "commissions_api_v1_affiliate_commissions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommissionListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "This partner's commissions",
+        "tags": [
+          "affiliate"
+        ]
+      }
+    },
+    "/api/v1/affiliate/me": {
+      "get": {
+        "description": "Profile plus codes. Never includes the password hash or the admin note.",
+        "operationId": "me_api_v1_affiliate_me_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "The signed-in partner and their codes",
+        "tags": [
+          "affiliate"
+        ]
+      }
+    },
+    "/api/v1/affiliate/payouts": {
+      "get": {
+        "operationId": "list_payouts_api_v1_affiliate_payouts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayoutListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Withdrawal history",
+        "tags": [
+          "affiliate"
+        ]
+      },
+      "post": {
+        "description": "Reserve money for a withdrawal.\n\nThe partner comes from the token, never from the body: a payout endpoint\nthat accepted a partner id would let one partner drain another.",
+        "operationId": "request_payout_api_v1_affiliate_payouts_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayoutRequestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayoutOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request a withdrawal",
+        "tags": [
+          "affiliate"
+        ]
+      }
+    },
     "/api/v1/affiliate/preview": {
       "post": {
         "description": "Price the cart, then say whether the code applies to it.\n\nSigned-in only, because a partner code binds a buyer to a partner and a\nguest has nothing durable to bind. That also gives the throttle a subject:\nthe two-axis guard keys on the buyer, so one account cannot grind through\nthe code space from a rotating address.\n\nThe amounts are for display only. ``create_order`` resolves the code again\nand prices the order itself, so nothing here can be spent.",
@@ -19334,6 +20380,72 @@
         ]
       }
     },
+    "/api/v1/affiliate/stats": {
+      "get": {
+        "description": "`month` is the last 30 days, not the calendar month \u2014 see\n``affiliate.panel`` for why, and label it accordingly in any UI.",
+        "operationId": "stats_api_v1_affiliate_stats_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "default": "month",
+              "enum": [
+                "day",
+                "week",
+                "month",
+                "year"
+              ],
+              "title": "Period",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Earnings over a rolling window",
+        "tags": [
+          "affiliate"
+        ]
+      }
+    },
     "/api/v1/auth/admin-dev": {
       "post": {
         "description": "Disabled by default. Set ``ADMIN_DEV_LOGIN_ENABLED=true`` in a non-prod environment to use. Force-disabled when ``ENVIRONMENT=prod`` regardless of the flag \u2014 the endpoint will return 403.",
@@ -19353,7 +20465,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TokensOut"
+                  "$ref": "#/components/schemas/yupay__modules__auth__schemas__TokensOut"
                 }
               }
             },
@@ -19452,7 +20564,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/LoginIn"
+                "$ref": "#/components/schemas/yupay__modules__auth__schemas__LoginIn"
               }
             }
           },
@@ -19463,7 +20575,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TokensOut"
+                  "$ref": "#/components/schemas/yupay__modules__auth__schemas__TokensOut"
                 }
               }
             },
@@ -19692,7 +20804,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TokensOut"
+                  "$ref": "#/components/schemas/yupay__modules__auth__schemas__TokensOut"
                 }
               }
             },
@@ -19811,7 +20923,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TokensOut"
+                  "$ref": "#/components/schemas/yupay__modules__auth__schemas__TokensOut"
                 }
               }
             },
@@ -19853,7 +20965,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TokensOut"
+                  "$ref": "#/components/schemas/yupay__modules__auth__schemas__TokensOut"
                 }
               }
             },
@@ -19895,7 +21007,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TokensOut"
+                  "$ref": "#/components/schemas/yupay__modules__auth__schemas__TokensOut"
                 }
               }
             },
@@ -19937,7 +21049,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TokensOut"
+                  "$ref": "#/components/schemas/yupay__modules__auth__schemas__TokensOut"
                 }
               }
             },
