@@ -81,15 +81,15 @@ class LoginIn(BaseModel):
     password: str = Field(min_length=1, max_length=256)
 
 
-class RefreshIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    refresh_token: str = Field(min_length=1, max_length=512)
-
-
 class TokensOut(BaseModel):
+    """What a sign-in hands back.
+
+    No ``refresh_token`` field, deliberately. It rides an HttpOnly cookie
+    (ADR-0007), so a script on the page cannot read a 30-day session that can
+    move money out.
+    """
+
     access_token: str
-    refresh_token: str
     token_type: str = "Bearer"  # noqa: S105 -- OAuth token-type literal, not a credential
     expires_in: int
 
@@ -320,7 +320,6 @@ __all__ = [
     "PreviewIn",
     "PreviewOut",
     "ProfileOut",
-    "RefreshIn",
     "ReinviteOut",
     "RejectIn",
     "SetPasswordIn",

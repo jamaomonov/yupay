@@ -22,6 +22,14 @@ from yupay.core.config import Settings
 
 REFRESH_COOKIE_NAME = "refresh_token"
 
+#: The affiliate panel's own cookie.
+#:
+#: A separate name, not a separate mechanism. In production both cookies are
+#: scoped to ``.yupay.uz``, so one name would mean a partner signing in wipes
+#: their own buyer session and vice versa — and the same person can plausibly
+#: be both.
+PARTNER_REFRESH_COOKIE_NAME = "partner_refresh_token"
+
 
 def _cookie_domain(settings: Settings) -> str | None:
     """Return the parent domain for the cookie, or ``None`` to keep it host-only.
@@ -42,10 +50,22 @@ def _cookie_domain(settings: Settings) -> str | None:
     return "." + ".".join(labels[-2:])
 
 
-def set_refresh_cookie(response: Response, *, token: str, max_age: int, settings: Settings) -> None:
-    """Attach the rotating ``refresh_token`` cookie to ``response``."""
+def set_refresh_cookie(
+    response: Response,
+    *,
+    token: str,
+    max_age: int,
+    settings: Settings,
+    name: str = REFRESH_COOKIE_NAME,
+) -> None:
+    """Attach a rotating refresh cookie to ``response``.
+
+    ``name`` selects which session this is — the buyer's or the affiliate
+    panel's. The attributes are deliberately shared: getting ``Secure``,
+    ``Domain`` and ``SameSite`` right is the part worth having one copy of.
+    """
     response.set_cookie(
-        key=REFRESH_COOKIE_NAME,
+        key=name,
         value=token,
         max_age=max_age,
         path="/",
@@ -56,10 +76,12 @@ def set_refresh_cookie(response: Response, *, token: str, max_age: int, settings
     )
 
 
-def clear_refresh_cookie(response: Response, *, settings: Settings) -> None:
-    """Expire the ``refresh_token`` cookie (logout). Attributes must match the set call."""
+def clear_refresh_cookie(
+    response: Response, *, settings: Settings, name: str = REFRESH_COOKIE_NAME
+) -> None:
+    """Expire a refresh cookie (logout). Attributes must match the set call."""
     response.delete_cookie(
-        key=REFRESH_COOKIE_NAME,
+        key=name,
         path="/",
         httponly=True,
         secure=settings.is_prod,
@@ -69,6 +91,7 @@ def clear_refresh_cookie(response: Response, *, settings: Settings) -> None:
 
 
 __all__ = [
+    "PARTNER_REFRESH_COOKIE_NAME",
     "REFRESH_COOKIE_NAME",
     "clear_refresh_cookie",
     "set_refresh_cookie",

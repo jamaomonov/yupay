@@ -1,15 +1,17 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { api, ApiError, clearTokens, hasSession, setTokens } from "./api";
+import { api, ApiError, clearTokens, hasSession, setAccessToken } from "./api";
 
 /**
  * The refresh behaviour, which is the only part of this file with a decision
  * in it. Everything else is a fetch with headers.
  *
- * The property worth protecting: refresh **once** per call, never in a loop.
- * Each refresh spends the rotating token, so a loop would turn one expired
- * session into a stream of invalidated ones and hammer the API while doing it.
+ * Two properties. Refresh **once** per call, never in a loop: each refresh
+ * rotates the cookie, so a loop would turn one expired session into a stream
+ * of invalidated ones while hammering the API. And every request carries
+ * credentials, because the refresh cookie *is* the session — a call that omits
+ * it cannot be refreshed.
  */
 
 function respond(status: number, body: unknown = {}): Response {
@@ -45,7 +47,7 @@ describe("api", () => {
       );
     });
     vi.stubGlobal("fetch", fetchMock);
-    setTokens("a1", "r1");
+    setAccessToken("a1");
 
     const me = await api<{ id: string }>("/api/v1/affiliate/me");
 
@@ -64,7 +66,7 @@ describe("api", () => {
       return Promise.resolve(respond(401));
     });
     vi.stubGlobal("fetch", fetchMock);
-    setTokens("a1", "r1");
+    setAccessToken("a1");
 
     await expect(api("/api/v1/affiliate/me")).rejects.toBeInstanceOf(ApiError);
 
@@ -80,10 +82,23 @@ describe("api", () => {
       Promise.resolve(url.endsWith("/auth/refresh") ? respond(401) : respond(401)),
     );
     vi.stubGlobal("fetch", fetchMock);
-    setTokens("a1", "r1");
+    setAccessToken("a1");
 
     await expect(api("/api/v1/affiliate/me")).rejects.toBeInstanceOf(ApiError);
     expect(hasSession()).toBe(false);
+  });
+
+  it("always sends credentials, because the refresh cookie is the session", async () => {
+    let sentCredentials: RequestCredentials | undefined;
+    const fetchMock = vi.fn((_url: string, init: RequestInit) => {
+      sentCredentials = init.credentials;
+      return Promise.resolve(respond(200, {}));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    setAccessToken("a1");
+
+    await api("/api/v1/affiliate/me");
+    expect(sentCredentials).toBe("include");
   });
 
   it("never sends an Authorization header on an anonymous call", async () => {
@@ -93,7 +108,7 @@ describe("api", () => {
       return Promise.resolve(respond(200, {}));
     });
     vi.stubGlobal("fetch", fetchMock);
-    setTokens("a1", "r1");
+    setAccessToken("a1");
 
     await api("/api/v1/affiliate/auth/login", { method: "POST", body: {}, anonymous: true });
     expect(sentAuth).toBeNull();

@@ -1,49 +1,37 @@
 /**
  * The browser's way to the API.
  *
- * **Where the tokens live, stated plainly.** The access token is in memory
- * only. The refresh token is in memory *and* `sessionStorage`, because the API
- * returns it in a response body rather than setting an HttpOnly cookie, so
- * there is nowhere else for it to survive a page reload.
+ * **This code never holds the refresh token.** It rides an HttpOnly cookie the
+ * API sets, so no script on this page — including an injected one — can read a
+ * 30-day session that can move money out. The access token lives in memory and
+ * dies with the tab.
  *
- * `sessionStorage` rather than `localStorage`: it dies when the tab closes and
- * is not shared between tabs, so a partner who walks away from a public
- * machine has a shorter exposure. It is still readable by any script running
- * on this origin — that is the honest cost, and the mitigations are that the
- * token rotates on every use (a stolen one stops working the moment the real
- * partner refreshes) and that the panel loads no third-party script.
+ * Every call therefore sends credentials, and restoring a session on load is
+ * just asking the refresh endpoint what the cookie says.
  *
- * The proper fix is an HttpOnly refresh cookie, which needs an API change; it
- * is worth doing before this site carries real money at volume.
+ * This used to keep the refresh token in `sessionStorage`, because the API
+ * returned it in the body and there was nowhere else for it to survive a
+ * reload. That was the honest-but-worse arrangement; the API now sets the
+ * cookie instead (the same shape the buyer flow has used since ADR-0007).
  */
 
 let accessToken: string | null = null;
-let refreshToken: string | null = null;
 
 /** Where the API lives. Same env var as the storefront's browser client. */
 export function apiBase(): string {
   return (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
 }
 
-export function setTokens(access: string, refresh: string): void {
+export function setAccessToken(access: string): void {
   accessToken = access;
-  refreshToken = refresh;
-  persist(refresh);
 }
 
 export function clearTokens(): void {
   accessToken = null;
-  refreshToken = null;
-  persist(null);
 }
 
 export function hasSession(): boolean {
   return accessToken !== null;
-}
-
-/** The refresh token, for the one caller that needs to send it: sign-out. */
-export function currentRefreshToken(): string | null {
-  return refreshToken;
 }
 
 export class ApiError extends Error {
@@ -73,6 +61,9 @@ async function send(path: string, opts: Options): Promise<Response> {
   return fetch(`${apiBase()}${path}`, {
     method: opts.method ?? "GET",
     headers,
+    // Always: the refresh cookie is the session, and a call that omits it
+    // cannot be refreshed.
+    credentials: "include",
     ...(opts.body === undefined ? {} : { body: JSON.stringify(opts.body) }),
   });
 }
@@ -85,18 +76,18 @@ async function send(path: string, opts: Options): Promise<Response> {
  * Either way the caller's answer is the same: sign in again.
  */
 async function refresh(): Promise<boolean> {
-  if (!refreshToken) return false;
+  // No body: the cookie is the token, and the server rotates it in the
+  // response. Nothing here can send a token because nothing here has one.
   const res = await send("/api/v1/affiliate/auth/refresh", {
     method: "POST",
-    body: { refresh_token: refreshToken },
     anonymous: true,
   });
   if (!res.ok) {
     clearTokens();
     return false;
   }
-  const tokens = (await res.json()) as { access_token: string; refresh_token: string };
-  setTokens(tokens.access_token, tokens.refresh_token);
+  const tokens = (await res.json()) as { access_token: string };
+  setAccessToken(tokens.access_token);
   return true;
 }
 
@@ -122,29 +113,12 @@ export async function api<T>(path: string, opts: Options = {}): Promise<T> {
   return (await res.json()) as T;
 }
 
-const STORAGE_KEY = "yupay.partner.refresh";
-
-function persist(token: string | null): void {
-  try {
-    if (token === null) sessionStorage.removeItem(STORAGE_KEY);
-    else sessionStorage.setItem(STORAGE_KEY, token);
-  } catch {
-    // Private mode, or storage disabled. The session still works for this
-    // page; it just will not survive a reload.
-  }
-}
-
-/** The stored refresh token, if the browser kept one. */
-export function storedRefreshToken(): string | null {
-  try {
-    return sessionStorage.getItem(STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-/** Rebuild a session on load from the stored refresh token. */
-export async function restore(token: string): Promise<boolean> {
-  refreshToken = token;
+/**
+ * Rebuild a session on load.
+ *
+ * Nothing is passed in: whether there is a session to restore is a question
+ * only the cookie can answer, and only the server can read it.
+ */
+export async function restore(): Promise<boolean> {
   return refresh();
 }

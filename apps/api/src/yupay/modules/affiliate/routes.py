@@ -12,12 +12,12 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Request, status
+from fastapi import APIRouter, Cookie, Depends, Header, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
 from yupay.core.config import get_settings
-from yupay.core.errors import NotFoundError, ValidationError
+from yupay.core.errors import NotFoundError, UnauthorizedError, ValidationError
 from yupay.core.idempotency import IDEMPOTENCY_HEADER, MIN_IDEMPOTENCY_KEY_LENGTH
 from yupay.modules.admin.api import require_admin
 from yupay.modules.affiliate import admin as affiliate_admin
@@ -50,13 +50,17 @@ from yupay.modules.affiliate.schemas import (
     PreviewIn,
     PreviewOut,
     ProfileOut,
-    RefreshIn,
     ReinviteOut,
     RejectIn,
     SetPasswordIn,
     StatsOut,
     TokensOut,
     UpdateCodeIn,
+)
+from yupay.modules.auth.cookies import (
+    PARTNER_REFRESH_COOKIE_NAME,
+    clear_refresh_cookie,
+    set_refresh_cookie,
 )
 from yupay.modules.auth.deps import current_user
 from yupay.modules.auth.ip_guard import guard_ip
@@ -148,6 +152,24 @@ async def apply(
     return ApplicationOut()
 
 
+def _tokens_response(response: Response, tokens: partners.PartnerTokens) -> TokensOut:
+    """Put the access token in the body and the refresh token in a cookie.
+
+    The refresh token never appears in the JSON, the same as the buyer flow
+    (ADR-0007): it lives 30 days and grants a session that can move money out,
+    so a single XSS regression must not be able to read it. The panel used to
+    keep it in `sessionStorage` because this did not exist yet.
+    """
+    set_refresh_cookie(
+        response,
+        token=tokens.refresh_token,
+        max_age=get_settings().affiliate_refresh_ttl_seconds,
+        settings=get_settings(),
+        name=PARTNER_REFRESH_COOKIE_NAME,
+    )
+    return TokensOut(access_token=tokens.access_token, expires_in=tokens.expires_in)
+
+
 @router.post(
     "/auth/set-password",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -167,6 +189,7 @@ async def set_password(
 async def login(
     body: LoginIn,
     request: Request,
+    response: Response,
     db: Annotated[AsyncSession, Depends(db_session)],
 ) -> TokensOut:
     """Open a partner session.
@@ -176,25 +199,25 @@ async def login(
     """
     await guard_ip(request, bucket="affiliate-login", subject=body.email)
     tokens = await partners.login(db, email=body.email, password=body.password)
-    return TokensOut(
-        access_token=tokens.access_token,
-        refresh_token=tokens.refresh_token,
-        expires_in=tokens.expires_in,
-    )
+    return _tokens_response(response, tokens)
 
 
 @router.post("/auth/refresh", response_model=TokensOut, summary="Rotate a partner session")
 async def refresh(
-    body: RefreshIn,
+    response: Response,
     db: Annotated[AsyncSession, Depends(db_session)],
+    partner_refresh_token: Annotated[str | None, Cookie()] = None,
 ) -> TokensOut:
-    """Exchange a refresh token for a new pair. The old one stops working."""
-    tokens = await partners.rotate(db, refresh_token=body.refresh_token)
-    return TokensOut(
-        access_token=tokens.access_token,
-        refresh_token=tokens.refresh_token,
-        expires_in=tokens.expires_in,
-    )
+    """Exchange the refresh cookie for a new pair. The old one stops working.
+
+    The token comes from the cookie, never from a body: a body field would
+    mean JavaScript had to hold it, which is the thing the cookie exists to
+    prevent.
+    """
+    if not partner_refresh_token:
+        raise UnauthorizedError("missing refresh token")
+    tokens = await partners.rotate(db, refresh_token=partner_refresh_token)
+    return _tokens_response(response, tokens)
 
 
 @router.post(
@@ -203,11 +226,14 @@ async def refresh(
     summary="End a partner session",
 )
 async def logout(
-    body: RefreshIn,
+    response: Response,
     db: Annotated[AsyncSession, Depends(db_session)],
+    partner_refresh_token: Annotated[str | None, Cookie()] = None,
 ) -> None:
-    """Revoke one session. Silent if it was already unusable."""
-    await partners.logout(db, refresh_token=body.refresh_token)
+    """Revoke one session and clear the cookie. Silent if already unusable."""
+    if partner_refresh_token:
+        await partners.logout(db, refresh_token=partner_refresh_token)
+    clear_refresh_cookie(response, settings=get_settings(), name=PARTNER_REFRESH_COOKIE_NAME)
 
 
 @router.get("/me", response_model=ProfileOut, summary="The signed-in partner and their codes")

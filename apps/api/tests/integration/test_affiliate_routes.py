@@ -647,3 +647,96 @@ async def test_rejecting_a_payout_returns_the_money_over_http(
     assert rejected.status_code == 200, rejected.text
     assert rejected.json()["status"] == "rejected"
     assert rejected.json()["card_last4"] == "2222"
+
+
+async def _partner_with_password(
+    client: AsyncClient, db: AsyncSession, email: str, password: str
+) -> str:
+    """An active partner with a password, ready to sign in. Returns their id."""
+    from yupay.modules.affiliate import partners
+    from yupay.modules.affiliate.models import AffiliatePartner
+
+    r = await client.post("/api/v1/affiliate/applications", json={"email": email})
+    assert r.status_code == 202, r.text
+    row = (
+        await db.execute(select(AffiliatePartner).where(AffiliatePartner.email == email))
+    ).scalar_one()
+    token = await partners.approve(db, partner_id=row.id)
+    await partners.set_password(db, token=token, password=password)
+    await db.commit()
+    return str(row.id)
+
+
+async def test_the_refresh_token_never_appears_in_a_response_body(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """It grants a 30-day session that can move money out.
+
+    In the body, one XSS regression reads it. In an HttpOnly cookie, the same
+    regression cannot — which is why the buyer flow has done it this way since
+    ADR-0007 and why the panel no longer keeps it in sessionStorage.
+    """
+    from yupay.modules.auth.cookies import PARTNER_REFRESH_COOKIE_NAME
+
+    email, password = "cookie@example.com", "a good long password"
+    await _partner_with_password(integration_client, db_session, email, password)
+
+    r = await integration_client.post(
+        "/api/v1/affiliate/auth/login", json={"email": email, "password": password}
+    )
+    assert r.status_code == 200, r.text
+    assert "refresh_token" not in r.json()
+    assert r.json()["access_token"]
+
+    cookie = r.cookies.get(PARTNER_REFRESH_COOKIE_NAME)
+    assert cookie, "the refresh token must ride a cookie"
+    # And it must be a different cookie from the buyer's, or a partner signing
+    # in would wipe their own shopping session.
+    assert PARTNER_REFRESH_COOKIE_NAME != "refresh_token"
+
+
+async def test_refresh_reads_the_cookie_and_rotates_it(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    from yupay.modules.auth.cookies import PARTNER_REFRESH_COOKIE_NAME
+
+    email, password = "rotate@example.com", "a good long password"
+    await _partner_with_password(integration_client, db_session, email, password)
+
+    first = await integration_client.post(
+        "/api/v1/affiliate/auth/login", json={"email": email, "password": password}
+    )
+    assert first.status_code == 200, first.text
+    original = first.cookies.get(PARTNER_REFRESH_COOKIE_NAME)
+
+    # No body at all: the client never holds the token, so it cannot send one.
+    rotated = await integration_client.post("/api/v1/affiliate/auth/refresh")
+    assert rotated.status_code == 200, rotated.text
+    assert rotated.json()["access_token"]
+    assert rotated.cookies.get(PARTNER_REFRESH_COOKIE_NAME) != original
+
+
+async def test_refresh_without_a_cookie_is_refused(integration_client: AsyncClient) -> None:
+    from yupay.modules.auth.cookies import PARTNER_REFRESH_COOKIE_NAME
+
+    integration_client.cookies.delete(PARTNER_REFRESH_COOKIE_NAME)
+    r = await integration_client.post("/api/v1/affiliate/auth/refresh")
+    assert r.status_code == 401, r.text
+
+
+async def test_logout_clears_the_cookie(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+
+    email, password = "bye@example.com", "a good long password"
+    await _partner_with_password(integration_client, db_session, email, password)
+
+    await integration_client.post(
+        "/api/v1/affiliate/auth/login", json={"email": email, "password": password}
+    )
+    out = await integration_client.post("/api/v1/affiliate/auth/logout")
+    assert out.status_code == 204, out.text
+
+    # Cleared, so the next refresh has nothing to present.
+    again = await integration_client.post("/api/v1/affiliate/auth/refresh")
+    assert again.status_code == 401, again.text

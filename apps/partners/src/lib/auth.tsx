@@ -3,14 +3,7 @@
 import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 
-import {
-  api,
-  clearTokens,
-  currentRefreshToken,
-  restore,
-  setTokens,
-  storedRefreshToken,
-} from "./api";
+import { api, clearTokens, restore, setAccessToken } from "./api";
 
 /**
  * Who is signed in, if anyone.
@@ -56,44 +49,37 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const stored = storedRefreshToken();
-    if (stored === null) {
-      setStatus("out");
-      return;
-    }
+    // Whether there is a session to restore is a question only the HttpOnly
+    // cookie can answer, so the only way to ask is to try.
     void (async () => {
-      if (await restore(stored)) await load();
+      if (await restore()) await load();
       else setStatus("out");
     })();
   }, [load]);
 
   const signIn = useCallback(
     async (email: string, password: string) => {
-      const tokens = await api<{ access_token: string; refresh_token: string }>(
-        "/api/v1/affiliate/auth/login",
-        { method: "POST", body: { email, password }, anonymous: true },
-      );
-      setTokens(tokens.access_token, tokens.refresh_token);
+      const tokens = await api<{ access_token: string }>("/api/v1/affiliate/auth/login", {
+        method: "POST",
+        body: { email, password },
+        anonymous: true,
+      });
+      // The refresh token is not here and never will be — the response sets it
+      // as an HttpOnly cookie.
+      setAccessToken(tokens.access_token);
       await load();
     },
     [load],
   );
 
   const signOut = useCallback(async () => {
-    const token = currentRefreshToken();
-    if (token !== null) {
-      // Best effort. A failed logout must still clear the session locally —
-      // leaving a partner apparently signed in because the server was
-      // unreachable is the worse outcome.
-      try {
-        await api("/api/v1/affiliate/auth/logout", {
-          method: "POST",
-          body: { refresh_token: token },
-          anonymous: true,
-        });
-      } catch {
-        // Ignored on purpose; see above.
-      }
+    // Best effort, and no body: the server reads the cookie and clears it. A
+    // failed logout must still end the session locally — leaving a partner
+    // apparently signed in because the server was unreachable is worse.
+    try {
+      await api("/api/v1/affiliate/auth/logout", { method: "POST", anonymous: true });
+    } catch {
+      // Ignored on purpose; see above.
     }
     clearTokens();
     setPartner(null);

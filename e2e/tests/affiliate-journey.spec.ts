@@ -130,6 +130,15 @@ function unique(prefix: string): string {
   return `${prefix}${Date.now().toString(36)}${Math.floor(Math.random() * 1e4).toString(36)}`;
 }
 
+/** An idempotency key that is always long enough.
+ *
+ *  `unique()` builds from base36, whose length varies with the value, so it
+ *  sometimes landed under the API's 16-character floor and the order was
+ *  refused — intermittently, which is the worst way for a test to fail. */
+function idempotencyKey(): string {
+  return crypto.randomUUID();
+}
+
 test.describe.configure({ mode: "serial", timeout: 180_000 });
 
 test("the whole programme, from application to payout", async ({ page, request }, testInfo) => {
@@ -333,7 +342,7 @@ test("the whole programme, from application to payout", async ({ page, request }
   expect(Number(previewBody.total_after)).toBeLessThan(Number(previewBody.total_before));
 
   const order = await request.post(`${API}/api/v1/orders`, {
-    headers: { ...buyerAuth, "Idempotency-Key": unique("idem-") },
+    headers: { ...buyerAuth, "Idempotency-Key": idempotencyKey() },
     data: {
       currency: "UZS",
       items: [{ sku_id: skuId, qty: 1, fulfillment_data: {} }],
@@ -346,7 +355,7 @@ test("the whole programme, from application to payout", async ({ page, request }
   expect(Number(orderBody.discount_charged)).toBe(Number(previewBody.discount));
 
   const intent = await request.post(`${API}/api/v1/payments/intents`, {
-    headers: { ...buyerAuth, "Idempotency-Key": unique("idem-") },
+    headers: { ...buyerAuth, "Idempotency-Key": idempotencyKey() },
     data: { order_id: orderBody.id, provider: "mock" },
   });
   const paymentId = ((await intent.json()) as { external_id?: string }).external_id ?? "";

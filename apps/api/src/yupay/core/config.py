@@ -216,6 +216,17 @@ class Settings(BaseSettings):
             "code-access": 60,
             # Sixty a minute is far above any person and far below a script.
             "order-create": 60,
+            # Affiliate. The preview is the one that needs room: it is an
+            # advisory lookup a buyer runs while filling in checkout, and Uzbek
+            # carriers put many subscribers behind one address — the same
+            # reasoning that sized `check_player`. Brute force is blunted on
+            # the other axis, which keys on the signed-in buyer.
+            "affiliate-preview": 120,
+            # Applying and signing in are rare per person, but a shared address
+            # must not lock out the second partner in an office.
+            "affiliate-apply": 30,
+            "affiliate-login": 30,
+            "affiliate-setpw": 30,
         },
         description=(
             "Per-bucket overrides for auth_ip_guard_max. The default is written for "
