@@ -39,6 +39,16 @@ x-app-env: &app-env
   G2B_WEBHOOK_SECRET: ${G2B_WEBHOOK_SECRET:-}
   G2B_CALLBACK_URL: ${G2B_CALLBACK_URL:-}
   G2B_REQUEST_TIMEOUT_SECONDS: ${G2B_REQUEST_TIMEOUT_SECONDS:-20}
+  # G-Engine supplier (Standoff 2, Telegram Stars/Premium) — set in .env / prod
+  # secrets. Empty GENGINE_API_KEY leaves the adapter as ``available=false``.
+  #
+  # This block was missing while the settings and the adapter both existed, so
+  # the key sat in .env and never reached the container: the Standoff 2 and
+  # Telegram imports in scripts/seed/ failed on a fresh dev machine with "is
+  # not set", which reads as a missing credential rather than a missing wire.
+  GENGINE_API_KEY: ${GENGINE_API_KEY:-}
+  GENGINE_BASE_URL: ${GENGINE_BASE_URL:-https://api.g-engine.net/v2.1}
+  GENGINE_REQUEST_TIMEOUT_SECONDS: ${GENGINE_REQUEST_TIMEOUT_SECONDS:-20}
   # Waxpeer supplier (Steam wallet top-ups) — set in .env / prod secrets.
   # Empty WAXPEER_API_KEY leaves the adapter as ``available=false``.
   WAXPEER_API_KEY: ${WAXPEER_API_KEY:-}
@@ -253,6 +263,33 @@ services:
       # (pnpm install) survive; without these `next dev` crashes on missing deps.
       - /app/node_modules
       - /app/apps/web/node_modules
+
+  partners:
+    # Dev image: `next dev` with HMR over the bind-mounted apps/partners +
+    # packages. The production build lives in partners.Dockerfile.
+    build:
+      context: .
+      dockerfile: infra/docker/partners.dev.Dockerfile
+    restart: unless-stopped
+    environment:
+      # The landing prerenders without touching the API, and the panel is
+      # entirely client-side, so there is no API_INTERNAL_URL here — nothing
+      # renders on the server that needs data.
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      NEXT_PUBLIC_STOREFRONT_URL: http://localhost:3000
+      # Poll the bind-mounted FS so Next's watcher sees edits on macOS/Docker.
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "3003:3003"
+    depends_on:
+      - api
+    volumes:
+      - ./apps/partners:/app/apps/partners
+      - ./packages:/app/packages
+      # Anonymous volumes mask the bind-mounts so the image's node_modules
+      # survive; without these `next dev` crashes on missing deps.
+      - /app/node_modules
+      - /app/apps/partners/node_modules
 
   miniapp:
     # Dev image: runs `vite dev` with HMR. Source is bind-mounted below so

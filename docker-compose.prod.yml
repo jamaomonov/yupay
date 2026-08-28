@@ -273,6 +273,19 @@ services:
     depends_on:
       api: { condition: service_started }
 
+  partners:
+    image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-partners:${IMAGE_TAG:-main}
+    logging: *default-logging
+    # Smaller than web's 1.5g: this app server-renders nothing that fetches —
+    # the landing is prerendered and the panel is client-side — so it holds no
+    # SSR connections and its working set is the Next runtime plus static
+    # output.
+    mem_limit: 512m
+    restart: unless-stopped
+    env_file: ./secrets/partners.env
+    depends_on:
+      api: { condition: service_started }
+
   miniapp:
     image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-miniapp:${IMAGE_TAG:-main}
     logging: *default-logging
