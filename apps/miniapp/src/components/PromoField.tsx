@@ -155,7 +155,10 @@ export function PromoField({
 
   if (applied) {
     return (
-      <div className="mt-4 rounded-2xl border border-lime-400/40 bg-lime-400/5 px-4 py-3">
+      <div
+        className="my-4 rounded-2xl border border-lime-400/40 bg-lime-400/5 px-4 py-3"
+        data-testid="promo-applied"
+      >
         <div className="flex items-center justify-between gap-3">
           <div>
             <span className="block text-[13px] font-semibold text-lime-300">
@@ -182,7 +185,7 @@ export function PromoField({
   }
 
   return (
-    <div className="mt-4">
+    <div className="my-4">
       <label htmlFor="promo-code" className="mb-2 block text-[13px] font-semibold text-slate-400">
         {t("topup.promoLabel")}
       </label>
