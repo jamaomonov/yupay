@@ -1,6 +1,8 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+
+import { tidyPercent } from "@/lib/money";
 import { useState } from "react";
 
 import { useProfile } from "@/lib/panel";
@@ -29,7 +31,11 @@ export default function CodesPage() {
   const codes = profile.data?.codes ?? [];
 
   if (profile.isSuccess && codes.length === 0) {
-    return <p className="text-tx-mute text-[14px] leading-relaxed">{t("codesEmpty")}</p>;
+    return (
+      <div className="border-border border-y py-10">
+        <p className="text-tx-mute max-w-prose text-[14px] leading-relaxed">{t("codesEmpty")}</p>
+      </div>
+    );
   }
 
   const button =
@@ -45,14 +51,20 @@ export default function CodesPage() {
               {code.code}
             </p>
 
-            <dl className="mt-4 grid grid-cols-2 gap-4">
+            {/* Capped: two short label/value pairs stretched across the full
+                measure read as a layout that lost its content. */}
+            <dl className="mt-4 grid max-w-md grid-cols-2 gap-4">
               <div>
                 <dt className="text-tx-mute text-[13px]">{t("codeDiscount")}</dt>
-                <dd className="mt-1 font-mono text-[15px]">{code.discount_percent}%</dd>
+                <dd className="mt-1 font-mono text-[15px]">
+                  {tidyPercent(code.discount_percent)}%
+                </dd>
               </div>
               <div>
                 <dt className="text-tx-mute text-[13px]">{t("codeCommission")}</dt>
-                <dd className="mt-1 font-mono text-[15px]">{code.commission_percent}%</dd>
+                <dd className="mt-1 font-mono text-[15px]">
+                  {tidyPercent(code.commission_percent)}%
+                </dd>
               </div>
             </dl>
 

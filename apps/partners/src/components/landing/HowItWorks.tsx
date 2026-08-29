@@ -22,9 +22,12 @@ export async function HowItWorks({ locale }: { locale: string }) {
   return (
     <section className="border-border border-t">
       <div className={`${SHELL} pt-14 lg:pt-16`}>
-        <p className="text-primary font-mono text-[11px] uppercase tracking-[0.16em]">
+        {/* An `h2`, not a `p`. Styled identically — but as a paragraph this band
+            and the calculator simply did not exist for a screen reader, and the
+            step `h3`s below sat under the page `h1` with a level skipped. */}
+        <h2 className="text-primary font-mono text-[11px] uppercase tracking-[0.16em]">
           {t("title")}
-        </p>
+        </h2>
       </div>
       <ol
         className={`${SHELL} grid grid-cols-1 gap-10 pb-14 pt-8 sm:grid-cols-3 sm:gap-11 lg:pb-16`}

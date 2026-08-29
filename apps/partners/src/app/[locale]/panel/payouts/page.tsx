@@ -1,11 +1,11 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
 
 import { api, ApiError } from "@/lib/api";
-import { formatMoney, formatUzs } from "@/lib/money";
+import { formatDate, formatMoney, formatUzs } from "@/lib/money";
 import { useBalance, usePayouts } from "@/lib/panel";
 
 /** The floor the API enforces. Stated here **before** submission, not only
@@ -79,14 +79,16 @@ export default function PayoutsPage() {
 
   const field =
     "border-border bg-card focus:border-primary/60 h-12 w-full rounded-full border px-5 text-[15px] outline-none transition";
+  const locale = useLocale();
   const rows = payouts.data?.items ?? [];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-px">
       <section className="border-border border-y py-7">
         <h2 className="font-display text-lg font-bold">{t("payoutTitle")}</h2>
         <p className="text-tx-mute mt-1 text-[13px]">
-          {t("available")}: <span className="text-primary font-mono">{formatUzs(available)}</span>
+          {t("available")}:{" "}
+          <span className="text-primary font-mono">{formatUzs(available, locale)}</span>
         </p>
 
         {state === "done" ? (
@@ -94,7 +96,9 @@ export default function PayoutsPage() {
             {t("payoutDone")}
           </p>
         ) : (
-          <form onSubmit={(e) => void submit(e)} className="mt-5 space-y-4">
+          // Capped like the login form: at full measure a field for sixteen
+          // digits ran 1580px on a 1440 screen and read as a layout fault.
+          <form onSubmit={(e) => void submit(e)} className="mt-5 max-w-md space-y-4">
             <label className="block">
               <span className="text-tx-mute mb-2 block text-[13px]">{t("payoutAmount")}</span>
               <input
@@ -108,7 +112,7 @@ export default function PayoutsPage() {
                 className={field}
               />
               <span className="text-tx-dim mt-1.5 block text-[12px]">
-                {t("payoutMin", { amount: formatUzs(MINIMUM_UZS) })}
+                {t("payoutMin", { amount: formatUzs(MINIMUM_UZS, locale) })}
               </span>
             </label>
             <label className="block">
@@ -134,7 +138,7 @@ export default function PayoutsPage() {
             <button
               type="submit"
               disabled={state === "sending" || available < MINIMUM_UZS}
-              className="bg-primary text-primary-foreground h-12 w-full rounded-full text-[15px] font-bold transition hover:brightness-110 disabled:opacity-50"
+              className="bg-primary text-primary-foreground h-12 w-full rounded-full text-[15px] font-bold transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto sm:px-9"
             >
               {state === "sending" ? t("payoutSubmitting") : t("payoutSubmit")}
             </button>
@@ -143,26 +147,30 @@ export default function PayoutsPage() {
       </section>
 
       {payouts.isSuccess && rows.length === 0 ? (
-        <p className="text-tx-mute text-[14px]">{t("payoutsEmpty")}</p>
+        <div className="border-border border-y py-10">
+          <p className="text-tx-mute max-w-prose text-[14px]">{t("payoutsEmpty")}</p>
+        </div>
       ) : (
         <section className="border-border overflow-x-auto border-y">
           <table className="w-full min-w-[560px] border-collapse">
             <thead>
-              <tr className="border-border text-tx-mute border-b text-left">
-                <th className="px-4 py-3 text-[13px] font-medium">{t("colDate")}</th>
-                <th className="px-4 py-3 text-[13px] font-medium">{t("colAmount")}</th>
-                <th className="px-4 py-3 text-[13px] font-medium">{t("payoutCard")}</th>
-                <th className="px-4 py-3 text-[13px] font-medium">{t("colStatus")}</th>
+              <tr className="border-border text-tx-mute border-b">
+                <th className="px-4 py-3 text-left text-[13px] font-medium">{t("colDate")}</th>
+                <th className="px-4 py-3 text-right text-[13px] font-medium tabular-nums">
+                  {t("colAmount")}
+                </th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium">{t("payoutCard")}</th>
+                <th className="px-4 py-3 text-left text-[13px] font-medium">{t("colStatus")}</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => (
                 <tr key={row.id} className="border-border/60 border-b last:border-0">
                   <td className="text-tx-mute px-4 py-3 font-mono text-[13px]">
-                    {new Date(row.created_at).toLocaleDateString("ru-RU")}
+                    {formatDate(row.created_at, locale)}
                   </td>
-                  <td className="px-4 py-3 font-mono text-[13px]">
-                    {formatMoney(row.amount, row.currency)}
+                  <td className="px-4 py-3 text-right font-mono text-[13px] tabular-nums">
+                    {formatMoney(row.amount, row.currency, locale)}
                   </td>
                   {/* Only the last four ever reach the browser — the API
                       returns nothing more, deliberately. */}

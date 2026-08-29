@@ -4,7 +4,7 @@
     "description": "Xaridor olib keling — uning har bir buyurtmasidan doimiy ulush oling."
   },
   "hero": {
-    "title": "Bitta kod.\nHar bir\nbuyurtmadan\nfoiz —",
+    "title": "Bitta kod.\nHar bir\nbuyurtmadan\nfoiz",
     "subtitle": "PUBG uchun UC, Free Fire olmoslari, Nitro, Telegram Premium — auditoriyangiz baribir sotib oladigan narsalar. Kodingiz bilan ularga birinchi buyurtmasiga 10% chegirma, sizga esa har biridan 2%. Ikkinchisidan ham, bir yildan keyin ham: xaridor sizniki bo'lib qoladi.",
     "ctaApply": "Promokodni olish",
     "ctaLogin": "Panelga kirish",
@@ -66,7 +66,7 @@
     "doneTitle": "Ariza qabul qilindi",
     "doneBody": "Kanalingizni ko'rib chiqamiz va pochtaga javob beramiz — odatda bir necha kun ichida. Mos kelsa, panelga kirish havolasini yuboramiz.",
     "errGeneric": "Yuborib bo'lmadi. Qaytadan urinib ko'ring.",
-    "bandTitle": "Promokodingizni oling",
+    "bandTitle": "Kodingizni oling",
     "bandSubtitle": "Email, kanalingizga havola — tamom. O'zimiz ko'rib chiqamiz va bir necha kun ichida pochtaga javob beramiz."
   },
   "login": {
@@ -116,7 +116,6 @@
     "copied": "Nusxalandi",
     "codesEmpty": "Hozircha promokod yo'q. Tasdiqlangach beramiz.",
     "colDate": "Sana",
-    "colOrder": "Buyurtma",
     "colBase": "Buyurtma summasi",
     "colRate": "Stavka",
     "colAmount": "Komissiya",
@@ -137,7 +136,7 @@
     "payoutErrMin": "Minimal summadan kam",
     "payoutErrBalance": "Mavjud summadan ko'p",
     "payoutErrGeneric": "Yuborib bo'lmadi. Qaytadan urinib ko'ring.",
-    "payoutsEmpty": "Hali to'lovlar bo'lmagan. Birinchisini 50 000 so'mdan boshlab so'rash mumkin.",
+    "payoutsEmpty": "Hali to'lovlar bo'lmagan. Birinchisini 50 000 UZS dan boshlab so'rash mumkin.",
     "payoutStatusRequested": "ko'rib chiqilmoqda",
     "payoutStatusPaid": "to'langan",
     "payoutStatusRejected": "rad etilgan",

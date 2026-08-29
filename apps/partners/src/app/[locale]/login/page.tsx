@@ -74,15 +74,11 @@ export default function LoginPage() {
 
           <form onSubmit={(e) => void submit(e)} className="mt-8 space-y-4">
             <label className="block">
-              <span className="text-tx-mute mb-2 block font-mono text-[11px] uppercase tracking-[0.12em]">
-                {t("email")}
-              </span>
+              <span className="text-tx-mute mb-2 block text-[13px]">{t("email")}</span>
               <input name="email" type="email" required autoComplete="email" className={field} />
             </label>
             <label className="block">
-              <span className="text-tx-mute mb-2 block font-mono text-[11px] uppercase tracking-[0.12em]">
-                {t("password")}
-              </span>
+              <span className="text-tx-mute mb-2 block text-[13px]">{t("password")}</span>
               <input
                 name="password"
                 type="password"

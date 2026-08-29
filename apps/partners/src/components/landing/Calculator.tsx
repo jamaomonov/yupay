@@ -1,6 +1,6 @@
 "use client";
 
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 
 import { DEFAULTS, estimateEarnings } from "@/lib/earnings";
@@ -28,6 +28,7 @@ const AUDIENCE_MAX = 200_000;
 
 export function Calculator() {
   const t = useTranslations("partners.calc");
+  const locale = useLocale();
   const [audience, setAudience] = useState<number>(DEFAULTS.audience);
 
   const result = useMemo(
@@ -42,7 +43,10 @@ export function Calculator() {
     [audience],
   );
 
-  const number = (n: number): string => n.toLocaleString("ru-RU");
+  // The active locale, not a hardcoded one: §11 puts every figure through
+  // `Intl` with the reader's locale, and an English page grouping digits
+  // the Russian way is exactly what that rule is about.
+  const number = (n: number): string => new Intl.NumberFormat(locale).format(n);
 
   return (
     <section className="border-border border-t">
@@ -50,9 +54,9 @@ export function Calculator() {
         className={`${SHELL} grid grid-cols-1 items-center gap-12 py-14 lg:grid-cols-[1fr_460px] lg:gap-16 lg:py-16`}
       >
         <div>
-          <p className="text-primary font-mono text-[11px] uppercase tracking-[0.16em]">
+          <h2 className="text-primary font-mono text-[11px] uppercase tracking-[0.16em]">
             {t("title")}
-          </p>
+          </h2>
           <p className="text-tx-mute mt-4 max-w-lg text-pretty text-[15px] leading-relaxed sm:text-[17px]">
             {t("lead")}
           </p>
@@ -71,7 +75,10 @@ export function Calculator() {
               onChange={(e) => {
                 setAudience(Number(e.target.value));
               }}
-              className="accent-primary h-1 w-full cursor-pointer"
+              // The track stays 1px; the *element* is 44px so it can be
+              // dragged. At `h-1` the hit area was 620x4px — the one
+              // interactive thing on the landing, and unusable on a phone.
+              className="accent-primary h-11 w-full cursor-pointer appearance-none bg-transparent [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-[hsl(var(--primary))] [&::-moz-range-track]:h-1 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-[hsl(var(--border-2))] [&::-webkit-slider-runnable-track]:h-1 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-[hsl(var(--border-2))] [&::-webkit-slider-thumb]:mt-[-8px] [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[hsl(var(--primary))]"
             />
             <span className="text-tx-dim mt-2.5 flex justify-between font-mono text-[11px]">
               <span>{number(AUDIENCE_MIN)}</span>

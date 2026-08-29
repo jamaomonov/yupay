@@ -68,22 +68,34 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
             </button>
           </div>
         </div>
-        <nav className={`${SHELL} -mb-px flex gap-7 overflow-x-auto`}>
-          {tabs.map((tab) => (
-            <Link
-              key={tab.href}
-              href={tab.href}
-              aria-current={isActive(tab.href) ? "page" : undefined}
-              className={`shrink-0 border-b-2 pb-3 font-mono text-[11.5px] uppercase tracking-[0.12em] transition ${
-                isActive(tab.href)
-                  ? "border-primary text-primary"
-                  : "text-tx-mute hover:text-foreground border-transparent"
-              }`}
-            >
-              {tab.label}
-            </Link>
-          ))}
-        </nav>
+        {/* The tabs scroll, and on Uzbek at 390px they must: measured
+            447px of content in a 390px bar, with "TO'LOVLAY" — the money
+            one — falling off the right edge with nothing to suggest it was
+            there. The fade says the row continues. */}
+        <div className="relative">
+          <nav
+            className={`${SHELL} -mb-px flex gap-7 overflow-x-auto pr-10 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}
+          >
+            {tabs.map((tab) => (
+              <Link
+                key={tab.href}
+                href={tab.href}
+                aria-current={isActive(tab.href) ? "page" : undefined}
+                className={`shrink-0 border-b-2 pb-3 font-mono text-[11.5px] uppercase tracking-[0.12em] transition ${
+                  isActive(tab.href)
+                    ? "border-primary text-primary"
+                    : "text-tx-mute hover:text-foreground border-transparent"
+                }`}
+              >
+                {tab.label}
+              </Link>
+            ))}
+          </nav>
+          <div
+            aria-hidden="true"
+            className="from-bg pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l to-transparent"
+          />
+        </div>
       </header>
       <main className={`${SHELL} py-10`}>{children}</main>
     </div>

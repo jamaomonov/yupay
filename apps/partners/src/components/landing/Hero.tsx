@@ -23,9 +23,15 @@ export async function Hero({ locale }: { locale: string }) {
       <h1 className="font-display whitespace-pre-line text-[clamp(2.1rem,7.2vw,5.6rem)] font-extrabold leading-[0.94] tracking-[-0.045em]">
         {t("title")}
         {"\n"}
-        {/* `box-decoration-clone` so a wrapped accent keeps its padding on both
-            fragments instead of losing it mid-word. */}
-        <span className="bg-primary text-primary-foreground box-decoration-clone px-[0.12em]">
+        {/* `inline-block`, not inline. An inline background is drawn over the
+            font's content area — 1.23em in Unbounded — while the line box is
+            0.94em, so the plate stood proud of its own line and painted out
+            the bottom of the line above it. As a block the box follows the
+            line-height instead, and the padding is asymmetric because
+            Unbounded's ascenders (uz "umrbod", en "forever") reach higher than
+            its descenders drop. The accent is one word in every locale, so
+            nothing needs `box-decoration-clone`. */}
+        <span className="bg-primary text-primary-foreground inline-block px-[0.12em] pb-[0.05em] pt-[0.11em] leading-[0.78]">
           {t("titleAccent")}
         </span>
       </h1>

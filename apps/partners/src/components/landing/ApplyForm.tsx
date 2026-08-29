@@ -64,16 +64,22 @@ export function ApplyForm() {
   }
 
   // Dark-on-lime, so the inputs read as wells cut into the band rather than as
-  // pale boxes sitting on top of it.
+  // pale boxes sitting on top of it. `black/50` rather than `/25`: at a quarter
+  // the border sat at 1.82:1 against the band, under the 3:1 WCAG 1.4.11 asks
+  // of a control boundary, and the fields read as ghosts. And no `outline-none`
+  // — it was removing the only focus indicator on the form this page exists
+  // for, leaving a border darkening as the whole signal.
   const field =
-    "h-12 w-full rounded-full border border-black/25 bg-black/[0.06] px-5 text-[14px] text-black outline-none transition placeholder:text-black/40 focus:border-black/60";
+    "focus-ring-invert h-12 w-full rounded-full border border-black/50 bg-black/[0.06] px-5 text-[14px] text-black transition placeholder:text-black/40 focus:border-black";
   const label = "mb-2 block text-[12.5px] font-semibold text-black/60";
 
   return (
     <section id="apply" className="bg-primary text-primary-foreground">
       <div className={`${SHELL} grid grid-cols-1 gap-10 py-14 lg:grid-cols-2 lg:gap-16 lg:py-16`}>
         <div>
-          <h2 className="font-display text-[clamp(2rem,5.4vw,2.9rem)] font-extrabold leading-[1.02] tracking-[-0.035em]">
+          {/* `break-words` as a floor, not a plan: a locale whose longest word does
+              not fit should wrap rather than run off the band. */}
+          <h2 className="font-display break-words text-[clamp(2rem,5.4vw,2.9rem)] font-extrabold leading-[1.02] tracking-[-0.035em]">
             {t("bandTitle")}
           </h2>
           <p className="mt-3.5 max-w-md text-pretty text-[15px] font-medium leading-relaxed text-black/65">
@@ -116,21 +122,24 @@ export function ApplyForm() {
             <label className="block">
               <span className={label}>{t("channel")}</span>
               <input name="channel" type="text" maxLength={512} className={field} />
-              <span className="mt-2 block text-[12px] font-medium text-black/50">
+              <span className="mt-2 block text-[12px] font-medium text-black/60">
                 {t("channelHint")}
               </span>
             </label>
 
             <div className="sm:col-span-2">
+              {/* Black, not `red-900`: on this band the red cleared contrast but
+                  was the one foreign hue on the page, and the weight already
+                  reads as alarm. */}
               {state === "error" && (
-                <p role="alert" className="mb-3 text-[13px] font-semibold text-red-900">
+                <p role="alert" className="mb-3 text-[13px] font-bold text-black">
                   {t("errGeneric")}
                 </p>
               )}
               <button
                 type="submit"
                 disabled={state === "sending"}
-                className="text-primary h-12 w-full rounded-full bg-black text-[15px] font-bold transition hover:brightness-125 disabled:opacity-50 sm:w-auto sm:px-9"
+                className="focus-ring-invert text-primary h-12 w-full rounded-full bg-black text-[15px] font-bold transition hover:brightness-125 disabled:opacity-50 sm:w-auto sm:px-9"
               >
                 {state === "sending" ? t("submitting") : t("submit")}
               </button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 
 import { StatCard } from "@/components/panel/StatCard";
 import { formatMoney } from "@/lib/money";
@@ -18,6 +18,7 @@ const PERIODS: { period: Period; key: string }[] = [
 
 export default function OverviewPage() {
   const t = useTranslations("partners.panel");
+  const locale = useLocale();
   const balance = useBalance();
   // One hook per window rather than a loop: hooks cannot be called
   // conditionally or in a variable-length loop, and four is not enough to
@@ -29,10 +30,13 @@ export default function OverviewPage() {
   const byPeriod = { day, week, month, year };
 
   const money = (raw: string | undefined, currency = "UZS"): string =>
-    formatMoney(raw ?? "0", currency);
+    formatMoney(raw ?? "0", currency, locale);
 
+  // Not `space-y-10`: two ruled grids, each with its own top and bottom rule,
+  // left a gap bounded by two lines — which on a phone read as an empty table
+  // row. They now share the single rule between them.
   return (
-    <div className="space-y-10">
+    <div className="space-y-px">
       <section className="grid-ruled grid grid-cols-1 sm:grid-cols-3">
         <StatCard
           label={t("available")}

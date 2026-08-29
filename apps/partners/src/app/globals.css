@@ -50,7 +50,7 @@
   --border-2: 232 36% 23%; /* #242952 */
 
   --foreground: 0 0% 100%;
-  --tx-mute: 222 33% 70%; /* #9DA8C8 — 7.4:1 on --muted, the darkest surface */
+  --tx-mute: 222 33% 70%; /* #99A8CC — 7.4:1 on --muted, the darkest surface */
   /* Was 50% (#6B7395), which cleared WCAG AA on none of the four surfaces
      below — 4.26 on --bg down to 3.78 on --muted, against a 4.5 floor. It
      paints the checkout field labels, footer column headings, breadcrumbs and
@@ -60,7 +60,7 @@
   --tx-dim: 226 17% 55%; /* #7982A0 */
 
   /* Electric lime — primary accent. */
-  --primary: 80 100% 60%; /* #AAFF33 */
+  --primary: 80 100% 60%; /* #BBFF33 */
   --primary-2: 80 100% 70%; /* #C8FF66 */
   --primary-foreground: 0 0% 0%;
 
@@ -119,6 +119,13 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* The black focus ring, for controls sitting ON the lime band. The lime ring
+   from the base layer is a 1.06:1 non-indicator there. Unlayered so a class
+   selector beats the base rule without needing `!important`. */
+.focus-ring-invert:focus-visible {
+  outline-color: #000;
 }
 
 /* ──────────────── reusable atmosphere classes ─────────────────

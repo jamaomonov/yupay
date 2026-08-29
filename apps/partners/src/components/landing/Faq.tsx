@@ -27,7 +27,9 @@ export async function Faq({ locale }: { locale: string }) {
 
   return (
     <section id="faq" className="border-border border-t">
-      <div className={`${SHELL} grid grid-cols-1 gap-9 py-14 lg:grid-cols-[280px_1fr] lg:gap-14`}>
+      <div
+        className={`${SHELL} grid grid-cols-1 gap-9 py-14 lg:grid-cols-[280px_1fr] lg:gap-14 lg:py-16`}
+      >
         <h2 className="font-display text-[26px] font-bold leading-[1.06] tracking-[-0.03em] sm:text-[30px]">
           {t("title")}
         </h2>
