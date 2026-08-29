@@ -205,6 +205,8 @@
     "promoPlaceholder": "Enter code",
     "promoApply": "Apply",
     "promoChecking": "Checking…",
+    "promoNeedPackage": "Pick a package first",
+    "promoRechecking": "Recalculating…",
     "promoRemove": "Remove",
     "promoApplied": "{percent}% off",
     "promoSaved": "You save {amount}",

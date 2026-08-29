@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { rejectionKey } from "./PromoField";
+import { cartSignature, rejectionKey } from "./PromoField";
 
 import { translate } from "@/lib/i18n/core";
 
@@ -43,5 +43,35 @@ describe("rejectionKey", () => {
     ]) {
       expect(translate(rejectionKey(reason))).not.toBe(rejectionKey(reason));
     }
+  });
+});
+
+describe("cartSignature", () => {
+  it("is stable across the host rebuilding its array literal", () => {
+    // The host builds `items` inline on every render. Keyed on the array
+    // itself, the re-pricing effect would fire forever; keyed on this, it
+    // fires when the cart actually changed.
+    expect(cartSignature("UZS", [{ sku_id: "a", qty: 1 }])).toBe(
+      cartSignature("UZS", [{ sku_id: "a", qty: 1 }]),
+    );
+  });
+
+  it("changes when the package does", () => {
+    expect(cartSignature("UZS", [{ sku_id: "a", qty: 1 }])).not.toBe(
+      cartSignature("UZS", [{ sku_id: "b", qty: 1 }]),
+    );
+  });
+
+  it("changes when a variable amount does", () => {
+    // Telegram Stars and other variable SKUs re-price on the amount alone.
+    expect(cartSignature("UZS", [{ sku_id: "a", qty: 1, amount_usd: "5.00" }])).not.toBe(
+      cartSignature("UZS", [{ sku_id: "a", qty: 1, amount_usd: "9.00" }]),
+    );
+  });
+
+  it("changes when the currency does", () => {
+    expect(cartSignature("UZS", [{ sku_id: "a", qty: 1 }])).not.toBe(
+      cartSignature("USD", [{ sku_id: "a", qty: 1 }]),
+    );
   });
 });

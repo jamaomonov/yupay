@@ -123,6 +123,39 @@ it, this module reported 79% on `routes.py` where the real figure is 100%.
   idempotency. Overlapping ticks cannot pay twice; a missed order is picked up
   next pass; nothing needs reconciling by hand.
 
+## `/preview` is a quote, and a quote goes stale
+
+`POST /affiliate/preview` prices one cart. It is display-only — `create_order`
+resolves the code and prices the order itself, so nothing quoted here can be
+spent — but "display-only" is not "harmless if wrong". The checkout field puts
+`total_after` straight on the pay button.
+
+So the two surfaces re-price on every cart change rather than pricing once and
+keeping the answer. They shipped doing the latter, and a buyer who applied a
+code and then switched to a dearer package was quoted the cheaper one's
+discounted total: selecting a 124 163 UZS package showed «Оплатить · 55 873
+UZS». The charge was right and the quote was not, which is the worse half to
+get wrong — the buyer only finds out at the acquirer.
+
+Three rules hold the fix together, and all three are load-bearing:
+
+- **Withdraw before re-pricing.** The instant the cart moves, the host is told
+  there is no discount. Keeping the old one visible "just until the answer
+  arrives" is the original bug with a shorter fuse.
+- **Only the newest answer lands.** Requests carry a sequence number; a slow
+  response for a cart nobody has any more is dropped.
+- **Debounce 400 ms.** A variable-amount SKU rewrites the cart on every
+  keystroke, and this endpoint is bucketed at 120 calls a minute.
+
+Unmounting withdraws the discount too. The Mini App unmounts the field when the
+buyer steps back to the package picker, and a discount that outlived it stayed
+on the pay button with nothing on screen to explain where it came from.
+
+The field renders before a package is chosen, with an empty cart. It cannot
+price one, so it says so and keeps its button disabled — a buyer holding a code
+should not have to commit to a package to find out whether this checkout takes
+one.
+
 ## Public interface
 
 Import from `api`, never from `accrual` or `ledger`:

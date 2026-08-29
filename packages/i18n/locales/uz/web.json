@@ -205,6 +205,8 @@
     "promoPlaceholder": "Kodni kiriting",
     "promoApply": "Qo'llash",
     "promoChecking": "Tekshiryapmiz…",
+    "promoNeedPackage": "Avval paketni tanlang",
+    "promoRechecking": "Qayta hisoblanmoqda…",
     "promoRemove": "Olib tashlash",
     "promoApplied": "{percent}% chegirma",
     "promoSaved": "{amount} tejaysiz",

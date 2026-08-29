@@ -1473,30 +1473,32 @@ export default function TopUp() {
               </div>
             </div>
 
-            {activePkg && (
-              <PromoField
-                items={[
-                  {
-                    sku_id: activePkg.id,
-                    qty: isUnitSelected ? (parsedQty ?? 1) : 1,
-                    ...(isVariableSelected && parsedAmount !== null
-                      ? {
-                          amount_usd: (amountAsUsd ?? parsedAmount).toFixed(
-                            perUsd !== null ? 6 : 2,
-                          ),
-                        }
-                      : {}),
-                  },
-                ]}
-                currency={currency}
-                isLoggedIn={me.data != null}
-                formatAmount={(value) => formatMoney(value, priceCode)}
-                onChange={(next) => {
-                  setPromo(next);
-                  setPromoDropped(false);
-                }}
-              />
-            )}
+            <PromoField
+              items={
+                activePkg
+                  ? [
+                      {
+                        sku_id: activePkg.id,
+                        qty: isUnitSelected ? (parsedQty ?? 1) : 1,
+                        ...(isVariableSelected && parsedAmount !== null
+                          ? {
+                              amount_usd: (amountAsUsd ?? parsedAmount).toFixed(
+                                perUsd !== null ? 6 : 2,
+                              ),
+                            }
+                          : {}),
+                      },
+                    ]
+                  : []
+              }
+              currency={currency}
+              isLoggedIn={me.data != null}
+              formatAmount={(value) => formatMoney(value, priceCode)}
+              onChange={(next) => {
+                setPromo(next);
+                setPromoDropped(false);
+              }}
+            />
             {promoDropped && (
               <p className="mb-4 mt-2 text-center text-[12px] text-red-400">
                 {t("topup.promoDropped")}

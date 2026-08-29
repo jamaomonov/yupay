@@ -205,6 +205,8 @@
     "promoPlaceholder": "Введите код",
     "promoApply": "Применить",
     "promoChecking": "Проверяем…",
+    "promoNeedPackage": "Сначала выберите пакет",
+    "promoRechecking": "Пересчитываем…",
     "promoRemove": "Убрать",
     "promoApplied": "Скидка {percent}%",
     "promoSaved": "Вы экономите {amount}",

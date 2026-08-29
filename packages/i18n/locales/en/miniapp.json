@@ -375,6 +375,8 @@
   "topup.promoPlaceholder": "Enter code",
   "topup.promoApply": "Apply",
   "topup.promoChecking": "Checking…",
+  "topup.promoNeedPackage": "Pick a package first",
+  "topup.promoRechecking": "Recalculating…",
   "topup.promoRemove": "Remove",
   "topup.promoApplied": "{percent}% off",
   "topup.promoSaved": "You save {amount}",

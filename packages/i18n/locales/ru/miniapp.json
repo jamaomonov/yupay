@@ -375,6 +375,8 @@
   "topup.promoPlaceholder": "Введите код",
   "topup.promoApply": "Применить",
   "topup.promoChecking": "Проверяем…",
+  "topup.promoNeedPackage": "Сначала выберите пакет",
+  "topup.promoRechecking": "Пересчитываем…",
   "topup.promoRemove": "Убрать",
   "topup.promoApplied": "Скидка {percent}%",
   "topup.promoSaved": "Вы экономите {amount}",

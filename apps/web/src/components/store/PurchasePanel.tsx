@@ -1904,18 +1904,19 @@ export function PurchasePanel({
               </div>
             </div>
 
-            {orderItem && (
-              <PromoField
-                locale={locale}
-                items={[orderItem]}
-                currency="UZS"
-                isLoggedIn={isSignedIn}
-                onChange={(next) => {
-                  setPromo(next);
-                  setPromoDropped(false);
-                }}
-              />
-            )}
+            {/* Rendered before a package is picked too, with an empty cart: a
+                buyer holding a code should not have to guess whether this
+                checkout takes one. The field says what it is waiting for. */}
+            <PromoField
+              locale={locale}
+              items={orderItem ? [orderItem] : []}
+              currency="UZS"
+              isLoggedIn={isSignedIn}
+              onChange={(next) => {
+                setPromo(next);
+                setPromoDropped(false);
+              }}
+            />
 
             <button
               type="button"

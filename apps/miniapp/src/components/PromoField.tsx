@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { MessageKey } from "@/lib/i18n/messages";
 
@@ -14,6 +14,12 @@ import { useT } from "@/lib/i18n";
  * going to charge — so `total_before` and `total_after` are both taken as
  * given, and the host uses `total_after` on its pay button.
  *
+ * Which is also why the code is re-priced whenever the cart moves, and why
+ * leaving the tree withdraws the discount. Both were missing: stepping back to
+ * the package picker unmounted this field but left the host's discount in
+ * place, so the pay button offered a cheaper package's price for a dearer one,
+ * with nothing on screen to explain where the discount had come from.
+ *
  * The preview is for display only. `create_order` resolves the code again for
  * itself, so nothing shown here can be spent.
  *
@@ -23,6 +29,12 @@ import { useT } from "@/lib/i18n";
  * Its own file rather than more lines in `TopUp.tsx`, which is already 2172
  * lines against a 300-line soft limit.
  */
+
+/** How still the cart has to be before the code is re-priced. A
+ *  variable-amount SKU rewrites the cart on every keystroke, and `/preview` is
+ *  bucketed at 120 calls a minute — one request per character would spend that
+ *  on a single order. */
+const REPRICE_DEBOUNCE_MS = 400;
 
 /** "10.00" → "10". The API returns percentages from a Numeric(5,2) column, and
  *  "Скидка 10.00%" reads like a rounding artefact rather than a round number. */
@@ -78,7 +90,17 @@ export function rejectionKey(reason: string | undefined): MessageKey {
   return map[reason ?? ""] ?? "topup.promoErrGeneric";
 }
 
+/** Which cart this is, as a value rather than a reference — the host rebuilds
+ *  the array literal on every render, so an effect keyed on `items` itself
+ *  would re-fire forever. Exported for its own test: this app renders no
+ *  components under test, so the re-pricing trigger is checked here. */
+export function cartSignature(currency: string, items: PromoCartItem[]): string {
+  return JSON.stringify({ currency, items });
+}
+
 export interface PromoFieldProps {
+  /** The cart to price against. Empty before a package is chosen — the field
+   *  still renders, so a buyer holding a code can see this checkout takes one. */
   items: PromoCartItem[];
   currency: string;
   /** Normally true: a Mini App buyer is authenticated from Telegram initData
@@ -105,24 +127,54 @@ export function PromoField({
   const [applied, setApplied] = useState<AppliedPromo | null>(null);
   const [error, setError] = useState<MessageKey | null>(null);
   const [busy, setBusy] = useState(false);
+  const [repricing, setRepricing] = useState(false);
 
-  if (!isLoggedIn) {
-    return <p className="mt-4 text-[13px] text-slate-400">{t("topup.promoSignIn")}</p>;
-  }
+  const hasCart = items.length > 0;
+  const cartKey = cartSignature(currency, items);
 
-  async function submit(): Promise<void> {
-    const typed = code.trim().toUpperCase();
-    if (!typed || busy) return;
-    setBusy(true);
-    setError(null);
+  // Read through refs inside the async work: `onChange` is an inline closure
+  // and `items` a fresh array on each of the host's renders, and neither
+  // belongs in a dependency list. Declared first so this effect commits before
+  // the re-pricing one below reads them.
+  const onChangeRef = useRef(onChange);
+  const itemsRef = useRef(items);
+  const currencyRef = useRef(currency);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+    itemsRef.current = items;
+    currencyRef.current = currency;
+  });
+
+  // Only the newest preview may land. Switching packages twice in quick
+  // succession otherwise lets the first response overwrite the second, which
+  // puts a discount for a cart nobody has back on the pay button.
+  const seqRef = useRef(0);
+  /** The cart the current `applied` was priced against, or null if none is. */
+  const pricedForRef = useRef<string | null>(null);
+
+  const check = useCallback(async (typed: string, mode: "apply" | "reprice"): Promise<void> => {
+    const seq = ++seqRef.current;
+    const forCart = cartSignature(currencyRef.current, itemsRef.current);
+    const settle = (): void => {
+      if (seq !== seqRef.current) return;
+      if (mode === "apply") setBusy(false);
+      else setRepricing(false);
+    };
     try {
       const body = await api<PreviewResponse>("/api/v1/affiliate/preview", {
         method: "POST",
-        body: JSON.stringify({ code: typed, currency, items }),
+        body: JSON.stringify({
+          code: typed,
+          currency: currencyRef.current,
+          items: itemsRef.current,
+        }),
       });
+      if (seq !== seqRef.current) return;
       if (!body.applicable || !body.code || !body.percent) {
+        pricedForRef.current = null;
+        setApplied(null);
         setError(rejectionKey(body.reason));
-        onChange(null);
+        onChangeRef.current(null);
         return;
       }
       const next: AppliedPromo = {
@@ -132,22 +184,80 @@ export function PromoField({
         totalAfter: body.total_after,
         discount: body.discount,
       };
+      pricedForRef.current = forCart;
       setApplied(next);
-      onChange(next);
+      setError(null);
+      onChangeRef.current(next);
     } catch {
       // A failed request must not surface as an unhandled rejection inside the
       // checkout tree.
+      if (seq !== seqRef.current) return;
+      pricedForRef.current = null;
+      setApplied(null);
       setError("topup.promoErrGeneric");
-      onChange(null);
+      onChangeRef.current(null);
     } finally {
-      setBusy(false);
+      settle();
     }
+  }, []);
+
+  // The cart moved under an applied code. Until the server has re-priced it,
+  // the host must have no discount at all: the alternative is the old one,
+  // which belongs to a package the buyer no longer has.
+  useEffect(() => {
+    if (applied === null) return;
+    if (pricedForRef.current === cartKey) return;
+
+    if (!hasCart) {
+      seqRef.current += 1;
+      pricedForRef.current = null;
+      setApplied(null);
+      setRepricing(false);
+      onChangeRef.current(null);
+      return;
+    }
+
+    setRepricing(true);
+    onChangeRef.current(null);
+    const timer = setTimeout(() => {
+      void check(applied.code, "reprice");
+    }, REPRICE_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [applied, cartKey, hasCart, check]);
+
+  // Leaving the tree must take the discount with it. Stepping back to the
+  // package picker unmounts this field, and a discount that outlived it sat on
+  // the pay button with nothing on screen to explain it.
+  useEffect(
+    () => () => {
+      onChangeRef.current(null);
+    },
+    [],
+  );
+
+  if (!isLoggedIn) {
+    return <p className="mt-4 text-[13px] text-slate-400">{t("topup.promoSignIn")}</p>;
+  }
+
+  function submit(): void {
+    const typed = code.trim().toUpperCase();
+    if (!typed || busy || !hasCart) return;
+    setBusy(true);
+    setError(null);
+    void check(typed, "apply");
   }
 
   function remove(): void {
+    // Bumps the sequence so an in-flight re-price cannot resurrect what was
+    // just removed.
+    seqRef.current += 1;
+    pricedForRef.current = null;
     setApplied(null);
     setCode("");
     setError(null);
+    setRepricing(false);
     onChange(null);
   }
 
@@ -165,7 +275,9 @@ export function PromoField({
               {applied.code} · {t("topup.promoApplied", { percent: tidyPercent(applied.percent) })}
             </span>
             <span className="mt-0.5 block text-[13px] text-slate-400">
-              {t("topup.promoSaved", { amount: money(applied.discount) })}
+              {repricing
+                ? t("topup.promoRechecking")
+                : t("topup.promoSaved", { amount: money(applied.discount) })}
             </span>
           </div>
           <button
@@ -176,10 +288,12 @@ export function PromoField({
             {t("topup.promoRemove")}
           </button>
         </div>
-        <div className="mt-2 flex items-baseline gap-2">
-          <s className="text-[13px] text-slate-500">{money(applied.totalBefore)}</s>
-          <span className="text-lg font-bold">{money(applied.totalAfter)}</span>
-        </div>
+        {!repricing && (
+          <div className="mt-2 flex items-baseline gap-2">
+            <s className="text-[13px] text-slate-500">{money(applied.totalBefore)}</s>
+            <span className="text-lg font-bold">{money(applied.totalAfter)}</span>
+          </div>
+        )}
       </div>
     );
   }
@@ -205,15 +319,16 @@ export function PromoField({
         />
         <button
           type="button"
-          disabled={!code.trim() || busy}
-          onClick={() => {
-            void submit();
-          }}
+          disabled={!code.trim() || busy || !hasCart}
+          onClick={submit}
           className="h-11 shrink-0 rounded-xl border border-slate-700 px-4 text-sm font-semibold disabled:opacity-50"
         >
           {busy ? t("topup.promoChecking") : t("topup.promoApply")}
         </button>
       </div>
+      {/* The code cannot be checked against nothing, and a button that just
+          sits there dead is a puzzle. Say what is missing. */}
+      {!hasCart && <p className="mt-2 text-[13px] text-slate-400">{t("topup.promoNeedPackage")}</p>}
       {error !== null && <p className="mt-2 text-[13px] text-red-400">{t(error)}</p>}
     </div>
   );
