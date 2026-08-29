@@ -94,6 +94,20 @@ jobs:
             docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
 
+            # The app stack's Caddyfile is a single-FILE bind mount too, and
+            # ``up -d`` above only recreates services whose compose spec
+            # changed — which a mounted file's contents are not. So a routing
+            # change here (a new site block, a header, a CSP) deployed as a
+            # silent no-op while the container kept the inode ``git checkout``
+            # replaced. Same hash compare as the edge above, and same reason.
+            APP_WANT="$(sha256sum infra/caddy/Caddyfile.prod | cut -d' ' -f1)"
+            APP_HAVE="$(docker compose -f docker-compose.prod.yml exec -T caddy \
+              sha256sum /etc/caddy/Caddyfile 2>/dev/null | cut -d' ' -f1 || true)"
+            if [ "$APP_WANT" != "$APP_HAVE" ]; then
+              echo "app Caddyfile changed ($APP_HAVE -> $APP_WANT); recreating"
+              docker compose -f docker-compose.prod.yml up -d --force-recreate caddy
+            fi
+
             # Poll the health endpoints instead of a fixed sleep: a freshly
             # recreated api/edge can take longer than a few seconds to serve,
             # and a single early curl would 502 and false-fail an otherwise

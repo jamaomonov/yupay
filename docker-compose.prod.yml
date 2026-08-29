@@ -325,7 +325,7 @@ services:
       - ./infra/caddy/Caddyfile.prod:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
-    depends_on: [api, web, miniapp, admin]
+    depends_on: [api, web, miniapp, admin, partners]
 
   prometheus:
     image: prom/prometheus:v3.12.0
