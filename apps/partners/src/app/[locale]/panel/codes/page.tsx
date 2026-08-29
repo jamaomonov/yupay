@@ -33,15 +33,15 @@ export default function CodesPage() {
   }
 
   const button =
-    "border-border-2 rounded-btn hover:bg-card-2 h-10 shrink-0 border px-3.5 text-[13px] font-semibold transition";
+    "border-border-2 hover:bg-card h-10 shrink-0 rounded-full border px-4 text-[13px] font-semibold transition";
 
   return (
-    <div className="space-y-4">
+    <div className="grid-ruled grid grid-cols-1">
       {codes.map((code) => {
         const link = `${STOREFRONT}/?ref=${encodeURIComponent(code.code)}`;
         return (
-          <div key={code.id} className="border-border bg-card rounded-xl border p-6">
-            <p className="font-display text-primary text-2xl font-bold tracking-wider">
+          <div key={code.id} className="bg-bg px-5 py-6 sm:px-6">
+            <p className="font-display text-primary text-[30px] font-extrabold tracking-[0.06em]">
               {code.code}
             </p>
 

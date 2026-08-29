@@ -4,92 +4,107 @@ import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 
 import { DEFAULTS, estimateEarnings } from "@/lib/earnings";
-import { formatUzs } from "@/lib/money";
+
+import { SHELL } from "./shell";
 
 /**
  * "What would I make?", answered honestly.
  *
- * Every default comes from a measurement — see `lib/earnings.ts`. The
- * temptation on a page like this is to seed a large average order and a
- * generous conversion so the headline number impresses; the cost of doing that
- * is a partner comparing their first real payout to it.
+ * One input, not five. The other four assumptions — conversion, average order,
+ * repeat rate, commission — are measurements (see `lib/earnings.ts`), and
+ * handing someone sliders for them invites the number to be tuned upward until
+ * it impresses. They are still on screen, as read-only lines, because a
+ * calculator that hides what it assumed is worse than one that overpromises:
+ * at least an overpromise can be checked.
+ *
+ * The result is deliberately *not* labelled per month. `estimateEarnings`
+ * computes lifetime earnings from one campaign, and a monthly figure would
+ * imply a partner earns it again every month — true only if they keep bringing
+ * new buyers at the same rate.
  */
 
-interface Field {
-  key: keyof typeof DEFAULTS;
-  label: string;
-  min: number;
-  max: number;
-  step: number;
-}
+const AUDIENCE_MIN = 1_000;
+const AUDIENCE_MAX = 200_000;
 
 export function Calculator() {
   const t = useTranslations("partners.calc");
-  const [values, setValues] = useState<Record<keyof typeof DEFAULTS, number>>({ ...DEFAULTS });
-
-  const fields: Field[] = [
-    { key: "audience", label: t("audience"), min: 100, max: 200_000, step: 100 },
-    { key: "conversionPercent", label: t("conversion"), min: 0.1, max: 20, step: 0.1 },
-    { key: "averageOrderUzs", label: t("avgOrder"), min: 1_000, max: 500_000, step: 1_000 },
-    { key: "ordersPerBuyer", label: t("repeat"), min: 1, max: 10, step: 0.1 },
-    { key: "commissionPercent", label: t("commission"), min: 1, max: 2, step: 0.1 },
-  ];
+  const [audience, setAudience] = useState<number>(DEFAULTS.audience);
 
   const result = useMemo(
     () =>
       estimateEarnings({
-        audience: values.audience,
-        conversionPercent: values.conversionPercent,
-        averageOrderUzs: values.averageOrderUzs,
-        ordersPerBuyer: values.ordersPerBuyer,
-        commissionPercent: values.commissionPercent,
+        audience,
+        conversionPercent: DEFAULTS.conversionPercent,
+        averageOrderUzs: DEFAULTS.averageOrderUzs,
+        ordersPerBuyer: DEFAULTS.ordersPerBuyer,
+        commissionPercent: DEFAULTS.commissionPercent,
       }),
-    [values],
+    [audience],
   );
 
-  return (
-    <section className="mx-auto max-w-5xl px-5 py-20 sm:py-24">
-      <h2 className="font-display text-2xl font-bold tracking-tight sm:text-3xl">{t("title")}</h2>
-      <p className="text-tx-mute mt-2 text-[14px]">{t("subtitle")}</p>
+  const number = (n: number): string => n.toLocaleString("ru-RU");
 
-      <div className="border-border bg-card mt-8 grid grid-cols-1 gap-8 rounded-2xl border p-6 sm:p-8 lg:grid-cols-[1fr_auto] lg:gap-12">
-        <div className="space-y-5">
-          {fields.map((f) => (
-            <label key={f.key} className="block">
-              <span className="text-tx-mute mb-2 flex items-baseline justify-between text-[13px]">
-                <span>{f.label}</span>
-                <span className="text-foreground font-mono text-[13px]">
-                  {values[f.key].toLocaleString("ru-RU")}
-                </span>
-              </span>
-              <input
-                type="range"
-                min={f.min}
-                max={f.max}
-                step={f.step}
-                value={values[f.key]}
-                onChange={(e) => {
-                  setValues((v) => ({ ...v, [f.key]: Number(e.target.value) }));
-                }}
-                className="accent-primary h-1.5 w-full cursor-pointer"
-              />
-            </label>
-          ))}
+  return (
+    <section className="border-border border-t">
+      <div
+        className={`${SHELL} grid grid-cols-1 items-center gap-12 py-14 lg:grid-cols-[1fr_460px] lg:gap-16 lg:py-16`}
+      >
+        <div>
+          <p className="text-primary font-mono text-[11px] uppercase tracking-[0.16em]">
+            {t("title")}
+          </p>
+          <p className="text-tx-mute mt-4 max-w-lg text-pretty text-[15px] leading-relaxed sm:text-[17px]">
+            {t("lead")}
+          </p>
+
+          <label className="mt-7 block">
+            <span className="mb-2.5 flex items-baseline justify-between">
+              <span className="text-tx-mute text-[13px]">{t("audience")}</span>
+              <span className="font-mono text-[15px] font-bold">{number(audience)}</span>
+            </span>
+            <input
+              type="range"
+              min={AUDIENCE_MIN}
+              max={AUDIENCE_MAX}
+              step={100}
+              value={audience}
+              onChange={(e) => {
+                setAudience(Number(e.target.value));
+              }}
+              className="accent-primary h-1 w-full cursor-pointer"
+            />
+            <span className="text-tx-dim mt-2.5 flex justify-between font-mono text-[11px]">
+              <span>{number(AUDIENCE_MIN)}</span>
+              <span>{number(AUDIENCE_MAX)}</span>
+            </span>
+          </label>
         </div>
 
-        <div className="border-border-2 bg-card-2 rounded-xl border p-6 lg:w-80">
-          <span className="text-tx-mute text-[13px]">{t("result")}</span>
+        <div className="border-border border-t pt-8 lg:border-l lg:border-t-0 lg:pl-11 lg:pt-0">
+          <p className="text-tx-mute font-mono text-[12px] uppercase tracking-[0.1em]">
+            {t("result")}
+          </p>
           <p
             data-testid="calc-result"
             // No `break-words`: it split the currency across lines as
             // "23 640 UZ / S". A price that wraps mid-token reads as a
             // rendering fault, which is a bad first impression on the page
             // that recruits.
-            className="font-display text-primary mt-2 whitespace-nowrap text-2xl font-bold leading-tight sm:text-3xl"
+            className="font-display text-primary mt-3.5 whitespace-nowrap text-[clamp(2.25rem,7vw,3.9rem)] font-extrabold leading-none tracking-[-0.04em]"
           >
-            {formatUzs(result.earnedUzs)}
+            {number(result.earnedUzs)}
           </p>
-          <p className="text-tx-dim mt-5 text-[12px] leading-relaxed">{t("note")}</p>
+          <p className="font-display text-tx-mute mt-1.5 text-[20px] font-bold">{t("currency")}</p>
+
+          {/* The assumptions, spelled out. Whichever way the estimate lands,
+              a partner can see which number to argue with. */}
+          <div className="text-tx-dim mt-5 flex flex-col gap-[7px] font-mono text-[12.5px] leading-snug">
+            <span>{t("buyers", { count: number(result.buyers) })}</span>
+            <span>{t("orders", { count: number(result.orders) })}</span>
+            <span>{t("avgCheck", { amount: number(DEFAULTS.averageOrderUzs) })}</span>
+          </div>
+
+          <p className="text-tx-dim mt-5 text-[11.5px] leading-relaxed">{t("note")}</p>
         </div>
       </div>
     </section>

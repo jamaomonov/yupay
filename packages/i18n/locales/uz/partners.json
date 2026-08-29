@@ -4,17 +4,24 @@
     "description": "Xaridor olib keling va ularning har bir buyurtmasidan ulush oling — doimiy."
   },
   "hero": {
-    "eyebrow": "Hamkorlik dasturi",
-    "title": "Xaridor olib keling.\nHar buyurtmadan daromad oling.",
-    "subtitle": "Auditoriyangiz birinchi buyurtmaga chegirma oladi, siz esa ularning barcha xaridlaridan ulush olasiz. Faqat birinchisidan emas.",
+    "title": "Bitta kod.\nHar bir\nbuyurtmadan",
+    "subtitle": "Auditoriyangiz birinchi buyurtmaga chegirma oladi. Siz esa ularning barcha xaridlaridan foiz olasiz — faqat birinchisidan emas. Xaridor sizga biriktiriladi.",
     "ctaApply": "Ariza qoldirish",
     "ctaLogin": "Panelga kirish",
-    "statDiscount": "10% gacha",
+    "statDiscount": "10",
     "statDiscountLabel": "auditoriyangizga chegirma",
-    "statCommission": "2% gacha",
-    "statCommissionLabel": "ularning har bir buyurtmasidan",
+    "statCommission": "2",
+    "statCommissionLabel": "har bir buyurtmasidan",
     "statForever": "doimiy",
-    "statForeverLabel": "xaridor sizga biriktiriladi"
+    "statForeverLabel": "xaridor sizga biriktiriladi",
+    "titleAccent": "foiz",
+    "ctaTerms": "Shartlarni ko'rish",
+    "micro": "shartnomasiz · minimal auditoriyasiz · kartaga yechish",
+    "statDiscountUnit": "%",
+    "statCommissionUnit": "%",
+    "statHold": "14",
+    "statHoldUnit": " kun",
+    "statHoldLabel": "va pulni yechsa bo'ladi"
   },
   "how": {
     "title": "Bu qanday ishlaydi",
@@ -27,17 +34,17 @@
   },
   "calc": {
     "title": "Bu pulda qancha",
-    "subtitle": "O'rtacha chek haqiqiy buyurtmalarimizdan olingan, o'ylab topilmagan.",
     "audience": "Auditoriya hajmi",
-    "conversion": "Nechtasi sotib oladi, %",
-    "avgOrder": "O'rtacha chek, so'm",
-    "repeat": "Xaridorga buyurtma",
-    "commission": "Sizning komissiyangiz, %",
     "result": "Sizning daromadingiz",
-    "note": "Bu taxmin, va'da emas. Haqiqiy daromad nimani va kimga reklama qilishingizga bog'liq."
+    "note": "Bu taxmin, va'da emas. Haqiqiy daromad nimani va kimga reklama qilishingizga bog'liq.",
+    "lead": "Auditoriyani suring — qolganini haqiqiy buyurtmalarimiz bo'yicha hisoblaymiz: o'rtacha chek, takroriy xaridlar, sizning foizingiz.",
+    "currency": "so'm",
+    "buyers": "{count} xaridor sotib oladi",
+    "orders": "jami {count} ta buyurtma",
+    "avgCheck": "~{amount} so'm o'rtacha chek"
   },
   "faq": {
-    "title": "Oldindan so'rashga arziydigan savollar",
+    "title": "Halol javoblar",
     "q1": "Pulni qachon olaman?",
     "a1": "Komissiya buyurtma yetkazilgach hisoblanadi va 14 kundan keyin yechib olish mumkin bo'ladi. Bu muddat qaytarish va nizolar uchun — busiz to'langan pulni qaytarib olishga to'g'ri kelardi.",
     "q2": "Minimal yechish summasi qancha?",
@@ -47,7 +54,9 @@
     "q4": "Promokod avval xarid qilganlar uchun ishlaydimi?",
     "a4": "Yo'q. Promokod faqat birinchi buyurtmaga amal qiladi — u yangi xaridorlarni jalb qilish uchun, doimiylarga chegirma emas.",
     "q5": "Takroriy buyurtmalardan qancha olaman?",
-    "a5": "Birinchisidagi kabi. Xaridor doimiy ravishda sizga biriktiriladi va siz uning har bir buyurtmasidan daromad olasiz — faqat kod kiritganidan emas."
+    "a5": "Birinchisidagi kabi. Xaridor doimiy ravishda sizga biriktiriladi va siz uning har bir buyurtmasidan daromad olasiz — faqat kod kiritganidan emas.",
+    "q6": "Katta auditoriya kerakmi?",
+    "a6": "Minimal chegara yo'q. Mavzuingiz mahsulotlarimizga qanchalik yaqinligiga qaraymiz — kichik o'yin kanali katta, ammo boshqa mavzudagi kanaldan ko'ra mos keladi."
   },
   "apply": {
     "title": "Ariza qoldirish",
@@ -62,7 +71,9 @@
     "doneTitle": "Ariza qabul qilindi",
     "doneBody": "Agar mos kelsa, pochtangizga kirish havolasini yuboramiz.",
     "errEmail": "Pochta manzilini tekshiring",
-    "errGeneric": "Yuborib bo'lmadi. Qaytadan urinib ko'ring."
+    "errGeneric": "Yuborib bo'lmadi. Qaytadan urinib ko'ring.",
+    "bandTitle": "Promokodingizni oling",
+    "bandSubtitle": "Email, kanalingizga havola — tamom. Pochta orqali javob beramiz."
   },
   "login": {
     "title": "Hamkorlar uchun kirish",
@@ -136,6 +147,10 @@
     "payoutStatusRequested": "ko'rib chiqilmoqda",
     "payoutStatusPaid": "to'langan",
     "payoutStatusRejected": "rad etilgan",
-    "cardMask": "karta ···· {last4}"
+    "cardMask": "karta ···· {last4}",
+    "brand": "Hamkorlik dasturi"
+  },
+  "nav": {
+    "brand": "Hamkorlik dasturi"
   }
 }

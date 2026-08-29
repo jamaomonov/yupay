@@ -5,8 +5,15 @@ import { useState } from "react";
 
 import { apiBase } from "@/lib/api";
 
+import { SHELL } from "./shell";
+
 /**
- * The application form.
+ * The application form, as the page's closing band.
+ *
+ * Lime, full-bleed, black type: the one place the page inverts, so the ask is
+ * the last thing anyone can miss. The fields are all still here — only the
+ * email is required, and the rest are what an admin needs to reply to a person
+ * rather than to an address.
  *
  * It answers the same whether the address is new or has already applied,
  * because the API does — telling someone "you already applied" would let
@@ -56,54 +63,81 @@ export function ApplyForm() {
     }
   }
 
-  if (state === "done") {
-    return (
-      <section id="apply" className="mx-auto max-w-2xl px-5 py-20 sm:py-24">
-        <div className="border-primary/40 bg-primary/5 rounded-2xl border p-8 text-center">
-          <h2 className="font-display text-xl font-bold">{t("doneTitle")}</h2>
-          <p className="text-tx-mute mt-2 text-[14px] leading-relaxed">{t("doneBody")}</p>
-        </div>
-      </section>
-    );
-  }
-
+  // Dark-on-lime, so the inputs read as wells cut into the band rather than as
+  // pale boxes sitting on top of it.
   const field =
-    "border-border bg-card-2 rounded-btn h-12 w-full border px-4 text-[15px] outline-none focus:border-primary/60";
+    "h-12 w-full rounded-full border border-black/25 bg-black/[0.06] px-5 text-[14px] text-black outline-none transition placeholder:text-black/40 focus:border-black/60";
+  const label = "mb-2 block text-[12.5px] font-semibold text-black/60";
 
   return (
-    <section id="apply" className="mx-auto max-w-2xl px-5 py-20 sm:py-24">
-      <h2 className="font-display text-2xl font-bold tracking-tight sm:text-3xl">{t("title")}</h2>
-      <p className="text-tx-mute mt-2 text-[14px]">{t("subtitle")}</p>
+    <section id="apply" className="bg-primary text-primary-foreground">
+      <div className={`${SHELL} grid grid-cols-1 gap-10 py-14 lg:grid-cols-2 lg:gap-16 lg:py-16`}>
+        <div>
+          <h2 className="font-display text-[clamp(2rem,5.4vw,2.9rem)] font-extrabold leading-[1.02] tracking-[-0.035em]">
+            {t("bandTitle")}
+          </h2>
+          <p className="mt-3.5 max-w-md text-pretty text-[15px] font-medium leading-relaxed text-black/65">
+            {state === "done" ? t("doneBody") : t("bandSubtitle")}
+          </p>
+        </div>
 
-      <form onSubmit={(e) => void submit(e)} className="mt-8 space-y-4">
-        <label className="block">
-          <span className="text-tx-mute mb-2 block text-[13px]">{t("email")}</span>
-          <input name="email" type="email" required autoComplete="email" className={field} />
-        </label>
-        <label className="block">
-          <span className="text-tx-mute mb-2 block text-[13px]">{t("name")}</span>
-          <input name="name" type="text" maxLength={128} autoComplete="name" className={field} />
-        </label>
-        <label className="block">
-          <span className="text-tx-mute mb-2 block text-[13px]">{t("contact")}</span>
-          <input name="contact" type="text" maxLength={128} className={field} />
-        </label>
-        <label className="block">
-          <span className="text-tx-mute mb-2 block text-[13px]">{t("channel")}</span>
-          <input name="channel" type="text" maxLength={512} className={field} />
-          <span className="text-tx-dim mt-1.5 block text-[12px]">{t("channelHint")}</span>
-        </label>
+        {state === "done" ? (
+          <div className="flex items-center">
+            <p
+              // Announced rather than merely rendered: the form it replaces is
+              // gone from the tab order, so a screen-reader user gets no other
+              // signal that anything happened.
+              role="status"
+              className="font-display rounded-2xl border border-black/25 bg-black/[0.06] px-6 py-5 text-[18px] font-bold"
+            >
+              {t("doneTitle")}
+            </p>
+          </div>
+        ) : (
+          <form onSubmit={(e) => void submit(e)} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className={label}>{t("email")}</span>
+              <input name="email" type="email" required autoComplete="email" className={field} />
+            </label>
+            <label className="block">
+              <span className={label}>{t("name")}</span>
+              <input
+                name="name"
+                type="text"
+                maxLength={128}
+                autoComplete="name"
+                className={field}
+              />
+            </label>
+            <label className="block">
+              <span className={label}>{t("contact")}</span>
+              <input name="contact" type="text" maxLength={128} className={field} />
+            </label>
+            <label className="block">
+              <span className={label}>{t("channel")}</span>
+              <input name="channel" type="text" maxLength={512} className={field} />
+              <span className="mt-2 block text-[12px] font-medium text-black/50">
+                {t("channelHint")}
+              </span>
+            </label>
 
-        {state === "error" && <p className="text-[13px] text-red-400">{t("errGeneric")}</p>}
-
-        <button
-          type="submit"
-          disabled={state === "sending"}
-          className="bg-primary text-primary-foreground rounded-btn h-12 w-full text-[15px] font-semibold transition hover:brightness-110 disabled:opacity-50"
-        >
-          {state === "sending" ? t("submitting") : t("submit")}
-        </button>
-      </form>
+            <div className="sm:col-span-2">
+              {state === "error" && (
+                <p role="alert" className="mb-3 text-[13px] font-semibold text-red-900">
+                  {t("errGeneric")}
+                </p>
+              )}
+              <button
+                type="submit"
+                disabled={state === "sending"}
+                className="text-primary h-12 w-full rounded-full bg-black text-[15px] font-bold transition hover:brightness-125 disabled:opacity-50 sm:w-auto sm:px-9"
+              >
+                {state === "sending" ? t("submitting") : t("submit")}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
     </section>
   );
 }

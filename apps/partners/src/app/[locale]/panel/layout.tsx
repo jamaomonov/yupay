@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 
+import { SHELL } from "@/components/landing/shell";
 import { useRequireSession } from "@/lib/auth";
 
 /**
@@ -40,31 +41,37 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="min-h-dvh">
-      <header className="border-border bg-card/80 sticky top-0 z-10 border-b backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-5 py-3">
-          <span className="font-display text-[15px] font-bold">YuPay</span>
-          <div className="flex items-center gap-3">
-            <span className="text-tx-mute hidden text-[13px] sm:block">
+      {/* The same monospaced bar the landing wears, so a partner who arrives
+          from it stays in one product. Tabs are underlined rather than
+          pill-filled: a filled pill is a button, and these navigate. */}
+      <header className="border-border bg-bg/85 sticky top-0 z-10 border-b backdrop-blur">
+        <div className={`${SHELL} flex items-center justify-between gap-4 py-4`}>
+          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] sm:text-[12px]">
+            {t("brand")}
+          </span>
+          <div className="flex items-center gap-4">
+            <span className="text-tx-mute hidden font-mono text-[11.5px] sm:block">
               {partner.display_name ?? partner.email}
             </span>
             <button
               type="button"
               onClick={() => void signOut()}
-              className="text-tx-mute hover:text-foreground text-[13px] underline transition"
+              className="text-tx-mute hover:text-foreground font-mono text-[11px] uppercase tracking-[0.12em] transition"
             >
               {t("signOut")}
             </button>
           </div>
         </div>
-        <nav className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-5 pb-2">
+        <nav className={`${SHELL} -mb-px flex gap-7 overflow-x-auto`}>
           {tabs.map((tab) => (
             <Link
               key={tab.href}
               href={tab.href}
-              className={`rounded-btn shrink-0 px-3.5 py-2 text-[13px] font-semibold transition ${
+              aria-current={isActive(tab.href) ? "page" : undefined}
+              className={`shrink-0 border-b-2 pb-3 font-mono text-[11.5px] uppercase tracking-[0.12em] transition ${
                 isActive(tab.href)
-                  ? "bg-primary/10 text-primary"
-                  : "text-tx-mute hover:text-foreground"
+                  ? "border-primary text-primary"
+                  : "text-tx-mute hover:text-foreground border-transparent"
               }`}
             >
               {tab.label}
@@ -72,7 +79,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
           ))}
         </nav>
       </header>
-      <main className="mx-auto max-w-5xl px-5 py-8">{children}</main>
+      <main className={`${SHELL} py-10`}>{children}</main>
     </div>
   );
 }

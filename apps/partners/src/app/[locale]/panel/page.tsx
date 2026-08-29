@@ -32,8 +32,8 @@ export default function OverviewPage() {
     formatMoney(raw ?? "0", currency);
 
   return (
-    <div className="space-y-8">
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+    <div className="space-y-10">
+      <section className="grid-ruled grid grid-cols-1 sm:grid-cols-3">
         <StatCard
           label={t("available")}
           value={money(balance.data?.available, balance.data?.currency)}
@@ -50,33 +50,33 @@ export default function OverviewPage() {
         />
       </section>
 
-      <section>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {PERIODS.map(({ period, key }) => {
-            const q = byPeriod[period];
-            // The labels say "за 30 дней", not "за месяц", because the API
-            // computes rolling windows. Wording that implied a calendar month
-            // would be wrong every day except the last one.
-            return (
-              <div key={period} className="border-border bg-card rounded-xl border p-5">
-                <span className="text-tx-mute block text-[13px]">{t(key)}</span>
-                <p className="font-display text-primary mt-1.5 break-words text-xl font-bold">
-                  {money(q.data?.earned)}
-                </p>
-                <dl className="text-tx-dim mt-3 space-y-1 text-[12px]">
-                  <div className="flex justify-between gap-2">
-                    <dt>{t("orders")}</dt>
-                    <dd className="font-mono">{q.data?.orders ?? 0}</dd>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <dt>{t("activations")}</dt>
-                    <dd className="font-mono">{q.data?.activations ?? 0}</dd>
-                  </div>
-                </dl>
-              </div>
-            );
-          })}
-        </div>
+      <section className="grid-ruled grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+        {PERIODS.map(({ period, key }) => {
+          const q = byPeriod[period];
+          // The labels say "за 30 дней", not "за месяц", because the API
+          // computes rolling windows. Wording that implied a calendar month
+          // would be wrong every day except the last one.
+          return (
+            <div key={period} className="bg-bg px-5 py-6 sm:px-6">
+              <span className="text-tx-mute block font-mono text-[11px] uppercase tracking-[0.12em]">
+                {t(key)}
+              </span>
+              <p className="font-display text-primary mt-3 break-words text-[22px] font-extrabold leading-none tracking-[-0.03em]">
+                {money(q.data?.earned)}
+              </p>
+              <dl className="text-tx-dim mt-4 space-y-1.5 text-[12px]">
+                <div className="flex justify-between gap-2">
+                  <dt>{t("orders")}</dt>
+                  <dd className="font-mono">{q.data?.orders ?? 0}</dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt>{t("activations")}</dt>
+                  <dd className="font-mono">{q.data?.activations ?? 0}</dd>
+                </div>
+              </dl>
+            </div>
+          );
+        })}
       </section>
     </div>
   );

@@ -26,7 +26,7 @@ export default function ReferralsPage() {
   const cell = "px-4 py-3 text-[13px]";
 
   return (
-    <div className="border-border bg-card overflow-x-auto rounded-xl border">
+    <div className="border-border overflow-x-auto border-y">
       <table className="w-full min-w-[640px] border-collapse">
         <thead>
           <tr className="border-border text-tx-mute border-b text-left">

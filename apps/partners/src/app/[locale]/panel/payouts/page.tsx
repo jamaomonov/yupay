@@ -78,19 +78,19 @@ export default function PayoutsPage() {
           : null;
 
   const field =
-    "border-border bg-card-2 rounded-btn focus:border-primary/60 h-12 w-full border px-4 text-[15px] outline-none";
+    "border-border bg-card focus:border-primary/60 h-12 w-full rounded-full border px-5 text-[15px] outline-none transition";
   const rows = payouts.data?.items ?? [];
 
   return (
     <div className="space-y-8">
-      <section className="border-border bg-card rounded-xl border p-6">
+      <section className="border-border border-y py-7">
         <h2 className="font-display text-lg font-bold">{t("payoutTitle")}</h2>
         <p className="text-tx-mute mt-1 text-[13px]">
           {t("available")}: <span className="text-primary font-mono">{formatUzs(available)}</span>
         </p>
 
         {state === "done" ? (
-          <p className="border-primary/40 bg-primary/5 rounded-btn mt-5 border p-4 text-[14px]">
+          <p className="border-primary/40 bg-primary/5 mt-5 rounded-2xl border p-4 text-[14px]">
             {t("payoutDone")}
           </p>
         ) : (
@@ -134,7 +134,7 @@ export default function PayoutsPage() {
             <button
               type="submit"
               disabled={state === "sending" || available < MINIMUM_UZS}
-              className="bg-primary text-primary-foreground rounded-btn h-12 w-full text-[15px] font-semibold transition hover:brightness-110 disabled:opacity-50"
+              className="bg-primary text-primary-foreground h-12 w-full rounded-full text-[15px] font-bold transition hover:brightness-110 disabled:opacity-50"
             >
               {state === "sending" ? t("payoutSubmitting") : t("payoutSubmit")}
             </button>
@@ -145,7 +145,7 @@ export default function PayoutsPage() {
       {payouts.isSuccess && rows.length === 0 ? (
         <p className="text-tx-mute text-[14px]">{t("payoutsEmpty")}</p>
       ) : (
-        <section className="border-border bg-card overflow-x-auto rounded-xl border">
+        <section className="border-border overflow-x-auto border-y">
           <table className="w-full min-w-[560px] border-collapse">
             <thead>
               <tr className="border-border text-tx-mute border-b text-left">

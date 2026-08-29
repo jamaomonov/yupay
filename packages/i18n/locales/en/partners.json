@@ -4,17 +4,24 @@
     "description": "Bring buyers and earn a share of every order they place — for good."
   },
   "hero": {
-    "eyebrow": "Partner programme",
-    "title": "Bring buyers.\nEarn on every order.",
-    "subtitle": "Your audience gets a discount on their first order; you get a share of every order they ever place. Not just the first.",
+    "title": "One code.\nA cut of\nevery",
+    "subtitle": "Your audience gets a discount on their first order. You get a percentage of everything they buy after that, not just the first one. The buyer stays yours.",
     "ctaApply": "Apply",
     "ctaLogin": "Sign in",
-    "statDiscount": "up to 10%",
-    "statDiscountLabel": "discount for your audience",
-    "statCommission": "up to 2%",
+    "statDiscount": "10",
+    "statDiscountLabel": "off for your audience",
+    "statCommission": "2",
     "statCommissionLabel": "of every order they place",
     "statForever": "forever",
-    "statForeverLabel": "the buyer stays yours"
+    "statForeverLabel": "the buyer stays yours",
+    "titleAccent": "order",
+    "ctaTerms": "See the terms",
+    "micro": "no contracts · no minimum audience · paid to your card",
+    "statDiscountUnit": "%",
+    "statCommissionUnit": "%",
+    "statHold": "14",
+    "statHoldUnit": " days",
+    "statHoldLabel": "until you can withdraw"
   },
   "how": {
     "title": "How it works",
@@ -27,17 +34,17 @@
   },
   "calc": {
     "title": "What that is in money",
-    "subtitle": "The average order is taken from our real orders, not invented.",
     "audience": "Audience size",
-    "conversion": "How many buy, %",
-    "avgOrder": "Average order, UZS",
-    "repeat": "Orders per buyer",
-    "commission": "Your commission, %",
     "result": "Your earnings",
-    "note": "An estimate, not a promise. Real earnings depend on what you promote and to whom."
+    "note": "An estimate, not a promise. Real earnings depend on what you promote and to whom.",
+    "lead": "Move the audience — we work out the rest from our real orders: average order, repeat purchases, your percentage.",
+    "currency": "so'm",
+    "buyers": "{count} buyers will order",
+    "orders": "{count} orders in total",
+    "avgCheck": "~{amount} so'm average order"
   },
   "faq": {
-    "title": "Questions worth asking up front",
+    "title": "Straight answers",
     "q1": "When do I get the money?",
     "a1": "Commission accrues once an order is delivered and becomes withdrawable 14 days later. That wait covers refunds and disputes — without it we would have to claw money back after paying it.",
     "q2": "What is the minimum withdrawal?",
@@ -47,7 +54,9 @@
     "q4": "Does the code work for existing customers?",
     "a4": "No. The code works only on someone's first order — it is for bringing new buyers, not a discount for regulars.",
     "q5": "What do I earn on repeat orders?",
-    "a5": "The same as on the first. The buyer is yours for good, and you earn on every order they place — not only the one where they typed your code."
+    "a5": "The same as on the first. The buyer is yours for good, and you earn on every order they place — not only the one where they typed your code.",
+    "q6": "Do I need a big audience?",
+    "a6": "There is no minimum. What matters is how close your topic is to what we sell — a small gaming channel fits better than a large one about something else."
   },
   "apply": {
     "title": "Apply to join",
@@ -62,7 +71,9 @@
     "doneTitle": "Application received",
     "doneBody": "If it is a fit, we will email you a link to set your password.",
     "errEmail": "Check the email address",
-    "errGeneric": "Could not submit. Please try again."
+    "errGeneric": "Could not submit. Please try again.",
+    "bandTitle": "Claim your promo code",
+    "bandSubtitle": "Email, a link to your channel — that's it. We reply by mail."
   },
   "login": {
     "title": "Partner sign-in",
@@ -136,6 +147,10 @@
     "payoutStatusRequested": "processing",
     "payoutStatusPaid": "paid",
     "payoutStatusRejected": "declined",
-    "cardMask": "card ···· {last4}"
+    "cardMask": "card ···· {last4}",
+    "brand": "Partner program"
+  },
+  "nav": {
+    "brand": "Partner program"
   }
 }

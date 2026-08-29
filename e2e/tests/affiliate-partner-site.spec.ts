@@ -109,9 +109,9 @@ async function seedPartner(request: APIRequestContext): Promise<SeededPartner> {
 test.describe("partner landing", () => {
   test("renders in all three locales", async ({ page }) => {
     for (const [path, marker] of [
-      ["/", "Приводите покупателей"],
-      ["/en", "Bring buyers"],
-      ["/uz", "Xaridor olib keling"],
+      ["/", "Один код."],
+      ["/en", "One code."],
+      ["/uz", "Bitta kod."],
     ] as const) {
       await page.goto(`${PARTNERS}${path}`);
       await expect(page.getByRole("heading", { level: 1 })).toContainText(marker);

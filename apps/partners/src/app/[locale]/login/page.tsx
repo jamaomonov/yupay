@@ -5,10 +5,12 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
+import { SHELL } from "@/components/landing/shell";
 import { useSession } from "@/lib/auth";
 
 export default function LoginPage() {
   const t = useTranslations("partners.login");
+  const brand = useTranslations("partners.nav")("brand");
   const router = useRouter();
   const { status, signIn } = useSession();
   const [failed, setFailed] = useState(false);
@@ -44,46 +46,68 @@ export default function LoginPage() {
   }
 
   const field =
-    "border-border bg-card-2 rounded-btn h-12 w-full border px-4 text-[15px] outline-none focus:border-primary/60";
+    "border-border bg-card h-12 w-full rounded-full border px-5 text-[15px] outline-none transition focus:border-primary/60";
 
   return (
-    <main className="grid-cell flex min-h-dvh items-center justify-center px-5 py-16">
-      <div className="border-border bg-card w-full max-w-sm rounded-2xl border p-7">
-        <h1 className="font-display text-xl font-bold">{t("title")}</h1>
+    // No card. The landing has none either, and a form floating in a box was
+    // the one screen still speaking the old language.
+    <main className="flex min-h-dvh flex-col">
+      <div className="border-border border-b">
+        <div className={`${SHELL} py-5`}>
+          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] sm:text-[12px]">
+            {brand}
+          </span>
+        </div>
+      </div>
 
-        <form onSubmit={(e) => void submit(e)} className="mt-6 space-y-4">
-          <label className="block">
-            <span className="text-tx-mute mb-2 block text-[13px]">{t("email")}</span>
-            <input name="email" type="email" required autoComplete="email" className={field} />
-          </label>
-          <label className="block">
-            <span className="text-tx-mute mb-2 block text-[13px]">{t("password")}</span>
-            <input
-              name="password"
-              type="password"
-              required
-              autoComplete="current-password"
-              className={field}
-            />
-          </label>
+      <div className={`${SHELL} flex flex-1 items-center py-16`}>
+        <div className="w-full max-w-sm">
+          <h1 className="font-display text-[clamp(1.9rem,5vw,2.6rem)] font-extrabold leading-[1.04] tracking-[-0.035em]">
+            {t("title")}
+          </h1>
 
-          {failed && <p className="text-[13px] text-red-400">{t("failed")}</p>}
+          <form onSubmit={(e) => void submit(e)} className="mt-8 space-y-4">
+            <label className="block">
+              <span className="text-tx-mute mb-2 block font-mono text-[11px] uppercase tracking-[0.12em]">
+                {t("email")}
+              </span>
+              <input name="email" type="email" required autoComplete="email" className={field} />
+            </label>
+            <label className="block">
+              <span className="text-tx-mute mb-2 block font-mono text-[11px] uppercase tracking-[0.12em]">
+                {t("password")}
+              </span>
+              <input
+                name="password"
+                type="password"
+                required
+                autoComplete="current-password"
+                className={field}
+              />
+            </label>
 
-          <button
-            type="submit"
-            disabled={busy}
-            className="bg-primary text-primary-foreground rounded-btn h-12 w-full text-[15px] font-semibold transition hover:brightness-110 disabled:opacity-50"
-          >
-            {busy ? t("submitting") : t("submit")}
-          </button>
-        </form>
+            {failed && (
+              <p role="alert" className="text-[13px] text-red-400">
+                {t("failed")}
+              </p>
+            )}
 
-        <p className="text-tx-mute mt-6 text-center text-[13px]">
-          {t("noAccount")}{" "}
-          <Link href="/#apply" className="text-primary underline">
-            {t("applyLink")}
-          </Link>
-        </p>
+            <button
+              type="submit"
+              disabled={busy}
+              className="bg-primary text-primary-foreground h-12 w-full rounded-full text-[15px] font-bold transition hover:brightness-110 disabled:opacity-50"
+            >
+              {busy ? t("submitting") : t("submit")}
+            </button>
+          </form>
+
+          <p className="text-tx-mute mt-7 text-[13px]">
+            {t("noAccount")}{" "}
+            <Link href="/#apply" className="text-primary underline">
+              {t("applyLink")}
+            </Link>
+          </p>
+        </div>
       </div>
     </main>
   );

@@ -154,6 +154,17 @@
   filter: blur(70px);
 }
 
+/* A grid whose cells are separated by hairlines rather than boxed.
+   The gap shows the parent's own background through, so one rule sits between
+   two cells instead of two borders sitting side by side — which is what made
+   the panel's cards read as tiles. Cells must paint their own background. */
+.grid-ruled {
+  gap: 1px;
+  background-color: hsl(var(--border));
+  border-top: 1px solid hsl(var(--border));
+  border-bottom: 1px solid hsl(var(--border));
+}
+
 /* Orbit ring keyframes — used by the hero stage. */
 @keyframes orbit-cw {
   from {
