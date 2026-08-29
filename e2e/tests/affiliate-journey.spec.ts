@@ -428,9 +428,9 @@ test("the whole programme, from application to payout", async ({ page, request }
 
   // ── 17. The admin sees it, masked ──────────────────────────────────────
   const payouts = await request.get(`${API}/api/v1/admin/affiliate/payouts`, { headers: auth });
-  const payout = ((await payouts.json()) as { items: { id: string; partner_id: string }[] }).items
-    .filter((p) => p.partner_id === partnerId)
-    .at(0);
+  const payout = (
+    (await payouts.json()) as { items: { id: string; partner_id: string }[] }
+  ).items.find((p) => p.partner_id === partnerId);
   expect(payout, "the request must reach the admin queue").toBeTruthy();
   expect(await payouts.text()).not.toContain("8600123456789012");
 

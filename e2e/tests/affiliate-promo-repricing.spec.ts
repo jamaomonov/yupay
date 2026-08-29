@@ -211,16 +211,24 @@ test("the promo field is offered before any package is chosen", async ({ page, r
   await signInBuyer(page, request);
 
   const promoInput = page.locator("#promo-code");
+  const apply = page.getByRole("button", { name: "Применить" });
+
   await expect(promoInput).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("Сначала выберите пакет")).toBeVisible();
   await promoInput.fill("ANYCODE");
-  await expect(page.getByRole("button", { name: "Применить" })).toBeDisabled();
+  await expect(apply).toBeDisabled();
 
   await promoInput.scrollIntoViewIfNeeded();
   await page.screenshot({ path: "journey/promo-before-package.png" });
 
-  // Choosing a package is all it takes.
+  // Choosing a package is all it takes. The code is typed again after the
+  // click rather than assumed to survive it: this test asks whether the field
+  // is offered before a package is picked, and hanging a second question —
+  // whether a value typed moments after sign-in outlives the panel settling —
+  // on the same assertion only made it fail about one run in three.
   await page.locator('button, [role="button"]').filter({ hasText: /UZS/ }).first().click();
-  await expect(page.getByRole("button", { name: "Применить" })).toBeEnabled({ timeout: 15_000 });
-  await expect(page.getByText("Сначала выберите пакет")).toBeHidden();
+  await expect(page.getByText("Сначала выберите пакет")).toBeHidden({ timeout: 15_000 });
+
+  await promoInput.fill("ANYCODE");
+  await expect(apply).toBeEnabled({ timeout: 15_000 });
 });
