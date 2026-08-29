@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 
+import { Wordmark } from "@/components/Wordmark";
 import { SHELL } from "@/components/landing/shell";
 import { useRequireSession } from "@/lib/auth";
 
@@ -46,9 +47,12 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
           pill-filled: a filled pill is a button, and these navigate. */}
       <header className="border-border bg-bg/85 sticky top-0 z-10 border-b backdrop-blur">
         <div className={`${SHELL} flex items-center justify-between gap-4 py-4`}>
-          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] sm:text-[12px]">
-            {t("brand")}
-          </span>
+          <Link href="/" className="flex items-center gap-3.5">
+            <Wordmark height={22} />
+            <span className="border-border text-tx-mute hidden border-l pl-3.5 font-mono text-[11px] uppercase tracking-[0.14em] sm:inline sm:text-[12px]">
+              {t("brand")}
+            </span>
+          </Link>
           <div className="flex items-center gap-4">
             <span className="text-tx-mute hidden font-mono text-[11.5px] sm:block">
               {partner.display_name ?? partner.email}

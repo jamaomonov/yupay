@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
+import { Wordmark } from "@/components/Wordmark";
 import { SHELL } from "@/components/landing/shell";
 import { useSession } from "@/lib/auth";
 
@@ -54,9 +55,12 @@ export default function LoginPage() {
     <main className="flex min-h-dvh flex-col">
       <div className="border-border border-b">
         <div className={`${SHELL} py-5`}>
-          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] sm:text-[12px]">
-            {brand}
-          </span>
+          <Link href="/" className="flex items-center gap-3.5">
+            <Wordmark height={22} />
+            <span className="border-border text-tx-mute hidden border-l pl-3.5 font-mono text-[11px] uppercase tracking-[0.14em] sm:inline sm:text-[12px]">
+              {brand}
+            </span>
+          </Link>
         </div>
       </div>
 
