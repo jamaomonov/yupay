@@ -1,10 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 
+import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 import { Wordmark } from "@/components/Wordmark";
+import { Link } from "@/i18n/navigation";
 import { SHELL } from "@/components/landing/shell";
 import { useRequireSession } from "@/lib/auth";
 
@@ -53,7 +54,8 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
               {t("brand")}
             </span>
           </Link>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 sm:gap-5">
+            <LocaleSwitcher />
             <span className="text-tx-mute hidden font-mono text-[11.5px] sm:block">
               {partner.display_name ?? partner.email}
             </span>

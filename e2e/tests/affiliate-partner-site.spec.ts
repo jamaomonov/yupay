@@ -157,6 +157,39 @@ test.describe("partner landing", () => {
       expect(attempt).toBeLessThanOrEqual(2);
     }
   });
+  test("the language switcher moves between locales and keeps the path", async ({ page }) => {
+    const pick = (loc: string) =>
+      page
+        .locator('nav[aria-label="Language"] a')
+        .filter({ hasText: new RegExp(`^${loc}$`) })
+        .click();
+
+    await page.goto(PARTNERS);
+    await pick("uz");
+    await page.waitForURL(`${PARTNERS}/uz`, { timeout: 15_000 });
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Bitta kod.");
+
+    // The default locale has no prefix under `as-needed` routing, so switching
+    // back must land on the bare path rather than on /ru, which only redirects
+    // there.
+    await pick("ru");
+    await page.waitForURL(`${PARTNERS}/`, { timeout: 15_000 });
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Один код.");
+
+    // And it switches in place rather than sending everyone home.
+    await page.goto(`${PARTNERS}/login`);
+    await pick("uz");
+    await page.waitForURL(`${PARTNERS}/uz/login`, { timeout: 15_000 });
+  });
+
+  test("the sign-in link carries the locale with it", async ({ page }) => {
+    // It was a bare /login, which under `as-needed` routing silently means
+    // Russian: an Uzbek visitor pressing "Panelga kirish" got a Russian form.
+    await page.goto(`${PARTNERS}/uz`);
+    await page.getByRole("link", { name: /Panelga kirish/ }).click();
+    await page.waitForURL(`${PARTNERS}/uz/login`, { timeout: 15_000 });
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Hamkorlar");
+  });
 });
 
 test.describe("partner authentication", () => {

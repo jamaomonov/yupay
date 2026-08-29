@@ -1,7 +1,8 @@
-import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
+import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 import { Wordmark } from "@/components/Wordmark";
+import { Link } from "@/i18n/navigation";
 
 import { SHELL } from "./shell";
 
@@ -29,15 +30,21 @@ export async function SiteHeader({ locale }: { locale: string }) {
         {/* The mark, then what this particular page is. Without the second
             half the bar would say "yupay" and leave a partner to work out
             which of our sites they landed on. */}
-        <a href={STOREFRONT} className="flex items-center gap-3.5">
+        <a href={STOREFRONT} className="-my-2 flex items-center gap-3.5 py-2">
           <Wordmark height={22} />
           <span className="border-border text-tx-mute hidden border-l pl-3.5 sm:inline">
             {t("nav.brand")}
           </span>
         </a>
-        <Link href="/login" className="text-tx-mute hover:text-foreground transition">
-          {t("hero.ctaLogin")} <span aria-hidden="true">→</span>
-        </Link>
+        <div className="flex items-center gap-5 sm:gap-7">
+          <LocaleSwitcher />
+          {/* Through `@/i18n/navigation`, not `next/link`: a bare `/login`
+              drops the prefix, and with `as-needed` routing that silently
+              means Russian. */}
+          <Link href="/login" className="text-tx-mute hover:text-foreground -my-2 py-2 transition">
+            {t("hero.ctaLogin")} <span aria-hidden="true">→</span>
+          </Link>
+        </div>
       </div>
     </header>
   );

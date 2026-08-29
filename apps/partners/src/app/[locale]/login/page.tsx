@@ -1,11 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
+import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 import { Wordmark } from "@/components/Wordmark";
+import { Link } from "@/i18n/navigation";
 import { SHELL } from "@/components/landing/shell";
 import { useSession } from "@/lib/auth";
 
@@ -54,13 +55,14 @@ export default function LoginPage() {
     // the one screen still speaking the old language.
     <main className="flex min-h-dvh flex-col">
       <div className="border-border border-b">
-        <div className={`${SHELL} py-5`}>
+        <div className={`${SHELL} flex items-center justify-between gap-4 py-5`}>
           <Link href="/" className="flex items-center gap-3.5">
             <Wordmark height={22} />
             <span className="border-border text-tx-mute hidden border-l pl-3.5 font-mono text-[11px] uppercase tracking-[0.14em] sm:inline sm:text-[12px]">
               {brand}
             </span>
           </Link>
+          <LocaleSwitcher />
         </div>
       </div>
 
