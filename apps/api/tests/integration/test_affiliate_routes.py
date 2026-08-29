@@ -17,6 +17,7 @@ from decimal import Decimal
 from urllib.parse import urlencode
 
 import pytest
+from fastapi.routing import APIRoute
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -289,10 +290,13 @@ async def test_every_partner_route_refuses_an_anonymous_caller(
     from yupay.bootstrap import create_app
 
     app = create_app()
+    # `app.routes` is `list[BaseRoute]`, and only `APIRoute` carries a `path`.
+    # Narrowing here rather than reaching through `getattr` keeps the set typed
+    # and stops a mount or a WebSocket route sneaking in as an empty string.
     partner_paths = {
         route.path
         for route in app.routes
-        if "affiliate" in getattr(route, "path", "") and route.path not in _PUBLIC
+        if isinstance(route, APIRoute) and "affiliate" in route.path and route.path not in _PUBLIC
     }
     assert partner_paths, "no partner routes found — the enumeration is wrong"
 
@@ -395,7 +399,9 @@ async def test_every_admin_route_refuses_a_non_admin(
 
     app = create_app()
     admin_paths = {
-        route.path for route in app.routes if getattr(route, "path", "").startswith(ADMIN_PREFIX)
+        route.path
+        for route in app.routes
+        if isinstance(route, APIRoute) and route.path.startswith(ADMIN_PREFIX)
     }
     assert admin_paths, "no admin routes found — the enumeration is wrong"
 

@@ -20,9 +20,9 @@ matches the arithmetic.
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Literal
+from typing import Literal, TypedDict
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +37,22 @@ from yupay.modules.wallet import service as wallet_service
 
 #: The windows a partner can ask for, and how many days each spans.
 StatsPeriod = Literal["day", "week", "month", "year"]
+
+
+class StatsRow(TypedDict):
+    """What :func:`stats` returns.
+
+    Typed rather than ``dict[str, object]`` so the route can splat it into
+    ``StatsOut`` without mypy having to take the shape on trust — which it
+    would not, and rightly: nothing else was checking that the two agreed.
+    """
+
+    period: StatsPeriod
+    since: datetime
+    earned: Decimal
+    orders: int
+    activations: int
+
 
 _WINDOW_DAYS: dict[StatsPeriod, int] = {
     "day": 1,
@@ -103,7 +119,7 @@ async def balances(
     }
 
 
-async def stats(db: AsyncSession, *, partner_id: str, period: StatsPeriod) -> dict[str, object]:
+async def stats(db: AsyncSession, *, partner_id: str, period: StatsPeriod) -> StatsRow:
     """Earnings and activations over a rolling window.
 
     Args:
@@ -114,8 +130,8 @@ async def stats(db: AsyncSession, *, partner_id: str, period: StatsPeriod) -> di
             rolling rather than calendar.
 
     Returns:
-        ``{"period", "since", "earned", "orders", "activations"}``. A partner
-        with no activity reads as zeroes, not as an error.
+        A :class:`StatsRow`. A partner with no activity reads as zeroes, not as
+        an error.
     """
     since = now() - timedelta(days=_WINDOW_DAYS[period])
 
@@ -139,13 +155,13 @@ async def stats(db: AsyncSession, *, partner_id: str, period: StatsPeriod) -> di
         )
     )
 
-    return {
-        "period": period,
-        "since": since,
-        "earned": Decimal(earned),
-        "orders": int(orders),
-        "activations": int(activations or 0),
-    }
+    return StatsRow(
+        period=period,
+        since=since,
+        earned=Decimal(earned),
+        orders=int(orders),
+        activations=int(activations or 0),
+    )
 
 
 async def codes(db: AsyncSession, *, partner_id: str) -> list[AffiliateCode]:
