@@ -33,6 +33,14 @@ jobs:
               NEXT_PUBLIC_API_BASE_URL=https://api.yupay.uz
               NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=yupayapp_bot
               NEXT_PUBLIC_TELEGRAM_BOT_ID=8702808191
+          - image: partners
+            dockerfile: infra/docker/partners.Dockerfile
+            # Same reason as web: NEXT_PUBLIC_* is inlined into the client
+            # bundle here, so the values in secrets/partners.env are only the
+            # runtime echo of these and must match them.
+            build_args: |
+              NEXT_PUBLIC_API_BASE_URL=https://api.yupay.uz
+              NEXT_PUBLIC_STOREFRONT_URL=https://yupay.uz
           - image: miniapp
             dockerfile: infra/docker/miniapp.Dockerfile
             build_args: |
