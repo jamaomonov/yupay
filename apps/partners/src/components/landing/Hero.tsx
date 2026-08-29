@@ -20,7 +20,7 @@ export async function Hero({ locale }: { locale: string }) {
 
   return (
     <section className={`${SHELL} pb-10 pt-10 sm:pb-14 sm:pt-16`}>
-      <h1 className="font-display whitespace-pre-line text-[clamp(2.4rem,8.4vw,6.75rem)] font-extrabold leading-[0.94] tracking-[-0.045em]">
+      <h1 className="font-display whitespace-pre-line text-[clamp(2.1rem,7.2vw,5.6rem)] font-extrabold leading-[0.94] tracking-[-0.045em]">
         {t("title")}
         {"\n"}
         {/* `box-decoration-clone` so a wrapped accent keeps its padding on both

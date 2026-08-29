@@ -21,7 +21,14 @@ export async function HowItWorks({ locale }: { locale: string }) {
 
   return (
     <section className="border-border border-t">
-      <ol className={`${SHELL} grid grid-cols-1 gap-10 py-14 sm:grid-cols-3 sm:gap-11 lg:py-16`}>
+      <div className={`${SHELL} pt-14 lg:pt-16`}>
+        <p className="text-primary font-mono text-[11px] uppercase tracking-[0.16em]">
+          {t("title")}
+        </p>
+      </div>
+      <ol
+        className={`${SHELL} grid grid-cols-1 gap-10 pb-14 pt-8 sm:grid-cols-3 sm:gap-11 lg:pb-16`}
+      >
         {steps.map((s) => (
           <li key={s.n}>
             <span

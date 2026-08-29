@@ -21,7 +21,11 @@
  * would recruit better.
  */
 export const DEFAULTS = {
-  audience: 5_000,
+  // 20k rather than the 5k this started at. The calculator opens on this
+  // number, and 5k produced 23,640 so'm — under half the 50,000 withdrawal
+  // floor the FAQ states two bands below. The first figure on a page that
+  // promises honesty must not be one that cannot be paid out.
+  audience: 20_000,
   conversionPercent: 1,
   averageOrderUzs: 12_000,
   ordersPerBuyer: 1.97,

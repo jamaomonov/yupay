@@ -5,6 +5,11 @@ import { Wordmark } from "@/components/Wordmark";
 
 import { SHELL } from "./shell";
 
+/** The storefront. The wordmark points there rather than back at this page:
+ *  a partner deciding whether we are real will click it, and the fastest
+ *  answer is the shop itself. */
+const STOREFRONT = process.env.NEXT_PUBLIC_STOREFRONT_URL ?? "https://yupay.uz";
+
 /**
  * The thin monospaced bar across the top.
  *
@@ -24,12 +29,12 @@ export async function SiteHeader({ locale }: { locale: string }) {
         {/* The mark, then what this particular page is. Without the second
             half the bar would say "yupay" and leave a partner to work out
             which of our sites they landed on. */}
-        <Link href="/" className="flex items-center gap-3.5">
+        <a href={STOREFRONT} className="flex items-center gap-3.5">
           <Wordmark height={22} />
           <span className="border-border text-tx-mute hidden border-l pl-3.5 sm:inline">
             {t("nav.brand")}
           </span>
-        </Link>
+        </a>
         <Link href="/login" className="text-tx-mute hover:text-foreground transition">
           {t("hero.ctaLogin")} <span aria-hidden="true">→</span>
         </Link>

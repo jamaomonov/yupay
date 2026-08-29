@@ -16,7 +16,11 @@ import { SHELL } from "./shell";
  */
 export async function Faq({ locale }: { locale: string }) {
   const t = await getTranslations({ locale, namespace: "partners.faq" });
-  const items = [1, 2, 3, 4, 5, 6].map((i) => ({
+  // Not 1..6. A sceptic under this heading used to read about the payout delay
+  // first; now the two questions that decide whether they apply at all — "am I
+  // too small" and "what do repeat orders pay" — open it, and the two
+  // unflattering ones still get read, just not first.
+  const items = [6, 5, 1, 2, 4, 3].map((i) => ({
     q: t(`q${String(i)}`),
     a: t(`a${String(i)}`),
   }));

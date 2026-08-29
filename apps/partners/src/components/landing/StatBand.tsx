@@ -14,10 +14,15 @@ import { getTranslations } from "next-intl/server";
 export async function StatBand({ locale }: { locale: string }) {
   const t = await getTranslations({ locale, namespace: "partners.hero" });
 
+  // The third one is not a rate but the thing that makes the other two worth
+  // having, so it is accented whole rather than by its unit. The 14-day hold
+  // used to sit here; it now lives in the FAQ, where it comes with the reason
+  // for it. Ruled into a spec beside two rates and with no explanation, it read
+  // as a catch — a third of the first screen spent on the least appealing fact.
   const stats = [
     { value: t("statDiscount"), unit: t("statDiscountUnit"), label: t("statDiscountLabel") },
     { value: t("statCommission"), unit: t("statCommissionUnit"), label: t("statCommissionLabel") },
-    { value: t("statHold"), unit: t("statHoldUnit"), label: t("statHoldLabel") },
+    { value: t("statForever"), unit: "", label: t("statForeverLabel"), whole: true },
   ];
 
   return (
@@ -32,7 +37,11 @@ export async function StatBand({ locale }: { locale: string }) {
               i > 0 ? "border-t sm:border-l sm:border-t-0" : ""
             }`}
           >
-            <dt className="font-display text-[34px] font-extrabold leading-none tracking-[-0.03em] sm:text-[44px]">
+            <dt
+              className={`font-display text-[34px] font-extrabold leading-none tracking-[-0.03em] sm:text-[44px] ${
+                s.whole === true ? "text-primary" : ""
+              }`}
+            >
               {s.value}
               <span className="text-primary">{s.unit}</span>
             </dt>
