@@ -520,7 +520,7 @@ async def _mark_payment_succeeded(
         # irreversible — an issued code or a credited game balance cannot be
         # taken back — while a hold costs one click to release. The order stays
         # ``paid`` either way; only the saga is withheld (ADR-0047).
-        reason = review_reason(order)
+        reason = await review_reason(db, order)
         if reason is None:
             await fulfillment_svc.start_for_order(db, order_id=order.id)
         else:

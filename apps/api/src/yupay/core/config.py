@@ -250,6 +250,71 @@ class Settings(BaseSettings):
             "catches outliers without touching ordinary traffic. Set to 0 to disable."
         ),
     )
+    risk_sum_24h_usd: Decimal = Field(
+        default=Decimal("25"),
+        description=(
+            "Orders sharing an identity (buyer, IP, device, or delivery target) whose "
+            "combined total over the trailing 24h reaches this are held, even though no "
+            "single order crossed `manual_review_threshold_usd`. 25 sits comfortably below "
+            "the $40 single-order threshold because the attack this rule targets is many "
+            "small orders rather than one large one. Set to 0 to disable."
+        ),
+    )
+    risk_sum_7d_usd: Decimal = Field(
+        default=Decimal("60"),
+        description=(
+            "Same as `risk_sum_24h_usd` but over a trailing 7 days, to catch a slower "
+            "drip that stays under the 24h cap on any given day. Set to 0 to disable."
+        ),
+    )
+    risk_velocity_24h: int = Field(
+        default=5,
+        description=(
+            "Orders sharing an identity whose count over the trailing 24h reaches this "
+            "are held, regardless of amount — a burst of many cheap orders is itself a "
+            "signal. 5 is above the highest observed same-buyer repeat-purchase count in "
+            "a day, so ordinary customers never see it. Set to 0 to disable."
+        ),
+    )
+    risk_distinct_buyers_7d: int = Field(
+        default=3,
+        description=(
+            "Distinct buyer identities sharing another key (IP, device, or delivery "
+            "target) over the trailing 7 days that reach this are held — one card or "
+            "device paying for several different accounts is a resale pattern, not "
+            "coincidence. Set to 0 to disable."
+        ),
+    )
+    risk_liquid_brands: str = Field(
+        default="roblox,telegram-stars,steam",
+        description=(
+            "Comma-separated SKU brand slugs treated as cash-equivalent for the identity "
+            "window rules — gift-card and top-up brands that convert to real money "
+            "fastest on resale markets, so orders for them are watched more closely. CSV "
+            "rather than a list: an operator types `RISK_LIQUID_BRANDS=roblox,steam` "
+            "directly into the environment without needing JSON syntax."
+        ),
+    )
+    risk_home_timezones: str = Field(
+        default="Asia/Tashkent,Asia/Samarkand",
+        description=(
+            "Comma-separated IANA timezones treated as the storefront's home market. "
+            "Client-hint timezones outside this set are a weak signal that a device is "
+            "not where its orders claim to be. CSV for the same reason as "
+            "`risk_liquid_brands`."
+        ),
+    )
+    risk_jitter: bool = Field(
+        default=True,
+        description=(
+            "Randomize each order's effective manual-review threshold within a band "
+            "below `manual_review_threshold_usd` instead of using one flat cut-off. A "
+            "fixed threshold is a number an attacker can probe for and stay just under; "
+            "jitter is deterministic per order id, so retries and tests stay stable, but "
+            "the boundary is not the same twice. Off in tests that assert an exact "
+            "threshold."
+        ),
+    )
 
     # --- Stuck-order watchdog (ADR-0046) ---
     stuck_order_alert_after_minutes: int = Field(

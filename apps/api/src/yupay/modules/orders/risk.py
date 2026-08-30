@@ -13,6 +13,8 @@ click while an issued game code is not.
 from __future__ import annotations
 
 import contextlib
+import hashlib
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from yupay.core.config import Settings, get_settings
@@ -56,18 +58,43 @@ HOLD_ALERT_TEXT: dict[str, tuple[str, str]] = {
 }
 
 
-def review_reason(order: Order, *, settings: Settings | None = None) -> str | None:
+def _effective_threshold(order_id: str, cfg: Settings) -> Decimal:
+    """Rule 1's threshold for this order — jittered so probing finds a band,
+    not an edge. Deterministic per order id: retries and tests are stable."""
+    base = cfg.manual_review_threshold_usd
+    if not cfg.risk_jitter or base <= 0:
+        return base
+    u = int.from_bytes(hashlib.sha256(order_id.encode()).digest()[:8], "big") / 2**64
+    return base * (Decimal("0.6") + Decimal("0.4") * Decimal(str(u)))
+
+
+def _amount_reason(order: Order, cfg: Settings) -> str | None:
+    """Rule 1: is this single order, on its own, big enough to hold?"""
+    threshold = _effective_threshold(order.id, cfg)
+    if cfg.manual_review_threshold_usd > 0 and order.total_usd >= threshold:
+        return REASON_LARGE_AMOUNT
+    return None
+
+
+async def review_reason(
+    db: AsyncSession,  # noqa: ARG001 -- unused until Task 3's window-rule gather lands
+    order: Order,
+    *,
+    settings: Settings | None = None,
+) -> str | None:
     """Why this order must not be fulfilled automatically, or ``None``.
 
     Returns a reason string rather than a bool so the event log and the alert
     can say which rule fired — with one rule that is pedantic, with three it is
     the difference between a useful log line and a shrug.
+
+    Beyond rule 1 (this task), the window rules living in this module's
+    gather/decide pair (arriving alongside this docstring's expansion) never
+    raise: a failed gather is logged and degrades to the amount rule alone,
+    because a broken risk query must not stop all sales.
     """
     cfg = settings or get_settings()
-    threshold = cfg.manual_review_threshold_usd
-    if threshold > 0 and order.total_usd >= threshold:
-        return REASON_LARGE_AMOUNT
-    return None
+    return _amount_reason(order, cfg)  # window rules appended in Tasks 3-4
 
 
 async def hold_for_review(db: AsyncSession, *, order: Order, reason: str) -> None:
