@@ -716,6 +716,93 @@ async def precharge_veto(
     return _veto_decision(trusted, country, timezone, cfg)
 
 
+async def evidence_geo(db: AsyncSession, order_id: str) -> tuple[str | None, str | None]:
+    """Return the order's stored ``(ip_country, timezone)``, or ``(None, None)``.
+
+    Reads the same ``order_evidence`` columns ``precharge_veto`` itself
+    decided from. Enforcement point A (the acquirer pre-charge stages) calls
+    this right after a veto fires, purely to log which values drove the
+    refusal — it never repeats the decision, only echoes what already made
+    it.
+
+    Args:
+        db: Active session.
+        order_id: The vetoed order's id.
+
+    Returns:
+        ``(ip_country, timezone)``. Either element, or the whole pair, is
+        ``None`` when the evidence row is missing the value or missing
+        entirely.
+    """
+    row = (
+        await db.execute(
+            select(OrderEvidence.ip_country, OrderEvidence.client_hints).where(
+                OrderEvidence.order_id == order_id
+            )
+        )
+    ).first()
+    if row is None:
+        return None, None
+    raw_tz = row[1].get("timezone") if row[1] else None
+    return row[0], raw_tz if isinstance(raw_tz, str) else None
+
+
+async def record_precharge_veto(
+    db: AsyncSession,
+    order: Order,
+    reason: str,
+    *,
+    country: str | None,
+    timezone: str | None,
+) -> None:
+    """Record a pre-charge refusal. ADR-0063, enforcement point A.
+
+    Idempotent per order: an acquirer retries a refused CheckPerform/
+    Prepare/Check verbatim, so without the guard below a single veto would
+    write one event per retry. The caller raises the acquirer's own
+    "not payable" error immediately after this returns — that raise rolls
+    the request's transaction back, which would silently erase the row this
+    function just added, so this commits it NOW rather than leaving it for
+    the caller (mirrors ``payments.service``'s "Commit NOW" webhook-rejection
+    and refund-rejection paths).
+
+    ``country``/``timezone`` are codes, not addresses — the IP they were
+    derived from never leaves ``order_evidence``.
+
+    Args:
+        db: Active session.
+        order: The vetoed order.
+        reason: ``VETO_FOREIGN_COUNTRY`` or ``VETO_FOREIGN_TIMEZONE`` (from
+            ``precharge_veto``).
+        country: The evidence value that drove the decision, or ``None``.
+        timezone: The evidence value that drove the decision, or ``None``.
+    """
+    existing = (
+        await db.execute(
+            select(OrderEvent.id).where(
+                OrderEvent.order_id == order.id,
+                OrderEvent.kind == "order.precharge_vetoed",
+            )
+        )
+    ).first()
+    if existing is not None:
+        return
+    db.add(
+        OrderEvent(
+            id=new_id(),
+            order_id=order.id,
+            kind="order.precharge_vetoed",
+            payload={"reason": reason, "country": country, "timezone": timezone},
+            actor="risk",
+        )
+    )
+    log.warning("orders.precharge_vetoed", order_id=order.id, reason=reason)
+    # Commit NOW: the raise right after this call makes the request
+    # transaction roll back, which would silently erase this audit row
+    # otherwise.
+    await db.commit()
+
+
 async def hold_for_review(
     db: AsyncSession,
     *,
@@ -788,7 +875,9 @@ __all__ = [
     "VETO_FOREIGN_TIMEZONE",
     "GeoContext",
     "WindowOrder",
+    "evidence_geo",
     "hold_for_review",
     "precharge_veto",
+    "record_precharge_veto",
     "review_reason",
 ]

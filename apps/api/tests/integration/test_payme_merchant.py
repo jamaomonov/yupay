@@ -23,7 +23,8 @@ from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core import config as cfg
-from yupay.modules.orders.models import Order
+from yupay.modules.evidence.models import OrderEvidence
+from yupay.modules.orders.models import Order, OrderEvent
 from yupay.modules.payme.models import PaymeTransaction
 from yupay.modules.payments.models import Payment
 from yupay.modules.users.models import User
@@ -90,6 +91,39 @@ async def _count_txns(db: AsyncSession, payme_id: str) -> int:
             .where(PaymeTransaction.payme_id == payme_id)
         )
     ).scalar_one()
+
+
+async def _seed_guest_order_with_evidence(
+    db: AsyncSession,
+    *,
+    ip_country: str,
+    total_charged: Decimal = Decimal("130000.00"),
+) -> str:
+    """A guest catalog order plus the ``order_evidence`` row the pre-charge
+    veto (ADR-0063) reads ``ip_country`` from."""
+    order_id = str(uuid.uuid4())
+    db.add(
+        Order(
+            id=order_id,
+            user_id=None,
+            guest_email=f"guest-{order_id[:8]}@example.com",
+            status="pending_payment",
+            currency="UZS",
+            total_usd=Decimal("10.00"),
+            total_charged=total_charged,
+            expires_at=datetime.now(UTC) + timedelta(minutes=30),
+        )
+    )
+    await db.flush()
+    db.add(
+        OrderEvidence(
+            order_id=order_id,
+            ip_country=ip_country,
+            purge_after=datetime.now(UTC) + timedelta(days=90),
+        )
+    )
+    await db.commit()
+    return order_id
 
 
 # --------------------------------------------------------------------------- #
@@ -407,3 +441,64 @@ async def test_commit_failure_is_32400_not_500(
     )
     assert r.status_code == 200
     assert r.json()["error"]["code"] == -32400
+
+
+# --------------------------------------------------------------------------- #
+# Pre-charge geo veto (ADR-0063), enforcement point A                          #
+# --------------------------------------------------------------------------- #
+
+
+async def test_check_perform_refuses_a_foreign_guest_order(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A guest order with evidence saying the buyer is not at home.
+
+    The refusal must be Payme's own -31051 — indistinguishable from any other
+    unpayable order — and no transaction row may exist afterwards. A repeat of
+    the exact same call must still leave exactly one audit event behind.
+    """
+    order_id = await _seed_guest_order_with_evidence(db_session, ip_country="NL")
+
+    for _ in range(2):
+        r = await integration_client.post(
+            MERCHANT_URL,
+            headers=_auth(),
+            json=_rpc(
+                "CheckPerformTransaction",
+                {"amount": EXPECTED_TIYIN, "account": {"order_id": order_id}},
+            ),
+        )
+        assert r.status_code == 200
+        assert r.json()["error"]["code"] == -31051
+
+    txn = (
+        await db_session.execute(
+            select(PaymeTransaction).where(PaymeTransaction.order_id == order_id)
+        )
+    ).scalar_one_or_none()
+    assert txn is None
+    kinds = [
+        e.kind
+        for e in (
+            await db_session.execute(select(OrderEvent).where(OrderEvent.order_id == order_id))
+        ).scalars()
+    ]
+    assert kinds.count("order.precharge_vetoed") == 1
+
+
+async def test_check_perform_passes_a_home_guest_order(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The mirror case: same shape, home country — proceeds exactly as today."""
+    order_id = await _seed_guest_order_with_evidence(db_session, ip_country="UZ")
+
+    r = await integration_client.post(
+        MERCHANT_URL,
+        headers=_auth(),
+        json=_rpc(
+            "CheckPerformTransaction",
+            {"amount": EXPECTED_TIYIN, "account": {"order_id": order_id}},
+        ),
+    )
+    assert r.status_code == 200
+    assert r.json()["result"] == {"allow": True}

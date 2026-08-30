@@ -34,6 +34,7 @@ from yupay.core.config import get_settings
 from yupay.core.ids import new_id
 from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.orders.models import Order
+from yupay.modules.orders.risk import evidence_geo, precharge_veto, record_precharge_veto
 from yupay.modules.payments import service as pay_svc
 from yupay.modules.payments.models import Payment
 from yupay.modules.uzum.errors import (
@@ -265,11 +266,21 @@ async def check(db: AsyncSession, *, service_id: int, params: dict[str, Any]) ->
 
     Raises:
         UzumError: ``10007`` unknown order, ``10008`` already paid, ``10009``
-            cancelled/expired/refunded/otherwise not payable.
+            cancelled/expired/refunded/otherwise not payable (also the
+            pre-charge geo veto, ADR-0063 — deliberately the same code).
     """
     del service_id  # signature parity only; see docstring.
     order = await _resolve_order(db, params.get("order_id"))
     _check_order_state(order)
+    # ADR-0063 enforcement point A: refuse with the same generic 10009
+    # ``_check_order_state`` already uses for a non-payable order —
+    # indistinguishable on purpose, since a refusal that said "geo blocked"
+    # would teach a carder exactly what to spoof next.
+    veto = await precharge_veto(db, order)
+    if veto is not None:
+        country, timezone = await evidence_geo(db, order.id)
+        await record_precharge_veto(db, order, veto, country=country, timezone=timezone)
+        raise payment_cancelled()
     return {"status": "OK", "data": {"amount": {"value": _amount_value(order)}}}
 
 

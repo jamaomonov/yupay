@@ -30,6 +30,7 @@ from yupay.core.config import get_settings
 from yupay.core.ids import new_id
 from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.orders.models import Order
+from yupay.modules.orders.risk import evidence_geo, precharge_veto, record_precharge_veto
 from yupay.modules.payme.errors import (
     cannot_cancel_delivered,
     fiscal_receipt_not_found,
@@ -132,6 +133,30 @@ def _check_perform(order: Order, amount: int) -> None:
         raise invalid_amount()
 
 
+async def _refuse_if_vetoed(db: AsyncSession, order: Order) -> None:
+    """Raise Payme's own ``-31051`` if ``order`` is pre-charge geo-vetoed.
+
+    ADR-0063 enforcement point A, called right after :func:`_check_perform`
+    passes at both its call sites. Reuses ``order_not_payable`` verbatim
+    rather than a distinct code on purpose — a refusal that said "geo
+    blocked" would teach a carder exactly what to spoof next, so this must
+    be indistinguishable from any other not-payable order.
+
+    Args:
+        db: Active session.
+        order: The already-validated (payable) order to check.
+
+    Raises:
+        PaymeError: ``-31051`` if ``precharge_veto`` returns a reason.
+    """
+    veto = await precharge_veto(db, order)
+    if veto is None:
+        return
+    country, timezone = await evidence_geo(db, order.id)
+    await record_precharge_veto(db, order, veto, country=country, timezone=timezone)
+    raise order_not_payable()
+
+
 async def _load_transaction(
     db: AsyncSession, payme_id: str, *, for_update: bool = False
 ) -> PaymeTransaction | None:
@@ -228,11 +253,15 @@ async def check_perform_transaction(
         ``{"allow": True}`` when the order is payable and the amount matches.
 
     Raises:
-        PaymeError: ``-31050`` unknown order, ``-31051`` not payable,
-            ``-31001`` wrong amount.
+        PaymeError: ``-31050`` unknown order, ``-31051`` not payable (also
+            the pre-charge geo veto, ADR-0063 — deliberately the same
+            code), ``-31001`` wrong amount.
     """
     order = await _resolve_order(db, account)
     _check_perform(order, amount)
+    # Deliberately indistinguishable from the ``-31051`` above: a refusal
+    # that says "geo blocked" teaches a carder exactly what to spoof next.
+    await _refuse_if_vetoed(db, order)
     return {"allow": True}
 
 
@@ -257,8 +286,10 @@ async def create_transaction(
         ``{"create_time", "transaction", "state"}``.
 
     Raises:
-        PaymeError: ``-31050``/``-31051``/``-31001`` from validation,
-            ``-31099`` if the order already has a different active transaction.
+        PaymeError: ``-31050``/``-31051``/``-31001`` from validation
+            (``-31051`` also covers the pre-charge geo veto, ADR-0063 —
+            deliberately the same code), ``-31099`` if the order already has
+            a different active transaction.
     """
     existing = await _load_transaction(db, payme_id, for_update=True)
     if existing is not None:
@@ -275,6 +306,9 @@ async def create_transaction(
 
     order = await _resolve_order(db, account, for_update=True)
     _check_perform(order, amount)
+    # Deliberately indistinguishable from the ``-31051`` above: a refusal
+    # that says "geo blocked" teaches a carder exactly what to spoof next.
+    await _refuse_if_vetoed(db, order)
 
     other_active = (
         await db.execute(

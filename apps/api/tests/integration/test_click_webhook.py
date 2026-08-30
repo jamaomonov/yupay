@@ -24,7 +24,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core import config as cfg
 from yupay.modules.click.models import ClickTransaction
-from yupay.modules.orders.models import Order
+from yupay.modules.evidence.models import OrderEvidence
+from yupay.modules.orders.models import Order, OrderEvent
 from yupay.modules.payments.models import Payment
 from yupay.modules.users.models import User
 
@@ -189,6 +190,39 @@ async def _seed_order(
             total_usd=Decimal("10.00"),
             total_charged=total_charged,
             expires_at=datetime.now(UTC) + timedelta(minutes=30),
+        )
+    )
+    await db.commit()
+    return order_id
+
+
+async def _seed_guest_order_with_evidence(
+    db: AsyncSession,
+    *,
+    ip_country: str,
+    total_charged: Decimal = TOTAL_CHARGED,
+) -> str:
+    """A guest catalog order plus the ``order_evidence`` row the pre-charge
+    veto (ADR-0063) reads ``ip_country`` from."""
+    order_id = str(uuid.uuid4())
+    db.add(
+        Order(
+            id=order_id,
+            user_id=None,
+            guest_email=f"guest-{order_id[:8]}@example.com",
+            status="pending_payment",
+            currency="UZS",
+            total_usd=Decimal("10.00"),
+            total_charged=total_charged,
+            expires_at=datetime.now(UTC) + timedelta(minutes=30),
+        )
+    )
+    await db.flush()
+    db.add(
+        OrderEvidence(
+            order_id=order_id,
+            ip_country=ip_country,
+            purge_after=datetime.now(UTC) + timedelta(days=90),
         )
     )
     await db.commit()
@@ -728,3 +762,62 @@ async def test_non_post_put_is_minus8(integration_client: AsyncClient) -> None:
     r = await integration_client.put(PREPARE_URL)
     assert r.status_code == 200
     assert r.json() == {"error": -8, "error_note": "Error in request from click"}
+
+
+# --------------------------------------------------------------------------- #
+# Pre-charge geo veto (ADR-0063), enforcement point A                          #
+# --------------------------------------------------------------------------- #
+
+
+async def test_prepare_refuses_a_foreign_guest_order(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A guest order with evidence saying the buyer is not at home.
+
+    The refusal must be exactly the error ``/prepare`` already returns for a
+    non-``pending_payment`` order (-9), indistinguishable from any other
+    unpayable order, and no transaction row may exist afterwards. A repeat of
+    the exact same call must still leave exactly one audit event behind.
+    """
+    order_id = await _seed_guest_order_with_evidence(db_session, ip_country="NL")
+    click_trans_id = "9100"
+
+    for _ in range(2):
+        r = await integration_client.post(
+            PREPARE_URL,
+            data=_prepare_body(click_trans_id=click_trans_id, merchant_trans_id=order_id),
+        )
+        assert r.status_code == 200
+        resp = r.json()
+        assert resp["error"] == -9
+        assert resp["error_note"] == "Transaction cancelled"
+
+    txn = (
+        await db_session.execute(
+            select(ClickTransaction).where(ClickTransaction.click_trans_id == int(click_trans_id))
+        )
+    ).scalar_one_or_none()
+    assert txn is None
+    kinds = [
+        e.kind
+        for e in (
+            await db_session.execute(select(OrderEvent).where(OrderEvent.order_id == order_id))
+        ).scalars()
+    ]
+    assert kinds.count("order.precharge_vetoed") == 1
+
+
+async def test_prepare_passes_a_home_guest_order(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The mirror case: same shape, home country — proceeds exactly as today."""
+    order_id = await _seed_guest_order_with_evidence(db_session, ip_country="UZ")
+
+    r = await integration_client.post(
+        PREPARE_URL,
+        data=_prepare_body(click_trans_id="9101", merchant_trans_id=order_id),
+    )
+    assert r.status_code == 200
+    prepared = r.json()
+    assert prepared["error"] == 0
+    assert prepared["error_note"] == "Success"

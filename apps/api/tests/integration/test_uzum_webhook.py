@@ -24,7 +24,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core import config as cfg
 from yupay.core.ids import new_id
-from yupay.modules.orders.models import Order
+from yupay.modules.evidence.models import OrderEvidence
+from yupay.modules.orders.models import Order, OrderEvent
 from yupay.modules.payments.models import Payment
 from yupay.modules.users.models import User
 from yupay.modules.uzum.models import UzumTransaction
@@ -83,6 +84,39 @@ async def _seed_order(
             total_usd=Decimal("10.00"),
             total_charged=total_charged,
             expires_at=datetime.now(UTC) + timedelta(minutes=30),
+        )
+    )
+    await db.commit()
+    return order_id
+
+
+async def _seed_guest_order_with_evidence(
+    db: AsyncSession,
+    *,
+    ip_country: str,
+    total_charged: Decimal = Decimal("130000.00"),
+) -> str:
+    """A guest catalog order plus the ``order_evidence`` row the pre-charge
+    veto (ADR-0063) reads ``ip_country`` from."""
+    order_id = str(uuid.uuid4())
+    db.add(
+        Order(
+            id=order_id,
+            user_id=None,
+            guest_email=f"guest-{order_id[:8]}@example.com",
+            status="pending_payment",
+            currency="UZS",
+            total_usd=Decimal("10.00"),
+            total_charged=total_charged,
+            expires_at=datetime.now(UTC) + timedelta(minutes=30),
+        )
+    )
+    await db.flush()
+    db.add(
+        OrderEvidence(
+            order_id=order_id,
+            ip_country=ip_country,
+            purge_after=datetime.now(UTC) + timedelta(days=90),
         )
     )
     await db.commit()
@@ -1114,3 +1148,68 @@ async def test_reverse_fresh_non_delivered_order(
 
     order = (await db_session.execute(select(Order).where(Order.id == order_id))).scalar_one()
     assert order.status == "pending_payment"
+
+
+# --------------------------------------------------------------------------- #
+# Pre-charge geo veto (ADR-0063), enforcement point A                          #
+# --------------------------------------------------------------------------- #
+
+
+async def test_check_refuses_a_foreign_guest_order(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A guest order with evidence saying the buyer is not at home.
+
+    The refusal must be exactly the code ``_check_order_state`` already
+    raises for a generic non-payable state (10009) — indistinguishable from
+    any other unpayable order — and no transaction row may exist afterwards.
+    A repeat of the exact same call must still leave exactly one audit event
+    behind.
+    """
+    order_id = await _seed_guest_order_with_evidence(db_session, ip_country="NL")
+
+    for _ in range(2):
+        r = await integration_client.post(
+            CHECK_URL,
+            headers=_auth(),
+            json={
+                "serviceId": SERVICE_ID,
+                "timestamp": 1,
+                "params": {"order_id": order_id},
+            },
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["status"] == "FAILED"
+        assert body["errorCode"] == 10009
+
+    txn = (
+        await db_session.execute(
+            select(UzumTransaction).where(UzumTransaction.order_id == order_id)
+        )
+    ).scalar_one_or_none()
+    assert txn is None
+    kinds = [
+        e.kind
+        for e in (
+            await db_session.execute(select(OrderEvent).where(OrderEvent.order_id == order_id))
+        ).scalars()
+    ]
+    assert kinds.count("order.precharge_vetoed") == 1
+
+
+async def test_check_passes_a_home_guest_order(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The mirror case: same shape, home country — proceeds exactly as today."""
+    order_id = await _seed_guest_order_with_evidence(db_session, ip_country="UZ")
+
+    r = await integration_client.post(
+        CHECK_URL,
+        headers=_auth(),
+        json={"serviceId": SERVICE_ID, "timestamp": 1, "params": {"order_id": order_id}},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "OK"
+    assert body["data"] == {"amount": {"value": "130000"}}
