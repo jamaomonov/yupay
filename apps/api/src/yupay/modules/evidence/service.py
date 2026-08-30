@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import timedelta
 from ipaddress import ip_address
 from typing import TYPE_CHECKING
@@ -57,6 +58,19 @@ def _normalised_ip(request: Request) -> str | None:
         return None
 
 
+def device_hash(user_agent: str | None, hints: ClientHints | None) -> str | None:
+    """A stable pseudonym for the requesting device, or ``None``.
+
+    ``None`` rather than a hash of emptiness: rows with no context must not
+    all share one fingerprint and become a single giant false identity.
+    """
+    h = hints or ClientHints()
+    parts = [user_agent or "", h.timezone or "", h.locale or "", h.screen or ""]
+    if not any(parts):
+        return None
+    return hashlib.sha256("|".join(parts).encode()).hexdigest()
+
+
 async def capture_for_order(
     db: AsyncSession,
     *,
@@ -78,14 +92,18 @@ async def capture_for_order(
     """
     cfg = settings or get_settings()
     try:
+        truncated_ua = (request.headers.get("user-agent") or "")[:_UA_MAX] or None
         stmt = (
             pg_insert(OrderEvidence)
             .values(
                 order_id=order_id,
                 ip=_normalised_ip(request),
-                user_agent=(request.headers.get("user-agent") or "")[:_UA_MAX] or None,
+                user_agent=truncated_ua,
                 accept_language=(request.headers.get("accept-language") or "")[:_LANG_MAX] or None,
                 client_hints=hints.model_dump(exclude_none=True) if hints else {},
+                # Hash the SAME truncated UA that is stored above, or the
+                # stored and hashed values drift for any header past _UA_MAX.
+                device_hash=device_hash(truncated_ua, hints),
                 purge_after=now() + timedelta(days=cfg.evidence_retention_days),
             )
             .on_conflict_do_nothing(index_elements=["order_id"])
@@ -159,4 +177,4 @@ async def purge_expired(db: AsyncSession) -> int:
     return result.rowcount or 0  # type: ignore[attr-defined]
 
 
-__all__ = ["capture_for_order", "get_pack", "purge_expired"]
+__all__ = ["capture_for_order", "device_hash", "get_pack", "purge_expired"]

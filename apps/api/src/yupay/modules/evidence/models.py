@@ -67,6 +67,11 @@ class OrderEvidence(Base):
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
 
+    #: sha256 of ``user_agent | timezone | locale | screen`` — the device as a
+    #: pseudonym, for the risk gate's shared-identity rule. Derived, so it
+    #: lives and dies with this row's ``purge_after``.
+    device_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )

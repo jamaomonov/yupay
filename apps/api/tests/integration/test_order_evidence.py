@@ -18,7 +18,7 @@ from urllib.parse import urlencode
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.ids import new_id
@@ -32,7 +32,8 @@ from yupay.modules.catalog.models import (
     Sku,
 )
 from yupay.modules.evidence.models import OrderEvidence
-from yupay.modules.evidence.service import purge_expired
+from yupay.modules.evidence.schemas import ClientHints
+from yupay.modules.evidence.service import device_hash, purge_expired
 from yupay.modules.orders.models import Order
 from yupay.modules.users.models import TelegramLink, User
 
@@ -139,6 +140,27 @@ async def _post_order(
     return r.status_code, r.json().get("id", "")
 
 
+# ---------- device_hash ----------
+
+
+def test_device_hash_is_stable_and_component_sensitive() -> None:
+    hints = ClientHints(timezone="Europe/Kiev", locale="uk-UA", screen="2560x1440@1")
+    a = device_hash("Mozilla/5.0", hints)
+    assert a == device_hash("Mozilla/5.0", hints)  # deterministic
+    assert a != device_hash(
+        "Mozilla/5.0", ClientHints(timezone="Asia/Tashkent", locale="uk-UA", screen="2560x1440@1")
+    )
+    assert a is not None
+    assert len(a) == 64
+
+
+def test_device_hash_of_nothing_is_none() -> None:
+    # An evidence row with no UA and no hints must not produce a shared
+    # "empty" fingerprint that links every unknown device into one identity.
+    assert device_hash(None, None) is None
+    assert device_hash("", ClientHints()) is None
+
+
 # ---------- capture ----------
 
 
@@ -169,6 +191,10 @@ async def test_capture_records_the_request_context(
     # null, so a pack shows what the browser actually said.
     assert set(row.client_hints) == {"timezone", "locale", "screen"}
     assert row.purge_after > now()
+    # The stored fingerprint must be derivable from the stored UA + hints —
+    # not merely present — or a later query joining on it silently drifts
+    # from what capture actually wrote.
+    assert row.device_hash == device_hash(row.user_agent, ClientHints(**row.client_hints))
 
 
 async def test_capture_survives_a_client_that_sends_no_hints(
@@ -405,3 +431,58 @@ async def test_a_deposit_records_the_request_context_too(
     assert row.ip == "203.0.113.9"
     assert row.accept_language == "ru-RU,ru;q=0.9"
     assert row.client_hints["timezone"] == "Asia/Tashkent"
+
+
+# ---------- migration 0059 backfill ----------
+
+#: The exact statement migration 0059 runs to backfill pre-existing rows.
+#: Kept identical here so a divergence between the two is caught by this test
+#: rather than discovered against production data.
+_BACKFILL_SQL = text(
+    """
+    UPDATE order_evidence SET device_hash = encode(digest(
+        coalesce(user_agent, '') || '|' ||
+        coalesce(client_hints->>'timezone', '') || '|' ||
+        coalesce(client_hints->>'locale', '') || '|' ||
+        coalesce(client_hints->>'screen', ''), 'sha256'), 'hex')
+    WHERE coalesce(user_agent, '') || coalesce(client_hints->>'timezone', '')
+          || coalesce(client_hints->>'locale', '') || coalesce(client_hints->>'screen', '') <> ''
+    """
+)
+
+
+async def test_backfill_sql_matches_the_python_helper(
+    integration_client: AsyncClient, db_session: AsyncSession, _seed_sku: str
+) -> None:
+    """Migration 0059's SQL backfill must byte-for-byte match ``device_hash``.
+
+    If the UPDATE statement joined components in a different order, or used a
+    different empty-string convention, than the Python helper, a device seen
+    before the migration and the same device seen after it would silently
+    become two different fingerprints.
+    """
+    token = await _login_user(integration_client, tg_id=9161)
+    _, order_id = await _post_order(
+        integration_client,
+        token=token,
+        sku_id=_seed_sku,
+        key="idem-evidence-9161-pad",
+        hints={"timezone": "Asia/Tashkent", "locale": "ru-RU", "screen": "412x915@2.6"},
+    )
+
+    # Simulate the pre-migration state: capture already ran (0059 not applied
+    # yet in spirit), so device_hash is unset.
+    await db_session.execute(
+        update(OrderEvidence).where(OrderEvidence.order_id == order_id).values(device_hash=None)
+    )
+    await db_session.commit()
+
+    await db_session.execute(_BACKFILL_SQL)
+    await db_session.commit()
+
+    row = (
+        await db_session.execute(select(OrderEvidence).where(OrderEvidence.order_id == order_id))
+    ).scalar_one()
+    expected = device_hash(row.user_agent, ClientHints(**row.client_hints))
+    assert row.device_hash == expected
+    assert row.device_hash is not None
