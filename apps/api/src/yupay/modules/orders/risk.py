@@ -14,19 +14,23 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+from sqlalchemy import select
+
+from yupay.core.clock import now
 from yupay.core.config import Settings, get_settings
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.core.redis import get_redis
-from yupay.modules.orders.models import OrderEvent
+from yupay.modules.evidence.models import OrderEvidence
+from yupay.modules.orders.models import Order, OrderEvent, OrderItem
 
 if TYPE_CHECKING:  # pragma: no cover -- type hints only
     from sqlalchemy.ext.asyncio import AsyncSession
-
-    from yupay.modules.orders.models import Order
 
 log = get_logger("yupay.orders.risk")
 
@@ -38,6 +42,16 @@ REASON_LARGE_AMOUNT = "amount_at_or_above_threshold"
 #: ago and nobody expected it any more, so a human decides whether to deliver
 #: or refund.
 REASON_PAID_AFTER_EXPIRY = "paid_after_order_expired"
+
+#: Orders sharing an identity (buyer, IP, device, or delivery target) whose
+#: combined total over a trailing window reaches `risk_sum_24h_usd` or
+#: `risk_sum_7d_usd`. Many small orders rather than one large one.
+REASON_ROLLING_SUM = "identity_rolling_sum_exceeded"
+
+#: Orders sharing an identity whose count over the trailing 24h reaches
+#: `risk_velocity_24h` — a burst of many cheap orders is itself a signal,
+#: regardless of amount.
+REASON_VELOCITY = "identity_velocity_exceeded"
 
 
 #: reason -> (alert title, what the operator should do). Kept beside the
@@ -76,8 +90,200 @@ def _amount_reason(order: Order, cfg: Settings) -> str | None:
     return None
 
 
+@dataclass(frozen=True)
+class WindowOrder:
+    """One paid order's identity fingerprint, for the window rules (rules 2-3).
+
+    Built once by ``_gather`` and never touches the database again — the window
+    rules only compare these dataclasses against each other, which is what makes
+    them pure and unit-testable without a session.
+    """
+
+    id: str
+    paid_at: datetime
+    total_usd: Decimal
+    buyer: str | None  # user_id or guest_email
+    ip: str | None
+    device: str | None
+    targets: frozenset[str]
+
+
+def _csv(value: str) -> frozenset[str]:
+    """Parse a `risk_liquid_brands`/`risk_home_timezones`-shaped CSV setting.
+
+    Lowercased and trimmed so an operator's ``RISK_LIQUID_BRANDS=Roblox, Steam``
+    matches the data it is compared against; empty segments (a trailing comma,
+    a doubled comma, an all-blank setting) are dropped rather than becoming a
+    surprise membership test against ``""``.
+    """
+    return frozenset(v for raw in value.split(",") if (v := raw.strip().lower()))
+
+
+def _targets_from(fulfillment_data: dict[str, Any]) -> frozenset[str]:
+    """Delivery targets inside one order item's ``fulfillment_data``.
+
+    Values only (a Roblox username, a Stars ``@handle``) — the keys are field
+    names like ``"username"``, not identities. Lowercased, ``@``-stripped and
+    whitespace-trimmed so ``@durov`` and ``" Durov "`` link to the same
+    account; empties are skipped.
+    """
+    targets: set[str] = set()
+    for value in fulfillment_data.values():
+        if not isinstance(value, str):
+            continue
+        cleaned = value.strip().lower().lstrip("@")
+        if cleaned:
+            targets.add(cleaned)
+    return frozenset(targets)
+
+
+def _shares_key(a: WindowOrder, b: WindowOrder) -> bool:
+    """Whether two orders look like the same actor: buyer, IP, device, or target."""
+    return (
+        (a.buyer is not None and a.buyer == b.buyer)
+        or (a.ip is not None and a.ip == b.ip)
+        or (a.device is not None and a.device == b.device)
+        or bool(a.targets & b.targets)
+    )
+
+
+def _window_reason(current: WindowOrder, recent: list[WindowOrder], cfg: Settings) -> str | None:
+    """Rules 2-3: rolling sum and velocity across orders sharing an identity.
+
+    Pure — no clock reads. Every comparison is against ``current.paid_at``, not
+    the wall clock, which is what makes this deterministic and testable without
+    freezing time.
+    """
+    linked24 = [
+        r
+        for r in recent
+        if _shares_key(current, r) and r.paid_at >= current.paid_at - timedelta(hours=24)
+    ]
+    linked7d = [r for r in recent if _shares_key(current, r)]
+    if (
+        cfg.risk_sum_24h_usd > 0
+        and current.total_usd + sum((r.total_usd for r in linked24), Decimal("0"))
+        >= cfg.risk_sum_24h_usd
+    ):
+        return REASON_ROLLING_SUM
+    if (
+        cfg.risk_sum_7d_usd > 0
+        and current.total_usd + sum((r.total_usd for r in linked7d), Decimal("0"))
+        >= cfg.risk_sum_7d_usd
+    ):
+        return REASON_ROLLING_SUM
+    if cfg.risk_velocity_24h > 0 and len(linked24) >= cfg.risk_velocity_24h:
+        return REASON_VELOCITY
+    return None
+
+
+async def _gather(db: AsyncSession, order: Order) -> tuple[WindowOrder, list[WindowOrder]]:
+    """Assemble the current order's identity fingerprint and its recent paid siblings.
+
+    Two queries, matched together in Python rather than one joined query — the
+    trailing-7-day window holds at most a few hundred paid orders at current
+    volume (the assumption that makes a Python-side scan honest; revisit if
+    traffic outgrows it), so the extra round trip buys a query each side can
+    read on its own.
+
+    Query A pulls every other order paid in the trailing 7 days (catalog orders
+    only — a wallet top-up has no delivery target and cannot be linked by one).
+    Query B pulls ``fulfillment_data`` for those orders plus this one, to derive
+    delivery targets. The current order's own evidence row is fetched
+    separately by ``order_id``.
+
+    Never raises: a broken risk query must degrade to the amount rule alone,
+    not block a sale. On any failure this returns the current order with no
+    identity and an empty recent list — exactly what ``_window_reason`` treats
+    as "nothing to link".
+    """
+    try:
+        window_start = now() - timedelta(days=7)
+        rows = (
+            await db.execute(
+                select(
+                    Order.id,
+                    Order.paid_at,
+                    Order.total_usd,
+                    Order.user_id,
+                    Order.guest_email,
+                    OrderEvidence.ip,
+                    OrderEvidence.device_hash,
+                )
+                .select_from(Order)
+                .outerjoin(OrderEvidence, OrderEvidence.order_id == Order.id)
+                .where(
+                    Order.paid_at.is_not(None),
+                    Order.paid_at >= window_start,
+                    Order.id != order.id,
+                    Order.purpose == "catalog",
+                )
+            )
+        ).all()
+
+        current_evidence_row = (
+            await db.execute(
+                select(OrderEvidence.ip, OrderEvidence.device_hash).where(
+                    OrderEvidence.order_id == order.id
+                )
+            )
+        ).first()
+
+        item_rows = (
+            await db.execute(
+                select(OrderItem.order_id, OrderItem.fulfillment_data).where(
+                    OrderItem.order_id.in_([row[0] for row in rows] + [order.id])
+                )
+            )
+        ).all()
+        targets_by_order: dict[str, set[str]] = {}
+        for order_id, fulfillment_data in item_rows:
+            targets_by_order.setdefault(order_id, set()).update(_targets_from(fulfillment_data))
+
+        recent = [
+            WindowOrder(
+                id=row[0],
+                paid_at=row[1],
+                total_usd=row[2],
+                buyer=row[3] or row[4],
+                ip=row[5],
+                device=row[6],
+                targets=frozenset(targets_by_order.get(row[0], set())),
+            )
+            for row in rows
+        ]
+        current = WindowOrder(
+            id=order.id,
+            # `order.paid_at` may still be None here: the gate runs at payment
+            # success and `mark_paid` stamps it just before this call, but a
+            # defensive fallback beats an AttributeError in a money path.
+            paid_at=order.paid_at or now(),
+            total_usd=order.total_usd,
+            buyer=order.user_id or order.guest_email,
+            ip=current_evidence_row[0] if current_evidence_row else None,
+            device=current_evidence_row[1] if current_evidence_row else None,
+            targets=frozenset(targets_by_order.get(order.id, set())),
+        )
+    except Exception:
+        log.exception("orders.risk.gather_failed", order_id=order.id)
+        return (
+            WindowOrder(
+                id=order.id,
+                paid_at=order.paid_at or now(),
+                total_usd=order.total_usd,
+                buyer=order.user_id or order.guest_email,
+                ip=None,
+                device=None,
+                targets=frozenset(),
+            ),
+            [],
+        )
+    else:
+        return current, recent
+
+
 async def review_reason(
-    db: AsyncSession,  # noqa: ARG001 -- unused until Task 3's window-rule gather lands
+    db: AsyncSession,
     order: Order,
     *,
     settings: Settings | None = None,
@@ -88,13 +294,18 @@ async def review_reason(
     can say which rule fired — with one rule that is pedantic, with three it is
     the difference between a useful log line and a shrug.
 
-    Beyond rule 1 (this task), the window rules living in this module's
-    gather/decide pair (arriving alongside this docstring's expansion) never
-    raise: a failed gather is logged and degrades to the amount rule alone,
-    because a broken risk query must not stop all sales.
+    Rule 1 (amount) runs first and short-circuits: a single order already over
+    threshold does not need the window gather. Rules 2-3 (rolling sum,
+    velocity) never raise on their own — a failed gather is logged and
+    degrades to rule 1's result alone, because a broken risk query must not
+    stop all sales.
     """
     cfg = settings or get_settings()
-    return _amount_reason(order, cfg)  # window rules appended in Tasks 3-4
+    amount = _amount_reason(order, cfg)
+    if amount is not None:
+        return amount
+    current, recent = await _gather(db, order)
+    return _window_reason(current, recent, cfg)
 
 
 async def hold_for_review(db: AsyncSession, *, order: Order, reason: str) -> None:
@@ -148,6 +359,9 @@ __all__ = [
     "HOLD_ALERT_TEXT",
     "REASON_LARGE_AMOUNT",
     "REASON_PAID_AFTER_EXPIRY",
+    "REASON_ROLLING_SUM",
+    "REASON_VELOCITY",
+    "WindowOrder",
     "hold_for_review",
     "review_reason",
 ]
