@@ -64,7 +64,11 @@ none of them blocking a sale — only ever adding a hold:
   `risk_distinct_buyers_7d` or more distinct buyer identities within 7 days.
   Matched on IP/device only, not buyer or delivery target, because those two
   are what a resale ring rotates on purpose and a single physical actor
-  cannot fake cheaply.
+  cannot fake cheaply. The device half of that (`risk_device_identity`)
+  ships disarmed by default — measured on production, this audience's
+  device fingerprint collides across unrelated buyers on a homogeneous
+  mobile fleet at exactly this rule's threshold, so it is an opt-in an
+  operator turns on after measuring their own traffic, not a default.
 - **Geo mismatch** (`REASON_GEO_MISMATCH`) — a guest order touching a
   cash-equivalent brand (`risk_liquid_brands`) whose browser reports a
   timezone outside the storefront's home markets (`risk_home_timezones`).
@@ -133,6 +137,14 @@ probing, because the prober cannot see their counters.
   live UZ acquirers reliably hand us a card fingerprint. When a
   card-carrying acquirer goes live, it slots into the same mechanism as a
   fifth identity — nothing else about the design changes.
+- The rules read committed rows only. N payments settling in parallel each
+  see zero siblings — nothing has committed yet — so a scripted batch of
+  truly simultaneous payments evades every window rule; at best only the
+  order that happens to commit last gets held, and only if it lands after
+  the others' commits are visible. Accepted residual: it costs the attacker
+  real coordination (submitting genuinely concurrent payments across N
+  cards or sessions, not just N orders in a loop), and the card identity key
+  above closes it further once a card-carrying acquirer makes it available.
 
 ## Validation
 

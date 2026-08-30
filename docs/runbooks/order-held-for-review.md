@@ -24,9 +24,9 @@ one message per hold, e.g.:
 
 The alert deliberately carries **no IP, device, email, or other identity** —
 `hold_for_review`'s payload and the alert text only ever contain the reason
-and counts (see ADR-0044/§9 on why raw identity data doesn't get copied
-around). Finding the rest of a linked group is a step you do in the admin
-panel, described below.
+(and counts, when a caller passes them — no current call site does yet; see
+ADR-0044/§9 on why raw identity data doesn't get copied around). Finding the
+rest of a linked group is a step you do in the admin panel, described below.
 
 ## The six reasons
 
@@ -102,16 +102,53 @@ Every rule ships with its own switch so a false-positive storm is stoppable
 by env change and restart, not by revert and redeploy. Requires an API
 restart to take effect (`Settings` is read at process start).
 
-| Variable                      | Default                                  | Disables                                      |
-| ----------------------------- | ---------------------------------------- | --------------------------------------------- |
-| `MANUAL_REVIEW_THRESHOLD_USD` | `40` (currently `12` in prod, see below) | `0`                                           |
-| `RISK_SUM_24H_USD`            | `25`                                     | `RISK_SUM_24H_USD=0`                          |
-| `RISK_SUM_7D_USD`             | `60`                                     | `RISK_SUM_7D_USD=0`                           |
-| `RISK_VELOCITY_24H`           | `5`                                      | `RISK_VELOCITY_24H=0`                         |
-| `RISK_DISTINCT_BUYERS_7D`     | `3`                                      | `RISK_DISTINCT_BUYERS_7D=0`                   |
-| `RISK_LIQUID_BRANDS`          | `roblox,telegram-stars,steam`            | `RISK_LIQUID_BRANDS=` (empty)                 |
-| `RISK_HOME_TIMEZONES`         | `Asia/Tashkent,Asia/Samarkand`           | `RISK_HOME_TIMEZONES=` (empty)                |
-| `RISK_JITTER`                 | `true`                                   | `RISK_JITTER=false` (flat threshold, no band) |
+| Variable                      | Default                                  | Disables                                                        |
+| ----------------------------- | ---------------------------------------- | --------------------------------------------------------------- |
+| `MANUAL_REVIEW_THRESHOLD_USD` | `40` (currently `12` in prod, see below) | `0`                                                             |
+| `RISK_SUM_24H_USD`            | `25`                                     | `RISK_SUM_24H_USD=0`                                            |
+| `RISK_SUM_7D_USD`             | `60`                                     | `RISK_SUM_7D_USD=0`                                             |
+| `RISK_VELOCITY_24H`           | `5`                                      | `RISK_VELOCITY_24H=0`                                           |
+| `RISK_DISTINCT_BUYERS_7D`     | `3`                                      | `RISK_DISTINCT_BUYERS_7D=0`                                     |
+| `RISK_LIQUID_BRANDS`          | `roblox,telegram-stars,steam`            | `RISK_LIQUID_BRANDS=` (empty)                                   |
+| `RISK_HOME_TIMEZONES`         | `Asia/Tashkent,Asia/Samarkand`           | `RISK_HOME_TIMEZONES=` (empty)                                  |
+| `RISK_JITTER`                 | `true`                                   | `RISK_JITTER=false` (flat threshold, no band)                   |
+| `RISK_DEVICE_IDENTITY`        | `false`                                  | already off by default; opt in with `RISK_DEVICE_IDENTITY=true` |
+
+`RISK_DEVICE_IDENTITY` ships **off**, not on with the other three window
+keys (buyer, IP, delivery target). Measured on production: this audience's
+`device_hash` (a digest of user-agent + timezone + locale + screen, see
+ADR-0044) is not unique enough on its own — two device hashes already span
+4 distinct buyers each and two more span 3, which is exactly
+`RISK_DISTINCT_BUYERS_7D`'s default. That is a homogeneous mobile fleet
+(identical phone models, identical carrier locale) colliding, not a resale
+ring. Turning device on there without checking would hold real, unrelated
+customers.
+
+Run this before enabling it, on your own traffic — it counts only, no raw
+identity comes back:
+
+```sql
+SELECT
+  encode(digest(
+    coalesce(e.user_agent, '') || '|' ||
+    coalesce(e.client_hints->>'timezone', '') || '|' ||
+    coalesce(e.client_hints->>'locale', '') || '|' ||
+    coalesce(e.client_hints->>'screen', ''), 'sha256'), 'hex') AS device_hash,
+  count(DISTINCT coalesce(o.user_id, o.guest_email)) AS distinct_buyers
+FROM order_evidence e
+JOIN orders o ON o.id = e.order_id
+WHERE o.paid_at >= now() - interval '7 days'
+  AND o.purpose = 'catalog'
+GROUP BY 1
+HAVING count(DISTINCT coalesce(o.user_id, o.guest_email)) >= 3
+ORDER BY distinct_buyers DESC;
+```
+
+(Same digest formula as the 0059 backfill, recomputed rather than trusted
+from the stored `device_hash` column, so it's correct even against rows
+written before that migration ran.) Rows back means the same collision this
+audience already showed — leave it off. A clean result on your own traffic
+is what "enable after measuring" means.
 
 `MANUAL_REVIEW_THRESHOLD_USD` was dropped from its normal default of `40` to
 `12` on production ahead of the identity-window rules shipping, as an
