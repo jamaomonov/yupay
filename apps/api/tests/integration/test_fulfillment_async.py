@@ -336,6 +336,9 @@ async def test_drain_isolates_a_poisoned_task(
     assert refreshed_healthy_order.status in ("fulfilled", "delivered")
 
     # The poisoned row moved straight to 'failed' — a second tick must not
-    # reclaim it (that would just crash again and spin forever).
+    # reclaim it (that would just crash again and spin forever). Commit first:
+    # the real consumer commits between ticks, so non-reclaim must hold across
+    # a commit boundary, not just via read-your-own-writes in one transaction.
+    await db_session.commit()
     n2 = await ff_svc.drain_pending_tasks(db_session)
     assert n2 == 0
