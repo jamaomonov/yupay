@@ -153,9 +153,9 @@ services:
     # queue and rate-limit state, so it must not be an open door to anything that
     # gets a foothold on the docker networks. $$ defers expansion to the
     # container shell; REDIS_PASSWORD comes from the env file.
-    # ROLLOUT: requires secrets/redis.env on the server AND password-carrying
-    # REDIS_URL/DRAMATIQ_BROKER_URL in api.env — see
-    # docs/runbooks/redis-auth-rollout.md before deploying this change.
+    # ROLLOUT: requires secrets/redis.env on the server AND a password-carrying
+    # REDIS_URL in api.env — see docs/runbooks/redis-auth-rollout.md before
+    # deploying this change.
     env_file: ./secrets/redis.env
     # --maxmemory bounds it; the eviction policy stays `noeviction` ON PURPOSE.
     # `allkeys-lru` looks like the safe default and is the dangerous one here:

@@ -14,7 +14,6 @@ dependencies = [
     "asyncpg>=0.30",
     "alembic>=1.16",
     "redis>=5.2",
-    "dramatiq[redis,watch]>=1.17",
     "httpx>=0.27",
     "tenacity>=9.0",
     "purgatory>=3.0",

@@ -72,9 +72,6 @@ class Settings(BaseSettings):
     )
     redis_url: str = Field(default="redis://localhost:6379/0")
 
-    # --- broker ---
-    dramatiq_broker_url: str = Field(default="redis://localhost:6379/1")
-
     # --- rate limiting ---
     rate_limit_enabled: bool | None = Field(
         default=None,

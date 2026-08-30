@@ -7,7 +7,6 @@ x-app-env: &app-env
   LOG_JSON: ${LOG_JSON:-false}
   DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-yupay_app}:${POSTGRES_PASSWORD:-yupay_app}@postgres:5432/${POSTGRES_DB:-yupay}
   REDIS_URL: redis://redis:6379/0
-  DRAMATIQ_BROKER_URL: redis://redis:6379/1
   TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
   # Separate admin-panel Login Widget bot; empty => falls back to TELEGRAM_BOT_TOKEN.
   ADMIN_TELEGRAM_BOT_TOKEN: ${ADMIN_TELEGRAM_BOT_TOKEN:-}
