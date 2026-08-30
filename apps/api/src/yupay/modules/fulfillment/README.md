@@ -6,7 +6,7 @@
 voucher-warehouse) заглушены — слоты зарезервированы.
 
 См.
-[`docs/decisions/0013-fulfillment-skeleton-and-provider-stubs.md`](../../../../../docs/decisions/0013-fulfillment-skeleton-and-provider-stubs.md).
+[`docs/decisions/0013-fulfillment-skeleton-and-provider-stubs.md`](../../../../../../docs/decisions/0013-fulfillment-skeleton-and-provider-stubs.md).
 
 ## Что делает модуль
 
