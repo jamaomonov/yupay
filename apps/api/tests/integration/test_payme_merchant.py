@@ -502,3 +502,36 @@ async def test_check_perform_passes_a_home_guest_order(
     )
     assert r.status_code == 200
     assert r.json()["result"] == {"allow": True}
+
+
+async def test_create_transaction_refuses_a_foreign_guest_order(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """IMPORTANT (I5b): the veto's other Payme call site. `CreateTransaction`
+    runs `_check_perform` then `_refuse_if_vetoed` before ever creating a
+    transaction row -- same -31051, same "no row" guarantee as
+    `CheckPerformTransaction` above (`test_check_perform_refuses_a_foreign_guest_order`)."""
+    order_id = await _seed_guest_order_with_evidence(db_session, ip_country="NL")
+
+    r = await integration_client.post(
+        MERCHANT_URL,
+        headers=_auth(),
+        json=_rpc(
+            "CreateTransaction",
+            {
+                "id": "veto-create-tx",
+                "time": 1_700_000_000_000,
+                "amount": EXPECTED_TIYIN,
+                "account": {"order_id": order_id},
+            },
+        ),
+    )
+    assert r.status_code == 200
+    assert r.json()["error"]["code"] == -31051
+
+    txn = (
+        await db_session.execute(
+            select(PaymeTransaction).where(PaymeTransaction.order_id == order_id)
+        )
+    ).scalar_one_or_none()
+    assert txn is None

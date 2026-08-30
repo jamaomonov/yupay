@@ -239,14 +239,16 @@ async def test_capture_records_ip_country_and_the_pack_carries_it(
         token=token,
         sku_id=_seed_sku,
         key="idem-evidence-9109-pad",
-        country="nl",  # lower-case on the wire, stored upper-cased
+        country="uz",  # lower-case on the wire, stored upper-cased; home country, so
+        # a zero-delivery signed-in buyer still clears the pre-charge veto (ADR-0063)
+        # — this test is about capture + upper-casing, not geography.
     )
     assert status == 201
 
     row = (
         await db_session.execute(select(OrderEvidence).where(OrderEvidence.order_id == order_id))
     ).scalar_one()
-    assert row.ip_country == "NL"
+    assert row.ip_country == "UZ"
 
     await _grant_admin(db_session, tg_id=9109)
     admin_token = await _login_user(integration_client, tg_id=9109)
@@ -255,7 +257,7 @@ async def test_capture_records_ip_country_and_the_pack_carries_it(
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert r.status_code == 200, r.text
-    assert r.json()["capture"]["ip_country"] == "NL"
+    assert r.json()["capture"]["ip_country"] == "UZ"
 
 
 async def test_a_failed_capture_does_not_cost_us_the_order(
