@@ -56,6 +56,14 @@
 	handle {
 		reverse_proxy yupay-caddy:80 {
 			header_up X-Forwarded-For {remote_host}
+			# A request that bypasses Cloudflare and hits this origin directly
+			# can forge its own Cf-Ipcountry header — this peer isn't Cloudflare,
+			# so nothing here vouches for a country claim. The pre-charge geo
+			# veto (ADR-0063) reads this header at order creation; a directly
+			# reached origin must not be able to claim a country. Stripping it
+			# downgrades that check to the client-hint timezone fallback, which
+			# is the fail-safe direction — never the other way around.
+			header_up -Cf-Ipcountry
 		}
 	}
 }
