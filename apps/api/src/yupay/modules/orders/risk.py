@@ -777,6 +777,17 @@ async def record_precharge_veto(
         country: The evidence value that drove the decision, or ``None``.
         timezone: The evidence value that drove the decision, or ``None``.
     """
+    # The existence-check-then-insert below is only idempotent under
+    # serialization on this order. Two of the four call sites already lock
+    # the order upstream (Click ``prepare``, Payme ``create_transaction``,
+    # both via ``_resolve_order(..., for_update=True)``); the other two
+    # (Payme ``check_perform_transaction``, Uzum ``check``) do not — so two
+    # truly concurrent retries could both pass the SELECT and each insert
+    # their own event. Locking here makes the guarantee this function's own
+    # rather than an accident of which callers happen to lock upstream. A
+    # caller that already holds this row's lock (same transaction) just
+    # re-acquires it — a no-op, not a deadlock.
+    await db.execute(select(Order.id).where(Order.id == order.id).with_for_update())
     existing = (
         await db.execute(
             select(OrderEvent.id).where(
