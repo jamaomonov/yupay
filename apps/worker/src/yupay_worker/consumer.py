@@ -178,10 +178,30 @@ async def _drain_all(
     No coordination between them by design: ``FOR UPDATE SKIP LOCKED`` makes
     their claims disjoint, so the only thing parallelism changes is that a
     supplier that hangs for 20s stalls one drainer instead of the whole
-    queue. Each swallows its own failure, so ``gather`` cannot be tripped by
-    one drainer's bad connection.
+    queue.
+
+    ``return_exceptions=True`` is what makes "each drainer is isolated"
+    literally true. ``_drain_until_dry`` handles what happens *inside* the
+    drain, but its own cleanup can still raise -- a ``rollback`` or the
+    session ``__aexit__`` on a connection that died. A bare ``gather``
+    re-raises that immediately and abandons the sibling drainers mid-task,
+    taking the whole tick down with one bad connection.
     """
-    await asyncio.gather(*(_drain_until_dry(session_factory) for _ in range(concurrency)))
+    results = await asyncio.gather(
+        *(_drain_until_dry(session_factory) for _ in range(concurrency)),
+        return_exceptions=True,
+    )
+    for result in results:
+        if isinstance(result, BaseException):
+            # Type + first line only, never repr(): a SQLAlchemy error
+            # stringifies with the statement and its bound parameters, and
+            # those go to Loki (AGENTS.md §9). Same discipline as
+            # ``fulfillment.service._crash_detail``.
+            message = str(result).strip().splitlines()
+            log.error(
+                "worker.consumer.drainer_crashed",
+                error=f"{type(result).__name__}: {message[0] if message else ''}"[:200],
+            )
 
 
 async def _await_stray_tasks(*, timeout: float) -> None:
