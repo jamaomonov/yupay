@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from datetime import timedelta
 from ipaddress import ip_address
 from typing import TYPE_CHECKING
@@ -37,6 +38,12 @@ log = get_logger("yupay.evidence")
 _UA_MAX = 512
 _LANG_MAX = 128
 
+#: Real ISO 3166-1 alpha-2 codes are exactly this shape, but so are
+#: Cloudflare's own sentinels (``T1`` for Tor exit traffic, ``XX`` when it
+#: cannot resolve one) — those are signal for the geo veto, not junk, so the
+#: check is shape-only rather than a lookup against a code list.
+_IP_COUNTRY_RE = re.compile(r"[A-Z0-9]{2}")
+
 
 def _normalised_ip(request: Request) -> str | None:
     """The peer address, or ``None`` when it is absent or not a real address.
@@ -56,6 +63,22 @@ def _normalised_ip(request: Request) -> str | None:
         # the checkout path.
         log.warning("evidence.ip_unparseable")
         return None
+
+
+def ip_country_from(raw: str | None) -> str | None:
+    """Normalise Cloudflare's ``cf-ipcountry`` header into a storable code.
+
+    Accepts exactly two ASCII letters/digits after ``.strip().upper()`` — real
+    country codes and Cloudflare's own sentinels are the same shape, and both
+    are signal the geo veto (a later task) needs. Anything else — a missing
+    header, an empty string, a three-letter code, a stray tag — is not a
+    country and must never reach the column, which is a country code and
+    never an address.
+    """
+    if not raw:
+        return None
+    candidate = raw.strip().upper()
+    return candidate if _IP_COUNTRY_RE.fullmatch(candidate) else None
 
 
 def device_hash(user_agent: str | None, hints: ClientHints | None) -> str | None:
@@ -98,6 +121,7 @@ async def capture_for_order(
             .values(
                 order_id=order_id,
                 ip=_normalised_ip(request),
+                ip_country=ip_country_from(request.headers.get("cf-ipcountry")),
                 user_agent=truncated_ua,
                 accept_language=(request.headers.get("accept-language") or "")[:_LANG_MAX] or None,
                 client_hints=hints.model_dump(exclude_none=True) if hints else {},
@@ -177,4 +201,4 @@ async def purge_expired(db: AsyncSession) -> int:
     return result.rowcount or 0  # type: ignore[attr-defined]
 
 
-__all__ = ["capture_for_order", "device_hash", "get_pack", "purge_expired"]
+__all__ = ["capture_for_order", "device_hash", "get_pack", "ip_country_from", "purge_expired"]

@@ -56,6 +56,13 @@ class OrderEvidence(Base):
     # INET rather than TEXT: Postgres validates the value on write, so a
     # malformed header can never masquerade as an address in a dispute pack.
     ip: Mapped[str | None] = mapped_column(InetAsText, nullable=True)
+    #: Cloudflare's edge-resolved two-letter country for the request
+    #: (``evidence.service.ip_country_from``), or ``None`` for rows captured
+    #: before this column existed or with no header at all. Untrusted the same
+    #: way ``ip`` is — it is Cloudflare's own geolocation, not a determination
+    #: of citizenship or residency — so it is corroboration for the geo veto,
+    #: not proof on its own.
+    ip_country: Mapped[str | None] = mapped_column(String(2), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(String(512), nullable=True)
     accept_language: Mapped[str | None] = mapped_column(String(128), nullable=True)
 

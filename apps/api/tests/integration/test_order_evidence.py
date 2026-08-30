@@ -33,7 +33,7 @@ from yupay.modules.catalog.models import (
 )
 from yupay.modules.evidence.models import OrderEvidence
 from yupay.modules.evidence.schemas import ClientHints
-from yupay.modules.evidence.service import device_hash, purge_expired
+from yupay.modules.evidence.service import device_hash, ip_country_from, purge_expired
 from yupay.modules.orders.models import Order
 from yupay.modules.users.models import TelegramLink, User
 
@@ -119,6 +119,7 @@ async def _post_order(
     key: str,
     forwarded_for: str = "203.0.113.7, 10.0.0.2",
     hints: dict[str, str] | None = None,
+    country: str | None = None,
 ) -> tuple[int, str]:
     body: dict[str, object] = {
         "currency": "USD",
@@ -126,17 +127,16 @@ async def _post_order(
     }
     if hints is not None:
         body["client_hints"] = hints
-    r = await client.post(
-        "/api/v1/orders",
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Idempotency-Key": key,
-            "X-Forwarded-For": forwarded_for,
-            "User-Agent": "Mozilla/5.0 (Linux; Android 13; Pixel 7)",
-            "Accept-Language": "ru-RU,ru;q=0.9",
-        },
-        json=body,
-    )
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Idempotency-Key": key,
+        "X-Forwarded-For": forwarded_for,
+        "User-Agent": "Mozilla/5.0 (Linux; Android 13; Pixel 7)",
+        "Accept-Language": "ru-RU,ru;q=0.9",
+    }
+    if country is not None:
+        headers["cf-ipcountry"] = country
+    r = await client.post("/api/v1/orders", headers=headers, json=body)
     return r.status_code, r.json().get("id", "")
 
 
@@ -159,6 +159,19 @@ def test_device_hash_of_nothing_is_none() -> None:
     # "empty" fingerprint that links every unknown device into one identity.
     assert device_hash(None, None) is None
     assert device_hash("", ClientHints()) is None
+
+
+# ---------- ip_country_from ----------
+
+
+def test_ip_country_normalises_and_rejects_junk() -> None:
+    assert ip_country_from("uz") == "UZ"
+    assert ip_country_from("T1") == "T1"  # Tor sentinel is a signal, keep it
+    assert ip_country_from("XX") == "XX"  # CF unknown sentinel, kept as-is
+    assert ip_country_from(None) is None
+    assert ip_country_from("") is None
+    assert ip_country_from("USA") is None  # only two ASCII letters/digits
+    assert ip_country_from("<script>") is None
 
 
 # ---------- capture ----------
@@ -210,6 +223,39 @@ async def test_capture_survives_a_client_that_sends_no_hints(
     ).scalar_one()
     assert row.client_hints == {}
     assert row.ip == "203.0.113.7"
+
+
+async def test_capture_records_ip_country_and_the_pack_carries_it(
+    integration_client: AsyncClient, db_session: AsyncSession, _seed_sku: str
+) -> None:
+    """Cloudflare's ``cf-ipcountry`` header becomes the row's ``ip_country``.
+
+    This is the raw signal the pre-charge geo veto (a later task) will read off
+    this table, so both the write and the admin-facing read must carry it.
+    """
+    token = await _login_user(integration_client, tg_id=9109)
+    status, order_id = await _post_order(
+        integration_client,
+        token=token,
+        sku_id=_seed_sku,
+        key="idem-evidence-9109-pad",
+        country="nl",  # lower-case on the wire, stored upper-cased
+    )
+    assert status == 201
+
+    row = (
+        await db_session.execute(select(OrderEvidence).where(OrderEvidence.order_id == order_id))
+    ).scalar_one()
+    assert row.ip_country == "NL"
+
+    await _grant_admin(db_session, tg_id=9109)
+    admin_token = await _login_user(integration_client, tg_id=9109)
+    r = await integration_client.get(
+        f"/api/v1/admin/orders/{order_id}/evidence",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["capture"]["ip_country"] == "NL"
 
 
 async def test_a_failed_capture_does_not_cost_us_the_order(

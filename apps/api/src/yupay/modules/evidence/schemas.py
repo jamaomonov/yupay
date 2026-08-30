@@ -32,6 +32,11 @@ class OrderEvidenceOut(BaseModel):
 
     order_id: str
     ip: str | None
+    #: Cloudflare's edge-resolved two-letter country, or ``None``. A country
+    #: code is not an address — it names a jurisdiction Cloudflare inferred,
+    #: not a person, and it is absent on rows captured before this column
+    #: existed.
+    ip_country: str | None
     user_agent: str | None
     accept_language: str | None
     client_hints: dict[str, Any]
