@@ -12,6 +12,12 @@ keys a warning banner off the `order.held_for_review` event.
 is already taken. The only open question is whether a human looks before an
 irreversible good (a code, a game-account credit) leaves.
 
+Two related mechanisms, both ADR-0063, are covered further down: a
+**deadline** on how long a hold from any rule below may sit before it is
+refunded automatically, and the **pre-charge veto** — the one control in
+this document that actually refuses a charge instead of just holding the
+goods after it.
+
 ## The alert
 
 A held order pages the admin Telegram channel (`kind="order_held_for_review"`),
@@ -96,23 +102,108 @@ actually fired. Trust the `reason` field in the `order.held_for_review`
 event payload (visible in the order's timeline), not the banner copy, when
 deciding what actually triggered the hold.
 
+## Deadline: a hold is not indefinite (ADR-0063)
+
+A held order used to wait on an operator with no deadline. It no longer
+does: `orders.risk.auto_refund_expired_holds`, run by `apps/scheduler`'s
+`held_order_refund` job every 15 minutes, refunds a still-`paid` order once
+it has been sitting on `order.held_for_review` for
+`RISK_HOLD_AUTO_REFUND_HOURS` (default **24**) with nobody releasing or
+refunding it by hand.
+
+- **Every hold reason is in scope**, including `REASON_PAID_AFTER_EXPIRY` —
+  if no human decided within the window, returning the money is the safe
+  default for both fraud and simple confusion.
+- **Released orders are never touched.** Release
+  (`fulfillment.start_for_order`) is the only thing that ever moves a paid
+  order off `status="paid"` for a reason other than a refund, so an order
+  the sweep would otherwise pick up is already out of scope the moment an
+  operator releases it — even though the old `order.held_for_review` event
+  is still on its timeline.
+- **The refund is the same one you'd trigger by hand**:
+  `payments.service.refund_admin`, full amount, actor stamped
+  `admin:auto-refund-sweep` (grep-able as the sweep's own signature, not a
+  real operator), reason `auto_refund_hold_expired`. It posts the same
+  ledger reversal, walks the order to `refunded`, and cancels any open
+  fulfilment task — nothing about the refund itself is special-cased.
+- **Idempotent across ticks**: the refund is keyed by a deterministic
+  `auto-refund:<order_id>` idempotency key, so a tick that crashes mid-sweep
+  and reruns can't double-refund. In practice the order's own `status`
+  already leaves `paid` the moment the first attempt commits, so a re-run
+  never even re-selects it.
+- **One admin alert per refunded order** — 💸 title, the amount, which
+  deadline expired, and that this is the configured policy, not an
+  incident. Distinct from the original hold alert; expect both on an order
+  nobody acted on in time.
+- **Turning it off**: `RISK_HOLD_AUTO_REFUND_HOURS=0` returns to today's
+  indefinite hold (a fire-drill lever, not a normal operating mode — a
+  disabled sweep means held orders are 100% on operator attention again).
+
+## The pre-charge veto (ADR-0063)
+
+Everything above is a **post-payment** control — the money is already taken
+by the time any rule runs. The pre-charge veto is the one exception: it
+runs _before_ the charge, refusing payment outright for a guest or a fresh
+account (zero delivered orders) whose evidence puts them outside
+`RISK_HOME_COUNTRIES`/`RISK_HOME_TIMEZONES`. A signed-in buyer with at least
+one delivered order is exempt unconditionally — the same trusted-buyer bar
+the geo-mismatch hold rule already uses.
+
+Two enforcement points, one shared decision core (`_veto_decision`), so
+they can never disagree:
+
+| Where                                                                        | What the buyer sees                                                                                                                                                                                                                                                                     |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Point A** — Payme `CheckPerformTransaction`, Click `Prepare`, Uzum `Check` | The acquirer's own generic decline screen. This is the backstop for orders created before the rule, races, and a context that changed after creation — a guest already caught by point B never reaches this stage.                                                                      |
+| **Point B** — order creation (`POST /api/v1/orders`)                         | HTTP 422, `payment-unavailable-abroad`. The storefront and Mini App show `store.errAbroad` / `topup.errAbroad` near the pay button — copy leads with order history, not "sign in," since a signed-in buyer with zero deliveries hits this while already signed in. No order is created. |
+
+**Both branches (`VETO_FOREIGN_COUNTRY`, `VETO_FOREIGN_TIMEZONE`) refuse
+identically from the outside** — the acquirer's own error at point A, the
+one fixed message at point B. Only `order_events.payload.reason` (on the
+`order.precharge_vetoed` event point A writes) says which signal actually
+fired; nothing exposed to the buyer or the acquirer distinguishes them.
+
+**The Cloudflare toggle.** The primary signal, `order_evidence.ip_country`,
+is Cloudflare's edge-resolved country (`CF-IPCountry`), populated only once
+the (free) **IP Geolocation** toggle is turned on in the Cloudflare
+dashboard for the zone. Until it is:
+
+- `ip_country` is `NULL` on every order, and the veto runs on the
+  **browser-reported timezone fallback only** — the same signal the
+  post-payment hold rule already uses, so there is no day-one cliff.
+- After flipping the toggle, place one test order and confirm its evidence
+  row's `ip_country` is populated (`GET /admin/orders/{id}/evidence`) before
+  trusting the country signal in the `order.precharge_vetoed` counts.
+- The edge Caddy strips any inbound `Cf-Ipcountry` header on traffic that
+  didn't arrive via Cloudflare, so a spoofed header from outside Cloudflare
+  can't forge a country. If the country signal in `precharge_vetoed` events
+  ever goes quiet after the toggle was confirmed on, suspect an origin
+  bypass ahead of Caddy, not the veto itself.
+
+**Turning it off**: `RISK_PRECHARGE_VETO=false` disables the refusal
+entirely; the post-payment hold rules above are unaffected and keep
+running — this only removes the pre-charge step.
+
 ## Env kill switches
 
 Every rule ships with its own switch so a false-positive storm is stoppable
 by env change and restart, not by revert and redeploy. Requires an API
 restart to take effect (`Settings` is read at process start).
 
-| Variable                      | Default                                  | Disables                                                        |
-| ----------------------------- | ---------------------------------------- | --------------------------------------------------------------- |
-| `MANUAL_REVIEW_THRESHOLD_USD` | `40` (currently `12` in prod, see below) | `0`                                                             |
-| `RISK_SUM_24H_USD`            | `25`                                     | `RISK_SUM_24H_USD=0`                                            |
-| `RISK_SUM_7D_USD`             | `60`                                     | `RISK_SUM_7D_USD=0`                                             |
-| `RISK_VELOCITY_24H`           | `5`                                      | `RISK_VELOCITY_24H=0`                                           |
-| `RISK_DISTINCT_BUYERS_7D`     | `3`                                      | `RISK_DISTINCT_BUYERS_7D=0`                                     |
-| `RISK_LIQUID_BRANDS`          | `roblox,telegram-stars,steam`            | `RISK_LIQUID_BRANDS=` (empty)                                   |
-| `RISK_HOME_TIMEZONES`         | `Asia/Tashkent,Asia/Samarkand`           | `RISK_HOME_TIMEZONES=` (empty)                                  |
-| `RISK_JITTER`                 | `true`                                   | `RISK_JITTER=false` (flat threshold, no band)                   |
-| `RISK_DEVICE_IDENTITY`        | `false`                                  | already off by default; opt in with `RISK_DEVICE_IDENTITY=true` |
+| Variable                      | Default                                  | Disables                                                                                                                 |
+| ----------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `MANUAL_REVIEW_THRESHOLD_USD` | `40` (currently `12` in prod, see below) | `0`                                                                                                                      |
+| `RISK_SUM_24H_USD`            | `25`                                     | `RISK_SUM_24H_USD=0`                                                                                                     |
+| `RISK_SUM_7D_USD`             | `60`                                     | `RISK_SUM_7D_USD=0`                                                                                                      |
+| `RISK_VELOCITY_24H`           | `5`                                      | `RISK_VELOCITY_24H=0`                                                                                                    |
+| `RISK_DISTINCT_BUYERS_7D`     | `3`                                      | `RISK_DISTINCT_BUYERS_7D=0`                                                                                              |
+| `RISK_LIQUID_BRANDS`          | `roblox,telegram-stars,steam`            | `RISK_LIQUID_BRANDS=` (empty)                                                                                            |
+| `RISK_HOME_TIMEZONES`         | `Asia/Tashkent,Asia/Samarkand`           | `RISK_HOME_TIMEZONES=` (empty)                                                                                           |
+| `RISK_JITTER`                 | `true`                                   | `RISK_JITTER=false` (flat threshold, no band)                                                                            |
+| `RISK_DEVICE_IDENTITY`        | `false`                                  | already off by default; opt in with `RISK_DEVICE_IDENTITY=true`                                                          |
+| `RISK_PRECHARGE_VETO`         | `true`                                   | `RISK_PRECHARGE_VETO=false`                                                                                              |
+| `RISK_HOME_COUNTRIES`         | `UZ`                                     | `RISK_HOME_COUNTRIES=` (empty disables the country check only — the timezone fallback still needs `RISK_HOME_TIMEZONES`) |
+| `RISK_HOLD_AUTO_REFUND_HOURS` | `24`                                     | `RISK_HOLD_AUTO_REFUND_HOURS=0` (back to an indefinite hold)                                                             |
 
 `RISK_DEVICE_IDENTITY` ships **off**, not on with the other three window
 keys (buyer, IP, delivery target). Measured on production: this audience's
@@ -180,8 +271,12 @@ outright:
   not block; the original amount-only gate
 - [ADR-0062](../decisions/0062-antifraud-identity-windows.md) — the four
   identity-window rules added on top
+- [ADR-0063](../decisions/0063-precharge-veto-and-auto-refund.md) — the
+  pre-charge veto and the auto-refund deadline, both above
 - `docs/superpowers/specs/2026-08-30-antifraud-velocity-design.md` — full
   design, production numbers behind each default, rollout plan
+- `docs/superpowers/specs/2026-08-30-precharge-geo-veto-design.md` — full
+  design for the veto and the sweep, including the rollout plan
 - [paid-after-expiry.md](./paid-after-expiry.md) — dedicated procedure for
   `REASON_PAID_AFTER_EXPIRY`
 - [wallet-refunds.md](./wallet-refunds.md) — refund procedure, including

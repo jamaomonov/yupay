@@ -1,0 +1,162 @@
+# 0063. Pre-charge geo veto and timed auto-refund
+
+- **Status**: Accepted
+- **Date**: 2026-08-30
+- **Deciders**: @jamaomonov
+- **Tags**: backend | payments | security
+
+## Context and problem statement
+
+ADR-0062's identity windows stop the _goods_, not the _charge_: a stolen card
+is still debited, and the hold only parks the order for a human to look at.
+The cardholder — the actual victim, not the merchant — sees `YUPAY` on their
+statement with nothing to show for it, and that line item is a complaint, a
+chargeback, or worse aimed at us. Two gaps produce it: nothing refuses a
+charge before it happens, even when an order is fraudulent beyond reasonable
+doubt at creation time; and a held order keeps the victim's money
+indefinitely — the hold waits on an operator with no deadline.
+
+Measured grounding (production, delivered orders, 14 days, see ADR-0062):
+browser timezone alone separated a carding run on liquid brands almost
+perfectly, but a real diaspora segment (Uzbek buyers on Uzbek instruments,
+`Europe/Moscow` browsers) sits inside the same signal. Any pre-charge rule
+has to refuse the former without amputating the latter.
+
+## Decision drivers
+
+- All three acquirers already hand us a pre-charge stage built for exactly
+  this question ("may this be paid?"): Payme `CheckPerformTransaction`,
+  Click `Prepare`, Uzum `Check`. Refusing there costs nothing new to build.
+- A held order with no deadline is a merchant holding stolen funds
+  indefinitely on an alert that can be missed — the alert already tells an
+  operator to release or refund; nothing enforced that they do.
+- The trusted-buyer exemption from the hold rule (an account with real
+  delivery history) is the same shape needed here — build it once, reuse it
+  at both the pre-charge stage and creation.
+- Refusing checkout for an honest buyer needs a human-readable reason near
+  the pay button; the acquirer's own decline screen is generic, unbrandable,
+  and arrives too late (after they already tried to pay).
+
+## Considered options
+
+1. **Only harden the post-payment hold** (tighter thresholds, more window
+   rules) — no pre-charge refusal, no auto-refund deadline.
+2. **Refuse before the charge; refund a stalled hold on a deadline** — a
+   pure decision core shared by every enforcement point, plus a scheduler
+   sweep for holds nobody acted on.
+3. **Block checkout entirely for any foreign signal**, trusted or not.
+
+## Decision outcome
+
+**Chosen option: 2.** Three pieces, all built on the trusted-buyer exemption
+and one pure decision core so they can never drift from each other:
+
+**Refuse before the charge, not just before the goods.** `precharge_veto`
+reads `order_evidence.ip_country` (Cloudflare's edge-resolved country, new in
+migration 0060) — falling back to the browser-reported timezone only when
+country is absent — against `risk_home_countries`/`risk_home_timezones`, for
+a guest or an account with zero delivered orders. A signed-in buyer with at
+least one delivered order is exempt outright: registration costs a carder
+thirty seconds, so the exemption is earned by something real having shipped,
+not by having an account. Two enforcement points share the pure core
+(`_veto_decision`):
+
+- **Point A — the acquirers' own pre-charge stages** (Payme
+  `CheckPerformTransaction`, Click `Prepare`, Uzum `Check`), fed from the
+  stored evidence row, each mapping a veto to its protocol's own "not
+  payable" answer. The backstop: catches orders created before the rule
+  existed, races, and a context that changed between creation and payment.
+- **Point B — order creation itself**, fed from the live request (the
+  `cf-ipcountry` header and submitted client hints, not a stored row —
+  refusing here rolls the transaction back, so there is nothing to read
+  yet). Returns **422** `payment-unavailable-abroad` with a message the
+  storefront and Mini App render near the pay button, so a refused honest
+  buyer sees a reason instead of a broken shop.
+
+**Indistinguishable refusal.** Both country and timezone map to the same
+outward-facing decline — the acquirer's own error code at point A, one fixed
+i18n string at point B (`store.errAbroad`/`topup.errAbroad`). Nothing outside
+`order_events.payload` ever says which of `VETO_FOREIGN_COUNTRY` /
+`VETO_FOREIGN_TIMEZONE` fired. A prober who can't tell why they were refused
+can't tell which signal to spoof around next.
+
+**A deadline, not an indefinite hold.** `auto_refund_expired_holds`
+(`apps/scheduler`'s `held_order_refund` job, every 15 minutes) refunds a
+still-`paid`, still-held catalog order once `risk_hold_auto_refund_hours`
+(default 24) passes with nobody releasing or refunding it by hand, through
+the existing `payments.service.refund_admin` chokepoint — no new money
+primitive, no new FSM state. `status="paid"` alone is enough to mean "not
+released": `fulfillment.start_for_order` is the only thing that ever moves a
+paid order off `paid` for a reason other than a refund, and it always moves
+it to `fulfilling`. Every hold reason is in scope, including
+`REASON_PAID_AFTER_EXPIRY` — if no human decided within a day, returning the
+money is the safe default for both fraud and simple confusion.
+
+Option 3 was rejected: it would refuse the measured diaspora segment right
+alongside the carding run, trading a fraud problem for a churn problem.
+Option 1 was rejected because it leaves the actual harm — a real charge on a
+victim's card — in place; a hold only ever protects the goods, never the
+money already taken.
+
+### Positive consequences
+
+- A charge that would only ever be refunded now never happens: no acquirer
+  fee round-trip, no statement line item, no chargeback exposure on an order
+  that was never going anywhere.
+- The trusted-buyer exemption is one predicate (`_is_trusted_buyer`), reused
+  by both the pre-charge veto and read the same way the post-payment hold's
+  geo rule already reasons about signed-in buyers — no second definition of
+  "trusted" to drift out of sync.
+- A held order now has a hard upper bound on how long it can sit: 24 hours,
+  tunable per environment, `0` to fall back to today's indefinite hold for a
+  fire-drill week.
+- Both veto call sites are decision-core-identical (`_veto_decision`); a
+  fourth acquirer or a second creation path only has to supply inputs, never
+  reimplement the rule.
+
+### Negative consequences
+
+- `risk_home_countries` is a new list to keep current alongside
+  `risk_home_timezones` as the business expands markets (the RU launch is
+  `RISK_HOME_COUNTRIES=UZ,RU` plus `Europe/Moscow` in the timezone list —
+  one env change, not a deploy).
+- The auto-refund sweep hands an operator a deadline they didn't have
+  before: a hold landing Friday night refunds Saturday night whether or not
+  anyone was on shift. `RISK_HOLD_AUTO_REFUND_HOURS` is the release valve if
+  that cadence doesn't match staffing.
+- Point B trusts the `cf-ipcountry` header, which only means anything behind
+  Cloudflare — the edge strips it from any request that didn't arrive via
+  Cloudflare, but a misconfigured origin bypass would silently degrade the
+  veto to the timezone fallback rather than fail loudly. Worth a health
+  check if the country signal ever goes quiet in the `precharge_vetoed`
+  counts.
+- The sweep's refund actor is stamped `admin:auto-refund-sweep` — a
+  synthetic id, not a real operator — deliberately, to keep it grep-able in
+  the audit trail without adding a system-actor variant to
+  `payments.service.refund_admin` for one caller.
+
+## Validation
+
+Unit tests pin `_veto_decision`'s full branch table (kill switch, trusted
+buyer, fresh account treated as guest, country hit, country miss, timezone
+fallback, no evidence). Integration tests exercise all three acquirer
+pre-charge stages against a real evidence row (one `order_events` row across
+repeated retries; a trusted buyer passes) and order creation's 422 path.
+Integration tests for the sweep: a hold past the deadline is refunded through
+the mock gateway with an audit event; a fresh hold, a released order, and a
+wallet top-up are all left alone; a second tick is a no-op (no second refund
+call); `0` disables the sweep entirely. Operationally: the rollout ships the
+veto on the timezone fallback only (country is `NULL` everywhere until the
+Cloudflare **IP Geolocation** toggle is flipped), so there is no day-one
+cliff — see the runbook's rollout section.
+
+## References
+
+- `docs/superpowers/specs/2026-08-30-precharge-geo-veto-design.md` — full
+  design, the production numbers behind it, and the rollout plan
+- [ADR-0062](./0062-antifraud-identity-windows.md) — the post-payment hold
+  this pre-charge veto complements, and the trusted-buyer reasoning it reuses
+- [ADR-0044](./0044-chargeback-evidence-capture.md) — `order_evidence`,
+  extended by migration 0060 with `ip_country`
+- `docs/runbooks/order-held-for-review.md` — the deadline, the veto, and the
+  Cloudflare toggle from an operator's side
