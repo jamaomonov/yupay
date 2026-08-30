@@ -93,14 +93,22 @@ client's own timeout fires; a whole batch hitting the same slow supplier
 will still look like the queue stalled, so check for a supplier incident
 before assuming the worker itself is broken.
 
-A `worker.consumer.drain_failed` carrying a Postgres **deadlock** is
-expected under one specific race and needs no action: a full refund on an
-order takes the order row first and then its fulfilment tasks, while a
-drainer takes the task rows first and the order row last. Postgres breaks
-the cycle in about a second by aborting one side. The drainer's rollback
-puts its tasks back to `pending` and the next tick re-runs them; if the
-admin's refund is the side that was aborted, it returns a 500 and is safe
-to retry.
+**Lock order (invariant worth protecting):** everything that touches both
+locks **fulfilment task rows before the order row**. The drain loop conforms
+for free — it claims tasks with `FOR UPDATE SKIP LOCKED`, which never waits,
+and only then locks the order to settle. The refund and order-failed /
+order-cancelled cascades conform because they call
+`cancel_open_tasks_for_order` before any write to the order row (the status
+write, and the `OrderEvent` insert's `FOR KEY SHARE` on it). So a refund
+racing a drainer over the same order **queues, it does not deadlock**.
+
+If you ever see a Postgres deadlock in `worker.consumer.drain_failed` or on
+an admin refund, that invariant has been broken by a new code path — find
+the path that touches the order row before the tasks rather than treating
+the deadlock as noise. It is not self-healing on the money side: an aborted
+admin refund has already called the acquirer, but its rollback discards the
+`last_refund` replay guard, so retrying it blindly can refund twice
+upstream. Check the acquirer before re-clicking.
 
 ## Worker liveness
 

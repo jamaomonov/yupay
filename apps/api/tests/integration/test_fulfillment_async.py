@@ -26,7 +26,7 @@ from decimal import Decimal
 
 import asyncpg  # type: ignore[import-untyped]  # no bundled stubs
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 import yupay.api.v1  # noqa: F401  isort: skip  -- break the import cycle
@@ -37,7 +37,7 @@ from yupay.modules.fulfillment import service as ff_svc
 from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.fulfillment.suppliers import FulfillResult
 from yupay.modules.fulfillment.suppliers.mock import MockFulfiller
-from yupay.modules.orders.models import Order, OrderItem
+from yupay.modules.orders.models import Order, OrderEvent, OrderItem
 from yupay.modules.users.models import User
 
 pytestmark = pytest.mark.asyncio
@@ -57,7 +57,7 @@ def _database_dsn(settings: Settings) -> str:
     return settings.database_url.replace("postgresql+asyncpg://", "postgresql://")
 
 
-async def _make_paid_order(db: AsyncSession, *, tag: str) -> Order:
+async def _make_paid_order(db: AsyncSession, *, tag: str, n_items: int = 1) -> Order:
     """Build a catalog chain + a ``paid`` order directly via the ORM and
     commit it — no checkout, no payment webhook, so ``start_for_order``
     has not run yet and the test controls exactly when it does.
@@ -108,15 +108,16 @@ async def _make_paid_order(db: AsyncSession, *, tag: str) -> Order:
     )
     db.add(order)
     await db.flush()
-    db.add(
-        OrderItem(
-            id=new_id(),
-            order_id=order.id,
-            sku_id=sku.id,
-            qty=1,
-            unit_price_usd=Decimal("1.00"),
+    for _ in range(n_items):
+        db.add(
+            OrderItem(
+                id=new_id(),
+                order_id=order.id,
+                sku_id=sku.id,
+                qty=1,
+                unit_price_usd=Decimal("1.00"),
+            )
         )
-    )
     await db.commit()
     return order
 
@@ -399,3 +400,59 @@ async def test_cancel_waits_for_a_claimed_task_and_never_overwrites_it(
         )
     ).scalar_one()
     assert status == "succeeded"
+
+
+async def test_sibling_drainers_settle_the_order_exactly_once_and_never_lose_it(
+    db_session: AsyncSession, second_session: AsyncSession
+) -> None:
+    """Two drainers split one order's tasks; the order must still settle.
+
+    This is the lost-settle race, which is why ``_try_settle_order`` locks the
+    order *before* reading the tasks. Each drainer finishes one sibling and
+    then looks at the order: neither can see the other's uncommitted work
+    (MVCC), so on a read-then-lock implementation both decide "not all
+    succeeded yet" and bail — and the order sits in ``fulfilling`` forever
+    with every task succeeded, a state no admin path can repair (retry and
+    cancel both refuse a ``succeeded`` task).
+
+    ``limit=1`` is what splits the batch deterministically: the first drainer
+    claims exactly one task and holds it, ``SKIP LOCKED`` hands the second
+    drainer the other one.
+    """
+    cfg = _settings(fulfilment_async=True)
+    order = await _make_paid_order(db_session, tag="settle-race", n_items=2)
+    order_id = order.id
+    await ff_svc.start_for_order(db_session, order_id=order_id, settings=cfg)
+    await db_session.commit()
+
+    # Drainer A: claims one sibling, runs it, tries to settle -- and must not,
+    # because B's task is still pending from where A is standing. A now holds
+    # the order-row lock (and its task row) until it commits.
+    assert await ff_svc.drain_pending_tasks(db_session, limit=1) == 1
+    assert (
+        await db_session.execute(select(Order.status).where(Order.id == order_id))
+    ).scalar_one() == "fulfilling"
+
+    # Drainer B: claims the other sibling, runs it, and blocks trying to
+    # settle -- read-then-lock would let it read around A and bail instead.
+    draining_b = asyncio.create_task(ff_svc.drain_pending_tasks(second_session, limit=1))
+    done, _pending = await asyncio.wait({draining_b}, timeout=0.5)
+    assert not done, "the second drainer must block on the order lock, not read around it"
+
+    await db_session.commit()
+    assert await asyncio.wait_for(draining_b, timeout=15) == 1
+    await second_session.commit()
+
+    status = (
+        await db_session.execute(select(Order.status).where(Order.id == order_id))
+    ).scalar_one()
+    assert status == "delivered"  # settled by the drainer that finished last
+
+    delivered_events = (
+        await db_session.execute(
+            select(func.count())
+            .select_from(OrderEvent)
+            .where(OrderEvent.order_id == order_id, OrderEvent.kind == "order.delivered")
+        )
+    ).scalar_one()
+    assert delivered_events == 1  # and settled exactly once

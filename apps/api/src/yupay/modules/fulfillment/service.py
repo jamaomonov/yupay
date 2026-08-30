@@ -673,8 +673,24 @@ async def bulk_retry_tasks(
 
     Each task is replayed via :func:`retry_task`; ones that can't be (unknown id,
     wrong status) are returned in the second tuple with a short reason instead of
-    aborting the whole batch. Duplicates in ``task_ids`` are deduped, preserving
-    first-seen order.
+    aborting the whole batch. Duplicates in ``task_ids`` are deduped.
+
+    Ids are then **sorted**, so every bulk retry takes its per-task row locks
+    in the same global order. Two admins bulk-retrying overlapping selections
+    would otherwise be a textbook AB/BA deadlock, and the window is not
+    small: ``retry_task`` holds each lock across a live supplier HTTP call.
+    The returned ``retried`` order changes with the sort; it is a result set,
+    not an ordered contract.
+
+    Sorting does **not** cover bulk-retry vs. a drainer, and that variant is
+    accepted rather than fixed: this loop can hold an order-row lock (from
+    one iteration's ``_try_settle_order``) while the next iteration waits on
+    a task row a drainer holds, and that drainer waits on the same order row.
+    The exposure is tiny — drainers only ever claim ``pending`` tasks, while
+    a human bulk-retries ``failed`` ones — and closing it properly means
+    ordering locks across a loop of independent orders, which is a redesign
+    of the bulk endpoint rather than a patch. If it ever fires, it is a
+    deadlock error on the admin request, safe to retry.
     """
     seen: set[str] = set()
     deduped: list[str] = []
@@ -683,6 +699,7 @@ async def bulk_retry_tasks(
             continue
         seen.add(tid)
         deduped.append(tid)
+    deduped.sort()
 
     retried: list[FulfillmentTask] = []
     skipped: list[tuple[str, str]] = []
@@ -1233,39 +1250,33 @@ async def fail_manual_task(
 async def _try_settle_order(db: AsyncSession, *, order_id: str) -> None:
     """If every task succeeded, advance the order to ``fulfilled`` then ``delivered``.
 
-    Settlement is exactly-once per order, enforced by a row lock on the order
-    itself: with concurrent drainers, two sessions finishing the last two
-    sibling tasks of the same order both see "all succeeded" and both try to
-    settle. Unlocked, both write ``delivered`` — two ``order.delivered``
-    events, two realtime pushes, two Telegram messages to the customer. The
-    lock serialises them and the loser's re-read shows a status that is no
-    longer settle-eligible, so it bails silently.
+    Lock first, then read. The order row is locked before the tasks are even
+    looked at, and both the settle-eligibility check and the all-succeeded
+    gate are evaluated behind that lock. That ordering is what makes
+    settlement exactly-once *and* never-lost with concurrent drainers:
 
-    The unlocked all-succeeded check runs *first*, purely so the common
-    "nothing to settle" call (a failed task, a sibling still pending) takes
-    no lock at all. It cannot go stale in the dangerous direction: no
-    transition takes a task back out of ``succeeded`` (``retry_task``
-    refuses it, the cancel paths skip it), so "all succeeded" only ever
-    becomes more true while we wait for the lock.
+    * **Never duplicated.** Two drainers finishing the last two sibling tasks
+      of one order both want to settle it. The loser of the lock re-reads a
+      status that is no longer settle-eligible and bails, instead of writing
+      a second ``order.delivered`` event, realtime push, and Telegram ping.
+    * **Never lost.** This is why the cheap check cannot come first. Split a
+      two-task order across two drainers: each holds one task ``succeeded``
+      but uncommitted, and each reads the *other's* task as still ``pending``
+      (MVCC — neither sees the other's uncommitted write). Both would bail,
+      both commit, and the order sits in ``fulfilling`` forever with every
+      task succeeded — a state no admin path can repair, because retry and
+      cancel both refuse a ``succeeded`` task. Behind the lock the loser
+      blocks until the winner commits, re-reads the tasks with a fresh
+      READ COMMITTED snapshot, sees them all ``succeeded``, and settles.
 
-    Lock ordering: a drainer takes task rows first (the claim) and the order
-    row last (here); the refund/cancel cascade goes the other way (it has
-    already dirtied the order row when it calls
-    ``cancel_open_tasks_for_order``, which now locks task rows). Those two
-    paths racing over the *same* order can therefore deadlock — Postgres
-    detects it in ~1s and aborts one side. That is the intended failure mode
-    and it self-heals: the drainer's outer belt rolls the batch back, its
-    tasks stay ``pending``, and the next tick re-runs them (supplier calls
-    are keyed by task id, so a re-run is idempotent). The alternative —
-    reading around the locks — is the money-safety bug this pair of locks
-    exists to close.
+    Lock order (system-wide invariant): **fulfilment task rows are locked
+    before the order row, everywhere.** The drain loop conforms for free —
+    it claims tasks with ``SKIP LOCKED``, which never waits, and only then
+    reaches this function. The refund / order-failed / order-cancelled
+    cascades conform because they call ``cancel_open_tasks_for_order``
+    *before* touching the order row (see the comments there). Hold that line
+    and a refund can never deadlock against a drainer.
     """
-    tasks = await _existing_tasks_for_order(db, order_id)
-    if not tasks:
-        return
-    if any(t.status != "succeeded" for t in tasks):
-        return
-
     # ``populate_existing`` for the same reason as in ``_load_task``: the
     # worker's session is long-lived (``expire_on_commit=False``, batch after
     # batch), so an Order it loaded during an earlier batch would otherwise be
@@ -1279,6 +1290,14 @@ async def _try_settle_order(db: AsyncSession, *, order_id: str) -> None:
         )
     ).scalar_one()
     if order.status not in ("fulfilling", "paid"):
+        return
+
+    # Read behind the lock: this snapshot is taken after the winner's commit,
+    # so a sibling task it succeeded is visible here.
+    tasks = await _existing_tasks_for_order(db, order_id)
+    if not tasks:
+        return
+    if any(t.status != "succeeded" for t in tasks):
         return
 
     moment = now()

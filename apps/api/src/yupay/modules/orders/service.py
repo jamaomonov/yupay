@@ -1094,6 +1094,18 @@ async def mark_order_failed_admin(
             extra={"status": order.status, "allowed": sorted(_FAILABLE_STATUSES)},
         )
 
+    # Fulfilment cascade FIRST, before any write to the order row (the status
+    # write, the OrderEvent insert's FOR KEY SHARE, and the payment cascade
+    # whose autoflush would emit them). System-wide lock order: **fulfilment
+    # task rows before the order row, everywhere** — see the same comment in
+    # ``payments.service._apply_refund_reversal``. Everything below commits
+    # atomically, so the end state is identical either way; only the lock
+    # order changes. Lazy import avoids the orders.service ↔
+    # fulfillment.service cycle.
+    from yupay.modules.fulfillment import service as fulfillment_svc
+
+    await fulfillment_svc.cancel_open_tasks_for_order(db, order_id=order_id, reason="order_failed")
+
     moment = now()
     order.status = "failed"
     order.updated_at = moment
@@ -1109,10 +1121,6 @@ async def mark_order_failed_admin(
     await _cascade_cancel_open_payments(
         db, order_id=order_id, reason="order_failed", actor=f"admin:{admin_id}"
     )
-    # Lazy import avoids the orders.service ↔ fulfillment.service cycle.
-    from yupay.modules.fulfillment import service as fulfillment_svc
-
-    await fulfillment_svc.cancel_open_tasks_for_order(db, order_id=order_id, reason="order_failed")
     await db.flush()
     await _publish_status_changed(order)
     return order
@@ -1126,6 +1134,21 @@ async def cancel_order_admin(db: AsyncSession, order_id: str, *, admin_id: str) 
             "cannot cancel order in current status",
             extra={"status": order.status},
         )
+    # Stop any in-flight fulfilment for the cancelled order. Today cancel is
+    # only legal from ``pending_payment`` (no task exists yet), so this is a
+    # no-op; it keeps the invariant "a terminated order has no open fulfilment
+    # task" if the cancel window is ever widened. It goes first for the same
+    # reason as in ``mark_order_failed_admin``: fulfilment task rows are
+    # locked before the order row, everywhere — including on a path where
+    # today it cannot matter, so that widening the cancel window later does
+    # not quietly reintroduce the inversion. Lazy import avoids the
+    # orders.service ↔ fulfillment.service import cycle.
+    from yupay.modules.fulfillment import service as fulfillment_svc
+
+    await fulfillment_svc.cancel_open_tasks_for_order(
+        db, order_id=order_id, reason="order_cancelled"
+    )
+
     order.status = "cancelled"
     order.cancelled_at = now()
     order.updated_at = order.cancelled_at
@@ -1140,16 +1163,6 @@ async def cancel_order_admin(db: AsyncSession, order_id: str, *, admin_id: str) 
     )
     await _cascade_cancel_open_payments(
         db, order_id=order_id, reason="order_cancelled", actor=f"admin:{admin_id}"
-    )
-    # Stop any in-flight fulfilment for the cancelled order. Today cancel is
-    # only legal from ``pending_payment`` (no task exists yet), so this is a
-    # no-op; it keeps the invariant "a terminated order has no open fulfilment
-    # task" if the cancel window is ever widened. Lazy import avoids the
-    # orders.service ↔ fulfillment.service import cycle.
-    from yupay.modules.fulfillment import service as fulfillment_svc
-
-    await fulfillment_svc.cancel_open_tasks_for_order(
-        db, order_id=order_id, reason="order_cancelled"
     )
     await db.flush()
     await _publish_status_changed(order)

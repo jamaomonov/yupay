@@ -875,6 +875,10 @@ async def _apply_refund_reversal(
     (:func:`reverse_provider_payment`, Payme ``CancelTransaction`` on a performed
     tx) funnel through here so the ledger posting lives in exactly one place.
 
+    The fulfilment cascade runs FIRST — see the comment on it. Everything
+    here commits atomically, so the end state does not depend on the order of
+    these steps; the lock order does.
+
     Args:
         db: Active session; the caller flushes/commits.
         payment: The payment being reversed (already validated by the caller).
@@ -886,12 +890,39 @@ async def _apply_refund_reversal(
     """
     moment = now()
     is_full = amount == payment.amount
+    order = (await db.execute(select(Order).where(Order.id == payment.order_id))).scalar_one()
+
+    # ---- fulfilment cascade FIRST. Placement is load-bearing. ----
+    # A full refund walks the order to ``refunded`` — cancel any still-open
+    # fulfilment task so the saga stops trying to deliver (or stops sitting in
+    # a stuck ``failed`` state) for an order the customer no longer owns.
+    # Already-``succeeded`` tasks are left alone: a money refund does not
+    # retract a code the customer already received. Partial refunds keep the
+    # order delivered, so they don't touch fulfilment. Lazy import dodges the
+    # payments.service ↔ fulfillment.service ↔ api.v1 import cycle.
+    #
+    # It runs before ANY write to the order row (and before the OrderEvent
+    # insert, which takes FOR KEY SHARE on it) to hold the system-wide lock
+    # order: **fulfilment task rows before the order row, everywhere.** The
+    # drain loop conforms for free (it claims tasks with SKIP LOCKED, which
+    # never waits, then locks the order to settle); this path is the only
+    # other one that touches both, so ordering it here is what makes a
+    # deadlock between a refund and a drainer impossible rather than merely
+    # survivable. Autoflush is the reason "before any write" means literally
+    # before, not just before the flush: the cascade's first SELECT would
+    # emit whatever order writes are already pending on the session.
+    if is_full:
+        from yupay.modules.fulfillment import service as fulfillment_svc
+
+        await fulfillment_svc.cancel_open_tasks_for_order(
+            db, order_id=order.id, reason=f"refund:{payment.id}"
+        )
+
     payment.status = "refunded" if is_full else "partially_refunded"
     payment.updated_at = moment
 
     # Order: mark refunded only for a full refund. Partial refunds keep the
     # original status — they're an accounting concern, not an FSM concern.
-    order = (await db.execute(select(Order).where(Order.id == payment.order_id))).scalar_one()
     refunded_now = is_full and order.status != "refunded"
     if refunded_now:
         order.status = "refunded"
@@ -921,20 +952,6 @@ async def _apply_refund_reversal(
         is_full=is_full,
         actor=actor,
     )
-
-    # A full refund walks the order to ``refunded`` — cancel any still-open
-    # fulfilment task so the saga stops trying to deliver (or stops sitting in
-    # a stuck ``failed`` state) for an order the customer no longer owns.
-    # Already-``succeeded`` tasks are left alone: a money refund does not
-    # retract a code the customer already received. Partial refunds keep the
-    # order delivered, so they don't touch fulfilment. Lazy import dodges the
-    # payments.service ↔ fulfillment.service ↔ api.v1 import cycle.
-    if is_full:
-        from yupay.modules.fulfillment import service as fulfillment_svc
-
-        await fulfillment_svc.cancel_open_tasks_for_order(
-            db, order_id=order.id, reason=f"refund:{payment.id}"
-        )
 
     # Realtime parity: nudge a connected viewer when a full refund walks the
     # order to ``refunded`` (polling is off while the socket is up).
