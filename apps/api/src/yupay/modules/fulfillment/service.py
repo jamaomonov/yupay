@@ -102,24 +102,52 @@ async def _load_order_with_items(db: AsyncSession, order_id: str) -> Order:
     return order
 
 
-async def _load_task(db: AsyncSession, task_id: str) -> FulfillmentTask:
+async def _load_task(
+    db: AsyncSession, task_id: str, *, for_update: bool = False
+) -> FulfillmentTask:
+    """Load one task, optionally under a row lock.
+
+    ``for_update=True`` is for the *mutating* callers (admin retry/cancel).
+    Without it they read a snapshot taken before the consumer's claim, decide
+    on that stale status, and then queue behind the consumer's row lock only
+    to overwrite what it just committed — an admin cancel landing on top of a
+    committed ``succeeded`` is a refund issued for goods that were delivered.
+    ``populate_existing`` is not optional here: a lock whose row is then
+    served from the session's identity map (with the attributes it had before
+    the lock was granted) proves nothing. Read-only callers stay unlocked —
+    an admin list must never wait on a supplier call.
+    """
     stmt = (
         select(FulfillmentTask)
         .options(selectinload(FulfillmentTask.attempts))
         .where(FulfillmentTask.id == task_id)
     )
+    if for_update:
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
     task = (await db.execute(stmt)).scalar_one_or_none()
     if task is None:
         raise NotFoundError("fulfilment task not found")
     return task
 
 
-async def _existing_tasks_for_order(db: AsyncSession, order_id: str) -> list[FulfillmentTask]:
+async def _existing_tasks_for_order(
+    db: AsyncSession, order_id: str, *, for_update: bool = False
+) -> list[FulfillmentTask]:
+    """Load an order's tasks, optionally under row locks. See :func:`_load_task`.
+
+    The ``created_at, id`` ordering is what keeps the locking variant
+    deadlock-free against the drain loop: both take this order's rows in
+    ``created_at`` order (``drain_pending_tasks``' claim query orders the same
+    way), so two sessions can queue but never wait on each other in a cycle.
+    """
     stmt = (
         select(FulfillmentTask)
         .options(selectinload(FulfillmentTask.attempts))
         .where(FulfillmentTask.order_id == order_id)
+        .order_by(FulfillmentTask.created_at, FulfillmentTask.id)
     )
+    if for_update:
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
     return list((await db.execute(stmt)).scalars().all())
 
 
@@ -587,8 +615,14 @@ async def drain_pending_tasks(db: AsyncSession, *, limit: int = 20) -> int:
 
 
 async def retry_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
-    """Admin-triggered retry of a failed task."""
-    task = await _load_task(db, task_id)
+    """Admin-triggered retry of a failed task.
+
+    Locked: the status check below is only meaningful if nothing can claim
+    and run the row between the read and the retry — otherwise an admin
+    Retry on a task the consumer picked up a moment ago runs the supplier
+    call a second time.
+    """
+    task = await _load_task(db, task_id, for_update=True)
     if task.status not in ("failed", "pending"):
         raise ConflictError(
             "task is not retryable in its current state",
@@ -681,8 +715,9 @@ async def _apply_cancel(db: AsyncSession, *, task: FulfillmentTask, reason: str)
 async def cancel_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
     """Admin-triggered cancellation of a single task. Calls the supplier's
     cancel hook best-effort. Rejects a task that already terminated
-    (``succeeded`` / ``cancelled``)."""
-    task = await _load_task(db, task_id)
+    (``succeeded`` / ``cancelled``) — including one that terminated while
+    this call was waiting for the row lock."""
+    task = await _load_task(db, task_id, for_update=True)
     if task.status in ("succeeded", "cancelled"):
         raise ConflictError(
             "task cannot be cancelled in its current state",
@@ -706,9 +741,16 @@ async def cancel_open_tasks_for_order(
     Tasks that already ``succeeded`` are left untouched: the customer already
     received the goods, and a money refund does not retract a delivered code.
     Already-``cancelled`` tasks are skipped, so this is idempotent.
+
+    The load is locked because "already succeeded" has to mean *now*, not
+    "when this transaction's snapshot was taken". A refund racing a consumer
+    that is mid-flight on the same task waits here for the consumer's commit
+    and then sees ``succeeded`` and skips — instead of overwriting it with
+    ``cancelled`` and leaving the books saying the money was refunded and
+    nothing was delivered.
     """
     cancelled: list[FulfillmentTask] = []
-    for task in await _existing_tasks_for_order(db, order_id):
+    for task in await _existing_tasks_for_order(db, order_id, for_update=True):
         if task.status in ("succeeded", "cancelled"):
             continue
         await _apply_cancel(db, task=task, reason=reason)
@@ -1162,14 +1204,53 @@ async def fail_manual_task(
 
 
 async def _try_settle_order(db: AsyncSession, *, order_id: str) -> None:
-    """If every task succeeded, advance the order to ``fulfilled`` then ``delivered``."""
+    """If every task succeeded, advance the order to ``fulfilled`` then ``delivered``.
+
+    Settlement is exactly-once per order, enforced by a row lock on the order
+    itself: with concurrent drainers, two sessions finishing the last two
+    sibling tasks of the same order both see "all succeeded" and both try to
+    settle. Unlocked, both write ``delivered`` — two ``order.delivered``
+    events, two realtime pushes, two Telegram messages to the customer. The
+    lock serialises them and the loser's re-read shows a status that is no
+    longer settle-eligible, so it bails silently.
+
+    The unlocked all-succeeded check runs *first*, purely so the common
+    "nothing to settle" call (a failed task, a sibling still pending) takes
+    no lock at all. It cannot go stale in the dangerous direction: no
+    transition takes a task back out of ``succeeded`` (``retry_task``
+    refuses it, the cancel paths skip it), so "all succeeded" only ever
+    becomes more true while we wait for the lock.
+
+    Lock ordering: a drainer takes task rows first (the claim) and the order
+    row last (here); the refund/cancel cascade goes the other way (it has
+    already dirtied the order row when it calls
+    ``cancel_open_tasks_for_order``, which now locks task rows). Those two
+    paths racing over the *same* order can therefore deadlock — Postgres
+    detects it in ~1s and aborts one side. That is the intended failure mode
+    and it self-heals: the drainer's outer belt rolls the batch back, its
+    tasks stay ``pending``, and the next tick re-runs them (supplier calls
+    are keyed by task id, so a re-run is idempotent). The alternative —
+    reading around the locks — is the money-safety bug this pair of locks
+    exists to close.
+    """
     tasks = await _existing_tasks_for_order(db, order_id)
     if not tasks:
         return
     if any(t.status != "succeeded" for t in tasks):
         return
 
-    order = (await db.execute(select(Order).where(Order.id == order_id))).scalar_one()
+    # ``populate_existing`` for the same reason as in ``_load_task``: the
+    # worker's session is long-lived (``expire_on_commit=False``, batch after
+    # batch), so an Order it loaded during an earlier batch would otherwise be
+    # served from the identity map at its pre-lock status.
+    order = (
+        await db.execute(
+            select(Order)
+            .where(Order.id == order_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
     if order.status not in ("fulfilling", "paid"):
         return
 

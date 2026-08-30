@@ -342,3 +342,60 @@ async def test_drain_isolates_a_poisoned_task(
     await db_session.commit()
     n2 = await ff_svc.drain_pending_tasks(db_session)
     assert n2 == 0
+
+
+# ---------- admin mutations vs. a mid-flight consumer ----------
+
+
+async def test_cancel_waits_for_a_claimed_task_and_never_overwrites_it(
+    db_session: AsyncSession, second_session: AsyncSession
+) -> None:
+    """An admin cancel must not clobber a task the consumer is mid-flight on.
+
+    The money-safety case: a refund cancels the order's open tasks while a
+    drainer already holds the claim lock and is about to commit
+    ``succeeded``. Without a lock on the cancel side, the cancel reads
+    ``pending`` (its snapshot predates the consumer's commit), queues behind
+    the row lock, and its UPDATE lands *after* the consumer's — refund issued
+    AND goods delivered, with the row saying ``cancelled``.
+
+    So: session A claims the row and marks it succeeded with its transaction
+    still open; session B cancels the order's tasks concurrently. B must
+    block until A commits, and must then leave the row ``succeeded``.
+    """
+    cfg = _settings(fulfilment_async=True)
+    order = await _make_paid_order(db_session, tag="lockrace")
+    await ff_svc.start_for_order(db_session, order_id=order.id, settings=cfg)
+    await db_session.commit()
+
+    # A: the consumer's claim (same FOR UPDATE the drain query takes), then
+    # the success write -- flushed, so the row lock is held, not committed.
+    claimed = (
+        await second_session.execute(
+            select(FulfillmentTask).where(FulfillmentTask.order_id == order.id).with_for_update()
+        )
+    ).scalar_one()
+    claimed_id = claimed.id
+    claimed.status = "succeeded"
+    claimed.succeeded_at = datetime.now(UTC)
+    await second_session.flush()
+
+    # B: the admin/refund cascade, racing A.
+    cancelling = asyncio.create_task(
+        ff_svc.cancel_open_tasks_for_order(db_session, order_id=order.id, reason="refund:test")
+    )
+    done, _pending = await asyncio.wait({cancelling}, timeout=0.5)
+    assert not done, "cancel must block on the consumer's claim lock, not read around it"
+
+    await second_session.commit()
+    cancelled = await asyncio.wait_for(cancelling, timeout=15)
+
+    # Nothing was cancelled: post-lock, the task is terminal.
+    assert cancelled == []
+    await db_session.commit()
+    status = (
+        await db_session.execute(
+            select(FulfillmentTask.status).where(FulfillmentTask.id == claimed_id)
+        )
+    ).scalar_one()
+    assert status == "succeeded"
