@@ -1,9 +1,16 @@
-"""Whether a paid order may be fulfilled automatically. See ADR-0047.
+"""Whether a paid order may be fulfilled automatically. See ADR-0047, ADR-0062.
 
 Kept apart from both ``payments`` and ``fulfillment``: the decision is neither
-about taking money nor about delivering goods, and putting it in either would
-mean the next rule (velocity, repeat cards, a small order followed hours later
-by a large one) lands wherever it was convenient rather than where it belongs.
+about taking money nor about delivering goods.
+
+Two kinds of rule live here. Rule 1 looks at this order alone (its amount
+against a jittered threshold). Rules 2-4 look at this order's identity —
+buyer, IP, device, delivery target, drawn from ``order_evidence`` — against
+its recent paid siblings in a trailing 7-day window, to catch the pattern a
+single order can never show: many small orders instead of one large one, a
+burst of orders in a day, or one IP paying for several "different" buyers.
+Rule 5 adds the order's own browser-reported timezone against the storefront's
+home markets, but only for guests on cash-equivalent brands.
 
 Nothing here blocks a sale. Payment already happened; the only question is
 whether a human looks before the goods leave, and holding is reversible in one
