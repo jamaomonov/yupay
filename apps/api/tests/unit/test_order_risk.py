@@ -15,13 +15,17 @@ from yupay.modules.orders.risk import (
     REASON_ROLLING_SUM,
     REASON_SHARED_IDENTITY,
     REASON_VELOCITY,
+    GeoContext,
     WindowOrder,
     _amount_reason,
     _csv,
     _effective_threshold,
+    _gather,
     _geo_reason,
+    _targets_from,
     _window_reason,
     hold_for_review,
+    review_reason,
 )
 
 
@@ -228,6 +232,74 @@ def test_signed_in_or_home_tz_or_illiquid_brand_passes() -> None:
 
 def test_empty_lists_disable_the_geo_rule() -> None:
     assert _geo_reason(True, frozenset({"roblox"}), "Europe/Kiev", _cfg(liquid="", home="")) is None
+
+
+def test_an_empty_home_list_alone_also_disables_the_geo_rule() -> None:
+    # Distinct from the case above: the brand IS liquid here, so this only
+    # passes through `_geo_reason`'s later `if not home` branch rather than
+    # its earlier `if not liquid` one.
+    assert _geo_reason(True, frozenset({"roblox"}), "Europe/Kiev", _cfg(home="")) is None
+
+
+# ---------- _targets_from ----------
+
+
+def test_targets_from_cleans_and_skips_non_strings_and_empties() -> None:
+    assert _targets_from(
+        {
+            "username": " @Durov ",
+            "note": "",
+            "amount": 5,  # not a string -- ignored, not a target
+            "handle": "@Durov",  # same account, different casing/whitespace
+        }
+    ) == frozenset({"durov"})
+    assert _targets_from({}) == frozenset()
+
+
+# ---------- review_reason: rule 1 short-circuits before the gather ----------
+
+
+async def test_review_reason_returns_the_amount_reason_without_touching_the_db() -> None:
+    # `db` is never awaited on this path -- an object with no `.execute` at
+    # all still has to work, which is the point being proven.
+    settings = _settings("40", jitter=False)
+    reason = await review_reason(cast("Any", object()), _order("202.00"), settings=settings)
+    assert reason == REASON_LARGE_AMOUNT
+
+
+# ---------- _gather: a broken query degrades to rule 1 alone ----------
+
+
+class _ExplodingDB:
+    """Stands in for a session whose first query blows up.
+
+    ``_gather`` must never raise -- a broken risk query has to degrade to the
+    amount rule alone rather than block a paid order's fulfilment.
+    """
+
+    async def execute(self, *args: object, **kwargs: object) -> Any:
+        raise RuntimeError("boom")
+
+
+async def test_gather_degrades_to_neutral_context_on_a_broken_query() -> None:
+    order = cast(
+        "Any",
+        SimpleNamespace(
+            id="0192aaaa-bbbb-cccc-dddd-eeeeffff0003",
+            paid_at=_NOW,
+            total_usd=Decimal("11"),
+            user_id=None,
+            guest_email="me@x.com",
+        ),
+    )
+    current, recent, geo = await _gather(cast("Any", _ExplodingDB()), order)
+    assert current.id == order.id
+    assert current.buyer == "me@x.com"
+    assert current.ip is None
+    assert current.device is None
+    assert current.targets == frozenset()
+    assert recent == []
+    assert geo == GeoContext(is_guest=False, brand_slugs=frozenset(), timezone=None)
 
 
 # ---------- hold_for_review's detail payload ----------
