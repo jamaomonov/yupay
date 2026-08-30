@@ -15,6 +15,8 @@ from yupay.modules.orders.risk import (
     REASON_ROLLING_SUM,
     REASON_SHARED_IDENTITY,
     REASON_VELOCITY,
+    VETO_FOREIGN_COUNTRY,
+    VETO_FOREIGN_TIMEZONE,
     GeoContext,
     WindowOrder,
     _amount_reason,
@@ -22,9 +24,12 @@ from yupay.modules.orders.risk import (
     _effective_threshold,
     _gather,
     _geo_reason,
+    _is_trusted_buyer,
     _targets_from,
+    _veto_decision,
     _window_reason,
     hold_for_review,
+    precharge_veto,
     review_reason,
 )
 
@@ -88,6 +93,8 @@ def _cfg(
     buyers: int = 3,
     liquid: str = "roblox,telegram-stars,steam",
     home: str = "Asia/Tashkent,Asia/Samarkand",
+    home_countries: str = "UZ",
+    veto: bool = True,
 ) -> Settings:
     base = get_settings().model_dump()
     base.update(
@@ -97,6 +104,8 @@ def _cfg(
         risk_distinct_buyers_7d=buyers,
         risk_liquid_brands=liquid,
         risk_home_timezones=home,
+        risk_home_countries=home_countries,
+        risk_precharge_veto=veto,
         risk_jitter=False,
     )
     return Settings(**base)
@@ -371,6 +380,80 @@ async def test_gather_degrades_to_neutral_context_when_the_savepoint_itself_fail
     assert current.targets == frozenset()
     assert recent == []
     assert geo == GeoContext(is_guest=False, brand_slugs=frozenset(), timezone=None)
+
+
+# ---------- precharge veto: _veto_decision (Task 2, ADR-0063) ----------
+
+
+def test_foreign_country_vetoes_a_guest() -> None:
+    assert _veto_decision(False, "NL", None, _cfg()) == VETO_FOREIGN_COUNTRY
+
+
+def test_home_country_passes_whatever_the_timezone_says() -> None:
+    # Country is the network's word, timezone the browser's; when both are
+    # present the network wins — a VPN into UZ with a Kyiv clock is for the
+    # post-payment hold to worry about, not a pre-charge refusal.
+    assert _veto_decision(False, "UZ", "Europe/Kiev", _cfg()) is None
+
+
+def test_timezone_is_only_a_fallback() -> None:
+    assert _veto_decision(False, None, "Europe/Kiev", _cfg()) == VETO_FOREIGN_TIMEZONE
+    assert _veto_decision(False, None, "Asia/Tashkent", _cfg()) is None
+
+
+def test_no_signals_no_claim() -> None:
+    assert _veto_decision(False, None, None, _cfg()) is None
+
+
+def test_trusted_buyer_is_exempt() -> None:
+    assert _veto_decision(True, "NL", "Europe/Amsterdam", _cfg()) is None
+
+
+def test_tor_and_unknown_sentinels_veto() -> None:
+    # T1/XX are never in a home list; they fall out of the same comparison.
+    assert _veto_decision(False, "T1", None, _cfg()) == VETO_FOREIGN_COUNTRY
+    assert _veto_decision(False, "XX", None, _cfg()) == VETO_FOREIGN_COUNTRY
+
+
+def test_empty_home_list_and_kill_switch_disable() -> None:
+    assert _veto_decision(False, "NL", None, _cfg(home_countries="")) is None
+    assert _veto_decision(False, "NL", "Europe/Kiev", _cfg(veto=False)) is None
+
+
+# ---------- precharge veto: _is_trusted_buyer / precharge_veto wrapper ----------
+
+
+async def test_is_trusted_buyer_is_false_for_a_guest_without_touching_the_db() -> None:
+    # `user_id is None` is decided before any query — an object with no
+    # `.execute` at all still has to work, which is the point being proven.
+    assert await _is_trusted_buyer(cast("Any", object()), None) is False
+
+
+async def test_precharge_veto_returns_none_for_wallet_topups_without_touching_the_db() -> None:
+    # The purpose gate runs before the savepoint and before any query — an
+    # object with no `.begin_nested`/`.execute` at all still has to work.
+    order = cast(
+        "Any",
+        SimpleNamespace(
+            id="0192aaaa-bbbb-cccc-dddd-eeeeffff0010",
+            purpose="wallet_topup",
+            user_id=None,
+        ),
+    )
+    assert await precharge_veto(cast("Any", object()), order, settings=_cfg()) is None
+
+
+async def test_precharge_veto_fails_open_when_the_db_explodes() -> None:
+    order = cast(
+        "Any",
+        SimpleNamespace(
+            id="0192aaaa-bbbb-cccc-dddd-eeeeffff0011",
+            purpose="catalog",
+            user_id=None,
+        ),
+    )
+    reason = await precharge_veto(cast("Any", _ExplodingDB()), order, settings=_cfg())
+    assert reason is None
 
 
 # ---------- hold_for_review's detail payload ----------

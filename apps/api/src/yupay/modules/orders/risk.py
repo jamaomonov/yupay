@@ -15,6 +15,14 @@ home markets, but only for guests on cash-equivalent brands.
 Nothing here blocks a sale. Payment already happened; the only question is
 whether a human looks before the goods leave, and holding is reversible in one
 click while an issued game code is not.
+
+``precharge_veto`` (ADR-0063) is the one exception: it runs *before* the
+charge, at the acquirers' own pre-charge stage, and can refuse the payment
+outright for a guest or fresh account whose evidence puts them outside the
+storefront's home countries/timezones. Deliberately brand-agnostic, unlike
+rule 5 above, and built on a pure decision core (``_veto_decision``) so its
+two enforcement points (the acquirer stage, and order creation) can never
+drift from each other — see that function's docstring for the actual rule.
 """
 
 from __future__ import annotations
@@ -26,7 +34,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Text, bindparam, or_, select, text
+from sqlalchemy import Text, bindparam, func, or_, select, text
 from sqlalchemy.dialects.postgresql import ARRAY
 
 from yupay.core.clock import now
@@ -75,6 +83,16 @@ REASON_SHARED_IDENTITY = "identity_shared_across_buyers"
 #: which is why it is the last rule to fire and only fires alongside the
 #: other two conditions.
 REASON_GEO_MISMATCH = "guest_liquid_brand_foreign_timezone"
+
+#: `order_evidence.ip_country` (Cloudflare's edge-resolved country) is present
+#: and outside `risk_home_countries` for a guest or fresh account. Refused
+#: before the charge — see `precharge_veto`, ADR-0063.
+VETO_FOREIGN_COUNTRY = "precharge_foreign_country"
+
+#: Same refusal, from the weaker fallback signal: no `ip_country` on the
+#: evidence row (header missing, or pre-toggle order), but the browser's own
+#: reported timezone is outside `risk_home_timezones`.
+VETO_FOREIGN_TIMEZONE = "precharge_foreign_timezone"
 
 
 #: reason -> (alert title, what the operator should do). Kept beside the
@@ -565,6 +583,139 @@ async def review_reason(
     return _geo_reason(geo.is_guest, geo.brand_slugs, geo.timezone, cfg)
 
 
+def _veto_decision(
+    is_trusted: bool,
+    country: str | None,
+    timezone: str | None,
+    cfg: Settings,
+) -> str | None:
+    """Pure decision core for the pre-charge veto. See ADR-0063.
+
+    Both enforcement points call this with their own inputs (the acquirer
+    stage from the stored evidence row, order creation from the live
+    request) so they can never drift from each other.
+
+    Country beats timezone when both are present: the country is
+    Cloudflare's own read of the request's network path
+    (``order_evidence.ip_country``); the timezone is whatever the browser
+    self-reports. A VPN into a home country with a foreign clock is real,
+    but it is the post-payment hold's (ADR-0062) job to notice, not a
+    pre-charge refusal on a guess.
+
+    Args:
+        is_trusted: Whether the order's buyer already has a delivered order
+            — see ``_is_trusted_buyer``. Exempt from every check below: a
+            fresh account earns nothing (registration costs a carder thirty
+            seconds), but a proven customer travelling abroad is not treated
+            as one.
+        country: ``order_evidence.ip_country`` (or the live ``cf-ipcountry``
+            header at the creation enforcement point). ``None`` when the
+            header was absent or no evidence row exists.
+        timezone: The evidence/client-hint timezone. Consulted only when
+            ``country`` is absent — the fallback, not a second opinion once
+            the network has already spoken.
+        cfg: Settings, so callers can pin a config without mutating the
+            process-wide singleton.
+
+    Returns:
+        ``VETO_FOREIGN_COUNTRY``, ``VETO_FOREIGN_TIMEZONE``, or ``None``.
+    """
+    if not cfg.risk_precharge_veto:
+        return None
+    if is_trusted:
+        return None
+    if country is not None:
+        home_countries = _csv(cfg.risk_home_countries)
+        if home_countries and country.strip().lower() not in home_countries:
+            return VETO_FOREIGN_COUNTRY
+        return None
+    if timezone is not None:
+        home_timezones = _csv(cfg.risk_home_timezones)
+        if home_timezones and timezone.strip().lower() not in home_timezones:
+            return VETO_FOREIGN_TIMEZONE
+    return None
+
+
+async def _is_trusted_buyer(db: AsyncSession, user_id: str | None) -> bool:
+    """Whether ``user_id`` has ever had an order actually delivered.
+
+    A guest (``user_id is None``) is never trusted — there is no history to
+    check. A signed-in user with zero delivered orders is treated the same
+    as a guest: registration costs a carder nothing, so the exemption is
+    earned by something real having shipped, not merely by having an
+    account.
+
+    Args:
+        db: Session.
+        user_id: The order's ``user_id``, or ``None`` for a guest checkout.
+
+    Returns:
+        ``True`` when at least one of this user's orders has
+        ``status="delivered"``.
+    """
+    if user_id is None:
+        return False
+    count = (
+        await db.execute(
+            select(func.count())
+            .select_from(Order)
+            .where(Order.user_id == user_id, Order.status == "delivered")
+        )
+    ).scalar_one()
+    return count >= 1
+
+
+async def precharge_veto(
+    db: AsyncSession,
+    order: Order,
+    *,
+    settings: Settings | None = None,
+) -> str | None:
+    """Whether this order's charge must be refused before it happens. ADR-0063.
+
+    Fed from the order's stored ``order_evidence`` row — the acquirer
+    pre-charge stages (Payme ``CheckPerformTransaction``, Click ``Prepare``,
+    Uzum ``Check``) call this directly; order creation instead calls
+    ``_veto_decision`` straight, fed from the live request, since refusing
+    creation rolls the transaction back and leaves no evidence row to read.
+
+    Never raises: a broken veto must fail open to "charge allowed", the same
+    way ``_gather`` fails open to "no window claim" — the post-payment hold
+    (ADR-0062) is the net beneath both. Runs inside ``db.begin_nested()`` for
+    the same reason ``_gather`` does: a DB-level abort here must not poison
+    the caller's transaction.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        order: The order under evaluation. Only ``.id``, ``.purpose`` and
+            ``.user_id`` are read.
+        settings: Override for tests; defaults to the process settings.
+
+    Returns:
+        ``VETO_FOREIGN_COUNTRY``, ``VETO_FOREIGN_TIMEZONE``, or ``None``.
+    """
+    if order.purpose != "catalog":
+        return None
+    cfg = settings or get_settings()
+    try:
+        async with db.begin_nested():
+            row = (
+                await db.execute(
+                    select(OrderEvidence.ip_country, OrderEvidence.client_hints).where(
+                        OrderEvidence.order_id == order.id
+                    )
+                )
+            ).first()
+            country = row[0] if row else None
+            raw_tz = row[1].get("timezone") if row else None
+            timezone = raw_tz if isinstance(raw_tz, str) else None
+            trusted = await _is_trusted_buyer(db, order.user_id)
+    except Exception:
+        log.exception("orders.risk.veto_failed", order_id=order.id)
+        return None
+    return _veto_decision(trusted, country, timezone, cfg)
+
+
 async def hold_for_review(
     db: AsyncSession,
     *,
@@ -633,8 +784,11 @@ __all__ = [
     "REASON_ROLLING_SUM",
     "REASON_SHARED_IDENTITY",
     "REASON_VELOCITY",
+    "VETO_FOREIGN_COUNTRY",
+    "VETO_FOREIGN_TIMEZONE",
     "GeoContext",
     "WindowOrder",
     "hold_for_review",
+    "precharge_veto",
     "review_reason",
 ]

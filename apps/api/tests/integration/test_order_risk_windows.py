@@ -28,7 +28,14 @@ from yupay.modules.catalog.models import (
 )
 from yupay.modules.evidence.models import OrderEvidence
 from yupay.modules.orders.models import Order, OrderItem
-from yupay.modules.orders.risk import REASON_GEO_MISMATCH, REASON_ROLLING_SUM, review_reason
+from yupay.modules.orders.risk import (
+    REASON_GEO_MISMATCH,
+    REASON_ROLLING_SUM,
+    VETO_FOREIGN_COUNTRY,
+    _is_trusted_buyer,
+    precharge_veto,
+    review_reason,
+)
 from yupay.modules.users.models import User
 
 pytestmark = pytest.mark.asyncio
@@ -559,3 +566,154 @@ async def test_device_identity_does_not_link_when_disabled(db_session: AsyncSess
     await db_session.commit()
 
     assert await review_reason(db_session, current) is None
+
+
+# ---------- precharge veto (Task 2, ADR-0063) ----------
+
+
+async def test_is_trusted_buyer_counts_only_delivered_orders_for_that_user(
+    db_session: AsyncSession,
+) -> None:
+    """`_is_trusted_buyer`'s predicate — `Order.status == "delivered"` scoped
+    to `Order.user_id` — cannot be honestly expressed by a pure fake session:
+    `unit/test_order_risk.py` only proves the `user_id is None` short-circuit,
+    which never reaches the database. This exercises the real SQL: a
+    paid-but-undelivered order for the user under test does not count, a
+    delivered order for a *different* user does not count, and only a
+    delivered order belonging to the user under test flips the result.
+    """
+    moment = now()
+    user_id = new_id()
+    other_user_id = new_id()
+    db_session.add_all(
+        [
+            User(id=user_id, email="trusted-check@example.test"),
+            User(id=other_user_id, email="other-trusted-check@example.test"),
+        ]
+    )
+    await db_session.flush()
+
+    def _order(*, user: str, status: str) -> Order:
+        return Order(
+            id=new_id(),
+            user_id=user,
+            status=status,
+            currency="USD",
+            total_usd=Decimal("5"),
+            total_charged=Decimal("5"),
+            purpose="catalog",
+            expires_at=moment + timedelta(days=1),
+            paid_at=moment,
+            delivered_at=moment if status == "delivered" else None,
+        )
+
+    db_session.add(_order(user=user_id, status="paid"))
+    db_session.add(_order(user=other_user_id, status="delivered"))
+    await db_session.commit()
+
+    assert await _is_trusted_buyer(db_session, user_id) is False
+
+    db_session.add(_order(user=user_id, status="delivered"))
+    await db_session.commit()
+
+    assert await _is_trusted_buyer(db_session, user_id) is True
+
+
+async def _catalog_order_with_country(
+    db: AsyncSession,
+    *,
+    user_id: str | None,
+    guest_email: str | None,
+    country: str,
+) -> Order:
+    """A catalog order awaiting payment, with an evidence row carrying
+    `ip_country` — the shape `precharge_veto` reads at the acquirers'
+    pre-charge stage."""
+    moment = now()
+    order = Order(
+        id=new_id(),
+        user_id=user_id,
+        guest_email=guest_email,
+        status="pending_payment",
+        currency="USD",
+        total_usd=Decimal("5"),
+        total_charged=Decimal("5"),
+        purpose="catalog",
+        expires_at=moment + timedelta(days=1),
+    )
+    db.add(order)
+    await db.flush()
+    db.add(
+        OrderEvidence(
+            order_id=order.id,
+            ip_country=country,
+            purge_after=moment + timedelta(days=180),
+        )
+    )
+    await db.flush()
+    return order
+
+
+async def test_precharge_veto_refuses_a_foreign_guest(db_session: AsyncSession) -> None:
+    order = await _catalog_order_with_country(
+        db_session,
+        user_id=None,
+        guest_email="veto-guest@example.test",
+        country="NL",
+    )
+    await db_session.commit()
+
+    assert await precharge_veto(db_session, order) == VETO_FOREIGN_COUNTRY
+
+
+async def test_precharge_veto_exempts_a_trusted_buyer_with_the_same_foreign_country(
+    db_session: AsyncSession,
+) -> None:
+    """Same foreign `ip_country` as the case above — only the buyer's
+    delivered-order history differs."""
+    moment = now()
+    trusted_user_id = new_id()
+    db_session.add(User(id=trusted_user_id, email="veto-trusted@example.test"))
+    await db_session.flush()
+    db_session.add(
+        Order(
+            id=new_id(),
+            user_id=trusted_user_id,
+            status="delivered",
+            currency="USD",
+            total_usd=Decimal("5"),
+            total_charged=Decimal("5"),
+            purpose="catalog",
+            expires_at=moment + timedelta(days=1),
+            delivered_at=moment,
+        )
+    )
+    await db_session.commit()
+
+    order = await _catalog_order_with_country(
+        db_session,
+        user_id=trusted_user_id,
+        guest_email=None,
+        country="NL",
+    )
+    await db_session.commit()
+
+    assert await precharge_veto(db_session, order) is None
+
+
+async def test_precharge_veto_passes_with_no_evidence_row(db_session: AsyncSession) -> None:
+    """No evidence row means no claim — the veto never fires blind."""
+    order = Order(
+        id=new_id(),
+        guest_email="veto-no-evidence@example.test",
+        status="pending_payment",
+        currency="USD",
+        total_usd=Decimal("5"),
+        total_charged=Decimal("5"),
+        purpose="catalog",
+        expires_at=now() + timedelta(days=1),
+    )
+    db_session.add(order)
+    await db_session.commit()
+
+    assert await precharge_veto(db_session, order) is None

@@ -331,6 +331,40 @@ class Settings(BaseSettings):
         ),
     )
 
+    # --- Pre-charge geo veto (ADR-0063) ---
+    risk_precharge_veto: bool = Field(
+        default=True,
+        description=(
+            "Whether `precharge_veto` refuses a charge before it happens for a guest "
+            "or fresh account (no delivered order yet) whose evidence puts them "
+            "outside `risk_home_countries`/`risk_home_timezones`. A trusted buyer — "
+            "signed in with at least one delivered order — always passes regardless: "
+            "registration costs a carder nothing, so the exemption is earned, not "
+            "assumed. `False` disables the refusal entirely; the post-payment window "
+            "rules above are unaffected and keep running."
+        ),
+    )
+    risk_home_countries: str = Field(
+        default="UZ",
+        description=(
+            "Comma-separated ISO-3166-1 alpha-2 codes treated as the storefront's "
+            "home market for the pre-charge veto, matched against "
+            "`order_evidence.ip_country` — Cloudflare's edge-resolved country, not a "
+            "self-report. CSV for the same reason as `risk_liquid_brands`. Empty "
+            "disables only the country check; the timezone fallback still needs "
+            "`risk_home_timezones`."
+        ),
+    )
+    risk_hold_auto_refund_hours: int = Field(
+        default=24,
+        description=(
+            "How long an order held by `hold_for_review` may sit before a sweep "
+            "refunds it automatically instead of waiting on an operator indefinitely "
+            "— the hold alert already tells them to act; this is the deadline behind "
+            "it. Set to 0 to disable and return to an indefinite hold."
+        ),
+    )
+
     # --- Stuck-order watchdog (ADR-0046) ---
     stuck_order_alert_after_minutes: int = Field(
         default=15,
