@@ -137,7 +137,7 @@
   "topup.processing": "{game} is processing",
   "topup.tryAgain": "Try again",
   "topup.checkoutFailed": "Couldn't place the order",
-  "topup.errAbroad": "Paying from abroad is available to buyers with order history. Sign in to your account — or contact support if this looks wrong.",
+  "topup.errAbroad": "Paying from abroad isn't available to new buyers yet. If you've ordered from YuPay before, sign in to that account — or contact support if this looks wrong.",
   "topup.autoCredit": "Automatic crediting",
   "topup.autoIssue": "Automatic delivery",
   "topup.tgBannerBody": "Payment is tied to your Telegram account. The catalog is browsable — orders can only be placed from the bot.",

@@ -88,6 +88,17 @@ satisfied with individually.
 - **Refund** — `POST /admin/payments/{id}/refund` from the payments block on
   the order page. Full procedure, including the wallet-funded case:
   [wallet-refunds.md](./wallet-refunds.md).
+- **Fail, without a refund** — `POST /admin/orders/{id}/fail`
+  (`orders.service.mark_order_failed_admin`) closes a held order as
+  `failed`. **It moves no money.** For a held order specifically: **refund
+  first, then fail — never fail a held order bare.** A bare fail moves the
+  order off `status="paid"`, which is exactly what the auto-refund sweep
+  below watches, so failing it first silently pulls the order out of that
+  net: the payment stays `succeeded`, the customer's money stays taken, and
+  nothing will ever prompt anyone to return it again. If you meant "this
+  order is dead, close it out," that requires an explicit refund — `fail` is
+  for closing an order the money question is already settled on (e.g. after
+  a manual refund, or one that was never actually paid).
 - **Wallet top-ups**: the risk gate never holds a wallet top-up in the first
   place (the call site skips the gate — a wallet credit is reversible, the
   irreversible-goods risk this gate exists for doesn't apply). If you land
@@ -114,12 +125,18 @@ refunding it by hand.
 - **Every hold reason is in scope**, including `REASON_PAID_AFTER_EXPIRY` —
   if no human decided within the window, returning the money is the safe
   default for both fraud and simple confusion.
-- **Released orders are never touched.** Release
+- **Released orders are never touched — checked twice.** Release
   (`fulfillment.start_for_order`) is the only thing that ever moves a paid
-  order off `status="paid"` for a reason other than a refund, so an order
-  the sweep would otherwise pick up is already out of scope the moment an
-  operator releases it — even though the old `order.held_for_review` event
-  is still on its timeline.
+  order off `status="paid"` for the ordinary "an operator acted" case, so a
+  released order is already out of scope of the batch this sweep selects —
+  even though the old `order.held_for_review` event is still on its
+  timeline. The sweep also re-checks under a row lock immediately before
+  each refund, not only when the batch was first selected: up to 50 orders
+  are processed one at a time with real gateway calls in between, long
+  enough for a release (or the fulfilment saga delivering) to land while an
+  order is still waiting its turn — that re-check is what makes the
+  difference between "was eligible a minute ago" and "is eligible right
+  now," and it is the actual guarantee, not the batch selection alone.
 - **The refund is the same one you'd trigger by hand**:
   `payments.service.refund_admin`, full amount, actor stamped
   `admin:auto-refund-sweep` (grep-able as the sweep's own signature, not a
@@ -138,6 +155,21 @@ refunding it by hand.
 - **Turning it off**: `RISK_HOLD_AUTO_REFUND_HOURS=0` returns to today's
   indefinite hold (a fire-drill lever, not a normal operating mode — a
   disabled sweep means held orders are 100% on operator attention again).
+- **Known gaps — neither is a bug, both need an operator to close them by
+  hand:**
+  - A held order closed with a bare **fail** (`POST /admin/orders/{id}/fail`,
+    no refund) drops out of this sweep's selection with its payment still
+    `succeeded` — the money sits there until someone explicitly refunds it.
+    See the caution under **Release vs. refund** above:
+    **refund a held order before failing it, never fail it bare.**
+  - A held order an admin **partially refunds** by hand stays `status="paid"`
+    (a partial refund never walks the order FSM) with its payment
+    `partially_refunded`. The sweep's selection excludes it explicitly so it
+    is never re-attempted and never fails `refund_admin`'s "already
+    refunded" guard every 15 minutes — but that also means the sweep will
+    never finish the job for you. Finishing a partially refunded hold (a
+    second partial, or accepting the remainder is retained) is a manual
+    call.
 
 ## The pre-charge veto (ADR-0063)
 

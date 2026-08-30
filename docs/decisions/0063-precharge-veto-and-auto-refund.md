@@ -85,10 +85,16 @@ can't tell which signal to spoof around next.
 still-`paid`, still-held catalog order once `risk_hold_auto_refund_hours`
 (default 24) passes with nobody releasing or refunding it by hand, through
 the existing `payments.service.refund_admin` chokepoint — no new money
-primitive, no new FSM state. `status="paid"` alone is enough to mean "not
-released": `fulfillment.start_for_order` is the only thing that ever moves a
-paid order off `paid` for a reason other than a refund, and it always moves
-it to `fulfilling`. Every hold reason is in scope, including
+primitive, no new FSM state. Selection re-verifies eligibility under a row
+lock immediately before refunding, not only at batch-selection time: up to
+50 orders are processed sequentially with real gateway calls in between,
+long enough for an operator to release the order or the fulfilment saga to
+deliver it while this order is still waiting its turn in the batch, so a
+stale snapshot alone is not enough to trust. `status="paid"` rules out a
+_released_ order (`fulfillment.start_for_order` is the only thing that moves
+a paid order to `fulfilling`) and a wallet top-up, but — see the Negative
+consequences below — it does not by itself mean nobody has acted on the
+hold. Every hold reason otherwise stays in scope, including
 `REASON_PAID_AFTER_EXPIRY` — if no human decided within a day, returning the
 money is the safe default for both fraud and simple confusion.
 
@@ -134,6 +140,20 @@ money already taken.
   synthetic id, not a real operator — deliberately, to keep it grep-able in
   the audit trail without adding a system-actor variant to
   `payments.service.refund_admin` for one caller.
+- **Known gaps in the auto-refund net, left open on purpose rather than
+  chased by broadening the selection query:** an admin can close a held
+  order via `orders.service.mark_order_failed_admin` (`POST
+/admin/orders/{id}/fail`) without moving any money — that walks the order
+  to `failed`, which drops it out of this sweep's `status="paid"` selection
+  with its payment still `succeeded`, so the money sits until someone
+  explicitly refunds it (the runbook now tells operators to refund, then
+  fail — never a bare fail on a held order). Separately, a held order an
+  admin partially refunds by hand stays `paid` (partial refunds never walk
+  the order FSM) with its payment `partially_refunded`; the sweep's
+  selection excludes it explicitly (a succeeded-payment filter) rather than
+  re-attempting and failing `refund_admin`'s "already refunded" guard every
+  tick — finishing that order the rest of the way is the operator's to do
+  manually, the sweep will not touch it again.
 
 ## Validation
 
@@ -145,7 +165,10 @@ repeated retries; a trusted buyer passes) and order creation's 422 path.
 Integration tests for the sweep: a hold past the deadline is refunded through
 the mock gateway with an audit event; a fresh hold, a released order, and a
 wallet top-up are all left alone; a second tick is a no-op (no second refund
-call); `0` disables the sweep entirely. Operationally: the rollout ships the
+call); `0` disables the sweep entirely; an order released between batch
+selection and its own turn to process is skipped, not refunded (the
+row-locked re-check); a partially refunded hold is never selected, so it
+never turns into a standing per-tick error. Operationally: the rollout ships the
 veto on the timezone fallback only (country is `NULL` everywhere until the
 Cloudflare **IP Geolocation** toggle is flipped), so there is no day-one
 cliff — see the runbook's rollout section.

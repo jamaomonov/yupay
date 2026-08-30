@@ -27,7 +27,7 @@ from yupay.core.clock import now
 from yupay.core.config import Settings, get_settings
 from yupay.core.ids import new_id
 from yupay.modules.orders.models import Order, OrderEvent
-from yupay.modules.orders.risk import auto_refund_expired_holds
+from yupay.modules.orders.risk import _auto_refund_one, auto_refund_expired_holds
 from yupay.modules.payments.models import Payment, PaymentAttempt
 
 pytestmark = pytest.mark.asyncio
@@ -160,7 +160,13 @@ async def test_a_held_order_with_no_succeeded_payment_is_skipped(
 ) -> None:
     """Defensive branch: a `paid` order has a succeeded payment by
     definition, but if that invariant is ever broken, the sweep must log and
-    move on rather than crash the batch."""
+    move on rather than crash the batch.
+
+    Checked two ways: the selection query's succeeded-payment filter keeps
+    such an order out of the batch entirely (the outer assertion below), and
+    `_auto_refund_one` itself never crashes if it is ever handed one anyway
+    (a defence-in-depth check, exercised directly since the query-level
+    filter would otherwise make this branch unreachable from here)."""
     moment = now()
     order = Order(
         id=new_id(),
@@ -188,6 +194,7 @@ async def test_a_held_order_with_no_succeeded_payment_is_skipped(
     await db_session.commit()
 
     assert await auto_refund_expired_holds(db_session, settings=_cfg(hours=24)) == 0
+    assert await _auto_refund_one(db_session, order.id, hours=24) is False
 
 
 async def test_a_failing_refund_is_skipped_and_the_sweep_continues(
@@ -240,3 +247,60 @@ async def test_a_failing_refund_is_skipped_and_the_sweep_continues(
     await db_session.refresh(healthy_order)
     assert failing_order.status == "paid", "the failing order is untouched, not half-refunded"
     assert healthy_order.status == "refunded"
+
+
+async def test_a_released_order_is_skipped_not_refunded(db_session: AsyncSession) -> None:
+    """CRITICAL regression: the batch snapshots order ids and then processes
+    up to `limit` of them sequentially with real gateway calls in between --
+    long enough for an operator to release the order (or the fulfilment saga
+    to deliver it) in that gap. `_auto_refund_one` re-verifies `status ==
+    "paid"` under `SELECT ... FOR UPDATE` immediately before refunding, so a
+    status that already moved off `paid` by the time this runs must be a
+    clean skip, never a refund on top of goods the customer already has.
+
+    Exercises `_auto_refund_one` directly (as the review that flagged this
+    suggested) rather than trying to interpose mid-`auto_refund_expired_holds`
+    loop: flipping `order.status` to `fulfilling` here stands in for "the
+    release happened after the batch was snapshotted, before this order's
+    turn" without needing to hook the loop itself.
+    """
+    order, payment = await _held_order(db_session, held_hours_ago=25, tag="released-race")
+    order.status = "fulfilling"
+    await db_session.commit()
+
+    refunded = await _auto_refund_one(db_session, order.id, hours=24)
+
+    assert refunded is False
+    await db_session.refresh(payment)
+    await db_session.refresh(order)
+    assert payment.status == "succeeded", "money must stay put -- the order was already released"
+    assert order.status == "fulfilling"
+    kinds = [
+        e.kind
+        for e in (
+            await db_session.execute(select(OrderEvent).where(OrderEvent.order_id == order.id))
+        ).scalars()
+    ]
+    assert "order.auto_refund_hold_expired" not in kinds
+
+
+async def test_a_partially_refunded_hold_is_never_reselected(db_session: AsyncSession) -> None:
+    """IMPORTANT regression: an admin partial refund leaves the order
+    `paid` (partial refunds don't walk the FSM, see
+    `payments.service._apply_refund_reversal`) with its payment
+    `partially_refunded`. Without the succeeded-payment filter in the
+    selection query, this order would be re-selected and fail
+    `refund_admin`'s "already refunded" guard every 15 minutes forever. The
+    selection query excludes it outright -- the sweep must select nothing
+    and never even attempt (and therefore never `log.exception`) a refund on
+    it. Finishing it is the operator's job, per the runbook."""
+    order, payment = await _held_order(db_session, held_hours_ago=25, tag="partial")
+    payment.status = "partially_refunded"
+    await db_session.commit()
+
+    assert await auto_refund_expired_holds(db_session, settings=_cfg(hours=24)) == 0
+
+    await db_session.refresh(order)
+    await db_session.refresh(payment)
+    assert order.status == "paid", "a partial refund never walks the order FSM"
+    assert payment.status == "partially_refunded"

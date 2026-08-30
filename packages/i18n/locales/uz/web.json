@@ -223,7 +223,7 @@
     "paymentNone": "To'lov usullari mavjud emas",
     "pay": "Toʻlash",
     "payError": "Buyurtma yaratilmadi. Qayta urinib koʻring yoki qoʻllab-quvvatlashga yozing.",
-    "errAbroad": "Chet eldan to'lash buyurtmalar tarixi bo'lgan xaridorlar uchun ochiq. Akkauntingizga kiring — xato bo'lsa, qo'llab-quvvatlashga yozing.",
+    "errAbroad": "Chet eldan to'lash hozircha yangi xaridorlar uchun mavjud emas. YuPayda avval buyurtma qilgan bo'lsangiz — o'sha akkauntga kiring, xato bo'lsa qo'llab-quvvatlashga yozing.",
     "successTitle": "Buyurtma yaratildi",
     "successNote": "Toʻlovni yakunlash uchun davom eting. Chek emailingizga keladi.",
     "goToPay": "Toʻlovga oʻtish",

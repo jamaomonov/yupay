@@ -891,6 +891,18 @@ async def hold_for_review(
 async def _auto_refund_one(db: AsyncSession, order_id: str, *, hours: int) -> bool:
     """Refund one order held past its deadline. Returns whether it refunded.
 
+    Re-verifies eligibility under a row lock immediately before refunding.
+    The batch this is called from snapshots up to ``limit`` order ids and
+    then processes them one at a time with real gateway calls in between —
+    long enough for an operator to release the order
+    (``fulfillment.start_for_order``) or mark it failed
+    (``orders.service.mark_order_failed_admin``) in the gap between the
+    snapshot and this order's turn. ``SELECT ... FOR UPDATE`` serializes this
+    check against any concurrent writer of the same row; a status that has
+    already left ``paid`` by the time this runs is not a failure, just a sign
+    this order is no longer this function's to touch — logged and skipped,
+    the same as "no payment found" below, never treated as an error.
+
     Looks up the order's succeeded payment itself (the sweep has no route
     handler to hand it one) and refunds it in full through
     :func:`payments.service.refund_admin` — the same admin refund chokepoint,
@@ -910,11 +922,24 @@ async def _auto_refund_one(db: AsyncSession, order_id: str, *, hours: int) -> bo
     the next order — this function's job is only to keep its own commit
     boundary tight, not to swallow the error.
     """
+    # Locked here, and never re-locked before `refund_admin` reads the same
+    # row again inside `_apply_refund_reversal` — same transaction, same
+    # identity map, so that later read is a cheap re-fetch of an already-held
+    # lock, not a second lock acquisition to deadlock against.
+    order = (
+        await db.execute(select(Order).where(Order.id == order_id).with_for_update())
+    ).scalar_one_or_none()
+    if order is None or order.status != "paid":
+        log.info(
+            "orders.risk.auto_refund_no_longer_eligible",
+            order_id=order_id,
+            status=order.status if order is not None else None,
+        )
+        return False
+
     payment_row = (
         await db.execute(
-            select(Payment.id, Order.total_charged, Order.currency)
-            .select_from(Payment)
-            .join(Order, Order.id == Payment.order_id)
+            select(Payment.id)
             .where(Payment.order_id == order_id, Payment.status == "succeeded")
             .order_by(Payment.succeeded_at.desc())
             .limit(1)
@@ -926,7 +951,8 @@ async def _auto_refund_one(db: AsyncSession, order_id: str, *, hours: int) -> bo
         # that takes the rest of the batch down with it.
         log.error("orders.risk.auto_refund_no_payment", order_id=order_id)
         return False
-    payment_id, total_charged, currency = payment_row
+    payment_id = payment_row[0]
+    total_charged, currency = order.total_charged, order.currency
 
     from yupay.modules.payments import service as payments_svc
 
@@ -984,16 +1010,26 @@ async def auto_refund_expired_holds(
     missed is a hold that sits forever. ``risk_hold_auto_refund_hours`` is
     that deadline.
 
-    Selection is ``status="paid"`` + ``purpose="catalog"`` + an
-    ``order.held_for_review`` event older than the deadline. ``status="paid"``
-    alone is enough to mean "not yet released": ``start_for_order`` is the
-    only thing that ever moves a paid order off ``paid`` for a reason other
-    than a refund, and it always moves it to ``fulfilling`` — so a released
-    order is never re-selected here, and neither is a wallet top-up
-    (``purpose != "catalog"``, no fulfilment to release in the first place).
-    Every hold reason is in scope, including
-    ``REASON_PAID_AFTER_EXPIRY`` — the spec calls for the same safe default
-    regardless of which rule put the order on hold.
+    Selection is ``status="paid"`` + ``purpose="catalog"`` + a succeeded
+    payment + an ``order.held_for_review`` event older than the deadline.
+    ``status="paid"`` rules out a *released* order (``start_for_order`` moves
+    it to ``fulfilling``) and a wallet top-up (``purpose != "catalog"``,
+    nothing to release in the first place), but it does **not** by itself
+    mean "nobody has acted on this hold": ``orders.service.
+    mark_order_failed_admin`` can also move a held order off ``paid`` (to
+    ``failed``) without moving any money. An order closed that way drops out
+    of this sweep's selection with its payment still ``succeeded`` — a known
+    gap, documented (not closed) in ADR-0063 and the runbook, because closing
+    it here would mean the sweep guessing at money an operator explicitly
+    chose not to move yet. The succeeded-payment filter exists for a
+    narrower reason: a *partially* refunded hold leaves its payment
+    ``partially_refunded``, not ``succeeded``, so without this filter the
+    same order would be re-selected and fail every 15 minutes forever
+    (``refund_admin`` rejects a second refund of a non-``succeeded``
+    payment) — filtering it out here is what keeps that a clean no-op
+    instead of a standing error. Every hold reason otherwise stays in scope,
+    including ``REASON_PAID_AFTER_EXPIRY`` — the spec calls for the same
+    safe default regardless of which rule put the order on hold.
 
     Runs in ``limit``-sized batches so one call bounds its own work; the
     scheduler wrapper (``yupay_scheduler.jobs.held_order_refund``) loops this
@@ -1027,6 +1063,10 @@ async def auto_refund_expired_holds(
         .where(OrderEvent.kind == "order.held_for_review", OrderEvent.created_at <= cutoff)
         .distinct()
     )
+    # A partially refunded hold's payment is `partially_refunded`, not
+    # `succeeded` — excluded here so it never re-enters the batch and fails
+    # `refund_admin`'s "already refunded" guard on every tick forever.
+    succeeded_payment_order_ids = select(Payment.order_id).where(Payment.status == "succeeded")
     order_ids = (
         (
             await db.execute(
@@ -1035,6 +1075,7 @@ async def auto_refund_expired_holds(
                     Order.status == "paid",
                     Order.purpose == "catalog",
                     Order.id.in_(held_order_ids),
+                    Order.id.in_(succeeded_payment_order_ids),
                 )
                 .order_by(Order.paid_at)
                 .limit(limit)
