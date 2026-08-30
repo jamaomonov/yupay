@@ -83,20 +83,36 @@ can't tell which signal to spoof around next.
 **A deadline, not an indefinite hold.** `auto_refund_expired_holds`
 (`apps/scheduler`'s `held_order_refund` job, every 15 minutes) refunds a
 still-`paid`, still-held catalog order once `risk_hold_auto_refund_hours`
-(default 24) passes with nobody releasing or refunding it by hand, through
-the existing `payments.service.refund_admin` chokepoint — no new money
-primitive, no new FSM state. Selection re-verifies eligibility under a row
-lock immediately before refunding, not only at batch-selection time: up to
-50 orders are processed sequentially with real gateway calls in between,
-long enough for an operator to release the order or the fulfilment saga to
-deliver it while this order is still waiting its turn in the batch, so a
-stale snapshot alone is not enough to trust. `status="paid"` rules out a
-_released_ order (`fulfillment.start_for_order` is the only thing that moves
-a paid order to `fulfilling`) and a wallet top-up, but — see the Negative
-consequences below — it does not by itself mean nobody has acted on the
-hold. Every hold reason otherwise stays in scope, including
-`REASON_PAID_AFTER_EXPIRY` — if no human decided within a day, returning the
-money is the safe default for both fraud and simple confusion.
+passes with nobody releasing or refunding it by hand — through the existing
+`payments.service.refund_admin` chokepoint where the gateway supports a
+merchant-initiated refund (`octo`, `wallet`), no new money primitive, no new
+FSM state. `risk_hold_auto_refund_hours` ships **disarmed** (`0`): flipping
+it straight to a live default would auto-refund whatever backlog of held
+orders already existed the day this shipped, before an operator ever looked
+at it. An operator triages that backlog by hand once, then arms the sweep
+with `RISK_HOLD_AUTO_REFUND_HOURS=24` (the same value the sweep runs at
+everywhere the veto is live). For Payme, Click, and Uzum — the three UZ
+acquirers, all cabinet-refund-only, see `docs/architecture/module-map.md` —
+`refund_admin` would just fail every tick with no operator ever told, so the
+sweep does not attempt it: it writes one `order.auto_refund_escalated` event
+and sends one admin alert instead, pointing the operator at the acquirer's
+own cabinet, then excludes that order from every later selection so it is
+never re-alerted or re-attempted. The refund itself is made in the cabinet
+and reconciles back automatically via the acquirer's own cancel/reverse
+callback — see the runbook's escalation section for the exact steps.
+Selection re-verifies eligibility under a row lock immediately before
+refunding, not only at batch-selection time: up to 50 orders are processed
+sequentially with real gateway calls in between, long enough for an operator
+to release the order or the fulfilment saga to deliver it while this order
+is still waiting its turn in the batch, so a stale snapshot alone is not
+enough to trust. `status="paid"` rules out a _released_ order
+(`fulfillment.start_for_order` is the only thing that moves a paid order to
+`fulfilling`) and a wallet top-up, but — see the Negative consequences below
+— it does not by itself mean nobody has acted on the hold. Every hold reason
+otherwise stays in scope, including `REASON_PAID_AFTER_EXPIRY` — if no human
+decided within the deadline, returning the money (or escalating it to a
+human to return from the cabinet) is the safe default for both fraud and
+simple confusion.
 
 Option 3 was rejected: it would refuse the measured diaspora segment right
 alongside the carding run, trading a fraud problem for a churn problem.
@@ -113,9 +129,11 @@ money already taken.
   by both the pre-charge veto and read the same way the post-payment hold's
   geo rule already reasons about signed-in buyers — no second definition of
   "trusted" to drift out of sync.
-- A held order now has a hard upper bound on how long it can sit: 24 hours,
-  tunable per environment, `0` to fall back to today's indefinite hold for a
-  fire-drill week.
+- A held order now has a hard upper bound on how long it can sit once an
+  operator arms the sweep (`RISK_HOLD_AUTO_REFUND_HOURS=24` is the value
+  every environment arms it at), tunable per environment, `0` to disarm
+  again — the ships-off default, and also the fire-drill lever for a week
+  where auto-refund needs to pause.
 - Both veto call sites are decision-core-identical (`_veto_decision`); a
   fourth acquirer or a second creation path only has to supply inputs, never
   reimplement the rule.
@@ -127,9 +145,10 @@ money already taken.
   `RISK_HOME_COUNTRIES=UZ,RU` plus `Europe/Moscow` in the timezone list —
   one env change, not a deploy).
 - The auto-refund sweep hands an operator a deadline they didn't have
-  before: a hold landing Friday night refunds Saturday night whether or not
-  anyone was on shift. `RISK_HOLD_AUTO_REFUND_HOURS` is the release valve if
-  that cadence doesn't match staffing.
+  before: a hold landing Friday night refunds Saturday night (or, on a
+  cabinet-only provider, pages the operator to refund it Saturday night)
+  whether or not anyone was on shift. `RISK_HOLD_AUTO_REFUND_HOURS` is the
+  release valve if that cadence doesn't match staffing.
 - Point B trusts the `cf-ipcountry` header, which only means anything behind
   Cloudflare — the edge strips it from any request that didn't arrive via
   Cloudflare, but a misconfigured origin bypass would silently degrade the
@@ -163,11 +182,14 @@ fallback, no evidence). Integration tests exercise all three acquirer
 pre-charge stages against a real evidence row (one `order_events` row across
 repeated retries; a trusted buyer passes) and order creation's 422 path.
 Integration tests for the sweep: a hold past the deadline is refunded through
-the mock gateway with an audit event; a fresh hold, a released order, and a
-wallet top-up are all left alone; a second tick is a no-op (no second refund
-call); `0` disables the sweep entirely; an order released between batch
-selection and its own turn to process is skipped, not refunded (the
-row-locked re-check); a partially refunded hold is never selected, so it
+the mock/wallet/octo gateways with an audit event; a hold on a cabinet-refund-
+only provider (Payme/Click/Uzum) is escalated instead — one
+`order.auto_refund_escalated` event, one admin alert, no `refund_admin`
+attempt, and never re-escalated on a later tick; a fresh hold, a released
+order, and a wallet top-up are all left alone; a second tick is a no-op (no
+second refund call); `0` disables the sweep entirely; an order released
+between batch selection and its own turn to process is skipped, not refunded
+(the row-locked re-check); a partially refunded hold is never selected, so it
 never turns into a standing per-tick error. Operationally: the rollout ships the
 veto on the timezone fallback only (country is `NULL` everywhere until the
 Cloudflare **IP Geolocation** toggle is flipped), so there is no day-one

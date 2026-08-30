@@ -117,14 +117,21 @@ deciding what actually triggered the hold.
 
 A held order used to wait on an operator with no deadline. It no longer
 does: `orders.risk.auto_refund_expired_holds`, run by `apps/scheduler`'s
-`held_order_refund` job every 15 minutes, refunds a still-`paid` order once
-it has been sitting on `order.held_for_review` for
-`RISK_HOLD_AUTO_REFUND_HOURS` (default **24**) with nobody releasing or
-refunding it by hand.
+`held_order_refund` job every 15 minutes, refunds — or, for a cabinet-only
+acquirer, escalates (see below) — a still-`paid` order once it has been
+sitting on `order.held_for_review` for `RISK_HOLD_AUTO_REFUND_HOURS` with
+nobody releasing or refunding it by hand.
+
+**Ships disarmed (`RISK_HOLD_AUTO_REFUND_HOURS=0`).** Arming it straight to
+a live value on day one would auto-refund whatever backlog of held orders
+already existed before an operator ever looked at them. Triage that backlog
+by hand first, then arm the sweep with `RISK_HOLD_AUTO_REFUND_HOURS=24` —
+the value every environment runs it at once armed.
 
 - **Every hold reason is in scope**, including `REASON_PAID_AFTER_EXPIRY` —
-  if no human decided within the window, returning the money is the safe
-  default for both fraud and simple confusion.
+  if no human decided within the window, returning the money (or escalating
+  it to a human to return, on a cabinet-only provider) is the safe default
+  for both fraud and simple confusion.
 - **Released orders are never touched — checked twice.** Release
   (`fulfillment.start_for_order`) is the only thing that ever moves a paid
   order off `status="paid"` for the ordinary "an operator acted" case, so a
@@ -137,7 +144,8 @@ refunding it by hand.
   order is still waiting its turn — that re-check is what makes the
   difference between "was eligible a minute ago" and "is eligible right
   now," and it is the actual guarantee, not the batch selection alone.
-- **The refund is the same one you'd trigger by hand**:
+- **Where the gateway supports a merchant-initiated refund** (`octo`,
+  `wallet`), **the refund is the same one you'd trigger by hand**:
   `payments.service.refund_admin`, full amount, actor stamped
   `admin:auto-refund-sweep` (grep-able as the sweep's own signature, not a
   real operator), reason `auto_refund_hold_expired`. It posts the same
@@ -152,9 +160,11 @@ refunding it by hand.
   deadline expired, and that this is the configured policy, not an
   incident. Distinct from the original hold alert; expect both on an order
   nobody acted on in time.
-- **Turning it off**: `RISK_HOLD_AUTO_REFUND_HOURS=0` returns to today's
-  indefinite hold (a fire-drill lever, not a normal operating mode — a
-  disabled sweep means held orders are 100% on operator attention again).
+- **Payme, Click, and Uzum never reach `refund_admin` at all** — see
+  "Cabinet-only acquirers: escalation instead of auto-refund" below.
+- **Turning it off**: `RISK_HOLD_AUTO_REFUND_HOURS=0` returns to an
+  indefinite hold (also the ships-off default — see above; a disabled sweep
+  means held orders are 100% on operator attention again).
 - **Known gaps — neither is a bug, both need an operator to close them by
   hand:**
   - A held order closed with a bare **fail** (`POST /admin/orders/{id}/fail`,
@@ -170,6 +180,41 @@ refunding it by hand.
     never finish the job for you. Finishing a partially refunded hold (a
     second partial, or accepting the remainder is retained) is a manual
     call.
+
+### Cabinet-only acquirers: escalation instead of auto-refund
+
+Payme, Click, and Uzum have **no merchant-initiated refund call** — their
+`payments.gateways.{payme,click,uzum}.py` adapters unconditionally raise on
+`refund()` (see `docs/architecture/module-map.md` and
+[payme-troubleshooting.md](./payme-troubleshooting.md#the-refund-via-cabinet-flow)
+for the shape of it). Sending one of these through `refund_admin` would not
+be a retryable failure — it would fail identically on every one of the
+sweep's 15-minute ticks forever, with nobody ever told. The sweep checks the
+payment's provider **before** attempting a refund, so a held order paid
+through one of these three is never handed to `refund_admin` at all:
+
+1. It writes one `order.auto_refund_escalated` event (`provider`,
+   `deadline_hours` — no PII) and sends **one** admin alert — «деньги надо
+   вернуть из кабинета эквайера», the order id, amount + currency, and the
+   provider.
+2. The next tick's selection query excludes any order that already has an
+   `order.auto_refund_escalated` event, so it is never re-alerted and never
+   re-attempted.
+
+**Operator steps for an escalated order:**
+
+1. Open the transaction in the acquirer's own cabinet (Payme / Click /
+   Uzum) and issue the refund there — the acquirer, not YuPay, is the only
+   place that can actually move this money back.
+2. The acquirer calls back on its own SLA (Payme's `CancelTransaction`, the
+   Click/Uzum equivalents) and we auto-reconcile: the order flips to
+   `refunded` on its own, through the same `_apply_refund_reversal` core an
+   admin refund uses.
+3. Confirm via `GET /api/v1/admin/payments/{payment_id}` that the payment
+   actually reached `refunded`. If the acquirer's own cabinet refund is
+   refused (e.g. Payme `-31007`, Uzum `10017` — a partially delivered
+   order), that acquirer's own troubleshooting doc has the manual
+   reconciliation steps.
 
 ## The pre-charge veto (ADR-0063)
 
@@ -222,20 +267,20 @@ Every rule ships with its own switch so a false-positive storm is stoppable
 by env change and restart, not by revert and redeploy. Requires an API
 restart to take effect (`Settings` is read at process start).
 
-| Variable                      | Default                                  | Disables                                                                                                                 |
-| ----------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `MANUAL_REVIEW_THRESHOLD_USD` | `40` (currently `12` in prod, see below) | `0`                                                                                                                      |
-| `RISK_SUM_24H_USD`            | `25`                                     | `RISK_SUM_24H_USD=0`                                                                                                     |
-| `RISK_SUM_7D_USD`             | `60`                                     | `RISK_SUM_7D_USD=0`                                                                                                      |
-| `RISK_VELOCITY_24H`           | `5`                                      | `RISK_VELOCITY_24H=0`                                                                                                    |
-| `RISK_DISTINCT_BUYERS_7D`     | `3`                                      | `RISK_DISTINCT_BUYERS_7D=0`                                                                                              |
-| `RISK_LIQUID_BRANDS`          | `roblox,telegram-stars,steam`            | `RISK_LIQUID_BRANDS=` (empty)                                                                                            |
-| `RISK_HOME_TIMEZONES`         | `Asia/Tashkent,Asia/Samarkand`           | `RISK_HOME_TIMEZONES=` (empty)                                                                                           |
-| `RISK_JITTER`                 | `true`                                   | `RISK_JITTER=false` (flat threshold, no band)                                                                            |
-| `RISK_DEVICE_IDENTITY`        | `false`                                  | already off by default; opt in with `RISK_DEVICE_IDENTITY=true`                                                          |
-| `RISK_PRECHARGE_VETO`         | `true`                                   | `RISK_PRECHARGE_VETO=false`                                                                                              |
-| `RISK_HOME_COUNTRIES`         | `UZ`                                     | `RISK_HOME_COUNTRIES=` (empty disables the country check only — the timezone fallback still needs `RISK_HOME_TIMEZONES`) |
-| `RISK_HOLD_AUTO_REFUND_HOURS` | `24`                                     | `RISK_HOLD_AUTO_REFUND_HOURS=0` (back to an indefinite hold)                                                             |
+| Variable                      | Default                                  | Disables                                                                                                                                           |
+| ----------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MANUAL_REVIEW_THRESHOLD_USD` | `40` (currently `12` in prod, see below) | `0`                                                                                                                                                |
+| `RISK_SUM_24H_USD`            | `25`                                     | `RISK_SUM_24H_USD=0`                                                                                                                               |
+| `RISK_SUM_7D_USD`             | `60`                                     | `RISK_SUM_7D_USD=0`                                                                                                                                |
+| `RISK_VELOCITY_24H`           | `5`                                      | `RISK_VELOCITY_24H=0`                                                                                                                              |
+| `RISK_DISTINCT_BUYERS_7D`     | `3`                                      | `RISK_DISTINCT_BUYERS_7D=0`                                                                                                                        |
+| `RISK_LIQUID_BRANDS`          | `roblox,telegram-stars,steam`            | `RISK_LIQUID_BRANDS=` (empty)                                                                                                                      |
+| `RISK_HOME_TIMEZONES`         | `Asia/Tashkent,Asia/Samarkand`           | `RISK_HOME_TIMEZONES=` (empty)                                                                                                                     |
+| `RISK_JITTER`                 | `true`                                   | `RISK_JITTER=false` (flat threshold, no band)                                                                                                      |
+| `RISK_DEVICE_IDENTITY`        | `false`                                  | already off by default; opt in with `RISK_DEVICE_IDENTITY=true`                                                                                    |
+| `RISK_PRECHARGE_VETO`         | `true`                                   | `RISK_PRECHARGE_VETO=false`                                                                                                                        |
+| `RISK_HOME_COUNTRIES`         | `UZ`                                     | `RISK_HOME_COUNTRIES=` (empty disables the veto whenever a country is known — the timezone fallback applies only to orders with no country at all) |
+| `RISK_HOLD_AUTO_REFUND_HOURS` | `0` (ships disarmed; arm with `24`)      | `RISK_HOLD_AUTO_REFUND_HOURS=0` (already the default — an indefinite hold)                                                                         |
 
 `RISK_DEVICE_IDENTITY` ships **off**, not on with the other three window
 keys (buyer, IP, delivery target). Measured on production: this audience's

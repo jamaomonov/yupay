@@ -351,17 +351,24 @@ class Settings(BaseSettings):
             "home market for the pre-charge veto, matched against "
             "`order_evidence.ip_country` — Cloudflare's edge-resolved country, not a "
             "self-report. CSV for the same reason as `risk_liquid_brands`. Empty "
-            "disables only the country check; the timezone fallback still needs "
-            "`risk_home_timezones`."
+            "disables the veto whenever a country is known: `_veto_decision` returns "
+            "as soon as `country is not None`, so a known country never falls through "
+            "to the timezone check. The timezone fallback applies only to orders with "
+            "no country at all (`ip_country` is `NULL` — header missing, or a "
+            "pre-toggle order)."
         ),
     )
     risk_hold_auto_refund_hours: int = Field(
-        default=24,
+        default=0,
         description=(
             "How long an order held by `hold_for_review` may sit before a sweep "
             "refunds it automatically instead of waiting on an operator indefinitely "
             "— the hold alert already tells them to act; this is the deadline behind "
-            "it. Set to 0 to disable and return to an indefinite hold."
+            "it. Ships off, like `risk_device_identity`: turning this on day one would "
+            "auto-refund the standing held backlog nobody has triaged yet. An operator "
+            "works through that backlog first, then arms the sweep with "
+            "`RISK_HOLD_AUTO_REFUND_HOURS=24`. `0` also doubles as the fire-drill lever "
+            "to fall back to an indefinite hold later."
         ),
     )
 

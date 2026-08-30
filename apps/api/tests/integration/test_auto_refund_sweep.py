@@ -49,17 +49,25 @@ async def _held_order(
     total_usd: str = "5",
     held_hours_ago: float,
     tag: str,
+    provider: str = "mock",
+    user_id: str | None = None,
 ) -> tuple[Order, Payment]:
     """A minimal order + succeeded payment + `order.held_for_review` event,
     the latter dated `held_hours_ago` in the past.
 
     No SKUs or order items: `auto_refund_expired_holds` never reads them, and
     `refund_admin`'s fulfilment-cancel step tolerates an order with no tasks.
+
+    ``user_id``, when given, makes this a signed-in order (`guest_email` is
+    then left unset -- `ck_orders_user_xor_guest` requires exactly one) --
+    needed for a `provider="wallet"` order, since `_book_refund_ledger`
+    refuses to refund a wallet payment with no user to credit.
     """
     moment = now()
     order = Order(
         id=new_id(),
-        guest_email=f"sweep-{tag}@example.test",
+        user_id=user_id,
+        guest_email=None if user_id else f"sweep-{tag}@example.test",
         status=status,
         currency="USD",
         total_usd=Decimal(total_usd),
@@ -73,7 +81,7 @@ async def _held_order(
     payment = Payment(
         id=new_id(),
         order_id=order.id,
-        provider="mock",
+        provider=provider,
         status="succeeded",
         amount=Decimal(total_usd),
         currency="USD",
@@ -304,3 +312,91 @@ async def test_a_partially_refunded_hold_is_never_reselected(db_session: AsyncSe
     await db_session.refresh(payment)
     assert order.status == "paid", "a partial refund never walks the order FSM"
     assert payment.status == "partially_refunded"
+
+
+# ---------- C1: cabinet-refund-only acquirers are escalated, not refunded ----------
+
+
+async def test_a_held_order_on_a_cabinet_only_provider_is_escalated_not_refunded(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CRITICAL regression: Payme, Click, and Uzum have no merchant-initiated
+    refund API -- their gateways' `refund()` unconditionally raises. Before
+    the capability check, `_auto_refund_one` would call `refund_admin` for
+    every one of these anyway, hitting the same wall on every 15-minute tick
+    forever with no operator ever told. This order must instead be escalated
+    exactly once across two sweep runs: one `order.auto_refund_escalated`
+    event, no `refund_admin` attempt (asserted two ways below: no
+    `PaymentAttempt` row, and `refund_admin` itself raises if called at all
+    -- an extra guard against the capability check silently regressing), and
+    the second tick must not re-escalate."""
+    from yupay.modules.payments import service as payments_svc
+
+    order, payment = await _held_order(
+        db_session, held_hours_ago=25, tag="payme-escalate", provider="payme"
+    )
+
+    async def _must_not_be_called(*args: object, **kwargs: object) -> None:
+        raise AssertionError("refund_admin must never be called for a cabinet-only provider")
+
+    monkeypatch.setattr(payments_svc, "refund_admin", _must_not_be_called)
+
+    first = await auto_refund_expired_holds(db_session, settings=_cfg(hours=24))
+    second = await auto_refund_expired_holds(db_session, settings=_cfg(hours=24))
+
+    # Neither tick refunded anything -- no money moved for this order.
+    assert first == 0
+    assert second == 0
+    await db_session.refresh(order)
+    await db_session.refresh(payment)
+    assert order.status == "paid", "escalation moves no money and no FSM state"
+    assert payment.status == "succeeded"
+
+    refund_attempts = (
+        await db_session.execute(
+            select(func.count())
+            .select_from(PaymentAttempt)
+            .where(PaymentAttempt.payment_id == payment.id)
+        )
+    ).scalar_one()
+    assert refund_attempts == 0, "refund_admin was never reached, so it never recorded an attempt"
+
+    kinds = [
+        e.kind
+        for e in (
+            await db_session.execute(select(OrderEvent).where(OrderEvent.order_id == order.id))
+        ).scalars()
+    ]
+    assert kinds.count("order.auto_refund_escalated") == 1, "escalated exactly once, not per tick"
+    assert "order.auto_refund_hold_expired" not in kinds
+
+
+async def test_octo_wallet_and_mock_providers_still_auto_refund(
+    db_session: AsyncSession,
+) -> None:
+    """The mirror case: `_AUTO_REFUNDABLE_PROVIDERS` must not accidentally
+    shrink to exclude a provider that genuinely supports a refund -- octo and
+    wallet are the two real ones in production; mock is the dev/test
+    gateway every other test in this file already relies on implicitly."""
+    from yupay.modules.users.models import User
+
+    wallet_user_id = new_id()
+    db_session.add(User(id=wallet_user_id, roles=[]))
+    await db_session.flush()
+
+    for provider, tag, user_id in (
+        ("octo", "octo-refund", None),
+        ("wallet", "wallet-refund", wallet_user_id),
+        ("mock", "mock-refund", None),
+    ):
+        order, payment = await _held_order(
+            db_session, held_hours_ago=25, tag=tag, provider=provider, user_id=user_id
+        )
+
+        n = await auto_refund_expired_holds(db_session, settings=_cfg(hours=24))
+
+        assert n == 1, f"{provider} must still auto-refund as today"
+        await db_session.refresh(order)
+        await db_session.refresh(payment)
+        assert payment.status == "refunded"
+        assert order.status == "refunded"

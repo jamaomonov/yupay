@@ -28,7 +28,10 @@ A hold from any rule above is reversible by an operator, but not indefinitely:
 ``auto_refund_expired_holds`` (also ADR-0063) refunds a still-held order once
 ``risk_hold_auto_refund_hours`` has passed with nobody releasing or refunding
 it by hand, so the alert this module already sends has an actual deadline
-behind it instead of trusting it to be seen.
+behind it instead of trusting it to be seen — where the gateway actually
+supports a merchant-initiated refund (``_AUTO_REFUNDABLE_PROVIDERS``). Payme,
+Click, and Uzum do not, so a held order paid through one of those is
+escalated to a human once instead of being retried forever.
 """
 
 from __future__ import annotations
@@ -107,6 +110,19 @@ VETO_FOREIGN_TIMEZONE = "precharge_foreign_timezone"
 #: Written on both the `refund_admin` call (as its `reason`) and the
 #: `order_events` audit row this module adds alongside it.
 REASON_AUTO_REFUND_HOLD_EXPIRED = "auto_refund_hold_expired"
+
+#: Providers whose gateway `refund()` actually moves money, checked BEFORE
+#: `_auto_refund_one` calls `payments.service.refund_admin` rather than
+#: discovered by a raised `PaymentGatewayError` on every 15-minute tick.
+#: Payme, Click (both `click` and `click_miniapp`), and Uzum — the three UZ
+#: acquirers — are cabinet-refund-only: their `refund()` unconditionally
+#: raises (see `gateways/{payme,click,uzum}.py` and
+#: `docs/architecture/module-map.md`), so sending one of them through
+#: `refund_admin` is not a retryable failure, it is a standing error forever
+#: with no operator ever told. `mock` is the dev/test gateway, whose
+#: `refund()` genuinely succeeds (`gateways/mock.py`) — real orders never
+#: carry it in production.
+_AUTO_REFUNDABLE_PROVIDERS = frozenset({"octo", "wallet", "mock"})
 
 
 #: reason -> (alert title, what the operator should do). Kept beside the
@@ -898,6 +914,65 @@ async def hold_for_review(
         )
 
 
+async def _escalate_auto_refund(
+    db: AsyncSession, order: Order, *, provider: str, hours: int
+) -> None:
+    """Hand a held order's refund to a human instead of retrying it forever.
+
+    ``provider`` is not in ``_AUTO_REFUNDABLE_PROVIDERS`` — Payme, Click, or
+    Uzum (or any other future cabinet-refund-only gateway) — so
+    ``payments.service.refund_admin`` would call ``gw.refund()``, which
+    unconditionally raises (see ``gateways/{payme,click,uzum}.py``). Without
+    this branch, ``_auto_refund_one`` would commit a fresh error
+    ``payment_attempts`` row on this order every 15 minutes, forever, with no
+    operator ever told.
+
+    Escalates exactly once per order: the caller's selection query
+    (``auto_refund_expired_holds``) excludes any order that already has an
+    ``order.auto_refund_escalated`` event, so this never runs twice for the
+    same order.
+
+    Args:
+        db: Active session, holding the order's row lock (see
+            ``_auto_refund_one``).
+        order: The held order. Only ``.id``, ``.total_charged``,
+            ``.currency`` are read.
+        provider: The payment's provider slug, for the event payload and the
+            alert — never PII, just an acquirer name.
+        hours: The configured deadline, echoed in the event payload and alert
+            text the same way ``_auto_refund_one`` does for an actual refund.
+    """
+    db.add(
+        OrderEvent(
+            id=new_id(),
+            order_id=order.id,
+            kind="order.auto_refund_escalated",
+            payload={"provider": provider, "deadline_hours": hours},
+            actor="risk",
+        )
+    )
+    log.warning("orders.auto_refund_escalated", order_id=order.id, provider=provider)
+    # Commit NOW, same reasoning as the refund path below: this event is the
+    # one durable signal that keeps the next tick from re-escalating.
+    await db.commit()
+
+    from yupay.modules.notifications.alerts import send_admin_alert
+
+    charged = f"{order.total_charged:,.0f}".replace(",", " ")
+    with contextlib.suppress(Exception):
+        await send_admin_alert(
+            "<b>⚠️ Автовозврат недоступен — деньги надо вернуть из кабинета эквайера</b>\n"
+            f"Заказ: <code>{order.id[:8]}…</code>\n"
+            f"Сумма: <b>{charged} {order.currency}</b>\n"
+            f"Провайдер: <b>{provider}</b>\n"
+            f"<i>{provider} не поддерживает возврат через API. Зайди в кабинет "
+            f"{provider}, найди платёж по заказу и оформи возврат там — "
+            "коллбэк от эквайера сам переведёт заказ в refunded. Подробности: "
+            "runbook order-held-for-review.md.</i>",
+            kind="order_auto_refund_escalated",
+        )
+
+
 async def _auto_refund_one(db: AsyncSession, order_id: str, *, hours: int) -> bool:
     """Refund one order held past its deadline. Returns whether it refunded.
 
@@ -911,15 +986,22 @@ async def _auto_refund_one(db: AsyncSession, order_id: str, *, hours: int) -> bo
     check against any concurrent writer of the same row; a status that has
     already left ``paid`` by the time this runs is not a failure, just a sign
     this order is no longer this function's to touch — logged and skipped,
-    the same as "no payment found" below, never treated as an error.
+    the same as "no payment found" below, never treated as an error. Both
+    skip paths roll the transaction back before returning: the ``FOR UPDATE``
+    lock taken above otherwise survives, unreleased, all the way to the
+    tick's session close.
 
     Looks up the order's succeeded payment itself (the sweep has no route
-    handler to hand it one) and refunds it in full through
-    :func:`payments.service.refund_admin` — the same admin refund chokepoint,
-    keyed by a deterministic ``auto-refund:<order_id>`` idempotency key rather
-    than a fresh one per tick, which is what makes a crashed-and-rerun tick
-    safe: a retried call with the same key replays ``refund_admin``'s own
-    result instead of hitting the gateway twice.
+    handler to hand it one). When that payment's provider actually supports a
+    merchant-initiated refund (``_AUTO_REFUNDABLE_PROVIDERS``), refunds it in
+    full through :func:`payments.service.refund_admin` — the same admin
+    refund chokepoint, keyed by a deterministic ``auto-refund:<order_id>``
+    idempotency key rather than a fresh one per tick, which is what makes a
+    crashed-and-rerun tick safe: a retried call with the same key replays
+    ``refund_admin``'s own result instead of hitting the gateway twice.
+    Otherwise (Payme, Click, Uzum — cabinet-refund-only) hands the order to
+    :func:`_escalate_auto_refund` instead of ever calling ``refund_admin``,
+    which would just fail.
 
     Commits immediately on success — this order's refund, ledger posting, and
     audit event land as one durable unit before the caller moves on to the
@@ -945,11 +1027,12 @@ async def _auto_refund_one(db: AsyncSession, order_id: str, *, hours: int) -> bo
             order_id=order_id,
             status=order.status if order is not None else None,
         )
+        await db.rollback()
         return False
 
     payment_row = (
         await db.execute(
-            select(Payment.id)
+            select(Payment.id, Payment.provider)
             .where(Payment.order_id == order_id, Payment.status == "succeeded")
             .order_by(Payment.succeeded_at.desc())
             .limit(1)
@@ -960,8 +1043,14 @@ async def _auto_refund_one(db: AsyncSession, order_id: str, *, hours: int) -> bo
         # definition — but a broken invariant here must be loud, not a crash
         # that takes the rest of the batch down with it.
         log.error("orders.risk.auto_refund_no_payment", order_id=order_id)
+        await db.rollback()
         return False
-    payment_id = payment_row[0]
+    payment_id, provider = payment_row
+
+    if provider not in _AUTO_REFUNDABLE_PROVIDERS:
+        await _escalate_auto_refund(db, order, provider=provider, hours=hours)
+        return False
+
     total_charged, currency = order.total_charged, order.currency
 
     from yupay.modules.payments import service as payments_svc
@@ -1010,7 +1099,7 @@ async def auto_refund_expired_holds(
     settings: Settings | None = None,
     limit: int = 50,
 ) -> int:
-    """Refund every held order whose deadline has passed. ADR-0063.
+    """Refund or escalate every held order whose deadline has passed. ADR-0063.
 
     ``hold_for_review`` (rules 1-5, ADR-0047/0062) leaves a paid catalog
     order on hold indefinitely until an operator releases it (starts
@@ -1018,28 +1107,36 @@ async def auto_refund_expired_holds(
     ``fulfillment.start_for_order``) or refunds it by hand. Nothing enforced
     a deadline on that decision before this function: an alert that is
     missed is a hold that sits forever. ``risk_hold_auto_refund_hours`` is
-    that deadline.
+    that deadline. "Refund" is only literal for a provider in
+    ``_AUTO_REFUNDABLE_PROVIDERS``; a held order paid through Payme, Click, or
+    Uzum is escalated to a human instead (``_escalate_auto_refund``) — see
+    that function and ``_auto_refund_one``.
 
     Selection is ``status="paid"`` + ``purpose="catalog"`` + a succeeded
-    payment + an ``order.held_for_review`` event older than the deadline.
-    ``status="paid"`` rules out a *released* order (``start_for_order`` moves
-    it to ``fulfilling``) and a wallet top-up (``purpose != "catalog"``,
-    nothing to release in the first place), but it does **not** by itself
-    mean "nobody has acted on this hold": ``orders.service.
-    mark_order_failed_admin`` can also move a held order off ``paid`` (to
-    ``failed``) without moving any money. An order closed that way drops out
-    of this sweep's selection with its payment still ``succeeded`` — a known
-    gap, documented (not closed) in ADR-0063 and the runbook, because closing
-    it here would mean the sweep guessing at money an operator explicitly
-    chose not to move yet. The succeeded-payment filter exists for a
-    narrower reason: a *partially* refunded hold leaves its payment
-    ``partially_refunded``, not ``succeeded``, so without this filter the
-    same order would be re-selected and fail every 15 minutes forever
-    (``refund_admin`` rejects a second refund of a non-``succeeded``
-    payment) — filtering it out here is what keeps that a clean no-op
-    instead of a standing error. Every hold reason otherwise stays in scope,
-    including ``REASON_PAID_AFTER_EXPIRY`` — the spec calls for the same
-    safe default regardless of which rule put the order on hold.
+    payment + an ``order.held_for_review`` event older than the deadline +
+    no ``order.auto_refund_escalated`` event yet. ``status="paid"`` rules out
+    a *released* order (``start_for_order`` moves it to ``fulfilling``) and a
+    wallet top-up (``purpose != "catalog"``, nothing to release in the first
+    place), but it does **not** by itself mean "nobody has acted on this
+    hold": ``orders.service.mark_order_failed_admin`` can also move a held
+    order off ``paid`` (to ``failed``) without moving any money. An order
+    closed that way drops out of this sweep's selection with its payment
+    still ``succeeded`` — a known gap, documented (not closed) in ADR-0063
+    and the runbook, because closing it here would mean the sweep guessing at
+    money an operator explicitly chose not to move yet. The succeeded-payment
+    filter exists for a narrower reason: a *partially* refunded hold leaves
+    its payment ``partially_refunded``, not ``succeeded``, so without this
+    filter the same order would be re-selected and fail every 15 minutes
+    forever (``refund_admin`` rejects a second refund of a non-``succeeded``
+    payment) — filtering it out here is what keeps that a clean no-op instead
+    of a standing error. The escalated-event exclusion exists for the same
+    shape of reason on the cabinet-only path: without it, an already-
+    escalated order would be re-selected, re-alerted, and get a second
+    ``order.auto_refund_escalated`` row every 15 minutes forever, even though
+    ``refund_admin`` is never actually called for it. Every hold reason
+    otherwise stays in scope, including ``REASON_PAID_AFTER_EXPIRY`` — the
+    spec calls for the same safe default regardless of which rule put the
+    order on hold.
 
     Runs in ``limit``-sized batches so one call bounds its own work; the
     scheduler wrapper (``yupay_scheduler.jobs.held_order_refund``) loops this
@@ -1053,14 +1150,16 @@ async def auto_refund_expired_holds(
     aren't run against an aborted transaction.
 
     Args:
-        db: Active session. Each successfully refunded order commits its own
-            work (see ``_auto_refund_one``); the caller does not need to
-            commit around this call.
+        db: Active session. Each successfully refunded or escalated order
+            commits its own work (see ``_auto_refund_one``,
+            ``_escalate_auto_refund``); the caller does not need to commit
+            around this call.
         settings: Override for tests; defaults to the process settings.
-        limit: Maximum orders refunded in this call.
+        limit: Maximum orders processed in this call.
 
     Returns:
-        How many orders were refunded.
+        How many orders were actually refunded — escalated orders don't
+        count, since no money moved for them.
     """
     cfg = settings or get_settings()
     hours = cfg.risk_hold_auto_refund_hours
@@ -1077,6 +1176,12 @@ async def auto_refund_expired_holds(
     # `succeeded` — excluded here so it never re-enters the batch and fails
     # `refund_admin`'s "already refunded" guard on every tick forever.
     succeeded_payment_order_ids = select(Payment.order_id).where(Payment.status == "succeeded")
+    # Already escalated once (a cabinet-only provider, see
+    # `_escalate_auto_refund`) — excluded so a later tick neither re-alerts
+    # nor re-attempts it.
+    escalated_order_ids = select(OrderEvent.order_id).where(
+        OrderEvent.kind == "order.auto_refund_escalated"
+    )
     order_ids = (
         (
             await db.execute(
@@ -1086,6 +1191,7 @@ async def auto_refund_expired_holds(
                     Order.purpose == "catalog",
                     Order.id.in_(held_order_ids),
                     Order.id.in_(succeeded_payment_order_ids),
+                    Order.id.not_in(escalated_order_ids),
                 )
                 .order_by(Order.paid_at)
                 .limit(limit)
