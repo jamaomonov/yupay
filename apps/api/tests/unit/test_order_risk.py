@@ -9,13 +9,16 @@ from typing import Any, cast
 
 from yupay.core.config import Settings, get_settings
 from yupay.modules.orders.risk import (
+    REASON_GEO_MISMATCH,
     REASON_LARGE_AMOUNT,
     REASON_ROLLING_SUM,
+    REASON_SHARED_IDENTITY,
     REASON_VELOCITY,
     WindowOrder,
     _amount_reason,
     _csv,
     _effective_threshold,
+    _geo_reason,
     _window_reason,
 )
 
@@ -177,3 +180,49 @@ def test_csv_lowercases_trims_and_drops_empties() -> None:
         {"roblox", "telegram-stars", "steam"}
     )
     assert _csv("") == frozenset()
+
+
+# ---------- shared identity (rule 4) ----------
+
+
+def test_one_device_serving_three_buyers_is_held() -> None:
+    recent = [
+        _wo(60, "1", buyer="a@x.com", device="dd"),
+        _wo(90, "1", buyer="b@x.com", device="dd"),
+    ]
+    assert (
+        _window_reason(_wo(0, "1", buyer="c@x.com", device="dd"), recent, _cfg())
+        == REASON_SHARED_IDENTITY
+    )
+
+
+def test_one_buyer_on_two_devices_is_not_shared_identity() -> None:
+    # A person with a phone and a laptop is not a fraud ring.
+    recent = [
+        _wo(60, "1", buyer="a@x.com", device="d1"),
+        _wo(90, "1", buyer="a@x.com", device="d2"),
+    ]
+    assert _window_reason(_wo(0, "1", buyer="a@x.com", device="d3"), recent, _cfg()) is None
+
+
+# ---------- geo mismatch (rule 5) ----------
+
+
+def test_guest_liquid_brand_foreign_tz_is_held() -> None:
+    assert _geo_reason(True, frozenset({"roblox"}), "Europe/Kiev", _cfg()) == REASON_GEO_MISMATCH
+
+
+def test_signed_in_or_home_tz_or_illiquid_brand_passes() -> None:
+    cfg = _cfg()
+    assert _geo_reason(False, frozenset({"roblox"}), "Europe/Kiev", cfg) is None
+    assert _geo_reason(True, frozenset({"roblox"}), "Asia/Tashkent", cfg) is None
+    assert _geo_reason(True, frozenset({"free-fire"}), "Europe/Kiev", cfg) is None
+    assert _geo_reason(True, frozenset({"roblox"}), None, cfg) is None  # no tz = no claim
+    assert (
+        _geo_reason(True, frozenset({"free-fire", "roblox"}), "Europe/Kiev", cfg)
+        == REASON_GEO_MISMATCH
+    )  # any liquid item
+
+
+def test_empty_lists_disable_the_geo_rule() -> None:
+    assert _geo_reason(True, frozenset({"roblox"}), "Europe/Kiev", _cfg(liquid="", home="")) is None

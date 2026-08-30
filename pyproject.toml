@@ -85,8 +85,10 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # Tests legitimately use hardcoded "secrets", magic numbers, unused args (fixture
 # injection), PT019 (we like underscore-prefixed yielded fixtures), lazy imports
-# (to keep fixture import-time light), and i18n strings with Uzbek apostrophes (U+02BB).
-"**/tests/**" = ["S", "PLR2004", "ARG", "PT019", "PLC0415", "RUF001"]
+# (to keep fixture import-time light), i18n strings with Uzbek apostrophes (U+02BB),
+# and literal True/False when exercising a pure predicate's boolean parameters
+# (FBT003) — the whole point of the call is which branch that argument takes.
+"**/tests/**" = ["S", "PLR2004", "ARG", "PT019", "PLC0415", "RUF001", "FBT003"]
 "**/migrations/**" = ["E501", "I"]
 # Module-level lazy singletons are intentional in core; flagging `global` here is noise.
 "**/core/db.py" = ["PLW0603"]

@@ -16,9 +16,19 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.ids import new_id
+from yupay.modules.catalog.models import (
+    Brand,
+    BrandTranslation,
+    Category,
+    CategoryTranslation,
+    Product,
+    ProductTranslation,
+    Sku,
+)
 from yupay.modules.evidence.models import OrderEvidence
-from yupay.modules.orders.models import Order
-from yupay.modules.orders.risk import REASON_ROLLING_SUM, review_reason
+from yupay.modules.orders.models import Order, OrderItem
+from yupay.modules.orders.risk import REASON_GEO_MISMATCH, REASON_ROLLING_SUM, review_reason
+from yupay.modules.users.models import User
 
 pytestmark = pytest.mark.asyncio
 
@@ -122,3 +132,132 @@ async def test_a_control_order_on_a_different_ip_and_buyer_is_untouched(
     await db_session.commit()
 
     assert await review_reason(db_session, control) is None
+
+
+# ---------- geo mismatch (rule 5) ----------
+
+
+@pytest.fixture
+async def _liquid_sku(db_session: AsyncSession) -> str:
+    """A SKU under brand slug ``roblox`` — in the default `risk_liquid_brands`.
+
+    Real catalog rows, not a stub: the point of this integration test is
+    `_gather`'s brand join (order_items -> skus -> products -> brands), which
+    a `WindowOrder`-only unit test cannot exercise.
+    """
+    category = Category(
+        id=new_id(),
+        slug="risk-geo-cat",
+        sort_order=1,
+        active=True,
+        translations=[CategoryTranslation(locale="ru", name="Geo")],
+    )
+    brand = Brand(
+        id=new_id(),
+        category_id=category.id,
+        slug="roblox",
+        sort_order=1,
+        active=True,
+        translations=[BrandTranslation(locale="ru", name="Roblox")],
+    )
+    product = Product(
+        id=new_id(),
+        brand_id=brand.id,
+        slug="risk-geo-prod",
+        kind="top_up",
+        sort_order=1,
+        active=True,
+        required_fields=[],
+        translations=[ProductTranslation(locale="ru", name="Geo Prod")],
+    )
+    sku = Sku(
+        id=new_id(),
+        product_id=product.id,
+        sku_code="GEO-1",
+        denomination="1",
+        region="GLOBAL",
+        price_usd=Decimal("5.00"),
+        sort_order=1,
+        active=True,
+    )
+    db_session.add_all([category, brand, product, sku])
+    await db_session.commit()
+    return sku.id
+
+
+async def _paid_order_with_item(
+    db: AsyncSession,
+    *,
+    sku_id: str,
+    user_id: str | None,
+    guest_email: str | None,
+    timezone: str | None,
+) -> Order:
+    """A paid catalog order for one liquid-brand SKU, with an evidence row
+    reporting `timezone` (or none, when `timezone` is ``None``)."""
+    moment = now()
+    order = Order(
+        id=new_id(),
+        user_id=user_id,
+        guest_email=guest_email,
+        status="paid",
+        currency="USD",
+        total_usd=Decimal("5"),
+        total_charged=Decimal("5"),
+        purpose="catalog",
+        expires_at=moment + timedelta(days=1),
+        paid_at=moment,
+    )
+    db.add(order)
+    await db.flush()
+    db.add(
+        OrderItem(
+            id=new_id(),
+            order_id=order.id,
+            sku_id=sku_id,
+            qty=1,
+            unit_price_usd=Decimal("5"),
+        )
+    )
+    db.add(
+        OrderEvidence(
+            order_id=order.id,
+            client_hints={"timezone": timezone} if timezone else {},
+            purge_after=moment + timedelta(days=180),
+        )
+    )
+    await db.flush()
+    await db.commit()
+    return order
+
+
+async def test_a_guest_liquid_brand_foreign_tz_order_is_held(
+    db_session: AsyncSession, _liquid_sku: str
+) -> None:
+    order = await _paid_order_with_item(
+        db_session,
+        sku_id=_liquid_sku,
+        user_id=None,
+        guest_email="geo@example.test",
+        timezone="Europe/Kiev",
+    )
+
+    assert await review_reason(db_session, order) == REASON_GEO_MISMATCH
+
+
+async def test_the_same_order_signed_in_is_fulfilled(
+    db_session: AsyncSession, _liquid_sku: str
+) -> None:
+    """Same brand, same foreign timezone — only ``user_id`` differs."""
+    user_id = new_id()
+    db_session.add(User(id=user_id, email="signed-in@example.test"))
+    await db_session.flush()
+    order = await _paid_order_with_item(
+        db_session,
+        sku_id=_liquid_sku,
+        user_id=user_id,
+        guest_email=None,
+        timezone="Europe/Kiev",
+    )
+
+    assert await review_reason(db_session, order) is None

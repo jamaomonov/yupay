@@ -26,6 +26,7 @@ from yupay.core.config import Settings, get_settings
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.core.redis import get_redis
+from yupay.modules.catalog.models import Brand, Product, Sku
 from yupay.modules.evidence.models import OrderEvidence
 from yupay.modules.orders.models import Order, OrderEvent, OrderItem
 
@@ -53,6 +54,20 @@ REASON_ROLLING_SUM = "identity_rolling_sum_exceeded"
 #: regardless of amount.
 REASON_VELOCITY = "identity_velocity_exceeded"
 
+#: One IP or device paying for several distinct buyer identities within the
+#: trailing 7 days — reaches `risk_distinct_buyers_7d`. Matched narrowly (IP
+#: or device only, not buyer or delivery target) because those two are what a
+#: single physical actor cannot fake cheaply; buyer and target are exactly
+#: the things a resale ring rotates on purpose.
+REASON_SHARED_IDENTITY = "identity_shared_across_buyers"
+
+#: A guest checkout for a cash-equivalent brand (`risk_liquid_brands`) whose
+#: browser reports a timezone outside the storefront's home markets
+#: (`risk_home_timezones`). Weak on its own — a traveller is not a fraudster —
+#: which is why it is the last rule to fire and only fires alongside the
+#: other two conditions.
+REASON_GEO_MISMATCH = "guest_liquid_brand_foreign_timezone"
+
 
 #: reason -> (alert title, what the operator should do). Kept beside the
 #: reasons rather than inside ``hold_for_review`` so adding a rule without
@@ -68,6 +83,27 @@ HOLD_ALERT_TEXT: dict[str, tuple[str, str]] = {
         "Заказ уже был закрыт, когда пришли деньги. Выдача НЕ запущена — "
         "реши, выдавать или вернуть. Для пополнения кошелька: зачислить вручную "
         "или вернуть, см. runbook paid-after-expiry.",
+    ),
+    REASON_ROLLING_SUM: (
+        "🔍 Серия заказов — на проверке",
+        "Сумма связанных заказов за окно превысила лимит. Смотри всю серию по "
+        "покупателю/IP в админке, не только этот заказ: выдай или верни по каждому.",
+    ),
+    REASON_VELOCITY: (
+        "🔍 Слишком частые заказы — на проверке",
+        "Больше N оплаченных заказов одной личности за сутки. Проверь серию целиком.",
+    ),
+    REASON_SHARED_IDENTITY: (
+        "🔍 Один источник — разные покупатели",
+        "С одного IP/устройства платят несколько «разных» покупателей. Найди в "
+        "админке все заказы этой группы, прежде чем что-то выдавать: выпуск "
+        "одного заказа из связки обесценивает правило.",
+    ),
+    REASON_GEO_MISMATCH: (
+        "🔍 Гость из чужой таймзоны на ликвидном товаре",
+        "Roblox/Stars, гость, таймзона вне домашнего списка. Классический "
+        "профиль кардера — но им может оказаться и честный покупатель в "
+        "поездке: посмотри и реши.",
     ),
 }
 
@@ -106,6 +142,20 @@ class WindowOrder:
     ip: str | None
     device: str | None
     targets: frozenset[str]
+
+
+@dataclass(frozen=True)
+class GeoContext:
+    """What rule 5 (geo mismatch) needs about the current order alone.
+
+    Unlike ``WindowOrder`` this never looks at other orders — it is the
+    current order's own guest/signed-in status, which brands its items touch,
+    and its evidence row's reported timezone.
+    """
+
+    is_guest: bool
+    brand_slugs: frozenset[str]
+    timezone: str | None
 
 
 def _csv(value: str) -> frozenset[str]:
@@ -147,8 +197,20 @@ def _shares_key(a: WindowOrder, b: WindowOrder) -> bool:
     )
 
 
+def _shares_ip_or_device(a: WindowOrder, b: WindowOrder) -> bool:
+    """Same physical actor: IP or device, not buyer or delivery target.
+
+    Narrower than ``_shares_key`` on purpose — rule 4 asks "how many different
+    buyers used this one IP/device", and buyer or target would beg the
+    question: a resale ring's whole method is a different buyer identity (and
+    often a different delivery target) on every order.
+    """
+    return (a.ip is not None and a.ip == b.ip) or (a.device is not None and a.device == b.device)
+
+
 def _window_reason(current: WindowOrder, recent: list[WindowOrder], cfg: Settings) -> str | None:
-    """Rules 2-3: rolling sum and velocity across orders sharing an identity.
+    """Rules 2-4: rolling sum, velocity, and shared identity, across orders
+    sharing an identity.
 
     Pure — no clock reads. Every comparison is against ``current.paid_at``, not
     the wall clock, which is what makes this deterministic and testable without
@@ -174,11 +236,51 @@ def _window_reason(current: WindowOrder, recent: list[WindowOrder], cfg: Setting
         return REASON_ROLLING_SUM
     if cfg.risk_velocity_24h > 0 and len(linked24) >= cfg.risk_velocity_24h:
         return REASON_VELOCITY
+    if cfg.risk_distinct_buyers_7d > 0:
+        linked_by_ip_or_device = [r for r in linked7d if _shares_ip_or_device(current, r)]
+        buyers = {r.buyer for r in linked_by_ip_or_device if r.buyer is not None}
+        if current.buyer is not None:
+            buyers.add(current.buyer)
+        if len(buyers) >= cfg.risk_distinct_buyers_7d:
+            return REASON_SHARED_IDENTITY
     return None
 
 
-async def _gather(db: AsyncSession, order: Order) -> tuple[WindowOrder, list[WindowOrder]]:
-    """Assemble the current order's identity fingerprint and its recent paid siblings.
+def _geo_reason(
+    order_is_guest: bool,
+    item_brand_slugs: frozenset[str],
+    tz: str | None,
+    cfg: Settings,
+) -> str | None:
+    """Rule 5: a guest buying a liquid brand from outside the home timezones.
+
+    Weak evidence taken alone — a genuine customer travels — so it only fires
+    when all three conditions line up: not signed in, the order touches a
+    cash-equivalent brand, and the browser reported a timezone that is neither
+    unknown nor one of ours. An empty ``risk_liquid_brands`` or
+    ``risk_home_timezones`` disables the rule entirely rather than treating
+    "nothing configured" as "everything foreign".
+    """
+    if not order_is_guest:
+        return None
+    liquid = _csv(cfg.risk_liquid_brands)
+    if not liquid or not (item_brand_slugs & liquid):
+        return None
+    if tz is None:
+        return None
+    home = _csv(cfg.risk_home_timezones)
+    if not home:
+        return None
+    if tz.strip().lower() not in home:
+        return REASON_GEO_MISMATCH
+    return None
+
+
+async def _gather(
+    db: AsyncSession, order: Order
+) -> tuple[WindowOrder, list[WindowOrder], GeoContext]:
+    """Assemble the current order's identity fingerprint, its recent paid
+    siblings, and the geo context for rule 5.
 
     Two queries, matched together in Python rather than one joined query — the
     trailing-7-day window holds at most a few hundred paid orders at current
@@ -190,12 +292,18 @@ async def _gather(db: AsyncSession, order: Order) -> tuple[WindowOrder, list[Win
     only — a wallet top-up has no delivery target and cannot be linked by one).
     Query B pulls ``fulfillment_data`` for those orders plus this one, to derive
     delivery targets. The current order's own evidence row is fetched
-    separately by ``order_id``.
+    separately by ``order_id``, together with ``client_hints`` for the
+    reported timezone — reusing the row rather than a second query. Query C
+    joins the current order's own items through to their brands, for rule 5's
+    "liquid brand" check; only the current order, because only its guest
+    status and its items are relevant to that rule.
 
     Never raises: a broken risk query must degrade to the amount rule alone,
     not block a sale. On any failure this returns the current order with no
-    identity and an empty recent list — exactly what ``_window_reason`` treats
-    as "nothing to link".
+    identity, an empty recent list, and a ``GeoContext`` that cannot fire rule
+    5 — ``is_guest=False`` alone is enough for that, but every field is left
+    neutral so a partial read of this function's changes can't accidentally
+    make it claim something it doesn't know.
     """
     try:
         window_start = now() - timedelta(days=7)
@@ -223,11 +331,28 @@ async def _gather(db: AsyncSession, order: Order) -> tuple[WindowOrder, list[Win
 
         current_evidence_row = (
             await db.execute(
-                select(OrderEvidence.ip, OrderEvidence.device_hash).where(
-                    OrderEvidence.order_id == order.id
-                )
+                select(
+                    OrderEvidence.ip, OrderEvidence.device_hash, OrderEvidence.client_hints
+                ).where(OrderEvidence.order_id == order.id)
             )
         ).first()
+        raw_tz = current_evidence_row[2].get("timezone") if current_evidence_row else None
+        timezone = raw_tz if isinstance(raw_tz, str) else None
+
+        brand_slugs = frozenset(
+            (
+                await db.execute(
+                    select(Brand.slug)
+                    .select_from(OrderItem)
+                    .join(Sku, Sku.id == OrderItem.sku_id)
+                    .join(Product, Product.id == Sku.product_id)
+                    .join(Brand, Brand.id == Product.brand_id)
+                    .where(OrderItem.order_id == order.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
 
         item_rows = (
             await db.execute(
@@ -264,6 +389,11 @@ async def _gather(db: AsyncSession, order: Order) -> tuple[WindowOrder, list[Win
             device=current_evidence_row[1] if current_evidence_row else None,
             targets=frozenset(targets_by_order.get(order.id, set())),
         )
+        geo = GeoContext(
+            is_guest=order.user_id is None,
+            brand_slugs=brand_slugs,
+            timezone=timezone,
+        )
     except Exception:
         log.exception("orders.risk.gather_failed", order_id=order.id)
         return (
@@ -277,9 +407,10 @@ async def _gather(db: AsyncSession, order: Order) -> tuple[WindowOrder, list[Win
                 targets=frozenset(),
             ),
             [],
+            GeoContext(is_guest=False, brand_slugs=frozenset(), timezone=None),
         )
     else:
-        return current, recent
+        return current, recent, geo
 
 
 async def review_reason(
@@ -291,24 +422,35 @@ async def review_reason(
     """Why this order must not be fulfilled automatically, or ``None``.
 
     Returns a reason string rather than a bool so the event log and the alert
-    can say which rule fired — with one rule that is pedantic, with three it is
+    can say which rule fired — with one rule that is pedantic, with five it is
     the difference between a useful log line and a shrug.
 
-    Rule 1 (amount) runs first and short-circuits: a single order already over
-    threshold does not need the window gather. Rules 2-3 (rolling sum,
-    velocity) never raise on their own — a failed gather is logged and
-    degrades to rule 1's result alone, because a broken risk query must not
-    stop all sales.
+    Rule order is amount, rolling sum, velocity, shared identity, geo — each
+    a stronger claim resting on more context than the last, so the cheapest
+    and most confident check runs first. Rule 1 (amount) runs first and
+    short-circuits: a single order already over threshold does not need the
+    window gather. Rules 2-5 (rolling sum, velocity, shared identity, geo)
+    never raise on their own — a failed gather is logged and degrades to rule
+    1's result alone, because a broken risk query must not stop all sales.
     """
     cfg = settings or get_settings()
     amount = _amount_reason(order, cfg)
     if amount is not None:
         return amount
-    current, recent = await _gather(db, order)
-    return _window_reason(current, recent, cfg)
+    current, recent, geo = await _gather(db, order)
+    window = _window_reason(current, recent, cfg)
+    if window is not None:
+        return window
+    return _geo_reason(geo.is_guest, geo.brand_slugs, geo.timezone, cfg)
 
 
-async def hold_for_review(db: AsyncSession, *, order: Order, reason: str) -> None:
+async def hold_for_review(
+    db: AsyncSession,
+    *,
+    order: Order,
+    reason: str,
+    detail: dict[str, int] | None = None,
+) -> None:
     """Record the hold and tell an operator. Never raises.
 
     The order keeps status ``paid``: the customer's view stays "processing",
@@ -316,13 +458,20 @@ async def hold_for_review(db: AsyncSession, *, order: Order, reason: str) -> Non
     storefront, the mini app and the FSM. Fulfilment simply never starts, and
     ``fulfillment.start_for_order`` accepts a ``paid`` order, so releasing the
     hold later is the same call that would have run now.
+
+    ``detail`` is merged into the event payload when given. Counts only
+    (``{"linked_orders_24h": 5}``) — never identities: the payload lands in an
+    audit log an operator reads, not a place for another buyer's IP or email.
     """
+    payload: dict[str, Any] = {"reason": reason, "total_usd": str(order.total_usd)}
+    if detail:
+        payload.update(detail)
     db.add(
         OrderEvent(
             id=new_id(),
             order_id=order.id,
             kind="order.held_for_review",
-            payload={"reason": reason, "total_usd": str(order.total_usd)},
+            payload=payload,
             actor="risk",
         )
     )
@@ -357,10 +506,13 @@ async def hold_for_review(db: AsyncSession, *, order: Order, reason: str) -> Non
 
 __all__ = [
     "HOLD_ALERT_TEXT",
+    "REASON_GEO_MISMATCH",
     "REASON_LARGE_AMOUNT",
     "REASON_PAID_AFTER_EXPIRY",
     "REASON_ROLLING_SUM",
+    "REASON_SHARED_IDENTITY",
     "REASON_VELOCITY",
+    "GeoContext",
     "WindowOrder",
     "hold_for_review",
     "review_reason",
