@@ -80,13 +80,18 @@ that is the brute-force control; raise the IP bucket instead.
 
 ## Redis is full
 
-`maxmemory` is 512 MB and the policy is **`noeviction` on purpose**: Redis holds
-the Dramatiq queue, so evicting to make room would silently drop fulfilment
-jobs for orders customers have already paid for. Writes failing is the correct
-behaviour.
+`maxmemory` is 512 MB and the policy is **`noeviction` on purpose**: Redis no
+longer holds a work queue (the fulfilment saga moved to a Postgres-native
+queue, ADR-0064) — it holds `ip_guard`/rate-limit counters, the `fx`/catalog/
+inventory/stats caches (see `docs/architecture/cache-keys.md`), and the
+`realtime` pub/sub channel. Evicting any of those to make room is still
+wrong: it would silently weaken rate limiting or drop a cached value or a
+live pub/sub message a customer is relying on this second. Writes failing
+is the correct behaviour.
 
-If it fills, the cause is almost always a worker backlog. Check queue depth
-first, drain it, and only then consider raising the ceiling — the container's
+If it fills, check `docs/architecture/cache-keys.md` for which key has no
+TTL or a long one, and `redis-cli --bigkeys` / `MEMORY USAGE` for which
+prefix is actually large, before raising the ceiling — the container's
 `mem_limit` (768m) is deliberately higher so Redis refuses writes before the
 OOM killer sees it.
 
@@ -195,7 +200,8 @@ connection-count alert. Those are consequences, not information.
 
 **There is no queue-depth alert.** The old one watched `redis_list_length`,
 which nothing emits — the exporter only reports it for keys listed in
-`REDIS_EXPORTER_CHECK_KEYS`, and Dramatiq does not store queues as plain lists,
-so no configuration could have made it fire. It is not worth rebuilding while
-the worker has no actors; when the saga moves to Dramatiq, expose depth from
-the worker rather than inferring it from Redis key shapes.
+`REDIS_EXPORTER_CHECK_KEYS`, and Dramatiq never stored queues as plain lists
+anyway, so no configuration could have made it fire. The fulfilment queue is
+`fulfillment_tasks` in Postgres now (ADR-0064) — depth is checked manually
+via the SQL in `docs/runbooks/fulfillment-queue.md`. An automated alert on
+pending-row age/count is a real follow-up candidate, not built yet.

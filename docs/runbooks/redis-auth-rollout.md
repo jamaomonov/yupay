@@ -10,8 +10,8 @@
 Redis previously ran with no password on the internal bridge network. The
 `bot` container shares the host network namespace (IPv6 workaround), so a
 compromised bot process could reach Redis through the bridge gateway —
-giving it the Dramatiq queue, rate-limit state, and anything else cached
-there. `requirepass` closes that door.
+giving it ip_guard/rate-limit state, realtime pub/sub, and anything else
+cached there. `requirepass` closes that door.
 
 ## Procedure
 
@@ -25,10 +25,9 @@ REDIS_PASSWORD=<generated>
 ENV
 chmod 600 secrets/redis.env
 
-# 2. Update the client URLs in secrets/api.env
+# 2. Update the client URL in secrets/api.env
 #    (note the colon before the password — empty username)
 REDIS_URL=redis://:<generated>@redis:6379/0
-DRAMATIQ_BROKER_URL=redis://:<generated>@redis:6379/1
 
 # 3. Deploy the compose change (or, manually):
 docker compose -f docker-compose.prod.yml up -d redis redis-exporter
@@ -40,15 +39,17 @@ docker compose -f docker-compose.prod.yml exec redis \
 docker compose -f docker-compose.prod.yml exec redis \
   redis-cli ping                             # → NOAUTH (good)
 curl -fsS https://api.yupay.uz/readyz
-docker compose -f docker-compose.prod.yml logs --tail 20 worker  # broker connected
+docker compose -f docker-compose.prod.yml logs --tail 20 worker  # no Redis errors
 ```
 
 ## Expected impact
 
-Recreating `redis` drops in-flight connections for a few seconds; Dramatiq
-and the API reconnect automatically. Queued Dramatiq jobs survive (AOF
-persistence on the `redis-data` volume). Rate-limit counters are in-process
-(ADR-0028) and unaffected.
+Recreating `redis` drops in-flight connections for a few seconds; api,
+worker, scheduler, and bot all reconnect automatically. Nothing is queued
+in Redis today — the fulfilment queue lives in Postgres (ADR-0064) — so
+there is nothing to lose here; AOF persistence on the `redis-data` volume
+still covers ip_guard/rate-limit counters and caches across the restart.
+Rate-limit counters are in-process (ADR-0028) and unaffected.
 
 ## Rollback
 

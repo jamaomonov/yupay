@@ -61,8 +61,8 @@ single-VPS deployment that must remain horizontally splittable without rewrites.
 yupay/
 ├── apps/
 │   ├── api/          # FastAPI modular monolith
-│   ├── worker/       # Dramatiq background workers
-│   ├── scheduler/    # Periodic jobs (dramatiq-crontab / APScheduler)
+│   ├── worker/       # Postgres-queue fulfilment consumer
+│   ├── scheduler/    # Periodic jobs (APScheduler)
 │   ├── bot/          # aiogram 3 Telegram bot
 │   ├── web/          # Next.js public storefront (SEO)
 │   └── miniapp/      # Next.js Telegram Mini App (mobile)

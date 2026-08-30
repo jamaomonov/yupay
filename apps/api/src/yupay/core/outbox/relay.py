@@ -1,7 +1,10 @@
-"""Outbox relay — pulls unpublished events from PG and dispatches them to Dramatiq.
+"""Outbox relay — pulls unpublished events from PG and dispatches them.
 
-Implementation lives here as a stub interface; the concrete actor wiring will be added
-when the first event-producing module lands. The contract is documented for clarity.
+Implementation lives here as a stub interface; nothing implements or calls it
+today — no event-producing module has landed against it. The dispatch target
+is undecided, not Dramatiq: `fulfillment`'s async path (ADR-0064) went
+straight to `pg_notify` plus a Postgres-native queue instead of through this
+generic outbox/relay abstraction. The contract stays documented for clarity.
 """
 
 from __future__ import annotations

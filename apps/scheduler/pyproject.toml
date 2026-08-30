@@ -1,7 +1,7 @@
 [project]
 name = "yupay-scheduler"
 version = "0.0.1"
-description = "YuPay periodic jobs (dramatiq-crontab-style)"
+description = "YuPay periodic jobs (APScheduler)"
 requires-python = ">=3.12"
 dependencies = [
     "yupay",

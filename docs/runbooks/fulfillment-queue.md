@@ -14,10 +14,13 @@ empty queue.
 ## The flag
 
 - **Env var**: `FULFILMENT_ASYNC`. **Home: `secrets/api.env` on prod only.**
-  It is read by `Settings` at process start, and only `api` branches on it
-  (`fulfillment.service.start_for_order`) — the worker always drains
-  whatever rows exist, flag or no flag, so it is not set on the worker
-  container and doesn't need to be.
+  Prod compose mounts that same file into api, worker, scheduler, and bot
+  (`docker-compose.prod.yml`'s `env_file: ./secrets/api.env` on all four),
+  so the variable _is_ present in the worker's environment once it's set
+  there — it just has no effect on the worker: only `api`
+  (`fulfillment.service.start_for_order`) ever branches on
+  `settings.fulfilment_async`. The worker always drains whatever rows
+  exist regardless of the flag's value.
 - Changing it requires an **api restart**, not a worker restart —
   `Settings` is read once at process start.
 - Default `false` everywhere. Dev/staging exercise the async path through
@@ -43,6 +46,12 @@ before restarting anything (see below). The second gives the oldest pending
 row's age — the number that actually says whether the worker is keeping up:
 a queue can have a nonzero count and still be healthy (a burst just landed
 and hasn't been claimed yet), but an old oldest-pending row is not.
+
+**No automated queue-depth alert exists yet** — the two queries above are a
+manual check today. `infra/prometheus/alerts/api.yml` has a note explaining
+why the old Dramatiq-era queue-depth rule couldn't fire and never watched
+anything real; a proper alert on `fulfillment_tasks` pending-row age/count
+is a real follow-up candidate, not yet built.
 
 **`pending` older than a minute means the worker is down or drowning.**
 Normal automatic fulfilment lands in low hundreds of milliseconds (dev smoke

@@ -5,8 +5,10 @@ creating one :class:`FulfillmentTask` per :class:`OrderItem`, executing each tas
 in-process against the resolved :class:`Fulfiller`, recording each interaction
 in ``fulfillment_attempts``, and persisting the artifact in ``deliveries``.
 
-When the Dramatiq worker lands, ``start_for_order`` writes an outbox row instead
-of executing inline; the public API stays the same.
+With ``fulfilment_async`` on, ``start_for_order`` leaves tasks ``pending`` and
+fires ``pg_notify('fulfillment_queue', ...)`` on commit instead of executing
+inline; ``apps/worker`` drains them via :func:`drain_pending_tasks`. The public
+API stays the same either way (ADR-0064).
 """
 
 from __future__ import annotations

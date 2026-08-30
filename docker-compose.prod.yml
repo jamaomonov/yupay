@@ -159,11 +159,14 @@ services:
     env_file: ./secrets/redis.env
     # --maxmemory bounds it; the eviction policy stays `noeviction` ON PURPOSE.
     # `allkeys-lru` looks like the safe default and is the dangerous one here:
-    # Redis holds the Dramatiq queue, so evicting to make room would silently
-    # drop fulfilment jobs for orders customers have already paid for. Refusing
-    # writes is the correct failure — pair it with an alert at 70% so a human
-    # intervenes before that happens. mem_limit above is deliberately higher, so
-    # Redis hits its own ceiling before the OOM killer sees it.
+    # Redis no longer holds a work queue (the fulfilment saga moved to a
+    # Postgres-native queue, ADR-0064) -- it holds realtime pub/sub, ip_guard/
+    # rate-limit counters, and assorted caches. Evicting any of those to make
+    # room is still wrong: it would silently weaken rate limiting or drop a
+    # live realtime message. Refusing writes is the correct failure — pair it
+    # with an alert at 70% so a human intervenes before that happens. mem_limit
+    # above is deliberately higher, so Redis hits its own ceiling before the
+    # OOM killer sees it.
     command:
       [
         "sh",

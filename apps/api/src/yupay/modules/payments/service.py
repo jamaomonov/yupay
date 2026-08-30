@@ -511,8 +511,9 @@ async def _mark_payment_succeeded(
         if order.purpose == "wallet_topup":
             await _complete_wallet_topup(db, order=order, payment=payment)
             return
-        # Synchronous saga (ADR-0013). Will move to an outbox/Dramatiq actor once
-        # the worker is wired up — the public service signature stays the same.
+        # start_for_order (ADR-0013). With FULFILMENT_ASYNC on, this call only
+        # enqueues — tasks land `pending` + pg_notify on commit; apps/worker
+        # executes them (ADR-0064). Off, it runs the saga inline as before.
         from yupay.modules.fulfillment import service as fulfillment_svc
         from yupay.modules.orders.risk import hold_for_review, review_reason
 

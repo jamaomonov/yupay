@@ -74,10 +74,12 @@ groups:
           summary: "Postgres is above 80% of max_connections"
           runbook: "https://github.com/yupay/yupay/blob/main/docs/runbooks/traffic-surge.md"
 
-      # Redis holds the Dramatiq queue and the eviction policy is `noeviction`
-      # on purpose, so filling it means writes start failing rather than jobs
-      # being silently dropped. That is the correct failure and it needs a
-      # human before it happens, not after.
+      # Redis no longer holds a work queue -- the fulfilment saga moved to a
+      # Postgres-native queue (ADR-0064). What lives here now (ip_guard /
+      # rate-limit counters, realtime pub/sub, assorted caches) still wants
+      # `noeviction`: silently evicting live guard state would just as
+      # silently weaken it, so refusing writes is still the correct failure
+      # and still needs a human before it happens, not after.
       - alert: RedisMemoryHigh
         # Guarded on maxmemory being set at all. Unset it reports 0, and
         # `used / 0` is +Inf — so without the guard this rule fires
@@ -105,13 +107,16 @@ groups:
         annotations:
           summary: "Redis has no maxmemory configured"
           runbook: "https://github.com/yupay/yupay/blob/main/docs/runbooks/traffic-surge.md"
-# NOTE: there is no queue-depth alert. The rule that used to sit here watched
-# `redis_list_length{key=~"dramatiq:.*"}`, a metric nothing emits — the
-# redis-exporter only reports it for keys named in REDIS_EXPORTER_CHECK_KEYS,
-# and Dramatiq's Redis broker does not store queues as plain lists anyway, so
-# no configuration could have made it fire.
+# NOTE: there is no queue-depth alert. The fulfilment queue is now
+# `fulfillment_tasks` in Postgres (ADR-0064), not a Redis list -- the rule
+# that used to sit here watched `redis_list_length{key=~"dramatiq:.*"}`, a
+# metric nothing ever emitted (the redis-exporter only reports keys named in
+# REDIS_EXPORTER_CHECK_KEYS, and Dramatiq's broker did not store queues as
+# plain lists anyway), so no configuration could have made it fire.
 #
-# It is not worth reconstructing yet: the worker has no actors (fulfilment
-# still runs inline in the request, see ADR-0013's open follow-through), so the
-# queue is always empty. When the saga moves to Dramatiq, expose the depth from
-# the worker itself rather than trying to infer it from Redis key shapes.
+# Queue depth is checked manually today -- see the SQL in
+# docs/runbooks/fulfillment-queue.md. An automated alert on
+# `fulfillment_tasks` pending-row age/count is a real follow-up candidate,
+# not built yet: it needs either a metric exported from api/worker or a
+# Postgres-side exporter query, neither of which exists today. No alert rule
+# is added in this change.

@@ -3,7 +3,7 @@
 The public entrypoints are:
 
 - ``yupay.main:app`` — FastAPI HTTP application
-- ``yupay.worker`` — Dramatiq actor registry (imported by the worker container)
+- ``yupay_worker.consumer`` — Postgres-queue fulfilment consumer (separate app, ``apps/worker``)
 - ``yupay.scheduler`` — Periodic job registry
 - ``yupay.bot`` — aiogram bot composition
 

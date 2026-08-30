@@ -76,7 +76,7 @@ Eight files are required; `infra/secrets-example/` holds the templates and
 | `backup.env`            | backup                             |
 
 Cross-file consistency matters: the password in `postgres.env` must match the one embedded in
-`DATABASE_URL` in `api.env`, and likewise `redis.env` ↔ `REDIS_URL` / `DRAMATIQ_BROKER_URL`.
+`DATABASE_URL` in `api.env`, and likewise `redis.env` ↔ `REDIS_URL`.
 
 ### 3. GHCR access
 

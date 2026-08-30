@@ -10,14 +10,32 @@ voucher-warehouse) заглушены — слоты зарезервирова�
 
 ## Что делает модуль
 
-1. Получает сигнал «order paid» от `payments._mark_payment_succeeded` (сегодня —
-   прямой in-process вызов; завтра — outbox + Dramatiq).
+1. Получает сигнал «order paid» от `payments._mark_payment_succeeded` — прямой
+   in-process вызов `start_for_order`.
 2. Создаёт `FulfillmentTask` на каждый `OrderItem` (1-to-1, UNIQUE).
 3. Двигает order `paid → fulfilling`.
 4. Для каждого task: маршрутизирует к `Fulfiller` (сейчас всегда `mock`),
    вызывает `fulfill(order, item, idempotency_key=task.id)`, пишет
    `FulfillmentAttempt`, обновляет статус task'а, пишет `Delivery` с артефактом.
 5. Когда все tasks `succeeded` — order `fulfilling → delivered`.
+
+**Два режима выполнения** (флаг `FULFILMENT_ASYNC`, по умолчанию
+**выключен** — поведение продакшена не меняется ни на байт). Выключен: шаги
+4–5 выполняются синхронно, в том же вызове, что и шаги 1–3, как описано
+выше. Включён: `start_for_order` останавливается после шага 3 — задачи
+остаются `pending`, и та же транзакция шлёт `pg_notify('fulfillment_queue',
+order_id)` на COMMIT (откат — и NOTIFY не уходит). Шаги 4–5 выполняет
+отдельный процесс `apps/worker` (`yupay_worker.consumer`): забирает задачи
+через `drain_pending_tasks` (`FOR UPDATE SKIP LOCKED`, чтобы конкурентные
+потребители не задваивали работу), каждую — в своём SAVEPOINT, так что
+«отравленная» задача (неожиданное исключение мимо уже обработанных
+`FulfillerError`/`FulfillerNotIntegratedError`) не роняет весь батч, а
+уходит в `failed` — тем же путём ручного admin-retry, что и в синхронном
+режиме. Poll tick (`fulfilment_poll_seconds`, по умолчанию 5с) — он же
+reconciler на случай NOTIFY, потерянного при рестарте воркера. Дизайн и
+почему выбрана именно очередь на Postgres, а не Dramatiq —
+[ADR-0064](../../../../../../docs/decisions/0064-postgres-fulfilment-queue.md);
+эксплуатация — [docs/runbooks/fulfillment-queue.md](../../../../../../docs/runbooks/fulfillment-queue.md).
 
 > **Manual-завершение и дубликаты.** `complete_manual_task` пишет `Delivery`
 > внутри SAVEPOINT, открытого **до** `db.add(...)`: `begin_nested()` делает
@@ -222,9 +240,14 @@ sequenceDiagram
 
 ## Следующий шаг
 
-Первый реальный адаптер — выбор по приоритету (PUBG/Tencent для UC топ-апов,
-Steam для геймерских ключей, или voucher_inventory как самый автономный). Создать
-`suppliers/<name>.py`, реализовать `Fulfiller`, написать contract-тесты
-(success / retryable failure / duplicate replay). Параллельно — переехать саму
-саговую цепочку в Dramatiq actor через outbox, чтобы webhook-ответ не блокировался
-на медленной интеграции.
+Вынос саги из webhook-ответа сделан (флаг `FULFILMENT_ASYNC`, ADR-0064) —
+остаётся первый реальный адаптер, выбор по приоритету (PUBG/Tencent для UC
+топ-апов, Steam для геймерских ключей, или voucher_inventory как самый
+автономный). Создать `suppliers/<name>.py`, реализовать `Fulfiller`,
+написать contract-тесты (success / retryable failure / duplicate replay).
+
+Отдельно: у `failed`-задачи сегодня нет запланированного retry ни в одном
+из режимов — `next_attempt_at` существует в схеме, но ничего в него не
+пишет (см. ADR-0064); она ждёт ручного admin-retry. Плановые повторы — не
+реализованная фича, а не баг, но кандидат на будущую работу, если ручной
+retry станет узким местом.
