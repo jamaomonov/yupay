@@ -17,13 +17,13 @@ import html
 from collections.abc import Coroutine, Iterable
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from yupay.core.clock import now
-from yupay.core.config import get_settings
+from yupay.core.config import Settings, get_settings
 from yupay.core.errors import ConflictError, NotFoundError
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
@@ -235,12 +235,17 @@ async def _publish_delivered(order: Order) -> None:
 # ---------- core saga ----------
 
 
-async def start_for_order(db: AsyncSession, *, order_id: str) -> list[FulfillmentTask]:
+async def start_for_order(
+    db: AsyncSession, *, order_id: str, settings: Settings | None = None
+) -> list[FulfillmentTask]:
     """Plan and execute fulfilment for a freshly-paid order.
 
     Creates one task per order item (idempotent — re-running on the same order
     is a no-op because of the ``UNIQUE(order_item_id)`` constraint), drives
-    order ``paid → fulfilling``, then processes every task in-process.
+    order ``paid → fulfilling``, then — with ``fulfilment_async`` off (the
+    default) — processes every task in-process, same as always. With it on,
+    tasks are left ``pending`` for the worker and a ``pg_notify`` rides the
+    caller's transaction instead.
     """
     order = await _load_order_with_items(db, order_id)
     if order.status not in ("paid", "fulfilling"):
@@ -295,9 +300,19 @@ async def start_for_order(db: AsyncSession, *, order_id: str) -> list[Fulfillmen
     if transitioned_to_fulfilling:
         await _publish_status_changed(order)
 
-    for task in new_tasks:
-        if task.status == "pending":
-            await process_task(db, task_id=task.id)
+    cfg = settings or get_settings()
+    if cfg.fulfilment_async:
+        # Planned, not executed: the rows ARE the queue (they just landed in
+        # the caller's transaction, atomically with the payment). The NOTIFY
+        # rides the same transaction — Postgres delivers it on COMMIT and
+        # drops it on ROLLBACK, so a nudge can neither outrun the commit nor
+        # survive a rollback. The worker's poll tick covers a nudge lost to
+        # a worker restart; nothing here needs to care.
+        await db.execute(text("SELECT pg_notify('fulfillment_queue', :oid)"), {"oid": order_id})
+    else:
+        for task in new_tasks:
+            if task.status == "pending":
+                await process_task(db, task_id=task.id)
 
     await _try_settle_order(db, order_id=order_id)
     await db.flush()

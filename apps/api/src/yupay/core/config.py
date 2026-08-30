@@ -372,6 +372,25 @@ class Settings(BaseSettings):
         ),
     )
 
+    # --- Async fulfilment ---
+    fulfilment_async: bool = Field(
+        default=False,
+        description=(
+            "Execute fulfilment in the worker instead of inside the payment "
+            "webhook. Off by default: the deploy that ships this must change "
+            "production behaviour by zero bytes; the flip is an env change on "
+            "the api container only — the worker always drains what exists."
+        ),
+    )
+    fulfilment_poll_seconds: int = Field(
+        default=5,
+        description=(
+            "Worker poll tick. LISTEN/NOTIFY does the real-time work; the "
+            "tick only catches notifications lost to a worker restart, so it "
+            "can be lazy. One indexed query per tick."
+        ),
+    )
+
     # --- Stuck-order watchdog (ADR-0046) ---
     stuck_order_alert_after_minutes: int = Field(
         default=15,
