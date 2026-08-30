@@ -7,6 +7,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any, cast
 
+import pytest
 from yupay.core.config import Settings, get_settings
 from yupay.modules.orders.risk import (
     REASON_GEO_MISMATCH,
@@ -20,6 +21,7 @@ from yupay.modules.orders.risk import (
     _effective_threshold,
     _geo_reason,
     _window_reason,
+    hold_for_review,
 )
 
 
@@ -226,3 +228,109 @@ def test_signed_in_or_home_tz_or_illiquid_brand_passes() -> None:
 
 def test_empty_lists_disable_the_geo_rule() -> None:
     assert _geo_reason(True, frozenset({"roblox"}), "Europe/Kiev", _cfg(liquid="", home="")) is None
+
+
+# ---------- hold_for_review's detail payload ----------
+
+
+class _FakeDB:
+    """Just enough of ``AsyncSession`` for ``hold_for_review``: ``.add()``."""
+
+    def __init__(self) -> None:
+        self.added: list[Any] = []
+
+    def add(self, obj: Any) -> None:
+        self.added.append(obj)
+
+
+class _RecordedEvent:
+    """Stands in for ``OrderEvent`` so this stays a real unit test.
+
+    Constructing the actual SQLAlchemy ``OrderEvent`` triggers mapper
+    configuration for the whole ``Order`` graph, including its viewonly
+    ``payments`` relationship — which resolves the string ``"Payment"`` only
+    if ``yupay.modules.payments.models`` has already been imported somewhere
+    in the process. In this file it has not, and a failed mapper configure
+    poisons the shared SQLAlchemy registry for every later test in the same
+    run, including the unrelated integration tests in this test session. What
+    is under test here is ``hold_for_review``'s payload-merging, not
+    SQLAlchemy — so it is stubbed out rather than risking that.
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        self.payload: dict[str, Any] = kwargs["payload"]
+
+
+class _FakeRedis:
+    async def set(self, *args: object, **kwargs: object) -> bool:
+        return True
+
+
+def _held_order(order_id: str = "0192aaaa-bbbb-cccc-dddd-eeeeffff0002") -> Any:
+    return cast(
+        "Any",
+        SimpleNamespace(
+            id=order_id,
+            total_usd=Decimal("11"),
+            total_charged=Decimal("11"),
+            currency="USD",
+        ),
+    )
+
+
+async def test_detail_counts_merge_into_the_event_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The watchdog pre-arm and the admin alert are already wrapped in
+    # ``contextlib.suppress`` by ``hold_for_review`` itself; these stubs only
+    # keep the test from making a real network call, not from a real one
+    # failing.
+    import yupay.modules.orders.risk as risk_mod
+    from yupay.modules.notifications import alerts as alerts_mod
+
+    monkeypatch.setattr(risk_mod, "OrderEvent", _RecordedEvent)
+    monkeypatch.setattr(risk_mod, "get_redis", _FakeRedis)
+
+    sent: list[str] = []
+
+    async def _fake_alert(text: str, *, kind: str = "") -> bool:
+        sent.append(text)
+        return True
+
+    monkeypatch.setattr(alerts_mod, "send_admin_alert", _fake_alert)
+
+    db = _FakeDB()
+    await hold_for_review(
+        cast("Any", db),
+        order=_held_order(),
+        reason=REASON_SHARED_IDENTITY,
+        detail={"linked_orders_24h": 5},
+    )
+
+    assert len(db.added) == 1
+    payload = db.added[0].payload
+    assert payload["reason"] == REASON_SHARED_IDENTITY
+    assert payload["linked_orders_24h"] == 5
+    # Counts only — the whole point of `detail` is that it can never carry an
+    # identity, so nothing that looks like one belongs in the payload.
+    assert set(payload) == {"reason", "total_usd", "linked_orders_24h"}
+
+
+async def test_no_detail_leaves_the_payload_as_before(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import yupay.modules.orders.risk as risk_mod
+    from yupay.modules.notifications import alerts as alerts_mod
+
+    monkeypatch.setattr(risk_mod, "OrderEvent", _RecordedEvent)
+    monkeypatch.setattr(risk_mod, "get_redis", _FakeRedis)
+
+    async def _fake_alert(text: str, *, kind: str = "") -> bool:
+        return True
+
+    monkeypatch.setattr(alerts_mod, "send_admin_alert", _fake_alert)
+
+    db = _FakeDB()
+    await hold_for_review(cast("Any", db), order=_held_order(), reason=REASON_SHARED_IDENTITY)
+
+    assert set(db.added[0].payload) == {"reason", "total_usd"}
