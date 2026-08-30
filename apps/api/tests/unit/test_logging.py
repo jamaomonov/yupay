@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import logging
 
-from yupay.core.logging import REDACTED_KEYS, _redact_pii, configure_logging
+from yupay.core.logging import (
+    _TRACEBACK_RENDERER,
+    REDACTED_KEYS,
+    _redact_pii,
+    configure_logging,
+)
 
 
 def test_httpx_request_logging_is_muted() -> None:
@@ -68,3 +74,26 @@ def test_redact_pii_keeps_safe_keys() -> None:
     assert event["amount"] == "5000"
     assert event["language_code"] == "ru"
     assert event["sku_id"] == "sku-9"
+
+
+def test_prod_tracebacks_carry_no_frame_locals() -> None:
+    """structlog 25.x's ``dict_tracebacks`` shorthand renders every frame's
+    locals. The worker logs ``listen_failed`` with ``log.exception`` once per
+    poll tick for as long as Postgres is unreachable, and the asyncpg connect
+    frame's locals hold the DSN — password and all. Prod's JSON renderer must
+    therefore render tracebacks with locals off.
+    """
+    try:
+        _connect_and_fail()
+    except OSError:
+        rendered = _TRACEBACK_RENDERER(None, "error", {"event": "listen_failed", "exc_info": True})
+
+    blob = json.dumps(rendered, default=str)
+    assert "s3cret-db-password" not in blob  # the local, not the message
+    assert "OSError" in blob  # the exception itself still renders
+
+
+def _connect_and_fail() -> None:
+    """Raise with a credential sitting in the frame's locals, as asyncpg does."""
+    dsn = "postgresql://yupay_app:s3cret-db-password@postgres:5432/yupay"  # noqa: F841
+    raise OSError("connection refused")

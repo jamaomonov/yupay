@@ -536,6 +536,32 @@ async def process_task(  # noqa: PLR0915 -- linear saga; splitting hurts readabi
     return task
 
 
+#: Cap for a crashed task's stored error. Long enough to keep a stack-less
+#: message useful in the admin UI, short enough that a driver that dumps a
+#: whole statement can't fill the column (or a log line) with it.
+_CRASH_DETAIL_MAX = 500
+
+
+def _crash_detail(exc: BaseException) -> str:
+    """One-line, bounded description of an unexpected task crash.
+
+    Leads with the type because a bare ``str(exc)`` from an unexpected
+    exception is often empty or meaningless on its own.
+
+    First line only, then a length cap — both are PII bounds, not cosmetics
+    (AGENTS.md §9). This string lands in ``fulfillment_tasks.last_error``,
+    which the admin UI shows and the crash log line echoes, and the most
+    likely unexpected exception on this path is a SQLAlchemy
+    ``IntegrityError``, which stringifies as the driver message, then a
+    ``DETAIL: Key (email)=(...)`` line, then the full statement and its
+    **bound parameters** — customer email, delivery address. Every one of
+    those sits on its own line after the first, so taking the first line
+    drops them; the cap bounds whatever a future driver puts on line one.
+    """
+    lines = str(exc).strip().splitlines()
+    return f"{type(exc).__name__}: {lines[0] if lines else ''}"[:_CRASH_DETAIL_MAX]
+
+
 async def drain_pending_tasks(db: AsyncSession, *, limit: int = 20) -> int:
     """Claim and run pending fulfilment tasks. The worker's whole job.
 
@@ -585,13 +611,14 @@ async def drain_pending_tasks(db: AsyncSession, *, limit: int = 20) -> int:
             # lock (held by the outer transaction, unaffected by a
             # SAVEPOINT rollback) means no other consumer could have
             # touched this row meanwhile.
+            detail = _crash_detail(exc)
             task = await _load_task(db, task_id)
             item = (
                 await db.execute(select(OrderItem).where(OrderItem.id == task.order_item_id))
             ).scalar_one()
             task.status = "failed"
             task.failed_at = now()
-            task.last_error = str(exc)
+            task.last_error = detail
             item.fulfillment_state = "failed"
             await _record_attempt(
                 db,
@@ -599,12 +626,12 @@ async def drain_pending_tasks(db: AsyncSession, *, limit: int = 20) -> int:
                 kind="fulfill",
                 status="error",
                 payload={"supplier": task.supplier},
-                error=str(exc),
+                error=detail,
             )
             log.warning(
                 "fulfillment.drain.task_crashed",
                 task_id=task_id,
-                error=str(exc)[:200],
+                error=detail[:200],
             )
         settled.add(order_id)
         ran += 1

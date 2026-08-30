@@ -27,13 +27,18 @@ depends_on: str | None = None
 
 
 def upgrade() -> None:
+    # ``if_not_exists`` for the same reason 0061 spells its indexes with
+    # ``CREATE INDEX IF NOT EXISTS``: a migration interrupted partway (a
+    # deploy killed mid-run, a manual index created ahead of the release)
+    # must be re-runnable rather than wedge the whole upgrade chain.
     op.create_index(
         "ix_fulfillment_tasks_pending",
         "fulfillment_tasks",
         ["created_at"],
         postgresql_where=sa.text("status = 'pending'"),
+        if_not_exists=True,
     )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_fulfillment_tasks_pending", "fulfillment_tasks")
+    op.drop_index("ix_fulfillment_tasks_pending", "fulfillment_tasks", if_exists=True)

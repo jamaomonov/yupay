@@ -60,6 +60,20 @@ REDACTED_KEYS = frozenset(
 )
 
 
+#: Traceback renderer for JSON (prod) mode. ``structlog.processors.
+#: dict_tracebacks`` — what this replaces — is the same renderer with
+#: structlog 25.x's ``show_locals=True`` default, which serialises every
+#: frame's local variables into the log event. That is a credential leak on
+#: exactly the paths that log exceptions the most: ``log.exception`` around
+#: an asyncpg connect (the worker's ``listen_failed``, once per poll tick for
+#: as long as Postgres is down) carries the DSN — password included — in the
+#: connect frame's locals, straight into stdout and Loki. Locals are worth
+#: little for our exceptions and cost too much here, so they're off.
+_TRACEBACK_RENDERER = structlog.processors.ExceptionRenderer(
+    structlog.tracebacks.ExceptionDictTransformer(show_locals=False)
+)
+
+
 def _redact_pii(
     _logger: Any,
     _name: str,
@@ -111,7 +125,7 @@ def configure_logging() -> None:
     ]
 
     if settings.log_json:
-        processors.append(structlog.processors.dict_tracebacks)
+        processors.append(_TRACEBACK_RENDERER)
         processors.append(structlog.processors.JSONRenderer())
     else:
         processors.append(structlog.dev.ConsoleRenderer(colors=sys.stdout.isatty()))
