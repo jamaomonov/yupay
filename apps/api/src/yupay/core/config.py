@@ -315,6 +315,21 @@ class Settings(BaseSettings):
             "threshold."
         ),
     )
+    risk_device_identity: bool = Field(
+        default=False,
+        description=(
+            "Whether `order_evidence.device_hash` counts as an identity for the window "
+            "rules (rolling sum, velocity, shared identity). Off by default: measured on "
+            "production, this audience's device fingerprint (user-agent + timezone + "
+            "locale + screen) is not unique enough on its own — a homogeneous mobile "
+            "fleet of identical phones on identical locales already collides two device "
+            "hashes across 4 distinct buyers each and two more across 3, exactly rule 4's "
+            "`risk_distinct_buyers_7d` default. Enabling it there would hold real, "
+            "unrelated customers who happen to share a phone model, not a resale ring. "
+            "Run the collision-measurement query in `docs/runbooks/order-held-for-review.md` "
+            "against your own traffic before turning this on."
+        ),
+    )
 
     # --- Stuck-order watchdog (ADR-0046) ---
     stuck_order_alert_after_minutes: int = Field(

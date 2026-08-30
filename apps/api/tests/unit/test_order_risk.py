@@ -270,29 +270,100 @@ async def test_review_reason_returns_the_amount_reason_without_touching_the_db()
 # ---------- _gather: a broken query degrades to rule 1 alone ----------
 
 
-class _ExplodingDB:
-    """Stands in for a session whose first query blows up.
-
-    ``_gather`` must never raise -- a broken risk query has to degrade to the
-    amount rule alone rather than block a paid order's fulfilment.
+class _NestedTransaction:
+    """Trivial async context manager standing in for what
+    ``AsyncSession.begin_nested()`` returns -- just enough of the SAVEPOINT
+    protocol for ``async with db.begin_nested():`` to work, not the real
+    ``AsyncSessionTransaction`` API.
     """
+
+    async def __aenter__(self) -> _NestedTransaction:
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        return None
+
+
+class _ExplodingDB:
+    """Stands in for a session whose SAVEPOINT opens fine but a query inside
+    it blows up -- a Python-level failure (a bad ORM call, an unexpected
+    data shape) raised while queries are running under the savepoint.
+
+    Contrast ``_ExplodingSavepointDB`` below, which models a DB-level
+    failure (a statement/lock timeout, a dropped connection) that aborts the
+    SAVEPOINT itself before any query runs -- the exact failure class the
+    ``async with db.begin_nested():`` wrapping (finding 1) exists for: without
+    it, this class of failure would poison the caller's transaction instead
+    of staying confined to ``_gather``.
+
+    Either way, ``_gather`` must never raise -- a broken risk query has to
+    degrade to the amount rule alone rather than block a paid order's
+    fulfilment.
+    """
+
+    def begin_nested(self) -> _NestedTransaction:
+        return _NestedTransaction()
 
     async def execute(self, *args: object, **kwargs: object) -> Any:
         raise RuntimeError("boom")
 
 
-async def test_gather_degrades_to_neutral_context_on_a_broken_query() -> None:
-    order = cast(
+class _ExplodingSavepointDB:
+    """Stands in for a session whose SAVEPOINT itself fails to open.
+
+    Models a DB-level abort (statement/lock timeout, connection reset)
+    that happens before ``_gather`` runs a single SELECT -- as opposed to
+    ``_ExplodingDB`` above, which models a failure inside a query already
+    running under a successfully-opened savepoint. Both failure classes
+    must degrade to the same neutral context.
+    """
+
+    def begin_nested(self) -> _NestedTransaction:
+        raise RuntimeError("savepoint boom")
+
+    async def execute(self, *args: object, **kwargs: object) -> Any:
+        raise AssertionError("must not be reached: begin_nested already raised")
+
+
+def _order_for_gather(order_id: str) -> Any:
+    return cast(
         "Any",
         SimpleNamespace(
-            id="0192aaaa-bbbb-cccc-dddd-eeeeffff0003",
+            id=order_id,
             paid_at=_NOW,
             total_usd=Decimal("11"),
             user_id=None,
             guest_email="me@x.com",
         ),
     )
-    current, recent, geo = await _gather(cast("Any", _ExplodingDB()), order)
+
+
+async def test_gather_degrades_to_neutral_context_when_a_query_fails() -> None:
+    """Python-level failure inside the savepoint (see ``_ExplodingDB``)."""
+    order = _order_for_gather("0192aaaa-bbbb-cccc-dddd-eeeeffff0003")
+    current, recent, geo = await _gather(cast("Any", _ExplodingDB()), order, _cfg())
+    assert current.id == order.id
+    assert current.buyer == "me@x.com"
+    assert current.ip is None
+    assert current.device is None
+    assert current.targets == frozenset()
+    assert recent == []
+    assert geo == GeoContext(is_guest=False, brand_slugs=frozenset(), timezone=None)
+
+
+async def test_gather_degrades_to_neutral_context_when_the_savepoint_itself_fails() -> None:
+    """DB-level failure opening the savepoint (see ``_ExplodingSavepointDB``).
+
+    Without the ``async with db.begin_nested():`` wrapping, a failure this
+    early would still be caught by ``_gather``'s ``try/except`` -- the
+    regression this guards against is not "does ``_gather`` raise" but "does
+    the poisoned transaction survive to the caller", which a unit test with a
+    fake session can't observe directly. This test instead pins the
+    contract ``_gather`` promises regardless: even a failure before any
+    SELECT runs still degrades to the same neutral context, never propagates.
+    """
+    order = _order_for_gather("0192aaaa-bbbb-cccc-dddd-eeeeffff0005")
+    current, recent, geo = await _gather(cast("Any", _ExplodingSavepointDB()), order, _cfg())
     assert current.id == order.id
     assert current.buyer == "me@x.com"
     assert current.ip is None

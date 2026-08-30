@@ -26,7 +26,8 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import Text, bindparam, or_, select, text
+from sqlalchemy.dialects.postgresql import ARRAY
 
 from yupay.core.clock import now
 from yupay.core.config import Settings, get_settings
@@ -135,7 +136,7 @@ def _amount_reason(order: Order, cfg: Settings) -> str | None:
 
 @dataclass(frozen=True)
 class WindowOrder:
-    """One paid order's identity fingerprint, for the window rules (rules 2-3).
+    """One paid order's identity fingerprint, for the window rules (rules 2-4).
 
     Built once by ``_gather`` and never touches the database again — the window
     rules only compare these dataclasses against each other, which is what makes
@@ -284,26 +285,60 @@ def _geo_reason(
 
 
 async def _gather(
-    db: AsyncSession, order: Order
+    db: AsyncSession, order: Order, cfg: Settings
 ) -> tuple[WindowOrder, list[WindowOrder], GeoContext]:
     """Assemble the current order's identity fingerprint, its recent paid
     siblings, and the geo context for rule 5.
 
-    Two queries, matched together in Python rather than one joined query — the
-    trailing-7-day window holds at most a few hundred paid orders at current
-    volume (the assumption that makes a Python-side scan honest; revisit if
-    traffic outgrows it), so the extra round trip buys a query each side can
-    read on its own.
+    The current order's own evidence row (ip, device_hash, timezone) and its
+    own items (delivery targets, brand slugs) are fetched first — everything
+    below bounds itself against those, rather than pulling the whole trailing
+    window and filtering in Python. At target scale (35k+ catalog orders paid
+    in a rolling 7 days) an unfiltered fetch reads every one of them on every
+    webhook; an identity-bound one reads only the orders that could possibly
+    link to this one.
 
-    Query A pulls every other order paid in the trailing 7 days (catalog orders
-    only — a wallet top-up has no delivery target and cannot be linked by one).
-    Query B pulls ``fulfillment_data`` for those orders plus this one, to derive
-    delivery targets. The current order's own evidence row is fetched
-    separately by ``order_id``, together with ``client_hints`` for the
-    reported timezone — reusing the row rather than a second query. Query C
-    joins the current order's own items through to their brands, for rule 5's
-    "liquid brand" check; only the current order, because only its guest
-    status and its items are relevant to that rule.
+    Query A fetches other paid catalog orders in the trailing 7 days whose
+    identity matches the current order's: same signed-in ``user_id``, same
+    ``guest_email`` (``CITEXT``, already case-insensitive at the SQL layer —
+    see also the defensive ``.lower()`` below, which is about a Python-side
+    comparison, not this one), same evidence ``ip``, or — only when
+    ``risk_device_identity`` is on, see ADR-0062 — same ``device_hash``. The
+    ``OR`` list is built from whichever of those the current order actually
+    has.
+
+    The target path is separate because a delivery-target match lives inside
+    ``order_items.fulfillment_data``, not on ``orders``/``order_evidence``:
+    the current order's own targets are computed in Python first
+    (``_targets_from``, reused so the normalisation can't drift), and only if
+    that set is non-empty does an id query run, matching via
+    ``jsonb_each_text`` with the same normalisation applied in SQL — strip
+    whitespace, drop a leading ``@``, lowercase, same three steps as
+    ``_targets_from`` in a different order that doesn't change the result
+    (see the inline comment on the query). Skipped for voucher orders (empty
+    ``fulfillment_data``), which is most orders.
+
+    If the current order has no identity at all (no user, no guest email, no
+    evidence row) and no delivery targets, nothing could possibly link to it,
+    so no bounding query runs and ``recent`` is ``[]`` with no extra round
+    trip.
+
+    Otherwise the ids matched by identity and by target are unioned into one
+    predicate, Query A fetches the full ``WindowOrder`` columns for that
+    bounded id set, and Query B fetches ``fulfillment_data`` for the same
+    bounded set (rather than every order in the window) to resolve their
+    delivery targets.
+
+    Runs inside ``db.begin_nested()`` (a SAVEPOINT) — the same pattern as
+    ``evidence.service.capture_for_order``. Without it, a DB-level failure
+    here (a statement/lock timeout, a dropped connection) poisons the
+    request's transaction; the ``try/except`` below still swallows the
+    exception, but the *next* statement — ``hold_for_review``'s own insert,
+    or the commit at the end of the payment webhook — raises
+    ``PendingRollbackError`` and takes the whole payment-success write down
+    with it. The savepoint is what makes "a broken gather never blocks a
+    sale" true for a DB-level abort, not only for a Python exception raised
+    by one of these queries.
 
     Never raises: a broken risk query must degrade to the amount rule alone,
     not block a sale. On any failure this returns the current order with no
@@ -313,94 +348,168 @@ async def _gather(
     make it claim something it doesn't know.
     """
     try:
-        window_start = now() - timedelta(days=7)
-        rows = (
-            await db.execute(
-                select(
-                    Order.id,
-                    Order.paid_at,
-                    Order.total_usd,
-                    Order.user_id,
-                    Order.guest_email,
-                    OrderEvidence.ip,
-                    OrderEvidence.device_hash,
-                )
-                .select_from(Order)
-                .outerjoin(OrderEvidence, OrderEvidence.order_id == Order.id)
-                .where(
-                    Order.paid_at.is_not(None),
-                    Order.paid_at >= window_start,
-                    Order.id != order.id,
-                    Order.purpose == "catalog",
-                )
+        async with db.begin_nested():
+            window_start = now() - timedelta(days=7)
+            base_frame = (
+                Order.paid_at.is_not(None),
+                Order.paid_at >= window_start,
+                Order.id != order.id,
+                Order.purpose == "catalog",
             )
-        ).all()
 
-        current_evidence_row = (
-            await db.execute(
-                select(
-                    OrderEvidence.ip, OrderEvidence.device_hash, OrderEvidence.client_hints
-                ).where(OrderEvidence.order_id == order.id)
-            )
-        ).first()
-        raw_tz = current_evidence_row[2].get("timezone") if current_evidence_row else None
-        timezone = raw_tz if isinstance(raw_tz, str) else None
-
-        brand_slugs = frozenset(
-            (
+            current_evidence_row = (
                 await db.execute(
-                    select(Brand.slug)
+                    select(
+                        OrderEvidence.ip, OrderEvidence.device_hash, OrderEvidence.client_hints
+                    ).where(OrderEvidence.order_id == order.id)
+                )
+            ).first()
+            raw_tz = current_evidence_row[2].get("timezone") if current_evidence_row else None
+            timezone = raw_tz if isinstance(raw_tz, str) else None
+            current_ip = current_evidence_row[0] if current_evidence_row else None
+            # Choke point for finding 4: when device identity is off, the
+            # current order's device is None from here on, which means
+            # nothing below — the SQL predicate, the current WindowOrder, the
+            # matched rows' WindowOrders — can ever link on it.
+            current_device = (
+                current_evidence_row[1]
+                if current_evidence_row and cfg.risk_device_identity
+                else None
+            )
+            current_user_id = order.user_id
+            # Defensive: CITEXT makes the SQL predicate below case-insensitive
+            # already, but `_window_reason`/`_shares_key` compare `WindowOrder`
+            # values with plain Python `==`, which is not. Lowering here is
+            # what makes "same email in different case" actually link.
+            current_guest_email = order.guest_email.lower() if order.guest_email else None
+
+            current_item_rows = (
+                await db.execute(
+                    select(OrderItem.fulfillment_data, Brand.slug)
                     .select_from(OrderItem)
                     .join(Sku, Sku.id == OrderItem.sku_id)
                     .join(Product, Product.id == Sku.product_id)
                     .join(Brand, Brand.id == Product.brand_id)
                     .where(OrderItem.order_id == order.id)
                 )
-            )
-            .scalars()
-            .all()
-        )
+            ).all()
+            current_targets: set[str] = set()
+            brand_slugs: set[str] = set()
+            for fulfillment_data, brand_slug in current_item_rows:
+                current_targets.update(_targets_from(fulfillment_data))
+                brand_slugs.add(brand_slug)
 
-        item_rows = (
-            await db.execute(
-                select(OrderItem.order_id, OrderItem.fulfillment_data).where(
-                    OrderItem.order_id.in_([row[0] for row in rows] + [order.id])
+            identity_predicates = []
+            if current_user_id is not None:
+                identity_predicates.append(Order.user_id == current_user_id)
+            if current_guest_email is not None:
+                identity_predicates.append(Order.guest_email == current_guest_email)
+            if current_ip is not None:
+                identity_predicates.append(OrderEvidence.ip == current_ip)
+            if current_device is not None:
+                identity_predicates.append(OrderEvidence.device_hash == current_device)
+
+            target_ids: set[str] = set()
+            if current_targets:
+                # Same normalisation as `_targets_from`, reordered to match
+                # Postgres's function set (strip -> drop leading '@' -> lower
+                # instead of strip -> lower -> drop leading '@'); `@` has no
+                # case and stripped whitespace can't reintroduce one, so the
+                # two orders agree on every input. See the 0059 backfill for
+                # the same "SQL must byte-match the Python helper" pairing.
+                target_id_rows = (
+                    (
+                        await db.execute(
+                            select(OrderItem.order_id)
+                            .distinct()
+                            .select_from(OrderItem)
+                            .join(Order, Order.id == OrderItem.order_id)
+                            .where(
+                                *base_frame,
+                                text(
+                                    "EXISTS (SELECT 1 FROM jsonb_each_text("
+                                    "order_items.fulfillment_data) kv WHERE "
+                                    "lower(ltrim(btrim(kv.value), '@')) = ANY(:targets))"
+                                ).bindparams(
+                                    bindparam(
+                                        "targets",
+                                        value=sorted(current_targets),
+                                        type_=ARRAY(Text),
+                                    )
+                                ),
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
                 )
-            )
-        ).all()
-        targets_by_order: dict[str, set[str]] = {}
-        for order_id, fulfillment_data in item_rows:
-            targets_by_order.setdefault(order_id, set()).update(_targets_from(fulfillment_data))
+                target_ids.update(target_id_rows)
 
-        recent = [
-            WindowOrder(
-                id=row[0],
-                paid_at=row[1],
-                total_usd=row[2],
-                buyer=row[3] or row[4],
-                ip=row[5],
-                device=row[6],
-                targets=frozenset(targets_by_order.get(row[0], set())),
+            matched_predicates = list(identity_predicates)
+            if target_ids:
+                matched_predicates.append(Order.id.in_(target_ids))
+
+            recent: list[WindowOrder] = []
+            if matched_predicates:
+                rows = (
+                    await db.execute(
+                        select(
+                            Order.id,
+                            Order.paid_at,
+                            Order.total_usd,
+                            Order.user_id,
+                            Order.guest_email,
+                            OrderEvidence.ip,
+                            OrderEvidence.device_hash,
+                        )
+                        .select_from(Order)
+                        .outerjoin(OrderEvidence, OrderEvidence.order_id == Order.id)
+                        .where(*base_frame, or_(*matched_predicates))
+                    )
+                ).all()
+                matched_ids = [row[0] for row in rows]
+                item_rows = (
+                    await db.execute(
+                        select(OrderItem.order_id, OrderItem.fulfillment_data).where(
+                            OrderItem.order_id.in_(matched_ids)
+                        )
+                    )
+                ).all()
+                targets_by_order: dict[str, set[str]] = {}
+                for order_id, fulfillment_data in item_rows:
+                    targets_by_order.setdefault(order_id, set()).update(
+                        _targets_from(fulfillment_data)
+                    )
+                recent = [
+                    WindowOrder(
+                        id=row[0],
+                        paid_at=row[1],
+                        total_usd=row[2],
+                        buyer=row[3] or (row[4].lower() if row[4] else None),
+                        ip=row[5],
+                        device=row[6] if cfg.risk_device_identity else None,
+                        targets=frozenset(targets_by_order.get(row[0], set())),
+                    )
+                    for row in rows
+                ]
+
+            current = WindowOrder(
+                id=order.id,
+                # `order.paid_at` may still be None here: the gate runs at payment
+                # success and `mark_paid` stamps it just before this call, but a
+                # defensive fallback beats an AttributeError in a money path.
+                paid_at=order.paid_at or now(),
+                total_usd=order.total_usd,
+                buyer=current_user_id or current_guest_email,
+                ip=current_ip,
+                device=current_device,
+                targets=frozenset(current_targets),
             )
-            for row in rows
-        ]
-        current = WindowOrder(
-            id=order.id,
-            # `order.paid_at` may still be None here: the gate runs at payment
-            # success and `mark_paid` stamps it just before this call, but a
-            # defensive fallback beats an AttributeError in a money path.
-            paid_at=order.paid_at or now(),
-            total_usd=order.total_usd,
-            buyer=order.user_id or order.guest_email,
-            ip=current_evidence_row[0] if current_evidence_row else None,
-            device=current_evidence_row[1] if current_evidence_row else None,
-            targets=frozenset(targets_by_order.get(order.id, set())),
-        )
-        geo = GeoContext(
-            is_guest=order.user_id is None,
-            brand_slugs=brand_slugs,
-            timezone=timezone,
-        )
+            geo = GeoContext(
+                is_guest=order.user_id is None,
+                brand_slugs=frozenset(brand_slugs),
+                timezone=timezone,
+            )
     except Exception:
         log.exception("orders.risk.gather_failed", order_id=order.id)
         return (
@@ -408,7 +517,7 @@ async def _gather(
                 id=order.id,
                 paid_at=order.paid_at or now(),
                 total_usd=order.total_usd,
-                buyer=order.user_id or order.guest_email,
+                buyer=order.user_id or (order.guest_email.lower() if order.guest_email else None),
                 ip=None,
                 device=None,
                 targets=frozenset(),
@@ -437,14 +546,19 @@ async def review_reason(
     and most confident check runs first. Rule 1 (amount) runs first and
     short-circuits: a single order already over threshold does not need the
     window gather. Rules 2-5 (rolling sum, velocity, shared identity, geo)
-    never raise on their own — a failed gather is logged and degrades to rule
-    1's result alone, because a broken risk query must not stop all sales.
+    never raise on their own — a failed ``_gather`` is logged and this
+    continues into them with a neutral context (an empty recent list, a
+    ``GeoContext`` that cannot fire rule 5) rather than skipping them. That is
+    not the same as "rule 1 alone": the rolling-sum rule counts the order
+    under review against itself (ADR-0062), so a single order at or above
+    `risk_sum_24h_usd`/`risk_sum_7d_usd` still holds even with zero siblings
+    read.
     """
     cfg = settings or get_settings()
     amount = _amount_reason(order, cfg)
     if amount is not None:
         return amount
-    current, recent, geo = await _gather(db, order)
+    current, recent, geo = await _gather(db, order, cfg)
     window = _window_reason(current, recent, cfg)
     if window is not None:
         return window
