@@ -77,8 +77,14 @@ not by having an account. Two enforcement points share the pure core
 outward-facing decline — the acquirer's own error code at point A, one fixed
 i18n string at point B (`store.errAbroad`/`topup.errAbroad`). Nothing outside
 `order_events.payload` ever says which of `VETO_FOREIGN_COUNTRY` /
-`VETO_FOREIGN_TIMEZONE` fired. A prober who can't tell why they were refused
-can't tell which signal to spoof around next.
+`VETO_FOREIGN_TIMEZONE` fired — or that geography was involved at all: the
+point-B copy deliberately names no reason. It offers the one hint that helps
+only a legitimate buyer (sign in to the account you have ordered with
+before) and is useless to a prober, since a freshly registered account earns
+nothing. The honest foreign newcomer without any history is routed to
+support instead — a rare case, priced in. Probing still narrows things down
+eventually (nothing stops A/B testing from two networks), but the message
+itself hands over neither the signal nor the fix.
 
 **A deadline, not an indefinite hold.** `auto_refund_expired_holds`
 (`apps/scheduler`'s `held_order_refund` job, every 15 minutes) refunds a

@@ -223,7 +223,7 @@
     "paymentNone": "No payment methods available",
     "pay": "Pay",
     "payError": "Couldn't create the order. Try again, or message support.",
-    "errAbroad": "Paying from abroad isn't available to new buyers yet. If you've ordered from YuPay before, sign in to that account — or contact support if this looks wrong.",
+    "errAbroad": "We couldn't create this order. Sign in to the account you've ordered with before — or contact support.",
     "successTitle": "Order created",
     "successNote": "Continue to payment to finish. The receipt will be emailed to you.",
     "goToPay": "Continue to payment",
