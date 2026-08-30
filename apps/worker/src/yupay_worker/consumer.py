@@ -16,7 +16,7 @@ import signal
 from collections.abc import Awaitable, Callable
 
 import asyncpg  # type: ignore[import-untyped]  # no bundled stubs
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 # Importing the API's router package first -- before anything imports
 # ``fulfillment.api`` -- is what makes the next import below work at all,
@@ -142,11 +142,74 @@ class ListenerManager:
         await conn.close()
 
 
+async def _drain_until_dry(session_factory: async_sessionmaker[AsyncSession]) -> None:
+    """One drainer: claim-run-commit batches on its own session until dry.
+
+    A session per drainer is mandatory, not tidiness: ``AsyncSession`` is not
+    safe under concurrent use, so drainers sharing one would interleave
+    statements on a single connection.
+
+    Drain until dry: one NOTIFY or tick may cover more pending tasks than a
+    single batch (limit=20), so keep claiming until a batch comes back empty.
+    Commit after every batch -- the invariant a crash must preserve is "loses
+    nothing but row locks", not "loses nothing".
+    """
+    async with session_factory() as db:
+        try:
+            while await drain_pending_tasks(db) > 0:
+                await db.commit()
+            await db.commit()
+        except Exception:
+            # Outer belt for infra failures (DB down, a deadlock with a
+            # concurrent refund cascade, etc.). A poisoned individual task is
+            # already contained inside drain_pending_tasks's own per-task
+            # savepoint and never escapes to reach here. Rolling back loses
+            # only this drainer's uncommitted batch: its rows go back to
+            # ``pending`` and the next tick reclaims them.
+            log.exception("worker.consumer.drain_failed")
+            await db.rollback()
+
+
+async def _drain_all(
+    session_factory: async_sessionmaker[AsyncSession], *, concurrency: int
+) -> None:
+    """Run ``concurrency`` independent drainers to completion.
+
+    No coordination between them by design: ``FOR UPDATE SKIP LOCKED`` makes
+    their claims disjoint, so the only thing parallelism changes is that a
+    supplier that hangs for 20s stalls one drainer instead of the whole
+    queue. Each swallows its own failure, so ``gather`` cannot be tripped by
+    one drainer's bad connection.
+    """
+    await asyncio.gather(*(_drain_until_dry(session_factory) for _ in range(concurrency)))
+
+
+async def _await_stray_tasks(*, timeout: float) -> None:
+    """Give fire-and-forget work started by the last batch a window to finish.
+
+    ``notifications.schedule`` runs its sends via a bare
+    ``asyncio.create_task``; the ones fired by the final commit's
+    after-commit hook are still in flight when ``run()`` returns, and
+    ``asyncio.run`` cancels every pending task on the way out — the
+    customer's "your order is delivered" Telegram message dies with the
+    process. Wait for them, bounded; never cancel them (that is exactly the
+    bug), and never wait on ourselves.
+    """
+    pending = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    if pending:
+        # Logged so a shutdown that sits here for the full window is
+        # diagnosable rather than looking like a hang.
+        log.info("worker.consumer.awaiting_stray_tasks", count=len(pending))
+        await asyncio.wait(pending, timeout=timeout)
+
+
 async def run() -> None:
     """Drain the fulfilment queue until told to stop.
 
     LISTEN gives instant wake-ups; the poll tick guarantees forward progress
-    no matter what LISTEN is doing. Nothing here is stateful across
+    no matter what LISTEN is doing. Every wake fans out to
+    ``fulfilment_concurrency`` independent drainers so one slow supplier
+    stalls one drainer, not the queue. Nothing here is stateful across
     iterations except the connections themselves -- kill the process at any
     point and the next start (or another replica) picks up exactly where the
     row locks left off.
@@ -159,32 +222,26 @@ async def run() -> None:
 
     wake = asyncio.Event()
     listener = ListenerManager(raw_dsn(cfg.database_url), wake)
-    log.info("worker.consumer.started", poll_seconds=cfg.fulfilment_poll_seconds)
+    log.info(
+        "worker.consumer.started",
+        poll_seconds=cfg.fulfilment_poll_seconds,
+        concurrency=cfg.fulfilment_concurrency,
+    )
     session_factory = async_sessionmaker(get_engine(), expire_on_commit=False)
 
     while not stop.is_set():
-        await listener.ensure()  # (re)connect w/ backoff via the poll-tick cadence, LISTEN
+        # No backoff on a failed LISTEN: the fixed poll tick below IS the
+        # retry cadence (and the queue's actual guarantee of progress). Note
+        # the LISTEN connection can also go stale silently -- nothing here
+        # keepalives it -- in which case wake-ups simply stop arriving and
+        # the tick is the bound on latency until ``ensure()`` notices.
+        await listener.ensure()
         await _wait_for_wake_or_tick(wake, stop, seconds=cfg.fulfilment_poll_seconds)
         if stop.is_set():
             break
-        async with session_factory() as db:
-            try:
-                # Drain until dry: one NOTIFY or tick may cover more pending
-                # tasks than a single batch (limit=20), so keep claiming
-                # until a batch comes back empty. Commit after every batch --
-                # the invariant a crash must preserve is "loses nothing but
-                # row locks", not "loses nothing".
-                while await drain_pending_tasks(db) > 0:
-                    await db.commit()
-                await db.commit()
-            except Exception:
-                # Outer belt for infra failures (DB down, etc.). A poisoned
-                # individual task is already contained inside
-                # drain_pending_tasks's own per-task savepoint and never
-                # escapes to reach here.
-                log.exception("worker.consumer.drain_failed")
-                await db.rollback()
+        await _drain_all(session_factory, concurrency=cfg.fulfilment_concurrency)
 
+    await _await_stray_tasks(timeout=5.0)
     await listener.close()
     await close_g2b_pool()
     log.info("worker.consumer.stopped")

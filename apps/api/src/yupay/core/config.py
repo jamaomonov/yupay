@@ -387,6 +387,16 @@ class Settings(BaseSettings):
             "can be lazy. One indexed query per tick."
         ),
     )
+    fulfilment_concurrency: int = Field(
+        default=4,
+        ge=1,
+        description=(
+            "How many drainers the worker runs in parallel, each on its own "
+            "DB session. One would mean a single hung supplier call stalls "
+            "every order behind it; SKIP LOCKED already keeps their claims "
+            "disjoint, so this is a dial with no coordination cost."
+        ),
+    )
 
     # --- Stuck-order watchdog (ADR-0046) ---
     stuck_order_alert_after_minutes: int = Field(
