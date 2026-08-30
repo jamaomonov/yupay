@@ -3073,14 +3073,14 @@ name = "yupay-worker"
 version = "0.0.1"
 source = { editable = "apps/worker" }
 dependencies = [
-    { name = "dramatiq", extra = ["redis", "watch"] },
+    { name = "asyncpg" },
     { name = "structlog" },
     { name = "yupay" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "dramatiq", extras = ["redis", "watch"], specifier = ">=1.17" },
+    { name = "asyncpg", specifier = ">=0.29" },
     { name = "structlog", specifier = ">=24.4" },
     { name = "yupay", editable = "apps/api" },
 ]

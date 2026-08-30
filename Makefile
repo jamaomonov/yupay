@@ -44,7 +44,7 @@ dev-api: ## Run only the API (host process; requires postgres+redis up)
 
 .PHONY: dev-worker
 dev-worker: ## Run only the worker
-	cd apps/worker && uv run dramatiq yupay_worker.main
+	cd apps/worker && uv run python -m yupay_worker.consumer
 
 .PHONY: dev-web
 dev-web: ## Run only the public web (host process)

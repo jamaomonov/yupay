@@ -1,11 +1,11 @@
 [project]
 name = "yupay-worker"
 version = "0.0.1"
-description = "YuPay background workers (Dramatiq)"
+description = "YuPay background workers (Postgres-queue consumer)"
 requires-python = ">=3.12"
 dependencies = [
     "yupay",
-    "dramatiq[redis,watch]>=1.17",
+    "asyncpg>=0.29",
     "structlog>=24.4",
 ]
 

@@ -165,7 +165,6 @@ module = [
     "apscheduler.*",
     "boto3.*",
     "botocore.*",
-    "dramatiq.*",
     "fakeredis.*",
     "respx.*",
     "testcontainers.*",

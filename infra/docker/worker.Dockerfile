@@ -29,4 +29,4 @@ WORKDIR /app/apps/worker
 RUN groupadd --system app && useradd --system --gid app --no-create-home app
 USER app
 
-CMD ["dramatiq", "yupay_worker.main", "--processes", "2", "--threads", "8"]
+CMD ["python", "-m", "yupay_worker.consumer"]
