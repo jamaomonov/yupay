@@ -16,11 +16,19 @@ fingerprints depending on when its order was placed. ``pgcrypto`` ships in
 keeps this migration self-sufficient against a fresh test database that
 doesn't run that init script.
 
-``ix_order_evidence_ip`` and ``ix_order_evidence_device_hash`` back the
-velocity queries that will group recent orders by address and by device.
-``ix_orders_paid_at`` backs the window those queries scope to ("orders paid in
-the last N minutes") — added ``if_not_exists`` because a later antifraud
-migration on a different branch may have already created it.
+``ix_order_evidence_ip`` backs the identity predicate ``orders/risk.py``'s
+``_gather`` adds to its bounded window query (ADR-0062): "other paid orders
+sharing this order's IP". ``ix_order_evidence_device_hash`` backs the same
+query's device predicate, but that predicate only exists when
+``risk_device_identity`` is on — off by default, because this column
+collides across unrelated buyers on the storefront's homogeneous mobile
+audience at exactly the shared-identity rule's threshold (measured on
+production; see the runbook's collision query). The index is real and ready
+for an operator who measures their own traffic and opts in; until then it
+goes unused. ``ix_orders_paid_at`` backs the trailing-window frame those
+queries scope to ("orders paid in the last N days" — 24h or 7d, never
+minutes) — added ``if_not_exists`` because a later antifraud migration on a
+different branch may have already created it.
 
 Revision ID: 0059_evidence_device_hash
 Revises: 0058_order_affiliate_discount
