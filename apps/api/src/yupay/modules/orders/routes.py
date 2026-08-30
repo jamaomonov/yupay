@@ -149,19 +149,28 @@ async def _enforce_precharge_veto(
 
     Wrapped in the same fail-open contract as the rest of ``orders.risk`` —
     a broken check must never stop checkout — except for the veto's own
-    refusal, which is a decision, not a failure, and must propagate.
+    refusal, which is a decision, not a failure, and must propagate. The DB
+    read (``_is_trusted_buyer``) runs inside its own ``db.begin_nested()``
+    SAVEPOINT, the same pattern ``orders.risk._gather``/``precharge_veto_full``
+    use: without it, a DB-level failure here (a statement timeout, a dropped
+    connection — not just a Python exception) leaves the *whole* request
+    transaction aborted, and ``svc.create_order``'s very next statement dies
+    with ``InFailedSqlTransactionError`` -> 500, even though this function
+    itself correctly failed open. The savepoint isolates that failure to the
+    trusted-buyer check alone.
     """
-    try:
-        from yupay.core.config import get_settings
+    from yupay.core.config import get_settings
 
-        cfg = get_settings()
-        country = ip_country_from(request.headers.get("cf-ipcountry"))
-        timezone = body.client_hints.timezone if body.client_hints else None
-        is_trusted = await _is_trusted_buyer(db, actor.user_id)
-        reason = _veto_decision(is_trusted, country, timezone, cfg)
+    cfg = get_settings()
+    country = ip_country_from(request.headers.get("cf-ipcountry"))
+    timezone = body.client_hints.timezone if body.client_hints else None
+    try:
+        async with db.begin_nested():
+            is_trusted = await _is_trusted_buyer(db, actor.user_id)
     except Exception:
         log.exception("orders.risk.veto_failed")
         return
+    reason = _veto_decision(is_trusted, country, timezone, cfg)
     if reason is not None:
         raise PaymentUnavailableAbroadError(
             "payment from abroad requires a signed-in account with order history"

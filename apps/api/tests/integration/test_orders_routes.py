@@ -1367,3 +1367,84 @@ async def test_create_order_guest_no_header_home_timezone_passes(
         },
     )
     assert r.status_code == 201, r.text
+
+
+async def test_create_order_guest_no_header_foreign_timezone_refused(
+    integration_client: AsyncClient,
+    _seed_pubg: dict[str, str],
+) -> None:
+    """IMPORTANT (I5a): no `cf-ipcountry` header at all -- the shape every
+    order arrives in today, before the Cloudflare IP Geolocation toggle is
+    flipped in production (see the runbook) -- falls back to the browser-
+    reported timezone, and a foreign one is refused exactly like a foreign
+    country would be. This is the only enforcement actually live in
+    production right now."""
+    email = "foreign-tz-guest@example.com"
+    token = await _guest_token(integration_client, email)
+    r = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Guest {token}",
+            "Idempotency-Key": "veto-foreign-tz-guest-aaaa",
+        },
+        json={
+            "currency": "USD",
+            "guest_email": email,
+            "client_hints": {"timezone": "Europe/Kiev"},
+            "items": [
+                {
+                    "sku_id": _seed_pubg["sku_id"],
+                    "qty": 1,
+                    "fulfillment_data": {"player_id": "123456", "server": "as"},
+                }
+            ],
+        },
+    )
+    assert r.status_code == 422, r.text
+    assert r.json()["type"].endswith("/payment-unavailable-abroad")
+
+
+async def test_precharge_veto_db_failure_does_not_abort_order_creation(
+    integration_client: AsyncClient,
+    _seed_pubg: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """IMPORTANT (I1): a broken `_is_trusted_buyer` query must not poison the
+    request's transaction. `_enforce_precharge_veto` wraps that query in its
+    own `db.begin_nested()` SAVEPOINT -- without it, a real DB-level failure
+    here (not merely a Python exception) leaves the session's transaction
+    aborted, and `svc.create_order`'s very next statement dies with
+    `InFailedSqlTransactionError` -> 500, even though the veto itself is
+    correctly fail-open. A plain monkeypatched Python exception wouldn't
+    reproduce this -- it has to be a real SQL error against the shared
+    connection, which is why this runs a broken query instead of just
+    raising."""
+    import yupay.modules.orders.routes as routes_mod
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import AsyncSession as _AsyncSession
+
+    async def _exploding_is_trusted_buyer(db: _AsyncSession, user_id: str | None) -> bool:
+        await db.execute(text("SELECT * FROM this_table_does_not_exist"))
+        return False  # pragma: no cover -- unreachable, the execute raises
+
+    monkeypatch.setattr(routes_mod, "_is_trusted_buyer", _exploding_is_trusted_buyer)
+
+    token = await _login_user(integration_client, tg_id=7501)
+    r = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "veto-db-explode-aaaaaaaa",
+        },
+        json={
+            "currency": "USD",
+            "items": [
+                {
+                    "sku_id": _seed_pubg["sku_id"],
+                    "qty": 1,
+                    "fulfillment_data": {"player_id": "123456", "server": "as"},
+                }
+            ],
+        },
+    )
+    assert r.status_code == 201, r.text
