@@ -6129,6 +6129,17 @@
             ],
             "title": "Ip"
           },
+          "ip_country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip Country"
+          },
           "order_id": {
             "title": "Order Id",
             "type": "string"
@@ -6153,6 +6164,7 @@
         "required": [
           "order_id",
           "ip",
+          "ip_country",
           "user_agent",
           "accept_language",
           "client_hints",
