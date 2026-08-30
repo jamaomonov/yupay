@@ -33,25 +33,25 @@ single-VPS deployment that must remain horizontally splittable without rewrites.
 
 ## 2. Tech stack at a glance
 
-| Area                | Choice                                                                                                                                        |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Backend             | Python 3.12, FastAPI, SQLAlchemy 2 (async), Alembic, Pydantic v2, `uv`                                                                        |
-| Background work     | Dramatiq + Redis (Temporal is a deferred migration option)                                                                                    |
-| Bot                 | aiogram 3                                                                                                                                     |
-| Data                | PostgreSQL 16, Redis 7, MinIO (S3-compatible)                                                                                                 |
-| Frontend            | Next.js 15 (App Router, RSC), TypeScript 5.6+ strict, Tailwind v4, shadcn/ui, TanStack Query v5, Zustand, react-hook-form + zod, next-intl v4 |
-| Admin SPA           | Vite 5 + React 19 + React Router 7 (data API). No SSR — see ADR-0010                                                                          |
-| Mini App            | `@telegram-apps/sdk-react` v3                                                                                                                 |
-| API client          | `@hey-api/openapi-ts` generated from FastAPI's OpenAPI 3.1 schema                                                                             |
-| Monorepo            | pnpm workspaces + Turborepo (TS) + uv workspace (Python) + top-level Makefile                                                                 |
-| Reverse proxy / TLS | Caddy 2 (auto Let's Encrypt)                                                                                                                  |
-| Observability       | Prometheus + Grafana + Loki + Promtail, Sentry SaaS                                                                                           |
-| Email               | Resend or Postmark (SaaS)                                                                                                                     |
-| Secrets             | env files + `sops` + `age` (encrypted secrets committed to repo)                                                                              |
-| Backups             | `pg_dump` → age → rclone → Cloudflare R2                                                                                                      |
-| CI/CD               | GitHub Actions + GHCR + SSH deploy                                                                                                            |
-| Tests               | pytest + testcontainers + respx + hypothesis (Py); Vitest + Playwright + Testing Library (TS)                                                 |
-| Lint / format       | ruff, mypy --strict (Py); eslint flat config, prettier, tsc (TS); pre-commit + commitlint + gitleaks                                          |
+| Area                | Choice                                                                                                                                                                      |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Backend             | Python 3.12, FastAPI, SQLAlchemy 2 (async), Alembic, Pydantic v2, `uv`                                                                                                      |
+| Background work     | Postgres-native queue (FOR UPDATE SKIP LOCKED + LISTEN/NOTIFY) consumed by apps/worker; Dramatiq retired 2026-08; Temporal remains the deferred option for multi-step sagas |
+| Bot                 | aiogram 3                                                                                                                                                                   |
+| Data                | PostgreSQL 16, Redis 7, MinIO (S3-compatible)                                                                                                                               |
+| Frontend            | Next.js 15 (App Router, RSC), TypeScript 5.6+ strict, Tailwind v4, shadcn/ui, TanStack Query v5, Zustand, react-hook-form + zod, next-intl v4                               |
+| Admin SPA           | Vite 5 + React 19 + React Router 7 (data API). No SSR — see ADR-0010                                                                                                        |
+| Mini App            | `@telegram-apps/sdk-react` v3                                                                                                                                               |
+| API client          | `@hey-api/openapi-ts` generated from FastAPI's OpenAPI 3.1 schema                                                                                                           |
+| Monorepo            | pnpm workspaces + Turborepo (TS) + uv workspace (Python) + top-level Makefile                                                                                               |
+| Reverse proxy / TLS | Caddy 2 (auto Let's Encrypt)                                                                                                                                                |
+| Observability       | Prometheus + Grafana + Loki + Promtail, Sentry SaaS                                                                                                                         |
+| Email               | Resend or Postmark (SaaS)                                                                                                                                                   |
+| Secrets             | env files + `sops` + `age` (encrypted secrets committed to repo)                                                                                                            |
+| Backups             | `pg_dump` → age → rclone → Cloudflare R2                                                                                                                                    |
+| CI/CD               | GitHub Actions + GHCR + SSH deploy                                                                                                                                          |
+| Tests               | pytest + testcontainers + respx + hypothesis (Py); Vitest + Playwright + Testing Library (TS)                                                                               |
+| Lint / format       | ruff, mypy --strict (Py); eslint flat config, prettier, tsc (TS); pre-commit + commitlint + gitleaks                                                                        |
 
 ---
 
