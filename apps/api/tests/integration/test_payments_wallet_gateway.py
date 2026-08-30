@@ -512,3 +512,56 @@ async def test_wallet_pay_concurrent_intent_creates_exactly_one_payment(
     )
     bals = {b["currency"]: Decimal(b["balance"]) for b in wallet.json()["balances"]}
     assert bals["USD"] == Decimal("15")
+
+
+# ---------- the wallet path with the async-fulfilment flag on ----------
+
+
+async def test_wallet_checkout_returns_fulfilling_when_async_is_on(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_voucher_sku: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR-0064 reasons about acquirer webhooks, but the wallet gateway
+    settles inside the customer's own ``create_intent`` request — there is no
+    webhook. So with ``fulfilment_async`` on, the response the *customer*
+    sees flips from ``delivered`` to ``fulfilling``, and the codes arrive a
+    moment later over the worker + realtime path. Anyone flipping the flag
+    has to watch a wallet order, not only a card order.
+    """
+    from yupay.core.config import Settings, get_settings
+    from yupay.modules.fulfillment import service as ff_svc
+
+    base = get_settings().model_dump()
+    base["fulfilment_async"] = True
+    monkeypatch.setattr(ff_svc, "get_settings", lambda: Settings(**base))
+
+    token, user_id = await _login_user(integration_client, tg_id=907)
+    await _credit_user_wallet(db_session, user_id=user_id, currency="USD", amount=Decimal("20"))
+    order_id = await _create_order(
+        integration_client, token=token, sku_id=_seed_voucher_sku, key_suffix="async-flag"
+    )
+
+    status, body = await _pay_with_wallet(integration_client, token=token, order_id=order_id)
+    assert status in (200, 201), body
+    assert body["status"] == "succeeded"  # the money moved synchronously...
+
+    detail = await integration_client.get(
+        f"/api/v1/orders/{order_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert detail.json()["status"] == "fulfilling"  # ...the goods did not
+
+    from yupay.modules.fulfillment.models import FulfillmentTask
+
+    statuses = (
+        (
+            await db_session.execute(
+                select(FulfillmentTask.status).where(FulfillmentTask.order_id == order_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert list(statuses) == ["pending"]  # left for the worker to drain

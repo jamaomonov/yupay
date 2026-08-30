@@ -21,10 +21,10 @@ flowchart LR
     API --> Postgres[(PostgreSQL 16)]
     API --> Redis[(Redis 7)]
     API --> MinIO[(MinIO / S3)]
-    API --> Worker[apps/worker — Postgres queue consumer]
+    API -. queue rows + NOTIFY .-> Worker[apps/worker — Postgres queue consumer]
     Worker --> Postgres
     Worker --> Suppliers[Supplier APIs<br/>Steam, Riot, PUBG, ...]
-    Worker --> Payments[Payment Gateways<br/>Stripe, PayPal, YooKassa, Click, Payme, Crypto]
+    Worker --> Redis
     Worker --> Email[Email provider<br/>Resend / Postmark]
     Worker --> TG[Telegram Bot API]
     API -. WebSocket .-> Web

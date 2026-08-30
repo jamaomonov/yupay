@@ -3,8 +3,9 @@
 `fulfillment_tasks` is the queue (ADR-0064). With `fulfilment_async=true`,
 `start_for_order` leaves each task `pending` and fires `pg_notify` on
 commit; `apps/worker`'s `yupay_worker.consumer` claims and runs them via
-`fulfillment.service.drain_pending_tasks` (`FOR UPDATE SKIP LOCKED`), woken
-instantly by `LISTEN fulfillment_queue` with a poll tick
+`fulfillment.service.drain_pending_tasks` (`FOR UPDATE SKIP LOCKED`) on
+`fulfilment_concurrency` parallel drainers, woken instantly by
+`LISTEN fulfillment_queue` with a poll tick
 (`fulfilment_poll_seconds`, default 5s) as the restart-proof fallback. With
 the flag off (the default everywhere except prod), `start_for_order` still
 runs tasks inline in the same request, exactly as before this ADR — the
@@ -26,6 +27,19 @@ empty queue.
 - Default `false` everywhere. Dev/staging exercise the async path through
   `apps/api/tests/integration/test_fulfillment_async.py` instead of running
   with the flag on.
+
+## The worker's own settings
+
+Neither is gated by `FULFILMENT_ASYNC` — the worker drains whatever exists,
+so both apply from the moment it starts.
+
+| Setting                   | Env                       | Default | What it does                                                                                                                                                           |
+| ------------------------- | ------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fulfilment_poll_seconds` | `FULFILMENT_POLL_SECONDS` | `5`     | Poll tick. `LISTEN` does the real-time work; the tick catches notifications lost to a restart and is the retry cadence for a dropped `LISTEN` connection.              |
+| `fulfilment_concurrency`  | `FULFILMENT_CONCURRENCY`  | `4`     | Drainers per wake, each on its own DB session and connection. Raising it costs pool connections; lowering it to 1 means one hung supplier call stalls the whole queue. |
+
+Both are read once at worker start — changing either needs a **worker**
+restart (unlike `FULFILMENT_ASYNC`, which only the api reads).
 
 ## Checking queue depth
 
@@ -70,15 +84,28 @@ own per-task savepoint) or `worker.consumer.listen_failed` (the `LISTEN`
 connection dropped; the poll tick keeps working, just slower, until the
 next `ensure()` reconnects). A worker stuck on one slow/hanging supplier
 call inside a single claimed task also shows as a growing queue with no
-error at all — that task holds up nothing else in the same batch (each
-claimed task runs independently), but a full batch of 20 all hitting the
-same slow supplier will look like the whole queue stalled; check for a
-supplier incident before assuming the worker itself is broken.
+error at all. That task stalls **its own drainer** for as long as the call
+hangs: the per-task savepoint isolates errors, not latency. The other
+`fulfilment_concurrency` − 1 drainers (default 4 total) keep claiming and
+running everything else, so a single hung call costs you a quarter of the
+throughput, not the queue. A hang resolves on its own when the supplier
+client's own timeout fires; a whole batch hitting the same slow supplier
+will still look like the queue stalled, so check for a supplier incident
+before assuming the worker itself is broken.
+
+A `worker.consumer.drain_failed` carrying a Postgres **deadlock** is
+expected under one specific race and needs no action: a full refund on an
+order takes the order row first and then its fulfilment tasks, while a
+drainer takes the task rows first and the order row last. Postgres breaks
+the cycle in about a second by aborting one side. The drainer's rollback
+puts its tasks back to `pending` and the next tick re-runs them; if the
+admin's refund is the side that was aborted, it returns a 500 and is safe
+to retry.
 
 ## Worker liveness
 
 - **Log line**: `worker.consumer.started` on process start (carries
-  `poll_seconds`). Its absence after a deploy or restart means the process
+  `poll_seconds` and `concurrency`). Its absence after a deploy or restart means the process
   never got past setup — check for an import/config error in the same log
   tail. `worker.consumer.stopped` on clean shutdown.
 - **Container status**:
@@ -92,13 +119,16 @@ logs worker` for the exception right before each restart.
 
 ## Shutdown behaviour (SIGTERM)
 
-The consumer's stop check only runs between batches, not inside one: once a
-`LISTEN` wake or poll tick starts a drain, the inner loop
-(`while await drain_pending_tasks(db) > 0`) keeps claiming and running
-batches of 20 until the queue comes back empty, regardless of a pending
-`SIGTERM`. **On shutdown, the worker finishes draining the entire pending
-backlog before it exits** — shutdown latency scales with backlog size, not
-with a fixed timeout.
+The consumer's stop check only runs between wakes, not inside one: once a
+`LISTEN` wake or poll tick starts a drain, all `fulfilment_concurrency`
+drainers keep claiming and running batches of 20 until the queue comes back
+empty, regardless of a pending `SIGTERM`. **On shutdown, the worker
+finishes draining the entire pending backlog before it exits** — shutdown
+latency scales with backlog size, not with a fixed timeout. After the last
+batch it also waits up to 5s for in-flight notification sends (the
+"delivered" Telegram pings the final commit kicked off, which would
+otherwise be cancelled with the process); it logs
+`worker.consumer.awaiting_stray_tasks` with a count when it does.
 
 This matters because Compose's default stop grace period is **10 seconds**:
 `docker compose stop` / `up -d` on a deploy sends `SIGTERM`, waits 10s, then
@@ -112,6 +142,39 @@ an unusually long restart, or one `worker.consumer.drain_failed`-free
 backlog rather than a sign of a bug. **Check queue depth before restarting
 the worker** (see above) if you want a clean, prompt shutdown rather than a
 kill.
+
+## Rolling out (operator steps)
+
+1. **Before deploying the worker**, count what is already `pending`:
+
+   ```bash
+   docker compose -f docker-compose.prod.yml exec postgres psql -U yupay_app -d yupay -c \
+     "SELECT count(*) FROM fulfillment_tasks WHERE status = 'pending';"
+   ```
+
+   The worker drains any committed `pending` row from its very first tick,
+   flag or no flag. Rows left `pending` by the old synchronous path (a
+   crashed request, a task stranded by an incident) would therefore be
+   fulfilled — codes issued, customers notified — the moment the worker
+   starts. Expect zero; if it is not zero, look at what those rows are and
+   decide deliberately before starting the worker.
+
+2. Deploy with the flag still **off**. The worker runs the consumer against
+   an empty queue; confirm the `worker.consumer.started` line (it carries
+   `poll_seconds` and `concurrency`).
+
+3. Flip `FULFILMENT_ASYNC=true` in `secrets/api.env` and restart **api**
+   only. Then watch two live orders through, not one:
+   - a **card** order (Click/Payme/Uzum → webhook → queue), and
+   - a **wallet-balance** order.
+
+   The wallet case is genuinely different: `payments.service.create_intent`
+   settles a wallet payment synchronously inside the customer's own request,
+   with no webhook anywhere. With the flag on, that request now returns the
+   order as `fulfilling` instead of `delivered`, and the codes land a moment
+   later via the worker and the realtime push. That is expected — but it is
+   the customer-visible difference the flag makes, so see it once yourself.
+   Queue depth should touch zero between orders.
 
 ## Rollback
 

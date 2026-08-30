@@ -74,7 +74,12 @@ connection for instant wake-ups, falls back to a poll tick
 (`fulfilment_poll_seconds`, default 5s) for a notification lost to a
 restart, and claims work with `drain_pending_tasks`
 (`fulfillment.service`, `FOR UPDATE SKIP LOCKED` on `status='pending'`,
-ordered by `created_at`, batch size 20). A crashed worker's row locks die
+ordered by `created_at`, batch size 20). Each wake fans out to
+`fulfilment_concurrency` (default 4) drainers, each on its own session:
+`SKIP LOCKED` already makes their claims disjoint, so parallelism needs no
+coordination, and without it one supplier call hanging for 20s would stall
+every order behind it — the savepoint around each task isolates errors, not
+latency. A crashed worker's row locks die
 with its connection; the next tick or a second replica reclaims them for
 free — nothing about the queue's correctness depends on the worker process
 staying alive.
@@ -132,6 +137,17 @@ shipped against it.
 - `apps/worker` currently runs a single replica in both compose files;
   `FOR UPDATE SKIP LOCKED` makes a second replica safe to add, but nothing
   today exercises that path under load.
+- **Wallet-balance checkout changes what the customer sees.** The drivers
+  above are argued over acquirer webhooks, but the wallet gateway has no
+  webhook: `payments.service.create_intent` settles it synchronously inside
+  the customer's own request and calls `start_for_order` there. With the
+  flag on, that request returns the order as `fulfilling` instead of
+  `delivered`, and the codes follow a moment later over the worker + realtime
+  push. Nothing is lost and no money moves differently — but it is the one
+  place where flipping the flag is visible to a customer mid-request, so the
+  rollout watches a wallet order as well as a card order (see the runbook's
+  flip checklist). Covered by
+  `test_payments_wallet_gateway.py::test_wallet_checkout_returns_fulfilling_when_async_is_on`.
 - Shutdown latency now scales with backlog size: on `SIGTERM` the consumer
   finishes draining whatever batch it is mid-loop on before the process
   exits (see the runbook) — a large backlog can outlast a short orchestrator
@@ -144,9 +160,16 @@ is the load-bearing test: it asserts the commit/rollback semantics the whole
 design rests on against a real `LISTEN`er, not a mock — a `NOTIFY` inside a
 transaction that rolls back must never arrive, and one inside a transaction
 that commits must arrive promptly. `drain_pending_tasks`'s `SKIP LOCKED`
-claim, its per-task savepoint isolation, and the worker's `LISTEN`/poll-tick
-consumer loop each have their own integration coverage (`apps/worker/tests/`,
-`apps/api/tests/integration/test_fulfillment_async.py`). With
+claim (two real sessions racing one backlog), its per-task savepoint
+isolation, and the lock that stops an admin cancel overwriting a task the
+consumer just succeeded are covered by real-database integration tests in
+`apps/api/tests/integration/test_fulfillment_async.py`. The consumer loop
+itself has **unit** coverage only — `apps/worker/tests/` is fakes, no
+database: the wake/tick race, the listener's never-raise reconnect, the
+fan-out to K drainers on K sessions, and the shutdown window for in-flight
+notification sends. Nothing automated exercises the real consumer process
+against a real queue; that was covered once, by hand, in the dev smoke run
+(paid → delivered in ~565ms). With
 `fulfilment_async` off, the entire pre-existing fulfilment suite
 (`test_fulfillment_routes.py`, `test_fulfillment_service_paths.py`,
 `test_fulfillment_manual_paths.py`, `test_admin_fulfillment_bulk_routes.py`,
