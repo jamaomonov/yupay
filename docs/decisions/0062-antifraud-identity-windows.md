@@ -53,7 +53,10 @@ none of them blocking a sale — only ever adding a hold:
 - **Rolling sum** (`REASON_ROLLING_SUM`) — orders sharing an identity (buyer,
   IP, device, or delivery target) whose combined total over a trailing 24h or
   7d window reaches `risk_sum_24h_usd` / `risk_sum_7d_usd`. The direct
-  counter to "many small orders instead of one large one."
+  counter to "many small orders instead of one large one." The sum includes
+  the order under review itself, so a single order at or above the cap trips
+  this rule alone, with no siblings required — the operator should not assume
+  a held order implies a series until the window is actually checked.
 - **Velocity** (`REASON_VELOCITY`) — orders sharing an identity whose count
   over 24h reaches `risk_velocity_24h`, regardless of amount: a burst of
   cheap orders is itself a signal.
