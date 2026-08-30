@@ -30,7 +30,7 @@ from yupay.core.config import get_settings
 from yupay.core.ids import new_id
 from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.orders.models import Order
-from yupay.modules.orders.risk import evidence_geo, precharge_veto, record_precharge_veto
+from yupay.modules.orders.risk import precharge_veto_full, record_precharge_veto
 from yupay.modules.payme.errors import (
     cannot_cancel_delivered,
     fiscal_receipt_not_found,
@@ -147,13 +147,14 @@ async def _refuse_if_vetoed(db: AsyncSession, order: Order) -> None:
         order: The already-validated (payable) order to check.
 
     Raises:
-        PaymeError: ``-31051`` if ``precharge_veto`` returns a reason.
+        PaymeError: ``-31051`` if ``precharge_veto_full`` returns a reason.
     """
-    veto = await precharge_veto(db, order)
-    if veto is None:
+    veto = await precharge_veto_full(db, order)
+    if veto.reason is None:
         return
-    country, timezone = await evidence_geo(db, order.id)
-    await record_precharge_veto(db, order, veto, country=country, timezone=timezone)
+    await record_precharge_veto(
+        db, order, veto.reason, country=veto.country, timezone=veto.timezone
+    )
     raise order_not_payable()
 
 

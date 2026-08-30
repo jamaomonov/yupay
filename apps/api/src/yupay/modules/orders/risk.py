@@ -38,7 +38,7 @@ import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from sqlalchemy import Text, bindparam, func, or_, select, text
 from sqlalchemy.dialects.postgresql import ARRAY
@@ -679,19 +679,37 @@ async def _is_trusted_buyer(db: AsyncSession, user_id: str | None) -> bool:
     return count >= 1
 
 
-async def precharge_veto(
+class PrechargeVetoResult(NamedTuple):
+    """``precharge_veto_full``'s answer: the decision plus what drove it.
+
+    ``reason`` is exactly what ``precharge_veto`` returns. ``country`` /
+    ``timezone`` are the same ``order_evidence`` values the decision was made
+    from, handed back so a caller that needs them (``record_precharge_veto``)
+    doesn't re-read the row a second time — that second read used to be
+    ``evidence_geo``, now gone.
+    """
+
+    reason: str | None
+    country: str | None
+    timezone: str | None
+
+
+async def precharge_veto_full(
     db: AsyncSession,
     order: Order,
     *,
     settings: Settings | None = None,
-) -> str | None:
-    """Whether this order's charge must be refused before it happens. ADR-0063.
+) -> PrechargeVetoResult:
+    """Whether this order's charge must be refused before it happens, plus why.
 
-    Fed from the order's stored ``order_evidence`` row — the acquirer
-    pre-charge stages (Payme ``CheckPerformTransaction``, Click ``Prepare``,
-    Uzum ``Check``) call this directly; order creation instead calls
-    ``_veto_decision`` straight, fed from the live request, since refusing
-    creation rolls the transaction back and leaves no evidence row to read.
+    ADR-0063. Fed from the order's stored ``order_evidence`` row — the
+    acquirer pre-charge stages (Payme ``CheckPerformTransaction``, Click
+    ``Prepare``, Uzum ``Check``) call this directly, then hand
+    ``result.country``/``result.timezone`` straight to
+    ``record_precharge_veto`` without a second SELECT of the same row. Order
+    creation instead calls ``_veto_decision`` straight, fed from the live
+    request, since refusing creation rolls the transaction back and leaves no
+    evidence row to read.
 
     Never raises: a broken veto must fail open to "charge allowed", the same
     way ``_gather`` fails open to "no window claim" — the post-payment hold
@@ -706,10 +724,14 @@ async def precharge_veto(
         settings: Override for tests; defaults to the process settings.
 
     Returns:
-        ``VETO_FOREIGN_COUNTRY``, ``VETO_FOREIGN_TIMEZONE``, or ``None``.
+        A ``PrechargeVetoResult``. ``country``/``timezone`` are ``None``
+        whenever the evidence row is missing the value or missing entirely,
+        or the checks were skipped/failed (non-catalog order, disabled veto,
+        broken query) — a caller must key off ``reason``, not assume
+        ``country``/``timezone`` are populated just because they're present.
     """
     if order.purpose != "catalog":
-        return None
+        return PrechargeVetoResult(None, None, None)
     cfg = settings or get_settings()
     try:
         async with db.begin_nested():
@@ -726,39 +748,27 @@ async def precharge_veto(
             trusted = await _is_trusted_buyer(db, order.user_id)
     except Exception:
         log.exception("orders.risk.veto_failed", order_id=order.id)
-        return None
-    return _veto_decision(trusted, country, timezone, cfg)
+        return PrechargeVetoResult(None, None, None)
+    reason = _veto_decision(trusted, country, timezone, cfg)
+    return PrechargeVetoResult(reason, country, timezone)
 
 
-async def evidence_geo(db: AsyncSession, order_id: str) -> tuple[str | None, str | None]:
-    """Return the order's stored ``(ip_country, timezone)``, or ``(None, None)``.
+async def precharge_veto(
+    db: AsyncSession,
+    order: Order,
+    *,
+    settings: Settings | None = None,
+) -> str | None:
+    """Whether this order's charge must be refused before it happens. ADR-0063.
 
-    Reads the same ``order_evidence`` columns ``precharge_veto`` itself
-    decided from. Enforcement point A (the acquirer pre-charge stages) calls
-    this right after a veto fires, purely to log which values drove the
-    refusal — it never repeats the decision, only echoes what already made
-    it.
-
-    Args:
-        db: Active session.
-        order_id: The vetoed order's id.
+    Thin wrapper over ``precharge_veto_full`` for callers that only need the
+    reason (tests, and anywhere ``country``/``timezone`` don't matter) — see
+    that function's docstring for the full contract.
 
     Returns:
-        ``(ip_country, timezone)``. Either element, or the whole pair, is
-        ``None`` when the evidence row is missing the value or missing
-        entirely.
+        ``VETO_FOREIGN_COUNTRY``, ``VETO_FOREIGN_TIMEZONE``, or ``None``.
     """
-    row = (
-        await db.execute(
-            select(OrderEvidence.ip_country, OrderEvidence.client_hints).where(
-                OrderEvidence.order_id == order_id
-            )
-        )
-    ).first()
-    if row is None:
-        return None, None
-    raw_tz = row[1].get("timezone") if row[1] else None
-    return row[0], raw_tz if isinstance(raw_tz, str) else None
+    return (await precharge_veto_full(db, order, settings=settings)).reason
 
 
 async def record_precharge_veto(
@@ -1109,11 +1119,12 @@ __all__ = [
     "VETO_FOREIGN_COUNTRY",
     "VETO_FOREIGN_TIMEZONE",
     "GeoContext",
+    "PrechargeVetoResult",
     "WindowOrder",
     "auto_refund_expired_holds",
-    "evidence_geo",
     "hold_for_review",
     "precharge_veto",
+    "precharge_veto_full",
     "record_precharge_veto",
     "review_reason",
 ]

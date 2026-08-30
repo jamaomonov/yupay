@@ -34,7 +34,7 @@ from yupay.core.config import get_settings
 from yupay.core.ids import new_id
 from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.orders.models import Order
-from yupay.modules.orders.risk import evidence_geo, precharge_veto, record_precharge_veto
+from yupay.modules.orders.risk import precharge_veto_full, record_precharge_veto
 from yupay.modules.payments import service as pay_svc
 from yupay.modules.payments.models import Payment
 from yupay.modules.uzum.errors import (
@@ -276,10 +276,11 @@ async def check(db: AsyncSession, *, service_id: int, params: dict[str, Any]) ->
     # ``_check_order_state`` already uses for a non-payable order —
     # indistinguishable on purpose, since a refusal that said "geo blocked"
     # would teach a carder exactly what to spoof next.
-    veto = await precharge_veto(db, order)
-    if veto is not None:
-        country, timezone = await evidence_geo(db, order.id)
-        await record_precharge_veto(db, order, veto, country=country, timezone=timezone)
+    veto = await precharge_veto_full(db, order)
+    if veto.reason is not None:
+        await record_precharge_veto(
+            db, order, veto.reason, country=veto.country, timezone=veto.timezone
+        )
         raise payment_cancelled()
     return {"status": "OK", "data": {"amount": {"value": _amount_value(order)}}}
 

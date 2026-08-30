@@ -50,7 +50,7 @@ from yupay.modules.click.errors import (
 )
 from yupay.modules.click.models import ClickTransaction
 from yupay.modules.orders.models import Order
-from yupay.modules.orders.risk import evidence_geo, precharge_veto, record_precharge_veto
+from yupay.modules.orders.risk import precharge_veto_full, record_precharge_veto
 from yupay.modules.payments import service as pay_svc
 from yupay.modules.payments.models import Payment
 
@@ -266,10 +266,11 @@ async def prepare(
     # cancelled/expired order would be refused above — indistinguishable on
     # purpose, since a refusal that said "geo blocked" would teach a carder
     # exactly what to spoof next.
-    veto = await precharge_veto(db, order)
-    if veto is not None:
-        country, timezone = await evidence_geo(db, order.id)
-        await record_precharge_veto(db, order, veto, country=country, timezone=timezone)
+    veto = await precharge_veto_full(db, order)
+    if veto.reason is not None:
+        await record_precharge_veto(
+            db, order, veto.reason, country=veto.country, timezone=veto.timezone
+        )
         raise transaction_cancelled()
     if Decimal(str(amount)) != order.total_charged:
         raise incorrect_amount()
