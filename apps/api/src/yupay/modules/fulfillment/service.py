@@ -506,6 +506,39 @@ async def process_task(  # noqa: PLR0915 -- linear saga; splitting hurts readabi
     return task
 
 
+async def drain_pending_tasks(db: AsyncSession, *, limit: int = 20) -> int:
+    """Claim and run pending fulfilment tasks. The worker's whole job.
+
+    ``FOR UPDATE SKIP LOCKED`` is the entire concurrency story: duplicate
+    notifications, a second worker replica, a poll tick racing a NOTIFY —
+    whoever locks a row first runs it, everyone else skips. A crashed
+    consumer's locks die with its connection and the next tick reclaims.
+
+    Claims ``status='pending'`` only. ``failed`` stays a human decision
+    (admin retry), exactly as in the synchronous mode — the async migration
+    changes where work runs, never what counts as runnable.
+    """
+    rows = (
+        await db.execute(
+            select(FulfillmentTask.id, FulfillmentTask.order_id)
+            .where(FulfillmentTask.status == "pending")
+            .order_by(FulfillmentTask.created_at)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+    ).all()
+    ran = 0
+    settled: set[str] = set()
+    for task_id, order_id in rows:
+        await process_task(db, task_id=task_id)
+        settled.add(order_id)
+        ran += 1
+    for order_id in settled:
+        await _try_settle_order(db, order_id=order_id)
+    await db.flush()
+    return ran
+
+
 async def retry_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
     """Admin-triggered retry of a failed task."""
     task = await _load_task(db, task_id)
@@ -1274,6 +1307,7 @@ __all__ = [
     "cancel_open_tasks_for_order",
     "cancel_task",
     "complete_manual_task",
+    "drain_pending_tasks",
     "fail_manual_task",
     "get_task_admin",
     "list_attempts_admin",

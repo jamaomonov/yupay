@@ -20,18 +20,20 @@ this file gets a chance to call it with an injected ``settings``, leaving no
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import asyncpg  # type: ignore[import-untyped]  # no bundled stubs
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 import yupay.api.v1  # noqa: F401  isort: skip  -- break the import cycle
 from yupay.core.config import Settings, get_settings
 from yupay.core.ids import new_id
 from yupay.modules.catalog.models import Brand, Category, Product, Sku
 from yupay.modules.fulfillment import service as ff_svc
+from yupay.modules.fulfillment.suppliers import FulfillResult
 from yupay.modules.fulfillment.suppliers.mock import MockFulfiller
 from yupay.modules.orders.models import Order, OrderItem
 from yupay.modules.users.models import User
@@ -160,9 +162,10 @@ async def test_notify_rides_the_transaction(db_session: AsyncSession) -> None:
         await ff_svc.start_for_order(db_session, order_id=order1_id, settings=cfg)
         await db_session.rollback()
         await asyncio.sleep(0.2)
-        # Scoped to what this test sent — an earlier test's listener isn't
-        # this one, but a NOTIFY sent before this listener attached could in
-        # principle still be pending delivery; assert on payload, not count.
+        # Postgres drops a NOTIFY outright when nobody is listening — it is
+        # never queued for a listener that attaches later. Asserting on this
+        # order's own id (not just an empty ``heard``) is what keeps the
+        # check immune to any cross-test NOTIFY chatter on the same channel.
         assert order1_id not in heard  # rollback -> silence
 
         order2 = await _make_paid_order(db_session, tag="commit")
@@ -187,3 +190,84 @@ async def test_flag_off_is_todays_behaviour(db_session: AsyncSession) -> None:
     refreshed = await db_session.get(Order, order.id)
     assert refreshed is not None
     assert refreshed.status in ("fulfilled", "delivered")
+
+
+# ---------- drain_pending_tasks: claim-and-run ----------
+
+
+@pytest.fixture
+async def second_session(db_engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
+    """A second session bound to the same (truncated) engine as ``db_session``.
+
+    Stands in for a second worker replica racing the first over the same
+    claim query — the concurrency proof needs two real connections, not a
+    mocked lock.
+    """
+    factory = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    async with factory() as session:
+        yield session
+
+
+async def test_drain_processes_pending_to_delivery(db_session: AsyncSession) -> None:
+    """A task left ``pending`` by the flag-on path gets claimed, run, and
+    its order settled — the same terminal state the synchronous saga reaches.
+    """
+    cfg = _settings(fulfilment_async=True)
+    order = await _make_paid_order(db_session, tag="drain")
+    await ff_svc.start_for_order(db_session, order_id=order.id, settings=cfg)
+    await db_session.commit()
+
+    n = await ff_svc.drain_pending_tasks(db_session)
+
+    assert n >= 1
+    refreshed = await db_session.get(Order, order.id)
+    assert refreshed is not None
+    assert refreshed.status in ("fulfilled", "delivered")
+
+
+async def test_drain_with_nothing_pending_is_a_noop(db_session: AsyncSession) -> None:
+    assert await ff_svc.drain_pending_tasks(db_session) == 0
+
+
+async def test_skip_locked_makes_duplicates_harmless(
+    db_session: AsyncSession,
+    second_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two consumers race the same pending backlog: every task runs exactly
+    once. This is the entire concurrency story, so it gets a real
+    two-session proof rather than a mocked lock.
+    """
+    calls: dict[str, int] = {}
+    original_fulfill = MockFulfiller.fulfill
+
+    async def _counting_fulfill(
+        self: MockFulfiller,
+        *,
+        db: AsyncSession,
+        order: Order,
+        item: OrderItem,
+        idempotency_key: str,
+    ) -> FulfillResult:
+        calls[idempotency_key] = calls.get(idempotency_key, 0) + 1
+        return await original_fulfill(
+            self, db=db, order=order, item=item, idempotency_key=idempotency_key
+        )
+
+    monkeypatch.setattr(MockFulfiller, "fulfill", _counting_fulfill)
+
+    cfg = _settings(fulfilment_async=True)
+    order_a = await _make_paid_order(db_session, tag="race-a")
+    order_b = await _make_paid_order(db_session, tag="race-b")
+    await ff_svc.start_for_order(db_session, order_id=order_a.id, settings=cfg)
+    await ff_svc.start_for_order(db_session, order_id=order_b.id, settings=cfg)
+    await db_session.commit()
+
+    ran = await asyncio.gather(
+        ff_svc.drain_pending_tasks(db_session),
+        ff_svc.drain_pending_tasks(second_session),
+    )
+
+    assert sum(ran) == 2  # one task per order, split any way between the two
+    assert calls  # every task actually ran
+    assert max(calls.values()) == 1  # and none of them ran twice
