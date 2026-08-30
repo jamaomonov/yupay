@@ -221,12 +221,22 @@ async def test_an_ordinary_order_is_untouched(
 ) -> None:
     """A control that also stops ordinary sales is not a control, it is an outage.
 
-    The SKU is $100, so the threshold is raised above it for this one case
-    rather than seeding a second product.
+    The SKU is $100, so the amount threshold is raised above it for this one
+    case rather than seeding a second product. The identity-window rules
+    (ADR-0062) are also disabled here: a lone $100 order is, by itself,
+    already at or above their default sums (``RISK_SUM_24H_USD``/
+    ``RISK_SUM_7D_USD`` = 25/60) with no siblings needed, so this control
+    would otherwise be held by a rule it isn't testing. What's under test is
+    specifically "below the amount threshold fulfils automatically" — the
+    window rules get their own coverage in ``test_order_risk_windows.py``.
     """
     import os
 
     os.environ["MANUAL_REVIEW_THRESHOLD_USD"] = "500"
+    os.environ["RISK_SUM_24H_USD"] = "0"
+    os.environ["RISK_SUM_7D_USD"] = "0"
+    os.environ["RISK_VELOCITY_24H"] = "0"
+    os.environ["RISK_DISTINCT_BUYERS_7D"] = "0"
     cfg.get_settings.cache_clear()
     try:
         order_id = await _buy(
@@ -247,4 +257,8 @@ async def test_an_ordinary_order_is_untouched(
         assert tasks, "an order below the threshold must fulfil automatically"
     finally:
         os.environ["MANUAL_REVIEW_THRESHOLD_USD"] = "40"
+        os.environ["RISK_SUM_24H_USD"] = "25"
+        os.environ["RISK_SUM_7D_USD"] = "60"
+        os.environ["RISK_VELOCITY_24H"] = "5"
+        os.environ["RISK_DISTINCT_BUYERS_7D"] = "3"
         cfg.get_settings.cache_clear()
