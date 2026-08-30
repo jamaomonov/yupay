@@ -18,7 +18,7 @@ import type { PlayerCheckResult } from "@/lib/player-check";
 import { WalletMark } from "@/components/icons/WalletMark";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
-import { getAccessToken, SURFACE } from "@/lib/client";
+import { ApiError, getAccessToken, SURFACE } from "@/lib/client";
 import { collectClientHints } from "@/lib/client-hints";
 import { mintGuestToken } from "@/lib/guest";
 import { saveGuestOrder } from "@/lib/guest-orders";
@@ -1391,7 +1391,21 @@ export function PurchasePanel({
         },
         body: JSON.stringify(orderBody),
       });
-      if (!ord.ok) throw new Error("order");
+      if (!ord.ok) {
+        // Mirrors what `apiFetch` does internally (this call is a raw
+        // `fetch`, not `apiFetch`) so the RFC 7807 `type` reaches the catch
+        // block below the same way it does everywhere else in the app.
+        let type: string | undefined;
+        try {
+          const body: unknown = await ord.json();
+          if (body && typeof body === "object" && "type" in body && typeof body.type === "string") {
+            type = body.type;
+          }
+        } catch {
+          /* non-JSON or empty error body — leave `type` undefined */
+        }
+        throw new ApiError(ord.status, "/orders", type);
+      }
       const order = (await ord.json()) as { id: string; discount_charged?: string };
       // Authoritative. A code the server refused leaves this at zero, and
       // saying so beats silently charging more than the button promised.
@@ -1453,8 +1467,15 @@ export function PurchasePanel({
         trackHref,
         paidFromBalance: payingFromBalance,
       });
-    } catch {
-      setError(t("payError"));
+    } catch (err) {
+      // The pre-charge geo veto (ADR-0063) refuses a foreign guest/fresh
+      // account before the order is even created — say so specifically
+      // rather than the generic "couldn't create the order".
+      setError(
+        err instanceof ApiError && err.type?.endsWith("/payment-unavailable-abroad")
+          ? t("errAbroad")
+          : t("payError"),
+      );
     } finally {
       // Whatever happened, the balance we hold may no longer be the one the
       // ledger holds: a wallet payment just spent from it, and a failure may

@@ -83,6 +83,21 @@ class AccountSuspendedError(AppError):
     title = "Account suspended"
 
 
+class PaymentUnavailableAbroadError(AppError):
+    """The pre-charge geo veto refused this checkout (ADR-0063).
+
+    422, not 403: the request itself is fine, but this particular buyer —
+    a guest or fresh account whose evidence puts them outside the
+    storefront's home countries/timezones — cannot complete it right now.
+    The message is a slug only; the frontends carry the actual wording so
+    it can be translated (see ``web.store.errAbroad`` / ``topup.errAbroad``).
+    """
+
+    status_code = 422
+    type_uri = "https://app.yupay.uz/errors/payment-unavailable-abroad"
+    title = "Payment unavailable from this location"
+
+
 class RateLimitedError(AppError):
     """Request rate limit exceeded — client should slow down."""
 

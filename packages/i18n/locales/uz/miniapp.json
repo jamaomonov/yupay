@@ -137,6 +137,7 @@
   "topup.processing": "{game} ishlanmoqda",
   "topup.tryAgain": "Qayta urinib ko'ring",
   "topup.checkoutFailed": "Buyurtmani rasmiylashtirib bo'lmadi",
+  "topup.errAbroad": "Chet eldan to'lash uchun buyurtmalar tarixi bo'lgan akkauntga kirish kerak. Xato bo'lsa, qo'llab-quvvatlashga yozing.",
   "topup.autoCredit": "Avtomatik o'tkazish",
   "topup.autoIssue": "Avtomatik yetkazish",
   "topup.tgBannerBody": "To'lov sizning Telegram akkauntingizga bog'langan. Katalogni ko'rish mumkin — buyurtmani faqat botdan rasmiylashtirish mumkin.",

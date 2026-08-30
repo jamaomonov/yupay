@@ -223,6 +223,7 @@
     "paymentNone": "To'lov usullari mavjud emas",
     "pay": "Toʻlash",
     "payError": "Buyurtma yaratilmadi. Qayta urinib koʻring yoki qoʻllab-quvvatlashga yozing.",
+    "errAbroad": "Chet eldan to'lash uchun buyurtmalar tarixi bo'lgan akkauntga kirish kerak. Xato bo'lsa, qo'llab-quvvatlashga yozing.",
     "successTitle": "Buyurtma yaratildi",
     "successNote": "Toʻlovni yakunlash uchun davom eting. Chek emailingizga keladi.",
     "goToPay": "Toʻlovga oʻtish",

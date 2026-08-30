@@ -288,6 +288,62 @@ it("declares the web surface on the call that records where an order came from",
   expect(captured.surface).toBe("web");
 });
 
+it("shows the geo-veto message instead of the generic pay error", async () => {
+  // ADR-0063 enforcement point B: the API refuses a foreign guest/fresh
+  // account with a 422 whose RFC 7807 `type` ends in
+  // `/payment-unavailable-abroad` -- that specific wording belongs near the
+  // pay button, not the generic "couldn't create the order".
+  vi.spyOn(globalThis, "fetch").mockImplementation(
+    (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes("/payments/providers")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ providers: [{ slug: "click", status: "active" }] }), {
+            status: 200,
+          }),
+        );
+      }
+      if (url.includes("/auth/guest")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ access_token: "guest-token" }), { status: 200 }),
+        );
+      }
+      if (url.includes("/api/v1/orders") && init?.method === "POST") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              type: "https://app.yupay.uz/errors/payment-unavailable-abroad",
+              title: "Payment unavailable from this location",
+              status: 422,
+              detail: "payment from abroad requires a signed-in account with order history",
+            }),
+            { status: 422 },
+          ),
+        );
+      }
+      return Promise.resolve(new Response("{}", { status: 200 }));
+    },
+  );
+
+  renderPanel(<PurchasePanel products={[makeStarsUnitProduct()]} locale="ru" />);
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: /^50 Stars\b/ }));
+  fireEvent.change(screen.getByPlaceholderText("emailPlaceholder"), {
+    target: { value: "buyer@example.com" },
+  });
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: /^pay ·/i })).not.toBeDisabled();
+  });
+  fireEvent.click(screen.getByRole("button", { name: /^pay ·/i }));
+  fireEvent.click(await screen.findByRole("button", { name: "confirmCta" }));
+
+  expect(await screen.findByText("errAbroad")).toBeInTheDocument();
+  expect(screen.queryByText("payError")).not.toBeInTheDocument();
+});
+
 it("puts the free-amount field above the packages and says nothing about rate or fees", async () => {
   // The old card asked for dollars while the customer was buying Stars, hid the
   // field under the grid, and wrapped it in a rate / "комиссия 0%" / limit

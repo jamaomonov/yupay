@@ -34,6 +34,19 @@ export class ApiError extends Error {
     }
     return this.message;
   }
+
+  /** RFC 7807 `type` URI from the problem+json body (e.g.
+   *  `https://app.yupay.uz/errors/payment-unavailable-abroad`), when the
+   *  body was parseable JSON with a `type` string. `undefined` for a
+   *  non-JSON body or one without a `type` field — mirrors the web
+   *  client's `ApiError.type` (`apps/web/src/lib/client.ts`). */
+  get type(): string | undefined {
+    if (this.body && typeof this.body === "object" && "type" in this.body) {
+      const raw = (this.body as { type?: unknown }).type;
+      return typeof raw === "string" ? raw : undefined;
+    }
+    return undefined;
+  }
 }
 
 export function getAccessToken(): string | null {

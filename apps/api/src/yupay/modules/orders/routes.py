@@ -13,19 +13,26 @@ from fastapi import APIRouter, Depends, Header, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
-from yupay.core.errors import AccountSuspendedError, UnauthorizedError, ValidationError
+from yupay.core.errors import (
+    AccountSuspendedError,
+    PaymentUnavailableAbroadError,
+    UnauthorizedError,
+    ValidationError,
+)
 from yupay.core.idempotency import IDEMPOTENCY_HEADER, MIN_IDEMPOTENCY_KEY_LENGTH
 from yupay.core.ids import new_id
+from yupay.core.logging import get_logger
 from yupay.modules.admin.api import require_admin
 from yupay.modules.auth.deps import current_user
 from yupay.modules.auth.dev_login import DEV_ADMIN_ID
 from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.auth.jwt import verify as verify_jwt
-from yupay.modules.evidence.service import capture_for_order
+from yupay.modules.evidence.service import capture_for_order, ip_country_from
 from yupay.modules.fulfillment.schemas import DeliveryListOut, DeliveryOut
 from yupay.modules.orders import service as svc
 from yupay.modules.orders.models import Order, OrderEvent
 from yupay.modules.orders.revenue import order_charged_usd
+from yupay.modules.orders.risk import _is_trusted_buyer, _veto_decision
 from yupay.modules.orders.schemas import (
     ClaimOut,
     OrderAdminListOut,
@@ -38,6 +45,8 @@ from yupay.modules.orders.schemas import (
 from yupay.modules.orders.service import Actor, build_item_display, succeeded_provider_for
 from yupay.modules.users.models import User
 from yupay.modules.users.service import is_email_banned
+
+log = get_logger("yupay.orders.routes")
 
 
 def _attach_displays(order_out: OrderOut, order: Order, locale: str = "ru") -> None:
@@ -123,6 +132,42 @@ async def _resolve_actor(
     raise UnauthorizedError("invalid authorization scheme")
 
 
+async def _enforce_precharge_veto(
+    request: Request,
+    body: OrderCreate,
+    db: AsyncSession,
+    actor: Actor,
+) -> None:
+    """Enforcement point B of the pre-charge geo veto (ADR-0063).
+
+    Runs after ``_resolve_actor`` and before ``svc.create_order`` — refusing
+    here rolls the whole transaction back, so no order row and no evidence
+    row are ever written for a vetoed guest. Fed from the LIVE request
+    rather than a stored ``order_evidence`` row, unlike enforcement point A
+    (the acquirers' own pre-charge stages, see ``risk.precharge_veto``):
+    there is nothing to read yet at this point in the request.
+
+    Wrapped in the same fail-open contract as the rest of ``orders.risk`` —
+    a broken check must never stop checkout — except for the veto's own
+    refusal, which is a decision, not a failure, and must propagate.
+    """
+    try:
+        from yupay.core.config import get_settings
+
+        cfg = get_settings()
+        country = ip_country_from(request.headers.get("cf-ipcountry"))
+        timezone = body.client_hints.timezone if body.client_hints else None
+        is_trusted = await _is_trusted_buyer(db, actor.user_id)
+        reason = _veto_decision(is_trusted, country, timezone, cfg)
+    except Exception:
+        log.exception("orders.risk.veto_failed")
+        return
+    if reason is not None:
+        raise PaymentUnavailableAbroadError(
+            "payment from abroad requires a signed-in account with order history"
+        )
+
+
 @router.post(
     "",
     response_model=OrderOut,
@@ -149,6 +194,7 @@ async def create_order_route(
             extra={"header": IDEMPOTENCY_HEADER},
         )
     actor = await _resolve_actor(request, body, db)
+    await _enforce_precharge_veto(request, body, db, actor)
     order = await svc.create_order(
         db,
         body,

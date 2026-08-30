@@ -1198,3 +1198,172 @@ async def test_an_unrecognised_or_absent_surface_records_as_unknown(
             await db_session.execute(sa_select(Order).where(Order.id == r.json()["id"]))
         ).scalar_one()
         assert order.source == "unknown"
+
+
+# ---------- pre-charge geo veto (ADR-0063), enforcement point B ----------
+
+
+async def _guest_token(client: AsyncClient, email: str) -> str:
+    r = await client.post("/api/v1/auth/guest", json={"email": email})
+    assert r.status_code == 200, r.text
+    return r.json()["access_token"]
+
+
+async def test_create_order_guest_refused_from_foreign_country(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_pubg: dict[str, str],
+) -> None:
+    """A guest whose edge-resolved country is outside the home list (`UZ` by
+    default) never gets an order row -- refusing before `svc.create_order`
+    rolls the whole create-order transaction back."""
+    email = "abroad-guest@example.com"
+    token = await _guest_token(integration_client, email)
+    r = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Guest {token}",
+            "Idempotency-Key": "veto-nl-guest-aaaaaaaa",
+            "cf-ipcountry": "NL",
+        },
+        json={
+            "currency": "USD",
+            "guest_email": email,
+            "items": [
+                {
+                    "sku_id": _seed_pubg["sku_id"],
+                    "qty": 1,
+                    "fulfillment_data": {"player_id": "123456", "server": "as"},
+                }
+            ],
+        },
+    )
+    assert r.status_code == 422, r.text
+    assert r.json()["type"].endswith("/payment-unavailable-abroad")
+
+    from sqlalchemy import select as sa_select
+
+    row = (await db_session.execute(sa_select(Order.id).where(Order.guest_email == email))).first()
+    assert row is None
+
+
+async def test_create_order_trusted_buyer_passes_despite_foreign_country(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_pubg: dict[str, str],
+) -> None:
+    """A signed-in buyer with at least one delivered order is exempt from the
+    veto (`_is_trusted_buyer`): the same foreign-country header that refuses
+    a guest still lets a proven customer through."""
+    from sqlalchemy import select as sa_select
+
+    token = await _login_user(integration_client, tg_id=7401)
+    user_id = (
+        await db_session.execute(
+            sa_select(User.id)
+            .join(TelegramLink, TelegramLink.user_id == User.id)
+            .where(TelegramLink.tg_user_id == 7401)
+        )
+    ).scalar_one()
+    db_session.add(
+        Order(
+            id=new_id(),
+            user_id=user_id,
+            guest_email=None,
+            status="delivered",
+            currency="USD",
+            total_usd=Decimal("1.00"),
+            total_charged=Decimal("1.00"),
+            expires_at=datetime.now(UTC) + timedelta(minutes=30),
+        )
+    )
+    await db_session.commit()
+
+    r = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "veto-trusted-user-aaaa",
+            "cf-ipcountry": "NL",
+        },
+        json={
+            "currency": "USD",
+            "items": [
+                {
+                    "sku_id": _seed_pubg["sku_id"],
+                    "qty": 1,
+                    "fulfillment_data": {"player_id": "123456", "server": "as"},
+                }
+            ],
+        },
+    )
+    assert r.status_code == 201, r.text
+
+
+async def test_create_order_guest_passes_when_veto_disabled(
+    integration_client: AsyncClient,
+    _seed_pubg: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The operator kill switch: `RISK_PRECHARGE_VETO=false` lets the same
+    foreign guest through -- the post-payment window rules are unaffected,
+    only this pre-charge refusal is."""
+    from yupay.core import config as risk_cfg
+
+    monkeypatch.setenv("RISK_PRECHARGE_VETO", "false")
+    risk_cfg.get_settings.cache_clear()
+    try:
+        email = "abroad-veto-off@example.com"
+        token = await _guest_token(integration_client, email)
+        r = await integration_client.post(
+            "/api/v1/orders",
+            headers={
+                "Authorization": f"Guest {token}",
+                "Idempotency-Key": "veto-off-guest-aaaaaaaa",
+                "cf-ipcountry": "NL",
+            },
+            json={
+                "currency": "USD",
+                "guest_email": email,
+                "items": [
+                    {
+                        "sku_id": _seed_pubg["sku_id"],
+                        "qty": 1,
+                        "fulfillment_data": {"player_id": "123456", "server": "as"},
+                    }
+                ],
+            },
+        )
+        assert r.status_code == 201, r.text
+    finally:
+        risk_cfg.get_settings.cache_clear()
+
+
+async def test_create_order_guest_no_header_home_timezone_passes(
+    integration_client: AsyncClient,
+    _seed_pubg: dict[str, str],
+) -> None:
+    """No `cf-ipcountry` header at all -- the veto falls back to the
+    browser-reported timezone, and a home one passes same as today."""
+    email = "home-guest@example.com"
+    token = await _guest_token(integration_client, email)
+    r = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Guest {token}",
+            "Idempotency-Key": "veto-home-tz-guest-aaaa",
+        },
+        json={
+            "currency": "USD",
+            "guest_email": email,
+            "client_hints": {"timezone": "Asia/Tashkent"},
+            "items": [
+                {
+                    "sku_id": _seed_pubg["sku_id"],
+                    "qty": 1,
+                    "fulfillment_data": {"player_id": "123456", "server": "as"},
+                }
+            ],
+        },
+    )
+    assert r.status_code == 201, r.text
