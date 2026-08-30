@@ -517,6 +517,20 @@ async def drain_pending_tasks(db: AsyncSession, *, limit: int = 20) -> int:
     Claims ``status='pending'`` only. ``failed`` stays a human decision
     (admin retry), exactly as in the synchronous mode — the async migration
     changes where work runs, never what counts as runnable.
+
+    Each claimed task runs inside its own ``SAVEPOINT``. ``process_task``
+    already turns every *expected* supplier failure (``FulfillerError`` /
+    ``FulfillerNotIntegratedError``) into a handled ``failed`` task and
+    returns normally — the savepoint is for the unexpected kind: a raw
+    ``httpx`` error a supplier client forgot to wrap, a bug. Without it,
+    that exception would escape this loop and propagate out of
+    ``drain_pending_tasks`` entirely — this function never commits, so the
+    caller (the worker) would roll back the *whole* connection, discarding
+    every already-succeeded task earlier in the same batch. Worse, the
+    poisoned task would still be ``pending`` afterwards, so the next tick
+    reclaims and crashes on it again — a livelock. The savepoint contains
+    the damage to the one task; on rollback we mark that task ``failed`` in
+    the (still-good) outer transaction so it leaves the queue for good.
     """
     rows = (
         await db.execute(
@@ -530,7 +544,38 @@ async def drain_pending_tasks(db: AsyncSession, *, limit: int = 20) -> int:
     ran = 0
     settled: set[str] = set()
     for task_id, order_id in rows:
-        await process_task(db, task_id=task_id)
+        try:
+            async with db.begin_nested():
+                await process_task(db, task_id=task_id)
+        except Exception as exc:  # noqa: BLE001 -- a poisoned task must not stall the queue; FulfillerError/FulfillerNotIntegratedError are already handled INSIDE process_task, so only a genuine unexpected crash reaches here.
+            # The SAVEPOINT above already rolled back this task's partial
+            # writes and expired the ORM objects it touched — same
+            # begin_nested()-then-expire behaviour ``complete_manual_task``
+            # already relies on. Reload fresh; the claim query's FOR UPDATE
+            # lock (held by the outer transaction, unaffected by a
+            # SAVEPOINT rollback) means no other consumer could have
+            # touched this row meanwhile.
+            task = await _load_task(db, task_id)
+            item = (
+                await db.execute(select(OrderItem).where(OrderItem.id == task.order_item_id))
+            ).scalar_one()
+            task.status = "failed"
+            task.failed_at = now()
+            task.last_error = str(exc)
+            item.fulfillment_state = "failed"
+            await _record_attempt(
+                db,
+                task=task,
+                kind="fulfill",
+                status="error",
+                payload={"supplier": task.supplier},
+                error=str(exc),
+            )
+            log.warning(
+                "fulfillment.drain.task_crashed",
+                task_id=task_id,
+                error=str(exc)[:200],
+            )
         settled.add(order_id)
         ran += 1
     for order_id in settled:

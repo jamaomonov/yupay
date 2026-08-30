@@ -26,6 +26,7 @@ from decimal import Decimal
 
 import asyncpg  # type: ignore[import-untyped]  # no bundled stubs
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 import yupay.api.v1  # noqa: F401  isort: skip  -- break the import cycle
@@ -33,6 +34,7 @@ from yupay.core.config import Settings, get_settings
 from yupay.core.ids import new_id
 from yupay.modules.catalog.models import Brand, Category, Product, Sku
 from yupay.modules.fulfillment import service as ff_svc
+from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.fulfillment.suppliers import FulfillResult
 from yupay.modules.fulfillment.suppliers.mock import MockFulfiller
 from yupay.modules.orders.models import Order, OrderItem
@@ -271,3 +273,69 @@ async def test_skip_locked_makes_duplicates_harmless(
     assert sum(ran) == 2  # one task per order, split any way between the two
     assert calls  # every task actually ran
     assert max(calls.values()) == 1  # and none of them ran twice
+
+
+async def test_drain_isolates_a_poisoned_task(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unwrapped crash from one task's fulfiller — not a ``FulfillerError``,
+    which ``process_task`` already handles — must not poison the whole
+    batch: the crashed task lands ``failed`` (not stuck ``pending``, which
+    would livelock the queue as the worker's rollback + re-tick reclaims it
+    forever) and the rest of the batch still completes and settles.
+    """
+    cfg = _settings(fulfilment_async=True)
+    poisoned_order = await _make_paid_order(db_session, tag="poison")
+    healthy_order = await _make_paid_order(db_session, tag="healthy")
+    await ff_svc.start_for_order(db_session, order_id=poisoned_order.id, settings=cfg)
+    await ff_svc.start_for_order(db_session, order_id=healthy_order.id, settings=cfg)
+    await db_session.commit()
+
+    poisoned_task_id = (
+        await db_session.execute(
+            select(FulfillmentTask.id).where(FulfillmentTask.order_id == poisoned_order.id)
+        )
+    ).scalar_one()
+
+    original_fulfill = MockFulfiller.fulfill
+
+    async def _boom_for_one_task(
+        self: MockFulfiller,
+        *,
+        db: AsyncSession,
+        order: Order,
+        item: OrderItem,
+        idempotency_key: str,
+    ) -> FulfillResult:
+        if idempotency_key == poisoned_task_id:
+            raise RuntimeError("boom")
+        return await original_fulfill(
+            self, db=db, order=order, item=item, idempotency_key=idempotency_key
+        )
+
+    monkeypatch.setattr(MockFulfiller, "fulfill", _boom_for_one_task)
+
+    n = await ff_svc.drain_pending_tasks(db_session)
+    assert n == 2  # both claimed and attempted this tick
+
+    poisoned_task = await db_session.get(FulfillmentTask, poisoned_task_id)
+    assert poisoned_task is not None
+    assert poisoned_task.status == "failed"
+    assert poisoned_task.last_error is not None
+    assert "boom" in poisoned_task.last_error
+
+    healthy_task = (
+        await db_session.execute(
+            select(FulfillmentTask).where(FulfillmentTask.order_id == healthy_order.id)
+        )
+    ).scalar_one()
+    assert healthy_task.status == "succeeded"
+
+    refreshed_healthy_order = await db_session.get(Order, healthy_order.id)
+    assert refreshed_healthy_order is not None
+    assert refreshed_healthy_order.status in ("fulfilled", "delivered")
+
+    # The poisoned row moved straight to 'failed' — a second tick must not
+    # reclaim it (that would just crash again and spin forever).
+    n2 = await ff_svc.drain_pending_tasks(db_session)
+    assert n2 == 0
