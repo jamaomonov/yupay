@@ -1,0 +1,242 @@
+"""The auto-refund sweep for expired holds (ADR-0063).
+
+``orders.risk.auto_refund_expired_holds`` is the deadline behind
+``hold_for_review``'s alert: a paid catalog order held past
+``risk_hold_auto_refund_hours`` gets refunded automatically instead of
+sitting forever on an alert nobody acted on. Runs against real Postgres
+because the point under test is the selection query (status, purpose, event
+age all interacting) and the real refund chokepoint (``payments.service.
+refund_admin`` — ledger posting, order FSM, idempotency), not a pure
+function `unit/test_order_risk.py` could fake.
+"""
+
+from __future__ import annotations
+
+from datetime import timedelta
+from decimal import Decimal
+
+import pytest
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+# Importing yupay.api.v1 first avoids the payments.service <-> wallet.routes
+# <-> api.v1 import cycle -- see held_order_refund.py's module docstring and
+# test_click_timeout.py, which hits the exact same trap.
+import yupay.api.v1  # noqa: F401  isort: skip
+from yupay.core.clock import now
+from yupay.core.config import Settings, get_settings
+from yupay.core.ids import new_id
+from yupay.modules.orders.models import Order, OrderEvent
+from yupay.modules.orders.risk import auto_refund_expired_holds
+from yupay.modules.payments.models import Payment, PaymentAttempt
+
+pytestmark = pytest.mark.asyncio
+
+
+def _cfg(*, hours: int = 24) -> Settings:
+    """Same shape as `unit/test_order_risk.py`'s own `_cfg`, with the one
+    knob this sweep actually reads."""
+    base = get_settings().model_dump()
+    base["risk_hold_auto_refund_hours"] = hours
+    return Settings(**base)
+
+
+async def _held_order(
+    db: AsyncSession,
+    *,
+    status: str = "paid",
+    purpose: str = "catalog",
+    total_usd: str = "5",
+    held_hours_ago: float,
+    tag: str,
+) -> tuple[Order, Payment]:
+    """A minimal order + succeeded payment + `order.held_for_review` event,
+    the latter dated `held_hours_ago` in the past.
+
+    No SKUs or order items: `auto_refund_expired_holds` never reads them, and
+    `refund_admin`'s fulfilment-cancel step tolerates an order with no tasks.
+    """
+    moment = now()
+    order = Order(
+        id=new_id(),
+        guest_email=f"sweep-{tag}@example.test",
+        status=status,
+        currency="USD",
+        total_usd=Decimal(total_usd),
+        total_charged=Decimal(total_usd),
+        purpose=purpose,
+        expires_at=moment + timedelta(days=1),
+        paid_at=moment - timedelta(hours=held_hours_ago),
+    )
+    db.add(order)
+    await db.flush()
+    payment = Payment(
+        id=new_id(),
+        order_id=order.id,
+        provider="mock",
+        status="succeeded",
+        amount=Decimal(total_usd),
+        currency="USD",
+        succeeded_at=moment - timedelta(hours=held_hours_ago),
+    )
+    db.add(payment)
+    db.add(
+        OrderEvent(
+            id=new_id(),
+            order_id=order.id,
+            kind="order.held_for_review",
+            payload={"reason": "amount_at_or_above_threshold", "total_usd": total_usd},
+            actor="risk",
+            created_at=moment - timedelta(hours=held_hours_ago),
+        )
+    )
+    await db.flush()
+    await db.commit()
+    return order, payment
+
+
+async def test_a_hold_past_the_deadline_is_refunded(db_session: AsyncSession) -> None:
+    order, payment = await _held_order(db_session, held_hours_ago=25, tag="expired")
+
+    n = await auto_refund_expired_holds(db_session, settings=_cfg(hours=24))
+
+    assert n == 1
+    await db_session.refresh(payment)
+    await db_session.refresh(order)
+    assert payment.status == "refunded"
+    assert order.status == "refunded"
+    kinds = [
+        e.kind
+        for e in (
+            await db_session.execute(select(OrderEvent).where(OrderEvent.order_id == order.id))
+        ).scalars()
+    ]
+    assert "order.auto_refund_hold_expired" in kinds
+
+
+async def test_fresh_holds_released_orders_and_wallet_topups_are_left_alone(
+    db_session: AsyncSession,
+) -> None:
+    # A fresh hold — inside the 24h deadline.
+    await _held_order(db_session, held_hours_ago=1, tag="fresh")
+    # Held once, but an operator already released it — fulfilment moved the
+    # order off `paid`, so it must never be re-selected even though the old
+    # `order.held_for_review` event is still on the timeline.
+    await _held_order(db_session, held_hours_ago=25, status="fulfilling", tag="released")
+    # A wallet top-up held past the deadline — out of scope: `purpose` gates it.
+    await _held_order(db_session, held_hours_ago=25, purpose="wallet_topup", tag="topup")
+
+    assert await auto_refund_expired_holds(db_session, settings=_cfg(hours=24)) == 0
+
+
+async def test_the_sweep_is_idempotent_across_ticks(db_session: AsyncSession) -> None:
+    order, payment = await _held_order(db_session, held_hours_ago=48, tag="idempotent")
+
+    first = await auto_refund_expired_holds(db_session, settings=_cfg(hours=24))
+    assert first == 1
+
+    second = await auto_refund_expired_holds(db_session, settings=_cfg(hours=24))
+    assert second == 0
+
+    # The gateway (and the ledger) were only ever touched once.
+    refund_attempts = (
+        await db_session.execute(
+            select(func.count())
+            .select_from(PaymentAttempt)
+            .where(PaymentAttempt.payment_id == payment.id, PaymentAttempt.kind == "refund")
+        )
+    ).scalar_one()
+    assert refund_attempts == 1
+
+
+async def test_zero_disables(db_session: AsyncSession) -> None:
+    await _held_order(db_session, held_hours_ago=999, tag="disabled")
+
+    assert await auto_refund_expired_holds(db_session, settings=_cfg(hours=0)) == 0
+
+
+async def test_a_held_order_with_no_succeeded_payment_is_skipped(
+    db_session: AsyncSession,
+) -> None:
+    """Defensive branch: a `paid` order has a succeeded payment by
+    definition, but if that invariant is ever broken, the sweep must log and
+    move on rather than crash the batch."""
+    moment = now()
+    order = Order(
+        id=new_id(),
+        guest_email="sweep-no-payment@example.test",
+        status="paid",
+        currency="USD",
+        total_usd=Decimal("5"),
+        total_charged=Decimal("5"),
+        purpose="catalog",
+        expires_at=moment + timedelta(days=1),
+        paid_at=moment - timedelta(hours=25),
+    )
+    db_session.add(order)
+    await db_session.flush()
+    db_session.add(
+        OrderEvent(
+            id=new_id(),
+            order_id=order.id,
+            kind="order.held_for_review",
+            payload={"reason": "amount_at_or_above_threshold"},
+            actor="risk",
+            created_at=moment - timedelta(hours=25),
+        )
+    )
+    await db_session.commit()
+
+    assert await auto_refund_expired_holds(db_session, settings=_cfg(hours=24)) == 0
+
+
+async def test_a_failing_refund_is_skipped_and_the_sweep_continues(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One order's refund blowing up (acquirer down, a stale payment state,
+    whatever) must not take the rest of the batch with it — the per-order
+    try/except in `auto_refund_expired_holds` logs it and moves on, and its
+    `db.rollback()` is what keeps the shared session usable for the next
+    order's queries afterwards."""
+    from yupay.modules.payments import service as payments_svc
+
+    failing_order, _ = await _held_order(db_session, held_hours_ago=25, tag="boom")
+    healthy_order, _ = await _held_order(db_session, held_hours_ago=25, tag="ok")
+    # Captured as a plain string rather than read off `failing_order` inside
+    # `_flaky` below: `auto_refund_expired_holds`'s `db.rollback()` after the
+    # first failure expires every ORM object on the shared session, and a
+    # bare (non-awaited) attribute access on an expired instance inside a
+    # sync closure raises `MissingGreenlet` instead of lazy-loading.
+    failing_order_id = failing_order.id
+
+    real_refund_admin = payments_svc.refund_admin
+
+    async def _flaky(
+        db: AsyncSession,
+        *,
+        payment_id: str,
+        admin_id: str,
+        amount: Decimal | None = None,
+        reason: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> Payment:
+        if idempotency_key == f"auto-refund:{failing_order_id}":
+            raise RuntimeError("acquirer down")
+        return await real_refund_admin(
+            db,
+            payment_id=payment_id,
+            admin_id=admin_id,
+            amount=amount,
+            reason=reason,
+            idempotency_key=idempotency_key,
+        )
+
+    monkeypatch.setattr(payments_svc, "refund_admin", _flaky)
+
+    n = await auto_refund_expired_holds(db_session, settings=_cfg(hours=24))
+
+    assert n == 1  # only the healthy order made it through
+    await db_session.refresh(failing_order)
+    await db_session.refresh(healthy_order)
+    assert failing_order.status == "paid", "the failing order is untouched, not half-refunded"
+    assert healthy_order.status == "refunded"

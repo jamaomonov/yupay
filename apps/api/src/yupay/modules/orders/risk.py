@@ -23,6 +23,12 @@ storefront's home countries/timezones. Deliberately brand-agnostic, unlike
 rule 5 above, and built on a pure decision core (``_veto_decision``) so its
 two enforcement points (the acquirer stage, and order creation) can never
 drift from each other — see that function's docstring for the actual rule.
+
+A hold from any rule above is reversible by an operator, but not indefinitely:
+``auto_refund_expired_holds`` (also ADR-0063) refunds a still-held order once
+``risk_hold_auto_refund_hours`` has passed with nobody releasing or refunding
+it by hand, so the alert this module already sends has an actual deadline
+behind it instead of trusting it to be seen.
 """
 
 from __future__ import annotations
@@ -45,6 +51,7 @@ from yupay.core.redis import get_redis
 from yupay.modules.catalog.models import Brand, Product, Sku
 from yupay.modules.evidence.models import OrderEvidence
 from yupay.modules.orders.models import Order, OrderEvent, OrderItem
+from yupay.modules.payments.models import Payment
 
 if TYPE_CHECKING:  # pragma: no cover -- type hints only
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -93,6 +100,13 @@ VETO_FOREIGN_COUNTRY = "precharge_foreign_country"
 #: evidence row (header missing, or pre-toggle order), but the browser's own
 #: reported timezone is outside `risk_home_timezones`.
 VETO_FOREIGN_TIMEZONE = "precharge_foreign_timezone"
+
+#: A `hold_for_review` order sat past `risk_hold_auto_refund_hours` with
+#: nobody releasing or refunding it. `auto_refund_expired_holds` refunded it
+#: automatically instead of leaving the customer's money in limbo forever.
+#: Written on both the `refund_admin` call (as its `reason`) and the
+#: `order_events` audit row this module adds alongside it.
+REASON_AUTO_REFUND_HOLD_EXPIRED = "auto_refund_hold_expired"
 
 
 #: reason -> (alert title, what the operator should do). Kept beside the
@@ -874,8 +888,177 @@ async def hold_for_review(
         )
 
 
+async def _auto_refund_one(db: AsyncSession, order_id: str, *, hours: int) -> bool:
+    """Refund one order held past its deadline. Returns whether it refunded.
+
+    Looks up the order's succeeded payment itself (the sweep has no route
+    handler to hand it one) and refunds it in full through
+    :func:`payments.service.refund_admin` — the same admin refund chokepoint,
+    keyed by a deterministic ``auto-refund:<order_id>`` idempotency key rather
+    than a fresh one per tick, which is what makes a crashed-and-rerun tick
+    safe: a retried call with the same key replays ``refund_admin``'s own
+    result instead of hitting the gateway twice.
+
+    Commits immediately on success — this order's refund, ledger posting, and
+    audit event land as one durable unit before the caller moves on to the
+    next order, so a crash mid-sweep can only ever lose *unstarted* work, not
+    roll back an order this function already told an operator was refunded.
+
+    Never raises to the caller in the way that matters for the sweep: an
+    exception from ``refund_admin`` (a down acquirer, a stale payment state)
+    propagates so :func:`auto_refund_expired_holds` can log it and move on to
+    the next order — this function's job is only to keep its own commit
+    boundary tight, not to swallow the error.
+    """
+    payment_row = (
+        await db.execute(
+            select(Payment.id, Order.total_charged, Order.currency)
+            .select_from(Payment)
+            .join(Order, Order.id == Payment.order_id)
+            .where(Payment.order_id == order_id, Payment.status == "succeeded")
+            .order_by(Payment.succeeded_at.desc())
+            .limit(1)
+        )
+    ).first()
+    if payment_row is None:
+        # Shouldn't happen — a `paid` order has a succeeded payment by
+        # definition — but a broken invariant here must be loud, not a crash
+        # that takes the rest of the batch down with it.
+        log.error("orders.risk.auto_refund_no_payment", order_id=order_id)
+        return False
+    payment_id, total_charged, currency = payment_row
+
+    from yupay.modules.payments import service as payments_svc
+
+    await payments_svc.refund_admin(
+        db,
+        payment_id=payment_id,
+        admin_id="auto-refund-sweep",
+        reason=REASON_AUTO_REFUND_HOLD_EXPIRED,
+        idempotency_key=f"auto-refund:{order_id}",
+    )
+    db.add(
+        OrderEvent(
+            id=new_id(),
+            order_id=order_id,
+            kind="order.auto_refund_hold_expired",
+            payload={"payment_id": payment_id, "hours": hours},
+            actor="risk",
+        )
+    )
+    log.warning("orders.auto_refund_hold_expired", order_id=order_id, hours=hours)
+    # Commit NOW: this is the one durable unit — payment/order/ledger (already
+    # flushed by `refund_admin`) plus the audit event above — that a
+    # crashed-and-rerun tick must be able to trust already happened.
+    await db.commit()
+
+    from yupay.modules.notifications.alerts import send_admin_alert
+
+    charged = f"{total_charged:,.0f}".replace(",", " ")
+    with contextlib.suppress(Exception):
+        await send_admin_alert(
+            "<b>💸 Автовозврат: срок проверки истёк</b>\n"
+            f"Заказ: <code>{order_id[:8]}…</code>\n"
+            f"Сумма: <b>{charged} {currency}</b> возвращена покупателю\n"
+            f"<i>Заказ был на проверке дольше {hours} ч, никто не выпустил и не "
+            "вернул его вручную — это текущая политика "
+            "(RISK_HOLD_AUTO_REFUND_HOURS), не сбой.</i>",
+            kind="order_auto_refund_hold_expired",
+        )
+    return True
+
+
+async def auto_refund_expired_holds(
+    db: AsyncSession,
+    *,
+    settings: Settings | None = None,
+    limit: int = 50,
+) -> int:
+    """Refund every held order whose deadline has passed. ADR-0063.
+
+    ``hold_for_review`` (rules 1-5, ADR-0047/0062) leaves a paid catalog
+    order on hold indefinitely until an operator releases it (starts
+    fulfilment — the FSM's own ``paid`` -> ``fulfilling`` transition, see
+    ``fulfillment.start_for_order``) or refunds it by hand. Nothing enforced
+    a deadline on that decision before this function: an alert that is
+    missed is a hold that sits forever. ``risk_hold_auto_refund_hours`` is
+    that deadline.
+
+    Selection is ``status="paid"`` + ``purpose="catalog"`` + an
+    ``order.held_for_review`` event older than the deadline. ``status="paid"``
+    alone is enough to mean "not yet released": ``start_for_order`` is the
+    only thing that ever moves a paid order off ``paid`` for a reason other
+    than a refund, and it always moves it to ``fulfilling`` — so a released
+    order is never re-selected here, and neither is a wallet top-up
+    (``purpose != "catalog"``, no fulfilment to release in the first place).
+    Every hold reason is in scope, including
+    ``REASON_PAID_AFTER_EXPIRY`` — the spec calls for the same safe default
+    regardless of which rule put the order on hold.
+
+    Runs in ``limit``-sized batches so one call bounds its own work; the
+    scheduler wrapper (``yupay_scheduler.jobs.held_order_refund``) loops this
+    across batches so a backlog bigger than one batch still drains in a
+    single tick.
+
+    Per-order try/except: one acquirer's refund API being down (or any other
+    single-order failure) is logged and the sweep moves on to the next order
+    rather than losing the whole batch — ``db.rollback()`` on failure clears
+    whatever the failed attempt left half-written so the next order's queries
+    aren't run against an aborted transaction.
+
+    Args:
+        db: Active session. Each successfully refunded order commits its own
+            work (see ``_auto_refund_one``); the caller does not need to
+            commit around this call.
+        settings: Override for tests; defaults to the process settings.
+        limit: Maximum orders refunded in this call.
+
+    Returns:
+        How many orders were refunded.
+    """
+    cfg = settings or get_settings()
+    hours = cfg.risk_hold_auto_refund_hours
+    if hours <= 0:
+        return 0
+    cutoff = now() - timedelta(hours=hours)
+
+    held_order_ids = (
+        select(OrderEvent.order_id)
+        .where(OrderEvent.kind == "order.held_for_review", OrderEvent.created_at <= cutoff)
+        .distinct()
+    )
+    order_ids = (
+        (
+            await db.execute(
+                select(Order.id)
+                .where(
+                    Order.status == "paid",
+                    Order.purpose == "catalog",
+                    Order.id.in_(held_order_ids),
+                )
+                .order_by(Order.paid_at)
+                .limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    refunded = 0
+    for order_id in order_ids:
+        try:
+            if await _auto_refund_one(db, order_id, hours=hours):
+                refunded += 1
+        except Exception:
+            log.exception("orders.risk.auto_refund_failed", order_id=order_id)
+            with contextlib.suppress(Exception):
+                await db.rollback()
+    return refunded
+
+
 __all__ = [
     "HOLD_ALERT_TEXT",
+    "REASON_AUTO_REFUND_HOLD_EXPIRED",
     "REASON_GEO_MISMATCH",
     "REASON_LARGE_AMOUNT",
     "REASON_PAID_AFTER_EXPIRY",
@@ -886,6 +1069,7 @@ __all__ = [
     "VETO_FOREIGN_TIMEZONE",
     "GeoContext",
     "WindowOrder",
+    "auto_refund_expired_holds",
     "evidence_geo",
     "hold_for_review",
     "precharge_veto",
