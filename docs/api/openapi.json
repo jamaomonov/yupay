@@ -401,6 +401,44 @@
         "title": "AdminFaqOut",
         "type": "object"
       },
+      "AdminPartnerDetailOut": {
+        "description": "Everything the admin partner page shows in one response.",
+        "properties": {
+          "balance": {
+            "additionalProperties": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            "title": "Balance",
+            "type": "object"
+          },
+          "codes": {
+            "items": {
+              "$ref": "#/components/schemas/CodeOut"
+            },
+            "title": "Codes",
+            "type": "array"
+          },
+          "partner": {
+            "$ref": "#/components/schemas/AdminPartnerOut"
+          },
+          "stats_month": {
+            "$ref": "#/components/schemas/AdminPartnerStatsOut"
+          },
+          "stats_year": {
+            "$ref": "#/components/schemas/AdminPartnerStatsOut"
+          }
+        },
+        "required": [
+          "partner",
+          "codes",
+          "stats_month",
+          "stats_year",
+          "balance"
+        ],
+        "title": "AdminPartnerDetailOut",
+        "type": "object"
+      },
       "AdminPartnerListOut": {
         "properties": {
           "items": {
@@ -506,6 +544,98 @@
           "approved_at"
         ],
         "title": "AdminPartnerOut",
+        "type": "object"
+      },
+      "AdminPartnerStatsOut": {
+        "description": "One rolling window of the partner's numbers, as the panel computes them.",
+        "properties": {
+          "activations": {
+            "title": "Activations",
+            "type": "integer"
+          },
+          "earned": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Earned",
+            "type": "string"
+          },
+          "orders": {
+            "title": "Orders",
+            "type": "integer"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period",
+          "since",
+          "earned",
+          "orders",
+          "activations"
+        ],
+        "title": "AdminPartnerStatsOut",
+        "type": "object"
+      },
+      "AdminPartnerUpdateIn": {
+        "additionalProperties": false,
+        "description": "Patch semantics: an omitted field is untouched, \"\" clears to NULL.\n\nThe email is absent on purpose \u2014 it is the login and the payout audit\ntrail, not a descriptive field.",
+        "properties": {
+          "admin_note": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin Note"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel"
+          },
+          "contact": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          }
+        },
+        "title": "AdminPartnerUpdateIn",
         "type": "object"
       },
       "AdminPayoutDetailOut": {
@@ -12565,6 +12695,131 @@
         ]
       }
     },
+    "/api/v1/admin/affiliate/partners/{partner_id}": {
+      "get": {
+        "operationId": "admin_partner_detail_api_v1_admin_affiliate_partners__partner_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "partner_id",
+            "required": true,
+            "schema": {
+              "title": "Partner Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminPartnerDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "One partner: profile, codes, stats and balance",
+        "tags": [
+          "admin:affiliate"
+        ]
+      },
+      "patch": {
+        "description": "Fields absent from the body stay untouched; \"\" clears to NULL.",
+        "operationId": "admin_update_partner_api_v1_admin_affiliate_partners__partner_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "partner_id",
+            "required": true,
+            "schema": {
+              "title": "Partner Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPartnerUpdateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminPartnerOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edit a partner's descriptive fields",
+        "tags": [
+          "admin:affiliate"
+        ]
+      }
+    },
     "/api/v1/admin/affiliate/partners/{partner_id}/codes": {
       "post": {
         "operationId": "admin_issue_code_api_v1_admin_affiliate_partners__partner_id__codes_post",
@@ -12746,6 +13001,65 @@
           }
         },
         "summary": "Switch a partner off",
+        "tags": [
+          "admin:affiliate"
+        ]
+      }
+    },
+    "/api/v1/admin/affiliate/partners/{partner_id}/unsuspend": {
+      "post": {
+        "description": "Their code applies at checkout again and they can sign in afresh;\nsessions revoked by the suspension stay revoked.",
+        "operationId": "admin_unsuspend_api_v1_admin_affiliate_partners__partner_id__unsuspend_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "partner_id",
+            "required": true,
+            "schema": {
+              "title": "Partner Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminPartnerOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Switch a suspended partner back on",
         "tags": [
           "admin:affiliate"
         ]

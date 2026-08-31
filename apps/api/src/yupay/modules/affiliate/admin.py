@@ -14,6 +14,7 @@ payout, which is the one action here that moves money outward.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -30,6 +31,7 @@ from yupay.modules.affiliate.models import (
     AffiliatePayout,
     AffiliateSession,
 )
+from yupay.modules.affiliate.panel import StatsRow
 
 log = get_logger("yupay.affiliate.admin")
 
@@ -196,6 +198,115 @@ async def suspend_partner(db: AsyncSession, *, partner_id: str) -> None:
         session.revoked_at = moment
     await db.flush()
     log.info("affiliate.partner.suspended", partner_id=partner_id)
+
+
+async def unsuspend_partner(db: AsyncSession, *, partner_id: str) -> None:
+    """Switch a suspended partner back on.
+
+    The reverse of :func:`suspend_partner` for the status half only: their
+    code applies at checkout again, and they can sign into the panel afresh.
+    Revoked sessions stay revoked — reactivation restores the right to log
+    in, not the sessions that were cut.
+
+    Only ``suspended`` qualifies. Letting "activate" run on a pending or
+    rejected application would quietly bypass the approval flow (and its
+    invite email) — those rows have their own transitions.
+
+    Raises:
+        NotFoundError: No such partner.
+        ConflictError: The partner is not suspended.
+    """
+    partner = await db.get(AffiliatePartner, partner_id)
+    if partner is None:
+        raise NotFoundError("partner not found")
+    if partner.status != "suspended":
+        raise ConflictError("only a suspended partner can be reactivated")
+    partner.status = "active"
+    await db.flush()
+    log.info("affiliate.partner.unsuspended", partner_id=partner_id)
+
+
+_UNSET = object()
+
+
+async def update_partner(
+    db: AsyncSession,
+    *,
+    partner_id: str,
+    display_name: str | object = _UNSET,
+    contact: str | object = _UNSET,
+    channel: str | object = _UNSET,
+    admin_note: str | object = _UNSET,
+) -> AffiliatePartner:
+    """Edit a partner's descriptive fields.
+
+    Patch semantics: an omitted field is untouched, an empty string clears to
+    NULL. The email is deliberately not editable here — it is the login and
+    the payout audit trail; changing it is an identity operation, not an edit.
+
+    Raises:
+        NotFoundError: No such partner.
+    """
+    partner = await db.get(AffiliatePartner, partner_id)
+    if partner is None:
+        raise NotFoundError("partner not found")
+    for field, value in (
+        ("display_name", display_name),
+        ("contact", contact),
+        ("channel", channel),
+        ("admin_note", admin_note),
+    ):
+        if value is _UNSET:
+            continue
+        cleaned = str(value).strip()
+        setattr(partner, field, cleaned or None)
+    await db.flush()
+    log.info("affiliate.partner.updated", partner_id=partner_id)
+    return partner
+
+
+@dataclass(frozen=True)
+class PartnerDetail:
+    """Everything the admin detail page shows, in one fetch."""
+
+    partner: AffiliatePartner
+    codes: list[AffiliateCode]
+    stats_month: StatsRow
+    stats_year: StatsRow
+    balance: dict[str, Decimal]
+
+
+async def partner_detail(db: AsyncSession, *, partner_id: str) -> PartnerDetail:
+    """One partner with their codes, rolling stats and ledger balance.
+
+    Reuses the partner panel's own ``stats``/``balances`` so the admin and
+    the partner read the same numbers — a support conversation where the two
+    screens disagree is worse than no screen at all.
+
+    Raises:
+        NotFoundError: No such partner.
+    """
+    from yupay.modules.affiliate import panel
+
+    partner = await db.get(AffiliatePartner, partner_id)
+    if partner is None:
+        raise NotFoundError("partner not found")
+    codes = list(
+        (
+            await db.execute(
+                select(AffiliateCode)
+                .where(AffiliateCode.partner_id == partner_id)
+                .order_by(AffiliateCode.created_at.desc())
+            )
+        ).scalars()
+    )
+    return PartnerDetail(
+        partner=partner,
+        codes=codes,
+        stats_month=await panel.stats(db, partner_id=partner_id, period="month"),
+        stats_year=await panel.stats(db, partner_id=partner_id, period="year"),
+        balance=await panel.balances(db, partner_id=partner_id),
+    )
 
 
 async def list_applications(

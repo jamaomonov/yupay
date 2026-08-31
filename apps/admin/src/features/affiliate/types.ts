@@ -16,6 +16,23 @@ export interface PartnerListOut {
   items: PartnerOut[];
 }
 
+export interface PartnerStatsOut {
+  period: string;
+  since: string;
+  earned: string;
+  orders: number;
+  activations: number;
+}
+
+/** Everything the admin partner page shows in one response. */
+export interface PartnerDetailOut {
+  partner: PartnerOut;
+  codes: CodeOut[];
+  stats_month: PartnerStatsOut;
+  stats_year: PartnerStatsOut;
+  balance: Record<string, string>;
+}
+
 export interface CodeOut {
   id: string;
   code: string;

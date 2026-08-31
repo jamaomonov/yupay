@@ -5,6 +5,7 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 import { Layout } from "./Layout";
 
 import { ApplicationsPage } from "@/features/affiliate/ApplicationsPage";
+import { PartnerDetailPage } from "@/features/affiliate/PartnerDetailPage";
 import { PartnersPage } from "@/features/affiliate/PartnersPage";
 import { PayoutsPage } from "@/features/affiliate/PayoutsPage";
 import { AnalyticsPage } from "@/features/analytics/AnalyticsPage";
@@ -88,6 +89,7 @@ export const router = createBrowserRouter([
           { path: "/fx", element: <FxPage /> },
           { path: "/affiliate/applications", element: <ApplicationsPage /> },
           { path: "/affiliate/partners", element: <PartnersPage /> },
+          { path: "/affiliate/partners/:id", element: <PartnerDetailPage /> },
           { path: "/affiliate/payouts", element: <PayoutsPage /> },
           { path: "/promo", element: <PromoPage /> },
           { path: "/reviews", element: <ReviewsPage /> },

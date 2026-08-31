@@ -223,3 +223,105 @@ async def test_reinviting_a_suspended_partner_is_refused(db_session: AsyncSessio
 
     with pytest.raises(ConflictError):
         await partners.reinvite(db_session, partner_id=partner_id)
+
+
+async def test_unsuspending_brings_a_partner_and_their_code_back(
+    db_session: AsyncSession,
+) -> None:
+    """The switch has to work in both directions: reactivation makes the code
+    apply at checkout again, exactly as it did before the suspension."""
+    from yupay.core.ids import new_id
+    from yupay.modules.affiliate import admin
+    from yupay.modules.affiliate.discount import ResolvedDiscount, resolve_code
+    from yupay.modules.users.models import User
+
+    partner_id = await _partner(db_session)
+    code = await admin.issue_code(
+        db_session,
+        partner_id=partner_id,
+        code=f"C{secrets.token_hex(4).upper()}",
+        discount_percent=Decimal("5"),
+        commission_percent=Decimal("2"),
+    )
+    buyer = User(id=new_id())
+    db_session.add(buyer)
+    await db_session.flush()
+
+    await admin.suspend_partner(db_session, partner_id=partner_id)
+    await admin.unsuspend_partner(db_session, partner_id=partner_id)
+
+    assert isinstance(
+        await resolve_code(db_session, code=code.code, user_id=buyer.id, purpose="catalog"),
+        ResolvedDiscount,
+    )
+
+
+async def test_unsuspending_anyone_but_a_suspended_partner_is_refused(
+    db_session: AsyncSession,
+) -> None:
+    """ "Activate" must not become a backdoor approval for pending or rejected
+    applications — those have their own flows with their own side effects."""
+    from yupay.core.errors import ConflictError
+    from yupay.modules.affiliate import admin
+
+    for status in ("pending", "rejected", "active"):
+        partner_id = await _partner(db_session, status=status)
+        with pytest.raises(ConflictError):
+            await admin.unsuspend_partner(db_session, partner_id=partner_id)
+
+
+async def test_update_partner_touches_only_the_fields_it_is_given(
+    db_session: AsyncSession,
+) -> None:
+    from yupay.modules.affiliate import admin
+    from yupay.modules.affiliate.models import AffiliatePartner
+
+    partner_id = await _partner(db_session)
+    await admin.update_partner(
+        db_session,
+        partner_id=partner_id,
+        display_name="Jamshid",
+        contact="@jama",
+        channel="https://youtube.com/@jama",
+        admin_note="met at the meetup",
+    )
+    row = await db_session.get(AffiliatePartner, partner_id)
+    assert row is not None
+    email_before = row.email
+    assert (row.display_name, row.contact, row.channel, row.admin_note) == (
+        "Jamshid",
+        "@jama",
+        "https://youtube.com/@jama",
+        "met at the meetup",
+    )
+
+    # Omitted fields stay; explicit empty strings clear to NULL.
+    await admin.update_partner(db_session, partner_id=partner_id, contact="")
+    row = await db_session.get(AffiliatePartner, partner_id)
+    assert row is not None
+    assert row.contact is None
+    assert row.display_name == "Jamshid"
+    assert row.email == email_before
+
+
+async def test_partner_detail_carries_codes_stats_and_balance(
+    db_session: AsyncSession,
+) -> None:
+    """One call feeds the whole admin detail page."""
+    from yupay.modules.affiliate import admin
+
+    partner_id = await _partner(db_session)
+    await admin.issue_code(
+        db_session,
+        partner_id=partner_id,
+        code=f"C{secrets.token_hex(4).upper()}",
+        discount_percent=Decimal("5"),
+        commission_percent=Decimal("2"),
+    )
+
+    detail = await admin.partner_detail(db_session, partner_id=partner_id)
+    assert detail.partner.id == partner_id
+    assert len(detail.codes) == 1
+    assert detail.stats_month["orders"] == 0
+    assert detail.stats_year["earned"] == Decimal("0")
+    assert set(detail.balance) == {"available", "held", "reserved"}

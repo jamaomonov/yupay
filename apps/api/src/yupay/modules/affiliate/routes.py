@@ -31,8 +31,11 @@ from yupay.modules.affiliate.discount import (
 from yupay.modules.affiliate.models import AffiliatePartner, AffiliatePayout
 from yupay.modules.affiliate.partners import send_partner_invite
 from yupay.modules.affiliate.schemas import (
+    AdminPartnerDetailOut,
     AdminPartnerListOut,
     AdminPartnerOut,
+    AdminPartnerStatsOut,
+    AdminPartnerUpdateIn,
     AdminPayoutDetailOut,
     AdminPayoutListOut,
     AdminPayoutOut,
@@ -427,6 +430,59 @@ async def admin_partners(
 ) -> AdminPartnerListOut:
     rows = await affiliate_admin.list_partners(db)
     return AdminPartnerListOut(items=[_partner_out(r) for r in rows])
+
+
+@admin_router.get(
+    "/partners/{partner_id}",
+    response_model=AdminPartnerDetailOut,
+    summary="One partner: profile, codes, stats and balance",
+)
+async def admin_partner_detail(
+    partner_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> AdminPartnerDetailOut:
+    detail = await affiliate_admin.partner_detail(db, partner_id=partner_id)
+    return AdminPartnerDetailOut(
+        partner=_partner_out(detail.partner),
+        codes=[CodeOut.model_validate(c) for c in detail.codes],
+        stats_month=AdminPartnerStatsOut(**detail.stats_month),
+        stats_year=AdminPartnerStatsOut(**detail.stats_year),
+        balance=detail.balance,
+    )
+
+
+@admin_router.patch(
+    "/partners/{partner_id}",
+    response_model=AdminPartnerOut,
+    summary="Edit a partner's descriptive fields",
+)
+async def admin_update_partner(
+    partner_id: str,
+    body: AdminPartnerUpdateIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> AdminPartnerOut:
+    """Fields absent from the body stay untouched; "" clears to NULL."""
+    fields = body.model_dump(exclude_unset=True)
+    row = await affiliate_admin.update_partner(db, partner_id=partner_id, **fields)
+    return _partner_out(row)
+
+
+@admin_router.post(
+    "/partners/{partner_id}/unsuspend",
+    response_model=AdminPartnerOut,
+    summary="Switch a suspended partner back on",
+)
+async def admin_unsuspend(
+    partner_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> AdminPartnerOut:
+    """Their code applies at checkout again and they can sign in afresh;
+    sessions revoked by the suspension stay revoked."""
+    await affiliate_admin.unsuspend_partner(db, partner_id=partner_id)
+    row = await db.get(AffiliatePartner, partner_id)
+    if row is None:  # pragma: no cover -- unsuspend_partner() would have raised
+        raise NotFoundError("partner not found")
+    return _partner_out(row)
 
 
 @admin_router.post(

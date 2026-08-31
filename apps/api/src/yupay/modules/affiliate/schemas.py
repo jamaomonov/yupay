@@ -240,6 +240,41 @@ class AdminPartnerListOut(BaseModel):
     items: list[AdminPartnerOut]
 
 
+class AdminPartnerUpdateIn(BaseModel):
+    """Patch semantics: an omitted field is untouched, "" clears to NULL.
+
+    The email is absent on purpose — it is the login and the payout audit
+    trail, not a descriptive field.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str | None = Field(default=None, max_length=128)
+    contact: str | None = Field(default=None, max_length=128)
+    channel: str | None = Field(default=None, max_length=512)
+    admin_note: str | None = Field(default=None, max_length=1024)
+
+
+class AdminPartnerStatsOut(BaseModel):
+    """One rolling window of the partner's numbers, as the panel computes them."""
+
+    period: str
+    since: datetime
+    earned: Decimal
+    orders: int
+    activations: int
+
+
+class AdminPartnerDetailOut(BaseModel):
+    """Everything the admin partner page shows in one response."""
+
+    partner: AdminPartnerOut
+    codes: list[CodeOut]
+    stats_month: AdminPartnerStatsOut
+    stats_year: AdminPartnerStatsOut
+    balance: dict[str, Decimal]
+
+
 class RejectIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
