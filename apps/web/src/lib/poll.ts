@@ -33,3 +33,31 @@ export function pollInterval(failures = 0): number {
   // back through the ceiling it is meant to respect.
   return Math.min(Math.round(backoff * (1 + Math.random())), MAX_MS);
 }
+
+/** Statuses during which the order page keeps itself fresh. */
+const IN_MOTION = new Set(["pending_payment", "paid", "fulfilling", "fulfilled"]);
+
+/**
+ * Refetch interval for the order query on the order page.
+ *
+ * A live socket silences polling only for ``pending_payment`` — that state
+ * can sit for hours and its exit is user-driven. Through
+ * ``paid → fulfilling → fulfilled`` (the delivery window) the page polls even
+ * while the socket says connected: a backgrounded tab or a WebView suspended
+ * during the payment hop leaves a zombie socket that still reports connected,
+ * and the delivered push dies in it — the poll is the reconciler, the socket
+ * only the accelerator, mirroring the worker's NOTIFY-plus-poll design.
+ *
+ * @param status current order status, if loaded.
+ * @param opts `connected` from the realtime store; `failures` from TanStack's
+ *   `query.state.fetchFailureCount`.
+ * @returns milliseconds until the next poll, or `false` to stop.
+ */
+export function orderPollInterval(
+  status: string | undefined,
+  opts: { connected: boolean; failures?: number },
+): number | false {
+  if (!status || !IN_MOTION.has(status)) return false;
+  if (opts.connected && status === "pending_payment") return false;
+  return pollInterval(opts.failures ?? 0);
+}

@@ -379,11 +379,17 @@ export function orderRefetchInterval(
   // Minimised app: stop burning the customer's battery and our API on an
   // order nobody is watching. `activated` refetches immediately (App.tsx).
   if (!opts.appActive) return false;
-  // The order-updates WebSocket is live: it nudges this query on every
-  // change, so REST polling on top of it would just burn battery/API budget
-  // for no fresher data.
-  if (opts.realtimeConnected) return false;
-  // Poll while the order is in motion. Once terminal, stop.
+  // A live socket silences polling only while the order waits for payment:
+  // that state can sit for hours and its exit is user-driven — the resume
+  // refetch catches it when the customer comes back from the payment app.
+  if (opts.realtimeConnected && status === "pending_payment") return false;
+  // paid → fulfilling → fulfilled is the short window where the worker is
+  // delivering, and there the socket is an accelerator, never the sole truth:
+  // a WebView suspended during the external payment hop leaves a zombie
+  // socket that still reports connected until the alive-timer lapses, and a
+  // delivered push dies in it — the screen then freezes on "fulfilling"
+  // (seen live, 2026-08-31). Poll as the reconciler, mirroring the worker's
+  // own NOTIFY-plus-poll design.
   if (!["pending_payment", "paid", "fulfilling", "fulfilled"].includes(status)) return false;
   return jitter(backoff(opts.failures ?? 0));
 }

@@ -184,6 +184,18 @@ kill.
    the customer-visible difference the flag makes, so see it once yourself.
    Queue depth should touch zero between orders.
 
+   Watch the delivered transition **on the customer's screen**, not only in
+   the admin. The first flip (2026-08-31) surfaced a client-side freeze: both
+   surfaces suppressed REST polling entirely while the order-updates socket
+   reported connected, but a WebView suspended during the external payment
+   hop leaves a zombie socket that still reports connected — the delivered
+   push died in it and the Mini App sat on «Выдаём заказ» until a manual
+   reload. Since then the clients poll through `paid → fulfilling →
+fulfilled` even with a live socket (`orderRefetchInterval` in the Mini
+   App, `orderPollInterval` in web) — the socket accelerates, the poll
+   reconciles, mirroring this queue's own NOTIFY-plus-poll design. A frozen
+   "fulfilling" screen returning means that reconciler regressed.
+
 ## Rollback
 
 Flag off + api restart:

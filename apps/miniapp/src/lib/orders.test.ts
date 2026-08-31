@@ -48,11 +48,22 @@ describe("orderRefetchInterval", () => {
     );
   });
 
-  it("stops REST polling once the order-updates WebSocket is connected", () => {
-    for (const status of ["pending_payment", "paid", "fulfilling", "fulfilled"] as const) {
-      expect(orderRefetchInterval(status, { appActive: true, realtimeConnected: true })).toBe(
-        false,
-      );
+  it("lets a connected socket silence polling only for pending_payment", () => {
+    // pending_payment can sit for hours and its exit is user-driven (the
+    // resume refetch catches it), so the live socket makes polling redundant.
+    expect(
+      orderRefetchInterval("pending_payment", { appActive: true, realtimeConnected: true }),
+    ).toBe(false);
+  });
+
+  it("keeps polling the delivery window even while the socket says connected", () => {
+    // A suspended WebView leaves a zombie socket that still reports connected;
+    // the delivered push dies in it and the screen freezes on "fulfilling".
+    // The socket is an accelerator, the poll is the reconciler.
+    for (const status of ["paid", "fulfilling", "fulfilled"] as const) {
+      const ms = orderRefetchInterval(status, { appActive: true, realtimeConnected: true });
+      expect(typeof ms).toBe("number");
+      expect(ms as number).toBeGreaterThan(0);
     }
   });
 
@@ -346,6 +357,10 @@ describe("polling backs off instead of piling on", () => {
   it("everything that stopped polling before still does", () => {
     expect(orderRefetchInterval("delivered", opts)).toBe(false);
     expect(orderRefetchInterval("paid", { ...opts, appActive: false })).toBe(false);
-    expect(orderRefetchInterval("paid", { ...opts, realtimeConnected: true })).toBe(false);
+    // paid + connected socket now polls on purpose (zombie-socket reconciler);
+    // the connected suppression that survives is pending_payment only.
+    expect(orderRefetchInterval("pending_payment", { ...opts, realtimeConnected: true })).toBe(
+      false,
+    );
   });
 });
