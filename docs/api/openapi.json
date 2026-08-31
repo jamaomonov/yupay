@@ -15151,7 +15151,7 @@
     },
     "/api/v1/admin/catalog/skus/search": {
       "get": {
-        "description": "Lightweight search tailored for the admin combobox UI.\n\nDistinct from the catch-all ``GET /skus`` because it eager-loads the\nparent product (with its RU translation) so the picker UI can render\n\"Product Name \u00b7 denomination \u00b7 sku_code\" rows in one row of data.",
+        "description": "Lightweight search tailored for the admin combobox UI.\n\nDistinct from the catch-all ``GET /skus`` because it eager-loads the\nparent product (with its RU translation) so the picker UI can render\n\"Product Name \u00b7 denomination \u00b7 sku_code\" rows in one row of data.\n\n``sku_id`` fetches one exact row in the same picker shape, regardless of\nwhere it sits in the default ordering \u2014 the mapping edit page prefills\nthrough it, and a windowed listing silently missed any SKU past the\nfirst page (which left the page's save button disabled forever).",
         "operationId": "search_skus_for_picker_api_v1_admin_catalog_skus_search_get",
         "parameters": [
           {
@@ -15168,6 +15168,22 @@
                 }
               ],
               "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sku_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sku Id"
             }
           },
           {

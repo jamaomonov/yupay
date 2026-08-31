@@ -305,3 +305,38 @@ async def test_skus_search_returns_product_name(
     )
     assert by_product.status_code == 200
     assert len(by_product.json()) == 2
+
+
+async def test_skus_search_by_id_ignores_the_page_window(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_skus: tuple[str, str],
+) -> None:
+    """``sku_id`` must return the exact row even when the default listing
+    would never include it.
+
+    The mapping edit page prefills its SKU step through this endpoint; with
+    183 SKUs on prod the edited SKU sat at position 130 of a 30-row default
+    page, the prefill silently missed, and the save button stayed disabled
+    forever. ``limit=1`` below simulates that window being too small.
+    """
+    _, sku_b_id = _seed_skus
+    admin = await _login_admin(integration_client, db_session, tg_id=707)
+    headers = {"Authorization": f"Bearer {admin}"}
+
+    by_id = await integration_client.get(
+        f"/api/v1/admin/catalog/skus/search?sku_id={sku_b_id}&limit=1",
+        headers=headers,
+    )
+    assert by_id.status_code == 200, by_id.text
+    rows = by_id.json()
+    assert len(rows) == 1
+    assert rows[0]["id"] == sku_b_id
+    assert "product_name" in rows[0]
+
+    missing = await integration_client.get(
+        "/api/v1/admin/catalog/skus/search?sku_id=01900000-0000-7000-8000-000000000000",
+        headers=headers,
+    )
+    assert missing.status_code == 200
+    assert missing.json() == []

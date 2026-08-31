@@ -464,9 +464,14 @@ async def search_skus_for_picker(
     db: AsyncSession,
     *,
     query: str | None,
+    sku_id: str | None = None,
     limit: int = 30,
 ) -> list[Sku]:
     """Compact, search-friendly listing for the admin combobox.
+
+    ``sku_id`` short-circuits to an exact-id fetch (same eager loads, same
+    output shape): the text ``ILIKE`` never matches ids, and the default
+    window cannot be trusted to contain an arbitrary row.
 
     Eager-loads ``Sku.product`` plus the Russian product translation so the
     UI can render ``"PUBG Mobile · 60 UC · netflix-10-us"`` rows without
@@ -491,6 +496,9 @@ async def search_skus_for_picker(
         .join(Product, Product.id == Sku.product_id)
         .order_by(Sku.sort_order, Sku.sku_code)
     )
+    if sku_id is not None:
+        stmt = stmt.where(Sku.id == sku_id)
+        return list((await db.execute(stmt)).scalars().unique().all())
     cleaned = (query or "").strip()
     if cleaned:
         like = f"%{cleaned}%"

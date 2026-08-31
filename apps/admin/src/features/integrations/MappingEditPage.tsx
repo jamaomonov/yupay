@@ -80,10 +80,13 @@ export function MappingEditPage() {
   });
 
   // SKU prefill needs a second query because the mapping row has only the
-  // sku_id, not the full picker row.
+  // sku_id, not the full picker row. Fetch by exact id: the unfiltered
+  // listing is a 30-row window, and any SKU past it silently failed to
+  // prefill — which left the save button disabled for the whole edit.
   const existingSkuQuery = useQuery<SkuPickerRow[]>({
     queryKey: ["admin", "catalog", "skus", "single", params.sku ?? ""] as const,
-    queryFn: () => apiGet<SkuPickerRow[]>(`/api/v1/admin/catalog/skus/search`),
+    queryFn: () =>
+      apiGet<SkuPickerRow[]>(`/api/v1/admin/catalog/skus/search?sku_id=${params.sku ?? ""}`),
     enabled: editing,
   });
 

@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { MappingEditPage } from "./MappingEditPage";
@@ -161,4 +161,48 @@ it("drops the ids when the supplier changes", async () => {
   // Disabled because the product id is gone — the denomination is optional for
   // this supplier, so it is not what is blocking here.
   expect(screen.getByRole("button", { name: "Сохранить" })).toBeDisabled();
+});
+
+it("prefills an edited SKU by id, not by hoping it fits the first search page", async () => {
+  // Prod had 183 SKUs; the edited one sat at position 130 of a 30-row default
+  // page, the prefill silently missed, and «Сохранить» stayed disabled no
+  // matter what the admin changed. The prefill must ask for the exact id.
+  const SKU_130 = { ...SKU, id: "sku-130" };
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/catalog/skus/search")) {
+      return Promise.resolve(path.includes("sku_id=sku-130") ? [SKU_130] : []);
+    }
+    if (path.includes("/admin/integrations/mappings")) {
+      return Promise.resolve({
+        items: [
+          {
+            sku_id: "sku-130",
+            supplier_slug: "g2b",
+            kind: "game",
+            quantity: 1,
+            is_active: true,
+            external_product_id: "pubg-mobile",
+            external_variant_id: "1800",
+            extra: {},
+          },
+        ],
+      });
+    }
+    return Promise.resolve({ items: [] });
+  });
+
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={["/integrations/mappings/g2b/sku-130/edit"]}>
+        <Routes>
+          <Route path="/integrations/mappings/:supplier/:sku/edit" element={<MappingEditPage />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Сохранить" })).toBeEnabled();
+  });
 });

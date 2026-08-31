@@ -237,6 +237,7 @@ async def search_skus_for_picker(
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
     q: str | None = None,
+    sku_id: str | None = None,
     limit: int = 30,
 ) -> list[SkuPickerOut]:
     """Lightweight search tailored for the admin combobox UI.
@@ -244,8 +245,13 @@ async def search_skus_for_picker(
     Distinct from the catch-all ``GET /skus`` because it eager-loads the
     parent product (with its RU translation) so the picker UI can render
     "Product Name · denomination · sku_code" rows in one row of data.
+
+    ``sku_id`` fetches one exact row in the same picker shape, regardless of
+    where it sits in the default ordering — the mapping edit page prefills
+    through it, and a windowed listing silently missed any SKU past the
+    first page (which left the page's save button disabled forever).
     """
-    rows = await svc.search_skus_for_picker(db, query=q, limit=limit)
+    rows = await svc.search_skus_for_picker(db, query=q, sku_id=sku_id, limit=limit)
     return [_sku_to_picker(s) for s in rows]
 
 
