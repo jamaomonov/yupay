@@ -156,7 +156,7 @@ it("retuning a code PATCHes its percents", async () => {
     .getAllByRole("button", { name: "Сохранить" })
     .find((b) => !(b as HTMLButtonElement).disabled);
   expect(save).toBeDefined();
-  fireEvent.click(save as HTMLElement);
+  fireEvent.click(save!);
 
   await waitFor(() => {
     expect(mockedApiPatch).toHaveBeenCalledWith(
