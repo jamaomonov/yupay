@@ -325,3 +325,48 @@ async def test_partner_detail_carries_codes_stats_and_balance(
     assert detail.stats_month["orders"] == 0
     assert detail.stats_year["earned"] == Decimal("0")
     assert set(detail.balance) == {"available", "held", "reserved"}
+
+
+async def test_a_never_used_code_can_be_deleted_a_used_one_cannot(
+    db_session: AsyncSession,
+) -> None:
+    """Deletion exists for the typo caught right after issuing. The moment a
+    code has touched money or bound a buyer it is history, not clutter —
+    the answer becomes "switch it off"."""
+    from sqlalchemy import select
+    from yupay.core.errors import ConflictError
+    from yupay.core.ids import new_id
+    from yupay.modules.affiliate import admin
+    from yupay.modules.affiliate.models import AffiliateAttribution, AffiliateCode
+    from yupay.modules.users.models import User
+
+    partner_id = await _partner(db_session)
+    typo = await admin.issue_code(
+        db_session,
+        partner_id=partner_id,
+        code=f"T{secrets.token_hex(4).upper()}",
+        discount_percent=Decimal("5"),
+        commission_percent=Decimal("2"),
+    )
+    await admin.delete_code(db_session, code_id=typo.id)
+    assert (
+        await db_session.execute(select(AffiliateCode).where(AffiliateCode.id == typo.id))
+    ).scalar_one_or_none() is None
+
+    used = await admin.issue_code(
+        db_session,
+        partner_id=partner_id,
+        code=f"U{secrets.token_hex(4).upper()}",
+        discount_percent=Decimal("5"),
+        commission_percent=Decimal("2"),
+    )
+    buyer = User(id=new_id())
+    db_session.add(buyer)
+    await db_session.flush()
+    db_session.add(
+        AffiliateAttribution(id=new_id(), partner_id=partner_id, code_id=used.id, user_id=buyer.id)
+    )
+    await db_session.flush()
+
+    with pytest.raises(ConflictError):
+        await admin.delete_code(db_session, code_id=used.id)

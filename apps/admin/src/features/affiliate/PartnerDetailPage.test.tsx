@@ -5,7 +5,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 import { PartnerDetailPage } from "./PartnerDetailPage";
 
-import { apiGet, apiPatch, apiPost } from "@/lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 
 /**
  * The two bugs that forced this page into existence, pinned as tests: a
@@ -19,6 +19,7 @@ vi.mock("@/lib/api", () => ({
   apiGet: vi.fn(),
   apiPost: vi.fn(),
   apiPatch: vi.fn(),
+  apiDelete: vi.fn(),
   ApiError: class ApiError extends Error {},
 }));
 
@@ -29,6 +30,7 @@ vi.mock("@/components/Toast", () => ({
 const mockedApiGet = vi.mocked(apiGet);
 const mockedApiPost = vi.mocked(apiPost);
 const mockedApiPatch = vi.mocked(apiPatch);
+const mockedApiDelete = vi.mocked(apiDelete);
 
 function detail(partnerStatus: string, codes: unknown[]) {
   return {
@@ -75,6 +77,7 @@ beforeEach(() => {
   mockedApiGet.mockReset();
   mockedApiPost.mockReset();
   mockedApiPatch.mockReset();
+  mockedApiDelete.mockReset();
 });
 
 function renderPage() {
@@ -138,4 +141,41 @@ it("editing the profile PATCHes only this partner", async () => {
       expect.objectContaining({ display_name: "Jamshid O." }),
     );
   });
+});
+
+it("retuning a code PATCHes its percents", async () => {
+  mockedApiGet.mockResolvedValue(detail("active", [ACTIVE_CODE]));
+  mockedApiPatch.mockResolvedValue({ ...ACTIVE_CODE, discount_percent: "7" });
+  renderPage();
+
+  fireEvent.click(await screen.findByRole("button", { name: "Изменить" }));
+  fireEvent.change(screen.getByLabelText("Скидка JAMA10"), { target: { value: "7" } });
+  // Two save buttons exist (profile + code row) — the code row's is the
+  // enabled one, the profile's is disabled while the form is pristine.
+  const save = screen
+    .getAllByRole("button", { name: "Сохранить" })
+    .find((b) => !(b as HTMLButtonElement).disabled);
+  expect(save).toBeDefined();
+  fireEvent.click(save as HTMLElement);
+
+  await waitFor(() => {
+    expect(mockedApiPatch).toHaveBeenCalledWith(
+      "/api/v1/admin/affiliate/codes/c-1",
+      expect.objectContaining({ discount_percent: "7", commission_percent: "2" }),
+    );
+  });
+});
+
+it("deleting a code asks first, then DELETEs", async () => {
+  mockedApiGet.mockResolvedValue(detail("active", [ACTIVE_CODE]));
+  mockedApiDelete.mockResolvedValue(undefined);
+  const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+  renderPage();
+
+  fireEvent.click(await screen.findByRole("button", { name: "Удалить" }));
+
+  await waitFor(() => {
+    expect(mockedApiDelete).toHaveBeenCalledWith("/api/v1/admin/affiliate/codes/c-1");
+  });
+  confirmSpy.mockRestore();
 });

@@ -26,7 +26,9 @@ from yupay.core.errors import ConflictError, NotFoundError, ValidationError
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.modules.affiliate.models import (
+    AffiliateAttribution,
     AffiliateCode,
+    AffiliateCommission,
     AffiliatePartner,
     AffiliatePayout,
     AffiliateSession,
@@ -198,6 +200,38 @@ async def suspend_partner(db: AsyncSession, *, partner_id: str) -> None:
         session.revoked_at = moment
     await db.flush()
     log.info("affiliate.partner.suspended", partner_id=partner_id)
+
+
+async def delete_code(db: AsyncSession, *, code_id: str) -> None:
+    """Remove a code that was never used — the typo caught right after issuing.
+
+    The moment a code has bound a buyer, accrued a commission or sits on an
+    order receipt it is history, not clutter: deleting it would orphan the
+    numbers the stats and the ledger are built from (the FKs RESTRICT for the
+    same reason). The answer for a used code is ``update_code(active=False)``.
+
+    Raises:
+        NotFoundError: No such code.
+        ConflictError: The code has been used.
+    """
+    from yupay.modules.orders.models import Order
+
+    code = await db.get(AffiliateCode, code_id)
+    if code is None:
+        raise NotFoundError("code not found")
+    for model, column in (
+        (AffiliateAttribution, AffiliateAttribution.code_id),
+        (AffiliateCommission, AffiliateCommission.code_id),
+        (Order, Order.affiliate_code_id),
+    ):
+        used = (
+            await db.execute(select(model.id).where(column == code_id).limit(1))
+        ).scalar_one_or_none()
+        if used is not None:
+            raise ConflictError("этим кодом уже пользовались — выключите его вместо удаления")
+    await db.delete(code)
+    await db.flush()
+    log.info("affiliate.code.deleted", code_id=code_id)
 
 
 async def unsuspend_partner(db: AsyncSession, *, partner_id: str) -> None:

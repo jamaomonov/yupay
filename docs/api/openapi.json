@@ -12579,6 +12579,56 @@
       }
     },
     "/api/v1/admin/affiliate/codes/{code_id}": {
+      "delete": {
+        "description": "Refused with a readable message once the code has been used \u2014 history\nbehind stats and the ledger is switched off, not deleted.",
+        "operationId": "admin_delete_code_api_v1_admin_affiliate_codes__code_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code_id",
+            "required": true,
+            "schema": {
+              "title": "Code Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete a never-used code (the typo case)",
+        "tags": [
+          "admin:affiliate"
+        ]
+      },
       "patch": {
         "operationId": "admin_update_code_api_v1_admin_affiliate_codes__code_id__patch",
         "parameters": [

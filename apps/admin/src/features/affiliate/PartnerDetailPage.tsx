@@ -15,7 +15,7 @@ import {
 import { PageHeader } from "@/components/PageHeader";
 import { ErrorState, Spinner } from "@/components/States";
 import { useToast } from "@/components/Toast";
-import { apiGet, apiPatch, apiPost } from "@/lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { extractApiMessage } from "@/lib/apiError";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -352,6 +352,54 @@ function CodesCard({
     },
   });
 
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editDiscount, setEditDiscount] = useState("");
+  const [editCommission, setEditCommission] = useState("");
+
+  const retune = useMutation({
+    mutationFn: (codeId: string) =>
+      apiPatch<CodeOut>(`/api/v1/admin/affiliate/codes/${codeId}`, {
+        discount_percent: editDiscount,
+        commission_percent: editCommission,
+      }),
+    onSuccess: async (updated) => {
+      // Live at accrual time: the new commission applies to future orders,
+      // never retroactively — worth saying at the moment it changes.
+      toast.success(`Код ${updated.code} обновлён — проценты действуют на будущие заказы`);
+      setEditing(null);
+      await onChanged();
+    },
+    onError: (err: unknown) => {
+      toast.error(extractApiMessage(err));
+    },
+  });
+
+  const remove = useMutation({
+    mutationFn: (codeId: string) => apiDelete(`/api/v1/admin/affiliate/codes/${codeId}`),
+    onSuccess: async () => {
+      toast.success("Код удалён");
+      await onChanged();
+    },
+    onError: (err: unknown) => {
+      toast.error(extractApiMessage(err));
+    },
+  });
+
+  function confirmDelete(c: CodeOut): void {
+    const ok = window.confirm(
+      `Удалить код ${c.code}?\n\n` +
+        "Удалить можно только код, которым ещё не пользовались. " +
+        "Использованный код сервер откажется удалять — его нужно выключить.",
+    );
+    if (ok) remove.mutate(c.id);
+  }
+
+  function startEdit(c: CodeOut): void {
+    setEditing(c.id);
+    setEditDiscount(c.discount_percent);
+    setEditCommission(c.commission_percent);
+  }
+
   return (
     <section className="border-default bg-surface space-y-3 rounded-lg border p-4">
       <div className="flex items-center justify-between">
@@ -384,27 +432,96 @@ function CodesCard({
             </tr>
           </thead>
           <tbody>
-            {codes.map((c) => (
-              <tr key={c.id} className="border-default border-t">
-                <td className="py-1.5 font-mono">{c.code}</td>
-                <td className="py-1.5">{c.discount_percent}%</td>
-                <td className="py-1.5">{c.commission_percent}%</td>
-                <td className="py-1.5">{c.active ? "действует" : "выключен"}</td>
-                <td className="text-muted py-1.5 text-xs">{fmtDate(c.created_at)}</td>
-                <td className="py-1.5 text-right">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      toggle.mutate(c);
-                    }}
-                    disabled={toggle.isPending}
-                  >
-                    {c.active ? "Выключить" : "Включить"}
-                  </Button>
-                </td>
-              </tr>
-            ))}
+            {codes.map((c) =>
+              editing === c.id ? (
+                <tr key={c.id} className="border-default border-t">
+                  <td className="py-1.5 font-mono">{c.code}</td>
+                  <td className="py-1.5">
+                    <Input
+                      aria-label={`Скидка ${c.code}`}
+                      value={editDiscount}
+                      onChange={(e) => {
+                        setEditDiscount(e.target.value);
+                      }}
+                      className="w-20"
+                    />
+                  </td>
+                  <td className="py-1.5">
+                    <Input
+                      aria-label={`Комиссия ${c.code}`}
+                      value={editCommission}
+                      onChange={(e) => {
+                        setEditCommission(e.target.value);
+                      }}
+                      className="w-20"
+                    />
+                  </td>
+                  <td className="text-muted py-1.5 text-xs" colSpan={2}>
+                    скидка {DISCOUNT_RANGE.min}–{DISCOUNT_RANGE.max}% · комиссия{" "}
+                    {COMMISSION_RANGE.min}–{COMMISSION_RANGE.max}% · на будущие заказы
+                  </td>
+                  <td className="whitespace-nowrap py-1.5 text-right">
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        retune.mutate(c.id);
+                      }}
+                      disabled={retune.isPending}
+                    >
+                      Сохранить
+                    </Button>{" "}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setEditing(null);
+                      }}
+                    >
+                      Отмена
+                    </Button>
+                  </td>
+                </tr>
+              ) : (
+                <tr key={c.id} className="border-default border-t">
+                  <td className="py-1.5 font-mono">{c.code}</td>
+                  <td className="py-1.5">{c.discount_percent}%</td>
+                  <td className="py-1.5">{c.commission_percent}%</td>
+                  <td className="py-1.5">{c.active ? "действует" : "выключен"}</td>
+                  <td className="text-muted py-1.5 text-xs">{fmtDate(c.created_at)}</td>
+                  <td className="whitespace-nowrap py-1.5 text-right">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        startEdit(c);
+                      }}
+                    >
+                      Изменить
+                    </Button>{" "}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        toggle.mutate(c);
+                      }}
+                      disabled={toggle.isPending}
+                    >
+                      {c.active ? "Выключить" : "Включить"}
+                    </Button>{" "}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        confirmDelete(c);
+                      }}
+                      disabled={remove.isPending}
+                    >
+                      Удалить
+                    </Button>
+                  </td>
+                </tr>
+              ),
+            )}
           </tbody>
         </table>
       )}

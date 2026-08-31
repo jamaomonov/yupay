@@ -522,6 +522,20 @@ async def admin_update_code(
     return CodeOut.model_validate(code)
 
 
+@admin_router.delete(
+    "/codes/{code_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a never-used code (the typo case)",
+)
+async def admin_delete_code(
+    code_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> None:
+    """Refused with a readable message once the code has been used — history
+    behind stats and the ledger is switched off, not deleted."""
+    await affiliate_admin.delete_code(db, code_id=code_id)
+
+
 @admin_router.post(
     "/partners/{partner_id}/suspend",
     response_model=AdminPartnerOut,
