@@ -60,6 +60,7 @@ class FeedItem:
     image_link: str
     price_micros: int
     in_stock: bool
+    brand: str
 
     def to_product_input(self) -> dict[str, Any]:
         return {
@@ -72,6 +73,7 @@ class FeedItem:
                 "link": self.link,
                 "imageLink": self.image_link,
                 "availability": "IN_STOCK" if self.in_stock else "OUT_OF_STOCK",
+                "brand": self.brand[:70],
                 "price": {"amountMicros": str(self.price_micros), "currencyCode": _CURRENCY},
                 "condition": "NEW",
                 # Digital goods carry no GTIN/MPN; without this flag Merchant
@@ -150,6 +152,7 @@ async def build_feed_items(db: AsyncSession, *, base_url: str) -> tuple[list[Fee
                 image_link=image,
                 price_micros=int(Decimal(price.amount).quantize(Decimal("1")) * 1_000_000),
                 in_stock=sku.in_stock,
+                brand=brand_name,
             )
         )
     return items, skipped

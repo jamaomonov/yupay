@@ -152,6 +152,7 @@ async def test_feed_items_mirror_the_storefront_price_and_skip_the_unpriceable(
     assert attrs["availability"] == "IN_STOCK"
     assert attrs["price"] == {"amountMicros": "68000000000", "currencyCode": "UZS"}
     assert attrs["identifierExists"] is False
+    assert attrs["brand"] == "PUBG Mobile"
     assert attrs["imageLink"] == "https://cdn.yupay.uz/brand_hero/pubg.webp"
 
 
@@ -246,5 +247,6 @@ def test_feed_item_truncates_title_to_merchant_limit() -> None:
         image_link="https://cdn.yupay.uz/i.png",
         price_micros=1_000_000,
         in_stock=True,
+        brand="B",
     )
     assert len(item.to_product_input()["productAttributes"]["title"]) == 150
