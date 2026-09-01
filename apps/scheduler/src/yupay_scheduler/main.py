@@ -43,6 +43,7 @@ from yupay_scheduler.jobs import (
     g2b_reconcile,
     gengine_reconcile,
     held_order_refund,
+    merchant_feed,
     payme_timeout,
     purge_evidence,
     purge_sessions,
@@ -75,6 +76,7 @@ def build_scheduler() -> AsyncIOScheduler:
     g2b_reconcile.register(scheduler)
     gengine_reconcile.register(scheduler)
     held_order_refund.register(scheduler)
+    merchant_feed.register(scheduler)
     payme_timeout.register(scheduler)
     purge_evidence.register(scheduler)
     purge_sessions.register(scheduler)

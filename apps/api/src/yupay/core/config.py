@@ -475,6 +475,15 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO")
     log_json: bool = Field(default=False)
 
+    # --- google merchant center feed (ADR-0065) ---
+    #: Merchant Center account id (the number in the MC header). Feed is off
+    #: while any of the three below is empty — the scheduler job then no-ops.
+    merchant_center_account_id: str | None = Field(default=None)
+    #: Id of the Merchant API data source ("api v2") products are pushed into.
+    merchant_center_data_source_id: str | None = Field(default=None)
+    #: Path to the service-account JSON key, mounted as a secret file.
+    merchant_center_key_file: str | None = Field(default=None)
+
     # --- cors ---
     cors_allow_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
 
