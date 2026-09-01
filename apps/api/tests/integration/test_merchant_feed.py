@@ -177,15 +177,20 @@ async def test_sync_upserts_desired_and_deletes_stale(db_session: AsyncSession) 
             json={
                 "products": [
                     {"offerId": "pubgm-mf-60", "contentLanguage": "ru"},
-                    {"offerId": "pubgm-mf-stale", "contentLanguage": "ru"},
-                    # Google's own website-sourced product (English): the first
-                    # live tick deleted three of these — never again.
+                    # A DEACTIVATED sku still listed at Google: known to the
+                    # DB, absent from desired — the one legitimate deletion.
+                    {"offerId": "pubgm-mf-off", "contentLanguage": "ru"},
+                    # Google's own website-sourced products: the crawler mints
+                    # them in English AND Russian, so a language filter alone
+                    # is not enough — a numeric crawler id must never become a
+                    # deletion candidate whatever its language says.
                     {"offerId": "7863050566049500064", "contentLanguage": "en"},
+                    {"offerId": "7863050566049500064", "contentLanguage": "ru"},
                 ]
             },
         )
     )
-    deleted = respx.delete(f"{_API}/accounts/58/productInputs/ru~UZ~pubgm-mf-stale").mock(
+    deleted = respx.delete(f"{_API}/accounts/58/productInputs/ru~UZ~pubgm-mf-off").mock(
         return_value=httpx.Response(200, json={})
     )
     website_delete = respx.delete(

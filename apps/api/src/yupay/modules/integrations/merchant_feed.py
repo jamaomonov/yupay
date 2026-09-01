@@ -386,7 +386,13 @@ async def sync_merchant_feed(
         existing = set()
         errors += 1
         log.warning("integrations.merchant_feed.list_failed", error=str(exc)[:200])
-    stale = existing - {item.offer_id for item in desired}
+    # A deletion candidate must be OURS twice over: the language filter in
+    # list_offer_ids is not enough, because Google's website source also
+    # crawls the Russian pages and mints ru-language products with numeric
+    # ids. Only ids derivable from a sku_code this database has ever held are
+    # ever deleted — the crawler's ids can't match by construction.
+    known = {offer_id_for(code) for code in (await db.execute(select(Sku.sku_code))).scalars()}
+    stale = (existing & known) - {item.offer_id for item in desired}
     for offer_id in sorted(stale):
         try:
             await client.delete(offer_id)
