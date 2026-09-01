@@ -250,3 +250,65 @@ def test_feed_item_truncates_title_to_merchant_limit() -> None:
         brand="B",
     )
     assert len(item.to_product_input()["productAttributes"]["title"]) == 150
+
+
+async def test_a_denomination_shared_by_two_products_gets_the_product_in_the_title(
+    db_session: AsyncSession,
+) -> None:
+    """Mobile Legends sells «565 Diamonds» on both the global and the Russian
+    product; two identically-titled items with different prices read as
+    duplicates, not a choice."""
+    category = Category(id=new_id(), slug="games-mf2", sort_order=0, active=True)
+    db_session.add(category)
+    await db_session.flush()
+    brand = Brand(
+        id=new_id(),
+        slug="mlbb-mf",
+        category_id=category.id,
+        sort_order=0,
+        active=True,
+        hero_image_url="https://cdn.yupay.uz/brand_hero/mlbb.webp",
+        translations=[BrandTranslation(locale="ru", name="Mobile Legends")],
+    )
+    db_session.add(brand)
+    await db_session.flush()
+    products = []
+    for slug, name in (
+        ("mlbb-mf-global", "Алмазы — глобальный аккаунт"),
+        ("mlbb-mf-ru", "Алмазы — российский аккаунт"),
+    ):
+        product = Product(
+            id=new_id(),
+            slug=slug,
+            brand_id=brand.id,
+            kind="top_up",
+            sort_order=0,
+            active=True,
+            required_fields=[],
+            translations=[ProductTranslation(locale="ru", name=name)],
+        )
+        db_session.add(product)
+        products.append(product)
+    await db_session.flush()
+    for i, product in enumerate(products):
+        db_session.add(
+            Sku(
+                id=new_id(),
+                product_id=product.id,
+                sku_code=f"mlbb-mf-565-{i}",
+                denomination="565 Diamonds",
+                region="WW",
+                price_usd=Decimal("9"),
+                sort_order=0,
+                active=True,
+                price_overrides=[SkuPrice(currency="UZS", price=Decimal("115000") * (i + 1))],
+            )
+        )
+    await db_session.flush()
+
+    items, _ = await build_feed_items(db_session, base_url="https://yupay.uz")
+    titles = sorted(i.title for i in items if i.offer_id.startswith("mlbb-mf-565"))
+    assert titles == [
+        "Mobile Legends — 565 Diamonds · Алмазы — глобальный аккаунт",
+        "Mobile Legends — 565 Diamonds · Алмазы — российский аккаунт",
+    ]

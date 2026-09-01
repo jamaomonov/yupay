@@ -94,9 +94,24 @@ class FeedSyncReport:
     errors: int = 0
 
 
-def _title(brand_name: str, product_name: str, denomination: str | None) -> str:
-    """«PUBG Mobile — 1800 UC»; the product name fills in for label-less SKUs."""
-    return f"{brand_name} — {denomination or product_name}"
+def _title(
+    brand_name: str,
+    product_name: str,
+    denomination: str | None,
+    *,
+    ambiguous: bool = False,
+) -> str:
+    """«PUBG Mobile — 1800 UC»; the product name fills in for label-less SKUs.
+
+    ``ambiguous`` appends the product name for denominations that repeat
+    across a brand's products — Mobile Legends sells «565 Diamonds» on both
+    the global and the Russian product, and two identically-titled feed items
+    with different prices read as duplicates, not as a choice.
+    """
+    label = denomination or product_name
+    if ambiguous and denomination:
+        return f"{brand_name} — {denomination} · {product_name}"
+    return f"{brand_name} — {label}"
 
 
 async def build_feed_items(db: AsyncSession, *, base_url: str) -> tuple[list[FeedItem], int]:
@@ -127,6 +142,14 @@ async def build_feed_items(db: AsyncSession, *, base_url: str) -> tuple[list[Fee
     ).all()
 
     base = base_url.rstrip("/")
+
+    # Denominations that repeat across a brand's products need the product
+    # name in the title to stay tellable-apart (see _title).
+    seen: dict[tuple[str, str], set[str]] = {}
+    for sku, product, brand in rows:
+        if sku.denomination:
+            seen.setdefault((brand.id, sku.denomination), set()).add(product.id)
+
     items: list[FeedItem] = []
     skipped = 0
     for sku, product, brand in rows:
@@ -142,12 +165,17 @@ async def build_feed_items(db: AsyncSession, *, base_url: str) -> tuple[list[Fee
             skipped += 1
             continue
         brand_name = _brand_display_name(brand)
+        ambiguous = bool(
+            sku.denomination and len(seen.get((brand.id, sku.denomination), set())) > 1
+        )
+        title = _title(
+            brand_name, _product_display_name(product), sku.denomination, ambiguous=ambiguous
+        )
         items.append(
             FeedItem(
                 offer_id=sku.sku_code,
-                title=_title(brand_name, _product_display_name(product), sku.denomination),
-                description=_description(brand, product)
-                or _title(brand_name, _product_display_name(product), sku.denomination),
+                title=title,
+                description=_description(brand, product) or title,
                 link=f"{base}/store/{brand.slug}",
                 image_link=image,
                 price_micros=int(Decimal(price.amount).quantize(Decimal("1")) * 1_000_000),
