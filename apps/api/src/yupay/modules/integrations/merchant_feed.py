@@ -24,6 +24,7 @@ service-account JWT via ``google-auth`` (ADR-0065).
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from decimal import Decimal
@@ -92,6 +93,24 @@ class FeedSyncReport:
     deleted: int = 0
     skipped: int = 0
     errors: int = 0
+
+
+#: Merchant API refuses ids over 50 chars ("Value too long in attribute: id").
+_OFFER_ID_MAX = 50
+
+
+def offer_id_for(sku_code: str) -> str:
+    """``sku_code`` as the Merchant offerId, shortened deterministically.
+
+    Most codes pass through untouched — the id staying readable and equal to
+    the sku_code is worth keeping. Codes over the 50-char limit (the Arena
+    Breakout pass SKUs) keep their first 41 chars and gain an 8-char digest,
+    so the id is stable across ticks and still collision-safe.
+    """
+    if len(sku_code) <= _OFFER_ID_MAX:
+        return sku_code
+    digest = hashlib.sha1(sku_code.encode(), usedforsecurity=False).hexdigest()[:8]
+    return f"{sku_code[: _OFFER_ID_MAX - 9]}-{digest}"
 
 
 def _title(
@@ -173,7 +192,7 @@ async def build_feed_items(db: AsyncSession, *, base_url: str) -> tuple[list[Fee
         )
         items.append(
             FeedItem(
-                offer_id=sku.sku_code,
+                offer_id=offer_id_for(sku.sku_code),
                 title=title,
                 description=_description(brand, product) or title,
                 link=f"{base}/store/{brand.slug}",
@@ -254,7 +273,14 @@ class MerchantFeedClient:
             resp.raise_for_status()
 
     async def list_offer_ids(self) -> set[str]:
-        """Every offerId currently in the account's processed products."""
+        """OfferIds of the account's processed products that are OURS to manage.
+
+        The account also carries Google's own website-sourced products (the
+        automatic feed scraped from yupay.uz) — those are English, ours are
+        Russian, and the first live tick proved the distinction matters: an
+        unfiltered reconciliation deleted three of them. Only products whose
+        ``contentLanguage`` matches ours are ever candidates for deletion.
+        """
         ids: set[str] = set()
         token: str | None = None
         while True:
@@ -270,7 +296,7 @@ class MerchantFeedClient:
             payload = resp.json()
             for product in payload.get("products", []):
                 offer = product.get("offerId")
-                if offer:
+                if offer and product.get("contentLanguage") == _CONTENT_LANGUAGE:
                     ids.add(offer)
             token = payload.get("nextPageToken")
             if not token:
@@ -388,6 +414,7 @@ __all__ = [
     "MerchantFeedClient",
     "build_client",
     "build_feed_items",
+    "offer_id_for",
     "service_account_token_provider",
     "sync_merchant_feed",
 ]

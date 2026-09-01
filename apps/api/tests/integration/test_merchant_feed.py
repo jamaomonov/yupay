@@ -29,6 +29,7 @@ from yupay.modules.integrations.merchant_feed import (
     FeedItem,
     MerchantFeedClient,
     build_feed_items,
+    offer_id_for,
     sync_merchant_feed,
 )
 
@@ -173,12 +174,23 @@ async def test_sync_upserts_desired_and_deletes_stale(db_session: AsyncSession) 
     respx.get(f"{_API}/accounts/58/products").mock(
         return_value=httpx.Response(
             200,
-            json={"products": [{"offerId": "pubgm-mf-60"}, {"offerId": "pubgm-mf-stale"}]},
+            json={
+                "products": [
+                    {"offerId": "pubgm-mf-60", "contentLanguage": "ru"},
+                    {"offerId": "pubgm-mf-stale", "contentLanguage": "ru"},
+                    # Google's own website-sourced product (English): the first
+                    # live tick deleted three of these — never again.
+                    {"offerId": "7863050566049500064", "contentLanguage": "en"},
+                ]
+            },
         )
     )
     deleted = respx.delete(f"{_API}/accounts/58/productInputs/ru~UZ~pubgm-mf-stale").mock(
         return_value=httpx.Response(200, json={})
     )
+    website_delete = respx.delete(
+        f"{_API}/accounts/58/productInputs/ru~UZ~7863050566049500064"
+    ).mock(return_value=httpx.Response(200, json={}))
 
     async def token() -> str:
         return "test-token"
@@ -191,6 +203,7 @@ async def test_sync_upserts_desired_and_deletes_stale(db_session: AsyncSession) 
     assert "pubgm-mf-325" in inserted
     assert "pubgm-mf-off" not in inserted
     assert deleted.called
+    assert not website_delete.called
     assert report.deleted == 1
     assert report.errors == 0
     assert report.upserted == report.desired
@@ -312,3 +325,16 @@ async def test_a_denomination_shared_by_two_products_gets_the_product_in_the_tit
         "Mobile Legends — 565 Diamonds · Алмазы — глобальный аккаунт",
         "Mobile Legends — 565 Diamonds · Алмазы — российский аккаунт",
     ]
+
+
+def test_offer_id_survives_the_merchant_50_char_limit() -> None:
+    short = "pubgm-1800"
+    assert offer_id_for(short) == short
+
+    long_code = "arena_breakout-quarterly-premium-battle-pass-bundle-act-ec2be00c"
+    shortened = offer_id_for(long_code)
+    assert len(shortened) == 50
+    assert shortened.startswith("arena_breakout-quarterly-premium-battle-p")
+    # Deterministic: the id must not drift between ticks, or every hour
+    # would insert a fresh product and orphan yesterday's.
+    assert offer_id_for(long_code) == shortened
