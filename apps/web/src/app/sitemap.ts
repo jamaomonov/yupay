@@ -2,7 +2,7 @@ import { LOCALES } from "@yupay/i18n";
 
 import type { MetadataRoute } from "next";
 
-import { getBrandSlugs } from "@/lib/catalog";
+import { getBrandDetail, getBrandSlugs, getProductDetail } from "@/lib/catalog";
 import { LEGAL_DOCS } from "@/lib/legal";
 import { localeUrl } from "@/lib/seo";
 
@@ -26,9 +26,40 @@ function languagesFor(path: string): Record<string, string> {
  */
 export const revalidate = 3600;
 
+/**
+ * SKU and hero images for one brand, for the sitemap's `images` field.
+ *
+ * Declaring them here is what tells Google Images the SKU art on a brand page
+ * is content, not chrome — the pages only ever surfaced the hero because the
+ * hero was the only image any signal (og:image, this map) ever named.
+ * Best-effort: an unreachable catalogue yields an empty list, never a build
+ * failure (`next build` prerenders against the deployed API).
+ */
+async function brandImages(slug: string): Promise<string[]> {
+  try {
+    const brand = await getBrandDetail(slug, "ru", "UZS");
+    if (!brand) return [];
+    const products = await Promise.all(
+      (brand.products ?? []).map((prod) => getProductDetail(prod.slug, "ru", "UZS")),
+    );
+    const images = [
+      brand.hero_image_url,
+      ...products.flatMap((prod) =>
+        prod ? [prod.image_url, ...prod.skus.map((sku) => sku.image_url)] : [],
+      ),
+    ].filter((u): u is string => Boolean(u));
+    return [...new Set(images)];
+  } catch {
+    return [];
+  }
+}
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const entries: MetadataRoute.Sitemap = [];
   const slugs = await getBrandSlugs();
+  const imagesBySlug = new Map(
+    await Promise.all(slugs.map(async (slug) => [slug, await brandImages(slug)] as const)),
+  );
 
   // No per-entry content timestamps are exposed to the storefront, so this is
   // the generation date — but truncated to the day.
@@ -49,6 +80,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     path: string;
     priority: number;
     changeFrequency: "daily" | "weekly" | "monthly";
+    images?: string[];
   }[] = [
     { path: "", priority: 1.0, changeFrequency: "daily" },
     { path: "/store", priority: 0.9, changeFrequency: "daily" },
@@ -56,6 +88,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       path: `/store/${slug}`,
       priority: 0.8,
       changeFrequency: "weekly" as const,
+      images: imagesBySlug.get(slug) ?? [],
     })),
     // Per-brand "how to top up" guide pages (capture the how-to / where-to-find
     // queries the money pages don't answer head-on).
@@ -75,7 +108,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     })),
   ];
 
-  for (const { path, priority, changeFrequency } of paths) {
+  for (const { path, priority, changeFrequency, images } of paths) {
     const languages = languagesFor(path);
     for (const locale of LOCALES) {
       entries.push({
@@ -84,6 +117,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         changeFrequency,
         priority,
         alternates: { languages },
+        ...(images && images.length > 0 ? { images } : {}),
       });
     }
   }

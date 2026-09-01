@@ -171,6 +171,58 @@ export default async function BrandPage({
         }
       : {}),
   };
+  // Per-SKU Product entries so Google Images can pin a price and stock badge
+  // to each SKU image, the way it already does for the brand hero. Fixed-price
+  // SKUs only: a variable-amount SKU (Telegram Stars) has a rate, not a price,
+  // and a fabricated number here would show wrong money in the SERP.
+  const priceValidUntil = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
+  const skuProducts = products.flatMap((product) =>
+    product.skus
+      .filter((sku) => !sku.variable_amount && !sku.min_qty && sku.display_price)
+      .map((sku) => ({
+        product,
+        sku,
+        image: sku.image_url ?? product.image_url ?? heroImg,
+        price: Math.round(Number(sku.display_price?.amount ?? 0)),
+      }))
+      .filter((row) => row.image !== null && row.price > 0),
+  );
+  const skuListLd =
+    skuProducts.length > 0
+      ? {
+          "@context": "https://schema.org",
+          "@type": "ItemList",
+          name: brand.name,
+          itemListElement: skuProducts.map((row, i) => ({
+            "@type": "ListItem",
+            position: i + 1,
+            item: {
+              "@type": "Product",
+              name: `${brand.name} — ${row.sku.denomination ?? row.product.name}`,
+              sku: row.sku.sku_code,
+              image: row.image,
+              brand: { "@type": "Brand", name: brand.name },
+              hasMerchantReturnPolicy: {
+                "@type": "MerchantReturnPolicy",
+                applicableCountry: "UZ",
+                returnPolicyCategory: "https://schema.org/MerchantReturnNotPermitted",
+              },
+              offers: {
+                "@type": "Offer",
+                price: row.price,
+                priceCurrency: CURRENCY,
+                availability:
+                  (row.sku.in_stock ?? true)
+                    ? "https://schema.org/InStock"
+                    : "https://schema.org/OutOfStock",
+                url: localeUrl(locale, `/store/${brand.slug}`),
+                priceValidUntil,
+              },
+            },
+          })),
+        }
+      : undefined;
+
   const breadcrumbLd = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
@@ -209,6 +261,7 @@ export default async function BrandPage({
   return (
     <main className="relative min-h-screen pb-28 pt-[120px]">
       <JsonLd data={productLd} />
+      {skuListLd && <JsonLd data={skuListLd} />}
       <JsonLd data={breadcrumbLd} />
       {faqLd && <JsonLd data={faqLd} />}
 
