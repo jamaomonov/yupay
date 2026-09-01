@@ -237,6 +237,10 @@ services:
     environment:
       <<: *app-env
     env_file: ./secrets/api.env
+    volumes:
+      # Google service-account key for the Merchant Center feed (ADR-0065).
+      # Read-only; the path matches MERCHANT_CENTER_KEY_FILE in api.env.
+      - ./secrets/merchant-center.json:/app/secrets/merchant-center.json:ro
     depends_on: [postgres, redis]
 
   bot:
