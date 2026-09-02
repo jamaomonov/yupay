@@ -387,3 +387,89 @@ async def test_a_non_json_body_is_named_rather_than_crashing() -> None:
     )
     with pytest.raises(GEngineError, match="non-JSON"):
         await _client().health()
+
+
+# ---------- gifts: Steam gift games ----------
+
+_GIFT_ORDER_BODY = {
+    "id": 990,
+    "uuid": "ge-uuid-990",
+    "steam_id": "76561198999918080",
+    "invite_url": "https://steamcommunity.com/profiles/76561198999918080/",
+    "region": "CIS",
+    "purchase_price": 1.02,
+    "status": "accepted",
+    "error": None,
+    "is_refunded": False,
+    "created_at": "2026-09-03T10:00:00Z",
+    "updated_at": "2026-09-03T10:00:00Z",
+    "package": {
+        "id": 55,
+        "name": "Dead Cells",
+        "apps": [{"id": 1, "name": "Dead Cells", "type": "game"}],
+    },
+}
+
+
+@respx.mock
+async def test_gift_apps_come_back_with_a_total() -> None:
+    route = respx.get(f"{BASE}/gifts/apps").mock(
+        return_value=httpx.Response(
+            200, json={"total": 4241, "items": [{"id": 588650, "name": "Dead Cells"}]}
+        )
+    )
+    items, total = await _client().list_gift_apps(limit=25, offset=0, search="dead")
+    assert total == 4241
+    assert items[0]["id"] == 588650
+    assert route.calls.last.request.url.params["search"] == "dead"
+
+
+@respx.mock
+async def test_gift_search_longer_than_the_server_cap_is_truncated_not_422d() -> None:
+    route = respx.get(f"{BASE}/gifts/apps").mock(
+        return_value=httpx.Response(200, json={"total": 0, "items": []})
+    )
+    await _client().list_gift_apps(search="x" * 50)
+    assert len(route.calls.last.request.url.params["search"]) == 36
+
+
+@respx.mock
+async def test_creating_a_gift_order_posts_the_three_fields_and_parses_the_package() -> None:
+    route = respx.post(f"{BASE}/gifts/orders").mock(
+        return_value=httpx.Response(200, json=_GIFT_ORDER_BODY)
+    )
+    order = await _client().create_gift_order(
+        invite_url="https://steamcommunity.com/profiles/76561198999918080/",
+        package_id=55,
+        region="CIS",
+    )
+    sent = json.loads(route.calls.last.request.content)
+    assert sent == {
+        "invite_url": "https://steamcommunity.com/profiles/76561198999918080/",
+        "package_id": 55,
+        "region": "CIS",
+    }
+    assert order.id == 990
+    assert order.package_id == 55
+    assert order.package_name == "Dead Cells"
+    assert order.status == "accepted"
+
+
+@respx.mock
+async def test_gift_orders_listing_unpacks_items() -> None:
+    respx.get(f"{BASE}/gifts/orders").mock(
+        return_value=httpx.Response(200, json={"total": 1, "items": [_GIFT_ORDER_BODY]})
+    )
+    orders = await _client().list_gift_orders(search="76561198999918080")
+    assert [o.id for o in orders] == [990]
+
+
+@respx.mock
+async def test_a_gift_order_fetch_maps_refund_and_error_fields() -> None:
+    body = dict(
+        _GIFT_ORDER_BODY, status="refunded", is_refunded=True, error="declined by recipient"
+    )
+    respx.get(f"{BASE}/gifts/orders/990").mock(return_value=httpx.Response(200, json=body))
+    order = await _client().get_gift_order(990)
+    assert order.is_refunded is True
+    assert order.error == "declined by recipient"

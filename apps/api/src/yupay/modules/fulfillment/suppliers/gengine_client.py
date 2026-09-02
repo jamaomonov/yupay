@@ -99,6 +99,31 @@ class GEngineOrder:
     is_refunded: bool
 
 
+#: The server rejects a gifts `search` longer than this (422), so truncate.
+GIFT_SEARCH_MAX = 36
+
+
+@dataclass(frozen=True)
+class GEngineGiftOrder:
+    """One Steam-gift order as G-Engine reports it.
+
+    ``package_id``/``package_name`` are flattened out of the nested
+    ``package`` object because every caller wants to match on the id and
+    show the name, and none of them want the tree.
+    """
+
+    id: int
+    uuid: str
+    status: str
+    purchase_price: float
+    is_refunded: bool
+    invite_url: str
+    region: str
+    package_id: int
+    package_name: str
+    error: str | None
+
+
 def _unwrap(body: Any) -> Any:
     """Return the payload, whichever envelope it arrived in.
 
@@ -266,6 +291,59 @@ class GEngineClient:
         body = await self._request("GET", f"/recharge/orders/{uuid}/uuid")
         return _to_order(body)
 
+    # ---------- gifts (Steam gift games) ----------
+
+    async def list_gift_apps(
+        self,
+        *,
+        limit: int = MAX_PAGE,
+        offset: int = 0,
+        search: str | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """One page of the gifts catalog: (items, total)."""
+        params: dict[str, Any] = {"limit": min(limit, MAX_PAGE), "offset": offset}
+        if search:
+            params["search"] = search[:GIFT_SEARCH_MAX]
+        data = await self._request("GET", "/gifts/apps", params=params)
+        return list(data.get("items") or []), int(data.get("total") or 0)
+
+    async def get_gift_app(self, app_id: int) -> dict[str, Any]:
+        """Full app card: packages with per-zone prices, DLC list."""
+        data = await self._request("GET", f"/gifts/apps/{app_id}")
+        return dict(data)
+
+    async def create_gift_order(
+        self, *, invite_url: str, package_id: int, region: str
+    ) -> GEngineGiftOrder:
+        """Create-and-buy a gift. There is no reserve step and no client uuid."""
+        data = await self._request(
+            "POST",
+            "/gifts/orders",
+            json={"invite_url": invite_url, "package_id": package_id, "region": region},
+        )
+        return _gift_order(data)
+
+    async def get_gift_order(self, order_id: int) -> GEngineGiftOrder:
+        """Look a single gift order up by its G-Engine id."""
+        data = await self._request("GET", f"/gifts/orders/{order_id}")
+        return _gift_order(data)
+
+    async def list_gift_orders(
+        self,
+        *,
+        search: str | None = None,
+        date_from: str | None = None,
+        limit: int = MAX_PAGE,
+    ) -> list[GEngineGiftOrder]:
+        """Recent gift orders, for adopting a create whose response was lost."""
+        params: dict[str, Any] = {"limit": min(limit, MAX_PAGE)}
+        if search:
+            params["search"] = search[:GIFT_SEARCH_MAX]
+        if date_from:
+            params["date_from"] = date_from
+        data = await self._request("GET", "/gifts/orders", params=params)
+        return [_gift_order(item) for item in (data.get("items") or [])]
+
 
 def _to_shop_order(body: Any) -> GEngineShopOrder:
     if not isinstance(body, dict) or body.get("id") is None:
@@ -299,10 +377,29 @@ def _to_order(body: Any) -> GEngineOrder:
     )
 
 
+def _gift_order(data: Any) -> GEngineGiftOrder:
+    """Parse one gifts-order payload, tolerating a missing package block."""
+    package = data.get("package") or {}
+    return GEngineGiftOrder(
+        id=int(data["id"]),
+        uuid=str(data.get("uuid") or ""),
+        status=str(data.get("status") or ""),
+        purchase_price=float(data.get("purchase_price") or 0),
+        is_refunded=bool(data.get("is_refunded")),
+        invite_url=str(data.get("invite_url") or ""),
+        region=str(data.get("region") or ""),
+        package_id=int(package.get("id") or 0),
+        package_name=str(package.get("name") or ""),
+        error=(str(data["error"]) if data.get("error") else None),
+    )
+
+
 __all__ = [
+    "GIFT_SEARCH_MAX",
     "MAX_PAGE",
     "GEngineClient",
     "GEngineError",
+    "GEngineGiftOrder",
     "GEngineOrder",
     "GEngineOrderStatus",
     "GEngineParamKey",
