@@ -92,7 +92,7 @@ export function UsersListPage() {
     },
     {
       key: "tg",
-      header: "Telegram",
+      header: "Провайдер",
       render: (u) =>
         u.telegram_link ? (
           <div className="flex flex-col text-xs">
@@ -102,6 +102,13 @@ export function UsersListPage() {
               {u.telegram_link.is_premium ? " · prem" : ""}
             </span>
           </div>
+        ) : u.steam_link ? (
+          <div className="flex flex-col text-xs">
+            <code className="text-xs">{u.steam_link.persona_name ?? "Steam"}</code>
+            <span className="text-[var(--text-secondary)]">steam {u.steam_link.steam_id}</span>
+          </div>
+        ) : u.email ? (
+          <span className="text-xs text-[var(--text-secondary)]">email / google</span>
         ) : (
           <span className="text-xs text-[var(--text-secondary)]">—</span>
         ),
@@ -162,7 +169,7 @@ export function UsersListPage() {
     <div>
       <PageHeader
         title="Пользователи"
-        description={`Всего: ${total}. Поиск по имени, email, Telegram username или tg_id.`}
+        description={`Всего: ${total}. Поиск по имени, email, Telegram username/tg_id или Steam нику/steamid.`}
       />
 
       <section className="mb-4">

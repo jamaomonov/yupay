@@ -76,6 +76,16 @@ class TelegramLinkOut(BaseModel):
     last_seen_at: datetime
 
 
+class SteamLinkOut(BaseModel):
+    """Steam-link projection used in admin views."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    steam_id: int
+    persona_name: str | None
+    avatar_url: str | None
+
+
 class UserAdminOut(BaseModel):
     """Admin-side user record with telegram and lifecycle fields."""
 
@@ -95,6 +105,7 @@ class UserAdminOut(BaseModel):
     ban_reason: str | None = None
     banned_by: str | None = None
     telegram_link: TelegramLinkOut | None
+    steam_link: SteamLinkOut | None = None
 
     _coerce_roles = field_validator("roles", mode="before")(_coerce_roles)
 

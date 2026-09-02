@@ -99,3 +99,58 @@ async def test_a_rejected_assertion_is_a_401(db_session: AsyncSession) -> None:
 
     with pytest.raises(UnauthorizedError):
         await steam_login(db_session, _params(), verifier=verify)
+
+
+@respx.mock
+async def test_persona_fetch_failure_never_breaks_the_login(
+    db_session: AsyncSession,
+) -> None:
+    from yupay.core.config import get_settings
+
+    respx.get("https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/").mock(
+        return_value=httpx.Response(500)
+    )
+    s = get_settings().model_copy(update={"steam_api_key": "k"})
+
+    async def verify(params: dict[str, str], **_: object) -> int:
+        return 76561198000000077
+
+    tokens = await steam_login(db_session, _params(), settings=s, verifier=verify)
+    assert tokens.access_token
+    link = (
+        await db_session.execute(select(SteamLink).where(SteamLink.steam_id == 76561198000000077))
+    ).scalar_one()
+    assert link.persona_name is None  # nameless, not broken
+
+
+@respx.mock
+async def test_persona_and_avatar_land_on_the_profile(db_session: AsyncSession) -> None:
+    from yupay.core.config import get_settings
+
+    respx.get("https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "response": {
+                    "players": [
+                        {
+                            "personaname": "jama",
+                            "avatarfull": "https://avatars.steamstatic.com/x_full.jpg",
+                        }
+                    ]
+                }
+            },
+        )
+    )
+    s = get_settings().model_copy(update={"steam_api_key": "k"})
+
+    async def verify(params: dict[str, str], **_: object) -> int:
+        return 76561198000000088
+
+    await steam_login(db_session, _params(), settings=s, verifier=verify)
+    link = (
+        await db_session.execute(select(SteamLink).where(SteamLink.steam_id == 76561198000000088))
+    ).scalar_one()
+    assert link.persona_name == "jama"
+    assert link.user.display_name == "jama"
+    assert link.user.photo_url == "https://avatars.steamstatic.com/x_full.jpg"

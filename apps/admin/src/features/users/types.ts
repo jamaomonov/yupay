@@ -8,6 +8,12 @@ export interface TelegramLinkOut {
   last_seen_at: string;
 }
 
+export interface SteamLinkOut {
+  steam_id: number;
+  persona_name: string | null;
+  avatar_url: string | null;
+}
+
 export interface UserAdminOut {
   id: string;
   email: string | null;
@@ -25,6 +31,7 @@ export interface UserAdminOut {
   ban_reason: string | null;
   banned_by: string | null;
   telegram_link: TelegramLinkOut | null;
+  steam_link: SteamLinkOut | null;
 }
 
 export interface UserAdminListOut {

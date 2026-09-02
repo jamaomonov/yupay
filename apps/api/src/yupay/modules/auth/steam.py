@@ -99,4 +99,45 @@ async def verify_callback(
     return int(match.group(1))
 
 
-__all__ = ["SteamAuthError", "build_login_url", "verify_callback"]
+_SUMMARIES = "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/"
+
+
+async def fetch_persona(
+    steam_id: int,
+    *,
+    api_key: str,
+    http: httpx.AsyncClient | None = None,
+) -> tuple[str | None, str | None]:
+    """The persona name and avatar for a steamid, best-effort.
+
+    OpenID proves the identity but carries no profile, so this is the only
+    source for «покажи никнейм». Strictly cosmetic: any failure returns
+    ``(None, None)`` and the login proceeds nameless rather than broken.
+    """
+    client = http or httpx.AsyncClient(timeout=5.0)
+    try:
+        resp = await client.get(_SUMMARIES, params={"key": api_key, "steamids": str(steam_id)})
+        resp.raise_for_status()
+        players = resp.json().get("response", {}).get("players", [])
+        if not players:
+            return None, None
+        player = players[0]
+        name = player.get("personaname")
+        avatar = player.get("avatarfull") or player.get("avatarmedium")
+        return (
+            name if isinstance(name, str) and name else None,
+            avatar if isinstance(avatar, str) and avatar else None,
+        )
+    except (httpx.HTTPError, ValueError):
+        return None, None
+    finally:
+        if http is None:
+            await client.aclose()
+
+
+__all__ = [
+    "SteamAuthError",
+    "build_login_url",
+    "fetch_persona",
+    "verify_callback",
+]

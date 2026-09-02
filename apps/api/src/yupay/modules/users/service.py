@@ -142,8 +142,8 @@ async def list_users_admin(
     offset: int = 0,
 ) -> tuple[list[User], int]:
     """Admin listing with optional substring search across display_name, email,
-    Telegram username and Telegram user id."""
-    base = select(User).options(selectinload(User.telegram_link))
+    Telegram username/id and Steam persona/id."""
+    base = select(User).options(selectinload(User.telegram_link), selectinload(User.steam_link))
     count_stmt = select(func.count()).select_from(User)
     if search and search.strip():
         q = f"%{search.strip()}%"
@@ -159,11 +159,17 @@ async def list_users_admin(
         ]
         # Telegram-side filters need a join. We do an outer join so a user
         # without a TG link can still match by display_name/email above.
-        base = base.outerjoin(TelegramLink, TelegramLink.user_id == User.id)
-        count_stmt = count_stmt.outerjoin(TelegramLink, TelegramLink.user_id == User.id)
+        base = base.outerjoin(TelegramLink, TelegramLink.user_id == User.id).outerjoin(
+            SteamLink, SteamLink.user_id == User.id
+        )
+        count_stmt = count_stmt.outerjoin(TelegramLink, TelegramLink.user_id == User.id).outerjoin(
+            SteamLink, SteamLink.user_id == User.id
+        )
         join_clauses.append(TelegramLink.tg_username.ilike(q))
+        join_clauses.append(SteamLink.persona_name.ilike(q))
         if as_int is not None:
             join_clauses.append(TelegramLink.tg_user_id == as_int)  # type: ignore[arg-type]
+            join_clauses.append(SteamLink.steam_id == as_int)  # type: ignore[arg-type]
         base = base.where(or_(*join_clauses))
         count_stmt = count_stmt.where(or_(*join_clauses))
 
@@ -179,7 +185,11 @@ async def list_users_admin(
 
 async def get_user_admin(session: AsyncSession, user_id: str) -> User:
     """Load a user with the Telegram link eager-loaded; 404 if missing."""
-    stmt = select(User).options(selectinload(User.telegram_link)).where(User.id == user_id)
+    stmt = (
+        select(User)
+        .options(selectinload(User.telegram_link), selectinload(User.steam_link))
+        .where(User.id == user_id)
+    )
     row = (await session.execute(stmt)).unique().scalar_one_or_none()
     if row is None:
         raise NotFoundError("user not found")

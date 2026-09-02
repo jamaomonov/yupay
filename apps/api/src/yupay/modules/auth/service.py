@@ -339,7 +339,13 @@ async def steam_login(
     except steam.SteamAuthError as exc:
         log.info("auth.steam.rejected", reason=str(exc))
         raise UnauthorizedError("steam verification failed") from exc
-    user = await upsert_user_by_steam(db, steam_id=steam_id)
+    persona_name: str | None = None
+    avatar_url: str | None = None
+    if s.steam_api_key:
+        persona_name, avatar_url = await steam.fetch_persona(steam_id, api_key=s.steam_api_key)
+    user = await upsert_user_by_steam(
+        db, steam_id=steam_id, persona_name=persona_name, avatar_url=avatar_url
+    )
     return await _open_session(db, user=user, settings=s)
 
 

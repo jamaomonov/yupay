@@ -480,6 +480,12 @@ class Settings(BaseSettings):
     #: (route answers 503-ish RuntimeError-free 401) while empty.
     google_oauth_client_id: str | None = Field(default=None)
 
+    # --- steam sign-in ---
+    #: Steam Web API key (steamcommunity.com/dev/apikey) — used only to fetch
+    #: the persona name and avatar after a verified OpenID login. Sign-in
+    #: works without it; profiles just come up nameless.
+    steam_api_key: str | None = Field(default=None)
+
     # --- google merchant center feed (ADR-0065) ---
     #: Merchant Center account id (the number in the MC header). Feed is off
     #: while any of the three below is empty — the scheduler job then no-ops.
