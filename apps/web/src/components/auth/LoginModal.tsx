@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AuthForm } from "./AuthForm";
 import { ProviderButton } from "./ProviderButton";
+import { GoogleLoginButton } from "./GoogleLoginButton";
 import { GoogleIcon, SteamIcon, TelegramIcon } from "./ProviderIcons";
 
 import { useTelegramSignIn } from "@/hooks/useTelegramSignIn";
@@ -159,12 +160,16 @@ export function LoginModal({ locale }: { locale: string }) {
                   setScreen("email");
                 }}
               />
-              <ProviderButton
-                label={t("providerGoogle")}
-                icon={<GoogleIcon />}
-                surface="bg-white text-[#1f1f1f]"
-                soon
-              />
+              {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? (
+                <GoogleLoginButton />
+              ) : (
+                <ProviderButton
+                  label={t("providerGoogle")}
+                  icon={<GoogleIcon />}
+                  surface="bg-white text-[#1f1f1f]"
+                  soon
+                />
+              )}
               <ProviderButton
                 label={t("providerSteam")}
                 icon={<SteamIcon />}

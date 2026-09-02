@@ -80,3 +80,8 @@ us, in JSON. Implemented in the `users` module.
   retained with the account; deleting the user cascades their reviews (FK
   `ondelete=CASCADE`), and a report's `reporter_user_id` is nulled on account
   deletion (`ondelete=SET NULL`).
+
+- Google Sign-In: we read `sub`, `email`, `email_verified`, `name`, `picture`
+  from the verified ID token; only email (as the account identity),
+  display name and avatar URL are stored — the Google `sub` is not persisted.
+  The raw credential is never logged.

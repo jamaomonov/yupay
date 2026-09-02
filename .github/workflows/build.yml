@@ -33,6 +33,7 @@ jobs:
               NEXT_PUBLIC_API_BASE_URL=https://api.yupay.uz
               NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=yupayapp_bot
               NEXT_PUBLIC_TELEGRAM_BOT_ID=8702808191
+              NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ vars.GOOGLE_OAUTH_CLIENT_ID }}
           - image: partners
             dockerfile: infra/docker/partners.Dockerfile
             # Same reason as web: NEXT_PUBLIC_* is inlined into the client

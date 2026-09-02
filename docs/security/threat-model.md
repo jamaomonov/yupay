@@ -141,3 +141,14 @@ auth:emailverify:{jti}` (same pattern as `auth:pwreset:{jti}`), so a leaked or
 - Card data (PAN, CVV) — all card collection redirected to hosted provider fields.
 - KYC documents — none collected at MVP.
 - Children's data — TOS requires 18+.
+
+## Google Sign-In (2026-09-02)
+
+Linking is by Google-verified email. Attack considered: seed an account with
+someone else's email + password, wait for the victim to «sign in with
+Google» into it. Mitigations: password login refuses unverified emails, and
+a Google login landing on an unverified-email account clears any stored
+password hash before marking the email verified. The GIS credential is
+verified server-side (signature, audience, expiry) via google-auth; the
+`/auth/google` route sits behind the same `ip_guard` family as the other
+credential endpoints (IP axis; the email is unknown pre-verification).

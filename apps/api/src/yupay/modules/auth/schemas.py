@@ -162,3 +162,11 @@ __all__ = [
     "TokensOut",
     "VerifyEmailIn",
 ]
+
+
+class GoogleLoginIn(BaseModel):
+    """The GIS credential — a Google-signed JWT from the official button."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    credential: str = Field(min_length=20, max_length=4096)

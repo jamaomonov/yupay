@@ -25,6 +25,7 @@ from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.auth.schemas import (
     AdminDevLoginIn,
     ForgotPasswordIn,
+    GoogleLoginIn,
     GuestIn,
     GuestTokenOut,
     LoginIn,
@@ -52,6 +53,9 @@ from yupay.modules.auth.service import (
     telegram_init_data_login,
     telegram_widget_login,
     verify_email,
+)
+from yupay.modules.auth.service import (
+    google_login as google_svc_login,
 )
 from yupay.modules.auth.telegram import TelegramAuthError
 from yupay.modules.users.models import User
@@ -133,6 +137,28 @@ async def login_route(
     # account 60 times a minute.
     await guard_ip(request, bucket="login", subject=body.email)
     tokens = await login_password(db, email=body.email, password=body.password)
+    return _session_response(response, tokens)
+
+
+@router.post(
+    "/google",
+    response_model=TokensOut,
+    summary="Authenticate via Google Sign-In (GIS credential)",
+)
+async def login_google(
+    body: GoogleLoginIn,
+    request: Request,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> TokensOut:
+    """Verify the Google-signed credential, upsert the user, return a session.
+
+    Guarded like the other credential endpoints on the IP axis alone: the
+    email inside the credential is unknown until after the (rate-limited)
+    verification, so there is no subject to key the second axis on.
+    """
+    await guard_ip(request, bucket="google-login")
+    tokens = await google_svc_login(db, body.credential)
     return _session_response(response, tokens)
 
 

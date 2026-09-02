@@ -5418,6 +5418,23 @@
         "title": "GameImportOut",
         "type": "object"
       },
+      "GoogleLoginIn": {
+        "additionalProperties": false,
+        "description": "The GIS credential \u2014 a Google-signed JWT from the official button.",
+        "properties": {
+          "credential": {
+            "maxLength": 4096,
+            "minLength": 20,
+            "title": "Credential",
+            "type": "string"
+          }
+        },
+        "required": [
+          "credential"
+        ],
+        "title": "GoogleLoginIn",
+        "type": "object"
+      },
       "GuestIn": {
         "additionalProperties": false,
         "description": "Body of ``POST /auth/guest``.",
@@ -22066,6 +22083,48 @@
           }
         },
         "summary": "DEV-ONLY: whether the dev login endpoint is active",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/google": {
+      "post": {
+        "description": "Verify the Google-signed credential, upsert the user, return a session.\n\nGuarded like the other credential endpoints on the IP axis alone: the\nemail inside the credential is unknown until after the (rate-limited)\nverification, so there is no subject to key the second axis on.",
+        "operationId": "login_google_api_v1_auth_google_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoogleLoginIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/yupay__modules__auth__schemas__TokensOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Authenticate via Google Sign-In (GIS credential)",
         "tags": [
           "auth"
         ]

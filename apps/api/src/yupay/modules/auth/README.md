@@ -88,3 +88,19 @@ full spec. Summary:
   checkout (the receipt/voucher goes to the supplied address). Delivered **codes** are
   gated behind an order-scoped magic link — see [ADR-0042](../../../../../docs/decisions/0042-guest-code-access-magic-link.md).
 - **Service-to-service tokens.** Reserved for the microservice split (post-MVP).
+
+## Google Sign-In
+
+`POST /auth/google` принимает GIS credential (JWT, подписанный Google) с
+официальной кнопки на вебе, проверяет подпись и audience
+(`GOOGLE_OAUTH_CLIENT_ID`) через google-auth и линкует по **верифицированному**
+email: существующий аккаунт с этим адресом получает сессию, нового
+пользователя создаём с `email_verified_at = now()`.
+
+Два правила безопасности (пины в `test_auth_google.py`):
+
+- неверифицированный Google-email никогда не открывает сессию;
+- Google-вход в аккаунт с неверифицированным email обнуляет посаженный там
+  пароль: парольный логин такие аккаунты не пускает, значит хэш мог посадить
+  только тот, кто адресом не владеет — пометить email верифицированным, не
+  сняв пароль, значило бы вооружить чужой пароль.

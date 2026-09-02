@@ -13,6 +13,7 @@ Wraps :mod:`yupay.modules.auth.jwt`, :mod:`yupay.modules.auth.telegram`, and the
 from __future__ import annotations
 
 import contextlib
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -31,7 +32,9 @@ from yupay.core.errors import (
     UnauthorizedError,
 )
 from yupay.core.ids import new_id
+from yupay.core.logging import get_logger
 from yupay.core.redis import get_redis
+from yupay.modules.auth import google
 from yupay.modules.auth import jwt as authjwt
 from yupay.modules.auth import telegram as tg
 from yupay.modules.auth.models import AuthSession
@@ -55,6 +58,8 @@ from yupay.modules.users.service import (
     get_user_by_id,
     upsert_user_by_telegram,
 )
+
+log = get_logger("yupay.auth.service")
 
 # A pre-computed argon2id hash of a throwaway password. ``login_password`` verifies
 # against this when the account is absent (or has no password) so the response time is
@@ -229,6 +234,83 @@ async def login_password(
         raise UnauthorizedError("invalid email or password")
     if user.email_verified_at is None:
         raise EmailUnverifiedError("Confirm your email address before signing in.")
+    return await _open_session(db, user=user, settings=s)
+
+
+async def google_login(
+    db: AsyncSession,
+    credential: str,
+    *,
+    settings: Settings | None = None,
+    verifier: Callable[[str], Awaitable[google.GoogleUser]] | None = None,
+) -> SessionTokens:
+    """Verify a Google ID token and open a session, linking by email.
+
+    Linking by verified email is deliberate: the ``users`` table's identity for
+    non-Telegram accounts *is* the email, and Google asserting
+    ``email_verified`` is a stronger proof of ownership than our own
+    verification mail. Two guards keep that safe:
+
+    * an UNVERIFIED Google email never opens a session — without it, anyone
+      could mint a Google account with someone else's address and walk into
+      their YuPay account;
+    * landing on an account whose email was never verified clears any password
+      stored there. Password login refuses unverified accounts, so such a hash
+      could only have been planted by someone who couldn't prove the address —
+      marking the email verified without clearing it would arm that password.
+
+    Args:
+        db: Session; commits happen at the request boundary.
+        credential: The GIS credential (Google-signed JWT) from the button.
+        settings: Overrides for tests.
+        verifier: Injected verification for tests; production verifies against
+            Google's keys via :func:`yupay.modules.auth.google.verify_credential`.
+
+    Raises:
+        UnauthorizedError: Verification failed or the email is unverified.
+    """
+    s = settings or get_settings()
+    verify = verifier or google.verify_credential
+    try:
+        identity = await verify(credential)
+    except google.GoogleAuthError as exc:
+        log.info("auth.google.rejected", reason=str(exc))
+        raise UnauthorizedError("google verification failed") from exc
+    if not identity.email_verified:
+        log.info("auth.google.rejected", reason="email not verified")
+        raise UnauthorizedError("google verification failed")
+
+    email = identity.email.strip().lower()
+    user = (
+        await db.execute(select(User).where(User.email == email, User.deleted_at.is_(None)))
+    ).scalar_one_or_none()
+    if user is None:
+        user = User(
+            id=new_id(),
+            email=email,
+            email_verified_at=now(),
+            display_name=identity.name,
+            photo_url=identity.picture,
+            locale="ru",
+        )
+        db.add(user)
+        await db.flush()
+        log.info("auth.google.user_created")
+    else:
+        if user.email_verified_at is None:
+            if user.password_hash is not None:
+                # See the docstring: a password on a never-verified account is
+                # untrusted by construction. The owner can set a new one over
+                # the (now working) reset flow.
+                user.password_hash = None
+                log.info("auth.google.planted_password_cleared")
+            user.email_verified_at = now()
+        if identity.picture and not user.photo_url:
+            user.photo_url = identity.picture
+        if identity.name and not user.display_name:
+            user.display_name = identity.name
+        user.updated_at = now()
+        await db.flush()
     return await _open_session(db, user=user, settings=s)
 
 

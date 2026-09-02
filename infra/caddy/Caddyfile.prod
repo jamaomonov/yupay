@@ -62,7 +62,7 @@ http://yupay.uz, http://www.yupay.uz {
 		# googletagmanager.com and the google-analytics.com origins came out of
 		# here with it: a standing permission for a script we no longer load is
 		# an injection target we gain nothing by keeping.
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://telegram.org https://*.telegram.org https://mc.yandex.ru; style-src 'self' 'unsafe-inline' https://telegram.org https://*.telegram.org; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://api.yupay.uz wss://api.yupay.uz https://mc.yandex.ru wss://mc.yandex.ru; frame-src https://telegram.org https://*.telegram.org https://mc.yandex.ru; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://telegram.org https://*.telegram.org https://mc.yandex.ru https://accounts.google.com; style-src 'self' 'unsafe-inline' https://telegram.org https://*.telegram.org https://accounts.google.com; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://api.yupay.uz wss://api.yupay.uz https://mc.yandex.ru wss://mc.yandex.ru https://accounts.google.com; frame-src https://telegram.org https://*.telegram.org https://mc.yandex.ru https://accounts.google.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 	}
 	# Force the canonical apex so SEO does not split between yupay.uz / www.
 	@redirectWww host www.yupay.uz

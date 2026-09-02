@@ -475,6 +475,11 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO")
     log_json: bool = Field(default=False)
 
+    # --- google sign-in ---
+    #: OAuth Web client id the GIS button mints ID tokens for. Sign-in is off
+    #: (route answers 503-ish RuntimeError-free 401) while empty.
+    google_oauth_client_id: str | None = Field(default=None)
+
     # --- google merchant center feed (ADR-0065) ---
     #: Merchant Center account id (the number in the MC header). Feed is off
     #: while any of the three below is empty — the scheduler job then no-ops.
