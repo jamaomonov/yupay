@@ -127,9 +127,11 @@ admin-editable runtime setting), `STEAM_GIFTS_REGION_DEFAULT=CIS`,
   layout instead of the SKU grid:
   - hero + «Горячие предложения» carousel (discount badges, Steam covers);
   - search box (debounced, hits our proxy endpoint → their server search);
-  - results grid: cover, name, «Изданий: N», our UZS price, discount badge;
-  - game modal/page: description, package (издание) selector, region
-    selector, profile-link input with a one-picture guide («Профиль →
+  - results grid: cover, name, «Изданий: N · DLC: M» counters (as in the
+    G-Engine panel), our UZS price, discount badge;
+  - game modal/page: description, **package («издание») selector** — a
+    title routinely ships several editions, each its own `package_id` with
+    its own per-region price; region selector, profile-link input with a one-picture guide («Профиль →
     копировать URL»), all three locales;
   - **DLC scale**: a title can carry 400+ DLC (DEAD OR ALIVE 6: 423).
     The card renders DLC collapsed by default, loaded lazily through our
