@@ -201,7 +201,7 @@ async def login_google(
     verification, so there is no subject to key the second axis on.
     """
     await guard_ip(request, bucket="google-login")
-    tokens = await google_svc_login(db, body.credential)
+    tokens = await google_svc_login(db, body.access_token)
     return _session_response(response, tokens)
 
 

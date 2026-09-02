@@ -7,9 +7,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AuthForm } from "./AuthForm";
 import { ProviderButton } from "./ProviderButton";
-import { GoogleLoginButton } from "./GoogleLoginButton";
 import { GoogleIcon, SteamIcon, TelegramIcon } from "./ProviderIcons";
 
+import { useGoogleSignIn } from "@/hooks/useGoogleSignIn";
 import { useTelegramSignIn } from "@/hooks/useTelegramSignIn";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
@@ -28,6 +28,7 @@ interface TelegramAuth {
 }
 
 const BOT_ID = process.env.NEXT_PUBLIC_TELEGRAM_BOT_ID;
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
 export function LoginModal({ locale }: { locale: string }) {
   const t = useTranslations("web.auth");
@@ -89,6 +90,53 @@ export function LoginModal({ locale }: { locale: string }) {
     s.async = true;
     document.body.appendChild(s);
   }, [isOpen]);
+
+  const signInWithGoogle = useGoogleSignIn();
+  const onGoogle = useCallback(() => {
+    // Our own tile, so the ID-token widget is out — the OAuth token popup is
+    // the flow Google allows a custom button. The gsi script is loaded on
+    // demand; the callback hands the access token to POST /auth/google.
+    const start = () => {
+      const g = (
+        window as unknown as {
+          google?: {
+            accounts?: {
+              oauth2?: {
+                initTokenClient: (config: {
+                  client_id: string;
+                  scope: string;
+                  callback: (response: { access_token?: string }) => void;
+                }) => { requestAccessToken: () => void };
+              };
+            };
+          };
+        }
+      ).google;
+      const oauth2 = g?.accounts?.oauth2;
+      if (!oauth2 || !GOOGLE_CLIENT_ID) return;
+      oauth2
+        .initTokenClient({
+          client_id: GOOGLE_CLIENT_ID,
+          scope: "openid email profile",
+          callback: (response) => {
+            // No token = the customer closed the popup — they are still
+            // looking at the modal, so no toast (same rule as Telegram).
+            if (response.access_token) signInWithGoogle(response.access_token);
+          },
+        })
+        .requestAccessToken();
+    };
+    const SRC = "https://accounts.google.com/gsi/client";
+    if (document.querySelector(`script[src="${SRC}"]`)) {
+      start();
+      return;
+    }
+    const s = document.createElement("script");
+    s.src = SRC;
+    s.async = true;
+    s.onload = start;
+    document.head.appendChild(s);
+  }, [signInWithGoogle]);
 
   const onSteam = useCallback(() => {
     // Full-page hop: Steam's OpenID is redirect-based (no widget, no popup
@@ -171,8 +219,13 @@ export function LoginModal({ locale }: { locale: string }) {
                   setScreen("email");
                 }}
               />
-              {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? (
-                <GoogleLoginButton />
+              {GOOGLE_CLIENT_ID ? (
+                <ProviderButton
+                  label={t("providerGoogle")}
+                  icon={<GoogleIcon />}
+                  surface="bg-white text-[#1f1f1f]"
+                  onClick={onGoogle}
+                />
               ) : (
                 <ProviderButton
                   label={t("providerGoogle")}

@@ -190,7 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const tokens = await apiFetch<Tokens>("/auth/google", {
         method: "POST",
         anonymous: true,
-        body: { credential },
+        body: { access_token: credential },
       });
       await afterTokens(tokens);
     },

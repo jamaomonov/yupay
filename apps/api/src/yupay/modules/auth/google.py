@@ -1,26 +1,32 @@
-"""Google sign-in: ID-token verification.
+"""Google sign-in: access-token verification.
 
-The web storefront renders Google's own GIS button; a successful sign-in
-hands the page a **credential** — a JWT signed by Google. This module checks
-that signature against Google's published keys and that the token was minted
-for OUR OAuth client, and reduces the claims to the four fields the service
-layer needs. Nothing else from the token is kept.
+The web keeps its own styled button (the official GIS widget clashed with
+the dark modal and was reverted on sight), which rules out the ID-token
+flow — Google only issues those through their widget. The custom button
+runs the OAuth token popup instead and hands us an **access token**.
 
-``google-auth`` performs the verification (already a dependency, ADR-0065);
-its certificate fetch is blocking, so the check runs in a thread — this is
-the login path, and a blocked event loop here queues every other request.
+An access token proves nothing by itself: any app's token would pass a
+naive userinfo call (token substitution). Verification therefore starts at
+Google's ``tokeninfo``, which names the **audience** the token was minted
+for — it must be OUR client id — and carries ``email``/``email_verified``.
+``userinfo`` then fills in the display name and avatar, best-effort.
 """
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
+
+import httpx
 
 from yupay.core.config import get_settings
 
+_TOKENINFO = "https://www.googleapis.com/oauth2/v3/tokeninfo"
+_USERINFO = "https://openidconnect.googleapis.com/v1/userinfo"
+_TIMEOUT_SECONDS = 10.0
+
 
 class GoogleAuthError(Exception):
-    """The credential failed verification. Message is for logs, not clients."""
+    """The token failed verification. Message is for logs, not clients."""
 
 
 @dataclass(frozen=True)
@@ -34,46 +40,62 @@ class GoogleUser:
     picture: str | None
 
 
-async def verify_credential(credential: str, *, client_id: str | None = None) -> GoogleUser:
-    """Verify a GIS credential (ID token) and return the identity.
+async def verify_credential(
+    access_token: str,
+    *,
+    client_id: str | None = None,
+    http: httpx.AsyncClient | None = None,
+) -> GoogleUser:
+    """Verify a Google access token and return the identity.
 
     Raises:
-        GoogleAuthError: Bad signature, wrong audience, expired token, or a
-            token with no email claim.
+        GoogleAuthError: Google refuses the token, the audience is not our
+            client, or no usable email comes back.
         RuntimeError: ``GOOGLE_OAUTH_CLIENT_ID`` is not configured.
     """
-    from google.auth.transport.requests import Request
-    from google.oauth2 import id_token
-
     audience = client_id or get_settings().google_oauth_client_id
     if not audience:
         raise RuntimeError("GOOGLE_OAUTH_CLIENT_ID is not configured")
 
-    def check() -> dict[str, object]:
-        claims = id_token.verify_oauth2_token(  # type: ignore[no-untyped-call]
-            credential, Request(), audience
-        )
-        assert isinstance(claims, dict)  # narrowed for mypy; the lib returns the payload
-        return claims
-
+    client = http or httpx.AsyncClient(timeout=_TIMEOUT_SECONDS)
     try:
-        claims = await asyncio.to_thread(check)
-    except Exception as exc:
-        raise GoogleAuthError(str(exc)[:200]) from exc
+        try:
+            info = await client.get(_TOKENINFO, params={"access_token": access_token})
+        except httpx.HTTPError as exc:
+            raise GoogleAuthError(f"tokeninfo unreachable: {exc}") from exc
+        if info.status_code != 200:
+            raise GoogleAuthError("google refused the token")
+        claims = info.json()
+        if claims.get("aud") != audience and claims.get("azp") != audience:
+            raise GoogleAuthError("token was minted for another application")
+        email = claims.get("email")
+        sub = claims.get("sub")
+        if not isinstance(email, str) or not email or not isinstance(sub, str):
+            raise GoogleAuthError("token carries no usable identity")
+        verified = (
+            str(claims.get("email_verified", "")).lower() == "true"
+            or claims.get("email_verified") is True
+        )
 
-    email = claims.get("email")
-    sub = claims.get("sub")
-    if not isinstance(email, str) or not email or not isinstance(sub, str):
-        raise GoogleAuthError("token carries no usable identity")
-    name = claims.get("name")
-    picture = claims.get("picture")
-    return GoogleUser(
-        sub=sub,
-        email=email,
-        email_verified=bool(claims.get("email_verified")),
-        name=name if isinstance(name, str) else None,
-        picture=picture if isinstance(picture, str) else None,
-    )
+        name: str | None = None
+        picture: str | None = None
+        try:
+            profile = await client.get(
+                _USERINFO, headers={"Authorization": f"Bearer {access_token}"}
+            )
+            if profile.status_code == 200:
+                body = profile.json()
+                raw_name = body.get("name")
+                raw_picture = body.get("picture")
+                name = raw_name if isinstance(raw_name, str) and raw_name else None
+                picture = raw_picture if isinstance(raw_picture, str) and raw_picture else None
+        except httpx.HTTPError:  # cosmetic only — nameless beats broken
+            pass
+    finally:
+        if http is None:
+            await client.aclose()
+
+    return GoogleUser(sub=sub, email=email, email_verified=verified, name=name, picture=picture)
 
 
 __all__ = ["GoogleAuthError", "GoogleUser", "verify_credential"]

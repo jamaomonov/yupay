@@ -5420,17 +5420,17 @@
       },
       "GoogleLoginIn": {
         "additionalProperties": false,
-        "description": "The GIS credential \u2014 a Google-signed JWT from the official button.",
+        "description": "The access token from the Google OAuth token popup.",
         "properties": {
-          "credential": {
+          "access_token": {
             "maxLength": 4096,
             "minLength": 20,
-            "title": "Credential",
+            "title": "Access Token",
             "type": "string"
           }
         },
         "required": [
-          "credential"
+          "access_token"
         ],
         "title": "GoogleLoginIn",
         "type": "object"

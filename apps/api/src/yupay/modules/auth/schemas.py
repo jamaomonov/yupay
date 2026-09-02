@@ -165,11 +165,11 @@ __all__ = [
 
 
 class GoogleLoginIn(BaseModel):
-    """The GIS credential — a Google-signed JWT from the official button."""
+    """The access token from the Google OAuth token popup."""
 
     model_config = ConfigDict(extra="forbid")
 
-    credential: str = Field(min_length=20, max_length=4096)
+    access_token: str = Field(min_length=20, max_length=4096)
 
 
 class SteamCallbackIn(BaseModel):
