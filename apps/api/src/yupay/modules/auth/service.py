@@ -34,7 +34,7 @@ from yupay.core.errors import (
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.core.redis import get_redis
-from yupay.modules.auth import google
+from yupay.modules.auth import google, steam
 from yupay.modules.auth import jwt as authjwt
 from yupay.modules.auth import telegram as tg
 from yupay.modules.auth.models import AuthSession
@@ -56,6 +56,7 @@ from yupay.modules.notifications.templates import (
 from yupay.modules.users.models import User
 from yupay.modules.users.service import (
     get_user_by_id,
+    upsert_user_by_steam,
     upsert_user_by_telegram,
 )
 
@@ -311,6 +312,34 @@ async def google_login(
             user.display_name = identity.name
         user.updated_at = now()
         await db.flush()
+    return await _open_session(db, user=user, settings=s)
+
+
+async def steam_login(
+    db: AsyncSession,
+    params: dict[str, str],
+    *,
+    settings: Settings | None = None,
+    verifier: Callable[..., Awaitable[int]] | None = None,
+) -> SessionTokens:
+    """Verify a Steam OpenID callback and open a session.
+
+    Identity is the steamid64 alone — Steam hands over no email — so the
+    account is found-or-created through ``steam_links`` exactly like the
+    Telegram flows.
+
+    Raises:
+        UnauthorizedError: Verification failed.
+    """
+    s = settings or get_settings()
+    web_base = (s.web_base_url or s.base_url).rstrip("/")
+    verify = verifier or steam.verify_callback
+    try:
+        steam_id = await verify(params, expected_return_prefix=f"{web_base}/auth/steam/callback")
+    except steam.SteamAuthError as exc:
+        log.info("auth.steam.rejected", reason=str(exc))
+        raise UnauthorizedError("steam verification failed") from exc
+    user = await upsert_user_by_steam(db, steam_id=steam_id)
     return await _open_session(db, user=user, settings=s)
 
 

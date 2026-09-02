@@ -152,3 +152,11 @@ password hash before marking the email verified. The GIS credential is
 verified server-side (signature, audience, expiry) via google-auth; the
 `/auth/google` route sits behind the same `ip_guard` family as the other
 credential endpoints (IP axis; the email is unknown pre-verification).
+
+## Steam Sign-In (2026-09-02)
+
+OpenID 2.0. The assertion is verified by round-tripping the exact parameter
+set back to Steam (`check_authentication`); Steam marks assertions used, so
+replay dies at their side. A `return_to` outside our callback URL is refused
+before any network call. Identity is the steamid64 only (no email), stored
+in `steam_links`; the endpoint sits behind `ip_guard` (`steam-login`).

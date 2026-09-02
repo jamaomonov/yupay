@@ -8,12 +8,14 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Depends, Header, Request, Response, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
 from yupay.core.config import get_settings
 from yupay.core.errors import UnauthorizedError
 from yupay.core.logging import get_logger
+from yupay.modules.auth import steam as steam_openid
 from yupay.modules.auth.cookies import (
     REFRESH_COOKIE_NAME,
     clear_refresh_cookie,
@@ -34,6 +36,7 @@ from yupay.modules.auth.schemas import (
     RegisterOut,
     ResendVerificationIn,
     ResetPasswordIn,
+    SteamCallbackIn,
     TelegramInitDataIn,
     TelegramWidgetIn,
     TokensOut,
@@ -56,6 +59,9 @@ from yupay.modules.auth.service import (
 )
 from yupay.modules.auth.service import (
     google_login as google_svc_login,
+)
+from yupay.modules.auth.service import (
+    steam_login as steam_svc_login,
 )
 from yupay.modules.auth.telegram import TelegramAuthError
 from yupay.modules.users.models import User
@@ -137,6 +143,43 @@ async def login_route(
     # account 60 times a minute.
     await guard_ip(request, bucket="login", subject=body.email)
     tokens = await login_password(db, email=body.email, password=body.password)
+    return _session_response(response, tokens)
+
+
+@router.get(
+    "/steam/start",
+    summary="Begin a Steam OpenID sign-in (302 to steamcommunity.com)",
+)
+async def steam_start(locale: str = "ru") -> RedirectResponse:
+    """Send the browser to Steam; it returns to the web callback page.
+
+    The callback page URL doubles as the verified ``return_to`` — the POST
+    handler refuses assertions minted for any other address.
+    """
+    s = get_settings()
+    web_base = (s.web_base_url or s.base_url).rstrip("/")
+    clean_locale = locale if locale in ("ru", "en", "uz") else "ru"
+    url = steam_openid.build_login_url(
+        return_to=f"{web_base}/auth/steam/callback?locale={clean_locale}",
+        realm=web_base,
+    )
+    return RedirectResponse(url, status_code=status.HTTP_302_FOUND)
+
+
+@router.post(
+    "/steam",
+    response_model=TokensOut,
+    summary="Authenticate via a Steam OpenID callback",
+)
+async def login_steam(
+    body: SteamCallbackIn,
+    request: Request,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> TokensOut:
+    """Verify the ``openid.*`` params against Steam and return a session."""
+    await guard_ip(request, bucket="steam-login")
+    tokens = await steam_svc_login(db, body.params)
     return _session_response(response, tokens)
 
 

@@ -151,7 +151,8 @@
     "back": "Orqaga",
     "close": "Yopish",
     "signedIn": "Hisobingizga kirdingiz",
-    "signInFailed": "Kirib boʻlmadi. Qayta urinib koʻring"
+    "signInFailed": "Kirib boʻlmadi. Qayta urinib koʻring",
+    "steamFinishing": "Steam orqali kirilmoqda…"
   },
   "store": {
     "meta": {

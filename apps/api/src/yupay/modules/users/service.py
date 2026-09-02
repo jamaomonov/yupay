@@ -14,7 +14,7 @@ from yupay.core.clock import now
 from yupay.core.errors import NotFoundError, ValidationError
 from yupay.core.ids import new_id
 from yupay.modules.auth.telegram import TelegramUser
-from yupay.modules.users.models import TelegramLink, User
+from yupay.modules.users.models import SteamLink, TelegramLink, User
 
 
 async def get_user_by_id(session: AsyncSession, user_id: str) -> User | None:
@@ -82,6 +82,54 @@ async def upsert_user_by_telegram(
     )
     session.add(user)
     session.add(link)
+    await session.flush()
+    return user
+
+
+async def upsert_user_by_steam(
+    session: AsyncSession,
+    *,
+    steam_id: int,
+    persona_name: str | None = None,
+    avatar_url: str | None = None,
+) -> User:
+    """Find-or-create a user from a verified Steam identity.
+
+    Mirrors :func:`upsert_user_by_telegram`: first sight creates the ``users``
+    row and the ``steam_links`` row; later visits touch ``last_seen_at`` and
+    refresh the mutable Steam fields.
+    """
+    link = (
+        await session.execute(select(SteamLink).where(SteamLink.steam_id == steam_id))
+    ).scalar_one_or_none()
+    if link is not None:
+        link.persona_name = persona_name or link.persona_name
+        link.avatar_url = avatar_url or link.avatar_url
+        link.last_seen_at = now()
+        user = link.user
+        if avatar_url and not user.photo_url:
+            user.photo_url = avatar_url
+        user.updated_at = now()
+        await session.flush()
+        return user
+
+    user = User(
+        id=new_id(),
+        email=None,
+        locale="ru",
+        display_name=persona_name,
+        photo_url=avatar_url,
+    )
+    session.add(user)
+    session.add(
+        SteamLink(
+            id=new_id(),
+            user_id=user.id,
+            steam_id=steam_id,
+            persona_name=persona_name,
+            avatar_url=avatar_url,
+        )
+    )
     await session.flush()
     return user
 
@@ -289,5 +337,6 @@ __all__ = [
     "list_users_admin",
     "set_user_roles",
     "update_me",
+    "upsert_user_by_steam",
     "upsert_user_by_telegram",
 ]

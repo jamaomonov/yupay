@@ -170,3 +170,11 @@ class GoogleLoginIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     credential: str = Field(min_length=20, max_length=4096)
+
+
+class SteamCallbackIn(BaseModel):
+    """The ``openid.*`` query params exactly as Steam appended them."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    params: dict[str, str] = Field(min_length=4, max_length=32)

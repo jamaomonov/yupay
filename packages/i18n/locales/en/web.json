@@ -151,7 +151,8 @@
     "back": "Back",
     "close": "Close",
     "signedIn": "You're signed in",
-    "signInFailed": "Couldn't sign you in — please try again"
+    "signInFailed": "Couldn't sign you in — please try again",
+    "steamFinishing": "Finishing Steam sign-in…"
   },
   "store": {
     "meta": {

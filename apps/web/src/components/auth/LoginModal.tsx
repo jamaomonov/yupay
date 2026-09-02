@@ -90,6 +90,17 @@ export function LoginModal({ locale }: { locale: string }) {
     document.body.appendChild(s);
   }, [isOpen]);
 
+  const onSteam = useCallback(() => {
+    // Full-page hop: Steam's OpenID is redirect-based (no widget, no popup
+    // API). The api 302s to steamcommunity.com, which returns the customer
+    // to /auth/steam/callback where the session opens.
+    const base = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(
+      /\/$/,
+      "",
+    );
+    window.location.href = `${base}/api/v1/auth/steam/start?locale=${locale}`;
+  }, [locale]);
+
   const onTelegram = useCallback(() => {
     const tg = (window as unknown as { Telegram?: TelegramAuth }).Telegram;
     if (BOT_ID && tg?.Login?.auth) {
@@ -174,7 +185,7 @@ export function LoginModal({ locale }: { locale: string }) {
                 label={t("providerSteam")}
                 icon={<SteamIcon />}
                 surface="bg-[#1b2838] text-white"
-                soon
+                onClick={onSteam}
               />
               <ProviderButton
                 label={t("providerTelegram")}

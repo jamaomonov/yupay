@@ -10879,6 +10879,26 @@
         "title": "StatusCount",
         "type": "object"
       },
+      "SteamCallbackIn": {
+        "additionalProperties": false,
+        "description": "The ``openid.*`` query params exactly as Steam appended them.",
+        "properties": {
+          "params": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "maxProperties": 32,
+            "minProperties": 4,
+            "title": "Params",
+            "type": "object"
+          }
+        },
+        "required": [
+          "params"
+        ],
+        "title": "SteamCallbackIn",
+        "type": "object"
+      },
       "SuccessRateOut": {
         "description": "Succeeded / failed / pending counts + success percentage for the window.\n\nSee ``provider_analytics`` module docstring for the exact status-bucket\nmapping (in particular how ``refunded``/``partially_refunded`` are\ntreated as succeeded).",
         "properties": {
@@ -22515,6 +22535,90 @@
           }
         },
         "summary": "Resend the email-verification link (non-enumerating)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/steam": {
+      "post": {
+        "description": "Verify the ``openid.*`` params against Steam and return a session.",
+        "operationId": "login_steam_api_v1_auth_steam_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SteamCallbackIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/yupay__modules__auth__schemas__TokensOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Authenticate via a Steam OpenID callback",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/steam/start": {
+      "get": {
+        "description": "Send the browser to Steam; it returns to the web callback page.\n\nThe callback page URL doubles as the verified ``return_to`` \u2014 the POST\nhandler refuses assertions minted for any other address.",
+        "operationId": "steam_start_api_v1_auth_steam_start_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "locale",
+            "required": false,
+            "schema": {
+              "default": "ru",
+              "title": "Locale",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Begin a Steam OpenID sign-in (302 to steamcommunity.com)",
         "tags": [
           "auth"
         ]

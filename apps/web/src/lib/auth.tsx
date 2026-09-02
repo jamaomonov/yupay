@@ -50,6 +50,8 @@ interface AuthValue {
   loginWithTelegram: (payload: Record<string, unknown>) => Promise<void>;
   /** Redeems a Google GIS credential (`POST /auth/google`) and opens a session. */
   loginWithGoogle: (credential: string) => Promise<void>;
+  /** Redeems a Steam OpenID callback (`POST /auth/steam`) and opens a session. */
+  loginWithSteam: (params: Record<string, string>) => Promise<void>;
   /** Redeems a `POST /auth/verify-email` token and opens a session (afterTokens). */
   verifyEmail: (token: string) => Promise<void>;
   logout: () => void;
@@ -195,6 +197,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [afterTokens],
   );
 
+  const loginWithSteam = useCallback(
+    async (params: Record<string, string>) => {
+      const tokens = await apiFetch<Tokens>("/auth/steam", {
+        method: "POST",
+        anonymous: true,
+        body: { params },
+      });
+      await afterTokens(tokens);
+    },
+    [afterTokens],
+  );
+
   const logout = useCallback(() => {
     // Best-effort: ask the server to revoke the session and clear the HttpOnly
     // refresh cookie (JS can't delete it itself). Don't block the UI on it.
@@ -236,6 +250,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       register,
       loginWithTelegram,
       loginWithGoogle,
+      loginWithSteam,
       verifyEmail,
       logout,
     }),
@@ -247,6 +262,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       register,
       loginWithTelegram,
       loginWithGoogle,
+      loginWithSteam,
       verifyEmail,
       logout,
     ],

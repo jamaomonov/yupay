@@ -73,6 +73,13 @@ class User(Base):
         cascade="all, delete-orphan",
     )
 
+    steam_link: Mapped[SteamLink | None] = relationship(
+        back_populates="user",
+        uselist=False,
+        lazy="selectin",
+        cascade="all, delete-orphan",
+    )
+
 
 class TelegramLink(Base):
     """Maps a YuPay :class:`User` to a Telegram identity.
@@ -115,3 +122,32 @@ class TelegramLink(Base):
 
 
 __all__ = ["TelegramLink", "User"]
+
+
+class SteamLink(Base):
+    """Maps a YuPay :class:`User` to a Steam identity.
+
+    Same shape as :class:`TelegramLink` and for the same reason: Steam's
+    OpenID hands us only a steamid64 (no email), so the link IS the account
+    identity, and keeping Steam fields in their own table unblocks "link a
+    Steam account to an existing user" later without schema churn.
+    """
+
+    __tablename__ = "steam_links"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    steam_id: Mapped[int] = mapped_column(BigInteger, nullable=False, unique=True)
+    persona_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="steam_link", lazy="joined")
