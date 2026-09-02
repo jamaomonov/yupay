@@ -81,19 +81,24 @@ price_usd, discount_percent, packages: [{id, name}]}`.
   creation (never trusts the client's number), applies margin+fx, and
   refuses if the app vanished or price moved > ±2 % from what the client
   displayed (client then re-renders).
-- `invite_url` validated by shape
-  (`https://s.team/p/…` or `steamcommunity.com/user/…` invite forms).
+- `invite_url` accepts a **plain profile link** — verified live 2026-09-02:
+  `steamcommunity.com/profiles/{steamid64}` worked end-to-end. Validate
+  shapes: `/profiles/\d{17}`, `/id/{vanity}`, and the `s.team` short forms.
 - Risk: the `steam-gift` brand joins `risk_liquid_brands` (gift games are
   resellable); all existing holds apply.
 
 ### 4.4 Fulfilment (`gengine.py` fulfiller)
 
 - New route in `fulfill()` for gift items: `create_gift_order` →
-  poll `get_gift_order` via the existing queue retry/poll machinery until
-  `delivered` (success) or `canceled`/`refunded`/`error` (failed with
-  reason). Statuses map onto the delivery timeline the customer already
-  sees; `shipped` publishes a realtime «почти готово» step (v1: keep
-  fulfilling until delivered — no new customer-facing states).
+  poll `get_gift_order` until **`shipped`**, which is OUR success:
+  verified live — `delivered` fires only after the recipient clicks
+  «Принять подарок» in Steam, which can take days and is entirely their
+  action. The delivery artifact is an instruction card: «Steam прислал вам
+  подарок — примите его (почта / уведомления Steam). Отправитель будет
+  незнакомым бот-аккаунтом — это нормально, Steam покажет стандартное
+  предупреждение». `canceled`/`refunded`/`error` → failed with reason.
+  A declined gift after `shipped` comes back as `refunded` — the watchdog
+  для таких: existing stuck/refund paths, not the fulfilment loop.
 - Idempotency: before creating, look up our task's recorded gift-order id
   (in task/attempt metadata) and resume polling instead of re-buying —
   same recover pattern as `_recover(uuid)` for recharge orders.
@@ -113,10 +118,14 @@ price_usd, discount_percent, packages: [{id, name}]}`.
   - hero + «Горячие предложения» carousel (discount badges, Steam covers);
   - search box (debounced, hits our proxy endpoint → their server search);
   - results grid: cover, name, «Изданий: N», our UZS price, discount badge;
-  - game modal/page: description, DLC list, package (издание) selector,
-    region selector, `invite_url` input with a **guide** (screenshots: Steam
-    → профиль → «Пригласить друга» → копировать ссылку) — the #1 support
-    risk, the guide is part of v1, all three locales;
+  - game modal/page: description, package (издание) selector, region
+    selector, profile-link input with a one-picture guide («Профиль →
+    копировать URL»), all three locales;
+  - **DLC scale**: a title can carry 400+ DLC (DEAD OR ALIVE 6: 423).
+    The card renders DLC collapsed by default, loaded lazily through our
+    proxy with its own search + pagination — never the flat list;
+  - post-purchase screen and email: «примите подарок в Steam» instructions
+    (sender is an unfamiliar bot account — say so up front);
   - checkout continues through the normal cart/payment flow.
 - Checkout timeline copy: «подарок отправляется ботом, обычно до часа» —
   expectations set at purchase, not in support chats.
