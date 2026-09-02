@@ -997,27 +997,38 @@ async def hold_for_review(
 
     from yupay.modules.notifications.alerts import send_admin_alert
 
+    # Click rule 5 (2026-09-02): the hold alert carries what the provider's
+    # fraud team needs to say «пропускать/блокировать» — product, provider,
+    # payment time and the delivery target MASKED (first three characters) —
+    # so the operator can forward the message to them as-is. Identities never
+    # ride along: a group chat is not a place for another buyer's email.
+    facts: dict[str, str] = {}
+    with contextlib.suppress(Exception):
+        facts = await _fraud_group_facts(db, order)
+
     charged = f"{order.total_charged:,.0f}".replace(",", " ")
     title, what_to_do = HOLD_ALERT_TEXT.get(reason, HOLD_ALERT_TEXT[REASON_LARGE_AMOUNT])
+    fact_lines = "".join(f"{k.capitalize()}: {v}\n" for k, v in facts.items())
+    paid_line = f"Оплачен: {order.paid_at:%d.%m %H:%M} UTC\n" if order.paid_at else ""
     with contextlib.suppress(Exception):
         await send_admin_alert(
             f"<b>{title}</b>\n"
             f"Заказ: <code>{order.id[:8]}…</code>\n"
             f"Сумма: <b>{charged} {order.currency}</b> (${order.total_usd})\n"
+            f"{fact_lines}"
+            f"{paid_line}"
             f"<i>{what_to_do}</i>",
             kind="order_held_for_review",
         )
 
-    # Click rule 5 (2026-09-02): a second copy goes to the shared fraud-review
-    # group with the payment provider, carrying what THEY need to say
-    # «пропускать/блокировать»: amount, product, time, provider, and the
-    # delivery target MASKED (first three characters) — enough to correlate
-    # with their side without shipping a full identity into a group chat.
+    # Optional second copy into a dedicated shared fraud group, for the day
+    # a provider wants to sit in one — off while TG_FRAUD_CHAT_ID is unset;
+    # today the operator forwards from the main alert group by hand.
     fraud_chat = get_settings().tg_fraud_chat_id
     if fraud_chat:
         with contextlib.suppress(Exception):
             await send_admin_alert(
-                _fraud_group_text(await _fraud_group_facts(db, order), order, reason),
+                _fraud_group_text(facts, order, reason),
                 kind="fraud_review",
                 chat_id=fraud_chat,
             )

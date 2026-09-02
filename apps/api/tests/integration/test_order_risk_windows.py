@@ -754,11 +754,17 @@ async def test_hold_sends_a_masked_copy_to_the_fraud_group(
     base["tg_fraud_chat_id"] = "-100555"
     monkeypatch.setattr(risk_mod, "get_settings", lambda: Settings(**base))
 
-    await risk_mod.hold_for_review(db_session, order=order, reason="liquid_amount_at_or_above_threshold")
+    await risk_mod.hold_for_review(
+        db_session, order=order, reason="liquid_amount_at_or_above_threshold"
+    )
 
     kinds = [(k, c) for _, k, c in sent]
     assert ("order_held_for_review", None) in kinds
     assert ("fraud_review", "-100555") in kinds
+    # The MAIN alert already carries everything the operator forwards to the
+    # provider — amount and time — and never a buyer identity.
+    main_text = next(t for t, k, _ in sent if k == "order_held_for_review")
+    assert "1 182 660" in main_text
+    assert "g@x.test" not in main_text
     fraud_text = next(t for t, k, _ in sent if k == "fraud_review")
-    assert "1 182 660" in fraud_text
     assert "g@x.test" not in fraud_text  # identities never reach the shared group

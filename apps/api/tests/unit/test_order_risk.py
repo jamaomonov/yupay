@@ -504,6 +504,7 @@ def _held_order(order_id: str = "0192aaaa-bbbb-cccc-dddd-eeeeffff0002") -> Any:
             total_usd=Decimal("11"),
             total_charged=Decimal("11"),
             currency="USD",
+            paid_at=None,
         ),
     )
 
