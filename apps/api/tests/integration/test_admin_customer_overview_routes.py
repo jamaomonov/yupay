@@ -570,7 +570,10 @@ async def test_overview_sql_query_count_is_bounded(
     # A composition of <user, orders, payments, tasks, wallet-accounts, balances,
     # aggregate-stats, failed-payment-count> requires roughly that many queries; we
     # allow a generous ceiling but anything linear in account-count would blow this.
-    assert len(counts) <= 12, f"expected ≤12 queries, got {len(counts)}"
+    # +2 over the original 12: ``User.steam_link`` is ``lazy="selectin"`` like the
+    # telegram link beside it, a BOUNDED +1 per User load (two loads here), not an
+    # N+1 — which is the only thing this ceiling exists to catch.
+    assert len(counts) <= 14, f"expected ≤14 queries, got {len(counts)}"
 
 
 # Reference Engine import keeps mypy from pruning the import.

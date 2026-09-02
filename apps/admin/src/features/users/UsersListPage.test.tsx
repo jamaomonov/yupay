@@ -49,7 +49,7 @@ function makeUser(i: number): UserAdminOut {
     ban_reason: null,
     banned_by: null,
     telegram_link: null,
-  steam_link: null,
+    steam_link: null,
   };
 }
 

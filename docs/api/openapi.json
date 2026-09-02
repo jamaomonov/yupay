@@ -10899,6 +10899,44 @@
         "title": "SteamCallbackIn",
         "type": "object"
       },
+      "SteamLinkOut": {
+        "description": "Steam-link projection used in admin views.",
+        "properties": {
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "persona_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Persona Name"
+          },
+          "steam_id": {
+            "title": "Steam Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "steam_id",
+          "persona_name",
+          "avatar_url"
+        ],
+        "title": "SteamLinkOut",
+        "type": "object"
+      },
       "SuccessRateOut": {
         "description": "Succeeded / failed / pending counts + success percentage for the window.\n\nSee ``provider_analytics`` module docstring for the exact status-bucket\nmapping (in particular how ``refunded``/``partially_refunded`` are\ntreated as succeeded).",
         "properties": {
@@ -11786,6 +11824,16 @@
             },
             "title": "Roles",
             "type": "array"
+          },
+          "steam_link": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SteamLinkOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "telegram_link": {
             "anyOf": [
