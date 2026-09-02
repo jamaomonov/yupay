@@ -717,3 +717,48 @@ async def test_precharge_veto_passes_with_no_evidence_row(db_session: AsyncSessi
     await db_session.commit()
 
     assert await precharge_veto(db_session, order) is None
+
+
+async def test_hold_sends_a_masked_copy_to_the_fraud_group(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Click rule 5: the shared group gets amount/product/masked recipient —
+    never the full identity."""
+    from yupay.modules.orders import risk as risk_mod
+
+    moment = now()
+    order = Order(
+        id=new_id(),
+        guest_email="g@x.test",
+        status="paid",
+        currency="UZS",
+        total_usd=Decimal("94"),
+        total_charged=Decimal("1182660"),
+        purpose="catalog",
+        expires_at=moment + timedelta(days=1),
+        paid_at=moment,
+    )
+    db_session.add(order)
+    await db_session.flush()
+
+    sent: list[tuple[str, str, str | None]] = []
+
+    async def spy(text: str, *, kind: str = "unspecified", chat_id: str | None = None) -> bool:
+        sent.append((text, kind, chat_id))
+        return True
+
+    import yupay.modules.notifications.alerts as alerts_mod
+
+    monkeypatch.setattr(alerts_mod, "send_admin_alert", spy)
+    base = get_settings().model_dump()
+    base["tg_fraud_chat_id"] = "-100555"
+    monkeypatch.setattr(risk_mod, "get_settings", lambda: Settings(**base))
+
+    await risk_mod.hold_for_review(db_session, order=order, reason="liquid_amount_at_or_above_threshold")
+
+    kinds = [(k, c) for _, k, c in sent]
+    assert ("order_held_for_review", None) in kinds
+    assert ("fraud_review", "-100555") in kinds
+    fraud_text = next(t for t, k, _ in sent if k == "fraud_review")
+    assert "1 182 660" in fraud_text
+    assert "g@x.test" not in fraud_text  # identities never reach the shared group

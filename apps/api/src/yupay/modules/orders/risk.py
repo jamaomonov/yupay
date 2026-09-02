@@ -39,7 +39,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -97,6 +97,19 @@ REASON_GEO_MISMATCH = "guest_liquid_brand_foreign_timezone"
 #: `order_evidence.ip_country` (Cloudflare's edge-resolved country) is present
 #: and outside `risk_home_countries` for a guest or fresh account. Refused
 #: before the charge — see `precharge_veto`, ADR-0063.
+#: A liquid-brand order (`risk_liquid_brands`) at or above the LOWER
+#: `risk_liquid_review_threshold_usd`. Click's rule 2 (2026-09-02): the
+#: fraud waves cash out through Stars/Roblox at the largest amount the shop
+#: allows, so the cash-equivalents get a tighter bar than the global one.
+REASON_LIQUID_AMOUNT = "liquid_amount_at_or_above_threshold"
+
+#: An identity first seen within `risk_new_buyer_age_days` exceeded the
+#: new-buyer caps (`risk_new_buyer_velocity_24h` orders or
+#: `risk_new_buyer_sum_24h_usd` dollars per rolling day). Click's rule 3:
+#: a customer with history keeps automatic delivery; a fresh identity gets
+#: three small purchases and then a human.
+REASON_NEW_BUYER = "new_buyer_over_limits"
+
 VETO_FOREIGN_COUNTRY = "precharge_foreign_country"
 
 #: Same refusal, from the weaker fallback signal: no `ip_country` on the
@@ -161,24 +174,99 @@ HOLD_ALERT_TEXT: dict[str, tuple[str, str]] = {
         "профиль кардера — но им может оказаться и честный покупатель в "
         "поездке: посмотри и реши.",
     ),
+    REASON_LIQUID_AMOUNT: (
+        "🔍 Крупная покупка ликвидного товара — на проверке",
+        "Stars/Roblox/Steam выше порога для обналичиваемых товаров. Выдача НЕ "
+        "запущена: проверь плательщика и серию, затем выдай или верни.",
+    ),
+    REASON_NEW_BUYER: (
+        "🔍 Новый покупатель превысил стартовые лимиты",
+        "Личность впервые видим на этой неделе, а покупок уже больше лимита. "
+        "Выдача НЕ запущена — проверь и реши по всей серии.",
+    ),
 }
 
 
-def _effective_threshold(order_id: str, cfg: Settings) -> Decimal:
+_TASHKENT_UTC_OFFSET = 5  # fixed, no DST
+
+
+def _night_multiplier(at: datetime | None, cfg: Settings) -> Decimal:
+    """Rule 4's factor: <1 between the configured Tashkent hours, 1 otherwise.
+
+    The fraud waves this ruleset answers ran between one and five in the
+    morning; the same amount that passes at noon deserves a human at 01:00.
+    Pure — the caller passes the order's own paid-at, never the wall clock.
+    """
+    mult = cfg.risk_night_threshold_multiplier
+    if at is None or mult >= 1:
+        return Decimal("1")
+    hour = (at.astimezone(UTC).hour + _TASHKENT_UTC_OFFSET) % 24
+    start, end = cfg.risk_night_start_hour, cfg.risk_night_end_hour
+    in_night = (start <= hour or hour < end) if start > end else (start <= hour < end)
+    return mult if in_night else Decimal("1")
+
+
+def _effective_threshold(order_id: str, cfg: Settings, *, base: Decimal | None = None) -> Decimal:
     """Rule 1's threshold for this order — jittered so probing finds a band,
     not an edge. Deterministic per order id: retries and tests are stable."""
-    base = cfg.manual_review_threshold_usd
+    base = cfg.manual_review_threshold_usd if base is None else base
     if not cfg.risk_jitter or base <= 0:
         return base
     u = int.from_bytes(hashlib.sha256(order_id.encode()).digest()[:8], "big") / 2**64
     return base * (Decimal("0.6") + Decimal("0.4") * Decimal(str(u)))
 
 
-def _amount_reason(order: Order, cfg: Settings) -> str | None:
+def _amount_reason(order: Order, cfg: Settings, *, at: datetime | None = None) -> str | None:
     """Rule 1: is this single order, on its own, big enough to hold?"""
-    threshold = _effective_threshold(order.id, cfg)
+    threshold = _effective_threshold(order.id, cfg) * _night_multiplier(at, cfg)
     if cfg.manual_review_threshold_usd > 0 and order.total_usd >= threshold:
         return REASON_LARGE_AMOUNT
+    return None
+
+
+def _liquid_amount_reason(
+    order: Order,
+    brand_slugs: frozenset[str],
+    cfg: Settings,
+    *,
+    at: datetime | None = None,
+) -> str | None:
+    """Rule 1b (Click rule 2): a tighter bar for cash-equivalent brands."""
+    if cfg.risk_liquid_review_threshold_usd <= 0:
+        return None
+    liquid = _csv(cfg.risk_liquid_brands)
+    if not liquid or not (brand_slugs & liquid):
+        return None
+    threshold = _effective_threshold(
+        order.id, cfg, base=cfg.risk_liquid_review_threshold_usd
+    ) * _night_multiplier(at, cfg)
+    if order.total_usd >= threshold:
+        return REASON_LIQUID_AMOUNT
+    return None
+
+
+def _new_buyer_reason(current: WindowOrder, recent: list[WindowOrder], cfg: Settings) -> str | None:
+    """Click rule 3: fresh identities get three small purchases, then a human.
+
+    "Fresh" means every linked order is younger than
+    ``risk_new_buyer_age_days`` — one delivered order from last month is what
+    separates a regular from a drop account, and regulars stay automatic.
+    """
+    if cfg.risk_new_buyer_velocity_24h <= 0 and cfg.risk_new_buyer_sum_24h_usd <= 0:
+        return None
+    linked = [r for r in recent if _shares_key(current, r)]
+    age_limit = timedelta(days=cfg.risk_new_buyer_age_days)
+    if any(current.paid_at - r.paid_at >= age_limit for r in linked):
+        return None  # seasoned identity
+    linked24 = [r for r in linked if r.paid_at >= current.paid_at - timedelta(hours=24)]
+    if cfg.risk_new_buyer_velocity_24h > 0 and len(linked24) + 1 > cfg.risk_new_buyer_velocity_24h:
+        return REASON_NEW_BUYER
+    if (
+        cfg.risk_new_buyer_sum_24h_usd > 0
+        and current.total_usd + sum((r.total_usd for r in linked24), Decimal("0"))
+        >= cfg.risk_new_buyer_sum_24h_usd
+    ):
+        return REASON_NEW_BUYER
     return None
 
 
@@ -603,13 +691,20 @@ async def review_reason(
     read.
     """
     cfg = settings or get_settings()
-    amount = _amount_reason(order, cfg)
+    paid_at = getattr(order, "paid_at", None)
+    amount = _amount_reason(order, cfg, at=paid_at)
     if amount is not None:
         return amount
     current, recent, geo = await _gather(db, order, cfg)
+    liquid = _liquid_amount_reason(order, geo.brand_slugs, cfg, at=paid_at)
+    if liquid is not None:
+        return liquid
     window = _window_reason(current, recent, cfg)
     if window is not None:
         return window
+    fresh = _new_buyer_reason(current, recent, cfg)
+    if fresh is not None:
+        return fresh
     return _geo_reason(geo.is_guest, geo.brand_slugs, geo.timezone, cfg)
 
 
@@ -912,6 +1007,66 @@ async def hold_for_review(
             f"<i>{what_to_do}</i>",
             kind="order_held_for_review",
         )
+
+    # Click rule 5 (2026-09-02): a second copy goes to the shared fraud-review
+    # group with the payment provider, carrying what THEY need to say
+    # «пропускать/блокировать»: amount, product, time, provider, and the
+    # delivery target MASKED (first three characters) — enough to correlate
+    # with their side without shipping a full identity into a group chat.
+    fraud_chat = get_settings().tg_fraud_chat_id
+    if fraud_chat:
+        with contextlib.suppress(Exception):
+            await send_admin_alert(
+                _fraud_group_text(await _fraud_group_facts(db, order), order, reason),
+                kind="fraud_review",
+                chat_id=fraud_chat,
+            )
+
+
+async def _fraud_group_facts(db: AsyncSession, order: Order) -> dict[str, str]:
+    """Product, provider and masked recipient for the shared-group alert."""
+    from yupay.modules.catalog.models import Sku
+    from yupay.modules.orders.models import OrderItem
+    from yupay.modules.payments.models import Payment
+
+    facts: dict[str, str] = {}
+    row = (
+        await db.execute(
+            select(Sku.sku_code, OrderItem.qty, OrderItem.fulfillment_data)
+            .join(Sku, Sku.id == OrderItem.sku_id)
+            .where(OrderItem.order_id == order.id)
+            .limit(1)
+        )
+    ).first()
+    if row is not None:
+        sku_code, qty, data = row
+        facts["товар"] = f"{sku_code} × {qty}"
+        target = ""
+        if isinstance(data, dict):
+            target = str(
+                data.get("username") or data.get("player_id") or data.get("steam_login") or ""
+            )
+        if target:
+            facts["получатель"] = f"{target[:3]}***"
+    provider = (
+        await db.execute(select(Payment.provider).where(Payment.order_id == order.id).limit(1))
+    ).scalar_one_or_none()
+    if provider:
+        facts["провайдер"] = provider
+    return facts
+
+
+def _fraud_group_text(facts: dict[str, str], order: Order, reason: str) -> str:
+    charged = f"{order.total_charged:,.0f}".replace(",", " ")
+    lines = [
+        "⚠️ <b>Заказ задержан антифродом — нужна проверка</b>",
+        f"Сумма: <b>{charged} {order.currency}</b>",
+        *(f"{k.capitalize()}: {v}" for k, v in facts.items()),
+        f"Время оплаты: {order.paid_at:%d.%m %H:%M} UTC" if order.paid_at else "",
+        f"Правило: <code>{reason}</code>",
+        "Ответьте «пропустить» или «блокировать» — выдача остановлена до решения.",
+    ]
+    return "\n".join(line for line in lines if line)
 
 
 async def _escalate_auto_refund(

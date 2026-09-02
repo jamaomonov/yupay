@@ -480,6 +480,32 @@ class Settings(BaseSettings):
     #: (route answers 503-ish RuntimeError-free 401) while empty.
     google_oauth_client_id: str | None = Field(default=None)
 
+    # --- click-agreed antifraud rules (2026-09-02) ---
+    #: Rule 2: liquid brands (risk_liquid_brands) get this LOWER manual-review
+    #: threshold — Stars above the typical purchase go to manual release even
+    #: while manual_review_threshold_usd would wave them through. 0 = off.
+    risk_liquid_review_threshold_usd: Decimal = Field(default=Decimal("0"))
+    #: Rule 3: identities first seen within risk_new_buyer_age_days are capped
+    #: at this many paid orders per rolling 24h; the next goes to manual
+    #: release. 0 = off.
+    risk_new_buyer_velocity_24h: int = Field(default=0)
+    #: Rule 3's amount half: a new identity whose rolling-24h paid total
+    #: (current order included) reaches this many USD is held. 0 = off.
+    risk_new_buyer_sum_24h_usd: Decimal = Field(default=Decimal("0"))
+    #: An identity counts as "new" while its oldest linked order is younger
+    #: than this many days.
+    risk_new_buyer_age_days: int = Field(default=7)
+    #: Rule 4: between these Tashkent hours the review thresholds are
+    #: multiplied by risk_night_threshold_multiplier (fraud waves run at
+    #: night). Window wraps midnight: start 22, end 7.
+    risk_night_start_hour: int = Field(default=22)
+    risk_night_end_hour: int = Field(default=7)
+    #: 1 = night changes nothing; 0.5 halves the thresholds at night.
+    risk_night_threshold_multiplier: Decimal = Field(default=Decimal("1"))
+    #: Rule 5: a second copy of every hold alert goes to this chat — the
+    #: shared fraud-review group with the payment provider. Empty = off.
+    tg_fraud_chat_id: str | None = Field(default=None)
+
     # --- steam sign-in ---
     #: Steam Web API key (steamcommunity.com/dev/apikey) — used only to fetch
     #: the persona name and avatar after a verified OpenID login. Sign-in

@@ -358,3 +358,20 @@ outright:
   `REASON_PAID_AFTER_EXPIRY`
 - [wallet-refunds.md](./wallet-refunds.md) — refund procedure, including
   wallet-funded orders
+
+## Click-agreed rules (2026-09-02)
+
+Added after the August carding wave, in the shapes Click's fraud team asked
+for; each is a hold (manual release), never a silent block, and each is off
+until its env var is set:
+
+| Rule                                                                                          | Env                                                                             | Prod value (2026-09)                                                   |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Lower threshold for liquid brands (Stars/Roblox/Steam)                                        | `RISK_LIQUID_REVIEW_THRESHOLD_USD`                                              | 10 (median real Stars purchase is $2; the fraud wave bought $94 a pop) |
+| New-buyer caps: orders per 24h / USD per 24h, identity younger than `RISK_NEW_BUYER_AGE_DAYS` | `RISK_NEW_BUYER_VELOCITY_24H`, `RISK_NEW_BUYER_SUM_24H_USD`                     | 3 / 8 (Click's «3 покупки и 100 000 сум»)                              |
+| Night multiplier on both thresholds, Tashkent hours                                           | `RISK_NIGHT_START_HOUR`/`RISK_NIGHT_END_HOUR`/`RISK_NIGHT_THRESHOLD_MULTIPLIER` | 22 / 7 / 0.5                                                           |
+| Copy of every hold to the shared fraud group with Click (masked recipient, no identities)     | `TG_FRAUD_CHAT_ID`                                                              | the shared group's chat id                                             |
+
+Regular customers (any linked order older than the age window) skip the
+new-buyer caps entirely; the thresholds and the night window only route to
+this runbook's usual release flow, so the operator playbook is unchanged.

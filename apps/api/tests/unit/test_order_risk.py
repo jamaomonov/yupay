@@ -12,6 +12,8 @@ from yupay.core.config import Settings, get_settings
 from yupay.modules.orders.risk import (
     REASON_GEO_MISMATCH,
     REASON_LARGE_AMOUNT,
+    REASON_LIQUID_AMOUNT,
+    REASON_NEW_BUYER,
     REASON_ROLLING_SUM,
     REASON_SHARED_IDENTITY,
     REASON_VELOCITY,
@@ -25,6 +27,8 @@ from yupay.modules.orders.risk import (
     _gather,
     _geo_reason,
     _is_trusted_buyer,
+    _liquid_amount_reason,
+    _new_buyer_reason,
     _targets_from,
     _veto_decision,
     _window_reason,
@@ -560,3 +564,132 @@ async def test_no_detail_leaves_the_payload_as_before(
     await hold_for_review(cast("Any", db), order=_held_order(), reason=REASON_SHARED_IDENTITY)
 
     assert set(db.added[0].payload) == {"reason", "total_usd"}
+
+
+# ---------- Click-agreed rules of 2026-09-02: liquid threshold, new buyer, night
+
+
+def _cfg2(**over: object) -> Settings:
+    base = get_settings().model_dump()
+    base.update(
+        risk_jitter=False,
+        risk_liquid_brands="roblox,telegram-stars,steam",
+        manual_review_threshold_usd=Decimal("100"),
+        risk_liquid_review_threshold_usd=Decimal("0"),
+        risk_new_buyer_velocity_24h=0,
+        risk_new_buyer_sum_24h_usd=Decimal("0"),
+        risk_new_buyer_age_days=7,
+        risk_night_start_hour=22,
+        risk_night_end_hour=7,
+        risk_night_threshold_multiplier=Decimal("1"),
+    )
+    base.update(over)
+    return Settings(**base)
+
+
+def _noon() -> datetime:
+    return datetime(2026, 9, 2, 7, 0, tzinfo=UTC)  # 12:00 in Tashkent (UTC+5)
+
+
+def _night() -> datetime:
+    return datetime(2026, 9, 2, 20, 0, tzinfo=UTC)  # 01:00 in Tashkent
+
+
+def test_liquid_brands_get_their_own_lower_threshold() -> None:
+    # Click's rule 2: Stars above the typical purchase go to manual release
+    # even while the global threshold would wave them through.
+    cfg = _cfg2(risk_liquid_review_threshold_usd=Decimal("30"))
+    held = _liquid_amount_reason(_order("40.00"), frozenset({"telegram-stars"}), cfg, at=_noon())
+    assert held == REASON_LIQUID_AMOUNT
+    assert (
+        _liquid_amount_reason(_order("40.00"), frozenset({"pubg-mobile"}), cfg, at=_noon()) is None
+    )
+    assert (
+        _liquid_amount_reason(_order("25.00"), frozenset({"telegram-stars"}), cfg, at=_noon())
+        is None
+    )
+
+
+def test_night_halves_the_thresholds() -> None:
+    # Click's rule 4: the fraud waves ran at night; the same amount that
+    # passes at noon is held at 01:00 Tashkent.
+    cfg = _cfg2(
+        risk_liquid_review_threshold_usd=Decimal("30"),
+        risk_night_threshold_multiplier=Decimal("0.5"),
+    )
+    brands = frozenset({"telegram-stars"})
+    assert _liquid_amount_reason(_order("20.00"), brands, cfg, at=_noon()) is None
+    assert _liquid_amount_reason(_order("20.00"), brands, cfg, at=_night()) == (
+        REASON_LIQUID_AMOUNT
+    )
+
+
+def test_a_new_buyer_hits_the_velocity_lid_where_a_regular_does_not() -> None:
+    # Click's rule 3: 3 purchases per 24h for identities we first saw today.
+    cfg = _cfg2(risk_new_buyer_velocity_24h=3)
+    current = WindowOrder(
+        id="01aa0000-0000-7000-8000-00000000000a",
+        paid_at=_NOW,
+        total_usd=Decimal("11"),
+        buyer="me@x.com",
+        ip=None,
+        device=None,
+        targets=frozenset(),
+    )
+    fresh = [
+        WindowOrder(
+            id=f"01aa0000-0000-7000-8000-00000000000{i}",
+            paid_at=_NOW - timedelta(hours=i + 1),
+            total_usd=Decimal("2"),
+            buyer="me@x.com",
+            ip=None,
+            device=None,
+            targets=frozenset(),
+        )
+        for i in range(3)
+    ]
+    got = _new_buyer_reason(current, fresh, cfg)
+    assert got == REASON_NEW_BUYER
+
+    # The same shape with one linked order older than the age window is a
+    # regular customer — untouched.
+    seasoned = [
+        *fresh,
+        WindowOrder(
+            id="01aa0000-0000-7000-8000-0000000000ff",
+            paid_at=_NOW - timedelta(days=30),
+            total_usd=Decimal("2"),
+            buyer="me@x.com",
+            ip=None,
+            device=None,
+            targets=frozenset(),
+        ),
+    ]
+    assert _new_buyer_reason(current, seasoned, cfg) is None
+
+
+def test_a_new_buyer_sum_cap_holds_the_third_small_order() -> None:
+    cfg = _cfg2(risk_new_buyer_sum_24h_usd=Decimal("8"))
+    current = WindowOrder(
+        id="01aa0000-0000-7000-8000-00000000000b",
+        paid_at=_NOW,
+        total_usd=Decimal("11"),
+        buyer="me@x.com",
+        ip=None,
+        device=None,
+        targets=frozenset(),
+    )
+    linked = [
+        WindowOrder(
+            id="01aa0000-0000-7000-8000-0000000000aa",
+            paid_at=_NOW - timedelta(hours=2),
+            total_usd=Decimal("4"),
+            buyer="me@x.com",
+            ip=None,
+            device=None,
+            targets=frozenset(),
+        )
+    ]
+    # 11 + 4 >= 8 → held; the identity is brand new.
+    assert _new_buyer_reason(current, linked, cfg) == REASON_NEW_BUYER
+    assert _new_buyer_reason(current, [], _cfg2(risk_new_buyer_sum_24h_usd=Decimal("20"))) is None
