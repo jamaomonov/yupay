@@ -17,7 +17,13 @@ hot-offers carousel (discounts), instant search, tags.
   Steam-CDN `image`, description, wholesale `price` (USD), discount fields
   (`discount_percent`, `discount_end_date` — moves with Steam sales),
   `packages`/`package_ids` («издания»), DLC links, `parent` for DLC.
-- `GET /gifts/apps/{app_id}` — full card with `dlc[]` and `packages[]`.
+- `GET /gifts/apps/{app_id}` — full card with `dlc[]` and `packages[]`;
+  **each package carries `prices[]`: ~41 region entries** (`zone` enum:
+  AU, LATAM, BR, UK, VN, HK, EURO, IL, IN, ID, KZ, CA, QA, CN, CO, CR, KW,
+  MY, MX, NZ, NO, AE, SASIA, PE, PL, RU, SG, **CIS**, US, TH, TW, MENA, UA,
+  UY, PH, CL, CH, ZA, KR, JP, SA) with per-region wholesale price — the
+  same game runs $0.84–$1.75 across zones. The list endpoint's `price` is a
+  reference (US); the REAL price is `packages[].prices[zone]`.
 - `POST /gifts/orders {invite_url, package_id, region}` →
   `GiftsOrderResponse` with `uuid`, `purchase_price`, `is_refunded` and
   status walk `accepted → prepared → delivering → shipped → delivered`
@@ -67,9 +73,12 @@ price_usd, discount_percent, packages: [{id, name}]}`.
     pinned list (admin-editable later; constant in v1).
 - `GET /catalog/steam-gifts/{app_id}` → full card (DLC, packages) for the
   game page/modal.
-- Prices shown = `supplier_price × (1 + margin) × fx(USD→UZS)`, margin from
-  `STEAM_GIFTS_MARGIN_PERCENT` (default **10** — the gift market is
-  price-transparent; 20% would price us above Steam UZ. Operator-tunable).
+- Prices shown = `supplier_price(region) × (1 + margin) × fx(USD→UZS)`.
+  Listing rows use the reference price for the default region; the game
+  card re-prices from `packages[].prices[]` when the buyer switches region.
+  Margin default **10 %**, stored as an admin-editable runtime setting
+  (§ 7.2) — the gift market is price-transparent, 20 % would price us above
+  Steam itself.
 
 ### 4.3 Checkout
 
@@ -108,8 +117,9 @@ price_usd, discount_percent, packages: [{id, name}]}`.
 ### 4.5 Settings
 
 `STEAM_GIFTS_ENABLED` (master flag, default false — deploy dark),
-`STEAM_GIFTS_MARGIN_PERCENT` (10), `STEAM_GIFTS_REGION_DEFAULT` and
-`STEAM_GIFTS_REGIONS` (CSV; **open question § 7**).
+`STEAM_GIFTS_MARGIN_PERCENT` (seed default 10; live value is the
+admin-editable runtime setting), `STEAM_GIFTS_REGION_DEFAULT=CIS`,
+`STEAM_GIFTS_REGIONS` (CSV of offered zones, default `CIS,RU,KZ,UA`).
 
 ## 5. Storefront (web)
 
@@ -149,8 +159,15 @@ price_usd, discount_percent, packages: [{id, name}]}`.
    region?). Build ships with a settings-driven list; launch needs the real
    values. Wrong region = failed/refunded gift, so v1 UI defaults to one
    region until confirmed.
-2. **Margin final value** — default 10 %, operator decision; compare
-   against Steam UZ shelf prices for the top-20 titles before launch.
+   **RESOLVED 2026-09-02**: zone enum obtained from the merchant panel (see
+   § 2); Uzbekistan's recommendation is **CIS («СНГ без России»)** — the
+   operator's own test purchase with CIS delivered successfully. v1 default
+   region = CIS, selector offers the popular few (CIS, RU, KZ, UA) with the
+   full list behind «другой регион».
+2. **Margin** — **RESOLVED**: 10 %, and it MUST be editable in the admin,
+   not only via env: stored as a runtime setting (small `runtime_settings`
+   key-value table or equivalent), admin Настройки page gets the knob; env
+   var only seeds the default on first boot.
 3. Do gift orders need G-Engine balance top-ups sized differently? (Their
    AAA titles are $30–40 wholesale — balance alerting thresholds may need a
    raise; existing low-balance alert covers it, verify the threshold.)
