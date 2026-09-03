@@ -20,8 +20,10 @@ What it creates, all gated behind ``STEAM_GIFTS_ENABLED`` (Task 4's checkout
 hook, Task 5's fulfiller) — this script only lays the catalog rows down; the
 flag stays whatever the environment has it as:
 
-* Brand ``steam-gifts`` (RU "Steam Гифты" / EN "Steam Gifts" / UZ "Steam
-  sovg'alari"), in the same category as the existing ``steam`` brand.
+* Brand ``steam-gifts`` (RU "Steam Игры" / EN "Steam Games" / UZ "Steam
+  o'yinlari" — customer-facing name only; the slug, routes,
+  ``STEAM_GIFT_SKU_CODE`` and env names all stay ``steam-gifts``/unchanged),
+  in the same category as the existing ``steam`` brand.
 * Product ``steam-gift``, ``kind="top_up"``, with the four-field form schema
   ``gifts/checkout.py`` expects verbatim: ``app_id``, ``package_id``,
   ``region``, ``invite_url``. The schema is round-tripped through
@@ -46,14 +48,18 @@ No sourcing rule is created: ``sourcing._resolve_auto`` already sends a
 ``top_up`` product with one active mapping to ``supplier:gengine``.
 
 Idempotent: each row is looked up by its natural key (slug / sku_code /
-``(sku_id, supplier_slug)``) before anything is built. Brand and mapping
-rows are left untouched when found and reported as "already present". The
-product and SKU rows are the two this script actively *manages* the
-content of (``required_fields``; ``price_usd``/``rate_multiplier``/
-``min_amount_usd``/``max_amount_usd``) — those are re-synced to the values
-below on every ``--apply`` run, via ``catalog.update_product``/
-``update_sku``, so an environment seeded before a later edit to this file
-(e.g. widened amount bounds, a reshaped ``region`` field) is corrected by
+``(sku_id, supplier_slug)``) before anything is built. The mapping row is
+left untouched when found and reported as "already present". The brand,
+product, and SKU rows are what this script actively *manages* the content
+of — brand translation ``name`` (diffed per locale against
+:data:`BRAND_NAME`, via ``catalog.update_brand``; every other translation
+field, e.g. ``short_description``/``instructions``/``highlights``, is left
+exactly as stored), product ``required_fields``, and SKU ``price_usd``/
+``rate_multiplier``/``min_amount_usd``/``max_amount_usd`` — those are
+re-synced to the values below on every ``--apply`` run, via
+``catalog.update_brand``/``update_product``/``update_sku``, so an
+environment seeded before a later edit to this file (e.g. the 2026-09-03
+rename, widened amount bounds, a reshaped ``region`` field) is corrected by
 re-running ``--apply`` rather than staying stuck on whatever first landed.
 A second ``--apply`` run with no changes to this file is then a no-op.
 """
@@ -85,7 +91,10 @@ SUPPLIER_SLUG = "gengine"
 MAPPING_EXTERNAL_PRODUCT_ID = "gifts-apps"
 MAPPING_QUANTITY = 1
 
-BRAND_NAME = {"ru": "Steam Гифты", "en": "Steam Gifts", "uz": "Steam sovg'alari"}
+#: 2026-09-03 rename: customer-facing display name only. Slug ``steam-gifts``,
+#: routes, ``STEAM_GIFT_SKU_CODE`` and env names are unchanged — see
+#: docs/product/flows/steam-gifts.md and docs/runbooks/steam-gifts.md.
+BRAND_NAME = {"ru": "Steam Игры", "en": "Steam Games", "uz": "Steam o'yinlari"}
 PRODUCT_NAME = {"ru": "Подарок Steam", "en": "Steam Gift", "uz": "Steam sovg'asi"}
 
 # ``gifts/checkout.py::price_gift_line`` reads exactly these four keys off
@@ -211,7 +220,40 @@ async def _get_or_create_brand(session: AsyncSession) -> Brand:
         await session.execute(select(Brand).where(Brand.slug == BRAND_SLUG))
     ).scalar_one_or_none()
     if existing is not None:
-        print(f"brand {BRAND_SLUG}: already present ({existing.id})")
+        by_locale = {t.locale: t for t in existing.translations}
+        drifted = sorted(
+            locale
+            for locale, name in BRAND_NAME.items()
+            if by_locale.get(locale) is None or by_locale[locale].name != name
+        )
+        if drifted:
+            # Only ``name`` is managed here — every other translation field
+            # (short_description/description/instructions/highlights) is
+            # carried over from the stored row untouched, since
+            # ``update_brand`` replaces the whole translations list.
+            translations: list[cat_schemas.TranslationIn] = []
+            for locale, name in BRAND_NAME.items():
+                current = by_locale.get(locale)
+                translations.append(
+                    cat_schemas.TranslationIn(
+                        locale=locale,  # type: ignore[arg-type]
+                        name=name,
+                        short_description=current.short_description if current else None,
+                        description=current.description if current else None,
+                        instructions=current.instructions if current else None,
+                        highlights=(
+                            list(current.highlights) if current and current.highlights else []
+                        ),
+                    )
+                )
+            existing = await catalog.update_brand(
+                session, str(existing.id), cat_schemas.BrandUpdate(translations=translations)
+            )
+            print(
+                f"brand {BRAND_SLUG}: translations updated {drifted} on existing row ({existing.id})"
+            )
+        else:
+            print(f"brand {BRAND_SLUG}: already present, unchanged ({existing.id})")
         return existing
 
     category_id = await _resolve_category_id(session)

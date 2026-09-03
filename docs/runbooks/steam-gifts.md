@@ -9,6 +9,9 @@ module is `apps/api/src/yupay/modules/gifts/`
 fulfilment branch is
 `apps/api/src/yupay/modules/fulfillment/suppliers/gengine_gifts.py`.
 
+> Customer-facing name (2026-09-03): **«Steam Игры»** — display only. The
+> slug, routes, and `STEAM_GIFT_SKU_CODE` all stay `steam-gifts`.
+
 ## The flag
 
 - **Env var**: `STEAM_GIFTS_ENABLED`. Default `false` everywhere — the

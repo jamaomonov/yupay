@@ -321,11 +321,11 @@
   },
   "gifts": {
     "meta": {
-      "title": "Steam sovgʻalari — Steam oʻyinlarini sovgʻa qiling | YuPay",
+      "title": "Steam oʻyinlari — Steam oʻyinlarini sovgʻa qiling | YuPay",
       "description": "Doʻstlaringizga Steamʻda oʻyin va DLC sovgʻa qiling: nashr va mintaqani tanlang, soʻmda toʻlang — bot orqali sovgʻa qabul qiluvchi profiliga odatda bir soat ichida yetkaziladi."
     },
     "hero": {
-      "title": "Steam sovgʻalari",
+      "title": "Steam oʻyinlari",
       "subtitle": "Steamʻda oʻyin va DLC sovgʻa qiling — toʻlov soʻmda, bot orqali doʻstingiz profiliga yetkaziladi.",
       "howTitle": "Bu qanday ishlaydi",
       "step1": "Oʻyin, nashr va mintaqani tanlang",

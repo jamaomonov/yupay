@@ -51,7 +51,7 @@ export function GiftsSettingsPage() {
 
   return (
     <div>
-      <PageHeader title="Steam Гифты" description="Наценка и регионы каталога Steam-подарков." />
+      <PageHeader title="Steam Игры" description="Наценка и регионы каталога Steam-подарков." />
 
       {query.isLoading && <Spinner label="Загрузка…" />}
 

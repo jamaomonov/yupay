@@ -8,6 +8,9 @@ backend design and
 [the design spec](../../superpowers/specs/2026-09-02-steam-gifts-design.md)
 for the full product brief.
 
+> Customer-facing name (2026-09-03): **«Steam Игры»** — display only. The
+> slug, routes, and `STEAM_GIFT_SKU_CODE` all stay `steam-gifts`.
+
 ```mermaid
 %% See docs/architecture/sequence-diagrams/steam-gift-purchase.mmd for the
 %% authoritative, always-in-sync copy of this diagram.
