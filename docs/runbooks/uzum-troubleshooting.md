@@ -20,7 +20,7 @@ reference.
   `GET /api/v1/payments/providers` — `uzum` should be in the list.
 - **Config.** `UZUM_SERVICE_ID`, `UZUM_LOGIN`/`UZUM_PASSWORD` (production),
   `UZUM_TEST_LOGIN`/`UZUM_TEST_PASSWORD` (sandbox), `UZUM_OPEN_SERVICE_URL`
-  (default `https://www.uzumbank.uz/open-service`). Secrets live only in the
+  (default `https://uzumbank.uz/open-service`). Secrets live only in the
   env file; `UZUM_PASSWORD`/`UZUM_TEST_PASSWORD` are redacted from logs —
   never paste them into a ticket or chat.
 - **The endpoints always answer HTTP 200.** A Uzum-side "connection error"

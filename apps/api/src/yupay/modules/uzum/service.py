@@ -517,21 +517,30 @@ async def status(db: AsyncSession, *, trans_id: str) -> dict[str, Any]:
 def build_checkout_url(*, order_id: str, amount_tiyin: int, return_url: str | None) -> str:
     """Build the Uzum open-service checkout URL that launches a payment.
 
+    The documented deeplink contract (Uzum manager, 2026-09-03) is
+    ``?serviceId=<id>&orderId=<order>`` — ``orderId`` pre-fills the order
+    field on their payment form, and the charge amount is NOT a URL
+    parameter: Uzum's app takes it from our ``/check`` response's
+    ``data.amount.value``, so sending an ``amount`` here would be an
+    undocumented extra at best and a conflicting prefill at worst.
+
     Args:
-        order_id: The order the payment is for (Uzum ``params.order_id``).
-        amount_tiyin: The charge amount in tiyin.
+        order_id: The order the payment is for (their form's ``orderId``).
+        amount_tiyin: Kept for signature stability; the amount travels via
+            ``/check``'s ``data.amount.value``, never the deeplink.
         return_url: Where Uzum returns the customer afterwards, or ``None``
-            to omit ``redirectUrl`` entirely.
+            to omit ``redirectUrl`` entirely (undocumented but harmless
+            passthrough honoured by their web checkout).
 
     Returns:
-        The absolute checkout URL, e.g. ``https://www.uzumbank.uz/open-service
-        ?serviceId=<id>&order_id=<order_id>&amount=<tiyin>&redirectUrl=<url>``.
+        The absolute checkout URL, e.g. ``https://uzumbank.uz/open-service
+        ?serviceId=<id>&orderId=<order_id>``.
     """
+    del amount_tiyin  # travels via /check's data.amount.value, not the URL
     settings = get_settings()
     query: dict[str, Any] = {
         "serviceId": settings.uzum_service_id,
-        "order_id": order_id,
-        "amount": amount_tiyin,
+        "orderId": order_id,
     }
     if return_url:
         query["redirectUrl"] = return_url

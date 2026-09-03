@@ -982,7 +982,7 @@ async def test_status_unknown_is_10014(db_session: AsyncSession) -> None:
 def _fake_settings() -> SimpleNamespace:
     return SimpleNamespace(
         uzum_service_id=SERVICE_ID,
-        uzum_open_service_url="https://www.uzumbank.uz/open-service",
+        uzum_open_service_url="https://uzumbank.uz/open-service",
     )
 
 
@@ -991,8 +991,8 @@ async def test_build_checkout_url_no_return(monkeypatch: pytest.MonkeyPatch) -> 
     url = uzum_svc.build_checkout_url(
         order_id="ORDER-1", amount_tiyin=EXPECTED_TIYIN, return_url=None
     )
-    expected = "https://www.uzumbank.uz/open-service?" + urlencode(
-        {"serviceId": SERVICE_ID, "order_id": "ORDER-1", "amount": EXPECTED_TIYIN}
+    expected = "https://uzumbank.uz/open-service?" + urlencode(
+        {"serviceId": SERVICE_ID, "orderId": "ORDER-1"}
     )
     assert url == expected
 
@@ -1004,11 +1004,10 @@ async def test_build_checkout_url_with_return(monkeypatch: pytest.MonkeyPatch) -
         amount_tiyin=EXPECTED_TIYIN,
         return_url="https://yupay.uz/return",
     )
-    expected = "https://www.uzumbank.uz/open-service?" + urlencode(
+    expected = "https://uzumbank.uz/open-service?" + urlencode(
         {
             "serviceId": SERVICE_ID,
-            "order_id": "ORDER-1",
-            "amount": EXPECTED_TIYIN,
+            "orderId": "ORDER-1",
             "redirectUrl": "https://yupay.uz/return",
         }
     )

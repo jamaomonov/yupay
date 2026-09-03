@@ -660,7 +660,7 @@ class Settings(BaseSettings):
     uzum_password: str = Field(default="")  # production/cabinet password
     uzum_test_login: str = Field(default="")  # sandbox login
     uzum_test_password: str = Field(default="")  # sandbox password
-    uzum_open_service_url: str = Field(default="https://www.uzumbank.uz/open-service")
+    uzum_open_service_url: str = Field(default="https://uzumbank.uz/open-service")
 
     @field_validator("uzum_service_id", mode="before")
     @classmethod
