@@ -28,7 +28,7 @@ def _clear_settings_cache() -> Iterator[None]:
 
 
 def test_uzum_open_service_url_defaults_to_production(_clear_settings_cache: None) -> None:
-    assert cfg.get_settings().uzum_open_service_url == "https://www.uzumbank.uz/open-service"
+    assert cfg.get_settings().uzum_open_service_url == "https://uzumbank.uz/open-service"
 
 
 def test_uzum_password_is_read_from_env(

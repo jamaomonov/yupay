@@ -89,12 +89,11 @@ async def test_create_intent_builds_exact_checkout_url(_uzum_env: None) -> None:
     expected_query = urlencode(
         {
             "serviceId": 101202,
-            "order_id": "order-123",
-            "amount": 13_000_000,
+            "orderId": "order-123",
             "redirectUrl": "https://return.example",
         }
     )
-    assert intent.intent_url == f"https://www.uzumbank.uz/open-service?{expected_query}"
+    assert intent.intent_url == f"https://uzumbank.uz/open-service?{expected_query}"
     assert intent.external_id == "uzum:order-123"
     assert intent.status == "pending"
     assert intent.extra_metadata == {"amount_tiyin": 13_000_000}
