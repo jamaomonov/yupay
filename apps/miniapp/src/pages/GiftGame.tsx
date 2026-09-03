@@ -1,19 +1,38 @@
 import { motion } from "framer-motion";
 import { ArrowLeft, Check } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useParams } from "wouter";
 
 import type { GiftAppDetail, GiftPackage } from "@/lib/gifts";
 
 import { DlcSheet } from "@/components/gifts/DlcSheet";
 import { InviteGuideSheet } from "@/components/gifts/InviteGuideSheet";
+import { PaymentMethodGrid } from "@/components/gifts/PaymentMethodGrid";
 import { SafeImage } from "@/components/ui/safe-image";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
+import { ApiError } from "@/lib/api";
 import { formatMoney } from "@/lib/currency";
-import { fetchGiftDetail, priceFor, validateInviteUrl } from "@/lib/gifts";
+import {
+  extractExpectedAmount,
+  fetchGiftDetail,
+  priceFor,
+  useGiftSkuId,
+  validateInviteUrl,
+} from "@/lib/gifts";
 import { useT } from "@/lib/i18n";
-import { haptic } from "@/lib/telegram";
+import {
+  methodVisibility,
+  providerStatusMap,
+  selectActiveMethodId,
+  useAvailableProviders,
+  useCheckout,
+} from "@/lib/orders";
+import { PAYMENT_METHODS, PROVIDER_BY_METHOD } from "@/lib/payment-methods";
+import { haptic, openExternalLink, setClosingConfirmation } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { ensureBotCanWrite } from "@/lib/write-access";
+import { checkoutErrorMessage } from "@/pages/TopUp";
 
 /** How many offered zones show as their own pill before the rest collapse
  *  behind a single "другой регион" toggle — mirrors the web panel's
@@ -145,6 +164,7 @@ export default function GiftGame() {
   const { t } = useT();
   const { appId } = useParams<{ appId: string }>();
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
 
   const numericAppId = Number(appId);
   const validAppId = Number.isInteger(numericAppId) && numericAppId > 0;
@@ -158,6 +178,37 @@ export default function GiftGame() {
   const [dlcOpen, setDlcOpen] = useState(false);
   const [zoneExpanded, setZoneExpanded] = useState(false);
   const seqRef = useRef(0);
+
+  // The steam-gift product's single purchasable SKU — resolved once, reused
+  // by every game on this route. `status === "unavailable"` (flag off, or an
+  // API that predates the seed) swaps the buy section for `gifts.comingSoon`
+  // instead of rendering a Buy button checkout can never accept.
+  const { skuId, status: skuStatus } = useGiftSkuId();
+
+  // In-scope acquirers for a gift purchase — same rails `TopUp` offers, no
+  // wallet pay (a gift is always paid up front, not from the internal
+  // ledger, mirroring `GiftPurchasePanel.tsx` on the web storefront).
+  const [methodId, setMethodId] = useState<string>(PAYMENT_METHODS[0]?.id ?? "click");
+  const providersQuery = useAvailableProviders();
+  const providerStatusBySlug = useMemo(
+    () => (providersQuery.data ? providerStatusMap(providersQuery.data) : null),
+    [providersQuery.data],
+  );
+  // Once live provider status has loaded, bounce off a stale/now-unavailable
+  // selection the same way `TopUp` does — never leave the highlight on a
+  // method that renders as maintenance/hidden.
+  useEffect(() => {
+    if (providerStatusBySlug === null) return;
+    setMethodId(
+      (current) => selectActiveMethodId(PAYMENT_METHODS, current, providerStatusBySlug) ?? "",
+    );
+  }, [providerStatusBySlug]);
+  function isMethodAvailable(id: string): boolean {
+    const provider = PROVIDER_BY_METHOD[id];
+    return provider !== undefined && methodVisibility(provider, providerStatusBySlug) === "active";
+  }
+
+  const checkout = useCheckout();
 
   function load(): void {
     if (!validAppId) {
@@ -218,11 +269,98 @@ export default function GiftGame() {
 
   const canonicalInvite = validateInviteUrl(inviteUrl);
   const inviteTouched = inviteUrl.trim() !== "";
-  const canBuy = price !== null && canonicalInvite !== null;
+  const selectedProvider = PROVIDER_BY_METHOD[methodId];
+  const methodReady = selectedProvider !== undefined && isMethodAvailable(methodId);
+  const canBuy =
+    price !== null &&
+    canonicalInvite !== null &&
+    skuId !== null &&
+    methodReady &&
+    !checkout.isPending;
 
-  function handleBuy(): void {
-    // Wired in the checkout commit (Task M2) — the package/zone/invite state
-    // collected above already matches what that commit's checkout body needs.
+  /**
+   * Checkout with the frozen body (`{sku_id, qty:1, amount_usd, fulfillment_data}`)
+   * — mirrors `buyGift` on the web storefront. A price-drift 422
+   * (`extra.expected_amount_usd`, `price_gift_line`'s ±2% tolerance) refetches
+   * this game's detail and lets the buyer re-confirm at the server's own
+   * figure rather than retrying blind with the same amount; every other
+   * failure falls back to the shared `checkoutErrorMessage` path.
+   */
+  async function handleBuy(): Promise<void> {
+    // `canBuy` already requires `price !== null` — TS's aliased-condition
+    // narrowing carries that through past this guard (same pattern
+    // `GiftPurchasePanel.tsx` documents on the web storefront), which is why
+    // `!price` alone reads as redundant to the linter. Kept spelled out
+    // anyway, alongside `detail`/`selectedPackage` (which `canBuy` does NOT
+    // cover), so every field this function reads below is narrowed non-null
+    // in one place rather than trusting an alias silently.
+    if (
+      !canBuy ||
+      !detail ||
+      !selectedPackage ||
+      !price ||
+      !canonicalInvite ||
+      !skuId ||
+      !selectedProvider
+    ) {
+      return;
+    }
+    // Codes and status updates are delivered by the bot. Someone who opened
+    // the Mini App from a link and never pressed /start can't be written to,
+    // so ask once, here, where the reason is obvious — same as `TopUp`.
+    await ensureBotCanWrite();
+    // Money is about to move and the next step may be a redirect to the
+    // acquirer — a stray swipe-down here loses the customer mid-payment.
+    setClosingConfirmation(true);
+    try {
+      const result = await checkout.mutateAsync({
+        skuId,
+        fulfillmentData: {
+          app_id: detail.app_id,
+          package_id: selectedPackage.id,
+          region: price.zone,
+          invite_url: canonicalInvite,
+        },
+        amountUsd: price.price_usd,
+        qty: 1,
+        provider: selectedProvider,
+      });
+      haptic("ok");
+      if (result.payment.intent_url && result.payment.provider !== "mock") {
+        // Hand the acquirer URL to Telegram so it opens in the device browser
+        // instead of replacing the Mini App's own WebView, then move to the
+        // order's status page — same handoff `TopUp` uses.
+        toast({ title: t("topup.redirecting"), description: result.payment.provider });
+        openExternalLink(result.payment.intent_url);
+        setLocation(`/order/${result.order.id}`);
+        return;
+      }
+      toast({
+        title: t("topup.orderCreated"),
+        description: t("topup.processing", { game: detail.name }),
+      });
+      setLocation(`/order/${result.order.id}`);
+    } catch (exc) {
+      if (exc instanceof ApiError && exc.status === 422) {
+        const expected = extractExpectedAmount(exc.body);
+        if (expected !== null) {
+          toast({ title: t("gifts.checkout.priceChanged"), variant: "destructive" });
+          load();
+          return;
+        }
+      }
+      haptic("error");
+      toast({
+        title: t("topup.checkoutFailed"),
+        description: checkoutErrorMessage(exc),
+        variant: "destructive",
+      });
+    } finally {
+      // Checkout is over either way — stop nagging on close. Runs on the
+      // redirect path too (`finally` fires on `return`), which is what we
+      // want: we're navigating to the acquirer, not closing the app.
+      setClosingConfirmation(false);
+    }
   }
 
   if (phase === "loading") {
@@ -445,14 +583,37 @@ export default function GiftGame() {
           </button>
         </div>
 
-        <button
-          type="button"
-          disabled={!canBuy}
-          onClick={handleBuy}
-          className="bg-primary w-full rounded-2xl py-3.5 text-base font-bold text-black disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {t("gifts.game.buy")}
-        </button>
+        {skuStatus === "unavailable" ? (
+          <p className="rounded-2xl border border-dashed border-white/10 p-4 text-center text-sm text-white/40">
+            {t("gifts.comingSoon")}
+          </p>
+        ) : (
+          <>
+            {/* Payment method */}
+            <div>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                {t("topup.paymentMethod")}
+              </p>
+              <PaymentMethodGrid
+                methods={PAYMENT_METHODS}
+                activeId={methodId}
+                providerStatusBySlug={providerStatusBySlug}
+                onSelect={setMethodId}
+              />
+            </div>
+
+            <button
+              type="button"
+              disabled={!canBuy}
+              onClick={() => {
+                void handleBuy();
+              }}
+              className="bg-primary w-full rounded-2xl py-3.5 text-base font-bold text-black disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {checkout.isPending ? t("topup.processingBtn") : t("gifts.game.buy")}
+            </button>
+          </>
+        )}
 
         <div className="space-y-1 text-[12px] leading-relaxed text-white/40">
           <p>{t("gifts.game.timeline")}</p>

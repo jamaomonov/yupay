@@ -13,6 +13,7 @@
  */
 
 import { apiGet, ApiError } from "./api";
+import { useBrandSummary, useProductWithSkus } from "./catalog";
 
 export interface GiftApp {
   app_id: number;
@@ -242,4 +243,60 @@ export function deriveCatalogView({
   const showEmpty = !showSkeletons && !showError && !showComingSoon && itemsLength === 0;
   const canShowMore = itemsLength > 0 && itemsLength < total;
   return { showSkeletons, showError, showComingSoon, showEmpty, canShowMore };
+}
+
+// ─── Checkout ────────────────────────────────────────────────────────────────
+
+/**
+ * Pulls `extra.expected_amount_usd` out of an RFC 7807 problem+json body —
+ * mirrors `apps/web/src/lib/gift-checkout.ts::extractExpectedAmount` exactly.
+ * The price-drift 422 the checkout POST answers with (`price_gift_line`'s
+ * ±2% tolerance, `checkout.py`) raises with `extra={"expected_amount_usd": …}`,
+ * and `app_error_handler` merges `exc.extra` onto the body, so the field
+ * lands nested under `extra`, not at the body's top level. `null` for
+ * anything else — a differently-shaped 422, or no body at all.
+ */
+export function extractExpectedAmount(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const extra = (body as Record<string, unknown>).extra;
+  if (!extra || typeof extra !== "object") return null;
+  const value = (extra as Record<string, unknown>).expected_amount_usd;
+  return typeof value === "string" ? value : null;
+}
+
+/** Brand/product every `/gifts/:appId` purchase resolves its SKU through —
+ *  the seed script (`scripts/seed/2026-09-03_steam_gifts.py`) creates exactly
+ *  one product with one variable-amount SKU under this brand, same brand the
+ *  web storefront's `resolveSkuId` walks. */
+const GIFT_BRAND_SLUG = "steam-gifts";
+
+export interface GiftSkuResolution {
+  /** The steam-gift product's single SKU id, once resolved — `null` while
+   *  still loading or when it can't be found at all. */
+  skuId: string | null;
+  /** `"loading"` until the brand (and, once it names a product, that
+   *  product's SKUs) has settled; `"unavailable"` once settled with no SKU
+   *  to show (flag off, or a deployed API that predates the seed) — the
+   *  caller renders `gifts.comingSoon` instead of the buy section for that
+   *  case; `"ready"` once `skuId` is usable. */
+  status: "loading" | "ready" | "unavailable";
+}
+
+/**
+ * Resolves the Steam Gifts product's single purchasable SKU id, the same
+ * data path the web storefront's `resolveSkuId` walks: brand summary → its
+ * first product → that product's SKUs → the first (and only) one. Kept here
+ * rather than inlined in `GiftGame` so the fallback path (brand missing,
+ * product missing, SKU missing — all read the same "not live yet" to the
+ * caller) has one place to live.
+ */
+export function useGiftSkuId(): GiftSkuResolution {
+  const brandQuery = useBrandSummary(GIFT_BRAND_SLUG);
+  const productSlug = brandQuery.data?.products[0]?.slug;
+  const productQuery = useProductWithSkus(productSlug);
+  if (brandQuery.isLoading || (productSlug !== undefined && productQuery.isLoading)) {
+    return { skuId: null, status: "loading" };
+  }
+  const skuId = productQuery.data?.packages[0]?.id ?? null;
+  return { skuId, status: skuId !== null ? "ready" : "unavailable" };
 }

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { pickArtifactDisplay, providerIcon, providerLabel } from "./OrderSuccess";
+import { isGiftDelivery, pickArtifactDisplay, providerIcon, providerLabel } from "./OrderSuccess";
+
+import type { DeliveryOut } from "@/lib/orders";
 
 import { translate } from "@/lib/i18n/core";
 
@@ -112,5 +114,41 @@ describe("pickArtifactDisplay", () => {
     expect(pickArtifactDisplay({ message: null, fulfillment_data: {} })).toEqual({
       kind: "empty",
     });
+  });
+});
+
+describe("isGiftDelivery", () => {
+  function makeDelivery(artifact: Record<string, unknown>): DeliveryOut {
+    return {
+      id: "delivery-1",
+      order_item_id: "item-1",
+      channel: "bot",
+      // The gengine gift fulfiller reports `artifact_kind: "topup_receipt"`
+      // (see `gengine_gifts.py::_map_gift_order`) — the gift/non-gift signal
+      // lives inside the artifact's own `kind` field, not this enum.
+      artifact_kind: "topup_receipt",
+      artifact,
+      delivered_at: "2026-09-03T12:00:00Z",
+    };
+  }
+
+  it("is true when the artifact's own kind is gift", () => {
+    expect(
+      isGiftDelivery(
+        makeDelivery({ kind: "gift", app_name: "Dead Cells", package_name: "Dead Cells" }),
+      ),
+    ).toBe(true);
+  });
+
+  it("is false for a top-up receipt artifact (no kind field)", () => {
+    expect(isGiftDelivery(makeDelivery({ external_id: "abc" }))).toBe(false);
+  });
+
+  it("is false for a voucher/license artifact (a different kind)", () => {
+    expect(isGiftDelivery(makeDelivery({ code: "ABC-123" }))).toBe(false);
+  });
+
+  it("is false for null (no delivery yet)", () => {
+    expect(isGiftDelivery(null)).toBe(false);
   });
 });

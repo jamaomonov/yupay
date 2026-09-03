@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   accumulatePage,
   deriveCatalogView,
+  extractExpectedAmount,
   priceFor,
   validateInviteUrl,
   type CatalogViewInput,
@@ -265,5 +266,43 @@ describe("deriveCatalogView", () => {
       showEmpty: false,
       canShowMore: false,
     });
+  });
+});
+
+// ─── extractExpectedAmount ──────────────────────────────────────────────────
+// Mirrors `apps/web/src/lib/gift-checkout.ts::extractExpectedAmount` — the
+// price-drift 422 nests its `expected_amount_usd` under `body.extra`
+// (`app_error_handler` merges `exc.extra` onto the RFC 7807 body), never at
+// the top level.
+describe("extractExpectedAmount", () => {
+  test("reads extra.expected_amount_usd from an RFC 7807 body", () => {
+    expect(
+      extractExpectedAmount({
+        type: "https://app.yupay.uz/errors/price-changed",
+        title: "Price changed",
+        extra: { expected_amount_usd: "12.34" },
+      }),
+    ).toBe("12.34");
+  });
+
+  test("returns null when there is no extra field", () => {
+    expect(extractExpectedAmount({ type: "...", detail: "nope" })).toBeNull();
+  });
+
+  test("returns null when extra is not an object", () => {
+    expect(extractExpectedAmount({ extra: "oops" })).toBeNull();
+    expect(extractExpectedAmount({ extra: null })).toBeNull();
+  });
+
+  test("returns null when expected_amount_usd is not a string", () => {
+    expect(extractExpectedAmount({ extra: { expected_amount_usd: 12.34 } })).toBeNull();
+    expect(extractExpectedAmount({ extra: {} })).toBeNull();
+  });
+
+  test("returns null for a non-object body", () => {
+    expect(extractExpectedAmount(null)).toBeNull();
+    expect(extractExpectedAmount(undefined)).toBeNull();
+    expect(extractExpectedAmount("plain text")).toBeNull();
+    expect(extractExpectedAmount(42)).toBeNull();
   });
 });
