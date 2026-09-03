@@ -224,12 +224,17 @@ export default function GiftGame() {
   }
   // Once live provider status has loaded, bounce off a stale/now-unavailable
   // selection the same way `TopUp` does — never leave the highlight on a
-  // method that renders as maintenance/hidden. Checking `isMethodAvailable`
-  // directly (rather than `selectActiveMethodId`, which only knows the base
-  // `PAYMENT_METHODS` list) is what keeps a wallet selection from being
-  // bounced off the moment this effect runs.
+  // method that renders as maintenance/hidden. `PAYMENT_METHODS` (the
+  // fallback pool) is acquirers only, so a wallet selection must never
+  // reach that fallback branch: once chosen, the wallet stays chosen no
+  // matter what its own `methodVisibility` says — its own tile (and, once
+  // selected, `canBuy`) is what decides whether it's actually usable, not
+  // this effect. Mirrors the web panel's identical guard
+  // (`GiftPurchasePanel.tsx`: `if (current === WALLET_METHOD_ID) return
+  // current;`).
   useEffect(() => {
     if (providerStatusBySlug === null) return;
+    if (methodId === WALLET_METHOD_ID) return;
     if (methodId === "" || isMethodAvailable(methodId)) return;
     const fallback = PAYMENT_METHODS.find((m) => isMethodAvailable(m.id));
     setMethodId(fallback ? fallback.id : "");
@@ -353,12 +358,24 @@ export default function GiftGame() {
   // entry for the wallet sentinel).
   const selectedProvider = PROVIDER_BY_METHOD_FULL[methodId];
   const methodReady = selectedProvider !== undefined && isMethodAvailable(methodId);
+  // The submit gate must be honest even though the tile itself shows an
+  // optimistic "enough" while the balance is still loading (`walletPay`
+  // above) — a still-loading balance is not a known-sufficient one, so Buy
+  // stays disabled until it actually resolves and covers `walletTotal`.
+  // Irrelevant (`true`) for every other method. Mirrors the web panel,
+  // which only enables Buy once its wallet tile reaches the genuine
+  // `"ready"` state (`canPayFromBalance(walletState)`), never a loading or
+  // unknown one.
+  const walletSubmitReady =
+    methodId !== WALLET_METHOD_ID ||
+    (walletBalance !== null && walletTotal !== null && walletBalance >= walletTotal);
   const canBuy =
     price !== null &&
     selectedCountry !== null &&
     canonicalInvite !== null &&
     skuId !== null &&
     methodReady &&
+    walletSubmitReady &&
     !checkout.isPending;
 
   /**

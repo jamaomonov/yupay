@@ -331,12 +331,17 @@ export function useCheckout() {
     mutationFn: (input) => performCheckout(qc, input),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["my-orders"] });
-      // A wallet-funded checkout debits the balance synchronously inside the
-      // same request. Refresh the wallet queries (header pill + wallet page +
-      // finance tab — all share the ``["wallet", …]`` prefix) so the new
-      // balance shows immediately instead of after the staleTime / a reload.
-      // No-op cost for card/external providers: the refetch just returns the
-      // unchanged balance.
+    },
+    // A wallet-funded checkout debits the balance synchronously inside the
+    // same request when it succeeds — but a genuine 409 from the gateway's
+    // row-locked recheck means the balance we were holding was already
+    // stale before we even tried (that's *why* the recheck disagreed), so
+    // it needs a refresh on failure too, not just on success. `onSettled`
+    // (not `onSuccess`) covers both. Refreshes the wallet queries (header
+    // pill + wallet page + finance tab — all share the ``["wallet", …]``
+    // prefix). No-op cost for card/external providers or a non-wallet
+    // failure: the refetch just returns the unchanged balance.
+    onSettled: () => {
       void qc.invalidateQueries({ queryKey: ["wallet"] });
     },
   });
