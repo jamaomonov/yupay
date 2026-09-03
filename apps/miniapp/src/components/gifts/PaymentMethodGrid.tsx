@@ -8,11 +8,13 @@ import { cn } from "@/lib/utils";
 /**
  * Acquirer picker for the gift checkout — `GiftGame`'s own provider
  * state/UI, mirroring `TopUp.tsx`'s acquirer grid rather than importing that
- * page (see the M2 brief). No wallet option (a gift is always paid up front,
- * not from the internal ledger — same v1 scope cut `GiftPurchasePanel.tsx`
- * makes on the web storefront) and no separate "soon"/maintenance badge
- * strip, since a gift checkout has nothing to show for an admin-disabled
- * method beyond simply not rendering it.
+ * page (see the M2 brief). The wallet ("pay from balance") option is NOT
+ * one of these tiles: it's rendered as its own full-width card by
+ * `GiftBuyPanel`, above this grid (2026-09-03, mirrors `TopUp.tsx`'s
+ * `WalletPayOption`) — this grid only ever reasons about upstream
+ * acquirers. Also no separate "soon"/maintenance badge strip, since a gift
+ * checkout has nothing to show for an admin-disabled method beyond simply
+ * not rendering it.
  *
  * Extracted out of `GiftGame.tsx` (2026-09-03) purely to keep that file near
  * the repo's TS file-length budget — no behaviour change.

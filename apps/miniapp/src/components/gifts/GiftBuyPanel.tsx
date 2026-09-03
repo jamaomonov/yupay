@@ -1,6 +1,7 @@
-import type { ProviderAvailability } from "@/lib/orders";
+import type { MethodVisibility, ProviderAvailability } from "@/lib/orders";
 
 import { PaymentMethodGrid } from "@/components/gifts/PaymentMethodGrid";
+import { WalletPayOption } from "@/components/WalletPayOption";
 import { useT } from "@/lib/i18n";
 import { PAYMENT_METHODS } from "@/lib/payment-methods";
 
@@ -10,7 +11,9 @@ import { PAYMENT_METHODS } from "@/lib/payment-methods";
  * state. Takes only primitives and callbacks: the checkout mutation, the
  * price-drift reload, and the acquirer body it POSTs stay owned by the page
  * (`GiftGame.tsx::handleBuy`), which is why this panel has no `detail` /
- * `selectedPackage` / `price` prop at all.
+ * `selectedPackage` / `price` prop at all. Same for the wallet tile: the
+ * `wallet*` props below are `GiftGame.tsx`'s `walletPayState(...)` output
+ * plus the selection primitives, not state this panel owns.
  *
  * Extracted out of `GiftGame.tsx` (2026-09-03 review) purely to keep that
  * file near the repo's TS file-length budget — no behaviour change.
@@ -24,6 +27,14 @@ export function GiftBuyPanel({
   methodId,
   providerStatusBySlug,
   onMethodChange,
+  walletActive,
+  walletEnough,
+  walletLoading,
+  walletBalance,
+  walletShortfall,
+  walletVisibility,
+  walletUnknownTotal,
+  onSelectWallet,
   canBuy,
   isPending,
   onBuy,
@@ -36,6 +47,14 @@ export function GiftBuyPanel({
   methodId: string;
   providerStatusBySlug: Map<string, ProviderAvailability> | null;
   onMethodChange: (id: string) => void;
+  walletActive: boolean;
+  walletEnough: boolean;
+  walletLoading: boolean;
+  walletBalance: number | null;
+  walletShortfall: number;
+  walletVisibility: MethodVisibility;
+  walletUnknownTotal: boolean;
+  onSelectWallet: () => void;
   canBuy: boolean;
   isPending: boolean;
   onBuy: () => void;
@@ -81,6 +100,21 @@ export function GiftBuyPanel({
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/50">
               {t("topup.paymentMethod")}
             </p>
+            {/* Wallet — own full-width card above the acquirer grid, same
+              placement `TopUp` uses. Gift orders are always billed in UZS
+              (`GiftGame.tsx::handleBuy` hardcodes it), so unlike `TopUp`
+              this never needs a per-product display currency. */}
+            <WalletPayOption
+              active={walletActive}
+              enough={walletEnough}
+              loading={walletLoading}
+              balance={walletBalance}
+              shortfall={walletShortfall}
+              currency="UZS"
+              visibility={walletVisibility}
+              unknownTotal={walletUnknownTotal}
+              onSelect={onSelectWallet}
+            />
             <PaymentMethodGrid
               methods={PAYMENT_METHODS}
               activeId={methodId}

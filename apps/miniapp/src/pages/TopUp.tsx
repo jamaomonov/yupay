@@ -9,7 +9,6 @@ import {
   Settings,
   ShieldCheck,
   Star,
-  Wallet as WalletIcon,
   Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -23,6 +22,7 @@ import { type AppliedPromo, PromoField } from "@/components/PromoField";
 import { ReviewsSheet } from "@/components/ReviewsSheet";
 import { SafeImage } from "@/components/ui/safe-image";
 import { Skeleton } from "@/components/ui/skeleton";
+import { WalletPayOption } from "@/components/WalletPayOption";
 import { useToast } from "@/hooks/use-toast";
 import { ApiError } from "@/lib/api";
 import { useMe } from "@/lib/auth";
@@ -191,84 +191,6 @@ function Step({ n, title, sub }: { n?: number; title: string; sub?: string }) {
         {sub && <p className="mt-0.5 text-xs text-white/40">{sub}</p>}
       </div>
     </div>
-  );
-}
-
-// ─── Wallet payment option ────────────────────────────────────────────────────
-function WalletPayOption({
-  active,
-  enough,
-  loading,
-  balance,
-  shortfall,
-  currency,
-  visibility,
-  onSelect,
-}: {
-  active: boolean;
-  enough: boolean;
-  loading: boolean;
-  balance: number | null;
-  shortfall: number;
-  currency: string;
-  visibility: "active" | "maintenance" | "hidden";
-  onSelect: () => void;
-}) {
-  const { t } = useT();
-  if (visibility === "hidden") return null;
-  const maintenance = visibility === "maintenance";
-  const disabled = maintenance || (!loading && !enough);
-  return (
-    <button
-      type="button"
-      onClick={disabled ? undefined : onSelect}
-      disabled={disabled}
-      aria-disabled={disabled}
-      className="mb-2 flex w-full items-center gap-3 rounded-2xl p-3.5 transition-all duration-150 disabled:cursor-not-allowed"
-      style={{
-        background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
-        border: active ? "1.5px solid hsl(var(--primary) / 0.8)" : "1px solid hsl(var(--border))",
-        opacity: disabled ? 0.6 : 1,
-      }}
-      data-testid="btn-pay-wallet"
-    >
-      <span
-        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl"
-        style={{
-          background: active ? "hsl(var(--primary) / 0.18)" : "hsl(var(--surface-3))",
-          color: active ? "hsl(var(--primary))" : "rgba(255,255,255,0.6)",
-        }}
-        aria-hidden="true"
-      >
-        <WalletIcon size={18} />
-      </span>
-      <span className="min-w-0 flex-1 text-left">
-        <span className="block text-sm font-bold text-white">{t("topup.walletPay")}</span>
-        <span
-          className="mt-0.5 block text-[12px]"
-          style={{
-            color: disabled ? "rgb(252, 165, 165)" : "rgba(255,255,255,0.55)",
-          }}
-        >
-          {maintenance
-            ? t("payment.maintenance")
-            : loading
-              ? t("topup.walletLoading")
-              : disabled
-                ? t("topup.walletShort", { amount: formatBalance(shortfall, currency) })
-                : t("topup.walletBalance", { amount: formatBalance(balance ?? 0, currency) })}
-        </span>
-      </span>
-      {active && !disabled && (
-        <span
-          className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full"
-          style={{ background: "hsl(var(--primary))" }}
-          aria-hidden="true"
-        >
-          <Check size={11} strokeWidth={3} className="text-black" />
-        </span>
-      )}
-    </button>
   );
 }
 

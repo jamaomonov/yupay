@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 
-import { countryAfterPackageChange, reconcileSelection, splitCountries } from "./GiftGame";
+import {
+  countryAfterPackageChange,
+  reconcileSelection,
+  splitCountries,
+  walletPayState,
+} from "./GiftGame";
 
 import type { GiftAppDetail, GiftPackage, GiftRegion } from "@/lib/gifts";
 
@@ -178,5 +183,61 @@ describe("reconcileSelection", () => {
     const detail = makeDetail([makePackage(1, [{ zone: "CIS", price_usd: "1" }])], [], "UZ");
     const { regions: _regions, region_default: _regionDefault, ...withoutRegions } = detail;
     expect(() => reconcileSelection(withoutRegions, 1, null)).not.toThrow();
+  });
+});
+
+// Wallet ("pay from balance") affordability decision — mirrors `TopUp.tsx`'s
+// inline `walletEnough`/`walletShortfall`/`disabled` math (see
+// `WalletPayOption.tsx`), extracted here as a pure function so it's
+// testable under this app's node-env convention (no RTL, no rendering).
+// `total` is the selected region's `price_uzs` — `null` only when FX is
+// unavailable, which must degrade to a non-selectable "unknown total"
+// state rather than comparing against a guessed number.
+describe("walletPayState", () => {
+  test("is optimistically enough while the balance is still loading", () => {
+    expect(
+      walletPayState({ balance: null, total: 100_000, loading: true, visibility: "active" }),
+    ).toEqual({ enough: true, disabled: false, shortfall: 0, unknownTotal: false });
+  });
+
+  test("is enough when the balance covers the total exactly", () => {
+    expect(
+      walletPayState({ balance: 100_000, total: 100_000, loading: false, visibility: "active" }),
+    ).toEqual({ enough: true, disabled: false, shortfall: 0, unknownTotal: false });
+  });
+
+  test("is enough when the balance exceeds the total", () => {
+    expect(
+      walletPayState({ balance: 150_000, total: 100_000, loading: false, visibility: "active" }),
+    ).toEqual({ enough: true, disabled: false, shortfall: 0, unknownTotal: false });
+  });
+
+  test("is short and disabled when the balance doesn't cover the total", () => {
+    expect(
+      walletPayState({ balance: 40_000, total: 100_000, loading: false, visibility: "active" }),
+    ).toEqual({ enough: false, disabled: true, shortfall: 60_000, unknownTotal: false });
+  });
+
+  test("maintenance disables the tile even when the balance is enough", () => {
+    expect(
+      walletPayState({
+        balance: 150_000,
+        total: 100_000,
+        loading: false,
+        visibility: "maintenance",
+      }),
+    ).toEqual({ enough: true, disabled: true, shortfall: 0, unknownTotal: false });
+  });
+
+  test("a null total (FX-unavailable price_uzs) is a disabled unknown state, never a guessed shortfall", () => {
+    expect(
+      walletPayState({ balance: 150_000, total: null, loading: false, visibility: "active" }),
+    ).toEqual({ enough: false, disabled: true, shortfall: 0, unknownTotal: true });
+  });
+
+  test("a null total overrides the loading optimism — there's nothing to be optimistic about", () => {
+    expect(
+      walletPayState({ balance: null, total: null, loading: true, visibility: "active" }),
+    ).toEqual({ enough: false, disabled: true, shortfall: 0, unknownTotal: true });
   });
 });

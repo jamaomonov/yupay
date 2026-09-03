@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useParams } from "wouter";
 
 import type { GiftAppDetail, GiftPackage, GiftRegion } from "@/lib/gifts";
+import type { MethodVisibility } from "@/lib/orders";
 
 import { DlcSheet } from "@/components/gifts/DlcSheet";
 import { GiftBuyPanel } from "@/components/gifts/GiftBuyPanel";
@@ -27,13 +28,13 @@ import { useLocale, useT } from "@/lib/i18n";
 import {
   methodVisibility,
   providerStatusMap,
-  selectActiveMethodId,
   useAvailableProviders,
   useCheckout,
 } from "@/lib/orders";
 import { PAYMENT_METHODS, PROVIDER_BY_METHOD } from "@/lib/payment-methods";
 import { haptic, openExternalLink, setClosingConfirmation } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { formatBalance, groupBalancesByCurrency, useWallet } from "@/lib/wallet";
 import { ensureBotCanWrite } from "@/lib/write-access";
 import { checkoutErrorMessage } from "@/pages/TopUp";
 
@@ -41,6 +42,19 @@ import { checkoutErrorMessage } from "@/pages/TopUp";
  *  collapse behind a single "другой регион" toggle — mirrors the web
  *  panel's `VISIBLE_COUNTRY_COUNT`; CIS alone is nine countries. */
 const VISIBLE_COUNTRY_COUNT = 4;
+
+/** Sentinel for "pay from wallet balance" — handled by its own card, not
+ *  part of the shared acquirer grid. The backend provider slug is
+ *  ``wallet``. Same sentinel `TopUp.tsx` uses. */
+const WALLET_METHOD_ID = "wallet";
+
+// The shared acquirer list carries only the external providers; the wallet
+// option is checkout-only, so the provider map is extended locally for
+// resolution/availability — mirrors `TopUp.tsx`'s `PROVIDER_BY_METHOD_FULL`.
+const PROVIDER_BY_METHOD_FULL: Record<string, string> = {
+  ...PROVIDER_BY_METHOD,
+  [WALLET_METHOD_ID]: "wallet",
+};
 
 /** Resolves one representative country for a given zone from a `regions`
  *  list — the reverse of `zoneForCountry` (`@/lib/gifts`), used only for
@@ -116,6 +130,49 @@ export function splitCountries(
   return { visible: countries.slice(0, visibleCount), overflow: countries.slice(visibleCount) };
 }
 
+/** What the wallet ("pay from balance") tile should say and whether it's
+ *  selectable — mirrors `TopUp.tsx`'s inline `walletEnough`/`walletShortfall`/
+ *  `disabled` math exactly (see `WalletPayOption.tsx`), pulled out as a pure
+ *  function so it's unit-testable under this app's node-env convention
+ *  instead of only reachable by rendering. */
+export interface WalletPayState {
+  /** Whether the balance is known to cover `total`. Optimistically `true`
+   *  while the balance is still loading (`balance === null`) — a submit
+   *  re-checks server-side regardless, same belt-and-suspenders posture as
+   *  `TopUp`. */
+  enough: boolean;
+  /** Non-selectable: an admin has the wallet in maintenance, the total
+   *  isn't known yet (FX-unavailable `price_uzs`), or the balance is short
+   *  and no longer loading. */
+  disabled: boolean;
+  /** UZS still needed to afford `total`. `0` unless genuinely short. */
+  shortfall: number;
+  /** `true` when there is nothing to weigh the balance against — the
+   *  selected line's `price_uzs` was `null` (FX unavailable). Distinct from
+   *  an insufficient balance: never compare against a guessed total. */
+  unknownTotal: boolean;
+}
+
+export function walletPayState({
+  balance,
+  total,
+  loading,
+  visibility,
+}: {
+  balance: number | null;
+  total: number | null;
+  loading: boolean;
+  visibility: MethodVisibility;
+}): WalletPayState {
+  if (total === null) {
+    return { enough: false, disabled: true, shortfall: 0, unknownTotal: true };
+  }
+  const enough = balance === null ? true : balance >= total;
+  const shortfall = balance === null || enough ? 0 : total - balance;
+  const disabled = visibility === "maintenance" || (!loading && !enough);
+  return { enough, disabled, shortfall, unknownTotal: false };
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 type Phase = "loading" | "idle" | "error" | "notFound";
 
@@ -146,30 +203,53 @@ export default function GiftGame() {
   // instead of rendering a Buy button checkout can never accept.
   const { skuId, status: skuStatus } = useGiftSkuId();
 
-  // In-scope acquirers for a gift purchase — same rails `TopUp` offers, no
-  // wallet pay (a gift is always paid up front, not from the internal
-  // ledger, mirroring `GiftPurchasePanel.tsx` on the web storefront).
+  // In-scope acquirers for a gift purchase — same rails `TopUp` offers, plus
+  // its wallet ("pay from balance") option, wired in alongside them
+  // (2026-09-03) — `WalletGateway` settles a `purpose="catalog"` order
+  // synchronously, same as any other checkout here.
   const [methodId, setMethodId] = useState<string>(PAYMENT_METHODS[0]?.id ?? "click");
   const providersQuery = useAvailableProviders();
   const providerStatusBySlug = useMemo(
     () => (providersQuery.data ? providerStatusMap(providersQuery.data) : null),
     [providersQuery.data],
   );
-  // Once live provider status has loaded, bounce off a stale/now-unavailable
-  // selection the same way `TopUp` does — never leave the highlight on a
-  // method that renders as maintenance/hidden.
-  useEffect(() => {
-    if (providerStatusBySlug === null) return;
-    setMethodId(
-      (current) => selectActiveMethodId(PAYMENT_METHODS, current, providerStatusBySlug) ?? "",
-    );
-  }, [providerStatusBySlug]);
+  // Resolves through the FULL map (not the shared base map) so a wallet
+  // selection is recognised as available too — an `isMethodAvailable` that
+  // only knew the base map would treat "wallet" as always-unavailable and
+  // the reselect effect below would silently swap it away the moment
+  // provider status loaded.
   function isMethodAvailable(id: string): boolean {
-    const provider = PROVIDER_BY_METHOD[id];
+    const provider = PROVIDER_BY_METHOD_FULL[id];
     return provider !== undefined && methodVisibility(provider, providerStatusBySlug) === "active";
   }
+  // Once live provider status has loaded, bounce off a stale/now-unavailable
+  // selection the same way `TopUp` does — never leave the highlight on a
+  // method that renders as maintenance/hidden. Checking `isMethodAvailable`
+  // directly (rather than `selectActiveMethodId`, which only knows the base
+  // `PAYMENT_METHODS` list) is what keeps a wallet selection from being
+  // bounced off the moment this effect runs.
+  useEffect(() => {
+    if (providerStatusBySlug === null) return;
+    if (methodId === "" || isMethodAvailable(methodId)) return;
+    const fallback = PAYMENT_METHODS.find((m) => isMethodAvailable(m.id));
+    setMethodId(fallback ? fallback.id : "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providerStatusBySlug, methodId]);
 
   const checkout = useCheckout();
+
+  // Wallet balance for the "pay from balance" tile. Gift orders are always
+  // priced and charged in UZS (`handleBuy` below hardcodes `currency:
+  // "UZS"`), so unlike `TopUp` — which reads the SKU's own display
+  // currency — this always resolves against the "UZS" balance.
+  const walletQuery = useWallet();
+  const walletByCurrency = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const g of groupBalancesByCurrency(walletQuery.data ?? [])) {
+      map.set(g.currency, g.amount);
+    }
+    return map;
+  }, [walletQuery.data]);
 
   /**
    * `keepSelection` distinguishes an initial/route-change load (reset to
@@ -228,6 +308,21 @@ export default function GiftGame() {
     detail?.packages.find((p) => p.id === selectedPackageId) ?? detail?.packages[0] ?? null;
   const price = priceFor(detail, selectedPackage?.id ?? null, selectedCountry);
 
+  // The UZS figure to weigh the wallet balance against. `price.price_usd`
+  // is NOT it — that's what an acquirer charges, not what the wallet
+  // debits. `price_uzs` is `null` only when FX is unavailable, which
+  // `walletPayState` renders as a non-selectable "unknown total" instead of
+  // guessing against the USD figure.
+  const walletTotal = price?.price_uzs != null ? Number(price.price_uzs) : null;
+  const walletBalance = walletQuery.data ? (walletByCurrency.get("UZS") ?? 0) : null;
+  const walletVisibility = methodVisibility(WALLET_METHOD_ID, providerStatusBySlug);
+  const walletPay = walletPayState({
+    balance: walletBalance,
+    total: walletTotal,
+    loading: walletQuery.isPending,
+    visibility: walletVisibility,
+  });
+
   function selectPackage(pkg: GiftPackage): void {
     haptic("select");
     setSelectedPackageId(pkg.id);
@@ -252,7 +347,11 @@ export default function GiftGame() {
 
   const canonicalInvite = validateInviteUrl(inviteUrl);
   const inviteTouched = inviteUrl.trim() !== "";
-  const selectedProvider = PROVIDER_BY_METHOD[methodId];
+  // Resolved through the FULL map so a wallet selection resolves to the
+  // `"wallet"` provider `performCheckout` expects instead of `undefined`
+  // (which would silently block Buy — `PROVIDER_BY_METHOD` alone has no
+  // entry for the wallet sentinel).
+  const selectedProvider = PROVIDER_BY_METHOD_FULL[methodId];
   const methodReady = selectedProvider !== undefined && isMethodAvailable(methodId);
   const canBuy =
     price !== null &&
@@ -289,6 +388,33 @@ export default function GiftGame() {
       !selectedProvider
     ) {
       return;
+    }
+    // Preflight: never POST a wallet checkout the balance can't cover. The
+    // tile is already disabled for this case (see `walletPayState`), so
+    // this only matters for a stale selection (e.g. the balance dropped, or
+    // the region/package changed the total, since either can happen while
+    // "wallet" stays selected) — belt-and-suspenders, same as `TopUp`. The
+    // backend `WalletGateway` re-checks under a row-lock regardless, so
+    // this is UX only, not the source of truth.
+    if (methodId === WALLET_METHOD_ID) {
+      if (walletPay.unknownTotal) {
+        toast({
+          title: t("topup.insufficientTitle"),
+          description: t("topup.priceUnavailable"),
+          variant: "destructive",
+        });
+        return;
+      }
+      if (!walletPay.enough) {
+        toast({
+          title: t("topup.insufficientTitle"),
+          description: t("topup.insufficientBody", {
+            amount: formatBalance(walletPay.shortfall, "UZS"),
+          }),
+          variant: "destructive",
+        });
+        return;
+      }
     }
     // Codes and status updates are delivered by the bot. Someone who opened
     // the Mini App from a link and never pressed /start can't be written to,
@@ -330,10 +456,21 @@ export default function GiftGame() {
         setLocation(`/order/${result.order.id}`);
         return;
       }
-      toast({
-        title: t("topup.orderCreated"),
-        description: t("topup.processing", { game: detail.name }),
-      });
+      // Wallet ⇒ `WalletGateway` already debited and the saga already
+      // walked the order toward delivered inside `create_intent` — pivot
+      // the toast wording so the buyer understands the money has actually
+      // moved, same as `TopUp`.
+      if (result.payment.provider === "wallet") {
+        toast({
+          title: t("topup.paidFromBalance"),
+          description: t("topup.processing", { game: detail.name }),
+        });
+      } else {
+        toast({
+          title: t("topup.orderCreated"),
+          description: t("topup.processing", { game: detail.name }),
+        });
+      }
       setLocation(`/order/${result.order.id}`);
     } catch (exc) {
       if (exc instanceof ApiError && exc.status === 422) {
@@ -616,6 +753,16 @@ export default function GiftGame() {
           methodId={methodId}
           providerStatusBySlug={providerStatusBySlug}
           onMethodChange={setMethodId}
+          walletActive={methodId === WALLET_METHOD_ID}
+          walletEnough={walletPay.enough}
+          walletLoading={walletQuery.isPending}
+          walletBalance={walletBalance}
+          walletShortfall={walletPay.shortfall}
+          walletVisibility={walletVisibility}
+          walletUnknownTotal={walletPay.unknownTotal}
+          onSelectWallet={() => {
+            setMethodId(WALLET_METHOD_ID);
+          }}
           canBuy={canBuy}
           isPending={checkout.isPending}
           onBuy={() => {
