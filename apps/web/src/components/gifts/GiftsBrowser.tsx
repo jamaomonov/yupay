@@ -1,15 +1,14 @@
 "use client";
 
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { GiftCard } from "./GiftCard";
 
 import { Skeleton } from "@/components/ui/Skeleton";
 import { buttonStyles } from "@/lib/button";
-import { searchGifts, type GiftsList } from "@/lib/gifts";
+import { searchGifts, type GiftApp, type GiftsList } from "@/lib/gifts";
 
 /** How still the query has to be before it's sent — mirrors `PromoField.tsx`'s
  *  `REPRICE_DEBOUNCE_MS`: firing one request per keystroke would spend the
@@ -20,42 +19,88 @@ const SEARCH_DEBOUNCE_MS = 400;
  *  match the server's page size. */
 const SKELETON_COUNT = 8;
 
+/**
+ * `loading`/`error` are the *first* page of the current query (nothing to
+ * show yet); `loadingMore`/`errorMore` are a "Показать ещё" page landing on
+ * top of items already on screen — the two must render differently, or a
+ * failed second page would blank out a first page the visitor already has.
+ */
+type Phase = "idle" | "loading" | "loadingMore" | "error" | "errorMore";
+
 export function GiftsBrowser({ locale, initial }: { locale: string; initial: GiftsList }) {
   const t = useTranslations("web.gifts");
   const [raw, setRaw] = useState("");
   const [query, setQuery] = useState("");
-  const [offset, setOffset] = useState(0);
+  // `items`/`total` are accumulated pages, not one page — "Показать ещё"
+  // appends in both browse and search mode. The first page is `initial`
+  // (server-rendered) until a query is typed.
+  const [items, setItems] = useState<GiftApp[]>(initial.items);
+  const [total, setTotal] = useState(initial.total);
+  const [phase, setPhase] = useState<Phase>("idle");
+
+  // Guards a stale response — from rapid typing, or two "Показать ещё"
+  // clicks — from landing after a newer request already has.
+  const seqRef = useRef(0);
 
   // Debounce, mirroring `PromoField.tsx`'s `setTimeout` + cleanup pattern.
-  // Typing resets pagination back to the first page of the new query.
   useEffect(() => {
     const timer = setTimeout(() => {
       setQuery(raw.trim());
-      setOffset(0);
     }, SEARCH_DEBOUNCE_MS);
     return () => {
       clearTimeout(timer);
     };
   }, [raw]);
 
-  const hasQuery = query.length > 0;
+  function fetchPage(offset: number, kind: "loading" | "loadingMore", forQuery: string): void {
+    const seq = ++seqRef.current;
+    setPhase(kind);
+    searchGifts(locale, forQuery, offset)
+      .then((page) => {
+        if (seq !== seqRef.current) return;
+        setItems((prev) => (offset === 0 ? page.items : [...prev, ...page.items]));
+        setTotal(page.total);
+        setPhase("idle");
+      })
+      .catch(() => {
+        if (seq !== seqRef.current) return;
+        setPhase(kind === "loading" ? "error" : "errorMore");
+      });
+  }
 
-  const result = useQuery({
-    queryKey: ["gifts", locale, query, offset],
-    queryFn: () => searchGifts(locale, query, offset),
-    // An empty query costs nothing: the server-fetched `initial` page below
-    // covers it, so a visitor who never searches never fires a client fetch.
-    enabled: hasQuery,
-    // "Показать ещё" mounts a new key (a new offset), so without this the
-    // grid unmounts to a skeleton and re-expands on every page — same
-    // reasoning as the wallet page's own "Показать ещё".
-    placeholderData: keepPreviousData,
-  });
+  // The settled query changed: reset accumulation. An empty query goes back
+  // to the server-rendered `initial` page — no client fetch at all, same as
+  // before — a non-empty query fetches its own first page. `searchGifts`
+  // with an empty query hits the same plain `/gifts/catalog?offset=N`
+  // endpoint browsing does, so "Показать ещё" on an untouched search box
+  // pages through the same default listing `initial` came from.
+  useEffect(() => {
+    if (query === "") {
+      seqRef.current += 1; // invalidate any fetch still in flight for the old query
+      setItems(initial.items);
+      setTotal(initial.total);
+      setPhase("idle");
+      return;
+    }
+    setItems([]);
+    fetchPage(0, "loading", query);
+    // `initial`/`locale` are stable for the component's lifetime (server
+    // props); only the settled `query` should re-run this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
 
-  const list: GiftsList = hasQuery ? (result.data ?? { items: [], total: 0 }) : initial;
-  const showSkeletons = hasQuery && result.isPending;
-  const showError = hasQuery && result.isError;
-  const canShowMore = list.items.length > 0 && offset + list.items.length < list.total;
+  function loadMore(): void {
+    fetchPage(items.length, "loadingMore", query);
+  }
+
+  function retry(): void {
+    if (phase === "error") fetchPage(0, "loading", query);
+    else if (phase === "errorMore") fetchPage(items.length, "loadingMore", query);
+  }
+
+  const showSkeletons = phase === "loading" && items.length === 0;
+  const showError = phase === "error" && items.length === 0;
+  const canShowMore = items.length > 0 && items.length < total;
 
   return (
     <div className="mt-10">
@@ -81,7 +126,7 @@ export function GiftsBrowser({ locale, initial }: { locale: string; initial: Gif
           <p className="text-tx-mute text-[14px]">{t("search.error")}</p>
           <button
             type="button"
-            onClick={() => void result.refetch()}
+            onClick={retry}
             className={buttonStyles({ variant: "ghost", size: "sm" })}
           >
             {t("search.retry")}
@@ -93,23 +138,33 @@ export function GiftsBrowser({ locale, initial }: { locale: string; initial: Gif
             <Skeleton key={i} className="aspect-[3/4] rounded-xl" />
           ))}
         </div>
-      ) : list.items.length === 0 ? (
+      ) : items.length === 0 ? (
         <p className="text-tx-mute mt-10 text-center text-[14px]">{t("search.empty")}</p>
       ) : (
         <>
           <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            {list.items.map((app) => (
+            {items.map((app) => (
               <GiftCard key={app.app_id} app={app} locale={locale} />
             ))}
           </div>
-          {canShowMore && (
+          {phase === "errorMore" && (
+            <div className="mt-4 flex flex-col items-center gap-2 text-center">
+              <p className="text-tx-mute text-[14px]">{t("search.error")}</p>
+              <button
+                type="button"
+                onClick={retry}
+                className={buttonStyles({ variant: "ghost", size: "sm" })}
+              >
+                {t("search.retry")}
+              </button>
+            </div>
+          )}
+          {canShowMore && phase !== "errorMore" && (
             <div className="mt-8 flex justify-center">
               <button
                 type="button"
-                onClick={() => {
-                  setOffset((o) => o + list.items.length);
-                }}
-                disabled={result.isFetching}
+                onClick={loadMore}
+                disabled={phase === "loadingMore"}
                 className={buttonStyles({ variant: "ghost", size: "sm" })}
               >
                 {t("search.showMore")}

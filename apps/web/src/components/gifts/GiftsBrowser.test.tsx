@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
@@ -11,11 +10,13 @@ import type { GiftApp, GiftsList } from "@/lib/gifts";
 /**
  * The Steam Gifts search + grid browser.
  *
- * Two properties matter most. An empty query costs nothing — it renders the
- * server-fetched `initial` page with no client fetch at all — and typing
- * fires at most one request per settled query, 400 ms after the last
- * keystroke (mirrors `PromoField.tsx`'s debounce), so a search box doesn't
- * spend the catalog endpoint's budget on every character.
+ * Three properties matter most. An empty query costs nothing — it renders the
+ * server-fetched `initial` page with no client fetch at all. Typing fires at
+ * most one request per settled query, 400 ms after the last keystroke
+ * (mirrors `PromoField.tsx`'s debounce). And "Показать ещё" always appends —
+ * in plain browse mode (no search box query) just as much as mid-search — so
+ * a visitor paging through the ~4k-game catalog never loses the page they
+ * already have.
  */
 
 vi.mock("next-intl", () => ({
@@ -23,8 +24,9 @@ vi.mock("next-intl", () => ({
     values ? `${k}:${JSON.stringify(values)}` : k,
 }));
 
-// `GiftsBrowser` only imports `searchGifts` (plus the type-only `GiftsList`)
-// from this module, so a plain replacement — no `importActual` — is enough.
+// `GiftsBrowser` only imports `searchGifts` (plus the type-only `GiftApp`/
+// `GiftsList`) from this module, so a plain replacement — no `importActual`
+// — is enough.
 vi.mock("@/lib/gifts", () => ({ searchGifts: vi.fn() }));
 
 import { searchGifts } from "@/lib/gifts";
@@ -53,12 +55,7 @@ function makeApp(overrides: Partial<GiftApp> = {}): GiftApp {
 }
 
 function renderBrowser(initial: GiftsList): void {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
-    <QueryClientProvider client={qc}>
-      <GiftsBrowser locale="ru" initial={initial} />
-    </QueryClientProvider>,
-  );
+  render(<GiftsBrowser locale="ru" initial={initial} />);
 }
 
 it("renders the server-fetched initial page with no client fetch", () => {
@@ -85,9 +82,9 @@ it("debounces keystrokes into a single search request", async () => {
   await vi.advanceTimersByTimeAsync(400);
   vi.useRealTimers();
 
-  // React Query kicks off the fetch off the back of the state update the
-  // timer callback made, one tick later — `waitFor` covers that gap, same as
-  // the other tests below.
+  // The fetch kicks off from the effect the timer's state update triggers,
+  // one tick later — `waitFor` covers that gap, same as the other tests
+  // below.
   await waitFor(() => {
     expect(searchGiftsMock).toHaveBeenCalledTimes(1);
   });
@@ -141,7 +138,7 @@ it("shows an error with a retry action when the search fails", async () => {
   expect(screen.getByRole("button", { name: "search.retry" })).toBeInTheDocument();
 });
 
-it('advances the offset and requests the next page on "show more"', async () => {
+it('appends (not replaces) the next page of search results on "show more"', async () => {
   vi.useFakeTimers();
   searchGiftsMock.mockResolvedValue({
     items: [makeApp({ app_id: 1, name: "Page one" })],
@@ -166,4 +163,34 @@ it('advances the offset and requests the next page on "show more"', async () => 
   await waitFor(() => {
     expect(searchGiftsMock).toHaveBeenLastCalledWith("ru", "page", 1);
   });
+  await waitFor(() => {
+    expect(screen.getByText("Page two")).toBeInTheDocument();
+  });
+  // The append, not replace: page one must still be on screen.
+  expect(screen.getByText("Page one")).toBeInTheDocument();
+});
+
+it('paginates the default browse list on "show more" — no search query typed', async () => {
+  // This is the bug this test guards against: with an empty query the grid
+  // was `initial` and pagination never fetched anything, so a visitor could
+  // only ever see the first page of the ~4k-game catalog.
+  renderBrowser({ items: [makeApp({ app_id: 1, name: "Browse page one" })], total: 2 });
+
+  expect(searchGiftsMock).not.toHaveBeenCalled();
+
+  searchGiftsMock.mockResolvedValue({
+    items: [makeApp({ app_id: 2, name: "Browse page two" })],
+    total: 2,
+  });
+  fireEvent.click(screen.getByRole("button", { name: "search.showMore" }));
+
+  // Empty query, offset = the one item already showing — same endpoint plain
+  // browsing uses (`/gifts/catalog?offset=1`, no `search` param).
+  await waitFor(() => {
+    expect(searchGiftsMock).toHaveBeenCalledWith("ru", "", 1);
+  });
+  await waitFor(() => {
+    expect(screen.getByText("Browse page two")).toBeInTheDocument();
+  });
+  expect(screen.getByText("Browse page one")).toBeInTheDocument();
 });

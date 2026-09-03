@@ -75,12 +75,13 @@ describe("getGiftsPage", () => {
   });
 
   it("sends the requested offset", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ items: [], total: 0 }));
+    const fetchMock = vi
+      .fn<(url: string, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValue(jsonResponse({ items: [], total: 0 }));
     vi.stubGlobal("fetch", fetchMock);
     await getGiftsPage("ru", 48);
-    const call = fetchMock.mock.calls[0] as [string, RequestInit] | undefined;
-    const url = new URL(String(call?.[0]));
-    expect(url.searchParams.get("offset")).toBe("48");
+    const [url] = fetchMock.mock.calls[0]!;
+    expect(new URL(url).searchParams.get("offset")).toBe("48");
   });
 });
 
@@ -91,24 +92,27 @@ describe("searchGifts", () => {
   });
 
   it("sends the search query, offset, and Accept-Language — with no bearer token", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ items: [], total: 0 }));
+    const fetchMock = vi
+      .fn<(url: string, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValue(jsonResponse({ items: [], total: 0 }));
     vi.stubGlobal("fetch", fetchMock);
     await searchGifts("uz", "dead island", 24);
-    const call = fetchMock.mock.calls[0] as [string, RequestInit] | undefined;
-    const url = new URL(String(call?.[0]));
-    expect(url.searchParams.get("search")).toBe("dead island");
-    expect(url.searchParams.get("offset")).toBe("24");
-    const headers = new Headers(call?.[1]?.headers);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    const parsed = new URL(url);
+    expect(parsed.searchParams.get("search")).toBe("dead island");
+    expect(parsed.searchParams.get("offset")).toBe("24");
+    const headers = new Headers(init?.headers);
     expect(headers.get("Accept-Language")).toBe("uz");
     expect(headers.get("Authorization")).toBeNull();
   });
 
   it("omits the search param for an empty/whitespace query", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ items: [], total: 0 }));
+    const fetchMock = vi
+      .fn<(url: string, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValue(jsonResponse({ items: [], total: 0 }));
     vi.stubGlobal("fetch", fetchMock);
     await searchGifts("ru", "   ", 0);
-    const call = fetchMock.mock.calls[0] as [string, RequestInit] | undefined;
-    const url = new URL(String(call?.[0]));
-    expect(url.searchParams.has("search")).toBe(false);
+    const [url] = fetchMock.mock.calls[0]!;
+    expect(new URL(url).searchParams.has("search")).toBe(false);
   });
 });
