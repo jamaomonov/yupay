@@ -3,12 +3,12 @@ import { Gift, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 
-import type { GiftApp, GiftPage } from "@/lib/gifts";
+import type { CatalogPhase, GiftApp, GiftPage } from "@/lib/gifts";
 
 import { SafeImage } from "@/components/ui/safe-image";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatMoney } from "@/lib/currency";
-import { accumulatePage, fetchGiftsHot, fetchGiftsPage } from "@/lib/gifts";
+import { accumulatePage, deriveCatalogView, fetchGiftsHot, fetchGiftsPage } from "@/lib/gifts";
 import { useT } from "@/lib/i18n";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
@@ -17,14 +17,6 @@ import { useDocumentTitle } from "@/lib/use-document-title";
  *  budget on a single visit. */
 const SEARCH_DEBOUNCE_MS = 400;
 const SKELETON_COUNT = 6;
-
-/**
- * `loading`/`error` are the *first* page of the current query (nothing to
- * show yet); `loadingMore`/`errorMore` are a "Показать ещё" page landing on
- * top of items already on screen — mirrors `GiftsBrowser`'s phase split so a
- * failed second page never blanks out a first page the visitor already has.
- */
-type Phase = "loading" | "loadingMore" | "idle" | "error" | "errorMore";
 
 function discountLabel(app: GiftApp): number | null {
   return app.discount_percent != null && app.discount_percent > 0 ? app.discount_percent : null;
@@ -116,7 +108,7 @@ export default function GiftsCatalog() {
   const [raw, setRaw] = useState("");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState<GiftPage>({ items: [], total: 0 });
-  const [phase, setPhase] = useState<Phase>("loading");
+  const [phase, setPhase] = useState<CatalogPhase>("loading");
   // Set once, the first time the default (no-search) listing comes back with
   // zero items — the whole `/gifts/*` surface 404s while the feature flag is
   // off, and every fetcher swallows that into an empty result. Distinguishes
@@ -176,12 +168,13 @@ export default function GiftsCatalog() {
   }
 
   const searching = raw.trim() !== "";
-  const showSkeletons = phase === "loading" && page.items.length === 0;
-  const showError = phase === "error" && page.items.length === 0;
-  const showComingSoon =
-    firstLoadEmpty && query === "" && !showSkeletons && !showError && page.items.length === 0;
-  const showEmpty = !showSkeletons && !showError && !showComingSoon && page.items.length === 0;
-  const canShowMore = page.items.length > 0 && page.items.length < page.total;
+  const { showSkeletons, showError, showComingSoon, showEmpty, canShowMore } = deriveCatalogView({
+    phase,
+    itemsLength: page.items.length,
+    total: page.total,
+    firstLoadEmpty,
+    hasQuery: query !== "",
+  });
 
   return (
     <motion.div

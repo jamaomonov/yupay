@@ -187,3 +187,59 @@ export function priceFor(
   if (!pkg) return null;
   return pkg.prices.find((p) => p.zone === zone) ?? null;
 }
+
+/** `GiftsCatalog`'s fetch phase — `loading`/`error` are the *first* page of
+ *  the current query (nothing on screen yet); `loadingMore`/`errorMore` are a
+ *  "Показать ещё" page landing on top of items already there. */
+export type CatalogPhase = "loading" | "loadingMore" | "idle" | "error" | "errorMore";
+
+export interface CatalogViewInput {
+  phase: CatalogPhase;
+  /** `page.items.length` — how many rows are currently on screen. */
+  itemsLength: number;
+  /** `page.total` — how many rows the current query actually matches. */
+  total: number;
+  /** Set once, the first time the default (no-search) listing came back with
+   *  zero items — the whole `/gifts/*` surface 404s while the feature flag
+   *  is off, and every fetcher swallows that into an empty result. */
+  firstLoadEmpty: boolean;
+  /** Whether the visitor has typed a (non-empty, trimmed) search query. */
+  hasQuery: boolean;
+}
+
+export interface CatalogView {
+  /** First page of the default/search query still loading, nothing to show. */
+  showSkeletons: boolean;
+  /** First page of the current query failed outright. */
+  showError: boolean;
+  /** The default (no-search) listing is empty — the feature isn't live yet,
+   *  distinct from a search that genuinely found nothing (`showEmpty`). */
+  showComingSoon: boolean;
+  /** The current query resolved with zero rows, and it isn't the
+   *  flag-off/`showComingSoon` case. */
+  showEmpty: boolean;
+  /** There are more rows past what's on screen — show "Показать ещё". */
+  canShowMore: boolean;
+}
+
+/**
+ * Pure derivation of `GiftsCatalog`'s five display flags from its raw fetch
+ * state — extracted so the state matrix (which flag wins when several
+ * conditions overlap, e.g. an empty *search* vs. the flag-off "coming soon"
+ * state) is unit-testable without rendering the page.
+ */
+export function deriveCatalogView({
+  phase,
+  itemsLength,
+  total,
+  firstLoadEmpty,
+  hasQuery,
+}: CatalogViewInput): CatalogView {
+  const showSkeletons = phase === "loading" && itemsLength === 0;
+  const showError = phase === "error" && itemsLength === 0;
+  const showComingSoon =
+    firstLoadEmpty && !hasQuery && !showSkeletons && !showError && itemsLength === 0;
+  const showEmpty = !showSkeletons && !showError && !showComingSoon && itemsLength === 0;
+  const canShowMore = itemsLength > 0 && itemsLength < total;
+  return { showSkeletons, showError, showComingSoon, showEmpty, canShowMore };
+}

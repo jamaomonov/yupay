@@ -289,7 +289,11 @@ export default function TopUp() {
 
   const gamesQuery = useGames();
   const game = gamesQuery.data?.find((g) => g.id === gameId);
-  const brandQuery = useBrandSummary(gameId);
+  // `undefined` (not `gameId`) for the steam-gifts brand: the redirect
+  // effect above is about to navigate away, so there's no point spending a
+  // brand-summary fetch on a screen this route never actually renders.
+  // `useBrandSummary`'s own `enabled: Boolean(gameId)` gate picks this up.
+  const brandQuery = useBrandSummary(gameId === "steam-gifts" ? undefined : gameId);
   const products = brandQuery.data?.products ?? [];
 
   // The currently picked product within the brand (PUBG UC vs Royale Pass …).

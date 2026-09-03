@@ -2,8 +2,10 @@ import { describe, expect, test } from "vitest";
 
 import {
   accumulatePage,
+  deriveCatalogView,
   priceFor,
   validateInviteUrl,
+  type CatalogViewInput,
   type GiftApp,
   type GiftAppDetail,
 } from "./gifts";
@@ -162,5 +164,106 @@ describe("accumulatePage", () => {
     const prev = { items: prevItems, total: 5 };
     accumulatePage(prev, { items: [second], total: 5 }, 1);
     expect(prevItems).toEqual([first]);
+  });
+});
+
+// ─── deriveCatalogView ──────────────────────────────────────────────────────
+function baseInput(overrides: Partial<CatalogViewInput> = {}): CatalogViewInput {
+  return {
+    phase: "idle",
+    itemsLength: 0,
+    total: 0,
+    firstLoadEmpty: false,
+    hasQuery: false,
+    ...overrides,
+  };
+}
+
+describe("deriveCatalogView", () => {
+  test("initial loading: skeletons only, nothing else", () => {
+    const view = deriveCatalogView(baseInput({ phase: "loading", itemsLength: 0 }));
+    expect(view).toEqual({
+      showSkeletons: true,
+      showError: false,
+      showComingSoon: false,
+      showEmpty: false,
+      canShowMore: false,
+    });
+  });
+
+  test("first page failed outright: error only", () => {
+    const view = deriveCatalogView(baseInput({ phase: "error", itemsLength: 0 }));
+    expect(view).toEqual({
+      showSkeletons: false,
+      showError: true,
+      showComingSoon: false,
+      showEmpty: false,
+      canShowMore: false,
+    });
+  });
+
+  test("comingSoon: the default (no-search) listing came back empty once, flag off", () => {
+    const view = deriveCatalogView(
+      baseInput({ phase: "idle", itemsLength: 0, firstLoadEmpty: true, hasQuery: false }),
+    );
+    expect(view.showComingSoon).toBe(true);
+    expect(view.showEmpty).toBe(false);
+  });
+
+  test("empty-search wins over comingSoon once a query is typed", () => {
+    const view = deriveCatalogView(
+      baseInput({ phase: "idle", itemsLength: 0, firstLoadEmpty: true, hasQuery: true }),
+    );
+    expect(view.showComingSoon).toBe(false);
+    expect(view.showEmpty).toBe(true);
+  });
+
+  test("empty-search without ever having hit the flag-off case", () => {
+    const view = deriveCatalogView(
+      baseInput({ phase: "idle", itemsLength: 0, firstLoadEmpty: false, hasQuery: true }),
+    );
+    expect(view.showComingSoon).toBe(false);
+    expect(view.showEmpty).toBe(true);
+  });
+
+  test("canShowMore boundary: strictly more total than on screen", () => {
+    expect(deriveCatalogView(baseInput({ itemsLength: 24, total: 25 })).canShowMore).toBe(true);
+  });
+
+  test("canShowMore boundary: exactly caught up — false, not off-by-one", () => {
+    expect(deriveCatalogView(baseInput({ itemsLength: 24, total: 24 })).canShowMore).toBe(false);
+  });
+
+  test("canShowMore is false with zero items even if total is nonzero", () => {
+    expect(deriveCatalogView(baseInput({ itemsLength: 0, total: 10 })).canShowMore).toBe(false);
+  });
+
+  test("loadingMore over existing items: no full-screen flags, canShowMore still evaluated", () => {
+    const view = deriveCatalogView(baseInput({ phase: "loadingMore", itemsLength: 24, total: 50 }));
+    expect(view).toEqual({
+      showSkeletons: false,
+      showError: false,
+      showComingSoon: false,
+      showEmpty: false,
+      canShowMore: true,
+    });
+  });
+
+  test("errorMore over existing items: no full-screen error, items stay on screen", () => {
+    const view = deriveCatalogView(baseInput({ phase: "errorMore", itemsLength: 24, total: 50 }));
+    expect(view.showError).toBe(false);
+    expect(view.showEmpty).toBe(false);
+    expect(view.canShowMore).toBe(true);
+  });
+
+  test("normal idle grid with rows and no special state", () => {
+    const view = deriveCatalogView(baseInput({ phase: "idle", itemsLength: 24, total: 24 }));
+    expect(view).toEqual({
+      showSkeletons: false,
+      showError: false,
+      showComingSoon: false,
+      showEmpty: false,
+      canShowMore: false,
+    });
   });
 });

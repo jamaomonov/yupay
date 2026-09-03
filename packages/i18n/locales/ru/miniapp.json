@@ -410,6 +410,7 @@
     "other": "{count} DLC"
   },
   "gifts.badge.discount": "-{percent}%",
+  "gifts.priceUnavailable": "—",
   "gifts.comingSoon": "Раздел скоро откроется",
   "gifts.game.docTitleNamed": "{name} — Steam гифт",
   "gifts.game.edition": "Издание",

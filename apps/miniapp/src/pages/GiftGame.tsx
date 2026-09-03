@@ -1,21 +1,16 @@
 import { motion } from "framer-motion";
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, HelpCircle } from "lucide-react";
+import { ArrowLeft, Check } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Link, useLocation, useParams } from "wouter";
+import { useLocation, useParams } from "wouter";
 
-import type { GiftApp, GiftAppDetail, GiftPackage } from "@/lib/gifts";
+import type { GiftAppDetail, GiftPackage } from "@/lib/gifts";
 
+import { DlcSheet } from "@/components/gifts/DlcSheet";
+import { InviteGuideSheet } from "@/components/gifts/InviteGuideSheet";
 import { SafeImage } from "@/components/ui/safe-image";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatMoney } from "@/lib/currency";
-import { fetchGiftDetail, fetchGiftDlc, priceFor, validateInviteUrl } from "@/lib/gifts";
+import { fetchGiftDetail, priceFor, validateInviteUrl } from "@/lib/gifts";
 import { useT } from "@/lib/i18n";
 import { haptic } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -24,9 +19,6 @@ import { useDocumentTitle } from "@/lib/use-document-title";
  *  behind a single "другой регион" toggle — mirrors the web panel's
  *  `VISIBLE_ZONE_COUNT`. */
 const VISIBLE_ZONE_COUNT = 4;
-/** Matches the API's default DLC page size (`gifts/routes.py`). */
-const DLC_PAGE_SIZE = 24;
-const DLC_SEARCH_DEBOUNCE_MS = 400;
 
 /**
  * Region kept after an edition/package switch: the current zone if the new
@@ -54,8 +46,14 @@ export function splitZones(
   return { visible: zones.slice(0, visibleCount), overflow: zones.slice(visibleCount) };
 }
 
-function priceLabel(price: { price_usd: string; price_uzs: string | null } | null): string {
-  if (!price) return "—";
+/** `unavailable` is the caller's already-translated `gifts.priceUnavailable`
+ *  string — this stays a plain function (not a component), so it can't call
+ *  `useT()` itself. */
+function priceLabel(
+  price: { price_usd: string; price_uzs: string | null } | null,
+  unavailable: string,
+): string {
+  if (!price) return unavailable;
   return price.price_uzs != null
     ? formatMoney(Math.round(Number(price.price_uzs)), "UZS")
     : formatMoney(Number(price.price_usd), "USD");
@@ -73,6 +71,7 @@ function PackageOption({
   active: boolean;
   onSelect: () => void;
 }) {
+  const { t } = useT();
   const discount =
     pkg.discount_percent != null && pkg.discount_percent > 0 ? pkg.discount_percent : null;
   return (
@@ -97,7 +96,7 @@ function PackageOption({
       <div className="flex items-center justify-between gap-3 pr-6">
         <span className="text-sm font-bold text-white">{pkg.name}</span>
         <span className="font-mono text-sm font-bold tabular-nums text-white">
-          {priceLabel(price)}
+          {priceLabel(price, t("gifts.priceUnavailable"))}
         </span>
       </div>
       {discount !== null && (
@@ -136,204 +135,6 @@ function ZonePill({
     >
       {zone}
     </button>
-  );
-}
-
-// ─── "Где найти ссылку?" guide sheet ────────────────────────────────────────
-function InviteGuideSheet({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-}) {
-  const { t } = useT();
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="rounded-t-3xl">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
-            <HelpCircle size={16} className="text-primary" aria-hidden="true" />
-            {t("gifts.game.inviteGuideTitle")}
-          </SheetTitle>
-          <SheetDescription asChild>
-            <ol className="mt-1 list-decimal space-y-1.5 pl-5 text-left leading-relaxed text-white/70">
-              <li>{t("gifts.game.inviteGuideStep1")}</li>
-              <li>{t("gifts.game.inviteGuideStep2")}</li>
-              <li>{t("gifts.game.inviteGuideStep3")}</li>
-            </ol>
-          </SheetDescription>
-        </SheetHeader>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
-// ─── DLC browser sheet ───────────────────────────────────────────────────────
-type DlcPhase = "idle" | "loading" | "error";
-
-function DlcSheet({
-  open,
-  onOpenChange,
-  appId,
-  total,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  appId: number;
-  total: number;
-}) {
-  const { t } = useT();
-  const [raw, setRaw] = useState("");
-  const [query, setQuery] = useState("");
-  const [offset, setOffset] = useState(0);
-  const [items, setItems] = useState<GiftApp[]>([]);
-  const [resultTotal, setResultTotal] = useState(total);
-  const [phase, setPhase] = useState<DlcPhase>("idle");
-  const seqRef = useRef(0);
-
-  function fetchPage(nextOffset: number, forQuery: string): void {
-    const seq = ++seqRef.current;
-    setPhase("loading");
-    fetchGiftDlc(appId, forQuery, nextOffset)
-      .then((page) => {
-        if (seq !== seqRef.current) return;
-        setItems(page.items);
-        setResultTotal(page.total);
-        setOffset(nextOffset);
-        setPhase("idle");
-      })
-      .catch(() => {
-        if (seq !== seqRef.current) return;
-        setPhase("error");
-      });
-  }
-
-  // Fresh mount each time the sheet opens — load the unfiltered first page.
-  useEffect(() => {
-    if (!open) return;
-    setRaw("");
-    setQuery("");
-    fetchPage(0, "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, appId]);
-
-  useEffect(() => {
-    if (!open) return;
-    const timer = setTimeout(() => {
-      setQuery(raw.trim());
-    }, DLC_SEARCH_DEBOUNCE_MS);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [raw, open]);
-
-  const isFirstRun = useRef(true);
-  useEffect(() => {
-    if (!open) return;
-    if (isFirstRun.current) {
-      isFirstRun.current = false;
-      return;
-    }
-    fetchPage(0, query);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
-
-  const canPrev = offset > 0;
-  const canNext = offset + DLC_PAGE_SIZE < resultTotal;
-
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto rounded-t-3xl">
-        <SheetHeader>
-          <SheetTitle>{t("gifts.dlc.toggle", { count: total })}</SheetTitle>
-        </SheetHeader>
-        <input
-          type="search"
-          value={raw}
-          onChange={(e) => {
-            setRaw(e.target.value);
-          }}
-          placeholder={t("gifts.dlc.searchPlaceholder")}
-          aria-label={t("gifts.dlc.searchPlaceholder")}
-          className="mt-3 h-10 w-full rounded-xl border bg-transparent px-3 text-sm text-white outline-none"
-          style={{ borderColor: "hsl(var(--border))" }}
-        />
-
-        {phase === "error" ? (
-          <div className="mt-6 flex flex-col items-center gap-2 text-center">
-            <p className="text-sm text-white/50">{t("gifts.search.error")}</p>
-            <button
-              type="button"
-              onClick={() => {
-                fetchPage(offset, query);
-              }}
-              className="text-primary text-sm font-semibold"
-            >
-              {t("common.retry")}
-            </button>
-          </div>
-        ) : phase === "loading" ? (
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            {Array.from({ length: 6 }, (_, i) => (
-              <Skeleton key={i} className="aspect-[16/9] rounded-xl" />
-            ))}
-          </div>
-        ) : items.length === 0 ? (
-          <p className="mt-6 text-center text-sm text-white/50">{t("gifts.search.empty")}</p>
-        ) : (
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            {items.map((app) => (
-              <Link
-                key={app.app_id}
-                href={`/gifts/${String(app.app_id)}`}
-                onClick={() => {
-                  onOpenChange(false);
-                }}
-                className="flex flex-col overflow-hidden rounded-xl border"
-                style={{ borderColor: "hsl(var(--border))" }}
-              >
-                <div className="aspect-[16/9] w-full overflow-hidden bg-black/20">
-                  {app.image && (
-                    <SafeImage src={app.image} className="h-full w-full object-cover" />
-                  )}
-                </div>
-                <p className="line-clamp-2 p-2 text-[12px] font-semibold text-white">{app.name}</p>
-              </Link>
-            ))}
-          </div>
-        )}
-
-        {phase === "idle" && items.length > 0 && (canPrev || canNext) && (
-          <div className="mt-4 flex items-center justify-center gap-3">
-            <button
-              type="button"
-              disabled={!canPrev}
-              onClick={() => {
-                fetchPage(offset - DLC_PAGE_SIZE, query);
-              }}
-              aria-label={t("gifts.dlc.prevPage")}
-              className="flex h-8 w-8 items-center justify-center rounded-full disabled:opacity-30"
-              style={{ background: "hsl(var(--surface-2))" }}
-            >
-              <ChevronLeft size={16} className="text-white/70" />
-            </button>
-            <button
-              type="button"
-              disabled={!canNext}
-              onClick={() => {
-                fetchPage(offset + DLC_PAGE_SIZE, query);
-              }}
-              aria-label={t("gifts.dlc.nextPage")}
-              className="flex h-8 w-8 items-center justify-center rounded-full disabled:opacity-30"
-              style={{ background: "hsl(var(--surface-2))" }}
-            >
-              <ChevronRight size={16} className="text-white/70" />
-            </button>
-          </div>
-        )}
-      </SheetContent>
-    </Sheet>
   );
 }
 
@@ -607,7 +408,9 @@ export default function GiftGame() {
         {/* Price */}
         <div className="border-t pt-4" style={{ borderColor: "hsl(var(--border) / 0.7)" }}>
           {price ? (
-            <p className="text-2xl font-bold tabular-nums text-white">{priceLabel(price)}</p>
+            <p className="text-2xl font-bold tabular-nums text-white">
+              {priceLabel(price, t("gifts.priceUnavailable"))}
+            </p>
           ) : (
             <p className="text-sm text-white/50">{t("gifts.game.noPriceInRegion")}</p>
           )}
