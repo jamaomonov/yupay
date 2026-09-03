@@ -1,12 +1,13 @@
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { MotionConfig } from "framer-motion";
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 
 import { BootstrapGate } from "@/components/BootstrapGate";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Shell } from "@/components/layout/Shell";
 import { OrderDeliveredDialog } from "@/components/OrderDeliveredDialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useOrderSocket } from "@/hooks/useOrderSocket";
@@ -22,9 +23,33 @@ import TopUp from "@/pages/TopUp";
 import Wallet from "@/pages/Wallet";
 import WalletTopUp from "@/pages/WalletTopUp";
 
+// The Steam Gifts screens are the first code-split routes in the app — the
+// miniapp is already over its 120KB bundle budget (see AGENTS.md §10), and
+// this catalog/game pair (plus its own sheets) is sizeable enough that
+// deferring it until someone actually opens `/gifts` is worth the extra
+// `Suspense` boundary.
+const GiftsCatalog = lazy(() => import("@/pages/GiftsCatalog"));
+const GiftGame = lazy(() => import("@/pages/GiftGame"));
+
 function NotFound() {
   const { t } = useT();
   return <div className="mt-20 p-4 text-center">{t("app.notFound")}</div>;
+}
+
+/** Suspense fallback for the lazy gifts routes — a generic grid skeleton,
+ *  close enough to both `GiftsCatalog` and `GiftGame`'s loaded shape that it
+ *  doesn't read as a layout jump once the chunk resolves. */
+function GiftsRouteSkeleton() {
+  return (
+    <div className="space-y-4 px-4 pt-4">
+      <Skeleton className="h-6 w-40" />
+      <div className="grid grid-cols-2 gap-3">
+        {Array.from({ length: 6 }, (_, i) => (
+          <Skeleton key={i} className="aspect-[3/4] rounded-2xl" />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 const queryClient = new QueryClient();
@@ -77,6 +102,16 @@ function Router() {
         <Route path="/" component={Home} />
         <Route path="/cs2-market" component={CS2SkinMarket} />
         <Route path="/topup/:gameId" component={TopUp} />
+        <Route path="/gifts">
+          <Suspense fallback={<GiftsRouteSkeleton />}>
+            <GiftsCatalog />
+          </Suspense>
+        </Route>
+        <Route path="/gifts/:appId">
+          <Suspense fallback={<GiftsRouteSkeleton />}>
+            <GiftGame />
+          </Suspense>
+        </Route>
         <Route path="/order/:id" component={OrderSuccess} />
         <Route path="/wallet" component={Wallet} />
         <Route path="/wallet/topup" component={WalletTopUp} />

@@ -34,7 +34,7 @@ import {
   useProductWithSkus,
   type Package as ApiPackage,
 } from "@/lib/catalog";
-import { useDisplayCurrency } from "@/lib/currency";
+import { formatMoney, useDisplayCurrency } from "@/lib/currency";
 import { useT } from "@/lib/i18n";
 import { getActiveLocale, translate } from "@/lib/i18n/core";
 import {
@@ -166,27 +166,6 @@ const PROVIDER_BY_METHOD_FULL: Record<string, string> = {
   [WALLET_METHOD_ID]: "wallet",
 };
 
-// ISO 4217 currencies YuPay handles that carry no practically-displayed minor
-// unit — UZS technically has tiyin, but showing them just renders noisy
-// ",00"/",79" suffixes on already-large sums. Mirrors packages/utils/money.ts.
-const ZERO_DECIMAL_CURRENCIES = new Set(["UZS"]);
-
-function formatMoney(value: number, code: string): string {
-  const locale = getActiveLocale();
-  const fractionDigits = ZERO_DECIMAL_CURRENCIES.has(code) ? 0 : 2;
-  try {
-    return new Intl.NumberFormat(locale, {
-      style: "currency",
-      currency: code,
-      minimumFractionDigits: fractionDigits,
-      maximumFractionDigits: fractionDigits,
-    }).format(value);
-  } catch {
-    // Non-ISO pseudocurrency (USDT) — format the number, suffix the code.
-    return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value)} ${code}`;
-  }
-}
-
 // ─── Step heading ──────────────────────────────────────────────────────────────
 // `n` is omitted once a section is a standalone screen rather than one of
 // several steps in a sequence (the review stage has only one section left to
@@ -299,6 +278,14 @@ export default function TopUp() {
   const { gameId } = useParams();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+
+  // Steam Gifts has its own native catalog/game flow (`/gifts`, Task M1) —
+  // a deep link or a stale bookmark pointing at the old generic top-up form
+  // for this brand bounces straight there instead of ever rendering (and
+  // briefly flashing) the account-field/package form below.
+  useEffect(() => {
+    if (gameId === "steam-gifts") setLocation("/gifts");
+  }, [gameId, setLocation]);
 
   const gamesQuery = useGames();
   const game = gamesQuery.data?.find((g) => g.id === gameId);
@@ -516,6 +503,12 @@ export default function TopUp() {
     }
     setSuggestions(getRecentFulfillment(gameId)?.fulfillment_data ?? {});
   }, [gameId]);
+
+  // Redirect is in flight (the effect above) — render nothing rather than a
+  // skeleton for a form this route is about to leave.
+  if (gameId === "steam-gifts") {
+    return null;
+  }
 
   if (gamesQuery.isLoading || brandQuery.isLoading) {
     return (

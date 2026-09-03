@@ -17,6 +17,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { apiPatch } from "./api";
 import { useMe, type Me } from "./auth";
+import { getActiveLocale } from "./i18n/core";
 
 export const DISPLAY_CURRENCIES = ["USD", "UZS", "RUB", "USDT"] as const;
 export type DisplayCurrency = (typeof DISPLAY_CURRENCIES)[number];
@@ -37,6 +38,32 @@ export const CURRENCY_SYMBOL: Record<DisplayCurrency, string> = {
 
 function isDisplayCurrency(value: string | undefined | null): value is DisplayCurrency {
   return value != null && (DISPLAY_CURRENCIES as readonly string[]).includes(value);
+}
+
+// ISO 4217 currencies YuPay handles that carry no practically-displayed minor
+// unit — UZS technically has tiyin, but showing them just renders noisy
+// ",00"/",79" suffixes on already-large sums. Mirrors packages/utils/money.ts.
+const ZERO_DECIMAL_CURRENCIES = new Set(["UZS"]);
+
+/**
+ * Format a money amount in the given ISO-ish currency code, honoring the
+ * active locale. Shared by every page that prints a sum price (`TopUp`,
+ * the Steam Gifts catalog/game screens) so a formatting tweak lands once.
+ */
+export function formatMoney(value: number, code: string): string {
+  const locale = getActiveLocale();
+  const fractionDigits = ZERO_DECIMAL_CURRENCIES.has(code) ? 0 : 2;
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency: code,
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
+    }).format(value);
+  } catch {
+    // Non-ISO pseudocurrency (USDT) — format the number, suffix the code.
+    return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value)} ${code}`;
+  }
 }
 
 /**

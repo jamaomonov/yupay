@@ -14,6 +14,12 @@ import { useDocumentTitle } from "@/lib/use-document-title";
 
 const ALL_KEY = "__all__";
 
+/** Steam Gifts has its own native catalog/game flow (`/gifts`) — the generic
+ *  top-up form never sees this brand, on Home or from a deep link. */
+function hrefForGame(game: Game): string {
+  return game.id === "steam-gifts" ? "/gifts" : `/topup/${game.id}`;
+}
+
 // ─── Game card (icon grid) ────────────────────────────────────────────────────
 function GameCardThumb({ game }: { game: Game }) {
   const fallback = (
@@ -71,7 +77,7 @@ function GameCard({ game, index }: { game: Game; index: number }) {
       </div>
     );
   }
-  return <Link href={`/topup/${game.id}`}>{inner}</Link>;
+  return <Link href={hrefForGame(game)}>{inner}</Link>;
 }
 
 // ─── Search result row ────────────────────────────────────────────────────────
@@ -135,7 +141,7 @@ function SearchResultCard({ game, index }: { game: Game; index: number }) {
       </div>
     );
   }
-  return <Link href={`/topup/${game.id}`}>{inner}</Link>;
+  return <Link href={hrefForGame(game)}>{inner}</Link>;
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
