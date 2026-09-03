@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { KeyRound, MessageCircle } from "lucide-react";
+import { Gift, KeyRound, MessageCircle } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
@@ -27,6 +27,38 @@ import { orderPollInterval } from "@/lib/poll";
 import { getMyReviews } from "@/lib/reviews";
 import { formatUzs, pathFor } from "@/lib/seo";
 import { useRealtimeStatus } from "@/store/useRealtimeStatus";
+
+/**
+ * The gift delivery card's instruction block, rendered instead of
+ * `ArtifactReceipt` for a delivery whose `artifact.kind === "gift"` (the
+ * sub-kind `gengine_gifts.py::_map_gift_order` sets — allow-listed through
+ * to the customer by `fulfillment/routes.py::_CUSTOMER_SAFE_ARTIFACT_KEYS`
+ * alongside `app_name`/`package_name`/`status`). A gift has no code/key to
+ * copy — `ArtifactReceipt` would render nothing for it at all — so this
+ * shows the accept-the-friend-request steps instead.
+ */
+function GiftDeliveryCard({ artifact }: { artifact: Record<string, unknown> }) {
+  const t = useTranslations("web.gifts.delivered");
+  const appName = typeof artifact.app_name === "string" ? artifact.app_name : null;
+  const packageName = typeof artifact.package_name === "string" ? artifact.package_name : null;
+  const heading = [appName, packageName].filter((v): v is string => Boolean(v)).join(" — ");
+
+  return (
+    <div className="border-primary/25 bg-primary/[0.05] rounded-xl border p-4">
+      <h3 className="text-primary mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em]">
+        <Gift size={13} aria-hidden="true" />
+        {t("title")}
+      </h3>
+      {heading && <p className="text-foreground mb-3 text-sm font-semibold">{heading}</p>}
+      <ol className="text-tx-mute list-decimal space-y-1.5 pl-4 text-[13px] leading-snug">
+        <li>{t("step1")}</li>
+        <li>{t("step2")}</li>
+        <li>{t("step3")}</li>
+      </ol>
+      <p className="text-tx-dim mt-3 text-[12px]">{t("sender")}</p>
+    </div>
+  );
+}
 
 /** Statuses that mean the order is still moving — keep polling. */
 /**
@@ -250,7 +282,13 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
 
         {status === "delivered" &&
           canLoadCodes &&
-          deliveries.data?.items.map((d) => <ArtifactReceipt key={d.id} artifact={d.artifact} />)}
+          deliveries.data?.items.map((d) =>
+            d.artifact.kind === "gift" ? (
+              <GiftDeliveryCard key={d.id} artifact={d.artifact} />
+            ) : (
+              <ArtifactReceipt key={d.id} artifact={d.artifact} />
+            ),
+          )}
 
         {/* Never on a pure top-up: the money is already on the account and
             `ArtifactReceipt` only ever renders real deliverables (code / key /

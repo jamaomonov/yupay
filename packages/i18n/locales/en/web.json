@@ -349,6 +349,41 @@
     "badge": {
       "discount": "-{percent}%"
     },
+    "game": {
+      "metaTitle": "{name} — Steam gift | YuPay",
+      "metaDescription": "Gift {name} on Steam: pick the edition and region, pay in UZS — a bot delivers the gift to the recipient's profile, usually within an hour.",
+      "edition": "Edition",
+      "region": "Region",
+      "otherRegion": "Other region",
+      "noPriceInRegion": "No price for this edition in this region",
+      "inviteLabel": "Recipient's Steam profile link",
+      "invitePlaceholder": "https://steamcommunity.com/id/profilename",
+      "inviteError": "That doesn't look like a Steam profile link — check it and try again",
+      "inviteGuideTitle": "Where to find the link",
+      "inviteGuideSteps": [
+        "Open the recipient's profile in the Steam app or on steamcommunity.com",
+        "Tap “Share Profile” and copy the link",
+        "Paste the copied link into the field above"
+      ],
+      "buy": "Buy",
+      "timeline": "The bot sends the gift, usually within an hour",
+      "accept": "The recipient gets a friend invite from our bot — they need to accept the gift in Steam within 30 days",
+      "buyError": "Couldn't create the order. Please try again."
+    },
+    "delivered": {
+      "title": "Gift sent",
+      "step1": "Check Steam notifications or email — our bot sent a friend invite with the gift",
+      "step2": "The sender is a bot account: Steam shows its usual warning about an unfamiliar sender — that's expected",
+      "step3": "Accept the gift in Steam within 30 days",
+      "sender": "Sender: YuPay's bot account"
+    },
+    "priceChanged": "The price has changed — showing the current one",
+    "dlc": {
+      "toggle": "DLC: {count} — show",
+      "searchPlaceholder": "Search DLC…",
+      "prevPage": "Previous page",
+      "nextPage": "Next page"
+    },
     "comingSoon": "This section is opening soon"
   },
   "how": {

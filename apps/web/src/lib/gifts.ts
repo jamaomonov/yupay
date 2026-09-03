@@ -31,6 +31,28 @@ export interface GiftsList {
   total: number;
 }
 
+export interface GiftZonePrice {
+  zone: string;
+  price_usd: string;
+  price_uzs: string | null;
+}
+
+export interface GiftPackage {
+  id: number;
+  name: string;
+  image: string | null;
+  discount_percent: number | null;
+  prices: GiftZonePrice[];
+}
+
+export interface GiftAppDetail extends GiftApp {
+  description: string | null;
+  packages: GiftPackage[];
+  dlc_total: number;
+  zones: string[];
+  zone_default: string;
+}
+
 const REVALIDATE = 300;
 
 /** Curated hot-offer strip (pinned apps + best current discounts). `[]` on
@@ -77,6 +99,46 @@ export function searchGifts(locale: string, q: string, offset: number): Promise<
   const query = q.trim();
   if (query) params.set("search", query);
   return apiFetch<GiftsList>(`/gifts/catalog?${params.toString()}`, {
+    anonymous: true,
+    headers: { "Accept-Language": locale },
+  });
+}
+
+/**
+ * One app's full detail: packages priced per offered zone, plus the DLC
+ * count. Server fetcher — same dark-deploy-safe contract as `getGiftsHot`/
+ * `getGiftsPage` above: any error (network, a 404 for an unknown app id, or
+ * the whole `/gifts/*` surface 404ing while the feature flag is off)
+ * collapses to `null` rather than throwing. The page calls `notFound()`
+ * itself when this comes back `null`.
+ */
+export async function getGiftDetail(locale: string, appId: number): Promise<GiftAppDetail | null> {
+  try {
+    return await apiGet<GiftAppDetail>(`/gifts/catalog/${String(appId)}`, {
+      locale,
+      revalidate: REVALIDATE,
+      tags: ["gifts"],
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Client-side search + pagination over one app's DLC list, used by
+ * `DlcBrowser`. Mirrors `searchGifts`: public data, so `anonymous: true`,
+ * and allowed to throw — `DlcBrowser` has its own loading/error UI.
+ */
+export function fetchGiftDlc(
+  locale: string,
+  appId: number,
+  q: string,
+  offset: number,
+): Promise<GiftsList> {
+  const params = new URLSearchParams({ offset: String(offset) });
+  const query = q.trim();
+  if (query) params.set("search", query);
+  return apiFetch<GiftsList>(`/gifts/catalog/${String(appId)}/dlc?${params.toString()}`, {
     anonymous: true,
     headers: { "Accept-Language": locale },
   });

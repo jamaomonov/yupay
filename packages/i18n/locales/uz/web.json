@@ -349,6 +349,41 @@
     "badge": {
       "discount": "-{percent}%"
     },
+    "game": {
+      "metaTitle": "{name} — Steam sovgʻasi | YuPay",
+      "metaDescription": "{name} oʻyinini Steamʻda sovgʻa qiling: nashr va mintaqani tanlang, soʻmda toʻlang — bot sovgʻani qabul qiluvchi profiliga odatda bir soat ichida yetkazadi.",
+      "edition": "Nashr",
+      "region": "Mintaqa",
+      "otherRegion": "Boshqa mintaqa",
+      "noPriceInRegion": "Bu mintaqada ushbu nashr uchun narx yoʻq",
+      "inviteLabel": "Qabul qiluvchining Steam profil havolasi",
+      "invitePlaceholder": "https://steamcommunity.com/id/profil_nomi",
+      "inviteError": "Bu Steam profil havolasiga oʻxshamaydi — tekshirib, qayta urinib koʻring",
+      "inviteGuideTitle": "Havolani qayerdan olish mumkin",
+      "inviteGuideSteps": [
+        "Qabul qiluvchining profilini Steam ilovasida yoki steamcommunity.com saytida oching",
+        "«Profilni ulashish»ni bosing va havolani nusxalang",
+        "Nusxalangan havolani yuqoridagi maydonga joylashtiring"
+      ],
+      "buy": "Sotib olish",
+      "timeline": "Sovgʻani bot yuboradi, odatda bir soat ichida",
+      "accept": "Qabul qiluvchiga bot-yuboruvchidan doʻstlik taklifi keladi — sovgʻani Steamʻda 30 kun ichida qabul qilish kerak",
+      "buyError": "Buyurtmani rasmiylashtirib boʻlmadi. Qayta urinib koʻring."
+    },
+    "delivered": {
+      "title": "Sovgʻa yuborildi",
+      "step1": "Steam bildirishnomalari yoki pochtangizni tekshiring — bot sovgʻa bilan doʻstlik taklifini yubordi",
+      "step2": "Yuboruvchi — YuPay bot-akkaunti: Steam notanish yuboruvchi haqida odatdagi ogohlantirishni koʻrsatadi, bu kutilgan holat",
+      "step3": "Sovgʻani Steamʻda 30 kun ichida qabul qiling",
+      "sender": "Yuboruvchi: YuPay bot-akkaunti"
+    },
+    "priceChanged": "Narx yangilandi — aktual narxni koʻrsatdik",
+    "dlc": {
+      "toggle": "DLC: {count} — koʻrsatish",
+      "searchPlaceholder": "DLC qidirish…",
+      "prevPage": "Oldingi sahifa",
+      "nextPage": "Keyingi sahifa"
+    },
     "comingSoon": "Boʻlim tez orada ochiladi"
   },
   "how": {
