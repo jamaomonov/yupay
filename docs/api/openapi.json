@@ -24552,17 +24552,13 @@
     },
     "/api/v1/payments/uzum/check": {
       "post": {
-        "description": "Handle Uzum's ``/check``: may this order be paid for these params?\n\nArgs:\n    request: The inbound webhook request (raw body read here, not via a\n        request model, so a malformed body is ``10002`` \u2014 never a 422).\n    db: Active session; this route owns the commit/rollback.\n\nReturns:\n    The response body dict \u2014 always HTTP 200 (see module docstring).",
+        "description": "Handle Uzum's ``/check``: may this order be paid for these params?\n\nArgs:\n    request: The inbound webhook request (raw body read here, not via a\n        request model, so a malformed body is ``10002`` \u2014 never a 422).\n    db: Active session; this route owns the commit/rollback.\n\nReturns:\n    The response body dict at HTTP 200 on success; on failure, a\n    ``JSONResponse`` with the same error-body shape at HTTP 400 (see\n    module docstring).",
         "operationId": "uzum_check_api_v1_payments_uzum_check_post",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Uzum Check Api V1 Payments Uzum Check Post",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
@@ -24576,17 +24572,13 @@
     },
     "/api/v1/payments/uzum/confirm": {
       "post": {
-        "description": "Handle Uzum's ``/confirm``: Uzum debited the customer; deliver the goods.\n\nArgs:\n    request: The inbound webhook request.\n    db: Active session; this route owns the commit/rollback.\n\nReturns:\n    The response body dict \u2014 always HTTP 200.",
+        "description": "Handle Uzum's ``/confirm``: Uzum debited the customer; deliver the goods.\n\nArgs:\n    request: The inbound webhook request.\n    db: Active session; this route owns the commit/rollback.\n\nReturns:\n    The response body dict at HTTP 200 on success; on failure, a\n    ``JSONResponse`` with the same error-body shape at HTTP 400 (see\n    module docstring).",
         "operationId": "uzum_confirm_api_v1_payments_uzum_confirm_post",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Uzum Confirm Api V1 Payments Uzum Confirm Post",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
@@ -24600,17 +24592,13 @@
     },
     "/api/v1/payments/uzum/create": {
       "post": {
-        "description": "Handle Uzum's ``/create``: register a pending transaction.\n\nArgs:\n    request: The inbound webhook request.\n    db: Active session; this route owns the commit/rollback.\n\nReturns:\n    The response body dict \u2014 always HTTP 200.",
+        "description": "Handle Uzum's ``/create``: register a pending transaction.\n\nArgs:\n    request: The inbound webhook request.\n    db: Active session; this route owns the commit/rollback.\n\nReturns:\n    The response body dict at HTTP 200 on success; on failure, a\n    ``JSONResponse`` with the same error-body shape at HTTP 400 (see\n    module docstring).",
         "operationId": "uzum_create_api_v1_payments_uzum_create_post",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Uzum Create Api V1 Payments Uzum Create Post",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
@@ -24624,17 +24612,13 @@
     },
     "/api/v1/payments/uzum/reverse": {
       "post": {
-        "description": "Handle Uzum's ``/reverse``: cancel a pending transaction or refund a confirmed one.\n\nArgs:\n    request: The inbound webhook request.\n    db: Active session; this route owns the commit/rollback.\n\nReturns:\n    The response body dict \u2014 always HTTP 200.",
+        "description": "Handle Uzum's ``/reverse``: cancel a pending transaction or refund a confirmed one.\n\nArgs:\n    request: The inbound webhook request.\n    db: Active session; this route owns the commit/rollback.\n\nReturns:\n    The response body dict at HTTP 200 on success; on failure, a\n    ``JSONResponse`` with the same error-body shape at HTTP 400 (see\n    module docstring).",
         "operationId": "uzum_reverse_api_v1_payments_uzum_reverse_post",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Uzum Reverse Api V1 Payments Uzum Reverse Post",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
@@ -24648,17 +24632,13 @@
     },
     "/api/v1/payments/uzum/status": {
       "post": {
-        "description": "Handle Uzum's ``/status``: report a transaction's current state.\n\nArgs:\n    request: The inbound webhook request.\n    db: Active session; this route owns the commit/rollback.\n\nReturns:\n    The response body dict \u2014 always HTTP 200.",
+        "description": "Handle Uzum's ``/status``: report a transaction's current state.\n\nArgs:\n    request: The inbound webhook request.\n    db: Active session; this route owns the commit/rollback.\n\nReturns:\n    The response body dict at HTTP 200 on success; on failure, a\n    ``JSONResponse`` with the same error-body shape at HTTP 400 (see\n    module docstring).",
         "operationId": "uzum_status_api_v1_payments_uzum_status_post",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Uzum Status Api V1 Payments Uzum Status Post",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
