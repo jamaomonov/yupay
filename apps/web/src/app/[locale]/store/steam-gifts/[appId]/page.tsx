@@ -111,7 +111,10 @@ export default async function GiftGamePage({
   // resolved to its zone via `regions` before matching `pkg.prices[].zone`
   // — comparing it to `price.zone` directly (the pre-country-picker
   // behaviour) would silently zero out this Offer for every game page.
-  const defaultZone = detail.regions.find((r) => r.country === detail.region_default)?.zone;
+  // `regions` is optional (see `GiftAppDetail` in `lib/gifts.ts`): a
+  // version-skewed API response that predates this field must simply omit
+  // the Offer, not throw and take down the whole page.
+  const defaultZone = (detail.regions ?? []).find((r) => r.country === detail.region_default)?.zone;
   const defaultZonePrices = detail.packages
     .flatMap((pkg) => pkg.prices)
     .filter((price) => price.zone === defaultZone)

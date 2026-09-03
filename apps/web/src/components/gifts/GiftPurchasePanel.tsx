@@ -122,7 +122,12 @@ export function GiftPurchasePanel({
   const { user } = useAuth();
 
   const [packageId, setPackageId] = useState<number>(() => detail.packages[0]?.id ?? 0);
-  const [country, setCountry] = useState<string>(detail.region_default);
+  // `region_default`/`regions` are optional (see `GiftAppDetail` in
+  // `lib/gifts.ts`): `apiGet` trusts the response shape with an
+  // unchecked cast, so a version-skewed API response that predates these
+  // fields resolves here truthy but without them — never throw on that,
+  // degrade to the coming-soon state below instead.
+  const [country, setCountry] = useState<string>(detail.region_default ?? "");
 
   // The country picker's own unit is the country, but a package's prices
   // are keyed by zone (`GiftPackage.prices[].zone`) — every country a zone
@@ -132,7 +137,7 @@ export function GiftPurchasePanel({
   // first priced that zone) keeps this in sync with whatever package is
   // currently selected — see `zone_for_country` on the backend for the
   // server-side twin of this lookup.
-  const countryZone = new Map(detail.regions.map((r) => [r.country, r.zone]));
+  const countryZone = new Map((detail.regions ?? []).map((r) => [r.country, r.zone]));
 
   const selectedPackage: GiftPackage | null =
     detail.packages.find((p) => p.id === packageId) ?? detail.packages[0] ?? null;
@@ -142,7 +147,13 @@ export function GiftPurchasePanel({
       ? (selectedPackage?.prices.find((p) => p.zone === selectedZone) ?? null)
       : null;
 
-  const countries = detail.regions.map((r) => r.country);
+  const countries = (detail.regions ?? []).map((r) => r.country);
+  // No offered country at all — an unlikely but real possibility once
+  // `regions` is optional (version-skewed API, or a catalog entry with no
+  // priced zone). Same posture as `page.tsx` omitting the Offer: degrade,
+  // don't crash — rendered as the coming-soon state below, in place of a
+  // form with nothing sellable in it.
+  const hasRegions = countries.length > 0;
   const visibleCountries = countries.slice(0, VISIBLE_COUNTRY_COUNT);
   const overflowCountries = countries.slice(VISIBLE_COUNTRY_COUNT);
   const [countryExpanded, setCountryExpanded] = useState<boolean>(() =>
@@ -157,7 +168,7 @@ export function GiftPurchasePanel({
     setPackageId(pkg.id);
     const zone = countryZone.get(country);
     const stillPriced = zone !== undefined && pkg.prices.some((p) => p.zone === zone);
-    if (!stillPriced) setCountry(detail.region_default);
+    if (!stillPriced) setCountry(detail.region_default ?? "");
   }
 
   function selectCountry(c: string): void {
@@ -272,6 +283,20 @@ export function GiftPurchasePanel({
 
   const inviteId = useId();
   const emailId = useId();
+
+  // No sellable country at all (see `hasRegions` above) — same posture the
+  // page-level caller already uses when there's no purchasable SKU yet
+  // (`GiftGamePage`'s `skuId ? <GiftPurchasePanel /> : <...comingSoon>`):
+  // render the coming-soon placeholder instead of a form with nothing to
+  // pick. All hooks above have already run unconditionally, so branching
+  // here is safe.
+  if (!hasRegions) {
+    return (
+      <div className="border-border bg-card rounded-2xl border p-6 text-center">
+        <p className="text-tx-mute text-sm">{tg("comingSoon")}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="border-border bg-card space-y-5 rounded-2xl border p-5 sm:p-6">

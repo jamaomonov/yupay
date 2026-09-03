@@ -62,9 +62,15 @@ export interface GiftAppDetail extends GiftApp {
   packages: GiftPackage[];
   dlc_total: number;
   /** The country picker (2026-09-03): `region_default` first, each entry
-   *  priced from its zone. */
-  regions: GiftRegion[];
-  region_default: string;
+   *  priced from its zone. Optional, like `zones`/`zone_default` below:
+   *  `apiGet` trusts the response shape with an unchecked cast (`api.ts`),
+   *  so a 200 from an API version that predates this field (a rolling
+   *  deploy skew window, not just a 404 dark-deploy) still resolves this
+   *  promise — it does not raise for `getGiftDetail`'s try/catch to catch.
+   *  Every read site must treat a missing/empty `regions` the same as "no
+   *  price for the default zone" and degrade, never throw. */
+  regions?: GiftRegion[];
+  region_default?: string;
   /** Deprecated (2026-09-03) — the zone-label picker `regions` replaced.
    *  Optional so a build against an older deployed API (predating this
    *  field) still type-checks; new code reads `regions`/`region_default`

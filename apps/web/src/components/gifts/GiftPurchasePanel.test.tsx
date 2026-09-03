@@ -89,6 +89,30 @@ const STANDARD_EDITION: GiftPackage = {
   ],
 };
 
+/** A second edition still priced in both offered zones, but at different
+ *  numbers than `STANDARD_EDITION` — so a re-price after a package switch
+ *  is distinguishable from "the country silently reset". */
+const MULTI_REGION_EDITION: GiftPackage = {
+  id: 2,
+  name: "Multi-Region Edition",
+  image: null,
+  discount_percent: null,
+  prices: [
+    { zone: "CIS", price_usd: "1.20", price_uzs: "15240" },
+    { zone: "RU", price_usd: "1.45", price_uzs: "18400" },
+  ],
+};
+
+/** A third edition priced only in CIS — switching to it from an RU
+ *  selection must trip the `selectPackage` fallback. */
+const CIS_ONLY_EDITION: GiftPackage = {
+  id: 3,
+  name: "CIS-Only Edition",
+  image: null,
+  discount_percent: null,
+  prices: [{ zone: "CIS", price_usd: "0.90", price_uzs: "11430" }],
+};
+
 function makeDetail(overrides: Partial<GiftAppDetail> = {}): GiftAppDetail {
   return {
     app_id: 588650,
@@ -118,6 +142,17 @@ function makeDetail(overrides: Partial<GiftAppDetail> = {}): GiftAppDetail {
  *  flag emoji plus the `ru`-localized country name. */
 function countryButtonName(code: string): RegExp {
   return new RegExp(countryName(code, "ru"));
+}
+
+/** A detail payload from an API version that predates `regions`/
+ *  `region_default` (2026-09-03): the keys are omitted entirely, not set
+ *  to `undefined` — `exactOptionalPropertyTypes` treats those differently,
+ *  and the real shape a stale API's JSON body would have is "key absent",
+ *  same as `apiGet`'s unchecked cast would let through in prod during a
+ *  rolling deploy's version-skew window. */
+function makeDetailWithoutRegions(): GiftAppDetail {
+  const { regions: _regions, region_default: _regionDefault, ...rest } = makeDetail();
+  return rest;
 }
 
 /** `formatUzs` renders `Intl.NumberFormat`'s U+00A0 grouping separator, but
@@ -178,6 +213,51 @@ it("disables a country whose zone has no price for the selected package, with vi
   // `CountryButton` in `GiftPurchasePanel.tsx`.
   expect(ruButton).not.toHaveAttribute("title");
   expect(screen.getByText("noPriceInRegion")).toBeInTheDocument();
+});
+
+it("renders the coming-soon state instead of crashing when the API predates `regions`", () => {
+  mockProvidersResponse();
+  render(<GiftPurchasePanel detail={makeDetailWithoutRegions()} skuId="sku-1" locale="ru" />);
+
+  expect(screen.getByText("comingSoon")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "buy" })).not.toBeInTheDocument();
+});
+
+it("keeps the selected country across a package switch when its zone is still priced", () => {
+  mockProvidersResponse();
+  const detail = makeDetail({ packages: [STANDARD_EDITION, MULTI_REGION_EDITION] });
+  render(<GiftPurchasePanel detail={detail} skuId="sku-1" locale="ru" />);
+
+  fireEvent.click(screen.getByRole("button", { name: countryButtonName("RU") }));
+  fireEvent.click(screen.getByRole("button", { name: /Multi-Region Edition/ }));
+
+  expect(screen.getByRole("button", { name: countryButtonName("RU") })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  // The new package's own RU price, not its CIS price and not the old
+  // package's RU price — proves the country stayed RU through the switch
+  // rather than silently resetting to `region_default`.
+  expect(screen.getAllByText(priceText(18400)).length).toBeGreaterThan(0);
+});
+
+it("falls back to region_default when the new package no longer prices the selected country's zone", () => {
+  mockProvidersResponse();
+  const detail = makeDetail({ packages: [STANDARD_EDITION, CIS_ONLY_EDITION] });
+  render(<GiftPurchasePanel detail={detail} skuId="sku-1" locale="ru" />);
+
+  fireEvent.click(screen.getByRole("button", { name: countryButtonName("RU") }));
+  fireEvent.click(screen.getByRole("button", { name: /CIS-Only Edition/ }));
+
+  expect(screen.getByRole("button", { name: countryButtonName("UZ") })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect(screen.getByRole("button", { name: countryButtonName("RU") })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  expect(screen.getAllByText(priceText(11430)).length).toBeGreaterThan(0);
 });
 
 it("blocks submit and shows the i18n error on a bad invite URL", () => {
