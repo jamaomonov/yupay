@@ -46,12 +46,26 @@ export interface GiftPackage {
   prices: GiftZonePrice[];
 }
 
+/** One purchasable country, priced from the zone that covers it — the
+ *  country picker's own unit. Mirrors `GiftRegionOut`; see
+ *  `yupay.modules.gifts.service.ZONE_COUNTRIES` for which countries a zone
+ *  covers. Every country sharing a zone carries that zone's identical
+ *  price. */
+export interface GiftRegion {
+  country: string;
+  zone: string;
+  price_usd: string;
+  price_uzs: string | null;
+}
+
 export interface GiftAppDetail extends GiftApp {
   description: string | null;
   packages: GiftPackage[];
   dlc_total: number;
-  zones: string[];
-  zone_default: string;
+  /** The country picker (2026-09-03): `region_default` first, each entry
+   *  priced from its zone. */
+  regions: GiftRegion[];
+  region_default: string;
 }
 
 const GIFTS_CATALOG = "/api/v1/gifts/catalog";
@@ -173,19 +187,35 @@ export function validateInviteUrl(raw: string): string | null {
 }
 
 /**
- * Resolves the price of one package in one zone from an already-fetched
+ * Resolves the zone that covers a given country, from a `regions` list —
+ * the country picker's own unit is the country, but a package's prices stay
+ * keyed by zone (`GiftPackage.prices[].zone`, the wire/pricing unit).
+ * Mirrors `zone_for_country` on the backend
+ * (`yupay.modules.gifts.service`). `null` for a country this app doesn't
+ * offer at all.
+ */
+export function zoneForCountry(regions: GiftRegion[], country: string): string | null {
+  return regions.find((r) => r.country === country)?.zone ?? null;
+}
+
+/**
+ * Resolves the price of one package in one country from an already-fetched
  * detail payload — no round trip on a package/region switch, same as the web
- * panel. `null` when nothing is selected yet, the package doesn't exist on
- * this detail, or it has no price in that zone.
+ * panel. Resolves the country to its covering zone via `detail.regions`
+ * first, then looks up that zone on the package. `null` when nothing is
+ * selected yet, the package doesn't exist on this detail, the country isn't
+ * offered at all, or the package has no price in the country's zone.
  */
 export function priceFor(
   detail: GiftAppDetail | null,
   packageId: number | null,
-  zone: string | null,
+  country: string | null,
 ): GiftZonePrice | null {
-  if (!detail || packageId === null || zone === null) return null;
+  if (!detail || packageId === null || country === null) return null;
   const pkg = detail.packages.find((p) => p.id === packageId);
   if (!pkg) return null;
+  const zone = zoneForCountry(detail.regions, country);
+  if (zone === null) return null;
   return pkg.prices.find((p) => p.zone === zone) ?? null;
 }
 

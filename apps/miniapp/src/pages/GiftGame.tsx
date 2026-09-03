@@ -3,13 +3,14 @@ import { ArrowLeft } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useParams } from "wouter";
 
-import type { GiftAppDetail, GiftPackage } from "@/lib/gifts";
+import type { GiftAppDetail, GiftPackage, GiftRegion } from "@/lib/gifts";
 
 import { DlcSheet } from "@/components/gifts/DlcSheet";
 import { GiftBuyPanel } from "@/components/gifts/GiftBuyPanel";
 import { InviteGuideSheet } from "@/components/gifts/InviteGuideSheet";
 import { PackageOption, priceLabel } from "@/components/gifts/PackageOption";
-import { ZonePill } from "@/components/gifts/ZonePill";
+import { RegionGuideSheet } from "@/components/gifts/RegionGuideSheet";
+import { RegionPill } from "@/components/gifts/RegionPill";
 import { SafeImage } from "@/components/ui/safe-image";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -20,8 +21,9 @@ import {
   priceFor,
   useGiftSkuId,
   validateInviteUrl,
+  zoneForCountry,
 } from "@/lib/gifts";
-import { useT } from "@/lib/i18n";
+import { useLocale, useT } from "@/lib/i18n";
 import {
   methodVisibility,
   providerStatusMap,
@@ -35,58 +37,83 @@ import { useDocumentTitle } from "@/lib/use-document-title";
 import { ensureBotCanWrite } from "@/lib/write-access";
 import { checkoutErrorMessage } from "@/pages/TopUp";
 
-/** How many offered zones show as their own pill before the rest collapse
- *  behind a single "другой регион" toggle — mirrors the web panel's
- *  `VISIBLE_ZONE_COUNT`. */
-const VISIBLE_ZONE_COUNT = 4;
+/** How many offered countries show as their own pill before the rest
+ *  collapse behind a single "другой регион" toggle — mirrors the web
+ *  panel's `VISIBLE_COUNTRY_COUNT`; CIS alone is nine countries. */
+const VISIBLE_COUNTRY_COUNT = 4;
 
-/**
- * Region kept after an edition/package switch: the current zone if the new
- * package still prices it, else the app's default zone, else whatever price
- * the package does offer, else — a package with no prices at all — the zone
- * is left untouched. Mirrors `GiftPurchasePanel.tsx::selectPackage` on the
- * web storefront exactly.
- */
-export function zoneAfterPackageChange(
-  pkg: GiftPackage,
-  currentZone: string,
-  defaultZone: string,
-): string {
-  if (pkg.prices.some((p) => p.zone === currentZone)) return currentZone;
-  const fallback = pkg.prices.find((p) => p.zone === defaultZone) ?? pkg.prices[0];
-  return fallback ? fallback.zone : currentZone;
+/** Resolves one representative country for a given zone from a `regions`
+ *  list — the reverse of `zoneForCountry` (`@/lib/gifts`), used only for
+ *  `countryAfterPackageChange`'s last-resort fallback below. Picks the
+ *  first `regions` entry that covers the zone. */
+function countryForZone(regions: GiftRegion[], zone: string): string | null {
+  return regions.find((r) => r.zone === zone)?.country ?? null;
 }
 
 /**
- * Which package/zone stay selected after a detail refresh that must
+ * Country kept after an edition/package switch: the current country if its
+ * zone is still priced by the new package, else the app's default country,
+ * else a country covering whatever price the package does offer, else — a
+ * package with no prices at all, or a fallback zone no known country covers
+ * — the country is left untouched. The country-keyed twin of the old
+ * `zoneAfterPackageChange` (2026-09-03: the wire/pricing unit stays the
+ * zone, but the buyer now picks a country); mirrors
+ * `GiftPurchasePanel.tsx::selectPackage` on the web storefront exactly.
+ */
+export function countryAfterPackageChange(
+  pkg: GiftPackage,
+  currentCountry: string,
+  defaultCountry: string,
+  regions: GiftRegion[],
+): string {
+  const currentZone = zoneForCountry(regions, currentCountry);
+  if (currentZone !== null && pkg.prices.some((p) => p.zone === currentZone)) {
+    return currentCountry;
+  }
+  const defaultZone = zoneForCountry(regions, defaultCountry);
+  if (defaultZone !== null && pkg.prices.some((p) => p.zone === defaultZone)) {
+    return defaultCountry;
+  }
+  const fallback = pkg.prices[0];
+  if (!fallback) return currentCountry;
+  return countryForZone(regions, fallback.zone) ?? currentCountry;
+}
+
+/**
+ * Which package/country stay selected after a detail refresh that must
  * preserve the buyer's picks — namely the price-drift reload in
  * `handleBuy`, where a fresh `load()` must NOT bounce the buyer back to
- * `packages[0]`/`zone_default` the way an initial page load does. Keeps
+ * `packages[0]`/`region_default` the way an initial page load does. Keeps
  * `prevPackageId` when the refreshed detail still lists it, else falls back
  * to the first package (mirrors the initial-load default); resolves the
- * zone through the existing `zoneAfterPackageChange` rule so it stays
- * consistent with every other package/zone transition on this page.
+ * country through the existing `countryAfterPackageChange` rule so it stays
+ * consistent with every other package/region transition on this page.
  */
 export function reconcileSelection(
   detail: GiftAppDetail,
   prevPackageId: number | null,
-  prevZone: string | null,
-): { packageId: number | null; zone: string | null } {
+  prevCountry: string | null,
+): { packageId: number | null; country: string | null } {
   const pkg = detail.packages.find((p) => p.id === prevPackageId) ?? detail.packages[0] ?? null;
-  if (!pkg) return { packageId: null, zone: prevZone ?? detail.zone_default };
+  if (!pkg) return { packageId: null, country: prevCountry ?? detail.region_default };
   return {
     packageId: pkg.id,
-    zone: zoneAfterPackageChange(pkg, prevZone ?? detail.zone_default, detail.zone_default),
+    country: countryAfterPackageChange(
+      pkg,
+      prevCountry ?? detail.region_default,
+      detail.region_default,
+      detail.regions,
+    ),
   };
 }
 
-/** Splits an app's offered zones into the pills shown up front and the ones
- *  collapsed behind "другой регион". */
-export function splitZones(
-  zones: string[],
+/** Splits an app's offered countries into the pills shown up front and the
+ *  ones collapsed behind "другой регион". */
+export function splitCountries(
+  countries: string[],
   visibleCount: number,
 ): { visible: string[]; overflow: string[] } {
-  return { visible: zones.slice(0, visibleCount), overflow: zones.slice(visibleCount) };
+  return { visible: countries.slice(0, visibleCount), overflow: countries.slice(visibleCount) };
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -94,6 +121,7 @@ type Phase = "loading" | "idle" | "error" | "notFound";
 
 export default function GiftGame() {
   const { t } = useT();
+  const locale = useLocale();
   const { appId } = useParams<{ appId: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -104,11 +132,12 @@ export default function GiftGame() {
   const [detail, setDetail] = useState<GiftAppDetail | null>(null);
   const [phase, setPhase] = useState<Phase>("loading");
   const [selectedPackageId, setSelectedPackageId] = useState<number | null>(null);
-  const [selectedZone, setSelectedZone] = useState<string | null>(null);
+  const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
   const [inviteUrl, setInviteUrl] = useState("");
   const [guideOpen, setGuideOpen] = useState(false);
+  const [regionGuideOpen, setRegionGuideOpen] = useState(false);
   const [dlcOpen, setDlcOpen] = useState(false);
-  const [zoneExpanded, setZoneExpanded] = useState(false);
+  const [countryExpanded, setCountryExpanded] = useState(false);
   const seqRef = useRef(0);
 
   // The steam-gift product's single purchasable SKU — resolved once, reused
@@ -144,7 +173,7 @@ export default function GiftGame() {
 
   /**
    * `keepSelection` distinguishes an initial/route-change load (reset to
-   * `packages[0]`/`zone_default`, the page's usual entry state) from the
+   * `packages[0]`/`region_default`, the page's usual entry state) from the
    * price-drift reload in `handleBuy` (reapply whatever the buyer had
    * picked, via `reconcileSelection`, so a 422 doesn't silently swap their
    * edition/region out from under them while they re-confirm).
@@ -156,7 +185,7 @@ export default function GiftGame() {
     }
     const seq = ++seqRef.current;
     const prevPackageId = selectedPackageId;
-    const prevZone = selectedZone;
+    const prevCountry = selectedCountry;
     setPhase("loading");
     fetchGiftDetail(numericAppId)
       .then((d) => {
@@ -168,14 +197,14 @@ export default function GiftGame() {
         }
         setDetail(d);
         if (keepSelection) {
-          const { packageId, zone } = reconcileSelection(d, prevPackageId, prevZone);
+          const { packageId, country } = reconcileSelection(d, prevPackageId, prevCountry);
           setSelectedPackageId(packageId);
-          setSelectedZone(zone);
+          setSelectedCountry(country);
         } else {
           setSelectedPackageId(d.packages[0]?.id ?? null);
-          setSelectedZone(d.zone_default);
+          setSelectedCountry(d.region_default);
         }
-        setZoneExpanded(false);
+        setCountryExpanded(false);
         setPhase("idle");
       })
       .catch(() => {
@@ -197,21 +226,28 @@ export default function GiftGame() {
 
   const selectedPackage =
     detail?.packages.find((p) => p.id === selectedPackageId) ?? detail?.packages[0] ?? null;
-  const price = priceFor(detail, selectedPackage?.id ?? null, selectedZone);
+  const price = priceFor(detail, selectedPackage?.id ?? null, selectedCountry);
 
   function selectPackage(pkg: GiftPackage): void {
     haptic("select");
     setSelectedPackageId(pkg.id);
     if (!detail) return;
-    setSelectedZone((current) =>
-      zoneAfterPackageChange(pkg, current ?? detail.zone_default, detail.zone_default),
+    setSelectedCountry((current) =>
+      countryAfterPackageChange(
+        pkg,
+        current ?? detail.region_default,
+        detail.region_default,
+        detail.regions,
+      ),
     );
   }
 
-  function selectZone(zone: string): void {
-    if (!selectedPackage?.prices.some((p) => p.zone === zone)) return;
+  function selectCountry(country: string): void {
+    if (!detail) return;
+    const zone = zoneForCountry(detail.regions, country);
+    if (zone === null || !selectedPackage?.prices.some((p) => p.zone === zone)) return;
     haptic("select");
-    setSelectedZone(zone);
+    setSelectedCountry(country);
   }
 
   const canonicalInvite = validateInviteUrl(inviteUrl);
@@ -220,6 +256,7 @@ export default function GiftGame() {
   const methodReady = selectedProvider !== undefined && isMethodAvailable(methodId);
   const canBuy =
     price !== null &&
+    selectedCountry !== null &&
     canonicalInvite !== null &&
     skuId !== null &&
     methodReady &&
@@ -246,6 +283,7 @@ export default function GiftGame() {
       !detail ||
       !selectedPackage ||
       !price ||
+      !selectedCountry ||
       !canonicalInvite ||
       !skuId ||
       !selectedProvider
@@ -265,7 +303,11 @@ export default function GiftGame() {
         fulfillmentData: {
           app_id: detail.app_id,
           package_id: selectedPackage.id,
-          region: price.zone,
+          // The country the buyer picked, not the zone it prices from — the
+          // server resolves country -> zone -> price itself and sends the
+          // zone's own `region_code` to the supplier (2026-09-03, see
+          // `apps/api/src/yupay/modules/gifts/schemas.py::GiftAppDetailOut`).
+          region: selectedCountry,
           invite_url: canonicalInvite,
         },
         amountUsd: price.price_usd,
@@ -367,10 +409,23 @@ export default function GiftGame() {
     );
   }
 
-  const { visible: visibleZones, overflow: overflowZones } = splitZones(
-    detail.zones,
-    VISIBLE_ZONE_COUNT,
+  // Captured as a local so `countryAvailable` below doesn't close over the
+  // outer (nullable) `detail` state variable — TS narrows `detail` here
+  // (past the `!detail` early return above) but that narrowing doesn't
+  // survive into a nested function's body.
+  const regions = detail.regions;
+  const countries = regions.map((r) => r.country);
+  const { visible: visibleCountries, overflow: overflowCountries } = splitCountries(
+    countries,
+    VISIBLE_COUNTRY_COUNT,
   );
+
+  /** Whether the currently selected package still has a price in this
+   *  country's zone — drives a pill's disabled state. */
+  function countryAvailable(country: string): boolean {
+    const zone = zoneForCountry(regions, country);
+    return zone !== null && (selectedPackage?.prices.some((p) => p.zone === zone) ?? false);
+  }
 
   return (
     <motion.div
@@ -381,6 +436,7 @@ export default function GiftGame() {
       className="pb-32"
     >
       <InviteGuideSheet open={guideOpen} onOpenChange={setGuideOpen} />
+      <RegionGuideSheet open={regionGuideOpen} onOpenChange={setRegionGuideOpen} />
       <DlcSheet
         open={dlcOpen}
         onOpenChange={setDlcOpen}
@@ -444,7 +500,7 @@ export default function GiftGame() {
               <PackageOption
                 key={pkg.id}
                 pkg={pkg}
-                price={selectedZone ? (priceFor(detail, pkg.id, selectedZone) ?? null) : null}
+                price={selectedCountry ? (priceFor(detail, pkg.id, selectedCountry) ?? null) : null}
                 active={pkg.id === selectedPackage?.id}
                 onSelect={() => {
                   selectPackage(pkg);
@@ -456,26 +512,38 @@ export default function GiftGame() {
 
         {/* Step: region */}
         <div>
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/50">
-            {t("gifts.game.region")}
-          </p>
+          <div className="mb-2 flex items-center gap-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+              {t("gifts.game.region")}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setRegionGuideOpen(true);
+              }}
+              className="text-primary text-[11px] font-semibold"
+            >
+              {t("gifts.game.regionHintCta")}
+            </button>
+          </div>
           <div className="flex flex-wrap gap-2">
-            {visibleZones.map((zone) => (
-              <ZonePill
-                key={zone}
-                zone={zone}
-                active={zone === selectedZone}
-                available={selectedPackage?.prices.some((p) => p.zone === zone) ?? false}
+            {visibleCountries.map((country) => (
+              <RegionPill
+                key={country}
+                country={country}
+                active={country === selectedCountry}
+                available={countryAvailable(country)}
+                locale={locale}
                 onSelect={() => {
-                  selectZone(zone);
+                  selectCountry(country);
                 }}
               />
             ))}
-            {overflowZones.length > 0 && !zoneExpanded && (
+            {overflowCountries.length > 0 && !countryExpanded && (
               <button
                 type="button"
                 onClick={() => {
-                  setZoneExpanded(true);
+                  setCountryExpanded(true);
                 }}
                 className="rounded-full border px-3 py-1.5 text-xs font-semibold text-white/50"
                 style={{ borderColor: "hsl(var(--border))" }}
@@ -483,19 +551,23 @@ export default function GiftGame() {
                 {t("gifts.game.otherRegion")}
               </button>
             )}
-            {zoneExpanded &&
-              overflowZones.map((zone) => (
-                <ZonePill
-                  key={zone}
-                  zone={zone}
-                  active={zone === selectedZone}
-                  available={selectedPackage?.prices.some((p) => p.zone === zone) ?? false}
+            {countryExpanded &&
+              overflowCountries.map((country) => (
+                <RegionPill
+                  key={country}
+                  country={country}
+                  active={country === selectedCountry}
+                  available={countryAvailable(country)}
+                  locale={locale}
                   onSelect={() => {
-                    selectZone(zone);
+                    selectCountry(country);
                   }}
                 />
               ))}
           </div>
+          <p className="mt-2 text-[12px] leading-snug text-white/40">
+            {t("gifts.game.regionWarning")}
+          </p>
         </div>
 
         {/* Price */}

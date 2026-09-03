@@ -6,9 +6,11 @@ import {
   extractExpectedAmount,
   priceFor,
   validateInviteUrl,
+  zoneForCountry,
   type CatalogViewInput,
   type GiftApp,
   type GiftAppDetail,
+  type GiftRegion,
 } from "./gifts";
 
 // ─── validateInviteUrl ──────────────────────────────────────────────────────
@@ -69,7 +71,13 @@ describe("validateInviteUrl", () => {
   });
 });
 
-// ─── priceFor ───────────────────────────────────────────────────────────────
+// ─── priceFor / zoneForCountry ──────────────────────────────────────────────
+// The country picker's own unit is the country, but a package's prices stay
+// keyed by zone (`GiftPackage.prices[].zone` — the wire/pricing unit, see
+// `yupay.modules.gifts.service.ZONE_COUNTRIES`). `detail.regions` is the
+// country -> zone map both helpers resolve through, mirroring
+// `zone_for_country` on the backend and `GiftPurchasePanel.tsx`'s
+// `countryZone` map on the web storefront.
 function makeDetail(overrides: Partial<GiftAppDetail> = {}): GiftAppDetail {
   return {
     app_id: 588650,
@@ -95,14 +103,37 @@ function makeDetail(overrides: Partial<GiftAppDetail> = {}): GiftAppDetail {
       },
     ],
     dlc_total: 7,
-    zones: ["CIS", "RU", "KZ", "UA"],
-    zone_default: "CIS",
+    regions: [
+      { country: "UZ", zone: "CIS", price_usd: "12.97", price_uzs: "153305" },
+      { country: "RU", zone: "RU", price_usd: "6.35", price_uzs: "75057" },
+    ],
+    region_default: "UZ",
     ...overrides,
   };
 }
 
+describe("zoneForCountry", () => {
+  const regions: GiftRegion[] = [
+    { country: "UZ", zone: "CIS", price_usd: "12.97", price_uzs: "153305" },
+    { country: "TJ", zone: "CIS", price_usd: "12.97", price_uzs: "153305" },
+    { country: "RU", zone: "RU", price_usd: "6.35", price_uzs: "75057" },
+  ];
+
+  test("resolves the zone covering a known country", () => {
+    expect(zoneForCountry(regions, "UZ")).toBe("CIS");
+  });
+
+  test("resolves the same zone for two countries it covers", () => {
+    expect(zoneForCountry(regions, "TJ")).toBe(zoneForCountry(regions, "UZ"));
+  });
+
+  test("returns null for a country this app doesn't offer at all", () => {
+    expect(zoneForCountry(regions, "FR")).toBeNull();
+  });
+});
+
 describe("priceFor", () => {
-  test("resolves the price for a valid package/zone pair", () => {
+  test("resolves the price for a valid package/country pair", () => {
     expect(priceFor(makeDetail(), 152266, "RU")).toEqual({
       zone: "RU",
       price_usd: "6.35",
@@ -110,20 +141,35 @@ describe("priceFor", () => {
     });
   });
 
-  test("returns null for a zone the package has no price in", () => {
-    expect(priceFor(makeDetail(), 152266, "KZ")).toBeNull();
+  test("resolves through the country's zone, not the country code itself", () => {
+    expect(priceFor(makeDetail(), 152266, "UZ")).toEqual({
+      zone: "CIS",
+      price_usd: "12.97",
+      price_uzs: "153305",
+    });
+  });
+
+  test("returns null for a country whose zone the package has no price in", () => {
+    const detail = makeDetail({
+      regions: [{ country: "KZ", zone: "KZ", price_usd: "9.99", price_uzs: null }],
+    });
+    expect(priceFor(detail, 152266, "KZ")).toBeNull();
+  });
+
+  test("returns null for a country this app doesn't offer at all", () => {
+    expect(priceFor(makeDetail(), 152266, "FR")).toBeNull();
   });
 
   test("returns null for an unknown package id", () => {
-    expect(priceFor(makeDetail(), 999999, "CIS")).toBeNull();
+    expect(priceFor(makeDetail(), 999999, "UZ")).toBeNull();
   });
 
   test("returns null when the detail hasn't loaded yet", () => {
-    expect(priceFor(null, 152266, "CIS")).toBeNull();
+    expect(priceFor(null, 152266, "UZ")).toBeNull();
   });
 
   test("returns null when nothing is selected yet", () => {
-    expect(priceFor(makeDetail(), null, "CIS")).toBeNull();
+    expect(priceFor(makeDetail(), null, "UZ")).toBeNull();
     expect(priceFor(makeDetail(), 152266, null)).toBeNull();
   });
 });
