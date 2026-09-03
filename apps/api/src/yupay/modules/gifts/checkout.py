@@ -205,8 +205,9 @@ async def price_gift_line(
 
     # Same finder as `zone_price_usd` above, so the wire region code we send
     # G-Engine always comes from the exact price entry we just billed from.
-    # Unreachable in practice — a priced entry always carries `region` — but
-    # guarded the same way rather than assumed.
+    # Normally a priced entry always carries `region`, but this is a real
+    # guard, not a theoretical one: a malformed upstream entry (priced, no
+    # `region` key) must 4xx here, not KeyError into a 500 on the money path.
     region_code = zone_region_code(package, region)
     if region_code is None:
         raise ValidationError("this region has no price for the selected edition")

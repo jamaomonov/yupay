@@ -94,6 +94,13 @@ def _zone_price_entry(package: dict[str, Any], zone: str) -> dict[str, Any] | No
     treat the same way: the zone has no entry in ``package["prices"]`` at
     all, and the zone has an entry whose ``price`` is null upstream. Either
     way there is nothing to sell.
+
+    Skips forward past a null-price entry to a later priced one for the
+    same zone — deliberate, not accidental: a zone can bucket several
+    country-level entries, and this changes catalog zone-visibility for a
+    duplicate-zone package so the priced entry wins over a null-price
+    sibling, rather than the old first-match-wins behaviour silently
+    reporting "no price" when a later entry actually had one.
     """
     entries: list[dict[str, Any]] = package.get("prices") or []
     for entry in entries:
@@ -126,13 +133,21 @@ def zone_region_code(package: dict[str, Any], zone: str) -> str | None:
     and for zone CIS it can be e.g. ``"ge"`` — verified live, and it can
     differ per package). Sending the zone label itself gets G-Engine's
     «Price not found». Derived from :func:`_zone_price_entry` so the price
-    and the code can never come from two different entries.
+    and the code come from the same entry; a malformed entry without a
+    region code is refused at checkout (see :func:`zone_price_usd`, which
+    may still price such an entry — the two are allowed to disagree only in
+    that malformed case, which the checkout-side guard then catches).
 
-    ``None`` when the zone has no priced entry on this package — the same
-    condition under which :func:`zone_price_usd` also returns ``None``.
+    ``None`` when the zone has no priced entry on this package (the same
+    condition under which :func:`zone_price_usd` also returns ``None``), or
+    when the priced entry is missing/blank ``region`` — malformed upstream
+    data, not a reason to 500 the money path.
     """
     entry = _zone_price_entry(package, zone)
-    return None if entry is None else str(entry["region"])
+    if entry is None:
+        return None
+    region = entry.get("region")
+    return str(region) if region else None
 
 
 async def _cached_json(key: str, ttl: int, fetch: Callable[[], Awaitable[Any]]) -> Any:

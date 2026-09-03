@@ -59,11 +59,13 @@ G-Engine's «Price not found». `gifts/checkout.py::price_gift_line`
 resolves the code at checkout time — from the exact same priced entry
 `supplier_price_usd` is billed from, via `gifts/service.py`'s
 `zone_region_code` (sharing the one price-entry finder with
-`zone_price_usd`, so the two can never disagree) — and stores it on the
-order line as `fulfillment_data.region_code`. `gengine_gifts.py::fulfill_gift`
+`zone_price_usd`, so the two come from the same entry; a malformed entry
+without a region code is refused at checkout) — and stores it on the order
+line as `fulfillment_data.region_code`. `gengine_gifts.py::fulfill_gift`
 sends `region_code` when present, falling back to the legacy `region` zone
 value only for order rows written before this resolution existed
-(2026-09-03 hotfix).
+(2026-09-03 hotfix — no backfill needed, the feature had never gone live
+and zero pre-hotfix gift orders exist on prod).
 
 **"Api restart only" depends on the product's `region` field staying a
 plain `text` field with no options.** The seed
@@ -71,7 +73,7 @@ plain `text` field with no options.** The seed
 as `type: "text"`, not `type: "select"` with a literal option list — a
 `select` field is checked for option membership by
 `orders/validation.py::validate_fulfillment_data`, which runs **before**
-`gifts/checkout.py:183`'s `offered_zones` check ever sees the value, so a
+`gifts/checkout.py:186`'s `offered_zones` check ever sees the value, so a
 `select`-typed schema would be a second, DB-stored source of truth for
 which regions are legal and widening the env var alone would still 422 the
 new zone. `offered_zones()` is the only membership check that matters —

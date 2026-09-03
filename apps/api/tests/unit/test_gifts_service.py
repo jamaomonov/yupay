@@ -108,6 +108,22 @@ def test_zone_region_code_handles_no_prices_key() -> None:
     assert zone_region_code({}, "CIS") is None
 
 
+def test_zone_region_code_returns_none_for_a_priced_entry_missing_region() -> None:
+    """A malformed upstream entry — priced, but with no ``region`` key at
+    all — must not raise (``KeyError`` -> 500 on the money path).
+    ``zone_price_usd`` still prices this same entry: the two are allowed to
+    disagree only in this malformed case, and checkout's own guard is what
+    turns the missing code into a clean 4xx rather than a crash."""
+    package = {"prices": [{"currency": "USD", "price": 1.02, "zone": "CIS"}]}
+    assert zone_region_code(package, "CIS") is None
+    assert zone_price_usd(package, "CIS") == Decimal("1.02")
+
+
+def test_zone_region_code_returns_none_for_a_priced_entry_with_a_blank_region() -> None:
+    package = {"prices": [{"region": "", "currency": "USD", "price": 1.02, "zone": "CIS"}]}
+    assert zone_region_code(package, "CIS") is None
+
+
 def test_zone_price_usd_and_zone_region_code_share_the_same_priced_entry() -> None:
     """A package can carry two entries for the same zone — one with a null
     price, one live. Both finders must skip the null-price entry and agree
