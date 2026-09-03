@@ -319,6 +319,38 @@
     "payFromBalanceLoading": "Balans yuklanmoqda…",
     "payFromBalanceTopUp": "Balansni toʻldirish"
   },
+  "gifts": {
+    "meta": {
+      "title": "Steam sovgʻalari — Steam oʻyinlarini sovgʻa qiling | YuPay",
+      "description": "Doʻstlaringizga Steamʻda oʻyin va DLC sovgʻa qiling: nashr va mintaqani tanlang, soʻmda toʻlang — bot orqali sovgʻa qabul qiluvchi profiliga odatda bir soat ichida yetkaziladi."
+    },
+    "hero": {
+      "title": "Steam sovgʻalari",
+      "subtitle": "Steamʻda oʻyin va DLC sovgʻa qiling — toʻlov soʻmda, bot orqali doʻstingiz profiliga yetkaziladi.",
+      "howTitle": "Bu qanday ishlaydi",
+      "step1": "Oʻyin, nashr va mintaqani tanlang",
+      "step2": "Qabul qiluvchining Steam profil havolasini kiriting",
+      "step3": "Bot sovgʻani doʻstlik taklifi sifatida yuboradi — odatda bir soat ichida"
+    },
+    "hot": {
+      "title": "Qaynoq takliflar"
+    },
+    "search": {
+      "placeholder": "Oʻyin qidirish…",
+      "empty": "Hech narsa topilmadi — boshqa soʻrovni sinab koʻring",
+      "error": "Katalogni yuklab boʻlmadi",
+      "retry": "Qayta urinish",
+      "showMore": "Yana koʻrsatish"
+    },
+    "card": {
+      "editions": "{count, plural, one {# nashr} other {# nashr}}",
+      "dlc": "{count, plural, one {# DLC} other {# DLC}}"
+    },
+    "badge": {
+      "discount": "-{percent}%"
+    },
+    "comingSoon": "Boʻlim tez orada ochiladi"
+  },
   "how": {
     "eyebrow": "Flow",
     "titleLine1": "Bosishdan",

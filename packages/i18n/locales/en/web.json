@@ -319,6 +319,38 @@
     "payFromBalanceLoading": "Loading your balance…",
     "payFromBalanceTopUp": "Top up your balance"
   },
+  "gifts": {
+    "meta": {
+      "title": "Steam Gifts — gift games on Steam | YuPay",
+      "description": "Gift games and DLC on Steam: pick the edition and region, pay in UZS — a bot delivers the gift to the recipient's profile, usually within an hour."
+    },
+    "hero": {
+      "title": "Steam Gifts",
+      "subtitle": "Gift games and DLC on Steam — pay in UZS, delivered by bot straight to a friend's profile.",
+      "howTitle": "How it works",
+      "step1": "Pick the game, edition, and region",
+      "step2": "Enter the recipient's Steam profile link",
+      "step3": "Our bot sends the gift as a friend invite — usually within an hour"
+    },
+    "hot": {
+      "title": "Hot offers"
+    },
+    "search": {
+      "placeholder": "Search for a game…",
+      "empty": "Nothing found — try another search",
+      "error": "Couldn't load the catalog",
+      "retry": "Retry",
+      "showMore": "Show more"
+    },
+    "card": {
+      "editions": "{count, plural, one {# edition} other {# editions}}",
+      "dlc": "{count, plural, one {# DLC} other {# DLC}}"
+    },
+    "badge": {
+      "discount": "-{percent}%"
+    },
+    "comingSoon": "This section is opening soon"
+  },
   "how": {
     "eyebrow": "Flow",
     "titleLine1": "From tap",
