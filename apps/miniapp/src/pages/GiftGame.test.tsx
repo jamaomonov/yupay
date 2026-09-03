@@ -4,10 +4,7 @@ import { reconcileSelection, splitZones, zoneAfterPackageChange } from "./GiftGa
 
 import type { GiftAppDetail, GiftPackage } from "@/lib/gifts";
 
-function makePackage(
-  id: number,
-  prices: { zone: string; price_usd: string }[],
-): GiftPackage {
+function makePackage(id: number, prices: { zone: string; price_usd: string }[]): GiftPackage {
   return {
     id,
     name: `Edition ${String(id)}`,
@@ -110,10 +107,7 @@ describe("reconcileSelection", () => {
   });
 
   test("re-resolves the zone via zoneAfterPackageChange when the kept package no longer prices it", () => {
-    const detail = makeDetail(
-      [makePackage(1, [{ zone: "CIS", price_usd: "1" }])],
-      "CIS",
-    );
+    const detail = makeDetail([makePackage(1, [{ zone: "CIS", price_usd: "1" }])], "CIS");
     expect(reconcileSelection(detail, 1, "RU")).toEqual({ packageId: 1, zone: "CIS" });
   });
 
