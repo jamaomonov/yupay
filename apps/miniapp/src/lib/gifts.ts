@@ -63,9 +63,16 @@ export interface GiftAppDetail extends GiftApp {
   packages: GiftPackage[];
   dlc_total: number;
   /** The country picker (2026-09-03): `region_default` first, each entry
-   *  priced from its zone. */
-  regions: GiftRegion[];
-  region_default: string;
+   *  priced from its zone. Optional: `api()`'s JSON response is an
+   *  unchecked cast (`(await response.json()) as T`, `lib/api.ts`), so a
+   *  version-skewed API build that predates this field (a real window, not
+   *  theoretical — the deploy pipeline pushes independent `:main` images
+   *  with no cross-image atomicity, and this feature is already live for
+   *  real buyers) resolves this promise truthy but without it. Every read
+   *  site treats an absent/empty `regions` as "nothing sellable yet" —
+   *  see `GiftGame.tsx`'s `countries.length === 0` guard. */
+  regions?: GiftRegion[];
+  region_default?: string;
 }
 
 const GIFTS_CATALOG = "/api/v1/gifts/catalog";
@@ -214,7 +221,7 @@ export function priceFor(
   if (!detail || packageId === null || country === null) return null;
   const pkg = detail.packages.find((p) => p.id === packageId);
   if (!pkg) return null;
-  const zone = zoneForCountry(detail.regions, country);
+  const zone = zoneForCountry(detail.regions ?? [], country);
   if (zone === null) return null;
   return pkg.prices.find((p) => p.zone === zone) ?? null;
 }

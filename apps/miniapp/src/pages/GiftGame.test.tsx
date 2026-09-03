@@ -168,4 +168,15 @@ describe("reconcileSelection", () => {
     const detail = makeDetail([], regions, "UZ");
     expect(reconcileSelection(detail, 1, "RU")).toEqual({ packageId: null, country: "RU" });
   });
+
+  test("never throws when the detail predates the country picker entirely (version-skewed API)", () => {
+    // Same version-skew case as `gifts.test.ts::priceFor` — a detail with
+    // `regions`/`region_default` absent outright must degrade, not throw;
+    // `GiftGame`'s own `countries.length === 0` guard is what actually
+    // keeps this off screen in practice, but the pure function must still
+    // be safe to call directly.
+    const detail = makeDetail([makePackage(1, [{ zone: "CIS", price_usd: "1" }])], [], "UZ");
+    const { regions: _regions, region_default: _regionDefault, ...withoutRegions } = detail;
+    expect(() => reconcileSelection(withoutRegions, 1, null)).not.toThrow();
+  });
 });

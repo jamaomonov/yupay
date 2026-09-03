@@ -172,6 +172,21 @@ describe("priceFor", () => {
     expect(priceFor(makeDetail(), null, "UZ")).toBeNull();
     expect(priceFor(makeDetail(), 152266, null)).toBeNull();
   });
+
+  test("degrades gracefully when the detail predates the country picker entirely", () => {
+    // `apiGet`'s unchecked JSON cast (`(await response.json()) as T`) means
+    // a version-skewed API build older than `regions`/`region_default`
+    // resolves this promise truthy but without them — a real window, not a
+    // theoretical one (this feature is live for real buyers, and the
+    // deploy pipeline pushes independent `:main` images with no
+    // cross-image atomicity; see the equivalent fix on the web storefront,
+    // `apps/web/src/lib/gifts.ts`). Built via destructuring, not
+    // `regions: undefined` — `exactOptionalPropertyTypes` treats "key
+    // absent" and "key present as undefined" differently, and a real
+    // skewed response body would omit the keys outright.
+    const { regions: _regions, region_default: _regionDefault, ...withoutRegions } = makeDetail();
+    expect(priceFor(withoutRegions, 152266, "UZ")).toBeNull();
+  });
 });
 
 // ─── accumulatePage ─────────────────────────────────────────────────────────

@@ -95,14 +95,14 @@ export function reconcileSelection(
   prevCountry: string | null,
 ): { packageId: number | null; country: string | null } {
   const pkg = detail.packages.find((p) => p.id === prevPackageId) ?? detail.packages[0] ?? null;
-  if (!pkg) return { packageId: null, country: prevCountry ?? detail.region_default };
+  if (!pkg) return { packageId: null, country: prevCountry ?? detail.region_default ?? null };
   return {
     packageId: pkg.id,
     country: countryAfterPackageChange(
       pkg,
-      prevCountry ?? detail.region_default,
-      detail.region_default,
-      detail.regions,
+      prevCountry ?? detail.region_default ?? "",
+      detail.region_default ?? "",
+      detail.regions ?? [],
     ),
   };
 }
@@ -202,7 +202,7 @@ export default function GiftGame() {
           setSelectedCountry(country);
         } else {
           setSelectedPackageId(d.packages[0]?.id ?? null);
-          setSelectedCountry(d.region_default);
+          setSelectedCountry(d.region_default ?? null);
         }
         setCountryExpanded(false);
         setPhase("idle");
@@ -235,16 +235,16 @@ export default function GiftGame() {
     setSelectedCountry((current) =>
       countryAfterPackageChange(
         pkg,
-        current ?? detail.region_default,
-        detail.region_default,
-        detail.regions,
+        current ?? detail.region_default ?? "",
+        detail.region_default ?? "",
+        detail.regions ?? [],
       ),
     );
   }
 
   function selectCountry(country: string): void {
     if (!detail) return;
-    const zone = zoneForCountry(detail.regions, country);
+    const zone = zoneForCountry(detail.regions ?? [], country);
     if (zone === null || !selectedPackage?.prices.some((p) => p.zone === zone)) return;
     haptic("select");
     setSelectedCountry(country);
@@ -412,9 +412,33 @@ export default function GiftGame() {
   // Captured as a local so `countryAvailable` below doesn't close over the
   // outer (nullable) `detail` state variable — TS narrows `detail` here
   // (past the `!detail` early return above) but that narrowing doesn't
-  // survive into a nested function's body.
-  const regions = detail.regions;
+  // survive into a nested function's body. `?? []`: `regions` is optional
+  // on `GiftAppDetail` — a version-skewed API build predating the country
+  // picker resolves `detail` truthy but without it (`lib/gifts.ts`'s
+  // `apiGet`/`api()` casts the JSON response unchecked).
+  const regions = detail.regions ?? [];
   const countries = regions.map((r) => r.country);
+
+  // Nothing sellable at all — an unlikely but real possibility once
+  // `regions` is optional. Same posture as the `notFound`/`error` phases
+  // above: degrade, don't crash on `detail.regions.map(...)` mid-render.
+  if (countries.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-4 p-6 pt-24 text-center">
+        <p className="text-sm text-white/50">{t("gifts.comingSoon")}</p>
+        <button
+          type="button"
+          onClick={() => {
+            setLocation("/gifts");
+          }}
+          className="bg-primary rounded-2xl px-6 py-3 font-bold text-black"
+        >
+          {t("common.toHome")}
+        </button>
+      </div>
+    );
+  }
+
   const { visible: visibleCountries, overflow: overflowCountries } = splitCountries(
     countries,
     VISIBLE_COUNTRY_COUNT,
