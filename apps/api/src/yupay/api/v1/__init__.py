@@ -27,6 +27,7 @@ from yupay.modules.fulfillment.api import router as fulfillment_router
 from yupay.modules.fx.api import admin_router as fx_admin_router
 from yupay.modules.fx.api import router as fx_router
 from yupay.modules.gifts.api import admin_router as gifts_admin_router
+from yupay.modules.gifts.api import router as gifts_router
 from yupay.modules.integrations.api import admin_router as integrations_admin_router
 from yupay.modules.integrations.api import router as integrations_router
 from yupay.modules.inventory.api import admin_router as inventory_admin_router
@@ -63,6 +64,7 @@ router.include_router(fulfillment_router)
 router.include_router(fulfillment_admin_router)
 router.include_router(fx_router)
 router.include_router(fx_admin_router)
+router.include_router(gifts_router)
 router.include_router(gifts_admin_router)
 router.include_router(orders_router)
 router.include_router(orders_admin_router)
