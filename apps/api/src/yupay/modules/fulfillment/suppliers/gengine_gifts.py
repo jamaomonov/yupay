@@ -108,9 +108,17 @@ async def fulfill_gift(
             f"gift order line package_id must be numeric, got {package_id_raw!r}"
         ) from exc
 
-    existing = await _find_gift_order(
-        client, invite_url=invite_url, package_id=package_id, since=order_created_at
-    )
+    try:
+        existing = await _find_gift_order(
+            client, invite_url=invite_url, package_id=package_id, since=order_created_at
+        )
+    except GEngineUnavailableError:
+        # Best-effort: the probe failing must not block a genuinely new line
+        # from ever being bought. The create call carries its own
+        # ambiguous-failure guard, so treating an outage here as "not found"
+        # is safe — worst case is a second probe on the next retry, never a
+        # second spend.
+        existing = None
     if existing is not None:
         log.info("gengine_gifts.adopted_before_create", order_id=existing.id)
         return _gift_created_result(existing, package_id=package_id, invite_url=invite_url)
@@ -168,9 +176,20 @@ async def gift_status(client: GEngineClient, *, task: FulfillmentTask) -> Fulfil
     invite_url = str(task.extra_metadata.get("gift_invite_url") or "")
     package_id_raw = task.extra_metadata.get("gift_package_id")
     if invite_url and package_id_raw is not None:
-        found = await _find_gift_order(
-            client, invite_url=invite_url, package_id=int(package_id_raw), since=task.created_at
-        )
+        try:
+            found = await _find_gift_order(
+                client,
+                invite_url=invite_url,
+                package_id=int(package_id_raw),
+                since=task.created_at,
+            )
+        except GEngineUnavailableError:
+            # An outage during the adopt probe is not "not found" — reporting
+            # it as such would park the task failed purely because the
+            # supplier was unreachable. The 60s reconcile sweep retries.
+            return FulfillStatus(
+                outcome="in_progress", artifact_kind=None, artifact=None, error=None
+            )
         if found is not None:
             status = await _poll_gift_order(client, task=task, order_id=found.id)
             return FulfillStatus(
@@ -212,7 +231,23 @@ async def _poll_gift_order(
 
 
 def _map_gift_order(order: GEngineGiftOrder, *, task: FulfillmentTask) -> FulfillStatus:
-    """Interpret one supplier order as a delivery outcome."""
+    """Interpret one supplier order as a delivery outcome.
+
+    The refunded/dead check runs *before* the done check: if the very first
+    poll we ever see already shows a done status (``shipped``/``delivered``)
+    with ``is_refunded=True``, the money has already come back and this must
+    report ``failed``, not ``succeeded``. A refund that lands only *after*
+    we already recorded success is the existing stuck/refund manual path —
+    unaffected by this ordering, since `check_status` no longer runs once a
+    task is `succeeded`.
+    """
+    if order.is_refunded or order.status in GIFT_STATUS_DEAD:
+        return FulfillStatus(
+            outcome="failed",
+            artifact_kind=None,
+            artifact=None,
+            error=order.error or f"supplier status {order.status}",
+        )
     if order.status in GIFT_STATUS_DONE:
         # `app_name` isn't ours to set from this module (`GEngineGiftOrder`
         # has no such field) — it rides on task metadata if a caller ever
@@ -232,13 +267,6 @@ def _map_gift_order(order: GEngineGiftOrder, *, task: FulfillmentTask) -> Fulfil
                 "message": _DELIVERY_MESSAGE,
             },
             error=None,
-        )
-    if order.is_refunded or order.status in GIFT_STATUS_DEAD:
-        return FulfillStatus(
-            outcome="failed",
-            artifact_kind=None,
-            artifact=None,
-            error=order.error or f"supplier status {order.status}",
         )
     return FulfillStatus(
         outcome="in_progress",
@@ -295,18 +323,24 @@ async def _find_gift_order(
     """Best-effort probe for an order already placed for this exact line.
 
     Used both to adopt-instead-of-recreate at fulfil time and to adopt an
-    id-less task at poll time. Any client error is treated as not-found: at
-    fulfil time the create call has its own ambiguous-failure guard, and at
-    poll time an id-less task simply stays unresolved until it either
-    resolves or ages past :data:`GIFT_ADOPT_WINDOW_MINUTES` — no second
-    spend follows from a wrong "not found" either way, since parking always
-    waits for a human, and this module never re-buys off its own back.
+    id-less task at poll time. A clean refusal (:class:`GEngineError`) is
+    treated as not-found — the supplier answered, and its answer was "no" —
+    but :class:`GEngineUnavailableError` (an outage) is left to propagate:
+    the two mean different things to a caller. `fulfill_gift`'s probe is
+    best-effort and treats either as not-found (the create call has its own
+    ambiguous-failure guard), but `gift_status` must not conflate an outage
+    with "genuinely not found" — that would park a task failed purely
+    because G-Engine was unreachable, not because the create never
+    happened.
+
+    Raises:
+        GEngineUnavailableError: the supplier could not be reached at all.
     """
     try:
         orders = await client.list_gift_orders(
             search=_search_term(invite_url), date_from=since.isoformat()
         )
-    except (GEngineError, GEngineUnavailableError):
+    except GEngineError:
         return None
     for order in orders:
         if order.invite_url == invite_url and order.package_id == package_id:

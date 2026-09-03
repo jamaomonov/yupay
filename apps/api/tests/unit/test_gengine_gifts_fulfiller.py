@@ -21,6 +21,7 @@ from yupay.modules.fulfillment.suppliers.gengine_client import (
 )
 from yupay.modules.fulfillment.suppliers.gengine_gifts import (
     _DELIVERY_MESSAGE,
+    _PARK_ERROR,
     GIFT_ADOPT_WINDOW_MINUTES,
     fulfill_gift,
     gift_status,
@@ -301,6 +302,20 @@ async def test_gift_status_delivered_is_also_a_delivery() -> None:
     assert status.outcome == "succeeded"
 
 
+async def test_gift_status_a_refund_seen_on_the_very_first_poll_is_not_a_delivery() -> None:
+    """If the very first poll already shows `shipped` with `is_refunded=True`,
+    the money has already come back — report failed, not succeeded. (A
+    refund landing only after we already recorded success is the existing
+    stuck/refund manual path and unaffected here.)"""
+    order = _gift(order_id=510, status="shipped", refunded=True)
+    client = FakeGiftClient(fetched=order)
+
+    status = await gift_status(client, task=_Task(external_order_id="510"))  # type: ignore[arg-type]
+
+    assert status.outcome == "failed"
+    assert status.error == "supplier status shipped"
+
+
 async def test_gift_status_reads_app_name_from_task_metadata_when_present() -> None:
     order = _gift(order_id=509, status="shipped", package_name="Standard Edition")
     client = FakeGiftClient(fetched=order)
@@ -413,7 +428,45 @@ async def test_gift_status_parks_for_manual_review_after_the_adopt_window() -> N
     status = await gift_status(client, task=task)  # type: ignore[arg-type]
 
     assert status.outcome == "failed"
-    assert status.error == ("gift order not found at supplier after create timeout — manual review")
+    assert status.error == _PARK_ERROR
+
+
+async def test_gift_status_a_finder_outage_stays_pending_even_past_the_window() -> None:
+    """An outage during the poll-time adopt probe must never be conflated
+    with "genuinely not found" — that would park a task failed purely
+    because G-Engine was unreachable. The 60s reconcile sweep retries."""
+    client = FakeGiftClient(listed=GEngineUnavailableError("timeout"))
+    task = _Task(
+        extra_metadata={
+            "gift_search": _SEARCH_TERM,
+            "gift_package_id": _PACKAGE_ID,
+            "gift_invite_url": _INVITE_URL,
+        },
+        created_at=datetime.now(UTC) - timedelta(minutes=GIFT_ADOPT_WINDOW_MINUTES + 1),
+    )
+
+    status = await gift_status(client, task=task)  # type: ignore[arg-type]
+
+    assert status.outcome == "in_progress"
+
+
+async def test_gift_status_a_clean_refusal_from_the_finder_still_parks_after_the_window() -> None:
+    """Unlike an outage, a refusal means the supplier answered and its
+    answer was "no" — the park-for-review rule still applies."""
+    client = FakeGiftClient(listed=GEngineError("bad search"))
+    task = _Task(
+        extra_metadata={
+            "gift_search": _SEARCH_TERM,
+            "gift_package_id": _PACKAGE_ID,
+            "gift_invite_url": _INVITE_URL,
+        },
+        created_at=datetime.now(UTC) - timedelta(minutes=GIFT_ADOPT_WINDOW_MINUTES + 1),
+    )
+
+    status = await gift_status(client, task=task)  # type: ignore[arg-type]
+
+    assert status.outcome == "failed"
+    assert status.error == _PARK_ERROR
 
 
 async def test_gift_status_treats_supplier_unavailable_as_still_pending() -> None:
