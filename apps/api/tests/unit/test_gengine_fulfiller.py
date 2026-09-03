@@ -90,6 +90,10 @@ class _FakeDb:
 class _Task:
     def __init__(self, external_order_id: str | None) -> None:
         self.external_order_id = external_order_id
+        # `check_status` now reads this before the id-less early-return, to
+        # route a gift task there — real tasks always carry it (the column
+        # is NOT NULL with a `'{}'::jsonb` default).
+        self.extra_metadata: dict[str, Any] = {}
 
 
 async def test_a_fresh_order_is_in_progress_not_a_delivery() -> None:

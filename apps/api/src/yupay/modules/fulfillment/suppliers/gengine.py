@@ -48,6 +48,7 @@ from yupay.modules.fulfillment.suppliers.gengine_client import (
     GEngineShopOrder,
     GEngineUnavailableError,
 )
+from yupay.modules.fulfillment.suppliers.gengine_gifts import fulfill_gift, gift_status
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -116,7 +117,7 @@ class GEngineFulfiller(Fulfiller):
         self,
         *,
         db: AsyncSession,
-        order: Order,  # noqa: ARG002 -- the item carries everything needed
+        order: Order,
         item: OrderItem,
         idempotency_key: str,
     ) -> FulfillResult:
@@ -126,6 +127,8 @@ class GEngineFulfiller(Fulfiller):
         mapping = await _mapping_for(db, sku_id=item.sku_id)
         if mapping.kind == "voucher":
             return await self._fulfill_shop(mapping=mapping, item=item)
+        if mapping.kind == "gift":
+            return await fulfill_gift(self._client(), item=item, order_created_at=order.created_at)
 
         service_id = _int_or_fail(mapping.external_product_id, field="external_product_id")
         denomination_id = (
@@ -175,6 +178,10 @@ class GEngineFulfiller(Fulfiller):
         db: AsyncSession,  # noqa: ARG002 -- the task carries the supplier id
         task: FulfillmentTask,
     ) -> FulfillStatus:
+        if str(task.extra_metadata.get("gengine_kind") or "") == "gift":
+            # Before the id-less early-return below: an id-less gift task
+            # still has work to do (adopt an ambiguous create, or park it).
+            return await gift_status(self._client(), task=task)
         if not task.external_order_id:
             return FulfillStatus(
                 outcome="in_progress", artifact_kind=None, artifact=None, error=None

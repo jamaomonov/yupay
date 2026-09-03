@@ -119,6 +119,10 @@ _CUSTOMER_SAFE_ARTIFACT_KEYS: frozenset[str] = frozenset(
         "message",  # human-readable delivery note
         "note",  # human-readable delivery note (alt key)
         "fulfillment_data",  # the customer's own checkout input, echoed back
+        "kind",  # sub-kind of a supplier artifact, e.g. gengine gift vs top-up
+        "app_name",  # the Steam app a gift was bought for
+        "package_name",  # the Steam gift edition/package name
+        "status",  # supplier-reported delivery status, e.g. "shipped"
     }
 )
 
