@@ -91,9 +91,7 @@ async def test_admin_get_default_then_patch_persists_and_replays_idempotently(
     assert first_patch.status_code == 200, first_patch.text
     assert first_patch.json()["margin_percent"] == "12.5"
 
-    get_after_patch = await integration_client.get(
-        "/api/v1/admin/gifts/settings", headers=headers
-    )
+    get_after_patch = await integration_client.get("/api/v1/admin/gifts/settings", headers=headers)
     assert get_after_patch.json()["margin_percent"] == "12.5"
 
     row = (

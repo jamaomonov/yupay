@@ -1,0 +1,106 @@
+sequenceDiagram
+    autonumber
+    actor C as Buyer (web)
+    participant Web as Web (Next.js)
+    participant API as FastAPI (gifts / orders)
+    participant Cache as Redis (gifts:*)
+    participant GE as G-Engine (/gifts/*)
+    participant DB as Postgres
+    participant Sched as apps/scheduler (gengine_reconcile, 60s)
+
+    %% ─────────────────────────────────────────────
+    %% Phase 1: Browse the live catalog
+    %% ─────────────────────────────────────────────
+    rect rgb(240, 248, 255)
+        note over C,GE: Phase 1 — Catalog browsing (no auth, 404s while STEAM_GIFTS_ENABLED=false)
+        C->>Web: Open /store/steam-gifts
+        Web->>API: GET /gifts/catalog/hot
+        API->>Cache: gifts:hot
+        alt cache hit
+            Cache-->>API: cached items
+        else miss
+            API->>GE: GET /gifts/apps (pinned + discount scan, 5 pages)
+            GE-->>API: items
+            API->>Cache: SET gifts:hot (1h) + gifts:hot:stale (24h)
+        end
+        API-->>Web: our sell price = supplier price x (1+margin) x fx(USD->UZS)
+        C->>Web: Search / open a game
+        Web->>API: GET /gifts/catalog/{app_id}
+        API->>Cache: gifts:detail:{app_id}
+        Note over API,GE: same fresh -> upstream -> gifts:detail:{app_id}:stale<br/>fallback on a G-Engine outage (logged gifts.catalog_stale)
+        API-->>Web: packages priced per offered zone (CIS/RU/KZ/UA)
+        C->>Web: Pick edition (package) + region, paste Steam invite link
+    end
+
+    %% ─────────────────────────────────────────────
+    %% Phase 2: Checkout — server re-prices, never trusts the client
+    %% ─────────────────────────────────────────────
+    rect rgb(255, 255, 240)
+        note over C,DB: Phase 2 — Checkout (steam-gift SKU, Stars-style dynamic pricing)
+        C->>Web: Confirm purchase
+        Web->>API: POST /orders {sku: steam-gift, fulfillment_data:<br/>{app_id, package_id, region, invite_url}, amount_usd: quoted}
+        API->>API: is_gift_sku(sku) -> gifts.checkout.price_gift_line
+        API->>Cache: gifts:detail:{app_id} (15-min cache, same as browsing)
+        API->>API: expected = sell_price_usd(zone_price_usd(pkg, region), margin)
+        alt |quoted - expected| > 2%
+            API-->>Web: 422 {extra.expected_amount_usd}
+            Web->>C: re-render at the fresh price, ask to confirm again
+        else within tolerance
+            API->>DB: INSERT orders + order_items(fulfillment_data enriched:<br/>app_name, package_name, supplier_price_usd)
+            API->>API: risk_liquid_brands hold check (steam-gifts is liquid)
+            API-->>Web: 201 {order_id, payment_url}
+        end
+        Web->>C: redirect to acquirer (Click/Payme/Uzum/USDT)
+        C->>API: pays; webhook settles the order (unchanged payments flow)
+        API->>DB: order.status = paid
+    end
+
+    %% ─────────────────────────────────────────────
+    %% Phase 3: Fulfilment — adopt-don't-rebuy, success at "shipped"
+    %% ─────────────────────────────────────────────
+    rect rgb(240, 255, 240)
+        note over API,GE: Phase 3 — fulfillment_tasks row, kind='gift' mapping routes here
+        API->>GE: probe: GET /gifts/orders?search=<invite tail>&date_from=order.created_at
+        alt an order for this exact line already exists (retry of this task)
+            GE-->>API: found -> adopt its id, skip create
+        else genuinely new
+            API->>GE: POST /gifts/orders {invite_url, package_id, region}
+            alt ambiguous failure (timeout / 5xx)
+                GE--xAPI: no response
+                API->>DB: task parked in_progress, no external_order_id,<br/>search metadata saved (gift_search, gift_package_id, gift_invite_url)
+                Note over API: next poll/retry adopts via the probe above —<br/>never a second purchase for the same line
+            else clean create
+                GE-->>API: GiftOrder {id, status=accepted}
+                API->>DB: task.external_order_id = id
+            end
+        end
+
+        loop every fulfilment poll, and every 60s via gengine_reconcile
+            Sched->>API: process_webhook_update(task_id) for in_progress gengine tasks
+            API->>GE: GET /gifts/orders/{id}
+            GE-->>API: {status, is_refunded}
+            alt is_refunded or status in {canceled, refunded}
+                API->>DB: task.status = failed (checked BEFORE the done check)
+            else status in {shipped, delivered}
+                API->>DB: task.status = succeeded<br/>delivery artifact (kind="gift"): app_name, package_name, instructions
+                API->>API: order.status = delivered (customer-facing)
+            else still delivering
+                API->>DB: task stays in_progress
+            end
+        end
+    end
+
+    %% ─────────────────────────────────────────────
+    %% Phase 4: Delivery — instructions, not a code
+    %% ─────────────────────────────────────────────
+    rect rgb(255, 245, 245)
+        note over C,Web: Phase 4 — the recipient still has to accept it in Steam
+        C->>Web: Open /orders/{id}
+        Web->>API: GET /orders/{id}/deliveries
+        API-->>Web: artifact {kind: gift, app_name, package_name, message}
+        Web->>C: "Steam прислал вам подарок — примите его" card<br/>(sender is an unfamiliar bot account, this is expected)
+        opt recipient declines the gift in Steam, days later
+            GE-->>Sched: order flips to refunded (next reconcile poll)
+            Note over API: task already succeeded — handled by the existing<br/>manual stuck/refund path, not this state machine
+        end
+    end

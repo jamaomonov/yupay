@@ -110,6 +110,48 @@ boolean}`, letting the client gate a "rate your purchase" CTA/form without a
 failed POST. `guest_email` is a capability credential only — it is never
 returned in any reviews response body and never logged.
 
+## Steam gifts catalog
+
+`GET /gifts/catalog`, `GET /gifts/catalog/hot`, `GET /gifts/catalog/{app_id}`,
+`GET /gifts/catalog/{app_id}/dlc` — a live, Redis-cached proxy of G-Engine's
+`/gifts/*` catalog (~4 200 Steam games/DLC, region-priced). **No auth** —
+same posture as the rest of public catalog browsing. **No dedicated rate
+limit bucket** — the app-wide slowapi defaults apply, same as
+`catalog/routes.py`.
+
+**404 while disabled.** Every route under `/gifts/*` is gated by a single
+router-level dependency on `STEAM_GIFTS_ENABLED` — while the flag is off
+(the default) the whole surface answers `404`, not an empty list, so a
+client can't distinguish "no results" from "feature not live" by design.
+A new route added under this router inherits the guard automatically; see
+`docs/runbooks/steam-gifts.md` for the flip procedure.
+
+**Cache behaviour.** Every read goes through a `stale-while-error` Redis
+cache: a fresh key (15 min for detail/search, 1 h for the default listing
+and hot offers) is tried first, then G-Engine, then a same-shaped stale
+key that outlives the fresh one by 24 h on an upstream failure, and only
+then a `502`. A sustained run of `gifts.catalog_stale` log lines (see the
+runbook) means G-Engine has been down long enough that the storefront is
+showing day-old prices. Money on every DTO here is a `str`, not a
+`Decimal` (AGENTS.md §9); `price_uzs` is `null` whenever FX was
+unavailable for that request rather than a guessed conversion. Every
+`gifts:*` Redis key is documented row-by-row in
+`docs/architecture/cache-keys.md`.
+
+Checkout for a Steam gift is not a separate endpoint — it rides the
+normal `POST /orders`/`POST /payments/intents` pair with `sku_code:
+"steam-gift"` and a `fulfillment_data` payload of `{app_id, package_id,
+region, invite_url}` (the Telegram-Stars dynamic-SKU pattern, ADR-0054).
+The server re-derives the price from the same cache above and only
+accepts the client's quoted `amount_usd` within a ±2% tolerance band,
+refusing (`422`, `extra.expected_amount_usd`) otherwise — see
+[ADR-0066](../decisions/0066-steam-gifts-live-catalog.md) and
+`docs/product/flows/steam-gifts.md`.
+
+Admin: `GET`/`PATCH /admin/gifts/settings` (margin percent, region
+config) — `PATCH` requires `Idempotency-Key`; a repeated key replays the
+first response.
+
 ## Guest delivered-code access (magic link)
 
 `GET /orders/{id}/deliveries` returns the order's delivered voucher/gift codes.

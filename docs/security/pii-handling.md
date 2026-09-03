@@ -33,6 +33,28 @@ supplier (`source`) and internal/external ids (`external_id`,
 `amount_units`) are never exposed to the customer — admins see the full row via
 `/admin/fulfillment`.
 
+**Steam profile URL / steamid64 (gift delivery).** A Steam gift order's
+`order_items.fulfillment_data.invite_url` carries the buyer-entered Steam
+profile/friend link (`steamcommunity.com/profiles/{steamid64}`,
+`.../id/{vanity}`, or an `s.team/p/{path}` short link) — the address the
+gift is actually sent to. It is stored there and echoed into G-Engine's
+own order metadata (the supplier we hand it to in order to deliver the
+gift), never anywhere else. Treated the same as `g2b`'s `player_id`
+(`fulfillment/suppliers/g2b.py`): **never logged in plaintext.**
+`fulfillment/suppliers/gengine_gifts.py`'s log calls pass only
+`order_id`/`error`/task ids — `invite_url` is never one of the logged
+keys, by construction, not by redactor coverage (`invite_url` is not on
+the `REDACTED_KEYS` blocklist in `core/logging.py`, so a future log call
+that added it as a bare kwarg would **not** be automatically redacted —
+new code touching this module must keep it off log lines the same
+disciplined way `g2b.py` keeps `player_id` off them, or add it to the
+blocklist first). It is shown to the buyer themselves (they typed it) and
+to admins on the admin order view; it is not exposed on the
+customer-facing order response beyond what the buyer already entered, and
+never appears in the delivery artifact the customer reads (the artifact
+carries only `app_name`/`package_name`/a fixed instruction message — see
+`_CUSTOMER_SAFE_ARTIFACT_KEYS` above).
+
 **Ban reason.** `users.ban_reason` is admin-authored free text about a customer.
 It is returned only on admin routes, never to the customer or to any public
 surface, and is cleared when the suspension is lifted (ADR-0045).

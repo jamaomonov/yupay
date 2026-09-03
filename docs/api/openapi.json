@@ -5418,6 +5418,369 @@
         "title": "GameImportOut",
         "type": "object"
       },
+      "GiftAppDetailOut": {
+        "description": "Full app card: everything on :class:`GiftAppOut`, plus packages/DLC.",
+        "properties": {
+          "app_id": {
+            "title": "App Id",
+            "type": "integer"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "discount_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discount Percent"
+          },
+          "dlc_count": {
+            "title": "Dlc Count",
+            "type": "integer"
+          },
+          "dlc_total": {
+            "title": "Dlc Total",
+            "type": "integer"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "packages": {
+            "items": {
+              "$ref": "#/components/schemas/GiftPackageOut"
+            },
+            "title": "Packages",
+            "type": "array"
+          },
+          "packages_count": {
+            "title": "Packages Count",
+            "type": "integer"
+          },
+          "price_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Usd"
+          },
+          "price_uzs": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Uzs"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "zone_default": {
+            "title": "Zone Default",
+            "type": "string"
+          },
+          "zones": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Zones",
+            "type": "array"
+          }
+        },
+        "required": [
+          "app_id",
+          "name",
+          "image",
+          "type",
+          "price_usd",
+          "price_uzs",
+          "discount_percent",
+          "packages_count",
+          "dlc_count",
+          "description",
+          "packages",
+          "dlc_total",
+          "zones",
+          "zone_default"
+        ],
+        "title": "GiftAppDetailOut",
+        "type": "object"
+      },
+      "GiftAppOut": {
+        "description": "One catalog row \u2014 a listing item, a DLC entry, or the top of a detail\npayload; all three share this shape upstream.",
+        "properties": {
+          "app_id": {
+            "title": "App Id",
+            "type": "integer"
+          },
+          "discount_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discount Percent"
+          },
+          "dlc_count": {
+            "title": "Dlc Count",
+            "type": "integer"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "packages_count": {
+            "title": "Packages Count",
+            "type": "integer"
+          },
+          "price_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Usd"
+          },
+          "price_uzs": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Uzs"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "app_id",
+          "name",
+          "image",
+          "type",
+          "price_usd",
+          "price_uzs",
+          "discount_percent",
+          "packages_count",
+          "dlc_count"
+        ],
+        "title": "GiftAppOut",
+        "type": "object"
+      },
+      "GiftPackageOut": {
+        "description": "One purchasable edition of a gift app, priced per offered zone.",
+        "properties": {
+          "discount_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discount Percent"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "prices": {
+            "items": {
+              "$ref": "#/components/schemas/GiftZonePriceOut"
+            },
+            "title": "Prices",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "image",
+          "discount_percent",
+          "prices"
+        ],
+        "title": "GiftPackageOut",
+        "type": "object"
+      },
+      "GiftZonePriceOut": {
+        "description": "Our sell price for one package, in one offered zone.",
+        "properties": {
+          "price_usd": {
+            "title": "Price Usd",
+            "type": "string"
+          },
+          "price_uzs": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Uzs"
+          },
+          "zone": {
+            "title": "Zone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "zone",
+          "price_usd",
+          "price_uzs"
+        ],
+        "title": "GiftZonePriceOut",
+        "type": "object"
+      },
+      "GiftsAdminSettingsOut": {
+        "description": "Current Steam Gifts settings, as shown on the admin settings page.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "margin_percent": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Margin Percent",
+            "type": "string"
+          },
+          "region_default": {
+            "title": "Region Default",
+            "type": "string"
+          },
+          "regions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Regions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "margin_percent",
+          "enabled",
+          "region_default",
+          "regions"
+        ],
+        "title": "GiftsAdminSettingsOut",
+        "type": "object"
+      },
+      "GiftsListOut": {
+        "description": "A page of :class:`GiftAppOut` rows plus the upstream total.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GiftAppOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "GiftsListOut",
+        "type": "object"
+      },
+      "GiftsSettingsIn": {
+        "description": "Admin edit of the margin percent.\n\nBounded at the edge as well as in the column (``Numeric(10, 4)``,\n``CHECK margin_percent >= 0``): 0-100 is the only range that makes sense\nfor a percentage margin, and an unbounded ``Decimal`` would otherwise\nreach Postgres as a 500 rather than a 422 \u2014 same reasoning as\n``fx.schemas.RateSettingIn.manual_rate``.",
+        "properties": {
+          "margin_percent": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,6}|(?=[\\d.]{1,11}0*$)\\d{0,6}\\.\\d{0,4}0*$)",
+                "type": "string"
+              }
+            ],
+            "title": "Margin Percent"
+          }
+        },
+        "required": [
+          "margin_percent"
+        ],
+        "title": "GiftsSettingsIn",
+        "type": "object"
+      },
       "GoogleLoginIn": {
         "additionalProperties": false,
         "description": "The access token from the Google OAuth token popup.",
@@ -6339,7 +6702,7 @@
         "type": "object"
       },
       "OrderItemAdminOut": {
-        "description": "Admin view of an order line \u2014 adds the internal supplier order id.",
+        "description": "Admin view of an order line \u2014 adds the internal supplier order id.\n\nOverrides :meth:`OrderItemOut._serialize_fulfillment_data` with a plain\npassthrough: unlike the customer-facing response, the admin view is\nallowed to show ``supplier_price_usd`` and any other cost data.",
         "properties": {
           "display": {
             "anyOf": [
@@ -11076,7 +11439,8 @@
           "kind": {
             "enum": [
               "voucher",
-              "game"
+              "game",
+              "gift"
             ],
             "title": "Kind",
             "type": "string"
@@ -11154,7 +11518,8 @@
           "kind": {
             "enum": [
               "voucher",
-              "game"
+              "game",
+              "gift"
             ],
             "title": "Kind",
             "type": "string"
@@ -17028,6 +17393,128 @@
         "summary": "Force-refetch provider rates (does not overwrite a manual toggle)",
         "tags": [
           "admin:fx"
+        ]
+      }
+    },
+    "/api/v1/admin/gifts/settings": {
+      "get": {
+        "operationId": "admin_get_settings_api_v1_admin_gifts_settings_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GiftsAdminSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Current Steam Gifts margin and region configuration",
+        "tags": [
+          "admin:gifts"
+        ]
+      },
+      "patch": {
+        "operationId": "admin_set_settings_api_v1_admin_gifts_settings_patch",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GiftsSettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GiftsAdminSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set the Steam Gifts margin percent",
+        "tags": [
+          "admin:gifts"
         ]
       }
     },
@@ -23343,6 +23830,220 @@
         "summary": "Return USD-base rates for the supported quote currencies",
         "tags": [
           "fx"
+        ]
+      }
+    },
+    "/api/v1/gifts/catalog": {
+      "get": {
+        "description": "Paged catalog listing, our sell price applied per row.",
+        "operationId": "get_catalog_api_v1_gifts_catalog_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 24,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GiftsListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Steam gifts catalog listing",
+        "tags": [
+          "gifts"
+        ]
+      }
+    },
+    "/api/v1/gifts/catalog/hot": {
+      "get": {
+        "description": "Up to 12 hot-offer rows, priced the same way as the listing.",
+        "operationId": "get_hot_api_v1_gifts_catalog_hot_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GiftsListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Curated hot offers (pinned + best current discounts)",
+        "tags": [
+          "gifts"
+        ]
+      }
+    },
+    "/api/v1/gifts/catalog/{app_id}": {
+      "get": {
+        "description": "Full app card. ``zones`` is narrowed to the offered zones that\nactually have a price on at least one package.",
+        "operationId": "get_catalog_app_api_v1_gifts_catalog__app_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "app_id",
+            "required": true,
+            "schema": {
+              "title": "App Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GiftAppDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Gift app detail: packages priced per offered zone",
+        "tags": [
+          "gifts"
+        ]
+      }
+    },
+    "/api/v1/gifts/catalog/{app_id}/dlc": {
+      "get": {
+        "description": "Filter/slice the cached detail's ``dlc[]`` in-process.\n\nNever the flat catalog listing \u2014 a DLC id does not resolve through\n``GET /gifts/catalog``, only through its parent app's detail payload.",
+        "operationId": "get_catalog_app_dlc_api_v1_gifts_catalog__app_id__dlc_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "app_id",
+            "required": true,
+            "schema": {
+              "title": "App Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 24,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GiftsListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "An app's DLC list, filtered and paged server-side",
+        "tags": [
+          "gifts"
         ]
       }
     },
