@@ -204,7 +204,7 @@ Uzum API — like Payme, the checkout link is an **open-service deep link**
 built entirely client-side:
 
 ```
-https://www.uzumbank.uz/open-service?serviceId=<uzum_service_id>&order_id=<order.id>&amount=<amount_tiyin>[&redirectUrl=<return_url>]
+https://uzumbank.uz/open-service?serviceId=<uzum_service_id>&orderId=<order.id>[&redirectUrl=<return_url>]
 ```
 
 `redirectUrl` is omitted entirely when no `return_url` is given. The gateway
@@ -226,14 +226,14 @@ therefore always raises `PaymentGatewayError`. See
 
 ## Config (`core/config.py`)
 
-| Setting                 | Default                                  | Notes                                                                  |
-| ----------------------- | ---------------------------------------- | ---------------------------------------------------------------------- |
-| `uzum_service_id`       | `None`                                   | Empty/blank → gateway `available=False`, method hidden in the miniapp. |
-| `uzum_login`            | `""`                                     | Production/cabinet Basic-auth username.                                |
-| `uzum_password`         | `""`                                     | Production/cabinet Basic-auth password.                                |
-| `uzum_test_login`       | `""`                                     | Sandbox Basic-auth username.                                           |
-| `uzum_test_password`    | `""`                                     | Sandbox Basic-auth password.                                           |
-| `uzum_open_service_url` | `"https://www.uzumbank.uz/open-service"` | The open-service checkout host.                                        |
+| Setting                 | Default                              | Notes                                                                  |
+| ----------------------- | ------------------------------------ | ---------------------------------------------------------------------- |
+| `uzum_service_id`       | `None`                               | Empty/blank → gateway `available=False`, method hidden in the miniapp. |
+| `uzum_login`            | `""`                                 | Production/cabinet Basic-auth username.                                |
+| `uzum_password`         | `""`                                 | Production/cabinet Basic-auth password.                                |
+| `uzum_test_login`       | `""`                                 | Sandbox Basic-auth username.                                           |
+| `uzum_test_password`    | `""`                                 | Sandbox Basic-auth password.                                           |
+| `uzum_open_service_url` | `"https://uzumbank.uz/open-service"` | The open-service checkout host.                                        |
 
 `uzum_password`/`uzum_test_password` are in the structured-log redactor
 (`core/logging.py`) — never logged. All five settings are also present in
