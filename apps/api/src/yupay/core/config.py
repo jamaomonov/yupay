@@ -610,6 +610,19 @@ class Settings(BaseSettings):
     gengine_base_url: str = Field(default="https://api.g-engine.net/v2.1")
     gengine_request_timeout_seconds: float = Field(default=20.0)
 
+    # --- Steam Gifts ---
+    # Region-priced Steam gift packages, fulfilled through the G-Engine gifts
+    # endpoints (see ``integrations.adapters.gengine``). ``steam_gifts_enabled``
+    # is the feature flag the public/miniapp routers (Task 3) gate on;
+    # ``steam_gifts_margin_percent`` only seeds ``steam_gift_settings`` row 1
+    # on first read — after that, the DB (and its Redis cache) is the source of
+    # truth and this env value is never consulted again. See
+    # ``yupay.modules.gifts.settings.load_margin_percent``.
+    steam_gifts_enabled: bool = Field(default=False)
+    steam_gifts_margin_percent: Decimal = Field(default=Decimal("10"))
+    steam_gifts_region_default: str = Field(default="CIS")
+    steam_gifts_regions: str = Field(default="CIS,RU,KZ,UA")
+
     # --- acquirer: Octo (octo.uz) ---
     # Hosted-page card acquirer for the UZ market (Uzcard/Humo/Visa). Empty
     # credentials → the gateway reports ``available=False`` and disappears from

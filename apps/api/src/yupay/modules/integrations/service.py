@@ -25,7 +25,7 @@ from yupay.modules.integrations.models import SkuSupplierMapping, SupplierCatalo
 if TYPE_CHECKING:
     from yupay.modules.integrations.schemas import DenomImportIn, GameImportIn
 
-MappingKind = Literal["voucher", "game"]
+MappingKind = Literal["voucher", "game", "gift"]
 CatalogKind = Literal["voucher", "game", "game_denom"]
 
 # Locales every catalog entity carries a translation for. Typed so the import

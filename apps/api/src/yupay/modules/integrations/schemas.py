@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from yupay.modules.catalog.schemas import FormField
 
-MappingKind = Literal["voucher", "game"]
+MappingKind = Literal["voucher", "game", "gift"]
 CatalogKind = Literal["voucher", "game", "game_denom"]
 
 # Mirror catalog.admin_schemas._SLUG_PATTERN so a bad slug fails fast at import
