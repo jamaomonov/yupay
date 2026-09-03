@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.config import get_settings
 from yupay.core.errors import NotFoundError, ValidationError
-from yupay.modules.gifts.service import get_app, sell_price_usd, zone_price_usd
+from yupay.modules.gifts.service import get_app, sell_price_usd, zone_price_usd, zone_region_code
 from yupay.modules.gifts.settings import load_margin_percent, offered_zones
 
 #: SKU code identifying the Steam gift product line. Defined here (not in
@@ -155,8 +155,11 @@ async def price_gift_line(
             are normalized to ``int`` (undoing any float coercion
             ``validate_fulfillment_data`` applied), ``region`` to its
             upper-cased canonical form, and ``invite_url`` to its canonical
-            form; ``app_name``, ``package_name``, and ``supplier_price_usd``
-            are added.
+            form; ``app_name``, ``package_name``, ``supplier_price_usd``,
+            and ``region_code`` are added. ``region_code`` is the supplier's
+            2-letter wire region — G-Engine's ``POST /gifts/orders`` wants
+            this, not our customer-facing zone label — resolved from the
+            same priced entry ``supplier_price_usd`` came from.
 
     Returns:
         ``(expected_price_usd, enriched_data)``.
@@ -200,6 +203,14 @@ async def price_gift_line(
     if supplier_usd is None:
         raise ValidationError("this region has no price for the selected edition")
 
+    # Same finder as `zone_price_usd` above, so the wire region code we send
+    # G-Engine always comes from the exact price entry we just billed from.
+    # Unreachable in practice — a priced entry always carries `region` — but
+    # guarded the same way rather than assumed.
+    region_code = zone_region_code(package, region)
+    if region_code is None:
+        raise ValidationError("this region has no price for the selected edition")
+
     expected = sell_price_usd(supplier_usd, await load_margin_percent(db))
 
     if line_amount_usd is None:
@@ -212,10 +223,11 @@ async def price_gift_line(
 
     # Server-derived, overwriting anything client-sent — though
     # ``validate_fulfillment_data`` already rejected (422) any of these
-    # three keys the client tried to sneak in before this hook ever ran.
+    # four keys the client tried to sneak in before this hook ever ran.
     data["app_name"] = app["name"]
     data["package_name"] = package["name"]
     data["supplier_price_usd"] = str(supplier_usd)
+    data["region_code"] = region_code
 
     return expected, data
 

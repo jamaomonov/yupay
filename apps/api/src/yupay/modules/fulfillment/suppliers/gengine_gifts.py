@@ -78,10 +78,20 @@ async def fulfill_gift(
     missing field here means the row is corrupted, not that the supplier is
     having a bad day.
 
+    The wire ``region`` G-Engine's ``POST /gifts/orders`` actually wants is
+    the 2-letter country code carried on the package's own price entry
+    (``PackagePriceResponse.region``), not our customer-facing zone label —
+    a zone label there gets G-Engine's «Price not found». Checkout resolves
+    that code at price time and stores it as ``region_code``; this prefers
+    it, falling back to the legacy ``region`` zone value only for order
+    rows written before this resolution existed.
+
     Args:
         client: G-Engine API client.
         item: the order line being fulfilled. Its ``fulfillment_data`` must
-            carry ``invite_url``, ``package_id``, and ``region``.
+            carry ``invite_url``, ``package_id``, and ``region``; a
+            ``region_code`` (the supplier's country code, checkout-derived)
+            is preferred when present.
         order_created_at: the parent order's ``created_at``, the lower bound
             for the adopt-before-create probe.
 
@@ -101,6 +111,12 @@ async def fulfill_gift(
     package_id_raw = data.get("package_id")
     if not invite_url or not region or package_id_raw is None:
         raise FulfillerError("gift order line is missing invite_url, package_id, or region")
+    # G-Engine's wire `region` is the supplier's 2-letter country code from
+    # the package's own price entry, not our zone label (`region` above) —
+    # a zone label gets «Price not found». Checkout (Task 4-hotfix) resolves
+    # and stores that code as `region_code`; fall back to the legacy `region`
+    # zone value only for order rows written before this resolution existed.
+    wire_region = str(data.get("region_code") or data.get("region") or "")
     try:
         package_id = int(package_id_raw)
     except (TypeError, ValueError) as exc:
@@ -125,7 +141,7 @@ async def fulfill_gift(
 
     try:
         order = await client.create_gift_order(
-            invite_url=invite_url, package_id=package_id, region=region
+            invite_url=invite_url, package_id=package_id, region=wire_region
         )
     except GEngineError as exc:
         raise FulfillerError(str(exc)) from exc

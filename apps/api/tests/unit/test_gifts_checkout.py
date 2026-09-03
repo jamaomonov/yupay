@@ -42,8 +42,12 @@ _DEAD_CELLS: dict[str, Any] = {
             "id": 1,
             "name": "Standard Edition",
             "prices": [
-                {"zone": "CIS", "price": 1.00},
-                {"zone": "RU", "price": None},
+                # CIS's wire region code isn't "CIS" itself — per the
+                # 2026-09-03 manager correction, G-Engine wants the 2-letter
+                # country code from this same entry (verified live: CIS
+                # resolves to "ge" on some packages).
+                {"zone": "CIS", "price": 1.00, "region": "ge"},
+                {"zone": "RU", "price": None, "region": "ru"},
             ],
         }
     ],
@@ -320,6 +324,10 @@ async def test_happy_path_returns_expected_price_and_enriched_snapshot() -> None
     assert snapshot["package_name"] == "Standard Edition"
     assert snapshot["supplier_price_usd"] == "1.0"
     assert snapshot["invite_url"] == _VALID_INVITE
+    # The wire region G-Engine's create call needs — the country code off
+    # the *same* priced entry the price itself came from, not the "CIS"
+    # zone label the client sent.
+    assert snapshot["region_code"] == "ge"
 
 
 async def test_app_id_and_package_id_are_normalized_to_int_in_the_snapshot() -> None:

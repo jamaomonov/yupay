@@ -49,6 +49,22 @@ without checking the new zone actually prices packages G-Engine sells
 (an offered zone with no price on a given package is silently dropped from
 that game's `zones` list — see `routes.py::get_catalog_app`).
 
+**The zone is only ever our customer-facing selector — it is not the value
+sent to G-Engine.** `POST /gifts/orders`'s `region` field wants the
+2-letter country code carried on the _chosen package's own_ `prices[]`
+entry (`PackagePriceResponse.region`, lowercase — e.g. `"kz"`, `"ua"`, and
+for zone **CIS** it can be e.g. `"ge"` — verified live, and it can differ
+per package). Sending the zone label itself (`"CIS"`, `"KZ"`, …) gets
+G-Engine's «Price not found». `gifts/checkout.py::price_gift_line`
+resolves the code at checkout time — from the exact same priced entry
+`supplier_price_usd` is billed from, via `gifts/service.py`'s
+`zone_region_code` (sharing the one price-entry finder with
+`zone_price_usd`, so the two can never disagree) — and stores it on the
+order line as `fulfillment_data.region_code`. `gengine_gifts.py::fulfill_gift`
+sends `region_code` when present, falling back to the legacy `region` zone
+value only for order rows written before this resolution existed
+(2026-09-03 hotfix).
+
 **"Api restart only" depends on the product's `region` field staying a
 plain `text` field with no options.** The seed
 (`scripts/seed/2026-09-03_steam_gifts.py`) deliberately declares `region`

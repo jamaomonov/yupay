@@ -65,6 +65,11 @@ _REQUIRED_FIELDS: list[dict[str, Any]] = [
     {"key": "invite_url", "type": "text", "required": True},
 ]
 
+#: ``region`` here is the supplier's own 2-letter wire code, not the "CIS"
+#: zone label the client sends — per the 2026-09-03 manager correction,
+#: G-Engine's `POST /gifts/orders` wants the country code off this same
+#: price entry (verified live: CIS resolves to "ge" on some packages), and
+#: rejects a zone label with «Price not found».
 _DEAD_CELLS_DETAIL: dict[str, Any] = {
     "id": 588650,
     "name": "Dead Cells",
@@ -74,7 +79,7 @@ _DEAD_CELLS_DETAIL: dict[str, Any] = {
             "id": 1,
             "name": "Standard Edition",
             "prices": [
-                {"region": "CIS", "currency": "USD", "price": 1.00, "zone": "CIS"},
+                {"region": "ge", "currency": "USD", "price": 1.00, "zone": "CIS"},
             ],
         }
     ],
@@ -249,6 +254,9 @@ async def test_happy_path_bills_the_server_price_and_enriches_the_snapshot(
     assert item.fulfillment_data["invite_url"] == _INVITE_URL
     assert item.fulfillment_data["app_name"] == "Dead Cells"
     assert item.fulfillment_data["package_name"] == "Standard Edition"
+    # The wire region G-Engine's create call needs — the country code off
+    # the same priced entry, not the "CIS" zone label the client submitted.
+    assert item.fulfillment_data["region_code"] == "ge"
 
 
 @respx.mock

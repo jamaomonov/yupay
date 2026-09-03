@@ -1,12 +1,14 @@
 """Unit tests for ``yupay.modules.gifts.service``.
 
-Covers the pure pricing math (``sell_price_usd`` / ``zone_price_usd``), the
-shared ``_cached_json`` fresh/miss/stale/error-with-no-stale cache helper
-(fake Redis, no real network), and ``hot_offers``'s filter-then-sort. No
-upstream HTTP is exercised here — the G-Engine client itself is covered by
-``tests/contract/test_gengine_client.py``; this module stubs ``_client()``
-directly. Route-level behaviour (margin, zones, FX) is covered by
-``tests/integration/test_gifts_catalog_routes.py``.
+Covers the pure pricing math (``sell_price_usd`` / ``zone_price_usd`` /
+``zone_region_code``) — the latter two share one price-entry finder, so the
+billed price and the supplier's wire region code can never come from
+different entries — the shared ``_cached_json`` fresh/miss/stale/
+error-with-no-stale cache helper (fake Redis, no real network), and
+``hot_offers``'s filter-then-sort. No upstream HTTP is exercised here — the
+G-Engine client itself is covered by ``tests/contract/test_gengine_client.py``;
+this module stubs ``_client()`` directly. Route-level behaviour (margin,
+zones, FX) is covered by ``tests/integration/test_gifts_catalog_routes.py``.
 """
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ from yupay.modules.gifts.service import (
     hot_offers,
     sell_price_usd,
     zone_price_usd,
+    zone_region_code,
 )
 
 
@@ -76,6 +79,48 @@ def test_zone_price_usd_returns_none_when_zone_is_absent() -> None:
 
 def test_zone_price_usd_handles_no_prices_key() -> None:
     assert zone_price_usd({}, "CIS") is None
+
+
+# ---------- zone_region_code ----------
+
+
+def test_zone_region_code_returns_the_code_for_a_priced_zone() -> None:
+    package = {
+        "prices": [
+            {"region": "ru", "currency": "RUB", "price": 99.0, "zone": "RU"},
+            {"region": "ge", "currency": "USD", "price": 1.02, "zone": "CIS"},
+        ]
+    }
+    assert zone_region_code(package, "CIS") == "ge"
+
+
+def test_zone_region_code_returns_none_for_a_null_price() -> None:
+    package = {"prices": [{"region": "ge", "currency": "USD", "price": None, "zone": "CIS"}]}
+    assert zone_region_code(package, "CIS") is None
+
+
+def test_zone_region_code_returns_none_when_zone_is_absent() -> None:
+    package = {"prices": [{"region": "ru", "currency": "RUB", "price": 99.0, "zone": "RU"}]}
+    assert zone_region_code(package, "CIS") is None
+
+
+def test_zone_region_code_handles_no_prices_key() -> None:
+    assert zone_region_code({}, "CIS") is None
+
+
+def test_zone_price_usd_and_zone_region_code_share_the_same_priced_entry() -> None:
+    """A package can carry two entries for the same zone — one with a null
+    price, one live. Both finders must skip the null-price entry and agree
+    on the live one, so the billed price and the wire region code can never
+    come from two different entries."""
+    package = {
+        "prices": [
+            {"region": "kz", "currency": "USD", "price": None, "zone": "CIS"},
+            {"region": "ge", "currency": "USD", "price": 1.02, "zone": "CIS"},
+        ]
+    }
+    assert zone_price_usd(package, "CIS") == Decimal("1.02")
+    assert zone_region_code(package, "CIS") == "ge"
 
 
 # ---------- _cached_json ----------

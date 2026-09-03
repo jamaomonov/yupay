@@ -2,10 +2,14 @@
 
 Everything here reads through :func:`_cached_json` — fresh Redis entry, then
 upstream, then a stale twin on upstream failure, so a G-Engine blip or a cold
-cache never turns into a 502 for a browsing customer. The two pricing helpers
-(:func:`sell_price_usd`, :func:`zone_price_usd`) are pure and margin-agnostic
-of any request context; ``routes.py`` supplies the margin, the offered
-zones, and the FX rate per request and maps raw upstream dicts to DTOs.
+cache never turns into a 502 for a browsing customer. The pricing helpers
+(:func:`sell_price_usd`, :func:`zone_price_usd`, :func:`zone_region_code`)
+are pure and margin-agnostic of any request context; ``routes.py`` supplies
+the margin, the offered zones, and the FX rate per request and maps raw
+upstream dicts to DTOs. :func:`zone_price_usd` and :func:`zone_region_code`
+both derive from the single :func:`_zone_price_entry` finder, so the price
+we sell at and the wire ``region`` code we buy at always come from the same
+upstream entry.
 
 Deliberately does not import the fulfiller (``fulfillment.suppliers.gengine``
 or a wrapper around it): that would pull the whole ``fulfillment`` package
@@ -80,6 +84,27 @@ def sell_price_usd(supplier_usd: Decimal, margin_percent: Decimal) -> Decimal:
     )
 
 
+def _zone_price_entry(package: dict[str, Any], zone: str) -> dict[str, Any] | None:
+    """The ``package["prices"]`` entry for ``zone`` with a non-null price, if any.
+
+    The single finder behind both :func:`zone_price_usd` and
+    :func:`zone_region_code` — the price we sell at and the wire ``region``
+    we buy at must always come from the same upstream entry, never two
+    independently-matched ones. ``None`` covers both cases a caller must
+    treat the same way: the zone has no entry in ``package["prices"]`` at
+    all, and the zone has an entry whose ``price`` is null upstream. Either
+    way there is nothing to sell.
+    """
+    entries: list[dict[str, Any]] = package.get("prices") or []
+    for entry in entries:
+        if entry.get("zone") != zone:
+            continue
+        if entry.get("price") is None:
+            continue
+        return entry
+    return None
+
+
 def zone_price_usd(package: dict[str, Any], zone: str) -> Decimal | None:
     """The wholesale USD price for ``zone`` on ``package``, or ``None``.
 
@@ -87,12 +112,27 @@ def zone_price_usd(package: dict[str, Any], zone: str) -> Decimal | None:
     has no entry in ``package["prices"]`` at all, and the zone has an entry
     whose ``price`` is null upstream. Either way there is nothing to sell.
     """
-    for entry in package.get("prices") or []:
-        if entry.get("zone") != zone:
-            continue
-        price = entry.get("price")
-        return None if price is None else Decimal(str(price))
-    return None
+    entry = _zone_price_entry(package, zone)
+    return None if entry is None else Decimal(str(entry["price"]))
+
+
+def zone_region_code(package: dict[str, Any], zone: str) -> str | None:
+    """The supplier's wire ``region`` code for ``zone`` on ``package``, or ``None``.
+
+    Our customer-facing ``zone`` (e.g. ``"CIS"``, ``"KZ"``) is not what
+    G-Engine's ``POST /gifts/orders`` accepts as ``region`` — that endpoint
+    wants the 2-letter country code carried on the *same* priced entry
+    (``PackagePriceResponse.region``, lowercase, e.g. ``"kz"``, ``"ua"``,
+    and for zone CIS it can be e.g. ``"ge"`` — verified live, and it can
+    differ per package). Sending the zone label itself gets G-Engine's
+    «Price not found». Derived from :func:`_zone_price_entry` so the price
+    and the code can never come from two different entries.
+
+    ``None`` when the zone has no priced entry on this package — the same
+    condition under which :func:`zone_price_usd` also returns ``None``.
+    """
+    entry = _zone_price_entry(package, zone)
+    return None if entry is None else str(entry["region"])
 
 
 async def _cached_json(key: str, ttl: int, fetch: Callable[[], Awaitable[Any]]) -> Any:
@@ -234,4 +274,5 @@ __all__ = [
     "list_apps",
     "sell_price_usd",
     "zone_price_usd",
+    "zone_region_code",
 ]

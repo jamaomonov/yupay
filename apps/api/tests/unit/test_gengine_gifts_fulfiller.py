@@ -74,9 +74,11 @@ class FakeGiftClient:
         self.create_calls = 0
         self.get_calls = 0
         self.list_calls = 0
+        self.last_create_kwargs: dict[str, Any] | None = None
 
-    async def create_gift_order(self, **_kw: Any) -> GEngineGiftOrder:
+    async def create_gift_order(self, **kw: Any) -> GEngineGiftOrder:
         self.create_calls += 1
+        self.last_create_kwargs = kw
         if isinstance(self._created, Exception):
             raise self._created
         return self._created
@@ -147,6 +149,39 @@ async def test_a_fresh_line_creates_a_gift_order_in_progress() -> None:
         "gift_invite_url": _INVITE_URL,
         "gengine_status": "processing",
     }
+
+
+async def test_create_prefers_the_checkout_derived_country_code_over_the_zone() -> None:
+    """G-Engine's `POST /gifts/orders` wants the 2-letter country code off
+    the package's own price entry, not our "RU"/"CIS" zone label — a zone
+    label there gets G-Engine's «Price not found». Checkout (hotfix)
+    resolves and stores that code as `region_code`; it must win over the
+    legacy `region` zone value whenever both are present."""
+    client = FakeGiftClient(created=_gift(order_id=501, status="processing"))
+
+    await fulfill_gift(
+        client,  # type: ignore[arg-type]
+        item=_item(region_code="ge"),  # type: ignore[arg-type]
+        order_created_at=datetime.now(UTC),  # type: ignore[arg-type]
+    )
+
+    assert client.last_create_kwargs is not None
+    assert client.last_create_kwargs["region"] == "ge"
+
+
+async def test_create_falls_back_to_the_legacy_zone_when_region_code_is_absent() -> None:
+    """Pre-hotfix order rows never got a `region_code` written — those must
+    still fulfil, using the old zone value exactly as before."""
+    client = FakeGiftClient(created=_gift(order_id=501, status="processing"))
+
+    await fulfill_gift(
+        client,  # type: ignore[arg-type]
+        item=_item(),  # type: ignore[arg-type]
+        order_created_at=datetime.now(UTC),  # type: ignore[arg-type]
+    )
+
+    assert client.last_create_kwargs is not None
+    assert client.last_create_kwargs["region"] == "RU"
 
 
 async def test_an_existing_order_is_adopted_instead_of_bought_twice() -> None:
