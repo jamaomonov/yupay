@@ -3,12 +3,23 @@
 ``admin_router`` is the margin/config surface (Task 2). ``router`` is the
 public catalog-browsing surface added in Task 3: live listing, hot offers,
 app detail, and per-app DLC, all proxied from G-Engine through a
-stale-while-error Redis cache. Checkout routes land in a later task.
+stale-while-error Redis cache. ``is_gift_sku``, ``parse_invite_url``, and
+``price_gift_line`` (Task 4) are the checkout hook ``orders/service.py``
+calls to re-price a gift line server-side; ``STEAM_GIFT_SKU_CODE`` lives in
+``checkout.py`` and is re-exported here rather than the other way around,
+since this module already depends on ``checkout`` and the reverse would be
+a cycle.
 """
 
 from __future__ import annotations
 
 from yupay.modules.gifts.admin import admin_router
+from yupay.modules.gifts.checkout import (
+    STEAM_GIFT_SKU_CODE,
+    is_gift_sku,
+    parse_invite_url,
+    price_gift_line,
+)
 from yupay.modules.gifts.models import SteamGiftSettings
 from yupay.modules.gifts.routes import router
 from yupay.modules.gifts.schemas import (
@@ -28,11 +39,6 @@ from yupay.modules.gifts.settings import (
     save_margin_percent,
 )
 
-#: SKU code identifying the Steam gift product line, mirroring how other
-#: single-SKU features (e.g. Telegram Stars) key off one well-known code
-#: rather than a catalog flag.
-STEAM_GIFT_SKU_CODE = "steam-gift"
-
 __all__ = [
     "STEAM_GIFT_SKU_CODE",
     "GiftAppDetailOut",
@@ -45,8 +51,11 @@ __all__ = [
     "SteamGiftSettings",
     "admin_router",
     "default_zone",
+    "is_gift_sku",
     "load_margin_percent",
     "offered_zones",
+    "parse_invite_url",
+    "price_gift_line",
     "publish_margin",
     "router",
     "save_margin_percent",

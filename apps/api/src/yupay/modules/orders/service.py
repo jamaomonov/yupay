@@ -33,6 +33,7 @@ from yupay.modules.affiliate import discount as affiliate_discount
 from yupay.modules.catalog.models import Brand, Product, Sku
 from yupay.modules.catalog.unit_sku import assert_qty_allowed, is_unit_sku
 from yupay.modules.fx.models import FxSnapshot
+from yupay.modules.gifts import checkout as gifts_checkout
 from yupay.modules.orders.models import Order, OrderEvent, OrderItem
 from yupay.modules.orders.schemas import OrderCreate, OrderItemDisplay, OrderItemIn
 from yupay.modules.orders.scope import IS_SALE
@@ -720,6 +721,10 @@ async def create_order(
         product: Product = sku.product
         cleaned = validate_fulfillment_data(product=product, data=line.fulfillment_data)
         unit_price_usd = _resolve_line_unit_price(sku, line, currency)
+        if gifts_checkout.is_gift_sku(sku):
+            unit_price_usd, cleaned = await gifts_checkout.price_gift_line(
+                db, line_amount_usd=line.amount_usd, data=cleaned
+            )
 
         # No supplier-balance preflight: a paid order is never refused for the
         # supplier being short. If Waxpeer can't fund the top-up at fulfilment
