@@ -68,6 +68,18 @@ it("keeps save disabled until the margin value changes", async () => {
   expect(saveBtn).toBeEnabled();
 });
 
+it("keeps save disabled and shows a validation error for an out-of-range margin", async () => {
+  renderPage();
+
+  const input = await screen.findByDisplayValue("10.0000");
+  const saveBtn = screen.getByRole("button", { name: "Сохранить" });
+
+  fireEvent.change(input, { target: { value: "150" } });
+
+  expect(saveBtn).toBeDisabled();
+  expect(screen.getByText("Введите число от 0 до 100.")).toBeInTheDocument();
+});
+
 it("saves the typed margin with an Idempotency-Key header", async () => {
   mockedApiPatch.mockResolvedValue({ ...SETTINGS, margin_percent: "12.5" });
   renderPage();
@@ -80,7 +92,7 @@ it("saves the typed margin with an Idempotency-Key header", async () => {
     expect(mockedApiPatch).toHaveBeenCalledWith(
       "/api/v1/admin/gifts/settings",
       { margin_percent: "12.5" },
-      expect.objectContaining({ "Idempotency-Key": expect.any(String) as string }),
+      expect.objectContaining({ "Idempotency-Key": expect.any(String) }),
     );
   });
 });
