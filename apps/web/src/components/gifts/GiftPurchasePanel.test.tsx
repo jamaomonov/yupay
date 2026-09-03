@@ -1,23 +1,29 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { GiftPurchasePanel } from "./GiftPurchasePanel";
 
+import type { Me } from "@/lib/auth";
 import type * as GiftCheckoutModule from "@/lib/gift-checkout";
 import type { GiftAppDetail, GiftPackage } from "@/lib/gifts";
 
+import { ApiError, clearTokens, setTokens } from "@/lib/client";
 import { buyGift, GiftPriceChangedError } from "@/lib/gift-checkout";
 import { countryName } from "@/lib/regions";
 import { formatUzs } from "@/lib/seo";
+import { useLoginModal } from "@/store/useLoginModal";
 
 /**
  * The Steam gift purchase panel: edition/region pickers re-price from the
  * detail payload already on the page (no round trip just to switch zones),
  * a client-side invite-link gate blocks submit before it ever reaches
- * `lib/gift-checkout.ts`, and a price-drift 422 (surfaced as
- * `GiftPriceChangedError`) refreshes the page instead of retrying blind.
+ * `lib/gift-checkout.ts`, a price-drift 422 (surfaced as
+ * `GiftPriceChangedError`) refreshes the page instead of retrying blind, and
+ * a "pay from balance" tile mirrors `PurchasePanel`'s (ready/short/guest
+ * states, the reselect-effect guard, a surfaced 409 detail).
  */
 
 vi.mock("next-intl", () => ({
@@ -31,17 +37,18 @@ vi.mock("next-intl", () => ({
     ),
 }));
 
-vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ user: null }),
-}));
-
 // `vi.mock` factories are hoisted above the file's own top-level `const`s, so
 // the mock functions they close over must be created through `vi.hoisted`
 // rather than declared as plain module-level `const`s.
-const { pushMock, refreshMock, toastInfoMock } = vi.hoisted(() => ({
+const { pushMock, refreshMock, toastInfoMock, useAuthMock } = vi.hoisted(() => ({
   pushMock: vi.fn(),
   refreshMock: vi.fn(),
   toastInfoMock: vi.fn(),
+  useAuthMock: vi.fn(),
+}));
+
+vi.mock("@/lib/auth", () => ({
+  useAuth: useAuthMock,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -70,13 +77,77 @@ function mockProvidersResponse(): void {
   );
 }
 
+/**
+ * `fetch` stub for the wallet-pay tests: routes `/wallet` to a balance
+ * response (mirroring `apiFetch`'s `{ ok, status, json }` shape) and
+ * everything else to the raw providers response `GiftPurchasePanel`'s own
+ * `fetch` call reads directly. Defaults every provider (including `wallet`)
+ * to `active`; pass `providers` to simulate admin maintenance/disable.
+ */
+function mockWallet(
+  balance: string | null,
+  providers: { slug: string; status: "active" | "maintenance" }[] = [
+    { slug: "click", status: "active" },
+    { slug: "wallet", status: "active" },
+  ],
+): void {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/wallet")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              balances:
+                balance === null
+                  ? []
+                  : [{ account_id: "acc-1", kind: "user_wallet", currency: "UZS", balance }],
+            }),
+        });
+      }
+      return Promise.resolve({ json: () => Promise.resolve({ providers }) });
+    }),
+  );
+}
+
+function makeUser(overrides: Partial<Me> = {}): Me {
+  return {
+    id: "user-1",
+    email: "user@example.com",
+    delivery_email: null,
+    locale: "ru",
+    display_currency: "UZS",
+    display_name: "User",
+    photo_url: null,
+    roles: [],
+    created_at: "2026-01-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
+/** The panel reads the wallet balance through react-query, so every render
+ *  needs a client. Retries off so a mocked failure fails once instead of
+ *  stalling the test. */
+function renderPanel(ui: React.ReactElement) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
   buyGiftMock.mockReset();
   pushMock.mockReset();
   refreshMock.mockReset();
   toastInfoMock.mockReset();
+  useAuthMock.mockReset();
+  useAuthMock.mockReturnValue({ user: null, isLoading: false });
+  useLoginModal.setState({ isOpen: false });
+  clearTokens();
 });
+
+useAuthMock.mockReturnValue({ user: null, isLoading: false });
 
 const STANDARD_EDITION: GiftPackage = {
   id: 1,
@@ -193,7 +264,7 @@ async function fillValidCheckout(): Promise<void> {
 
 it("renders the default country's (UZ) price", () => {
   mockProvidersResponse();
-  render(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
 
   expect(screen.getAllByText(priceText(13970)).length).toBeGreaterThan(0);
   expect(screen.getByRole("button", { name: countryButtonName("UZ") })).toHaveAttribute(
@@ -204,7 +275,7 @@ it("renders the default country's (UZ) price", () => {
 
 it("re-prices when the country is switched", () => {
   mockProvidersResponse();
-  render(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
 
   fireEvent.click(screen.getByRole("button", { name: countryButtonName("RU") }));
 
@@ -219,7 +290,7 @@ it("disables a country whose zone has no price for the selected package, with vi
       { ...STANDARD_EDITION, prices: [{ zone: "CIS", price_usd: "1.10", price_uzs: "13970" }] },
     ],
   });
-  render(<GiftPurchasePanel detail={detail} skuId="sku-1" locale="ru" />);
+  renderPanel(<GiftPurchasePanel detail={detail} skuId="sku-1" locale="ru" />);
 
   const ruButton = screen.getByRole("button", { name: countryButtonName("RU") });
   expect(ruButton).toBeDisabled();
@@ -231,7 +302,7 @@ it("disables a country whose zone has no price for the selected package, with vi
 
 it("renders the coming-soon state instead of crashing when the API predates `regions`", () => {
   mockProvidersResponse();
-  render(<GiftPurchasePanel detail={makeDetailWithoutRegions()} skuId="sku-1" locale="ru" />);
+  renderPanel(<GiftPurchasePanel detail={makeDetailWithoutRegions()} skuId="sku-1" locale="ru" />);
 
   expect(screen.getByText("comingSoon")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "buy" })).not.toBeInTheDocument();
@@ -240,7 +311,7 @@ it("renders the coming-soon state instead of crashing when the API predates `reg
 it("keeps the selected country across a package switch when its zone is still priced", () => {
   mockProvidersResponse();
   const detail = makeDetail({ packages: [STANDARD_EDITION, MULTI_REGION_EDITION] });
-  render(<GiftPurchasePanel detail={detail} skuId="sku-1" locale="ru" />);
+  renderPanel(<GiftPurchasePanel detail={detail} skuId="sku-1" locale="ru" />);
 
   fireEvent.click(screen.getByRole("button", { name: countryButtonName("RU") }));
   fireEvent.click(screen.getByRole("button", { name: /Multi-Region Edition/ }));
@@ -258,7 +329,7 @@ it("keeps the selected country across a package switch when its zone is still pr
 it("falls back to region_default when the new package no longer prices the selected country's zone", () => {
   mockProvidersResponse();
   const detail = makeDetail({ packages: [STANDARD_EDITION, CIS_ONLY_EDITION] });
-  render(<GiftPurchasePanel detail={detail} skuId="sku-1" locale="ru" />);
+  renderPanel(<GiftPurchasePanel detail={detail} skuId="sku-1" locale="ru" />);
 
   fireEvent.click(screen.getByRole("button", { name: countryButtonName("RU") }));
   fireEvent.click(screen.getByRole("button", { name: /CIS-Only Edition/ }));
@@ -285,7 +356,7 @@ it("falls through to a priced country when a package switch prices neither the c
   // `countryAfterPackageChange` RU-fallback case.
   mockProvidersResponse();
   const detail = makeDetail({ packages: [STANDARD_EDITION, RU_ONLY_EDITION] });
-  render(<GiftPurchasePanel detail={detail} skuId="sku-1" locale="ru" />);
+  renderPanel(<GiftPurchasePanel detail={detail} skuId="sku-1" locale="ru" />);
 
   fireEvent.click(screen.getByRole("button", { name: /RU-Only Deluxe Edition/ }));
 
@@ -302,7 +373,7 @@ it("falls through to a priced country when a package switch prices neither the c
 
 it("blocks submit and shows the i18n error on a bad invite URL", () => {
   mockProvidersResponse();
-  render(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
 
   fireEvent.change(screen.getByLabelText("inviteLabel"), {
     target: { value: "https://example.com/not-steam" },
@@ -323,7 +394,7 @@ it("POSTs the exact checkout body via lib/gift-checkout on submit", async () => 
     intentUrl: null,
     trackHref: "/orders/order-1?email=guest%40example.com",
   });
-  render(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
 
   await fillValidCheckout();
   fireEvent.click(screen.getByRole("button", { name: "buy" }));
@@ -351,7 +422,7 @@ it("POSTs the exact checkout body via lib/gift-checkout on submit", async () => 
 it("shows the price-changed toast and refreshes on a 422 price-drift error", async () => {
   mockProvidersResponse();
   buyGiftMock.mockRejectedValue(new GiftPriceChangedError("1.25"));
-  render(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
 
   await fillValidCheckout();
   fireEvent.click(screen.getByRole("button", { name: "buy" }));
@@ -361,4 +432,202 @@ it("shows the price-changed toast and refreshes on a 422 price-drift error", asy
   });
   expect(refreshMock).toHaveBeenCalledTimes(1);
   expect(pushMock).not.toHaveBeenCalled();
+});
+
+// ---------- pay from balance ----------
+
+/** A signed-in buyer has no email field to fill — only the invite link. */
+function fillInviteOnly(): void {
+  fireEvent.change(screen.getByLabelText("inviteLabel"), {
+    target: { value: "https://steamcommunity.com/profiles/76561198000000000" },
+  });
+}
+
+function walletTileButton() {
+  return screen.getByRole("button", { name: /payFromBalance/ });
+}
+
+it("shows the wallet tile as ready for a signed-in buyer and pays with provider: wallet", async () => {
+  useAuthMock.mockReturnValue({ user: makeUser(), isLoading: false });
+  setTokens("test-access-token");
+  mockWallet("50000");
+  buyGiftMock.mockResolvedValue({
+    orderId: "order-1",
+    intentUrl: null,
+    trackHref: "/orders/order-1",
+  });
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+  // UZ (region_default) prices this package at 13 970 — well under the
+  // 50 000 balance, so the tile settles on `ready` once the balance loads.
+  await waitFor(() => {
+    expect(walletTileButton()).not.toBeDisabled();
+  });
+  expect(walletTileButton()).toHaveTextContent(priceText(50000));
+
+  fireEvent.click(walletTileButton());
+  expect(walletTileButton()).toHaveAttribute("aria-pressed", "true");
+
+  fillInviteOnly();
+  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+
+  await waitFor(() => {
+    expect(buyGiftMock).toHaveBeenCalledTimes(1);
+  });
+  expect(buyGiftMock).toHaveBeenCalledWith(
+    expect.objectContaining({ provider: "wallet", isLoggedIn: true }),
+  );
+  await waitFor(() => {
+    expect(pushMock).toHaveBeenCalledWith("/orders/order-1");
+  });
+});
+
+it("disables the wallet tile and offers a top-up link when the balance is short", async () => {
+  useAuthMock.mockReturnValue({ user: makeUser(), isLoading: false });
+  setTokens("test-access-token");
+  // UZ prices the package at 13 970 — this balance is short by 3 970.
+  mockWallet("10000");
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+  await waitFor(() => {
+    expect(walletTileButton()).toHaveTextContent("payFromBalanceShort");
+  });
+  expect(walletTileButton()).toBeDisabled();
+
+  const topUp = screen.getByRole("link", { name: /payFromBalanceTopUp/ });
+  expect(topUp).toHaveAttribute("href", "/account/wallet/top-up");
+
+  // Clicking a disabled tile is a no-op — the click acquirer stays selected.
+  fireEvent.click(walletTileButton());
+  fillInviteOnly();
+  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+  await waitFor(() => {
+    expect(buyGiftMock).toHaveBeenCalledTimes(1);
+  });
+  expect(buyGiftMock).toHaveBeenCalledWith(expect.objectContaining({ provider: "click" }));
+});
+
+it("asks a guest to sign in rather than offering an account they do not have", () => {
+  mockProvidersResponse();
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+  const tile = walletTileButton();
+  expect(tile).not.toBeDisabled();
+  expect(tile).toHaveTextContent("payFromBalanceGuest");
+
+  fireEvent.click(tile);
+  expect(useLoginModal.getState().isOpen).toBe(true);
+  // A guest token must never reach `provider: "wallet"` — the tap opened the
+  // login modal instead of selecting the tile as the payment method.
+  expect(tile).not.toHaveAttribute("aria-pressed", "true");
+});
+
+it("surfaces a 409's detail instead of the generic buy error", async () => {
+  useAuthMock.mockReturnValue({ user: makeUser(), isLoading: false });
+  setTokens("test-access-token");
+  mockWallet("50000");
+  buyGiftMock.mockRejectedValue(
+    new ApiError(
+      409,
+      "/payments/intents",
+      undefined,
+      "insufficient wallet balance: have 10000 UZS, need 13970 UZS",
+    ),
+  );
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+  await waitFor(() => {
+    expect(walletTileButton()).not.toBeDisabled();
+  });
+  fireEvent.click(walletTileButton());
+  fillInviteOnly();
+  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+
+  expect(
+    await screen.findByText("insufficient wallet balance: have 10000 UZS, need 13970 UZS"),
+  ).toBeInTheDocument();
+  expect(pushMock).not.toHaveBeenCalled();
+});
+
+it("hides the wallet tile entirely when the admin has disabled it", async () => {
+  useAuthMock.mockReturnValue({ user: makeUser(), isLoading: false });
+  setTokens("test-access-token");
+  mockWallet("50000", [{ slug: "click", status: "active" }]);
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "buy" })).toBeInTheDocument();
+  });
+  expect(screen.queryByRole("button", { name: /payFromBalance/ })).not.toBeInTheDocument();
+});
+
+it("keeps the wallet tile visible but unselectable while it is under admin maintenance", async () => {
+  useAuthMock.mockReturnValue({ user: makeUser(), isLoading: false });
+  setTokens("test-access-token");
+  mockWallet("50000", [
+    { slug: "click", status: "active" },
+    { slug: "wallet", status: "maintenance" },
+  ]);
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+  await waitFor(() => {
+    expect(walletTileButton()).toBeDisabled();
+  });
+});
+
+it("never lets a providerStatus fetch that resolves after a wallet pick swap it back to a card", async () => {
+  useAuthMock.mockReturnValue({ user: makeUser(), isLoading: false });
+  setTokens("test-access-token");
+  let resolveProviders: (value: {
+    providers: { slug: string; status: "active" | "maintenance" }[];
+  }) => void = () => {
+    throw new Error("resolveProviders called before it was assigned");
+  };
+  const providersPromise = new Promise<{
+    providers: { slug: string; status: "active" | "maintenance" }[];
+  }>((resolve) => {
+    resolveProviders = resolve;
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/wallet")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              balances: [{ account_id: "acc-1", kind: "user_wallet", currency: "UZS", balance: "50000" }],
+            }),
+        });
+      }
+      return providersPromise.then((body) => ({ json: () => Promise.resolve(body) }));
+    }),
+  );
+
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+  // `providerStatus` is still `null` here — `methodVisibility` fails open, so
+  // the wallet tile is already selectable once the balance loads, before the
+  // provider fetch ever resolves.
+  await waitFor(() => {
+    expect(walletTileButton()).not.toBeDisabled();
+  });
+  fireEvent.click(walletTileButton());
+  expect(walletTileButton()).toHaveAttribute("aria-pressed", "true");
+
+  resolveProviders({
+    providers: [
+      { slug: "click", status: "active" },
+      { slug: "wallet", status: "active" },
+    ],
+  });
+
+  // The reselect effect runs off this fetch landing — give it a tick, then
+  // confirm the wallet is still the selection instead of having been swapped
+  // for the first active acquirer.
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Click" })).toHaveAttribute("aria-pressed", "false");
+  });
+  expect(walletTileButton()).toHaveAttribute("aria-pressed", "true");
 });

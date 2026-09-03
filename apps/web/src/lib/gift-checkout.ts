@@ -7,11 +7,16 @@
  * (guest token mint, `Idempotency-Key`, `Authorization` Bearer/Guest,
  * `POST /orders` → `POST /payments/intents` → redirect, `saveGuestOrder` for
  * guests) rather than importing that 2 100-line component — a gift line is
- * always exactly one item, one SKU, `qty: 1`, no promo code and no wallet
- * pay (v1 scope cuts — see `GiftPurchasePanel`), so this needs none of its
- * multi-SKU/variable-amount/unit-quantity machinery.
+ * always exactly one item, one SKU, `qty: 1`, no promo code and no quantity
+ * (v1 scope cuts — see `GiftPurchasePanel`), so this needs none of its
+ * multi-SKU/variable-amount/unit-quantity machinery. `provider` passes
+ * straight through to the intents body, so paying from the wallet balance
+ * needs no branch here either — `WalletGateway` settles synchronously and
+ * the response comes back with `intent_url: null`, same shape as the dev
+ * `mock` provider, which the caller already treats as "done, go to the
+ * order page" rather than "redirect to a hosted payment page".
  */
-import { getAccessToken, SURFACE } from "./client";
+import { ApiError, getAccessToken, SURFACE } from "./client";
 import { mintGuestToken } from "./guest";
 import { saveGuestOrder } from "./guest-orders";
 import { pathFor } from "./seo";
@@ -161,7 +166,26 @@ export async function buyGift(params: BuyGiftParams): Promise<BuyGiftResult> {
     },
     body: JSON.stringify({ order_id: order.id, provider, return_url: returnUrl }),
   });
-  if (!intentRes.ok) throw new Error("gift checkout: payment intent creation failed");
+  if (!intentRes.ok) {
+    // Mirrors what `apiFetch` does internally (this call is a raw `fetch`,
+    // not `apiFetch`) so the RFC 7807 `detail` reaches the caller the same
+    // way it does everywhere else in the app — `create_intent`'s 409 for a
+    // wallet payment ("insufficient wallet balance: have … need …") is
+    // written to be shown, not swallowed (see the comment above
+    // `ConflictError` in `payments/service.py::create_intent`).
+    let type: string | undefined;
+    let detail: string | undefined;
+    try {
+      const body: unknown = await intentRes.json();
+      if (body && typeof body === "object") {
+        if ("type" in body && typeof body.type === "string") type = body.type;
+        if ("detail" in body && typeof body.detail === "string") detail = body.detail;
+      }
+    } catch {
+      /* non-JSON or empty error body — leave both undefined */
+    }
+    throw new ApiError(intentRes.status, "/payments/intents", type, detail);
+  }
   const intent = (await intentRes.json()) as { intent_url: string | null };
 
   if (!isLoggedIn) {

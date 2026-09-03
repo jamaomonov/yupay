@@ -1,8 +1,10 @@
 "use client";
 
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatMoney } from "@yupay/utils";
-import { Loader2 } from "lucide-react";
+import { ArrowUpRight, Loader2 } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useId, useState } from "react";
@@ -13,13 +15,17 @@ import { RegionHint } from "./RegionHint";
 import type { GiftAppDetail, GiftPackage } from "@/lib/gifts";
 import type { ProviderStatus, ProvidersOut } from "@/lib/payment-providers";
 
+import { WalletMark } from "@/components/icons/WalletMark";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
-import { getAccessToken, SURFACE } from "@/lib/client";
+import { ApiError, getAccessToken, SURFACE } from "@/lib/client";
 import { buyGift, GiftPriceChangedError } from "@/lib/gift-checkout";
 import { methodVisibility, providerStatusMap, selectActiveMethodId } from "@/lib/payment-providers";
 import { countryName, flagEmoji } from "@/lib/regions";
-import { formatUzs } from "@/lib/seo";
+import { formatUzs, pathFor } from "@/lib/seo";
+import { getWallet, WALLET_CURRENCY } from "@/lib/wallet";
+import { canPayFromBalance, spendableBalance, walletTile } from "@/lib/wallet-balance";
+import { useLoginModal } from "@/store/useLoginModal";
 import { toast } from "@/store/useToast";
 
 const API = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
@@ -32,8 +38,8 @@ const VISIBLE_COUNTRY_COUNT = 4;
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 /** In-scope acquirers for a gift purchase — same three UZ rails
- *  `PurchasePanel` offers, no wallet pay (a gift is always paid up front,
- *  not from the internal ledger — v1 scope cut). */
+ *  `PurchasePanel` offers. The wallet is a separate tile (`WALLET_METHOD_ID`
+ *  below), not one of these — see its own comment for why. */
 interface Method {
   id: string;
   name: string;
@@ -42,6 +48,13 @@ interface Method {
   w: number;
   h: number;
 }
+
+/** Not an acquirer: the balance is our own ledger, and `WalletGateway`
+ *  settles it synchronously inside `create_intent`. Kept out of `METHODS`
+ *  so provider-availability logic, which is about upstream acquirers, never
+ *  reasons about it — mirrors `PurchasePanel`'s `WALLET_METHOD_ID`. */
+const WALLET_METHOD_ID = "wallet";
+
 const METHODS: Method[] = [
   {
     id: "click",
@@ -99,9 +112,9 @@ function isValidInviteUrl(raw: string): boolean {
 
 /**
  * The buy panel for one Steam gift: edition + region pickers, the invite
- * link field, a payment-method grid, and the Buy button. v1 scope cuts,
- * deliberate: no promo field, no wallet pay, no quantity — a gift order is
- * always exactly one package, in one region, `qty: 1`.
+ * link field, a pay-from-balance tile plus a payment-method grid, and the
+ * Buy button. v1 scope cuts, deliberate: no promo field, no quantity — a
+ * gift order is always exactly one package, in one region, `qty: 1`.
  */
 export function GiftPurchasePanel({
   detail,
@@ -119,7 +132,7 @@ export function GiftPurchasePanel({
   // second translation of the same sentences into this namespace.
   const ts = useTranslations("web.store");
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
 
   const [packageId, setPackageId] = useState<number>(() => detail.packages[0]?.id ?? 0);
   // `region_default`/`regions` are optional (see `GiftAppDetail` in
@@ -233,13 +246,56 @@ export function GiftPurchasePanel({
 
   useEffect(() => {
     if (!providerStatus) return;
-    setMethodId((current) => selectActiveMethodId(METHODS, current, providerStatus) ?? "");
+    setMethodId((current) => {
+      // The wallet is not in METHODS, so `selectActiveMethodId` cannot find
+      // it, falls past its "keep the current one" guard and answers with the
+      // first active acquirer instead. A buyer who picked "pay from
+      // balance" before this fetch landed would have had that swapped for a
+      // card without being told — mirrors `PurchasePanel`'s same guard. Its
+      // own readiness is `walletState`/`walletVisibility`, not this effect.
+      if (current === WALLET_METHOD_ID) return current;
+      return selectActiveMethodId(METHODS, current, providerStatus) ?? "";
+    });
   }, [providerStatus]);
 
-  const selectedProvider = METHODS.find((m) => m.id === methodId)?.provider;
-  const selectedMethodActive =
-    selectedProvider !== undefined &&
-    methodVisibility(selectedProvider, providerStatus) === "active";
+  // Only fetched for a signed-in buyer — a guest has no wallet, and asking
+  // would 401.
+  const walletQuery = useQuery({
+    queryKey: ["wallet"],
+    queryFn: getWallet,
+    enabled: user !== null,
+    staleTime: 30_000,
+  });
+  // Gift orders are always billed in UZS (`buyGift` hardcodes `currency:
+  // "UZS"`), so the region's `price_uzs` is what the balance must cover —
+  // never `price_usd`, which the FX-unavailable case leaves as the only
+  // figure on the DTO.
+  const total = selectedPrice?.price_uzs != null ? Number(selectedPrice.price_uzs) : null;
+  const walletState = walletTile({
+    // `isLoading` matters: the access token is memory-only, so a cold load
+    // re-mints it and `user` is null for a beat — treating that as "guest"
+    // would tell a signed-in buyer to sign in.
+    isLoggedIn: user !== null || authLoading,
+    balance: spendableBalance(walletQuery.data?.balances ?? null, WALLET_CURRENCY),
+    total,
+  });
+  const payingFromBalance = methodId === WALLET_METHOD_ID;
+  // The wallet rides the same admin lever as the acquirers (ADR-0056, an FX
+  // drop can stop pay-from-balance too) — `methodVisibility` fails open
+  // (`"active"`) while `providerStatus` is still `null`, same as everywhere
+  // else it's consulted.
+  const walletVisibility = methodVisibility(WALLET_METHOD_ID, providerStatus);
+
+  const openLogin = useLoginModal((st) => st.open);
+  const queryClient = useQueryClient();
+
+  const selectedProvider = payingFromBalance
+    ? WALLET_METHOD_ID
+    : METHODS.find((m) => m.id === methodId)?.provider;
+  const selectedMethodActive = payingFromBalance
+    ? canPayFromBalance(walletState) && walletVisibility === "active"
+    : selectedProvider !== undefined &&
+      methodVisibility(selectedProvider, providerStatus) === "active";
   const anyMethodVisible = METHODS.some(
     (m) => methodVisibility(m.provider, providerStatus) !== "hidden",
   );
@@ -283,8 +339,10 @@ export function GiftPurchasePanel({
         window.location.href = result.intentUrl;
         return;
       }
-      // The dev `mock` provider returns a non-resolvable URL — go straight
-      // to the order page, which already shows the pending timeline.
+      // Both the dev `mock` provider and a wallet payment (settled
+      // synchronously inside `create_intent`) return a null/non-resolvable
+      // `intent_url` — go straight to the order page, which already shows
+      // the pending timeline, or in the wallet's case the paid one.
       router.push(result.trackHref);
     } catch (err) {
       if (err instanceof GiftPriceChangedError) {
@@ -294,10 +352,25 @@ export function GiftPurchasePanel({
         // refresh, and the recomputed `selectedPrice` above picks up the
         // server's current figure automatically.
         router.refresh();
+      } else if (err instanceof ApiError && err.detail) {
+        // Carries e.g. `create_intent`'s 409 "insufficient wallet balance:
+        // have … need …" through to the buyer — the client-side `short`
+        // check above is only a courtesy; `WalletGateway` re-checks under a
+        // row lock, so a race can still land here. Matched structurally
+        // (an `ApiError` with a `detail`), never by grepping the message.
+        setError(err.detail);
       } else {
         setError(t("buyError"));
       }
     } finally {
+      // Whatever happened, the balance we hold may no longer be the one the
+      // ledger holds: a wallet payment just spent from it, and a failure may
+      // have been the server refusing on a balance we had cached as
+      // sufficient. Re-read rather than leave the tile promising a payment
+      // that will be refused again.
+      if (payingFromBalance) {
+        void queryClient.invalidateQueries({ queryKey: ["wallet"] });
+      }
       setLoading(false);
     }
   }
@@ -487,6 +560,79 @@ export function GiftPurchasePanel({
         <p className="text-tx-dim mb-2 text-[11px] font-semibold uppercase tracking-[0.08em]">
           {ts("paymentTitle")}
         </p>
+        {/* Full width, above the acquirer grid — mirrors `PurchasePanel`'s
+            wallet tile. Hidden outright when an admin disables the wallet
+            entirely; kept visible but unselectable under maintenance, same
+            as an acquirer tile. */}
+        {walletVisibility !== "hidden" && (
+          <>
+            <button
+              type="button"
+              // Only a toggle when there is something to toggle: in the
+              // guest state this button signs you in, and announcing it as
+              // "not pressed" describes a choice that is not on offer.
+              aria-pressed={walletState.state === "guest" ? undefined : payingFromBalance}
+              disabled={
+                walletVisibility !== "active" ||
+                (walletState.state !== "ready" && walletState.state !== "guest")
+              }
+              title={walletVisibility === "maintenance" ? ts("paymentMaintenance") : undefined}
+              onClick={() => {
+                if (walletState.state === "guest") {
+                  openLogin();
+                  return;
+                }
+                setMethodId(WALLET_METHOD_ID);
+              }}
+              className={`rounded-btn mb-2 flex w-full items-center gap-3 border px-3 py-3 text-left transition disabled:cursor-not-allowed ${
+                payingFromBalance && walletState.state === "ready"
+                  ? "border-primary bg-primary/10"
+                  : "border-border bg-bg hover:border-border-2"
+              }`}
+            >
+              <span
+                className={`bg-muted flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${
+                  walletState.state === "ready" || walletState.state === "guest"
+                    ? "text-primary"
+                    : "text-tx-dim"
+                }`}
+              >
+                <WalletMark size={18} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-semibold">{ts("payFromBalance")}</span>
+                <span className="text-tx-dim block text-[12px]">
+                  {walletState.state === "guest"
+                    ? ts("payFromBalanceGuest")
+                    : walletState.state === "short"
+                      ? ts("payFromBalanceShort", {
+                          amount: formatUzs(locale, walletState.missing),
+                        })
+                      : walletState.state === "ready"
+                        ? formatUzs(locale, Math.round(walletState.balance))
+                        : walletState.state === "noTotal"
+                          ? ts("payFromBalanceUnknown")
+                          : ts("payFromBalanceLoading")}
+                </span>
+              </span>
+            </button>
+
+            {/* "Не хватает 45 000" is a fact; this is what to do about it. A
+                new tab so the invite link and picked package survive the
+                trip. */}
+            {walletState.state === "short" && (
+              <Link
+                href={pathFor(locale, "/account/wallet/top-up")}
+                target="_blank"
+                rel="noreferrer"
+                className="text-primary hover:text-primary-2 mb-2 inline-flex items-center gap-1 text-[13px] font-semibold"
+              >
+                {ts("payFromBalanceTopUp")}
+                <ArrowUpRight size={14} />
+              </Link>
+            )}
+          </>
+        )}
         {anyMethodVisible ? (
           <div className="grid grid-cols-3 gap-2">
             {METHODS.map((m) => {
