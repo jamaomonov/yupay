@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_serializer, field_validator
 
 # Imported from ``schemas`` rather than the module's ``api`` on purpose: ``api``
 # pulls in ``routes``, and a schema module reaching for a router is how import
@@ -104,6 +104,18 @@ class OrderItemDisplay(BaseModel):
     variable_amount: bool
 
 
+#: ``fulfillment_data`` keys a customer must never see in their own order
+#: response, even though the persisted row and fulfilment both need them.
+#: Currently just the Steam gift checkout hook's wholesale cost (see
+#: ``gifts.checkout.price_gift_line``) — left in place, a buyer could back
+#: out our exact margin as ``unit_price_usd - supplier_price_usd``. Mirrors
+#: how ``OrderItem.cost_usdt`` (orders/models.py) is kept off this schema's
+#: field list entirely; this key can't be kept off the *list* the same way
+#: because it lives inside a free-form JSONB column, so it's redacted at
+#: serialization time instead.
+_CUSTOMER_HIDDEN_FULFILLMENT_KEYS = frozenset({"supplier_price_usd"})
+
+
 class OrderItemOut(BaseModel):
     """One line of an order response."""
 
@@ -117,11 +129,32 @@ class OrderItemOut(BaseModel):
     fulfillment_data: dict[str, Any]
     display: OrderItemDisplay | None = None
 
+    @field_serializer("fulfillment_data")
+    def _serialize_fulfillment_data(self, value: dict[str, Any]) -> dict[str, Any]:
+        """Drop supplier-cost keys before this line reaches a customer.
+
+        ``OrderItemAdminOut`` redefines this same method to pass the dict
+        through unredacted — an operator needs the real cost to see the
+        actual margin on a line.
+        """
+        if not _CUSTOMER_HIDDEN_FULFILLMENT_KEYS.intersection(value):
+            return value
+        return {k: v for k, v in value.items() if k not in _CUSTOMER_HIDDEN_FULFILLMENT_KEYS}
+
 
 class OrderItemAdminOut(OrderItemOut):
-    """Admin view of an order line — adds the internal supplier order id."""
+    """Admin view of an order line — adds the internal supplier order id.
+
+    Overrides :meth:`OrderItemOut._serialize_fulfillment_data` with a plain
+    passthrough: unlike the customer-facing response, the admin view is
+    allowed to show ``supplier_price_usd`` and any other cost data.
+    """
 
     supplier_order_id: str | None = None
+
+    @field_serializer("fulfillment_data")
+    def _serialize_fulfillment_data(self, value: dict[str, Any]) -> dict[str, Any]:
+        return value
 
 
 class OrderEventOut(BaseModel):

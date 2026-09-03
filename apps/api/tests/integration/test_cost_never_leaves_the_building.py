@@ -70,3 +70,43 @@ async def test_a_serialized_line_has_no_cost_in_it() -> None:
     )
     dumped = line.model_dump_json()
     assert "cost" not in dumped.lower(), dumped
+
+
+async def test_a_supplier_price_hidden_inside_fulfillment_data_is_still_redacted() -> None:
+    """The declared-field checks above can't see into a free-form JSONB
+    column: ``fulfillment_data`` is typed ``dict[str, Any]``, so a cost key
+    living *inside* it (the Steam gift checkout hook's ``supplier_price_usd``,
+    see ``gifts.checkout.price_gift_line``) doesn't show up as a field name.
+    ``OrderItemOut`` redacts it at serialization time instead — this proves
+    the redaction actually fires, and that everything else in the snapshot
+    still comes through untouched."""
+    line = OrderItemOut(
+        id="i1",
+        sku_id="s1",
+        qty=1,
+        unit_price_usd=Decimal("1.10"),
+        fulfillment_state="pending",
+        fulfillment_data={
+            "app_id": 588650,
+            "app_name": "Dead Cells",
+            "supplier_price_usd": "1.00",
+        },
+    )
+    dumped = line.model_dump()
+    assert "supplier_price_usd" not in dumped["fulfillment_data"]
+    assert dumped["fulfillment_data"]["app_name"] == "Dead Cells"
+
+
+async def test_the_admin_line_still_sees_the_supplier_price() -> None:
+    """The redaction is customer-facing only — an operator needs the real
+    cost to see the actual margin on a line."""
+    line = OrderItemAdminOut(
+        id="i1",
+        sku_id="s1",
+        qty=1,
+        unit_price_usd=Decimal("1.10"),
+        fulfillment_state="pending",
+        fulfillment_data={"supplier_price_usd": "1.00"},
+    )
+    dumped = line.model_dump()
+    assert dumped["fulfillment_data"]["supplier_price_usd"] == "1.00"

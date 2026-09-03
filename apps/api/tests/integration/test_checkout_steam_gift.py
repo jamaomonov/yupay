@@ -252,6 +252,41 @@ async def test_happy_path_bills_the_server_price_and_enriches_the_snapshot(
 
 
 @respx.mock
+async def test_supplier_price_usd_never_reaches_the_customer_response(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _gift_sku: Sku,
+) -> None:
+    """``supplier_price_usd`` is our wholesale cost — it must be readable off
+    the persisted row (fulfilment/audit needs it) but redacted from the
+    order response the buyer receives, or the buyer could back out our exact
+    margin as ``unit_price_usd - supplier_price_usd``."""
+    _mock_dead_cells()
+    token = await _login_user(integration_client, tg_id=206)
+
+    r = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "gift-redact-aaaaaaaaaaa",
+        },
+        json=_order_body(sku_id=_gift_sku.id, amount_usd="1.10"),
+    )
+
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert "supplier_price_usd" not in body["items"][0]["fulfillment_data"]
+    # The rest of the enriched snapshot is still customer-visible.
+    assert body["items"][0]["fulfillment_data"]["app_name"] == "Dead Cells"
+
+    order_id = body["id"]
+    item = (
+        await db_session.execute(select(OrderItem).where(OrderItem.order_id == order_id))
+    ).scalar_one()
+    assert item.fulfillment_data["supplier_price_usd"] == "1.0"
+
+
+@respx.mock
 async def test_a_schemeless_trailing_slash_invite_url_is_canonicalized_on_the_row(
     integration_client: AsyncClient,
     db_session: AsyncSession,

@@ -46,6 +46,10 @@ _PRICE_TOLERANCE = Decimal("0.02")
 
 _STEAM_ID64_RE = re.compile(r"\d{17}")
 _STEAM_VANITY_RE = re.compile(r"[A-Za-z0-9_-]{2,32}")
+#: Bounds the ``s.team/p/{path}`` branch the same way the other two Steam
+#: link shapes are bounded — an unrestricted ``path`` accepted anything of
+#: any length.
+_S_TEAM_PATH_RE = re.compile(r"[A-Za-z0-9/_-]{1,64}")
 
 
 def is_gift_sku(sku: object) -> bool:
@@ -65,7 +69,7 @@ def parse_invite_url(value: str) -> str:
 
     - ``https://steamcommunity.com/profiles/{17-digit steamid64}``
     - ``https://steamcommunity.com/id/{2-32 char vanity, [A-Za-z0-9_-]}``
-    - ``https://s.team/p/{path}``
+    - ``https://s.team/p/{1-64 char path, [A-Za-z0-9/_-]}``
 
     A missing scheme is treated as ``https``; any other scheme (including
     plain ``http``) is rejected outright rather than silently upgraded —
@@ -101,7 +105,7 @@ def parse_invite_url(value: str) -> str:
             return f"https://steamcommunity.com/id/{parts[2]}"
     elif host == "s.team":
         parts = path.split("/", 2)
-        if len(parts) == 3 and parts[1] == "p" and parts[2]:
+        if len(parts) == 3 and parts[1] == "p" and _S_TEAM_PATH_RE.fullmatch(parts[2]):
             return f"https://s.team/p/{parts[2]}"
 
     raise ValidationError("invite_url is not a Steam profile or friend link")
@@ -147,9 +151,12 @@ async def price_gift_line(
         line_amount_usd: the client's proposed unit price, or ``None``.
         data: the line's cleaned ``fulfillment_data`` — must carry
             ``app_id``, ``package_id``, ``region``, and ``invite_url``.
-            Mutated in place and also returned: ``invite_url`` is rewritten
-            to its canonical form and ``app_name``, ``package_name``, and
-            ``supplier_price_usd`` are added.
+            Mutated in place and also returned: ``app_id``/``package_id``
+            are normalized to ``int`` (undoing any float coercion
+            ``validate_fulfillment_data`` applied), ``region`` to its
+            upper-cased canonical form, and ``invite_url`` to its canonical
+            form; ``app_name``, ``package_name``, and ``supplier_price_usd``
+            are added.
 
     Returns:
         ``(expected_price_usd, enriched_data)``.
@@ -168,11 +175,14 @@ async def price_gift_line(
         raise ValidationError("steam gifts are not available right now")
 
     app_id = _require_int(data, "app_id")
+    data["app_id"] = app_id
     package_id = _require_int(data, "package_id")
+    data["package_id"] = package_id
 
     region = str(data.get("region") or "").strip().upper()
     if region not in offered_zones(settings):
         raise ValidationError("this region is not currently offered")
+    data["region"] = region
 
     invite_url = parse_invite_url(str(data.get("invite_url") or ""))
     data["invite_url"] = invite_url
@@ -201,8 +211,8 @@ async def price_gift_line(
         )
 
     # Server-derived, overwriting anything client-sent — though
-    # ``validate_fulfillment_data`` already stripped any of these three
-    # keys the client tried to sneak in before this hook ever ran.
+    # ``validate_fulfillment_data`` already rejected (422) any of these
+    # three keys the client tried to sneak in before this hook ever ran.
     data["app_name"] = app["name"]
     data["package_name"] = package["name"]
     data["supplier_price_usd"] = str(supplier_usd)

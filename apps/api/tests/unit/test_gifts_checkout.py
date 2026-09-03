@@ -159,11 +159,21 @@ def test_parse_invite_url_canonicalizes_an_s_team_link() -> None:
         "https://steamcommunity.com@evil.com/profiles/76561198000000000",
         # wrong path entirely
         "https://steamcommunity.com/groups/somegroup",
+        # s.team path is bounded like the other two shapes: charclass...
+        "https://s.team/p/bad space",
+        # ...and length (65 chars, one past the 64-char cap)
+        "https://s.team/p/" + ("a" * 65),
     ],
 )
 def test_parse_invite_url_rejects_garbage_and_scheme_injection(value: str) -> None:
     with pytest.raises(ValidationError):
         checkout.parse_invite_url(value)
+
+
+def test_parse_invite_url_accepts_an_s_team_path_at_the_64_char_cap() -> None:
+    path = "a" * 64
+    result = checkout.parse_invite_url(f"https://s.team/p/{path}")
+    assert result == f"https://s.team/p/{path}"
 
 
 # ---------- price_gift_line: rule 1 - feature flag ----------
@@ -310,3 +320,25 @@ async def test_happy_path_returns_expected_price_and_enriched_snapshot() -> None
     assert snapshot["package_name"] == "Standard Edition"
     assert snapshot["supplier_price_usd"] == "1.0"
     assert snapshot["invite_url"] == _VALID_INVITE
+
+
+async def test_app_id_and_package_id_are_normalized_to_int_in_the_snapshot() -> None:
+    # validate_fulfillment_data's "number" coercion can leave floats like
+    # 588650.0 sitting in the JSONB it hands to this hook — the persisted
+    # snapshot should carry clean ints, not that coercion artifact.
+    _, snapshot = await checkout.price_gift_line(
+        _DB,
+        line_amount_usd=Decimal("1.10"),
+        data=_line_data(app_id=588650.0, package_id=1.0),
+    )
+    assert snapshot["app_id"] == 588650
+    assert isinstance(snapshot["app_id"], int)
+    assert snapshot["package_id"] == 1
+    assert isinstance(snapshot["package_id"], int)
+
+
+async def test_region_is_normalized_to_its_upper_cased_canonical_form() -> None:
+    _, snapshot = await checkout.price_gift_line(
+        _DB, line_amount_usd=Decimal("1.10"), data=_line_data(region="cis")
+    )
+    assert snapshot["region"] == "CIS"
