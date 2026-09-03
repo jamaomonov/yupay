@@ -125,12 +125,12 @@ quote="UZS")`) and multiplied per row, never re-fetched per item.
 
 ## Config
 
-| Env var                      | Default        | Meaning                                                  |
-| ---------------------------- | -------------- | -------------------------------------------------------- |
-| `STEAM_GIFTS_ENABLED`        | `false`        | Feature flag the public/miniapp routers (Task 3) gate on |
-| `STEAM_GIFTS_MARGIN_PERCENT` | `10`           | Seeds `steam_gift_settings` row 1 on first read only     |
-| `STEAM_GIFTS_REGION_DEFAULT` | `CIS`          | Default zone, parsed via `default_zone`                  |
-| `STEAM_GIFTS_REGIONS`        | `CIS,RU,KZ,UA` | CSV of offered zones, parsed via `offered_zones`         |
+| Env var                      | Default        | Meaning                                                                                                                       |
+| ---------------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `STEAM_GIFTS_ENABLED`        | `false`        | Feature flag the public/miniapp routers (Task 3) gate on                                                                      |
+| `STEAM_GIFTS_MARGIN_PERCENT` | `10`           | Seeds `steam_gift_settings` row 1 on first read only                                                                          |
+| `STEAM_GIFTS_REGION_DEFAULT` | `UZ`           | Default _country_ (a legacy zone label such as `CIS` is still tolerated and resolved to a country), parsed via `default_zone` |
+| `STEAM_GIFTS_REGIONS`        | `CIS,RU,KZ,UA` | CSV of offered zones, parsed via `offered_zones`                                                                              |
 
 ## Tests
 

@@ -250,7 +250,25 @@ async def get_catalog_app(
     packages = [_package_out(pkg, margin=margin, zones=zones, rate=rate) for pkg in raw_packages]
     priced_zones = {price.zone for pkg in packages for price in pkg.prices}
     zones_out = [z for z in zones if z in priced_zones]
-    default_country = default_zone(settings)
+
+    # ``settings.steam_gifts_region_default`` may legitimately hold a country
+    # (the modern shape) or a legacy zone label such as ``"CIS"`` (an
+    # unreloaded environment's env var) — either way, both frontends assume
+    # ``region_default`` is a member of ``regions[].country`` and start with
+    # no priced selection (disabled Buy) if it isn't. ``_regions_out`` is
+    # still fed the raw configured value: when it IS a country, that already
+    # produces the right ordering (its zone first, that country lead within
+    # it); when it's a zone label, ``zone_for_country`` inside
+    # ``_regions_out`` finds nothing to reorder for, so the list falls back
+    # to catalog/``STEAM_GIFTS_REGIONS`` order — resolved below to whichever
+    # country actually leads that list.
+    configured = default_zone(settings)
+    regions_out = _regions_out(raw_packages, packages, zones=zones, default_country=configured)
+    default_country = (
+        configured
+        if any(r.country == configured for r in regions_out)
+        else (regions_out[0].country if regions_out else configured)
+    )
 
     return GiftAppDetailOut(
         **base.model_dump(),
@@ -258,8 +276,12 @@ async def get_catalog_app(
         packages=packages,
         dlc_total=len(detail.get("dlc") or []),
         zones=zones_out,
-        zone_default=default_country,
-        regions=_regions_out(raw_packages, packages, zones=zones, default_country=default_country),
+        # The deprecated twin a stale client still matches prices by
+        # (``prices.find(p => p.zone === zone_default)``) — must stay an
+        # actual zone, never the country ``region_default`` resolves to.
+        zone_default=zone_for_country(default_country, offered=zones)
+        or (zones_out[0] if zones_out else default_country),
+        regions=regions_out,
         region_default=default_country,
     )
 

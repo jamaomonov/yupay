@@ -265,10 +265,12 @@ async def test_detail_exposes_only_offered_zones(
     assert body["dlc_total"] == 1
     assert body["dlc_count"] == 1
     assert body["packages_count"] == 2
-    # Deprecated zone twins — kept one release for a stale client, still the
-    # code default (2026-09-03: the default became a country, "UZ", but the
-    # deprecated zone field carries the same underlying setting value).
-    assert body["zone_default"] == "UZ"
+    # Deprecated zone twin — kept one release for a stale client, whose
+    # `prices.find(p => p.zone === zone_default)` needs an actual zone, not
+    # the country `region_default` resolves to (2026-09-03: the default
+    # became a country, "UZ"; `zone_default` resolves it back to the zone
+    # that covers it, "CIS").
+    assert body["zone_default"] == "CIS"
     # KZ only had a null price and XX isn't in STEAM_GIFTS_REGIONS at all —
     # neither shows up, regardless of appearing in the raw upstream payload.
     assert body["zones"] == ["CIS", "RU"]
@@ -303,6 +305,69 @@ async def test_detail_exposes_only_offered_zones(
     assert regions_by_country["RU"]["zone"] == "RU"
     # 0.85 * 1.10 = 0.935 -> HALF_UP to 2dp = 0.94
     assert regions_by_country["RU"]["price_usd"] == "0.94"
+
+
+@respx.mock
+async def test_detail_resolves_a_legacy_zone_label_default_to_a_priced_country(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``STEAM_GIFTS_REGION_DEFAULT`` can still be set to a legacy zone label
+    (e.g. an unreloaded dev/staging env carrying the pre-2026-09-03
+    ``CIS`` default — see ``docker-compose.yml``). ``zone_for_country("CIS",
+    ...)`` resolves to ``None`` (a zone key is never itself a member of any
+    ``ZONE_COUNTRIES`` tuple), so ``region_default`` must never come back as
+    that raw, unresolved value — both frontends require it to be a member of
+    ``regions[].country``, or they start with no priced selection and a
+    disabled Buy button on first paint."""
+    monkeypatch.setenv("STEAM_GIFTS_ENABLED", "true")
+    monkeypatch.setenv("STEAM_GIFTS_REGION_DEFAULT", "CIS")
+    cfg.get_settings.cache_clear()
+    respx.get(f"{BASE}/gifts/apps/730").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": 730,
+                "name": "Counter-Strike 2",
+                "type": "game",
+                "image": "cover.jpg",
+                "price": 1.0,
+                "discount_percent": 0,
+                "description": None,
+                "dlc": [],
+                "packages": [
+                    {
+                        "id": 1,
+                        "name": "Standard Edition",
+                        "image": None,
+                        "discount_percent": 0,
+                        "prices": [
+                            {"region": "CIS", "currency": "USD", "price": 1.0, "zone": "CIS"},
+                            {"region": "Russia", "currency": "RUB", "price": 0.9, "zone": "RU"},
+                        ],
+                    },
+                ],
+            },
+        )
+    )
+
+    r = await integration_client.get("/api/v1/gifts/catalog/730")
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    region_countries = [reg["country"] for reg in body["regions"]]
+    # Never the raw configured zone label — it must resolve to a real,
+    # priced country.
+    assert body["region_default"] != "CIS"
+    assert body["region_default"] in region_countries
+    # UZ leads the CIS zone's country list (see ZONE_COUNTRIES' comment),
+    # and CIS is first in STEAM_GIFTS_REGIONS' default order — so once the
+    # configured "CIS" fails to match any country, the fallback to the
+    # first available region lands on UZ.
+    assert body["region_default"] == "UZ"
+    # The deprecated zone twin must also always be a member of the
+    # deprecated zone list — never the raw configured value verbatim.
+    assert body["zone_default"] in body["zones"]
+    assert body["zone_default"] == "CIS"
 
 
 @respx.mock

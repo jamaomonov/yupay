@@ -161,14 +161,35 @@ export function GiftPurchasePanel({
   );
 
   /** Selection reconciliation on a package switch: keeps the chosen
-   *  country when its zone still has a price on the new package, else
-   *  falls back to `region_default` — the country-keyed twin of the old
-   *  zone-keyed rule. */
+   *  country if its zone is still priced by the new package, else falls
+   *  back to `region_default`, else falls back to a country covering
+   *  whatever price the package does offer — a package with no prices at
+   *  all, or a fallback zone no known country covers, leaves the country
+   *  untouched. Mirrors `countryAfterPackageChange` on the miniapp
+   *  (`GiftGame.tsx`) exactly: a package priced only in a zone neither the
+   *  current nor the default country covers (e.g. a deluxe edition sold
+   *  only in RU while the buyer sits on UZ) must still land on a priced
+   *  country, not silently disable Buy. */
   function selectPackage(pkg: GiftPackage): void {
     setPackageId(pkg.id);
     const zone = countryZone.get(country);
-    const stillPriced = zone !== undefined && pkg.prices.some((p) => p.zone === zone);
-    if (!stillPriced) setCountry(detail.region_default ?? "");
+    if (zone !== undefined && pkg.prices.some((p) => p.zone === zone)) return;
+
+    const defaultCountry = detail.region_default ?? "";
+    const defaultZone = countryZone.get(defaultCountry);
+    if (defaultZone !== undefined && pkg.prices.some((p) => p.zone === defaultZone)) {
+      setCountry(defaultCountry);
+      return;
+    }
+
+    const fallbackZone = pkg.prices[0]?.zone;
+    if (fallbackZone === undefined) return;
+    for (const [candidateCountry, candidateZone] of countryZone) {
+      if (candidateZone === fallbackZone) {
+        setCountry(candidateCountry);
+        return;
+      }
+    }
   }
 
   function selectCountry(c: string): void {

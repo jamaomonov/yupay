@@ -113,6 +113,20 @@ const CIS_ONLY_EDITION: GiftPackage = {
   prices: [{ zone: "CIS", price_usd: "0.90", price_uzs: "11430" }],
 };
 
+/** A fourth edition (a "deluxe" package) priced only in RU — neither the
+ *  default country's zone (UZ -> CIS) nor, when the buyer hasn't moved off
+ *  the default, the current country's zone prices it. Switching to it must
+ *  fall through to the third fallback step (a country covering the
+ *  package's own first priced zone), not strand the buyer on a disabled
+ *  Buy button. */
+const RU_ONLY_EDITION: GiftPackage = {
+  id: 4,
+  name: "RU-Only Deluxe Edition",
+  image: null,
+  discount_percent: null,
+  prices: [{ zone: "RU", price_usd: "0.95", price_uzs: "12065" }],
+};
+
 function makeDetail(overrides: Partial<GiftAppDetail> = {}): GiftAppDetail {
   return {
     app_id: 588650,
@@ -258,6 +272,32 @@ it("falls back to region_default when the new package no longer prices the selec
     "false",
   );
   expect(screen.getAllByText(priceText(11430)).length).toBeGreaterThan(0);
+});
+
+it("falls through to a priced country when a package switch prices neither the current nor the default country's zone", () => {
+  // Real scenario this guards against: package A priced CIS+RU, package B
+  // (deluxe) priced RU only; buyer sits on the default (UZ, CIS) and
+  // switches to B. The old web-only fallback (current -> region_default)
+  // stopped at region_default, which B doesn't price either, and left the
+  // buyer on UZ with a disabled Buy button — the miniapp already had a
+  // third step (a country covering the package's own priced zone) that
+  // avoided this. Mirrors miniapp `GiftGame.test.tsx`'s
+  // `countryAfterPackageChange` RU-fallback case.
+  mockProvidersResponse();
+  const detail = makeDetail({ packages: [STANDARD_EDITION, RU_ONLY_EDITION] });
+  render(<GiftPurchasePanel detail={detail} skuId="sku-1" locale="ru" />);
+
+  fireEvent.click(screen.getByRole("button", { name: /RU-Only Deluxe Edition/ }));
+
+  expect(screen.getByRole("button", { name: countryButtonName("RU") })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect(screen.getByRole("button", { name: countryButtonName("UZ") })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  expect(screen.getAllByText(priceText(12065)).length).toBeGreaterThan(0);
 });
 
 it("blocks submit and shows the i18n error on a bad invite URL", () => {
