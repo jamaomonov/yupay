@@ -597,7 +597,9 @@ it("never lets a providerStatus fetch that resolves after a wallet pick swap it 
           status: 200,
           json: () =>
             Promise.resolve({
-              balances: [{ account_id: "acc-1", kind: "user_wallet", currency: "UZS", balance: "50000" }],
+              balances: [
+                { account_id: "acc-1", kind: "user_wallet", currency: "UZS", balance: "50000" },
+              ],
             }),
         });
       }
