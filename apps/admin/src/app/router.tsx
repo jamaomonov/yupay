@@ -27,6 +27,7 @@ import { SkusListPage } from "@/features/catalog/skus/SkusListPage";
 import { CustomerPage } from "@/features/customers/CustomerPage";
 import { InboxPage } from "@/features/fulfillment/InboxPage";
 import { FxPage } from "@/features/fx/FxPage";
+import { GiftsSettingsPage } from "@/features/gifts/GiftsSettingsPage";
 import { GameImportPage } from "@/features/integrations/GameImportPage";
 import { IntegrationsPage } from "@/features/integrations/IntegrationsPage";
 import { MappingEditPage } from "@/features/integrations/MappingEditPage";
@@ -87,6 +88,7 @@ export const router = createBrowserRouter([
           { path: "/wallet", element: <WalletPage /> },
           { path: "/audit", element: <AuditPage /> },
           { path: "/fx", element: <FxPage /> },
+          { path: "/gifts", element: <GiftsSettingsPage /> },
           { path: "/affiliate/applications", element: <ApplicationsPage /> },
           { path: "/affiliate/partners", element: <PartnersPage /> },
           { path: "/affiliate/partners/:id", element: <PartnerDetailPage /> },

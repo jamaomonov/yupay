@@ -18,6 +18,7 @@ import {
   Coins,
   CreditCard,
   Gauge,
+  Gift,
   LayoutGrid,
   LogOut,
   Megaphone,
@@ -122,6 +123,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/sourcing", label: "Sourcing", icon: RouteIcon },
       { to: "/integrations", label: "Интеграции", icon: Plug },
       { to: "/fx", label: "Курсы", icon: Coins },
+      { to: "/gifts", label: "Steam Гифты", icon: Gift },
     ],
   },
 ];
