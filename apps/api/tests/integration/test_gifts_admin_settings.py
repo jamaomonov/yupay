@@ -67,10 +67,10 @@ async def test_admin_get_default_then_patch_persists_and_replays_idempotently(
 
     No row exists yet, so the first `GET` must answer from
     `settings.steam_gifts_margin_percent` (the env default, 10) rather than
-    404 or crash. From here on order matters within this single test: the
-    row table isn't in the integration suite's per-test TRUNCATE list (this
-    module owns it exclusively), so a later test only needs to not assume a
-    fresh row — the 403 test below doesn't touch margin at all.
+    404 or crash. `steam_gift_settings` is in the integration suite's
+    per-test TRUNCATE list (see `conftest.py`), so this test's `margin=77`
+    write at the end never leaks into another test — every test, in this
+    module or any other, starts from an empty table.
     """
     headers = await _admin_headers(integration_client, db_session, tg_id=9001)
 

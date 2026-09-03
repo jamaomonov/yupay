@@ -172,6 +172,26 @@ async def test_listing_row_with_no_reference_price_shows_no_price(
     assert item["price_uzs"] is None
 
 
+@pytest.mark.parametrize(
+    "query",
+    ["limit=1000", "limit=0", "offset=-1"],
+)
+async def test_catalog_limit_and_offset_are_bounded(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch, query: str
+) -> None:
+    """``limit``/``offset`` are ``Query(..., ge=1, le=100)`` /
+    ``Query(..., ge=0)`` (mirrors reviews/routes.py:82) — every distinct
+    pair otherwise mints its own ``gifts:list``/``gifts:search`` Redis key
+    plus a 24h stale twin and one upstream call, unbounded. No G-Engine
+    mock is needed: parameter validation rejects the request before the
+    route body — and therefore any upstream call — ever runs."""
+    _enable(monkeypatch)
+
+    r = await integration_client.get(f"/api/v1/gifts/catalog?{query}")
+
+    assert r.status_code == 422, r.text
+
+
 # ---------- detail ----------
 
 

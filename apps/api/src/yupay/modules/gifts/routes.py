@@ -12,7 +12,7 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
@@ -133,8 +133,13 @@ def _package_out(
 async def get_catalog(
     db: Annotated[AsyncSession, Depends(db_session)],
     search: str | None = None,
-    limit: int = 24,
-    offset: int = 0,
+    # Bounded the same way as reviews/routes.py:82 — every distinct
+    # (search, limit, offset) triple mints its own ``gifts:list``/
+    # ``gifts:search`` Redis key plus a 24h stale twin (see
+    # ``gifts/service.py::_cached_json``), and an unbounded ``limit`` is an
+    # unbounded number of those keys for one upstream call each.
+    limit: int = Query(default=24, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
 ) -> GiftsListOut:
     """Paged catalog listing, our sell price applied per row."""
     margin = await load_margin_percent(db)

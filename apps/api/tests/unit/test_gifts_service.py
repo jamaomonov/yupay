@@ -19,9 +19,13 @@ from typing import Any
 import fakeredis.aioredis
 import pytest
 from yupay.core.errors import UpstreamUnavailableError
-from yupay.modules.fulfillment.suppliers.gengine_client import GEngineUnavailableError
+from yupay.modules.fulfillment.suppliers.gengine_client import (
+    GIFT_SEARCH_MAX,
+    GEngineUnavailableError,
+)
 from yupay.modules.gifts.service import (
     _cached_json,
+    _search_cache_key,
     hot_offers,
     sell_price_usd,
     zone_price_usd,
@@ -130,6 +134,31 @@ async def test_cached_json_raises_upstream_unavailable_when_no_stale_exists(
 
     with pytest.raises(UpstreamUnavailableError):
         await _cached_json("gifts:t4", 60, _fetch)
+
+
+# ---------- _search_cache_key ----------
+
+
+def test_search_cache_key_identical_past_gift_search_max() -> None:
+    """``GEngineClient.list_gift_apps`` truncates ``search`` to
+    ``GIFT_SEARCH_MAX`` before it ever reaches G-Engine (gengine_client.py),
+    so two queries that differ only after that point resolve to the exact
+    same upstream call and must share one cache key — not mint a distinct
+    Redis entry (plus 24h stale twin) per superfluous tail character."""
+    head = "dead cells" * 4  # well past GIFT_SEARCH_MAX on its own
+    assert len(head) > GIFT_SEARCH_MAX
+    key_one = _search_cache_key(f"{head}-tail-one", offset=0, limit=24)
+    key_two = _search_cache_key(f"{head}-a-very-different-and-longer-tail", offset=0, limit=24)
+    assert key_one == key_two
+
+
+def test_search_cache_key_differs_within_gift_search_max() -> None:
+    """Sanity check on the other side: a real difference inside the first
+    ``GIFT_SEARCH_MAX`` characters — the part upstream actually sees — must
+    still produce a different key."""
+    key_one = _search_cache_key("a" * GIFT_SEARCH_MAX, offset=0, limit=24)
+    key_two = _search_cache_key("b" * GIFT_SEARCH_MAX, offset=0, limit=24)
+    assert key_one != key_two
 
 
 # ---------- hot_offers ----------

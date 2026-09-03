@@ -722,6 +722,11 @@ async def create_order(
         cleaned = validate_fulfillment_data(product=product, data=line.fulfillment_data)
         unit_price_usd = _resolve_line_unit_price(sku, line, currency)
         if gifts_checkout.is_gift_sku(sku):
+            # Outbound HTTP call on the request path — the spec §4.3-mandated
+            # server re-price, not client-trusted. Bounded by the 15-min
+            # gifts:detail cache (gifts/service.py::get_app) and the G-Engine
+            # client's own request timeout, so this is the documented §10
+            # exception to "no synchronous external HTTP in request handlers".
             unit_price_usd, cleaned = await gifts_checkout.price_gift_line(
                 db, line_amount_usd=line.amount_usd, data=cleaned
             )

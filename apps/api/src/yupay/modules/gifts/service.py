@@ -30,6 +30,7 @@ from yupay.core.errors import NotFoundError, UpstreamUnavailableError
 from yupay.core.logging import get_logger
 from yupay.core.redis import get_redis
 from yupay.modules.fulfillment.suppliers.gengine_client import (
+    GIFT_SEARCH_MAX,
     MAX_PAGE,
     GEngineClient,
     GEngineError,
@@ -125,8 +126,17 @@ async def _cached_json(key: str, ttl: int, fetch: Callable[[], Awaitable[Any]]) 
 
 def _search_cache_key(query: str, *, offset: int, limit: int) -> str:
     """``sha1`` of the normalised query so an arbitrary search string never
-    ends up embedded in a Redis key (length, punctuation, encoding)."""
-    digest = hashlib.sha1(query.lower().strip().encode("utf-8")).hexdigest()  # noqa: S324
+    ends up embedded in a Redis key (length, punctuation, encoding).
+
+    Truncated to ``GIFT_SEARCH_MAX`` first — the same cap
+    ``GEngineClient.list_gift_apps`` applies before the query ever reaches
+    G-Engine (``gengine_client.py``) — so two queries that differ only past
+    that point (which upstream and the cache below both treat as identical)
+    hash to the same key instead of each minting its own cache entry for a
+    request that resolves identically.
+    """
+    truncated = query.lower().strip()[:GIFT_SEARCH_MAX]
+    digest = hashlib.sha1(truncated.encode("utf-8")).hexdigest()  # noqa: S324
     return f"gifts:search:{digest}:{offset}:{limit}"
 
 

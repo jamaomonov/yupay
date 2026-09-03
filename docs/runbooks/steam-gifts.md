@@ -46,6 +46,22 @@ without checking the new zone actually prices packages G-Engine sells
 (an offered zone with no price on a given package is silently dropped from
 that game's `zones` list — see `routes.py::get_catalog_app`).
 
+**"Api restart only" depends on the product's `region` field staying a
+plain `text` field with no options.** The seed
+(`scripts/seed/2026-09-03_steam_gifts.py`) deliberately declares `region`
+as `type: "text"`, not `type: "select"` with a literal option list — a
+`select` field is checked for option membership by
+`orders/validation.py::validate_fulfillment_data`, which runs **before**
+`gifts/checkout.py:183`'s `offered_zones` check ever sees the value, so a
+`select`-typed schema would be a second, DB-stored source of truth for
+which regions are legal and widening the env var alone would still 422 the
+new zone. `offered_zones()` is the only membership check that matters —
+verify that's still true (`region` is `text` on the live `products` row,
+no `options` key) before trusting "just restart the api" for a region
+change; if a prior seed run left the field as `select`, re-run the seed
+with `--apply` to correct it (the seed's idempotent path now syncs
+`required_fields` on an existing row instead of skipping it).
+
 ## "gifts catalog stale" — what the log means
 
 `gifts.catalog_stale` (a `log.warning` in `gifts/service.py::_cached_json`)
@@ -58,7 +74,10 @@ refreshes both the fresh and the stale key together). A sustained run of
 these — the storefront visibly showing prices/discounts that don't move —
 means G-Engine has been down long enough to matter; check
 `/admin/integrations/gengine/health` (the same health probe the shop/
-recharge lines use) for connectivity and wallet balance.
+recharge lines use) for connectivity and wallet balance. During a
+sustained `gifts.catalog_stale` run, prefer flipping `STEAM_GIFTS_ENABLED`
+to `false` over continuing to sell at prices that may be up to a day old —
+see [The flag](#the-flag) above for what that does and doesn't affect.
 
 **If the stale key is also gone** (nothing was ever successfully cached,
 or the 24h stale TTL lapsed during a long outage), the request instead

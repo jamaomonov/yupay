@@ -46,9 +46,16 @@ No sourcing rule is created: ``sourcing._resolve_auto`` already sends a
 ``top_up`` product with one active mapping to ``supplier:gengine``.
 
 Idempotent: each row is looked up by its natural key (slug / sku_code /
-``(sku_id, supplier_slug)``) before anything is built; an existing row is
-left untouched and reported as "already present". A second ``--apply`` run
-changes nothing.
+``(sku_id, supplier_slug)``) before anything is built. Brand and mapping
+rows are left untouched when found and reported as "already present". The
+product and SKU rows are the two this script actively *manages* the
+content of (``required_fields``; ``price_usd``/``rate_multiplier``/
+``min_amount_usd``/``max_amount_usd``) — those are re-synced to the values
+below on every ``--apply`` run, via ``catalog.update_product``/
+``update_sku``, so an environment seeded before a later edit to this file
+(e.g. widened amount bounds, a reshaped ``region`` field) is corrected by
+re-running ``--apply`` rather than staying stuck on whatever first landed.
+A second ``--apply`` run with no changes to this file is then a no-op.
 """
 
 from __future__ import annotations
@@ -100,19 +107,21 @@ REQUIRED_FIELDS: list[dict[str, Any]] = [
         "required": True,
     },
     {
+        # Deliberately NOT "select" with a literal option list. That would
+        # make the product's stored form schema a *second* source of truth
+        # for which regions are offered, alongside
+        # ``STEAM_GIFTS_REGIONS`` — and ``orders/validation.py``'s
+        # select-option check runs BEFORE ``gifts/checkout.py:183``'s
+        # ``offered_zones`` membership check, so widening the env var alone
+        # would still 422 the new zone at the schema layer. "text" defers
+        # entirely to that ``offered_zones`` check, which is the actual
+        # authority (see ``price_gift_line``) — so changing
+        # ``STEAM_GIFTS_REGIONS`` really is just an api restart, per
+        # docs/runbooks/steam-gifts.md's Regions section.
         "key": "region",
         "label": {"ru": "Регион", "en": "Region", "uz": "Mintaqa"},
-        "type": "select",
+        "type": "text",
         "required": True,
-        "options": [
-            {
-                "value": "CIS",
-                "label": {"ru": "СНГ (без России)", "en": "CIS (no Russia)", "uz": "MDH (Rossiyasiz)"},
-            },
-            {"value": "RU", "label": {"ru": "Россия", "en": "Russia", "uz": "Rossiya"}},
-            {"value": "KZ", "label": {"ru": "Казахстан", "en": "Kazakhstan", "uz": "Qozog'iston"}},
-            {"value": "UA", "label": {"ru": "Украина", "en": "Ukraine", "uz": "Ukraina"}},
-        ],
     },
     {
         "key": "invite_url",
@@ -131,13 +140,35 @@ REQUIRED_FIELDS: list[dict[str, Any]] = [
 ]
 
 # ``price_usd``/``rate_multiplier`` — unused placeholders, both NOT NULL /
-# CHECK-bound columns; ``price_gift_line`` never reads either. Bounds mirror
-# ``steam-wallet-usd``'s ``max_amount_usd`` (300); the floor is a business
-# minimum (a $0.50 gift is more likely a fat-fingered amount than a sale).
+# CHECK-bound columns; ``price_gift_line`` never reads either.
+#
+# ``min_amount_usd``/``max_amount_usd`` gate ``orders/service.py``'s
+# ``validate_amount``, which runs BEFORE the gift-pricing hook
+# (``gifts.checkout.price_gift_line``) ever sees the line — so these are a
+# real floor/ceiling on what's buyable, not a cosmetic default. $0.10 covers
+# a deeply-discounted DLC (real G-Engine lines have priced under $0.50); a
+# $0.50 floor 422'd those with a generic "amount is outside the allowed
+# range" instead of ever reaching the gift hook's own, more specific checks.
+# $1000 covers the priciest AAA collector/bundle packages G-Engine lists,
+# with headroom — well above ``steam-wallet-usd``'s $300 ceiling, which
+# exists for a different reason (an unbacked top-up amount) and doesn't
+# apply here (a gift line is re-priced and bounds-checked again against the
+# live supplier price by ``price_gift_line`` regardless of this ceiling).
 SKU_PRICE_USD_PLACEHOLDER = Decimal("1")
 SKU_RATE_MULTIPLIER_PLACEHOLDER = Decimal("1")
-SKU_MIN_AMOUNT_USD = Decimal("0.50")
-SKU_MAX_AMOUNT_USD = Decimal("300")
+SKU_MIN_AMOUNT_USD = Decimal("0.10")
+SKU_MAX_AMOUNT_USD = Decimal("1000")
+
+#: Numeric SKU fields this script owns the value of — diffed against the
+#: existing row on every run so a previously-seeded environment picks up a
+#: later change to the constants above by re-running ``--apply``, instead of
+#: the idempotent lookup silently leaving a stale row in place.
+_SKU_MANAGED_FIELDS: dict[str, Decimal] = {
+    "price_usd": SKU_PRICE_USD_PLACEHOLDER,
+    "rate_multiplier": SKU_RATE_MULTIPLIER_PLACEHOLDER,
+    "min_amount_usd": SKU_MIN_AMOUNT_USD,
+    "max_amount_usd": SKU_MAX_AMOUNT_USD,
+}
 
 
 def _validate_required_fields() -> None:
@@ -199,12 +230,34 @@ async def _get_or_create_brand(session: AsyncSession) -> Brand:
     return brand
 
 
+def _required_fields_payload() -> list[dict[str, Any]]:
+    """:data:`REQUIRED_FIELDS`, normalized through :class:`FormField` the
+    same way a stored row is (``create_product``/``update_product`` both
+    persist ``f.model_dump(mode="json")``) — so a diff against
+    ``existing.required_fields`` compares like for like, not "no options
+    key" against "options: null"."""
+    return [FormField.model_validate(f).model_dump(mode="json") for f in REQUIRED_FIELDS]
+
+
 async def _get_or_create_product(session: AsyncSession, *, brand: Brand) -> Product:
     existing = (
         await session.execute(select(Product).where(Product.slug == PRODUCT_SLUG))
     ).scalar_one_or_none()
     if existing is not None:
-        print(f"product {PRODUCT_SLUG}: already present ({existing.id})")
+        target = _required_fields_payload()
+        if existing.required_fields != target:
+            existing = await catalog.update_product(
+                session,
+                str(existing.id),
+                cat_schemas.ProductUpdate(
+                    required_fields=[FormField.model_validate(f) for f in REQUIRED_FIELDS]  # type: ignore[arg-type]
+                ),
+            )
+            print(
+                f"product {PRODUCT_SLUG}: required_fields updated on existing row ({existing.id})"
+            )
+        else:
+            print(f"product {PRODUCT_SLUG}: already present, unchanged ({existing.id})")
         return existing
 
     product = await catalog.create_product(
@@ -229,7 +282,18 @@ async def _get_or_create_sku(session: AsyncSession, *, product: Product) -> Sku:
         await session.execute(select(Sku).where(Sku.sku_code == SKU_CODE))
     ).scalar_one_or_none()
     if existing is not None:
-        print(f"sku {SKU_CODE}: already present ({existing.id})")
+        drifted = {
+            field: value
+            for field, value in _SKU_MANAGED_FIELDS.items()
+            if getattr(existing, field) != value
+        }
+        if drifted:
+            existing = await catalog.update_sku(
+                session, str(existing.id), cat_schemas.SkuUpdate(**drifted)
+            )
+            print(f"sku {SKU_CODE}: updated {sorted(drifted)} on existing row ({existing.id})")
+        else:
+            print(f"sku {SKU_CODE}: already present, unchanged ({existing.id})")
         return existing
 
     sku = await catalog.create_sku(
