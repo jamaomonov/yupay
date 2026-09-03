@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useParams } from "wouter";
 
 import type { GiftAppDetail, GiftPackage, GiftRegion } from "@/lib/gifts";
-import type { MethodVisibility } from "@/lib/orders";
+import type { MethodVisibility, ProviderAvailability } from "@/lib/orders";
 
 import { DlcSheet } from "@/components/gifts/DlcSheet";
 import { GiftBuyPanel } from "@/components/gifts/GiftBuyPanel";
@@ -173,6 +173,68 @@ export function walletPayState({
   return { enough, disabled, shortfall, unknownTotal: false };
 }
 
+/**
+ * Whether Buy may actually be submitted for the currently selected method —
+ * the honest twin of `walletPayState.enough`'s optimistic display value.
+ * Every non-wallet method is always ready (the acquirer path is untouched
+ * by any of this). For the wallet, "ready" requires a balance that has
+ * actually resolved (`balance !== null` — a still-loading balance is not a
+ * known-sufficient one) AND a known total (`total !== null` — FX
+ * unavailable must never be guessed past) AND that balance covering that
+ * total. Pulled out as a pure function so this live-payment gate is
+ * unit-tested directly rather than only reachable by rendering. Mirrors the
+ * web panel, which only enables Buy once its wallet tile reaches the
+ * genuine `"ready"` state (`canPayFromBalance(walletState)`), never a
+ * loading or unknown one.
+ */
+export function walletSubmitReady({
+  methodId,
+  balance,
+  total,
+}: {
+  methodId: string;
+  balance: number | null;
+  total: number | null;
+}): boolean {
+  if (methodId !== WALLET_METHOD_ID) return true;
+  return balance !== null && total !== null && balance >= total;
+}
+
+/**
+ * Decide the next selected method id when live provider status changes —
+ * the reselect effect's own logic, pulled out pure so the wallet-stickiness
+ * rule is unit-tested directly instead of only reachable by mounting the
+ * page. `statusBySlug === null` (not yet loaded) leaves `current` alone,
+ * same fail-open posture as `methodVisibility`. A wallet selection is NEVER
+ * reassigned here, regardless of its own live status — its tile and
+ * `walletSubmitReady`/`canBuy` are what decide whether it's usable, not
+ * this reselection; reassigning it would silently swap the buyer onto a
+ * card with no notice (mirrors `GiftPurchasePanel.tsx`'s identical guard on
+ * web: `if (current === WALLET_METHOD_ID) return current;`). Otherwise:
+ * keep `current` if it still resolves to an `"active"` provider, else fall
+ * back to the first acquirer that does, else deselect entirely (`""`).
+ */
+export function nextSelectedMethodId({
+  current,
+  statusBySlug,
+  providerByMethod,
+  methods,
+}: {
+  current: string;
+  statusBySlug: Map<string, ProviderAvailability> | null;
+  providerByMethod: Record<string, string>;
+  methods: { id: string }[];
+}): string {
+  if (statusBySlug === null || current === WALLET_METHOD_ID) return current;
+  const isAvailable = (id: string): boolean => {
+    const provider = providerByMethod[id];
+    return provider !== undefined && methodVisibility(provider, statusBySlug) === "active";
+  };
+  if (current === "" || isAvailable(current)) return current;
+  const fallback = methods.find((m) => isAvailable(m.id));
+  return fallback ? fallback.id : "";
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 type Phase = "loading" | "idle" | "error" | "notFound";
 
@@ -224,22 +286,20 @@ export default function GiftGame() {
   }
   // Once live provider status has loaded, bounce off a stale/now-unavailable
   // selection the same way `TopUp` does — never leave the highlight on a
-  // method that renders as maintenance/hidden. `PAYMENT_METHODS` (the
-  // fallback pool) is acquirers only, so a wallet selection must never
-  // reach that fallback branch: once chosen, the wallet stays chosen no
-  // matter what its own `methodVisibility` says — its own tile (and, once
-  // selected, `canBuy`) is what decides whether it's actually usable, not
-  // this effect. Mirrors the web panel's identical guard
-  // (`GiftPurchasePanel.tsx`: `if (current === WALLET_METHOD_ID) return
-  // current;`).
+  // method that renders as maintenance/hidden, and never reassign a chosen
+  // wallet (see `nextSelectedMethodId`'s docstring — this is the CRITICAL
+  // parity fix). A functional update reads the latest `methodId` from React
+  // itself, so this doesn't need `methodId` in the dependency array.
   useEffect(() => {
-    if (providerStatusBySlug === null) return;
-    if (methodId === WALLET_METHOD_ID) return;
-    if (methodId === "" || isMethodAvailable(methodId)) return;
-    const fallback = PAYMENT_METHODS.find((m) => isMethodAvailable(m.id));
-    setMethodId(fallback ? fallback.id : "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [providerStatusBySlug, methodId]);
+    setMethodId((current) =>
+      nextSelectedMethodId({
+        current,
+        statusBySlug: providerStatusBySlug,
+        providerByMethod: PROVIDER_BY_METHOD_FULL,
+        methods: PAYMENT_METHODS,
+      }),
+    );
+  }, [providerStatusBySlug]);
 
   const checkout = useCheckout();
 
@@ -360,22 +420,19 @@ export default function GiftGame() {
   const methodReady = selectedProvider !== undefined && isMethodAvailable(methodId);
   // The submit gate must be honest even though the tile itself shows an
   // optimistic "enough" while the balance is still loading (`walletPay`
-  // above) — a still-loading balance is not a known-sufficient one, so Buy
-  // stays disabled until it actually resolves and covers `walletTotal`.
-  // Irrelevant (`true`) for every other method. Mirrors the web panel,
-  // which only enables Buy once its wallet tile reaches the genuine
-  // `"ready"` state (`canPayFromBalance(walletState)`), never a loading or
-  // unknown one.
-  const walletSubmitReady =
-    methodId !== WALLET_METHOD_ID ||
-    (walletBalance !== null && walletTotal !== null && walletBalance >= walletTotal);
+  // above) — see `walletSubmitReady`'s own docstring.
+  const submitReady = walletSubmitReady({
+    methodId,
+    balance: walletBalance,
+    total: walletTotal,
+  });
   const canBuy =
     price !== null &&
     selectedCountry !== null &&
     canonicalInvite !== null &&
     skuId !== null &&
     methodReady &&
-    walletSubmitReady &&
+    submitReady &&
     !checkout.isPending;
 
   /**

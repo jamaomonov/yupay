@@ -2,12 +2,15 @@ import { describe, expect, test } from "vitest";
 
 import {
   countryAfterPackageChange,
+  nextSelectedMethodId,
   reconcileSelection,
   splitCountries,
   walletPayState,
+  walletSubmitReady,
 } from "./GiftGame";
 
 import type { GiftAppDetail, GiftPackage, GiftRegion } from "@/lib/gifts";
+import type { ProviderAvailability } from "@/lib/orders";
 
 function makePackage(id: number, prices: { zone: string; price_usd: string }[]): GiftPackage {
   return {
@@ -239,5 +242,117 @@ describe("walletPayState", () => {
     expect(
       walletPayState({ balance: null, total: null, loading: true, visibility: "active" }),
     ).toEqual({ enough: false, disabled: true, shortfall: 0, unknownTotal: true });
+  });
+});
+
+// Whether Buy may actually be submitted for the currently selected method —
+// the CRITICAL/IMPORTANT parity fixes (2026-09-04 review): the wallet tile
+// itself shows an optimistic "enough" while the balance is still loading
+// (`walletPayState` above), but this is the honest gate the Buy button
+// itself must consult — a live-payment path, so it's asserted directly.
+describe("walletSubmitReady", () => {
+  test("is always ready for a non-wallet method, regardless of balance/total — the acquirer path is untouched", () => {
+    expect(walletSubmitReady({ methodId: "click", balance: null, total: null })).toBe(true);
+    expect(walletSubmitReady({ methodId: "click", balance: 0, total: 100_000 })).toBe(true);
+    expect(walletSubmitReady({ methodId: "payme", balance: 40_000, total: 100_000 })).toBe(true);
+  });
+
+  test("wallet is NOT ready while the balance is still loading (balance === null)", () => {
+    expect(walletSubmitReady({ methodId: "wallet", balance: null, total: 100_000 })).toBe(false);
+  });
+
+  test("wallet is NOT ready when the total is unknown (FX unavailable)", () => {
+    expect(walletSubmitReady({ methodId: "wallet", balance: 150_000, total: null })).toBe(false);
+  });
+
+  test("wallet is NOT ready when the balance falls short of the total", () => {
+    expect(walletSubmitReady({ methodId: "wallet", balance: 40_000, total: 100_000 })).toBe(false);
+  });
+
+  test("wallet IS ready when the balance covers the total", () => {
+    expect(walletSubmitReady({ methodId: "wallet", balance: 150_000, total: 100_000 })).toBe(true);
+  });
+
+  test("wallet IS ready when the balance covers the total exactly", () => {
+    expect(walletSubmitReady({ methodId: "wallet", balance: 100_000, total: 100_000 })).toBe(true);
+  });
+});
+
+// The reselect effect's own decision, pulled out pure — the CRITICAL parity
+// fix: a chosen wallet must never be silently reassigned to a card just
+// because its own live status isn't "active". Mirrors
+// `GiftPurchasePanel.tsx`'s identical guard on the web storefront.
+describe("nextSelectedMethodId", () => {
+  const methods = [{ id: "click" }, { id: "payme" }];
+  const providerByMethod = { click: "click_miniapp", payme: "payme", wallet: "wallet" };
+
+  test("leaves the selection alone while provider status hasn't loaded yet", () => {
+    expect(
+      nextSelectedMethodId({
+        current: "click",
+        statusBySlug: null,
+        providerByMethod,
+        methods,
+      }),
+    ).toBe("click");
+  });
+
+  test("keeps a chosen wallet selected even when the wallet itself is hidden (admin-disabled)", () => {
+    const statusBySlug = new Map<string, ProviderAvailability>([["click_miniapp", "active"]]);
+    expect(
+      nextSelectedMethodId({ current: "wallet", statusBySlug, providerByMethod, methods }),
+    ).toBe("wallet");
+  });
+
+  test("keeps a chosen wallet selected even when it's under maintenance", () => {
+    const statusBySlug = new Map<string, ProviderAvailability>([
+      ["click_miniapp", "active"],
+      ["wallet", "maintenance"],
+    ]);
+    expect(
+      nextSelectedMethodId({ current: "wallet", statusBySlug, providerByMethod, methods }),
+    ).toBe("wallet");
+  });
+
+  test("keeps a chosen wallet selected when it's active too (the trivial case)", () => {
+    const statusBySlug = new Map<string, ProviderAvailability>([["wallet", "active"]]);
+    expect(
+      nextSelectedMethodId({ current: "wallet", statusBySlug, providerByMethod, methods }),
+    ).toBe("wallet");
+  });
+
+  test("leaves an empty selection empty", () => {
+    const statusBySlug = new Map<string, ProviderAvailability>([["click_miniapp", "active"]]);
+    expect(nextSelectedMethodId({ current: "", statusBySlug, providerByMethod, methods })).toBe("");
+  });
+
+  test("keeps the current acquirer when it's still active", () => {
+    const statusBySlug = new Map<string, ProviderAvailability>([
+      ["click_miniapp", "active"],
+      ["payme", "active"],
+    ]);
+    expect(
+      nextSelectedMethodId({ current: "click", statusBySlug, providerByMethod, methods }),
+    ).toBe("click");
+  });
+
+  test("falls back to the first active acquirer when the current one is no longer available", () => {
+    const statusBySlug = new Map<string, ProviderAvailability>([
+      ["click_miniapp", "maintenance"],
+      ["payme", "active"],
+    ]);
+    expect(
+      nextSelectedMethodId({ current: "click", statusBySlug, providerByMethod, methods }),
+    ).toBe("payme");
+  });
+
+  test("deselects entirely when nothing is active", () => {
+    const statusBySlug = new Map<string, ProviderAvailability>([
+      ["click_miniapp", "maintenance"],
+      ["payme", "maintenance"],
+    ]);
+    expect(
+      nextSelectedMethodId({ current: "click", statusBySlug, providerByMethod, methods }),
+    ).toBe("");
   });
 });
