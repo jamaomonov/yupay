@@ -10,15 +10,10 @@ import { SafeImage } from "@/components/ui/safe-image";
 import { useCategoriesList, useGames } from "@/lib/catalog";
 import { CATEGORY_LABELS } from "@/lib/constants";
 import { useT } from "@/lib/i18n";
+import { hrefForGame } from "@/lib/routes";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
 const ALL_KEY = "__all__";
-
-/** Steam Gifts has its own native catalog/game flow (`/gifts`) — the generic
- *  top-up form never sees this brand, on Home or from a deep link. */
-function hrefForGame(game: Game): string {
-  return game.id === "steam-gifts" ? "/gifts" : `/topup/${game.id}`;
-}
 
 // ─── Game card (icon grid) ────────────────────────────────────────────────────
 function GameCardThumb({ game }: { game: Game }) {

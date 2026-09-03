@@ -25,6 +25,7 @@ import { useMe } from "@/lib/auth";
 import { useT, useLocale, type MessageKey } from "@/lib/i18n";
 import { useMyOrders, orderToHistoryRow, type HistoryRow } from "@/lib/orders";
 import { getMyReviews } from "@/lib/reviews";
+import { hrefForGameSlug } from "@/lib/routes";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import {
   summarizeForUser,
@@ -336,7 +337,7 @@ function OrdersTab() {
                           // repeat tap from triggering that navigation.
                           e.preventDefault();
                           e.stopPropagation();
-                          navigate(`/topup/${tx.gameSlug}`);
+                          if (tx.gameSlug) navigate(hrefForGameSlug(tx.gameSlug));
                         }}
                         className="text-primary mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold"
                         data-testid={`history-repeat-${tx.id}`}

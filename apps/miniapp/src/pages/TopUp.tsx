@@ -284,7 +284,11 @@ export default function TopUp() {
   // for this brand bounces straight there instead of ever rendering (and
   // briefly flashing) the account-field/package form below.
   useEffect(() => {
-    if (gameId === "steam-gifts") setLocation("/gifts");
+    // `replace: true` — this is a redirect, not a navigation the buyer chose.
+    // A plain push leaves `/topup/steam-gifts` on the history stack, so
+    // Telegram's hardware BackButton bounces right back into this same
+    // effect and loops `/topup/steam-gifts` <-> `/gifts` forever.
+    if (gameId === "steam-gifts") setLocation("/gifts", { replace: true });
   }, [gameId, setLocation]);
 
   const gamesQuery = useGames();

@@ -48,6 +48,7 @@ import {
 } from "@/lib/orders";
 import { ICON_BY_PROVIDER } from "@/lib/payment-methods";
 import { getMyReviews } from "@/lib/reviews";
+import { hrefForGameSlug } from "@/lib/routes";
 import {
   addToHomeScreen,
   canShareToStory,
@@ -378,7 +379,7 @@ export default function OrderSuccess() {
         <Link
           href={
             order.items[0]?.display?.brand_slug
-              ? `/topup/${order.items[0].display.brand_slug}`
+              ? hrefForGameSlug(order.items[0].display.brand_slug)
               : "/"
           }
         >

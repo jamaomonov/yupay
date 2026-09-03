@@ -56,6 +56,29 @@ export function zoneAfterPackageChange(
   return fallback ? fallback.zone : currentZone;
 }
 
+/**
+ * Which package/zone stay selected after a detail refresh that must
+ * preserve the buyer's picks — namely the price-drift reload in
+ * `handleBuy`, where a fresh `load()` must NOT bounce the buyer back to
+ * `packages[0]`/`zone_default` the way an initial page load does. Keeps
+ * `prevPackageId` when the refreshed detail still lists it, else falls back
+ * to the first package (mirrors the initial-load default); resolves the
+ * zone through the existing `zoneAfterPackageChange` rule so it stays
+ * consistent with every other package/zone transition on this page.
+ */
+export function reconcileSelection(
+  detail: GiftAppDetail,
+  prevPackageId: number | null,
+  prevZone: string | null,
+): { packageId: number | null; zone: string | null } {
+  const pkg = detail.packages.find((p) => p.id === prevPackageId) ?? detail.packages[0] ?? null;
+  if (!pkg) return { packageId: null, zone: prevZone ?? detail.zone_default };
+  return {
+    packageId: pkg.id,
+    zone: zoneAfterPackageChange(pkg, prevZone ?? detail.zone_default, detail.zone_default),
+  };
+}
+
 /** Splits an app's offered zones into the pills shown up front and the ones
  *  collapsed behind "другой регион". */
 export function splitZones(
@@ -210,12 +233,21 @@ export default function GiftGame() {
 
   const checkout = useCheckout();
 
-  function load(): void {
+  /**
+   * `keepSelection` distinguishes an initial/route-change load (reset to
+   * `packages[0]`/`zone_default`, the page's usual entry state) from the
+   * price-drift reload in `handleBuy` (reapply whatever the buyer had
+   * picked, via `reconcileSelection`, so a 422 doesn't silently swap their
+   * edition/region out from under them while they re-confirm).
+   */
+  function load(keepSelection = false): void {
     if (!validAppId) {
       setPhase("notFound");
       return;
     }
     const seq = ++seqRef.current;
+    const prevPackageId = selectedPackageId;
+    const prevZone = selectedZone;
     setPhase("loading");
     fetchGiftDetail(numericAppId)
       .then((d) => {
@@ -226,8 +258,14 @@ export default function GiftGame() {
           return;
         }
         setDetail(d);
-        setSelectedPackageId(d.packages[0]?.id ?? null);
-        setSelectedZone(d.zone_default);
+        if (keepSelection) {
+          const { packageId, zone } = reconcileSelection(d, prevPackageId, prevZone);
+          setSelectedPackageId(packageId);
+          setSelectedZone(zone);
+        } else {
+          setSelectedPackageId(d.packages[0]?.id ?? null);
+          setSelectedZone(d.zone_default);
+        }
         setZoneExpanded(false);
         setPhase("idle");
       })
@@ -323,6 +361,12 @@ export default function GiftGame() {
         },
         amountUsd: price.price_usd,
         qty: 1,
+        // `performCheckout` defaults to USD, but this SKU is variable-amount
+        // and the server rejects USD for that shape before the gift hook
+        // even runs (`_resolve_line_unit_price` in orders/service.py). Mirrors
+        // `apps/web/src/lib/gift-checkout.ts`'s hardcoded `currency: "UZS"` —
+        // required at both the orders layer and the Click/Payme/Uzum gateways.
+        currency: "UZS",
         provider: selectedProvider,
       });
       haptic("ok");
@@ -345,7 +389,7 @@ export default function GiftGame() {
         const expected = extractExpectedAmount(exc.body);
         if (expected !== null) {
           toast({ title: t("gifts.checkout.priceChanged"), variant: "destructive" });
-          load();
+          load(/* keepSelection */ true);
           return;
         }
       }
@@ -403,7 +447,9 @@ export default function GiftGame() {
         <p className="text-sm text-white/50">{t("gifts.search.error")}</p>
         <button
           type="button"
-          onClick={load}
+          onClick={() => {
+            load();
+          }}
           className="bg-primary rounded-2xl px-6 py-3 font-bold text-black"
         >
           {t("common.retry")}
