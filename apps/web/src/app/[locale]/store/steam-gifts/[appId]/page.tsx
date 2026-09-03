@@ -104,12 +104,17 @@ export default async function GiftGamePage({
 
   const p = path(appId);
 
-  // Product JSON-LD for this one app, priced at the default zone — the
-  // lowest sell price among its packages there, mirroring how the brand
-  // page picks a "starting" chip from several SKUs.
+  // Product JSON-LD for this one app, priced at the default country's zone
+  // — the lowest sell price among its packages there, mirroring how the
+  // brand page picks a "starting" chip from several SKUs. `region_default`
+  // (2026-09-03) is a country code (e.g. "UZ"), not a zone label, so it's
+  // resolved to its zone via `regions` before matching `pkg.prices[].zone`
+  // — comparing it to `price.zone` directly (the pre-country-picker
+  // behaviour) would silently zero out this Offer for every game page.
+  const defaultZone = detail.regions.find((r) => r.country === detail.region_default)?.zone;
   const defaultZonePrices = detail.packages
     .flatMap((pkg) => pkg.prices)
-    .filter((price) => price.zone === detail.zone_default)
+    .filter((price) => price.zone === defaultZone)
     .map((price) => (price.price_uzs != null ? Math.round(Number(price.price_uzs)) : null))
     .filter((n): n is number => n !== null);
   const offer =

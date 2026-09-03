@@ -45,12 +45,32 @@ export interface GiftPackage {
   prices: GiftZonePrice[];
 }
 
+/** One purchasable country, priced from the zone that covers it — the
+ *  country picker's own unit. Mirrors `GiftRegionOut`; see
+ *  `yupay.modules.gifts.service.ZONE_COUNTRIES` for which countries a zone
+ *  covers. Every country sharing a zone carries that zone's identical
+ *  price. */
+export interface GiftRegion {
+  country: string;
+  zone: string;
+  price_usd: string;
+  price_uzs: string | null;
+}
+
 export interface GiftAppDetail extends GiftApp {
   description: string | null;
   packages: GiftPackage[];
   dlc_total: number;
-  zones: string[];
-  zone_default: string;
+  /** The country picker (2026-09-03): `region_default` first, each entry
+   *  priced from its zone. */
+  regions: GiftRegion[];
+  region_default: string;
+  /** Deprecated (2026-09-03) — the zone-label picker `regions` replaced.
+   *  Optional so a build against an older deployed API (predating this
+   *  field) still type-checks; new code reads `regions`/`region_default`
+   *  instead. */
+  zones?: string[];
+  zone_default?: string;
 }
 
 const REVALIDATE = 300;

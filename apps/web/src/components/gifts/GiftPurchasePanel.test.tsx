@@ -6,9 +6,10 @@ import { afterEach, expect, it, vi } from "vitest";
 import { GiftPurchasePanel } from "./GiftPurchasePanel";
 
 import type * as GiftCheckoutModule from "@/lib/gift-checkout";
-import type { GiftAppDetail } from "@/lib/gifts";
+import type { GiftAppDetail, GiftPackage } from "@/lib/gifts";
 
 import { buyGift, GiftPriceChangedError } from "@/lib/gift-checkout";
+import { countryName } from "@/lib/regions";
 import { formatUzs } from "@/lib/seo";
 
 /**
@@ -77,6 +78,17 @@ afterEach(() => {
   toastInfoMock.mockReset();
 });
 
+const STANDARD_EDITION: GiftPackage = {
+  id: 1,
+  name: "Standard Edition",
+  image: null,
+  discount_percent: null,
+  prices: [
+    { zone: "CIS", price_usd: "1.10", price_uzs: "13970" },
+    { zone: "RU", price_usd: "1.30", price_uzs: "16510" },
+  ],
+};
+
 function makeDetail(overrides: Partial<GiftAppDetail> = {}): GiftAppDetail {
   return {
     app_id: 588650,
@@ -89,23 +101,23 @@ function makeDetail(overrides: Partial<GiftAppDetail> = {}): GiftAppDetail {
     packages_count: 1,
     dlc_count: 2,
     description: "A rogue-lite.",
-    packages: [
-      {
-        id: 1,
-        name: "Standard Edition",
-        image: null,
-        discount_percent: null,
-        prices: [
-          { zone: "CIS", price_usd: "1.10", price_uzs: "13970" },
-          { zone: "RU", price_usd: "1.30", price_uzs: "16510" },
-        ],
-      },
-    ],
+    packages: [STANDARD_EDITION],
     dlc_total: 2,
-    zones: ["CIS", "RU"],
-    zone_default: "CIS",
+    regions: [
+      { country: "UZ", zone: "CIS", price_usd: "1.10", price_uzs: "13970" },
+      { country: "GE", zone: "CIS", price_usd: "1.10", price_uzs: "13970" },
+      { country: "RU", zone: "RU", price_usd: "1.30", price_uzs: "16510" },
+    ],
+    region_default: "UZ",
     ...overrides,
   };
+}
+
+/** Accessible name of the country pill for `code`, as `useTranslations`'
+ *  plain-passthrough mock renders it (see the `next-intl` mock above) — the
+ *  flag emoji plus the `ru`-localized country name. */
+function countryButtonName(code: string): RegExp {
+  return new RegExp(countryName(code, "ru"));
 }
 
 /** `formatUzs` renders `Intl.NumberFormat`'s U+00A0 grouping separator, but
@@ -130,21 +142,42 @@ async function fillValidCheckout(): Promise<void> {
   });
 }
 
-it("renders the default package/zone's CIS price", () => {
+it("renders the default country's (UZ) price", () => {
   mockProvidersResponse();
   render(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
 
   expect(screen.getAllByText(priceText(13970)).length).toBeGreaterThan(0);
+  expect(screen.getByRole("button", { name: countryButtonName("UZ") })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
 });
 
-it("re-prices when the region is switched", () => {
+it("re-prices when the country is switched", () => {
   mockProvidersResponse();
   render(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
 
-  fireEvent.click(screen.getByRole("button", { name: "RU" }));
+  fireEvent.click(screen.getByRole("button", { name: countryButtonName("RU") }));
 
   expect(screen.getAllByText(priceText(16510)).length).toBeGreaterThan(0);
   expect(screen.queryByText(priceText(13970))).not.toBeInTheDocument();
+});
+
+it("disables a country whose zone has no price for the selected package, with visible text", () => {
+  mockProvidersResponse();
+  const detail = makeDetail({
+    packages: [
+      { ...STANDARD_EDITION, prices: [{ zone: "CIS", price_usd: "1.10", price_uzs: "13970" }] },
+    ],
+  });
+  render(<GiftPurchasePanel detail={detail} skuId="sku-1" locale="ru" />);
+
+  const ruButton = screen.getByRole("button", { name: countryButtonName("RU") });
+  expect(ruButton).toBeDisabled();
+  // Visible text, not a `title=` tooltip (invisible on mobile) — see
+  // `CountryButton` in `GiftPurchasePanel.tsx`.
+  expect(ruButton).not.toHaveAttribute("title");
+  expect(screen.getByText("noPriceInRegion")).toBeInTheDocument();
 });
 
 it("blocks submit and shows the i18n error on a bad invite URL", () => {
@@ -185,7 +218,7 @@ it("POSTs the exact checkout body via lib/gift-checkout on submit", async () => 
     fulfillmentData: {
       app_id: 588650,
       package_id: 1,
-      region: "CIS",
+      region: "UZ",
       invite_url: "https://steamcommunity.com/profiles/76561198000000000",
     },
     email: "guest@example.com",

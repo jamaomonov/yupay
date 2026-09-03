@@ -8,6 +8,7 @@ import { useTranslations } from "next-intl";
 import { useEffect, useId, useState } from "react";
 
 import { InviteGuide } from "./InviteGuide";
+import { RegionHint } from "./RegionHint";
 
 import type { GiftAppDetail, GiftPackage } from "@/lib/gifts";
 import type { ProviderStatus, ProvidersOut } from "@/lib/payment-providers";
@@ -17,14 +18,16 @@ import { buttonStyles } from "@/lib/button";
 import { getAccessToken, SURFACE } from "@/lib/client";
 import { buyGift, GiftPriceChangedError } from "@/lib/gift-checkout";
 import { methodVisibility, providerStatusMap, selectActiveMethodId } from "@/lib/payment-providers";
+import { countryName, flagEmoji } from "@/lib/regions";
 import { formatUzs } from "@/lib/seo";
 import { toast } from "@/store/useToast";
 
 const API = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
 
-/** How many offered zones show as their own pill before the rest collapse
- *  behind a single "другой регион" toggle. */
-const VISIBLE_ZONE_COUNT = 4;
+/** How many offered countries show as their own pill before the rest
+ *  collapse behind a single "другой регион" toggle — CIS alone is nine
+ *  countries. */
+const VISIBLE_COUNTRY_COUNT = 4;
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -119,27 +122,48 @@ export function GiftPurchasePanel({
   const { user } = useAuth();
 
   const [packageId, setPackageId] = useState<number>(() => detail.packages[0]?.id ?? 0);
-  const [zone, setZone] = useState<string>(detail.zone_default);
+  const [country, setCountry] = useState<string>(detail.region_default);
+
+  // The country picker's own unit is the country, but a package's prices
+  // are keyed by zone (`GiftPackage.prices[].zone`) — every country a zone
+  // covers shares that zone's price. `detail.regions` is the country ->
+  // zone map the country picker renders from; resolving through it (rather
+  // than the country's own `price_usd`, which reflects whichever package
+  // first priced that zone) keeps this in sync with whatever package is
+  // currently selected — see `zone_for_country` on the backend for the
+  // server-side twin of this lookup.
+  const countryZone = new Map(detail.regions.map((r) => [r.country, r.zone]));
 
   const selectedPackage: GiftPackage | null =
     detail.packages.find((p) => p.id === packageId) ?? detail.packages[0] ?? null;
-  const selectedPrice = selectedPackage?.prices.find((p) => p.zone === zone) ?? null;
+  const selectedZone = countryZone.get(country);
+  const selectedPrice =
+    selectedZone !== undefined
+      ? (selectedPackage?.prices.find((p) => p.zone === selectedZone) ?? null)
+      : null;
 
-  const visibleZones = detail.zones.slice(0, VISIBLE_ZONE_COUNT);
-  const overflowZones = detail.zones.slice(VISIBLE_ZONE_COUNT);
-  const [zoneExpanded, setZoneExpanded] = useState<boolean>(() => overflowZones.includes(zone));
+  const countries = detail.regions.map((r) => r.country);
+  const visibleCountries = countries.slice(0, VISIBLE_COUNTRY_COUNT);
+  const overflowCountries = countries.slice(VISIBLE_COUNTRY_COUNT);
+  const [countryExpanded, setCountryExpanded] = useState<boolean>(() =>
+    overflowCountries.includes(country),
+  );
 
+  /** Selection reconciliation on a package switch: keeps the chosen
+   *  country when its zone still has a price on the new package, else
+   *  falls back to `region_default` — the country-keyed twin of the old
+   *  zone-keyed rule. */
   function selectPackage(pkg: GiftPackage): void {
     setPackageId(pkg.id);
-    if (!pkg.prices.some((p) => p.zone === zone)) {
-      const fallback = pkg.prices.find((p) => p.zone === detail.zone_default) ?? pkg.prices[0];
-      if (fallback) setZone(fallback.zone);
-    }
+    const zone = countryZone.get(country);
+    const stillPriced = zone !== undefined && pkg.prices.some((p) => p.zone === zone);
+    if (!stillPriced) setCountry(detail.region_default);
   }
 
-  function selectZone(z: string): void {
-    if (!selectedPackage?.prices.some((p) => p.zone === z)) return;
-    setZone(z);
+  function selectCountry(c: string): void {
+    const zone = countryZone.get(c);
+    if (zone === undefined || !selectedPackage?.prices.some((p) => p.zone === zone)) return;
+    setCountry(c);
   }
 
   const [inviteUrl, setInviteUrl] = useState("");
@@ -212,7 +236,7 @@ export function GiftPurchasePanel({
         fulfillmentData: {
           app_id: detail.app_id,
           package_id: selectedPackage.id,
-          region: zone,
+          region: country,
           invite_url: inviteUrl.trim(),
         },
         // `loggedIn` aliases `user !== null` — `user` is narrowed non-null
@@ -234,7 +258,7 @@ export function GiftPurchasePanel({
       if (err instanceof GiftPriceChangedError) {
         toast.info(tg("priceChanged"));
         // Re-fetches the game detail from the server; this client component
-        // keeps its own state (package/zone/invite/email) across the
+        // keeps its own state (package/country/invite/email) across the
         // refresh, and the recomputed `selectedPrice` above picks up the
         // server's current figure automatically.
         router.refresh();
@@ -257,7 +281,10 @@ export function GiftPurchasePanel({
         </p>
         <div className="mt-2 flex flex-col gap-2">
           {detail.packages.map((pkg) => {
-            const price = pkg.prices.find((p) => p.zone === zone) ?? null;
+            const price =
+              selectedZone !== undefined
+                ? (pkg.prices.find((p) => p.zone === selectedZone) ?? null)
+                : null;
             const active = pkg.id === selectedPackage?.id;
             const discount =
               pkg.discount_percent != null && pkg.discount_percent > 0
@@ -299,43 +326,51 @@ export function GiftPurchasePanel({
       </div>
 
       <div>
-        <p className="text-tx-dim text-[11px] font-semibold uppercase tracking-[0.08em]">
-          {t("region")}
-        </p>
+        <div className="flex items-center gap-3">
+          <p className="text-tx-dim text-[11px] font-semibold uppercase tracking-[0.08em]">
+            {t("region")}
+          </p>
+          <RegionHint />
+        </div>
         <div className="mt-2 flex flex-wrap gap-2">
-          {visibleZones.map((z) => (
-            <ZoneButton
-              key={z}
-              zone={z}
-              active={z === zone}
+          {visibleCountries.map((c) => (
+            <CountryButton
+              key={c}
+              country={c}
+              active={c === country}
               selectedPackage={selectedPackage}
+              countryZone={countryZone}
+              locale={locale}
               t={t}
-              onSelect={selectZone}
+              onSelect={selectCountry}
             />
           ))}
-          {overflowZones.length > 0 && !zoneExpanded && (
+          {overflowCountries.length > 0 && !countryExpanded && (
             <button
               type="button"
               onClick={() => {
-                setZoneExpanded(true);
+                setCountryExpanded(true);
               }}
               className="border-border text-tx-mute hover:border-border-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition"
             >
               {t("otherRegion")}
             </button>
           )}
-          {zoneExpanded &&
-            overflowZones.map((z) => (
-              <ZoneButton
-                key={z}
-                zone={z}
-                active={z === zone}
+          {countryExpanded &&
+            overflowCountries.map((c) => (
+              <CountryButton
+                key={c}
+                country={c}
+                active={c === country}
                 selectedPackage={selectedPackage}
+                countryZone={countryZone}
+                locale={locale}
                 t={t}
-                onSelect={selectZone}
+                onSelect={selectCountry}
               />
             ))}
         </div>
+        <p className="text-tx-dim mt-2 text-[12px] leading-snug">{t("regionWarning")}</p>
       </div>
 
       <div className="border-border/70 border-t pt-4">
@@ -467,38 +502,53 @@ export function GiftPurchasePanel({
   );
 }
 
-/** One region pill: disabled (with a hint) when the currently selected
- *  package has no price in this zone. */
-function ZoneButton({
-  zone,
+/** One country pill: flag + localized name, priced from the zone that
+ *  covers it. Disabled *with visible text* (not a `title=` tooltip, which
+ *  is invisible on mobile) when the currently selected package has no
+ *  price in that zone. */
+function CountryButton({
+  country,
   active,
   selectedPackage,
+  countryZone,
+  locale,
   t,
   onSelect,
 }: {
-  zone: string;
+  country: string;
   active: boolean;
   selectedPackage: GiftPackage | null;
+  countryZone: Map<string, string>;
+  locale: string;
   t: ReturnType<typeof useTranslations>;
-  onSelect: (zone: string) => void;
+  onSelect: (country: string) => void;
 }) {
-  const available = selectedPackage?.prices.some((p) => p.zone === zone) ?? false;
+  const zone = countryZone.get(country);
+  const available =
+    zone !== undefined && (selectedPackage?.prices.some((p) => p.zone === zone) ?? false);
   return (
     <button
       type="button"
       disabled={!available}
-      title={available ? undefined : t("noPriceInRegion")}
       aria-pressed={active}
       onClick={() => {
-        onSelect(zone);
+        onSelect(country);
       }}
-      className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+      className={`flex flex-col items-start gap-0.5 rounded-lg border px-3 py-1.5 text-left text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
         active
           ? "border-primary bg-primary/10 text-primary"
           : "border-border text-tx-mute hover:border-border-2"
       }`}
     >
-      {zone}
+      <span className="inline-flex items-center gap-1.5">
+        <span aria-hidden="true">{flagEmoji(country)}</span>
+        {countryName(country, locale)}
+      </span>
+      {!available && (
+        <span className="text-tx-dim text-[10px] font-normal normal-case">
+          {t("noPriceInRegion")}
+        </span>
+      )}
     </button>
   );
 }
