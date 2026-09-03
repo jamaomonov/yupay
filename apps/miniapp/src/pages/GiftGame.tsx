@@ -1,18 +1,19 @@
 import { motion } from "framer-motion";
-import { ArrowLeft, Check } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useParams } from "wouter";
 
 import type { GiftAppDetail, GiftPackage } from "@/lib/gifts";
 
 import { DlcSheet } from "@/components/gifts/DlcSheet";
+import { GiftBuyPanel } from "@/components/gifts/GiftBuyPanel";
 import { InviteGuideSheet } from "@/components/gifts/InviteGuideSheet";
-import { PaymentMethodGrid } from "@/components/gifts/PaymentMethodGrid";
+import { PackageOption, priceLabel } from "@/components/gifts/PackageOption";
+import { ZonePill } from "@/components/gifts/ZonePill";
 import { SafeImage } from "@/components/ui/safe-image";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { ApiError } from "@/lib/api";
-import { formatMoney } from "@/lib/currency";
 import {
   extractExpectedAmount,
   fetchGiftDetail,
@@ -86,98 +87,6 @@ export function splitZones(
   visibleCount: number,
 ): { visible: string[]; overflow: string[] } {
   return { visible: zones.slice(0, visibleCount), overflow: zones.slice(visibleCount) };
-}
-
-/** `unavailable` is the caller's already-translated `gifts.priceUnavailable`
- *  string — this stays a plain function (not a component), so it can't call
- *  `useT()` itself. */
-function priceLabel(
-  price: { price_usd: string; price_uzs: string | null } | null,
-  unavailable: string,
-): string {
-  if (!price) return unavailable;
-  return price.price_uzs != null
-    ? formatMoney(Math.round(Number(price.price_uzs)), "UZS")
-    : formatMoney(Number(price.price_usd), "USD");
-}
-
-// ─── Edition (package) picker ───────────────────────────────────────────────
-function PackageOption({
-  pkg,
-  price,
-  active,
-  onSelect,
-}: {
-  pkg: GiftPackage;
-  price: { price_usd: string; price_uzs: string | null } | null;
-  active: boolean;
-  onSelect: () => void;
-}) {
-  const { t } = useT();
-  const discount =
-    pkg.discount_percent != null && pkg.discount_percent > 0 ? pkg.discount_percent : null;
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onSelect}
-      className="relative rounded-2xl p-3.5 text-left transition-all duration-150"
-      style={{
-        background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
-        border: active ? "1.5px solid hsl(var(--primary) / 0.8)" : "1px solid hsl(var(--border))",
-      }}
-    >
-      {active && (
-        <div
-          className="absolute right-2.5 top-2.5 flex h-5 w-5 items-center justify-center rounded-full"
-          style={{ background: "hsl(var(--primary))" }}
-        >
-          <Check size={11} strokeWidth={3} className="text-black" />
-        </div>
-      )}
-      <div className="flex items-center justify-between gap-3 pr-6">
-        <span className="text-sm font-bold text-white">{pkg.name}</span>
-        <span className="font-mono text-sm font-bold tabular-nums text-white">
-          {priceLabel(price, t("gifts.priceUnavailable"))}
-        </span>
-      </div>
-      {discount !== null && (
-        <span className="text-primary mt-1 inline-block text-[11px] font-bold">-{discount}%</span>
-      )}
-    </button>
-  );
-}
-
-// ─── Region pill ─────────────────────────────────────────────────────────────
-function ZonePill({
-  zone,
-  active,
-  available,
-  onSelect,
-}: {
-  zone: string;
-  active: boolean;
-  available: boolean;
-  onSelect: () => void;
-}) {
-  const { t } = useT();
-  return (
-    <button
-      type="button"
-      disabled={!available}
-      title={available ? undefined : t("gifts.game.noPriceInRegion")}
-      aria-pressed={active}
-      onClick={onSelect}
-      className="rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40"
-      style={{
-        borderColor: active ? "hsl(var(--primary))" : "hsl(var(--border))",
-        background: active ? "hsl(var(--primary) / 0.12)" : "transparent",
-        color: active ? "hsl(var(--primary))" : "rgba(255,255,255,0.6)",
-      }}
-    >
-      {zone}
-    </button>
-  );
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -600,66 +509,23 @@ export default function GiftGame() {
           )}
         </div>
 
-        {/* Invite link */}
-        <div className="space-y-2">
-          <label className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
-            {t("gifts.game.inviteLabel")}
-          </label>
-          <input
-            type="text"
-            value={inviteUrl}
-            onChange={(e) => {
-              setInviteUrl(e.target.value);
-            }}
-            placeholder={t("gifts.game.invitePlaceholder")}
-            className="h-11 w-full rounded-xl border bg-transparent px-3 text-sm text-white outline-none"
-            style={{ borderColor: "hsl(var(--border))" }}
-          />
-          {inviteTouched && canonicalInvite === null && (
-            <p className="text-[13px] text-red-400">{t("gifts.game.inviteError")}</p>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              setGuideOpen(true);
-            }}
-            className="text-primary text-[13px] font-semibold"
-          >
-            {t("gifts.game.inviteGuideCta")}
-          </button>
-        </div>
-
-        {skuStatus === "unavailable" ? (
-          <p className="rounded-2xl border border-dashed border-white/10 p-4 text-center text-sm text-white/40">
-            {t("gifts.comingSoon")}
-          </p>
-        ) : (
-          <>
-            {/* Payment method */}
-            <div>
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/50">
-                {t("topup.paymentMethod")}
-              </p>
-              <PaymentMethodGrid
-                methods={PAYMENT_METHODS}
-                activeId={methodId}
-                providerStatusBySlug={providerStatusBySlug}
-                onSelect={setMethodId}
-              />
-            </div>
-
-            <button
-              type="button"
-              disabled={!canBuy}
-              onClick={() => {
-                void handleBuy();
-              }}
-              className="bg-primary w-full rounded-2xl py-3.5 text-base font-bold text-black disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {checkout.isPending ? t("topup.processingBtn") : t("gifts.game.buy")}
-            </button>
-          </>
-        )}
+        <GiftBuyPanel
+          inviteUrl={inviteUrl}
+          onInviteUrlChange={setInviteUrl}
+          showInviteError={inviteTouched && canonicalInvite === null}
+          onOpenGuide={() => {
+            setGuideOpen(true);
+          }}
+          skuStatus={skuStatus}
+          methodId={methodId}
+          providerStatusBySlug={providerStatusBySlug}
+          onMethodChange={setMethodId}
+          canBuy={canBuy}
+          isPending={checkout.isPending}
+          onBuy={() => {
+            void handleBuy();
+          }}
+        />
 
         <div className="space-y-1 text-[12px] leading-relaxed text-white/40">
           <p>{t("gifts.game.timeline")}</p>

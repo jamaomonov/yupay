@@ -1,0 +1,104 @@
+import type { ProviderAvailability } from "@/lib/orders";
+
+import { PaymentMethodGrid } from "@/components/gifts/PaymentMethodGrid";
+import { useT } from "@/lib/i18n";
+import { PAYMENT_METHODS } from "@/lib/payment-methods";
+
+/**
+ * Invite link input + payment method / buy button section of the gift
+ * checkout — everything below the price that doesn't own `GiftGame`'s own
+ * state. Takes only primitives and callbacks: the checkout mutation, the
+ * price-drift reload, and the acquirer body it POSTs stay owned by the page
+ * (`GiftGame.tsx::handleBuy`), which is why this panel has no `detail` /
+ * `selectedPackage` / `price` prop at all.
+ *
+ * Extracted out of `GiftGame.tsx` (2026-09-03 review) purely to keep that
+ * file near the repo's TS file-length budget — no behaviour change.
+ */
+export function GiftBuyPanel({
+  inviteUrl,
+  onInviteUrlChange,
+  showInviteError,
+  onOpenGuide,
+  skuStatus,
+  methodId,
+  providerStatusBySlug,
+  onMethodChange,
+  canBuy,
+  isPending,
+  onBuy,
+}: {
+  inviteUrl: string;
+  onInviteUrlChange: (value: string) => void;
+  showInviteError: boolean;
+  onOpenGuide: () => void;
+  skuStatus: "loading" | "ready" | "unavailable";
+  methodId: string;
+  providerStatusBySlug: Map<string, ProviderAvailability> | null;
+  onMethodChange: (id: string) => void;
+  canBuy: boolean;
+  isPending: boolean;
+  onBuy: () => void;
+}) {
+  const { t } = useT();
+  return (
+    <>
+      {/* Invite link */}
+      <div className="space-y-2">
+        <label className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+          {t("gifts.game.inviteLabel")}
+        </label>
+        <input
+          type="text"
+          value={inviteUrl}
+          onChange={(e) => {
+            onInviteUrlChange(e.target.value);
+          }}
+          placeholder={t("gifts.game.invitePlaceholder")}
+          className="h-11 w-full rounded-xl border bg-transparent px-3 text-sm text-white outline-none"
+          style={{ borderColor: "hsl(var(--border))" }}
+        />
+        {showInviteError && (
+          <p className="text-[13px] text-red-400">{t("gifts.game.inviteError")}</p>
+        )}
+        <button
+          type="button"
+          onClick={onOpenGuide}
+          className="text-primary text-[13px] font-semibold"
+        >
+          {t("gifts.game.inviteGuideCta")}
+        </button>
+      </div>
+
+      {skuStatus === "unavailable" ? (
+        <p className="rounded-2xl border border-dashed border-white/10 p-4 text-center text-sm text-white/40">
+          {t("gifts.comingSoon")}
+        </p>
+      ) : (
+        <>
+          {/* Payment method */}
+          <div>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/50">
+              {t("topup.paymentMethod")}
+            </p>
+            <PaymentMethodGrid
+              methods={PAYMENT_METHODS}
+              activeId={methodId}
+              providerStatusBySlug={providerStatusBySlug}
+              onSelect={onMethodChange}
+            />
+          </div>
+
+          <button
+            type="button"
+            disabled={!canBuy}
+            onClick={onBuy}
+            className="bg-primary w-full rounded-2xl py-3.5 text-base font-bold text-black disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isPending ? t("topup.processingBtn") : t("gifts.game.buy")}
+          </button>
+        </>
+      )}
+    </>
+  );
+}
