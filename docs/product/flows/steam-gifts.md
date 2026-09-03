@@ -81,12 +81,14 @@ sequenceDiagram
 
 ## The buyer's steps
 
-1. **Browse** `/store/steam-gifts` (web only in v1 — the Mini App is
-   out of scope, the section is too heavy for it, spec §5). A hero +
-   «Горячие предложения» carousel shows pinned/discounted titles; a
-   debounced search box hits our proxy, which hits G-Engine's own
-   server-side search.
-2. **Open a game.** The game page shows the description, an edition
+1. **Browse.** Web: `/store/steam-gifts`. Telegram Mini App: `/gifts` — its
+   own native catalog screen, not the generic top-up form (a deep link or
+   stale bookmark to `/topup/steam-gifts` redirects straight there). Both
+   surfaces show a hero + «Горячие предложения» carousel of
+   pinned/discounted titles and a debounced search box hitting our proxy,
+   which hits G-Engine's own server-side search.
+2. **Open a game.** Web: `/store/steam-gifts/{appId}`. Mini App:
+   `/gifts/:appId`. The game page shows the description, an edition
    («издание» / package) selector — a title routinely ships several
    packages, each its own price per region — a region selector (default
    **CIS**, with RU/KZ/UA offered directly and the rest behind "другой
@@ -97,22 +99,29 @@ sequenceDiagram
    (`steamcommunity.com/profiles/{steamid64}`), a vanity URL
    (`steamcommunity.com/id/{name}`), or an `s.team/p/{path}` short link.
    Anything else is rejected before checkout ever starts.
-4. **Pay.** Checkout continues through the normal cart/payment flow —
-   Click, Payme, Uzum, or USDT, same as any other order. The price shown
-   is re-derived server-side at the moment of purchase (never the number
-   the browser last rendered); if a Steam sale moved the price more than
-   2% since the page loaded, checkout asks the buyer to confirm the new
-   price instead of silently charging either the old or the new one.
-5. **Wait.** The order page shows "в обработке" while G-Engine's bot
-   sends the gift — expectations are set at checkout ("подарок
-   отправляется ботом, обычно до часа"), not discovered in support chat.
-   Delivery is minutes to hours, not instant.
+4. **Pay.** Web continues through the normal cart/payment flow. The Mini
+   App checks out directly from the game screen via `performCheckout`
+   (`POST /orders` + `POST /payments/intents`, currency forced to `UZS` —
+   this SKU is variable-amount and the order endpoint rejects `USD` for
+   that shape) — Click, Payme, Uzum, or USDT either way, same as any other
+   order. The price shown is re-derived server-side at the moment of
+   purchase (never the number the client last rendered); if a Steam sale
+   moved the price more than 2% since the page loaded, checkout asks the
+   buyer to confirm the new price instead of silently charging either the
+   old or the new one — the Mini App keeps the buyer's edition/region
+   selection across that re-confirm rather than resetting to the game's
+   defaults.
+5. **Wait.** The order page (web `/orders/{id}`, Mini App `/order/:id`)
+   shows "в обработке" while G-Engine's bot sends the gift — expectations
+   are set at checkout ("подарок отправляется ботом, обычно до часа"), not
+   discovered in support chat. Delivery is minutes to hours, not instant.
 6. **Accept in Steam.** Once G-Engine reports the gift `shipped` — this
    is _our_ delivered, and is what the order page shows — the buyer still
    has to open Steam (client, email, or notification) and click "Принять
-   подарок" themselves. The order card says so explicitly, including that
-   the sender will be an unfamiliar bot account — Steam's own standard
-   warning is expected, not a sign anything went wrong.
+   подарок" themselves. The order card (web's `OrderStatus` gift branch,
+   Mini App's `OrderSuccess` gift branch) says so explicitly, including
+   that the sender will be an unfamiliar bot account — Steam's own
+   standard warning is expected, not a sign anything went wrong.
 
 ## What the buyer never sees
 
@@ -144,12 +153,12 @@ sequenceDiagram
 
 ## Surfaces
 
-|            | Web                                | Telegram Mini App                    |
-| ---------- | ---------------------------------- | ------------------------------------ |
-| Catalog    | `/store/steam-gifts`               | Not built — v1 is web-only (spec §5) |
-| Game page  | `/store/steam-gifts/{appId}`       | —                                    |
-| Checkout   | Normal cart/payment flow           | —                                    |
-| Order card | `OrderStatus` gift delivery branch | —                                    |
+|            | Web                                | Telegram Mini App                      |
+| ---------- | ---------------------------------- | -------------------------------------- |
+| Catalog    | `/store/steam-gifts`               | `/gifts`                               |
+| Game page  | `/store/steam-gifts/{appId}`       | `/gifts/:appId`                        |
+| Checkout   | Normal cart/payment flow           | `performCheckout` from the game screen |
+| Order card | `OrderStatus` gift delivery branch | `OrderSuccess` gift delivery branch    |
 
 ## Related
 
