@@ -23,14 +23,18 @@ reference.
   (default `https://uzumbank.uz/open-service`). Secrets live only in the
   env file; `UZUM_PASSWORD`/`UZUM_TEST_PASSWORD` are redacted from logs —
   never paste them into a ticket or chat.
-- **The endpoints always answer HTTP 200.** A Uzum-side "connection error"
-  report almost never means our route 500'd — it means Uzum couldn't reach
-  us at all (tunnel down, DNS, Caddy). Check the access log for the request
-  first; if it's not there, it's a reachability problem, not an application
-  error. Every outcome — success or business error — is rendered as
-  `{"status": ..., ...}` or `{"status": "FAILED", "errorCode": ...}` at HTTP
-  200; the only exception is a stray non-`POST` request, which is also
-  answered `10003` at HTTP 200, never a 405.
+- **The endpoints answer HTTP 200 on success, HTTP 400 on error — never a
+  raw 500 or 405.** A Uzum-side "connection error" report almost never means
+  our route crashed — it means Uzum couldn't reach us at all (tunnel down,
+  DNS, Caddy). Check the access log for the request first; if it's not
+  there, it's a reachability problem, not an application error. A success is
+  rendered as `{"status": ..., ...}` at HTTP 200; every business or
+  transport failure — including a stray non-`POST` request (`10003`) — is
+  `{"status": "FAILED", "errorCode": ...}` at HTTP 400, per Uzum's
+  documented "return HTTP 400 with errorCode on any failure" contract. So a
+  400 with a well-formed `errorCode` body is normal traffic, not an
+  incident; a raw 500 (no JSON body, or not this shape) is the real signal
+  to page on.
 
 ## Sandbox setup
 
@@ -151,7 +155,7 @@ touched.
   individual rows.
 - `uzum.merchant.internal_error` / `uzum.merchant.rollback_failed` — from
   the webhook routes, not the scheduler; logged whenever a webhook call hit
-  an unexpected exception (rendered to Uzum as `99999` at HTTP 200
+  an unexpected exception (rendered to Uzum as `99999` at HTTP 400
   regardless). Check these first if Uzum reports a transaction "stuck" in a
   way the timeout job wouldn't explain (e.g. a `/confirm` that should have
   succeeded).

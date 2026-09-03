@@ -5,17 +5,22 @@ Uzum's Merchant API is five plain HTTP/JSON ``POST`` endpoints (``/check``
 Basic auth plus a ``serviceId``. This route module is the transport shell
 around :mod:`yupay.modules.uzum.service`'s handlers: it parses the raw body
 itself (FastAPI's request-model validation must never fire — a 422 would
-read to Uzum as a transport failure), authenticates, validates ``serviceId``
-and the endpoint's required fields, dispatches to the matching service
-handler, and renders every outcome — success *or* error — as an HTTP 200
-JSON body.
+read to Uzum as something other than the documented error envelope),
+authenticates, validates ``serviceId`` and the endpoint's required fields,
+dispatches to the matching service handler, and renders every outcome as a
+JSON body — success at HTTP 200, error at HTTP 400.
 
-**HTTP 200 always.** Uzum reads any non-200 as a transport failure, so we
-never raise an HTTP exception on the merchant path: auth failures, bad JSON,
-missing fields and internal errors all come back 200 with a
-``{"status": "FAILED", "errorCode": ...}`` body. This is the same rule
-:mod:`yupay.modules.payme.routes` follows for Payme's JSON-RPC endpoint —
-see that module for the template this one mirrors.
+**HTTP 200 on success, HTTP 400 on error.** Per Uzum's Merchant API docs
+(``/check`` operation, "Vebhuki" §): "Если вебхук не может быть обработан
+успешно, верните HTTP 400 и JSON-объект ошибки с полем errorCode" — on any
+failure, return HTTP 400 with the error body. We never raise a raw HTTP
+exception on the merchant path, though: auth failures, bad JSON, missing
+fields and internal errors all come back as a normal
+``{"status": "FAILED", "errorCode": ...}`` body, just wrapped in a
+``JSONResponse`` at status 400 instead of FastAPI's default 200. Contrast
+:mod:`yupay.modules.payme.routes`, whose JSON-RPC convention (correctly)
+answers every outcome — success or error — at HTTP 200; that module is not
+affected by this file.
 """
 
 from __future__ import annotations
@@ -27,6 +32,7 @@ import json
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
@@ -89,6 +95,26 @@ def _echo(body: dict[str, Any]) -> dict[str, Any]:
     if "transId" in body:
         echo["transId"] = body["transId"]
     return echo
+
+
+def _fail(exc: UzumError, **echo: Any) -> JSONResponse:
+    """Render a :class:`UzumError` as Uzum's documented HTTP 400 failure response.
+
+    The JSON body is exactly :meth:`UzumError.to_response`'s
+    ``{"status": "FAILED", "errorCode": ...}`` shape — unchanged from before
+    this transport-level fix. Only the wire status code differs from a
+    success response: 400 here, versus the implicit 200 FastAPI gives a
+    plain-dict return.
+
+    Args:
+        exc: The error to render.
+        **echo: Request fields to echo back verbatim, e.g. ``serviceId``,
+            ``transId``.
+
+    Returns:
+        A ``JSONResponse`` carrying the error body at HTTP 400.
+    """
+    return JSONResponse(content=exc.to_response(**echo), status_code=400)
 
 
 def _authenticate(request: Request) -> None:
@@ -205,8 +231,8 @@ async def _rollback_after_internal_error(db: AsyncSession, *, endpoint: str) -> 
     log.exception("uzum.merchant.internal_error", endpoint=endpoint)
 
 
-@router.post("/check", summary="Uzum Merchant API: /check")
-async def uzum_check(request: Request, db: DbSession) -> dict[str, Any]:
+@router.post("/check", summary="Uzum Merchant API: /check", response_model=None)
+async def uzum_check(request: Request, db: DbSession) -> dict[str, Any] | JSONResponse:
     """Handle Uzum's ``/check``: may this order be paid for these params?
 
     Args:
@@ -215,13 +241,15 @@ async def uzum_check(request: Request, db: DbSession) -> dict[str, Any]:
         db: Active session; this route owns the commit/rollback.
 
     Returns:
-        The response body dict — always HTTP 200 (see module docstring).
+        The response body dict at HTTP 200 on success; on failure, a
+        ``JSONResponse`` with the same error-body shape at HTTP 400 (see
+        module docstring).
     """
     raw = await request.body()
     try:
         body = _parse_body(raw)
     except UzumError as exc:
-        return exc.to_response()
+        return _fail(exc)
 
     try:
         _authenticate(request)
@@ -229,28 +257,28 @@ async def uzum_check(request: Request, db: DbSession) -> dict[str, Any]:
         params = _req_dict(body, "params")
         order_id = _req_str(params, "order_id")
     except UzumError as exc:
-        return exc.to_response(**_echo(body))
+        return _fail(exc, **_echo(body))
 
     try:
         result = await uzum_svc.check(db, service_id=service_id, params={"order_id": order_id})
         # The commit is INSIDE the guard on purpose: a commit-time failure
-        # must still be rendered as 99999 at HTTP 200, never escape as a 500
-        # — Uzum reads any non-200 as a transport error (mirrors Payme).
+        # must still be rendered as a 99999 error body (HTTP 400), never
+        # escape as a raw 500 — mirrors Payme's own commit-failure handling.
         await db.commit()
     except UzumError as exc:
         await db.rollback()
-        return exc.to_response(**_echo(body))
-    except Exception:  # noqa: BLE001 -- must render 99999 at HTTP 200, never a 500
+        return _fail(exc, **_echo(body))
+    except Exception:  # noqa: BLE001 -- must render 99999 (HTTP 400), never a raw 500
         await _rollback_after_internal_error(db, endpoint="check")
-        return internal_error().to_response(**_echo(body))
+        return _fail(internal_error(), **_echo(body))
 
     # ``timestamp`` is our RESPONSE time (epoch ms), not the request's echoed
     # value — Uzum wants the moment we answered, not the moment it asked.
     return {"serviceId": body.get("serviceId"), "timestamp": uzum_svc.now_ms(), **result}
 
 
-@router.post("/create", summary="Uzum Merchant API: /create")
-async def uzum_create(request: Request, db: DbSession) -> dict[str, Any]:
+@router.post("/create", summary="Uzum Merchant API: /create", response_model=None)
+async def uzum_create(request: Request, db: DbSession) -> dict[str, Any] | JSONResponse:
     """Handle Uzum's ``/create``: register a pending transaction.
 
     Args:
@@ -258,13 +286,15 @@ async def uzum_create(request: Request, db: DbSession) -> dict[str, Any]:
         db: Active session; this route owns the commit/rollback.
 
     Returns:
-        The response body dict — always HTTP 200.
+        The response body dict at HTTP 200 on success; on failure, a
+        ``JSONResponse`` with the same error-body shape at HTTP 400 (see
+        module docstring).
     """
     raw = await request.body()
     try:
         body = _parse_body(raw)
     except UzumError as exc:
-        return exc.to_response()
+        return _fail(exc)
 
     try:
         _authenticate(request)
@@ -274,7 +304,7 @@ async def uzum_create(request: Request, db: DbSession) -> dict[str, Any]:
         order_id = _req_str(params, "order_id")
         amount = _req_int(body, "amount")
     except UzumError as exc:
-        return exc.to_response(**_echo(body))
+        return _fail(exc, **_echo(body))
 
     try:
         result = await uzum_svc.create(
@@ -287,16 +317,16 @@ async def uzum_create(request: Request, db: DbSession) -> dict[str, Any]:
         await db.commit()
     except UzumError as exc:
         await db.rollback()
-        return exc.to_response(**_echo(body))
-    except Exception:  # noqa: BLE001 -- must render 99999 at HTTP 200, never a 500
+        return _fail(exc, **_echo(body))
+    except Exception:  # noqa: BLE001 -- must render 99999 (HTTP 400), never a raw 500
         await _rollback_after_internal_error(db, endpoint="create")
-        return internal_error().to_response(**_echo(body))
+        return _fail(internal_error(), **_echo(body))
 
     return {"serviceId": body.get("serviceId"), **result}
 
 
-@router.post("/confirm", summary="Uzum Merchant API: /confirm")
-async def uzum_confirm(request: Request, db: DbSession) -> dict[str, Any]:
+@router.post("/confirm", summary="Uzum Merchant API: /confirm", response_model=None)
+async def uzum_confirm(request: Request, db: DbSession) -> dict[str, Any] | JSONResponse:
     """Handle Uzum's ``/confirm``: Uzum debited the customer; deliver the goods.
 
     Args:
@@ -304,20 +334,22 @@ async def uzum_confirm(request: Request, db: DbSession) -> dict[str, Any]:
         db: Active session; this route owns the commit/rollback.
 
     Returns:
-        The response body dict — always HTTP 200.
+        The response body dict at HTTP 200 on success; on failure, a
+        ``JSONResponse`` with the same error-body shape at HTTP 400 (see
+        module docstring).
     """
     raw = await request.body()
     try:
         body = _parse_body(raw)
     except UzumError as exc:
-        return exc.to_response()
+        return _fail(exc)
 
     try:
         _authenticate(request)
         _service_guard(body)
         trans_id = _req_str(body, "transId")
     except UzumError as exc:
-        return exc.to_response(**_echo(body))
+        return _fail(exc, **_echo(body))
 
     payment_source = {k: v for k, v in body.items() if k not in _ENVELOPE_FIELDS}
 
@@ -326,16 +358,16 @@ async def uzum_confirm(request: Request, db: DbSession) -> dict[str, Any]:
         await db.commit()
     except UzumError as exc:
         await db.rollback()
-        return exc.to_response(**_echo(body))
-    except Exception:  # noqa: BLE001 -- must render 99999 at HTTP 200, never a 500
+        return _fail(exc, **_echo(body))
+    except Exception:  # noqa: BLE001 -- must render 99999 (HTTP 400), never a raw 500
         await _rollback_after_internal_error(db, endpoint="confirm")
-        return internal_error().to_response(**_echo(body))
+        return _fail(internal_error(), **_echo(body))
 
     return {"serviceId": body.get("serviceId"), **result}
 
 
-@router.post("/reverse", summary="Uzum Merchant API: /reverse")
-async def uzum_reverse(request: Request, db: DbSession) -> dict[str, Any]:
+@router.post("/reverse", summary="Uzum Merchant API: /reverse", response_model=None)
+async def uzum_reverse(request: Request, db: DbSession) -> dict[str, Any] | JSONResponse:
     """Handle Uzum's ``/reverse``: cancel a pending transaction or refund a confirmed one.
 
     Args:
@@ -343,36 +375,38 @@ async def uzum_reverse(request: Request, db: DbSession) -> dict[str, Any]:
         db: Active session; this route owns the commit/rollback.
 
     Returns:
-        The response body dict — always HTTP 200.
+        The response body dict at HTTP 200 on success; on failure, a
+        ``JSONResponse`` with the same error-body shape at HTTP 400 (see
+        module docstring).
     """
     raw = await request.body()
     try:
         body = _parse_body(raw)
     except UzumError as exc:
-        return exc.to_response()
+        return _fail(exc)
 
     try:
         _authenticate(request)
         _service_guard(body)
         trans_id = _req_str(body, "transId")
     except UzumError as exc:
-        return exc.to_response(**_echo(body))
+        return _fail(exc, **_echo(body))
 
     try:
         result = await uzum_svc.reverse(db, trans_id=trans_id)
         await db.commit()
     except UzumError as exc:
         await db.rollback()
-        return exc.to_response(**_echo(body))
-    except Exception:  # noqa: BLE001 -- must render 99999 at HTTP 200, never a 500
+        return _fail(exc, **_echo(body))
+    except Exception:  # noqa: BLE001 -- must render 99999 (HTTP 400), never a raw 500
         await _rollback_after_internal_error(db, endpoint="reverse")
-        return internal_error().to_response(**_echo(body))
+        return _fail(internal_error(), **_echo(body))
 
     return {"serviceId": body.get("serviceId"), **result}
 
 
-@router.post("/status", summary="Uzum Merchant API: /status")
-async def uzum_status(request: Request, db: DbSession) -> dict[str, Any]:
+@router.post("/status", summary="Uzum Merchant API: /status", response_model=None)
+async def uzum_status(request: Request, db: DbSession) -> dict[str, Any] | JSONResponse:
     """Handle Uzum's ``/status``: report a transaction's current state.
 
     Args:
@@ -380,42 +414,44 @@ async def uzum_status(request: Request, db: DbSession) -> dict[str, Any]:
         db: Active session; this route owns the commit/rollback.
 
     Returns:
-        The response body dict — always HTTP 200.
+        The response body dict at HTTP 200 on success; on failure, a
+        ``JSONResponse`` with the same error-body shape at HTTP 400 (see
+        module docstring).
     """
     raw = await request.body()
     try:
         body = _parse_body(raw)
     except UzumError as exc:
-        return exc.to_response()
+        return _fail(exc)
 
     try:
         _authenticate(request)
         _service_guard(body)
         trans_id = _req_str(body, "transId")
     except UzumError as exc:
-        return exc.to_response(**_echo(body))
+        return _fail(exc, **_echo(body))
 
     try:
         result = await uzum_svc.status(db, trans_id=trans_id)
         await db.commit()
     except UzumError as exc:
         await db.rollback()
-        return exc.to_response(**_echo(body))
-    except Exception:  # noqa: BLE001 -- must render 99999 at HTTP 200, never a 500
+        return _fail(exc, **_echo(body))
+    except Exception:  # noqa: BLE001 -- must render 99999 (HTTP 400), never a raw 500
         await _rollback_after_internal_error(db, endpoint="status")
-        return internal_error().to_response(**_echo(body))
+        return _fail(internal_error(), **_echo(body))
 
     return {"serviceId": body.get("serviceId"), **result}
 
 
-def _reject_non_post() -> dict[str, Any]:
-    """Answer a stray non-POST request with ``10003`` (HTTP 200, never a 405).
+def _reject_non_post() -> JSONResponse:
+    """Answer a stray non-POST request with ``10003`` at HTTP 400, never a 405.
 
-    Uzum's spec (§6) mandates HTTP 200 with ``errorCode: 10003`` for any
-    method other than ``POST`` — FastAPI's default 405 would be a transport
-    failure by this module's own always-200 contract.
+    Non-``POST`` is just another documented failure (``errorCode: 10003``),
+    so it follows the same 400-on-error rule as every other error in this
+    module — FastAPI's default 405 would not carry the documented body.
     """
-    return invalid_operation().to_response()
+    return _fail(invalid_operation())
 
 
 for _path in ("/check", "/create", "/confirm", "/reverse", "/status"):

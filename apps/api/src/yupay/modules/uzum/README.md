@@ -23,13 +23,17 @@ POST /api/v1/payments/uzum/status
 - **Transport:** plain HTTP `POST`, `Content-Type: application/json`. Any
   other method on any of these paths → `10003` (invalid operation), never a
   405 — the route layer registers a catch-all handler for
-  `GET`/`PUT`/`PATCH`/`DELETE`/`HEAD`/`OPTIONS` that answers `10003` at HTTP 200.
-- **Always HTTP 200.** Uzum reads any non-200 as a transport failure, so
-  auth failures, bad JSON, missing fields, and internal errors all come back
-  **200** with a `{"status": "FAILED", "errorCode": ...}` body — never a
-  raised HTTP exception. The route layer parses the raw body itself (never a
-  Pydantic request model) so a malformed body is `10002`, not FastAPI's
-  automatic 422.
+  `GET`/`PUT`/`PATCH`/`DELETE`/`HEAD`/`OPTIONS` that answers `10003` at HTTP 400.
+- **HTTP 200 on success, HTTP 400 on error.** Per Uzum's Merchant API docs:
+  "Если вебхук не может быть обработан успешно, верните HTTP 400 и
+  JSON-объект ошибки с полем errorCode" — auth failures, bad JSON, missing
+  fields, and internal errors all come back **HTTP 400** with a
+  `{"status": "FAILED", "errorCode": ...}` body, wrapped in a `JSONResponse`
+  by the route layer (never a raised HTTP exception — the body shape is
+  unchanged, only the status code is set explicitly). A successful call
+  stays a plain-dict **HTTP 200**. The route layer parses the raw body
+  itself (never a Pydantic request model) so a malformed body is `10002`,
+  not FastAPI's automatic 422.
 - **Auth:** `Authorization: Basic base64("<login>:<password>")`. The pair
   must match **either** the production credentials (`uzum_login`/
   `uzum_password`) **or** the sandbox credentials (`uzum_test_login`/
@@ -246,7 +250,7 @@ apps/api/src/yupay/modules/uzum/
   models.py    -- UzumTransaction (migration 0028)
   errors.py    -- the error catalogue above (pure, no I/O)
   service.py   -- the 5 webhook handlers + build_checkout_url
-  routes.py    -- POST /check /create /confirm /reverse /status, Basic auth, always-200
+  routes.py    -- POST /check /create /confirm /reverse /status, Basic auth, 200/400
   api.py       -- public surface (router + UzumTransaction)
 ```
 
@@ -268,7 +272,7 @@ Plus, outside this module:
 `test_uzum_service.py` post directly at the endpoints and cover every
 webhook, every error code it can emit, idempotent replay of
 create/confirm/reverse, the concurrent-create `IntegrityError` → `10010`
-path, and the commit-failure-still-200 path.
+path, and the commit-failure-is-99999-at-400 path.
 `apps/api/tests/integration/test_uzum_timeout.py` covers the 30-min sweep;
 `apps/api/tests/unit/test_uzum_gateway.py` and `test_uzum_config.py` cover
 the gateway and config gating. `payments` + `wallet` are a ≥95% coverage

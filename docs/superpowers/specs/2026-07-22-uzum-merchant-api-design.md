@@ -140,10 +140,11 @@ Status is our own machine (Uzum's wire statuses `OK`/`CREATED`/`CONFIRMED`/
   the configured `uzum_service_id`; unknown → error `10006`.
 - **Raw-body middleware** is not needed (Uzum uses no body-signature; auth is the
   Basic header). Requests are parsed as JSON; malformed JSON → error `10002`.
-- **HTTP status:** we always return **HTTP 200** with a JSON body (mirrors the
-  Payme "always answer on the wire" rule) — success statuses carry the result,
-  failures carry `status: FAILED` + `errorCode`. (Confirm with Uzum whether they
-  prefer a non-2xx for `10001`; see §16.)
+- **HTTP status:** success statuses carry the result at **HTTP 200**; failures
+  carry `status: FAILED` + `errorCode` at **HTTP 400** — per Uzum's published
+  Merchant API docs (confirmed 2026-09-03; resolves the §16 open question).
+  We never let FastAPI raise its own default status (422/405); the body shape
+  is unchanged from the always-200 draft, only the wire status code differs.
 
 ---
 
@@ -326,7 +327,7 @@ with a filled-out comment block (like the Payme block).
   the order for `/create`) so concurrent webhooks serialise — same pattern as
   Payme. A concurrent duplicate `/create` that races the INSERT surfaces as an
   `IntegrityError` on `trans_id`; catch it and re-read → `10010`.
-- **Commit inside the try/except**, rendering `99999` (internal error) at HTTP 200
+- **Commit inside the try/except**, rendering `99999` (internal error) at HTTP 400
   if the commit itself fails (mirrors Payme's `-32400` fix).
 - **Partial delivery money-safety:** the `/reverse` guard checks
   `_any_goods_delivered`, not just `order.status`, so a multi-item order resting
@@ -402,8 +403,12 @@ Assert `refund_admin` and the shared payments hooks are byte-for-byte unchanged
 2. **Exact `open-service` URL + params:** taken from a third-party library; the
    canonical host/param names (`serviceId`/`order_id`/`amount`/`redirectUrl`) must
    be confirmed with Uzum.
-3. **HTTP status for `10001`:** whether Uzum expects HTTP 401 or a 200 body with
-   `errorCode: 10001` for auth failures — confirm; default is 200-body.
+3. **HTTP status for `10001`:** ~~whether Uzum expects HTTP 401 or a 200 body
+   with `errorCode: 10001` for auth failures~~ **Resolved 2026-09-03:** Uzum's
+   published docs mandate HTTP 400 with the error JSON body (`errorCode`
+   included) for any failed webhook, `10001` included; HTTP 200 stays for
+   success. Not HTTP 401 — the error still rides inside the documented JSON
+   envelope, just at status 400 instead of 200.
 4. **`params` account envelope:** we assume `params.order_id`; confirm the exact
    account-attribute key(s) Uzum will send for our service.
 5. **Min/max amount (`10012`/`10013`):** whether Uzum enforces service bounds or

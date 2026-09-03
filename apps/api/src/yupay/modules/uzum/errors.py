@@ -2,13 +2,17 @@
 
 Uzum's Merchant API is a set of plain HTTP/JSON endpoints (``/check``
 ``/create`` ``/confirm`` ``/reverse`` ``/status``): on any business or
-transport failure we reply at HTTP 200 with ``{"status": "FAILED",
-"errorCode": <int>, ...echo}``, where ``echo`` carries back whichever of
-``serviceId``/``transId``/``timestamp`` the request supplied. This module is
-pure — no I/O, no DB — and only builds :class:`UzumError` instances carrying
-the exact ``errorCode`` Uzum's spec mandates for a given failure. Service
-handlers and the route layer raise these and translate them into the wire
-response via ``to_response()``.
+transport failure we reply with ``{"status": "FAILED", "errorCode": <int>,
+...echo}``, where ``echo`` carries back whichever of
+``serviceId``/``transId``/``timestamp`` the request supplied. That body is
+unchanged by this module; the route layer (:mod:`yupay.modules.uzum.routes`)
+wraps it in a ``JSONResponse`` at HTTP 400 per Uzum's documented contract,
+while a success response stays a plain-dict HTTP 200 — this module itself
+knows nothing about the wire status code, only the body shape. This module
+is pure — no I/O, no DB — and only builds :class:`UzumError` instances
+carrying the exact ``errorCode`` Uzum's spec mandates for a given failure.
+Service handlers and the route layer raise these and translate them into the
+wire response via ``to_response()``.
 
 See ``docs/superpowers/specs/2026-07-22-uzum-merchant-api-design.md`` §8 for
 the canonical error catalogue this module implements.
@@ -40,6 +44,11 @@ class UzumError(Exception):
 
     def to_response(self, **echo: Any) -> dict[str, Any]:
         """Render this error as the JSON body Uzum expects.
+
+        This only builds the body — it says nothing about the wire status
+        code. The route layer wraps this dict in a ``JSONResponse`` at HTTP
+        400 (see :func:`yupay.modules.uzum.routes._fail`), per Uzum's
+        documented "HTTP 400 on any failure" contract.
 
         Args:
             **echo: Request fields to echo back verbatim, e.g. ``serviceId``,

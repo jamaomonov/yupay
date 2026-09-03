@@ -3,12 +3,15 @@
 These drive the mounted FastAPI app over HTTP exactly as Uzum's sandbox does:
 five ``POST /api/v1/payments/uzum/{check,create,confirm,reverse,status}``
 routes, each carrying HTTP Basic auth and a JSON body. This is the REST twin
-of ``test_payme_merchant.py`` — the transport contract is the same "always
-HTTP 200, failures carry an error code in the body" rule Payme uses, just
-with Uzum's own envelope (``serviceId``/``transId``/``status``/``errorCode``)
-instead of JSON-RPC.
+of ``test_payme_merchant.py``, but the transport contract differs from
+Payme's "always HTTP 200" JSON-RPC convention: Uzum's docs mandate HTTP 400
+on any failure, HTTP 200 on success, with the same
+``{"status": "FAILED", "errorCode": ...}`` body either way. Uzum's own
+envelope (``serviceId``/``transId``/``status``/``errorCode``) also differs
+from Payme's JSON-RPC one.
 
-Every response, success or failure, is HTTP 200.
+A success response — ``status`` of ``OK``/``CREATED``/``CONFIRMED``/
+``REVERSED`` — is HTTP 200. A failure — ``status: FAILED`` — is HTTP 400.
 """
 
 from __future__ import annotations
@@ -204,6 +207,46 @@ def _install_flaky_rollback(monkeypatch: pytest.MonkeyPatch, *, fail_calls: int 
 
 
 # --------------------------------------------------------------------------- #
+# HTTP status contract: HTTP 400 on error, HTTP 200 on success -- both carry  #
+# the exact same JSON body shape either way (only the wire status differs).  #
+# --------------------------------------------------------------------------- #
+
+
+async def test_error_response_is_http_400_with_full_error_body(
+    integration_client: AsyncClient,
+) -> None:
+    """A representative failure (bad Basic auth, ``10001``) must be HTTP 400
+    with exactly the documented ``{"status": "FAILED", "errorCode", ...echo}``
+    body -- per Uzum's Merchant API docs: "Если вебхук не может быть
+    обработан успешно, верните HTTP 400 и JSON-объект ошибки с полем
+    errorCode." The body content is unchanged from the pre-fix always-200
+    behaviour; only the transport-level status code differs."""
+    r = await integration_client.post(
+        CHECK_URL,
+        json={"serviceId": SERVICE_ID, "timestamp": 1, "params": {"order_id": str(uuid.uuid4())}},
+    )
+    assert r.status_code == 400
+    assert r.headers["content-type"].startswith("application/json")
+    assert r.json() == {"status": "FAILED", "errorCode": 10001, "serviceId": SERVICE_ID}
+
+
+async def test_success_response_stays_http_200(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The mirror case: a genuinely successful call (``/check`` -> ``OK``)
+    stays HTTP 200, unaffected by the error-path's move to 400."""
+    order_id = await _seed_order(db_session)
+    r = await integration_client.post(
+        CHECK_URL,
+        headers=_auth(),
+        json={"serviceId": SERVICE_ID, "timestamp": 1, "params": {"order_id": order_id}},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "OK"
+
+
+# --------------------------------------------------------------------------- #
 # Transport-level failures                                                    #
 # --------------------------------------------------------------------------- #
 
@@ -213,7 +256,7 @@ async def test_missing_auth_is_10001(integration_client: AsyncClient) -> None:
         CHECK_URL,
         json={"serviceId": SERVICE_ID, "timestamp": 1, "params": {"order_id": str(uuid.uuid4())}},
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10001
@@ -225,7 +268,7 @@ async def test_invalid_auth_is_10001(integration_client: AsyncClient) -> None:
         headers=_auth(password="wrong-password"),
         json={"serviceId": SERVICE_ID, "timestamp": 1, "params": {"order_id": str(uuid.uuid4())}},
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10001
@@ -237,7 +280,7 @@ async def test_unknown_order_on_check_is_10007(integration_client: AsyncClient) 
         headers=_auth(),
         json={"serviceId": SERVICE_ID, "timestamp": 1, "params": {"order_id": str(uuid.uuid4())}},
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10007
@@ -252,7 +295,7 @@ async def test_wrong_service_id_is_10006(
         headers=_auth(),
         json={"serviceId": SERVICE_ID + 1, "timestamp": 1, "params": {"order_id": order_id}},
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10006
@@ -264,7 +307,7 @@ async def test_malformed_json_is_10002(integration_client: AsyncClient) -> None:
         headers={**_auth(), "content-type": "application/json"},
         content=b"not json at all {",
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10002
@@ -285,7 +328,7 @@ async def test_missing_amount_on_create_is_10005(
             # "amount" deliberately omitted.
         },
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10005
@@ -294,13 +337,13 @@ async def test_missing_amount_on_create_is_10005(
 @pytest.mark.parametrize("url", [CHECK_URL, CREATE_URL, CONFIRM_URL, REVERSE_URL, STATUS_URL])
 async def test_non_post_get_is_10003(integration_client: AsyncClient, url: str) -> None:
     r = await integration_client.get(url)
-    assert r.status_code == 200
+    assert r.status_code == 400
     assert r.json() == {"status": "FAILED", "errorCode": 10003}
 
 
 async def test_non_post_put_is_10003(integration_client: AsyncClient) -> None:
     r = await integration_client.put(CHECK_URL)
-    assert r.status_code == 200
+    assert r.status_code == 400
     assert r.json() == {"status": "FAILED", "errorCode": 10003}
 
 
@@ -313,7 +356,7 @@ async def test_valid_json_non_object_body_is_10002(integration_client: AsyncClie
         headers={**_auth(), "content-type": "application/json"},
         content=b"[1, 2, 3]",
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10002
@@ -331,7 +374,7 @@ async def test_malformed_json_on_other_endpoints_is_10002(
         headers={**_auth(), "content-type": "application/json"},
         content=b"not json at all {",
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10002
@@ -346,7 +389,7 @@ async def test_auth_malformed_base64_is_10001(integration_client: AsyncClient) -
         headers={"Authorization": "Basic not_base64_$$$"},
         json={"serviceId": SERVICE_ID, "timestamp": 1, "params": {"order_id": str(uuid.uuid4())}},
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10001
@@ -363,7 +406,7 @@ async def test_auth_decoded_credentials_missing_colon_is_10001(
         headers={"Authorization": f"Basic {token}"},
         json={"serviceId": SERVICE_ID, "timestamp": 1, "params": {"order_id": str(uuid.uuid4())}},
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10001
@@ -378,7 +421,7 @@ async def test_check_missing_order_id_key_is_10005(integration_client: AsyncClie
         headers=_auth(),
         json={"serviceId": SERVICE_ID, "timestamp": 1, "params": {}},
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10005
@@ -392,7 +435,7 @@ async def test_check_params_not_object_is_10005(integration_client: AsyncClient)
         headers=_auth(),
         json={"serviceId": SERVICE_ID, "timestamp": 1, "params": "not-an-object"},
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10005
@@ -404,7 +447,7 @@ async def test_confirm_missing_trans_id_is_10005(integration_client: AsyncClient
         headers=_auth(),
         json={"serviceId": SERVICE_ID, "timestamp": 1},
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10005
@@ -416,7 +459,7 @@ async def test_reverse_missing_trans_id_is_10005(integration_client: AsyncClient
         headers=_auth(),
         json={"serviceId": SERVICE_ID, "timestamp": 1},
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10005
@@ -428,7 +471,7 @@ async def test_status_missing_trans_id_is_10005(integration_client: AsyncClient)
         headers=_auth(),
         json={"serviceId": SERVICE_ID, "timestamp": 1},
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10005
@@ -458,7 +501,7 @@ async def test_check_internal_error_and_rollback_failure_is_99999(
         headers=_auth(),
         json={"serviceId": SERVICE_ID, "timestamp": 1, "params": {"order_id": order_id}},
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 99999
@@ -484,7 +527,7 @@ async def test_create_internal_error_is_99999(
             "amount": EXPECTED_TIYIN,
         },
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 99999
@@ -516,7 +559,7 @@ async def test_confirm_internal_error_is_99999(
         headers=_auth(),
         json={"serviceId": SERVICE_ID, "timestamp": 2, "transId": trans_id},
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 99999
@@ -548,7 +591,7 @@ async def test_reverse_internal_error_is_99999(
         headers=_auth(),
         json={"serviceId": SERVICE_ID, "timestamp": 2, "transId": trans_id},
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 99999
@@ -580,7 +623,7 @@ async def test_status_internal_error_is_99999(
         headers=_auth(),
         json={"serviceId": SERVICE_ID, "timestamp": 2, "transId": trans_id},
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 99999
@@ -606,7 +649,7 @@ async def test_create_wrong_amount_is_10011(
             "amount": EXPECTED_TIYIN - 5,
         },
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10011
@@ -628,7 +671,7 @@ async def test_create_already_paid_order_is_10008(
             "amount": EXPECTED_TIYIN,
         },
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10008
@@ -649,7 +692,7 @@ async def test_create_cancelled_order_is_10009(
             "amount": EXPECTED_TIYIN,
         },
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10009
@@ -671,7 +714,7 @@ async def test_create_duplicate_trans_id_is_10010(
     assert first.json()["status"] == "CREATED"
 
     second = await integration_client.post(CREATE_URL, headers=_auth(), json=create_req)
-    assert second.status_code == 200
+    assert second.status_code == 400
     body = second.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10010
@@ -689,7 +732,7 @@ async def test_confirm_unknown_trans_id_is_10014(integration_client: AsyncClient
         headers=_auth(),
         json={"serviceId": SERVICE_ID, "timestamp": 1, "transId": "nope"},
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10014
@@ -717,7 +760,7 @@ async def test_confirm_already_confirmed_is_10016(
     assert first.json()["status"] == "CONFIRMED"
 
     second = await integration_client.post(CONFIRM_URL, headers=_auth(), json=confirm_req)
-    assert second.status_code == 200
+    assert second.status_code == 400
     body = second.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10016
@@ -752,7 +795,7 @@ async def test_confirm_on_reversed_is_10015(
         headers=_auth(),
         json={"serviceId": SERVICE_ID, "timestamp": 3, "transId": trans_id},
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10015
@@ -770,7 +813,7 @@ async def test_reverse_unknown_trans_id_is_10014(integration_client: AsyncClient
         headers=_auth(),
         json={"serviceId": SERVICE_ID, "timestamp": 1, "transId": "nope"},
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10014
@@ -798,7 +841,7 @@ async def test_reverse_already_reversed_is_10018(
     assert first.json()["status"] == "REVERSED"
 
     second = await integration_client.post(REVERSE_URL, headers=_auth(), json=reverse_req)
-    assert second.status_code == 200
+    assert second.status_code == 400
     body = second.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10018
@@ -816,7 +859,7 @@ async def test_reverse_confirmed_delivered_order_is_10017(
         headers=_auth(),
         json={"serviceId": SERVICE_ID, "timestamp": 1, "transId": trans_id},
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10017
@@ -870,7 +913,7 @@ async def test_status_unknown_trans_id_is_10014(integration_client: AsyncClient)
         headers=_auth(),
         json={"serviceId": SERVICE_ID, "timestamp": 1, "transId": "nope"},
     )
-    assert r.status_code == 200
+    assert r.status_code == 400
     body = r.json()
     assert body["status"] == "FAILED"
     assert body["errorCode"] == 10014
@@ -1178,7 +1221,7 @@ async def test_check_refuses_a_foreign_guest_order(
                 "params": {"order_id": order_id},
             },
         )
-        assert r.status_code == 200
+        assert r.status_code == 400
         body = r.json()
         assert body["status"] == "FAILED"
         assert body["errorCode"] == 10009

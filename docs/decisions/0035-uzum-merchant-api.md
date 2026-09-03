@@ -62,8 +62,8 @@ payment`/`cancel_pending_provider_payment` siblings) must stay the single
 `models.py` (`UzumTransaction`, migration `0028`), `errors.py` (18 factories
 
 - `to_response()`), `service.py` (the 5 handlers + `build_checkout_url`),
-  `routes.py` (Basic auth + `serviceId` guard, always-HTTP-200 JSON), `api.py`
-  (public surface).
+  `routes.py` (Basic auth + `serviceId` guard, 200-success/400-error JSON),
+  `api.py` (public surface).
 
 ### Why the webhook model, not the generic `verify_webhook` route (vs. Option 2)
 
@@ -193,9 +193,14 @@ across the whole branch (design spec §13, task-11 final verification).
   generic `verify_webhook` contract — a future maintainer must know both
   Payme and Uzum are exceptions before reaching for the generic webhook
   route.
-- The Uzum endpoints must always return HTTP 200, a deliberate departure
-  from the project's default (raise, let FastAPI render the status) that
+- The Uzum endpoints never let FastAPI raise its default status codes (a
+  422 on request-model validation, a 405 on the wrong method) — the route
+  parses the body itself and renders every failure as the documented
+  `errorCode` body, a deliberate departure from the project's default that
   needs its own comment at the route so it isn't "fixed" back to raising.
+  Originally this was answered at HTTP 200 always (gap #3 below, unresolved
+  at ADR time); confirmed 2026-09-03 against Uzum's published docs that
+  errors must be HTTP 400 — see the "gap #3 resolved" note below.
 - Several merchant-side conventions (credential-issuance model, exact
   open-service URL/params, HTTP status expected for auth failures, the
   `params` account-attribute key, and whether Uzum or we enforce amount
@@ -217,8 +222,14 @@ Mirroring how ADR-0034 flagged Payme's unstated conventions, the design spec
    `serviceId`/`order_id`/`amount`/`redirectUrl` and the host are confirmed
    with Uzum, not assumed final.
 3. **HTTP status for `10001`** — whether Uzum expects a non-2xx or a 200
-   body with `errorCode: 10001` for auth failures. Default is the 200-body
-   form (matches every other error code); confirm with Uzum.
+   body with `errorCode: 10001` for auth failures. Default was the 200-body
+   form (matches every other error code) pending confirmation.
+   **Resolved 2026-09-03:** Uzum's published Merchant API docs state
+   explicitly that a failed webhook must return HTTP 400 with the error JSON
+   body (`errorCode` included) — success stays HTTP 200. Implemented; see
+   `apps/api/src/yupay/modules/uzum/routes.py`'s `_fail` helper. The JSON
+   body shape is unchanged, only the wire status code moved off the 200
+   default.
 4. **`params` account envelope** — we assume `params.order_id`; the exact
    account-attribute key(s) configured per-service on Uzum's side needs
    confirmation.
@@ -235,8 +246,8 @@ Mirroring how ADR-0034 flagged Payme's unstated conventions, the design spec
 - `apps/api/tests/integration/test_uzum_webhook.py` /
   `test_uzum_service.py` — every webhook, every error code it can emit,
   idempotent replay of create/confirm/reverse, the concurrent-create
-  `IntegrityError` → `10010` race, and the commit-failure-still-`99999`-at-
-  200 path.
+  `IntegrityError` → `10010` race, and the commit-failure-is-`99999`-at-400
+  path.
 - `apps/api/tests/integration/test_uzum_timeout.py` — the 30-min sweep.
 - `apps/api/tests/unit/test_uzum_gateway.py` / `test_uzum_config.py` — the
   gateway's `available` gating and `create_intent` URL-building, and config
