@@ -350,3 +350,46 @@ async def test_region_is_normalized_to_its_upper_cased_canonical_form() -> None:
         _DB, line_amount_usd=Decimal("1.10"), data=_line_data(region="cis")
     )
     assert snapshot["region"] == "CIS"
+
+
+# ---------- price_gift_line: country-code region (2026-09-03) ----------
+
+
+async def test_country_code_region_prices_from_its_zone_and_snapshots_both() -> None:
+    # UZ is a CIS country on this fixture's offered zones — prices from the
+    # CIS entry, and the zone actually priced from is recorded separately
+    # from the buyer-facing country.
+    price, snapshot = await checkout.price_gift_line(
+        _DB, line_amount_usd=Decimal("1.10"), data=_line_data(region="UZ")
+    )
+    assert price == Decimal("1.10")
+    assert snapshot["region"] == "UZ"
+    assert snapshot["zone"] == "CIS"
+    assert snapshot["region_code"] == "ge"
+
+
+async def test_country_code_region_is_case_insensitive() -> None:
+    _, snapshot = await checkout.price_gift_line(
+        _DB, line_amount_usd=Decimal("1.10"), data=_line_data(region="uz")
+    )
+    assert snapshot["region"] == "UZ"
+    assert snapshot["zone"] == "CIS"
+
+
+async def test_legacy_zone_label_still_prices_and_snapshots_a_matching_zone() -> None:
+    # Pre-v2 orders (and clients that haven't reloaded) send the zone label
+    # itself in `region` — must keep pricing exactly as before.
+    price, snapshot = await checkout.price_gift_line(
+        _DB, line_amount_usd=Decimal("1.10"), data=_line_data(region="CIS")
+    )
+    assert price == Decimal("1.10")
+    assert snapshot["region"] == "CIS"
+    assert snapshot["zone"] == "CIS"
+    assert snapshot["region_code"] == "ge"
+
+
+async def test_a_country_not_sold_anywhere_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        await checkout.price_gift_line(
+            _DB, line_amount_usd=Decimal("1.10"), data=_line_data(region="DE")
+        )

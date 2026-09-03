@@ -27,7 +27,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.config import get_settings
 from yupay.core.errors import NotFoundError, ValidationError
-from yupay.modules.gifts.service import get_app, sell_price_usd, zone_price_usd, zone_region_code
+from yupay.modules.gifts.service import (
+    get_app,
+    sell_price_usd,
+    zone_for_country,
+    zone_price_usd,
+    zone_region_code,
+)
 from yupay.modules.gifts.settings import load_margin_percent, offered_zones
 
 #: SKU code identifying the Steam gift product line. Defined here (not in
@@ -156,10 +162,17 @@ async def price_gift_line(
             ``validate_fulfillment_data`` applied), ``region`` to its
             upper-cased canonical form, and ``invite_url`` to its canonical
             form; ``app_name``, ``package_name``, ``supplier_price_usd``,
-            and ``region_code`` are added. ``region_code`` is the supplier's
-            2-letter wire region — G-Engine's ``POST /gifts/orders`` wants
-            this, not our customer-facing zone label — resolved from the
-            same priced entry ``supplier_price_usd`` came from.
+            ``zone``, and ``region_code`` are added. As of 2026-09-03
+            ``region`` is a buyer-facing *country* code (``"UZ"``) — see
+            :func:`yupay.modules.gifts.service.zone_for_country` — resolved
+            to the *zone* we actually price from and store separately as
+            ``zone``. A pre-v2 order (or a client that hasn't reloaded) can
+            still send a legacy zone label (``"CIS"``) directly: when it
+            isn't a known country, it's accepted as-is provided it's one of
+            the offered zones. ``region_code`` is the supplier's 2-letter
+            wire region — G-Engine's ``POST /gifts/orders`` wants this, not
+            ``region`` or ``zone`` — resolved from the same priced entry
+            ``supplier_price_usd`` came from.
 
     Returns:
         ``(expected_price_usd, enriched_data)``.
@@ -182,10 +195,18 @@ async def price_gift_line(
     package_id = _require_int(data, "package_id")
     data["package_id"] = package_id
 
-    region = str(data.get("region") or "").strip().upper()
-    if region not in offered_zones(settings):
-        raise ValidationError("this region is not currently offered")
-    data["region"] = region
+    offered = offered_zones(settings)
+    raw_region = str(data.get("region") or "").strip().upper()
+    zone = zone_for_country(raw_region, offered=offered)
+    if zone is None:
+        # Not a country we sell — try it as a legacy zone label instead, so
+        # an order created before this resolution existed (or a client that
+        # hasn't reloaded) keeps pricing exactly as it did before.
+        if raw_region in offered:
+            zone = raw_region
+        else:
+            raise ValidationError("this region has no price for the selected edition")
+    data["region"] = raw_region
 
     invite_url = parse_invite_url(str(data.get("invite_url") or ""))
     data["invite_url"] = invite_url
@@ -199,7 +220,7 @@ async def price_gift_line(
     if package is None:
         raise ValidationError("this game is no longer available")
 
-    supplier_usd = zone_price_usd(package, region)
+    supplier_usd = zone_price_usd(package, zone)
     if supplier_usd is None:
         raise ValidationError("this region has no price for the selected edition")
 
@@ -208,7 +229,7 @@ async def price_gift_line(
     # Normally a priced entry always carries `region`, but this is a real
     # guard, not a theoretical one: a malformed upstream entry (priced, no
     # `region` key) must 4xx here, not KeyError into a 500 on the money path.
-    region_code = zone_region_code(package, region)
+    region_code = zone_region_code(package, zone)
     if region_code is None:
         raise ValidationError("this region has no price for the selected edition")
 
@@ -224,10 +245,11 @@ async def price_gift_line(
 
     # Server-derived, overwriting anything client-sent — though
     # ``validate_fulfillment_data`` already rejected (422) any of these
-    # four keys the client tried to sneak in before this hook ever ran.
+    # keys the client tried to sneak in before this hook ever ran.
     data["app_name"] = app["name"]
     data["package_name"] = package["name"]
     data["supplier_price_usd"] = str(supplier_usd)
+    data["zone"] = zone
     data["region_code"] = region_code
 
     return expected, data

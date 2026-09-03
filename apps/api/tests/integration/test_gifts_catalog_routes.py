@@ -265,7 +265,10 @@ async def test_detail_exposes_only_offered_zones(
     assert body["dlc_total"] == 1
     assert body["dlc_count"] == 1
     assert body["packages_count"] == 2
-    assert body["zone_default"] == "CIS"
+    # Deprecated zone twins — kept one release for a stale client, still the
+    # code default (2026-09-03: the default became a country, "UZ", but the
+    # deprecated zone field carries the same underlying setting value).
+    assert body["zone_default"] == "UZ"
     # KZ only had a null price and XX isn't in STEAM_GIFTS_REGIONS at all —
     # neither shows up, regardless of appearing in the raw upstream payload.
     assert body["zones"] == ["CIS", "RU"]
@@ -279,6 +282,27 @@ async def test_detail_exposes_only_offered_zones(
 
     pkg2 = next(p for p in body["packages"] if p["id"] == 2)
     assert pkg2["prices"] == []
+
+    # ---- regions: the country picker ----
+    assert body["region_default"] == "UZ"
+    region_countries = [r["country"] for r in body["regions"]]
+    assert region_countries[0] == "UZ"
+    # Every CIS country appears (this fixture's offered zones are the code
+    # default CIS/RU/KZ/UA), none from outside the offered zones.
+    cis_countries = {"UZ", "GE", "KG", "MD", "TJ", "TM", "AM", "AZ", "BY"}
+    assert cis_countries <= set(region_countries)
+    assert set(region_countries) & {"KZ", "UA"} == set()  # KZ null-priced, UA not offered here
+    assert set(region_countries) - cis_countries == {"RU"}
+
+    regions_by_country = {r["country"]: r for r in body["regions"]}
+    for country in cis_countries:
+        assert regions_by_country[country]["zone"] == "CIS"
+        # Every CIS country shows the identical CIS price.
+        assert regions_by_country[country]["price_usd"] == "1.12"
+        assert regions_by_country[country]["price_uzs"] == _expected_uzs("1.12")
+    assert regions_by_country["RU"]["zone"] == "RU"
+    # 0.85 * 1.10 = 0.935 -> HALF_UP to 2dp = 0.94
+    assert regions_by_country["RU"]["price_usd"] == "0.94"
 
 
 @respx.mock

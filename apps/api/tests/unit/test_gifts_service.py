@@ -28,8 +28,10 @@ from yupay.modules.fulfillment.suppliers.gengine_client import (
 from yupay.modules.gifts.service import (
     _cached_json,
     _search_cache_key,
+    countries_for_zone,
     hot_offers,
     sell_price_usd,
+    zone_for_country,
     zone_price_usd,
     zone_region_code,
 )
@@ -137,6 +139,46 @@ def test_zone_price_usd_and_zone_region_code_share_the_same_priced_entry() -> No
     }
     assert zone_price_usd(package, "CIS") == Decimal("1.02")
     assert zone_region_code(package, "CIS") == "ge"
+
+
+# ---------- zone_for_country / countries_for_zone ----------
+
+_OFFERED = ["CIS", "RU", "KZ", "UA"]
+
+
+def test_zone_for_country_resolves_a_cis_country() -> None:
+    assert zone_for_country("uz", offered=_OFFERED) == "CIS"
+
+
+def test_zone_for_country_own_zone_wins_over_cis_membership() -> None:
+    # KZ has its own zone, distinct from the CIS bucket.
+    assert zone_for_country("KZ", offered=_OFFERED) == "KZ"
+
+
+def test_zone_for_country_returns_none_for_an_unsold_country() -> None:
+    assert zone_for_country("DE", offered=_OFFERED) is None
+
+
+def test_zone_for_country_respects_the_offered_list() -> None:
+    # UZ is a CIS country, but CIS isn't offered here.
+    assert zone_for_country("UZ", offered=["RU"]) is None
+
+
+def test_countries_for_zone_puts_uz_first_for_cis() -> None:
+    package: dict[str, Any] = {"prices": [{"zone": "CIS", "region": "ge", "price": 1.0}]}
+    assert countries_for_zone("CIS", package)[0] == "UZ"
+
+
+def test_countries_for_zone_falls_back_to_the_package_entrys_own_region() -> None:
+    # MENA isn't in the curated map — falls back to this package's own
+    # representative country for that zone, upper-cased.
+    package: dict[str, Any] = {"prices": [{"zone": "MENA", "region": "tr", "price": 3.5}]}
+    assert countries_for_zone("MENA", package) == ("TR",)
+
+
+def test_countries_for_zone_returns_empty_when_the_zone_is_unmapped_and_unpriced() -> None:
+    package: dict[str, Any] = {"prices": []}
+    assert countries_for_zone("MENA", package) == ()
 
 
 # ---------- _cached_json ----------

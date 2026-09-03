@@ -56,12 +56,12 @@ _UZS_RATE = Decimal("12700")
 _REQUIRED_FIELDS: list[dict[str, Any]] = [
     {"key": "app_id", "type": "number", "required": True},
     {"key": "package_id", "type": "number", "required": True},
-    {
-        "key": "region",
-        "type": "select",
-        "required": True,
-        "options": [{"value": "CIS"}, {"value": "RU"}],
-    },
+    # "text", not "select" — mirrors the real seed
+    # (scripts/seed/2026-09-03_steam_gifts.py): a literal option list here
+    # would be a second, DB-stored source of truth for which regions/
+    # countries are sellable, alongside STEAM_GIFTS_REGIONS. checkout.py's
+    # own zone_for_country/offered_zones checks are the sole authority.
+    {"key": "region", "type": "text", "required": True},
     {"key": "invite_url", "type": "text", "required": True},
 ]
 
@@ -260,6 +260,38 @@ async def test_happy_path_bills_the_server_price_and_enriches_the_snapshot(
 
 
 @respx.mock
+async def test_country_code_region_prices_from_its_zone_end_to_end(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _gift_sku: Sku,
+) -> None:
+    """2026-09-03: the buyer submits a country (``"UZ"``), not the zone label
+    — checkout resolves it to the CIS zone it prices from and stores both
+    on the persisted row, while still sending G-Engine the zone's own wire
+    ``region_code``, unaffected by which unit the buyer picked from."""
+    _mock_dead_cells()
+    token = await _login_user(integration_client, tg_id=207)
+
+    r = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "gift-country-aaaaaaaaaaa",
+        },
+        json=_order_body(sku_id=_gift_sku.id, amount_usd="1.10", region="UZ"),
+    )
+
+    assert r.status_code == 201, r.text
+    order_id = r.json()["id"]
+    item = (
+        await db_session.execute(select(OrderItem).where(OrderItem.order_id == order_id))
+    ).scalar_one()
+    assert item.fulfillment_data["region"] == "UZ"
+    assert item.fulfillment_data["zone"] == "CIS"
+    assert item.fulfillment_data["region_code"] == "ge"
+
+
+@respx.mock
 async def test_supplier_price_usd_never_reaches_the_customer_response(
     integration_client: AsyncClient,
     db_session: AsyncSession,
@@ -383,9 +415,10 @@ async def test_bad_region_is_a_422(
     db_session: AsyncSession,
     _gift_sku: Sku,
 ) -> None:
-    """ "XX" isn't declared on the product's ``region`` select options, so
-    ``validate_fulfillment_data`` itself already rejects it before the
-    checkout hook is ever reached."""
+    """ "XX" is neither a sold country nor an offered zone label — the
+    ``region`` field is free ``text`` (STEAM_GIFTS_REGIONS is the sole
+    authority, see the fixture above), so this is rejected inside
+    ``price_gift_line`` itself, not by the schema layer."""
     _mock_dead_cells()
     token = await _login_user(integration_client, tg_id=205)
 

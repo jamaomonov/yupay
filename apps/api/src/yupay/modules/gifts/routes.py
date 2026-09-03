@@ -24,14 +24,17 @@ from yupay.modules.gifts.schemas import (
     GiftAppDetailOut,
     GiftAppOut,
     GiftPackageOut,
+    GiftRegionOut,
     GiftsListOut,
     GiftZonePriceOut,
 )
 from yupay.modules.gifts.service import (
+    countries_for_zone,
     get_app,
     hot_offers,
     list_apps,
     sell_price_usd,
+    zone_for_country,
     zone_price_usd,
 )
 from yupay.modules.gifts.settings import default_zone, load_margin_percent, offered_zones
@@ -125,6 +128,60 @@ def _package_out(
     )
 
 
+def _regions_out(
+    raw_packages: list[dict[str, Any]],
+    packages_out: list[GiftPackageOut],
+    *,
+    zones: list[str],
+    default_country: str,
+) -> list[GiftRegionOut]:
+    """One row per country covered by an offered, priced zone.
+
+    Reuses ``packages_out`` — already margin- and fx-applied by
+    :func:`_package_out` — rather than recomputing a price, so this is
+    purely an expansion/ordering step, never a second source of the sell
+    price. For each offered zone, the *first* package (catalog order) that
+    prices it wins — the same "priced on at least one package" rule
+    :func:`get_catalog_app` already applies to the deprecated ``zones``
+    field. Order: ``default_country`` first, then the rest of its zone's
+    countries, then the remaining zones in ``STEAM_GIFTS_REGIONS`` order —
+    a package switch later re-prices from ``GiftPackageOut.prices``
+    directly, this list is only the initial country picker.
+    """
+    default_zone_code = zone_for_country(default_country, offered=zones)
+    ordered_zones: list[str] = [default_zone_code] if default_zone_code else []
+    for zone in zones:
+        if zone not in ordered_zones:
+            ordered_zones.append(zone)
+
+    zone_price: dict[str, GiftZonePriceOut] = {}
+    zone_raw_package: dict[str, dict[str, Any]] = {}
+    for raw_package, package_out in zip(raw_packages, packages_out, strict=True):
+        for zone_price_entry in package_out.prices:
+            if zone_price_entry.zone not in zone_price:
+                zone_price[zone_price_entry.zone] = zone_price_entry
+                zone_raw_package[zone_price_entry.zone] = raw_package
+
+    regions: list[GiftRegionOut] = []
+    for zone in ordered_zones:
+        price = zone_price.get(zone)
+        if price is None:
+            continue
+        countries = countries_for_zone(zone, zone_raw_package[zone])
+        if zone == default_zone_code and default_country in countries:
+            countries = (default_country, *(c for c in countries if c != default_country))
+        for country in countries:
+            regions.append(
+                GiftRegionOut(
+                    country=country,
+                    zone=zone,
+                    price_usd=price.price_usd,
+                    price_uzs=price.price_uzs,
+                )
+            )
+    return regions
+
+
 @router.get(
     "/catalog",
     response_model=GiftsListOut,
@@ -177,7 +234,9 @@ async def get_catalog_app(
     app_id: int,
     db: Annotated[AsyncSession, Depends(db_session)],
 ) -> GiftAppDetailOut:
-    """Full app card. ``zones`` is narrowed to the offered zones that
+    """Full app card. ``regions`` is the country picker (``region_default``
+    first), each entry priced from its zone. ``zones``/``zone_default`` are
+    the deprecated zone-label twins, narrowed to the offered zones that
     actually have a price on at least one package."""
     settings = get_settings()
     margin = await load_margin_percent(db)
@@ -187,12 +246,11 @@ async def get_catalog_app(
 
     detail = await get_app(app_id)
     base = _app_out(detail, margin=margin, rate=rate)
-    packages = [
-        _package_out(pkg, margin=margin, zones=zones, rate=rate)
-        for pkg in (detail.get("packages") or [])
-    ]
+    raw_packages = list(detail.get("packages") or [])
+    packages = [_package_out(pkg, margin=margin, zones=zones, rate=rate) for pkg in raw_packages]
     priced_zones = {price.zone for pkg in packages for price in pkg.prices}
     zones_out = [z for z in zones if z in priced_zones]
+    default_country = default_zone(settings)
 
     return GiftAppDetailOut(
         **base.model_dump(),
@@ -200,7 +258,9 @@ async def get_catalog_app(
         packages=packages,
         dlc_total=len(detail.get("dlc") or []),
         zones=zones_out,
-        zone_default=default_zone(settings),
+        zone_default=default_country,
+        regions=_regions_out(raw_packages, packages, zones=zones, default_country=default_country),
+        region_default=default_country,
     )
 
 

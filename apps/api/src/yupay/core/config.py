@@ -620,7 +620,12 @@ class Settings(BaseSettings):
     # ``yupay.modules.gifts.settings.load_margin_percent``.
     steam_gifts_enabled: bool = Field(default=False)
     steam_gifts_margin_percent: Decimal = Field(default=Decimal("10"))
-    steam_gifts_region_default: str = Field(default="CIS")
+    # 2026-09-03: this is a buyer-facing COUNTRY code, not a zone label —
+    # the "region v2" country picker (``gifts.service.zone_for_country``)
+    # resolves it to the zone it prices from. "UZ" is our home market;
+    # prod's `secrets/api.env` carries no override for this var, so this
+    # code default is what ships on the next deploy.
+    steam_gifts_region_default: str = Field(default="UZ")
     steam_gifts_regions: str = Field(default="CIS,RU,KZ,UA")
 
     # --- acquirer: Octo (octo.uz) ---

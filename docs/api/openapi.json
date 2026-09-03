@@ -5503,6 +5503,17 @@
             ],
             "title": "Price Uzs"
           },
+          "region_default": {
+            "title": "Region Default",
+            "type": "string"
+          },
+          "regions": {
+            "items": {
+              "$ref": "#/components/schemas/GiftRegionOut"
+            },
+            "title": "Regions",
+            "type": "array"
+          },
           "type": {
             "title": "Type",
             "type": "string"
@@ -5533,7 +5544,9 @@
           "packages",
           "dlc_total",
           "zones",
-          "zone_default"
+          "zone_default",
+          "regions",
+          "region_default"
         ],
         "title": "GiftAppDetailOut",
         "type": "object"
@@ -5669,6 +5682,42 @@
           "prices"
         ],
         "title": "GiftPackageOut",
+        "type": "object"
+      },
+      "GiftRegionOut": {
+        "description": "One purchasable country, priced from the zone that covers it.\n\nThe zone stays the pricing/wire unit (see\n``yupay.modules.gifts.service.ZONE_COUNTRIES``); this is the\nbuyer-facing unit a country picker renders. Every country covered by\nthe same zone carries that zone's identical price \u2014 a CIS country's\n``price_usd`` is the same number regardless of which of the nine CIS\ncountries it is.",
+        "properties": {
+          "country": {
+            "title": "Country",
+            "type": "string"
+          },
+          "price_usd": {
+            "title": "Price Usd",
+            "type": "string"
+          },
+          "price_uzs": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Uzs"
+          },
+          "zone": {
+            "title": "Zone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "country",
+          "zone",
+          "price_usd",
+          "price_uzs"
+        ],
+        "title": "GiftRegionOut",
         "type": "object"
       },
       "GiftZonePriceOut": {
@@ -23930,7 +23979,7 @@
     },
     "/api/v1/gifts/catalog/{app_id}": {
       "get": {
-        "description": "Full app card. ``zones`` is narrowed to the offered zones that\nactually have a price on at least one package.",
+        "description": "Full app card. ``regions`` is the country picker (``region_default``\nfirst), each entry priced from its zone. ``zones``/``zone_default`` are\nthe deprecated zone-label twins, narrowed to the offered zones that\nactually have a price on at least one package.",
         "operationId": "get_catalog_app_api_v1_gifts_catalog__app_id__get",
         "parameters": [
           {

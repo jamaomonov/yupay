@@ -11,6 +11,12 @@ both derive from the single :func:`_zone_price_entry` finder, so the price
 we sell at and the wire ``region`` code we buy at always come from the same
 upstream entry.
 
+The zone stays the pricing/wire unit; the country is the buyer-facing unit.
+:data:`ZONE_COUNTRIES` curates which countries each offered zone covers,
+:func:`zone_for_country` resolves a buyer's chosen country back to the zone
+to price from, and :func:`countries_for_zone` expands a zone into the
+countries a picker should list for it.
+
 Deliberately does not import the fulfiller (``fulfillment.suppliers.gengine``
 or a wrapper around it): that would pull the whole ``fulfillment`` package
 into this module's import graph, and ``orders`` imports ``gifts`` — a cycle
@@ -23,7 +29,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
@@ -148,6 +154,75 @@ def zone_region_code(package: dict[str, Any], zone: str) -> str | None:
         return None
     region = entry.get("region")
     return str(region) if region else None
+
+
+#: Steam prices these countries as one region; G-Engine bills the zone.
+#: Offered zones only, uppercase ISO-3166-1 alpha-2 country codes. KZ, RU and
+#: UA each have their own zone (deliberately absent from ``CIS`` below, even
+#: though Steam would otherwise bucket them there) — a country's own zone
+#: always wins over CIS membership. UZ is listed first for ``CIS`` — our home
+#: market, and the country :func:`countries_for_zone`/the routes layer lead
+#: with when ``STEAM_GIFTS_REGION_DEFAULT`` selects that zone.
+ZONE_COUNTRIES: dict[str, tuple[str, ...]] = {
+    "RU": ("RU",),
+    "KZ": ("KZ",),
+    "UA": ("UA",),
+    "CIS": ("UZ", "GE", "KG", "MD", "TJ", "TM", "AM", "AZ", "BY"),
+}
+
+
+def zone_for_country(country: str, *, offered: Sequence[str]) -> str | None:
+    """The offered zone that sells ``country``, or ``None``.
+
+    Reverse lookup over :data:`ZONE_COUNTRIES`, restricted to ``offered`` —
+    a country belonging to a zone we don't currently sell is treated the
+    same as a country we've never heard of. Case-insensitive.
+
+    Args:
+        country: an ISO-3166-1 alpha-2 code, any case.
+        offered: the zones currently sold (see
+            :func:`yupay.modules.gifts.settings.offered_zones`); only these
+            zones' country lists are consulted.
+
+    Returns:
+        The matching zone, or ``None`` when no offered zone covers it.
+    """
+    code = country.strip().upper()
+    if not code:
+        return None
+    for zone in offered:
+        if code in ZONE_COUNTRIES.get(zone, ()):
+            return zone
+    return None
+
+
+def countries_for_zone(zone: str, package: dict[str, Any]) -> tuple[str, ...]:
+    """The countries ``zone`` covers, for building a country picker.
+
+    :data:`ZONE_COUNTRIES` is the curated answer for the four zones we
+    currently offer. A zone absent from that map (e.g. ``STEAM_GIFTS_REGIONS``
+    widened to a zone we haven't curated yet) falls back to ``package``'s own
+    priced entry for ``zone`` — its one representative country — so widening
+    the offered zones never crashes or returns nothing sellable, just a
+    single-country zone until the map is curated for it.
+
+    Args:
+        zone: the pricing zone (e.g. ``"CIS"``).
+        package: the raw upstream package dict, consulted only for the
+            fallback case.
+
+    Returns:
+        The zone's countries, uppercase, empty when unmapped and the
+        package carries no priced entry for ``zone`` either.
+    """
+    mapped = ZONE_COUNTRIES.get(zone)
+    if mapped is not None:
+        return mapped
+    entry = _zone_price_entry(package, zone)
+    if entry is None:
+        return ()
+    region = entry.get("region")
+    return (str(region).upper(),) if region else ()
 
 
 async def _cached_json(key: str, ttl: int, fetch: Callable[[], Awaitable[Any]]) -> Any:
@@ -284,10 +359,13 @@ async def hot_offers() -> list[dict[str, Any]]:
 
 
 __all__ = [
+    "ZONE_COUNTRIES",
+    "countries_for_zone",
     "get_app",
     "hot_offers",
     "list_apps",
     "sell_price_usd",
+    "zone_for_country",
     "zone_price_usd",
     "zone_region_code",
 ]

@@ -79,7 +79,9 @@ async def test_admin_get_default_then_patch_persists_and_replays_idempotently(
     default_body = get_default.json()
     assert default_body["margin_percent"] == "10"
     assert default_body["enabled"] is False
-    assert default_body["region_default"] == "CIS"
+    # 2026-09-03: the code default became the buyer-facing country "UZ"
+    # (was the zone label "CIS") — see config.py's steam_gifts_region_default.
+    assert default_body["region_default"] == "UZ"
     assert default_body["regions"] == ["CIS", "RU", "KZ", "UA"]
 
     key = "gifts-margin-idem-0000001"

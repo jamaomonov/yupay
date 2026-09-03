@@ -76,20 +76,44 @@ class GiftPackageOut(BaseModel):
     prices: list[GiftZonePriceOut]
 
 
+class GiftRegionOut(BaseModel):
+    """One purchasable country, priced from the zone that covers it.
+
+    The zone stays the pricing/wire unit (see
+    ``yupay.modules.gifts.service.ZONE_COUNTRIES``); this is the
+    buyer-facing unit a country picker renders. Every country covered by
+    the same zone carries that zone's identical price — a CIS country's
+    ``price_usd`` is the same number regardless of which of the nine CIS
+    countries it is.
+    """
+
+    country: str
+    zone: str
+    price_usd: str
+    price_uzs: str | None
+
+
 class GiftAppDetailOut(GiftAppOut):
     """Full app card: everything on :class:`GiftAppOut`, plus packages/DLC."""
 
     description: str | None
     packages: list[GiftPackageOut]
     dlc_total: int
+    #: Deprecated (2026-09-03): kept for one release so a stale client that
+    #: hasn't reloaded the country picker still renders. New clients read
+    #: ``regions``/``region_default`` instead.
     zones: list[str]
+    #: Deprecated (2026-09-03) — see ``zones`` above.
     zone_default: str
+    regions: list[GiftRegionOut]
+    region_default: str
 
 
 __all__ = [
     "GiftAppDetailOut",
     "GiftAppOut",
     "GiftPackageOut",
+    "GiftRegionOut",
     "GiftZonePriceOut",
     "GiftsAdminSettingsOut",
     "GiftsListOut",

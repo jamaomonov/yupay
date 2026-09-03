@@ -39,33 +39,65 @@ fulfilment branch is
 
 ## Regions
 
-`STEAM_GIFTS_REGION_DEFAULT` (default `CIS`) and `STEAM_GIFTS_REGIONS`
-(CSV, default `CIS,RU,KZ,UA`) are read fresh from settings on every
-request (`gifts.settings.offered_zones`/`default_zone`) — changing them
-also only needs an api restart, no migration. Per spec §7.1, **CIS** is
-the confirmed recommendation for Uzbekistan (the operator's own test
-purchase delivered successfully with it); do not widen `STEAM_GIFTS_REGIONS`
-without checking the new zone actually prices packages G-Engine sells
-(an offered zone with no price on a given package is silently dropped from
-that game's `zones` list — see `routes.py::get_catalog_app`).
+**Two units, deliberately different (2026-09-03 "region v2").** The
+**zone** (`CIS`/`RU`/`KZ`/`UA`) is G-Engine's pricing bucket — it's what
+`STEAM_GIFTS_REGIONS`/`gifts.settings.offered_zones` sells against, and it
+stays the wire unit. The **country** (`UZ`, `GE`, `KG`, …) is the
+buyer-facing unit: what the country picker offers and what
+`fulfillment_data.region` carries from the client. `gifts/service.py`'s
+`ZONE_COUNTRIES` is the curated map from a zone to the countries it
+covers — offered zones only, e.g. `CIS` → `(UZ, GE, KG, MD, TJ, TM, AM,
+AZ, BY)` with `UZ` first (our home market). `zone_for_country` resolves a
+chosen country back to the zone to price from; `countries_for_zone`
+expands a zone into its countries for the picker (`routes.py::_regions_out`
+assembles `GiftAppDetailOut.regions` this way). A zone absent from the map
+falls back to its own representative country — the `region` field on that
+zone's priced entry — so widening `STEAM_GIFTS_REGIONS` to a
+not-yet-curated zone still sells (as a single-country zone); update
+`ZONE_COUNTRIES` separately to group it into real countries.
 
-**The zone is only ever our customer-facing selector — it is not the value
-sent to G-Engine.** `POST /gifts/orders`'s `region` field wants the
-2-letter country code carried on the _chosen package's own_ `prices[]`
-entry (`PackagePriceResponse.region`, lowercase — e.g. `"kz"`, `"ua"`, and
-for zone **CIS** it can be e.g. `"ge"` — verified live, and it can differ
-per package). Sending the zone label itself (`"CIS"`, `"KZ"`, …) gets
-G-Engine's «Price not found». `gifts/checkout.py::price_gift_line`
-resolves the code at checkout time — from the exact same priced entry
-`supplier_price_usd` is billed from, via `gifts/service.py`'s
-`zone_region_code` (sharing the one price-entry finder with
-`zone_price_usd`, so the two come from the same entry; a malformed entry
-without a region code is refused at checkout) — and stores it on the order
-line as `fulfillment_data.region_code`. `gengine_gifts.py::fulfill_gift`
-sends `region_code` when present, falling back to the legacy `region` zone
-value only for order rows written before this resolution existed
-(2026-09-03 hotfix — no backfill needed, the feature had never gone live
-and zero pre-hotfix gift orders exist on prod).
+`STEAM_GIFTS_REGION_DEFAULT` (default `UZ` as of 2026-09-03 — a country
+code now, was the zone label `CIS` before the country picker; prod's
+`secrets/api.env` carries no override, so this code default is what ships)
+and `STEAM_GIFTS_REGIONS` (CSV of _zones_, default `CIS,RU,KZ,UA`) are read
+fresh from settings on every request
+(`gifts.settings.offered_zones`/`default_zone`) — changing either only
+needs an api restart, no migration. Per spec §7.1, **CIS** (the zone `UZ`
+buckets into) is the confirmed recommendation for Uzbekistan (the
+operator's own test purchase delivered successfully with it); do not widen
+`STEAM_GIFTS_REGIONS` without checking the new zone actually prices
+packages G-Engine sells (an offered zone with no price on a given package
+is silently dropped from that game's `zones`/`regions` lists — see
+`routes.py::get_catalog_app`).
+
+**Backwards compatibility.** `gifts/checkout.py::price_gift_line` still
+accepts a legacy zone label (`CIS`, `RU`, `KZ`, `UA`) in
+`fulfillment_data.region` — an order placed before this shipped, or a
+client that hasn't reloaded, keeps pricing exactly as it did before.
+Resolution order: try `region` as a country via `zone_for_country`; if
+that's `None`, accept it as-is only when it's one of the offered zones;
+otherwise 422 ("this region has no price for the selected edition"). The
+resolved zone is stored separately as `fulfillment_data.zone`, so a
+support ticket can always tell which pricing bucket an order actually
+used regardless of what unit the buyer (or a stale client) submitted.
+
+**The zone is only ever our pricing/wire unit — no customer-facing label
+of either kind reaches G-Engine.** `POST /gifts/orders`'s `region` field
+wants the 2-letter country code carried on the _chosen package's own_
+`prices[]` entry (`PackagePriceResponse.region`, lowercase — e.g. `"kz"`,
+`"ua"`, and for zone **CIS** it can be e.g. `"ge"` — verified live, and it
+can differ per package). Sending the zone label (`"CIS"`, `"KZ"`, …) _or_
+the buyer's country code (`"UZ"`) gets G-Engine's «Price not found».
+`gifts/checkout.py::price_gift_line` resolves the code at checkout time —
+from the exact same priced entry `supplier_price_usd` is billed from, via
+`gifts/service.py`'s `zone_region_code` (sharing the one price-entry
+finder with `zone_price_usd`, so the two come from the same entry; a
+malformed entry without a region code is refused at checkout) — and
+stores it on the order line as `fulfillment_data.region_code`.
+`gengine_gifts.py::fulfill_gift` sends `region_code` when present, falling
+back to the legacy `region` value only for order rows written before this
+resolution existed (2026-09-03 hotfix — no backfill needed, the feature
+had never gone live and zero pre-hotfix gift orders exist on prod).
 
 **"Api restart only" depends on the product's `region` field staying a
 plain `text` field with no options.** The seed
@@ -73,10 +105,11 @@ plain `text` field with no options.** The seed
 as `type: "text"`, not `type: "select"` with a literal option list — a
 `select` field is checked for option membership by
 `orders/validation.py::validate_fulfillment_data`, which runs **before**
-`gifts/checkout.py:186`'s `offered_zones` check ever sees the value, so a
-`select`-typed schema would be a second, DB-stored source of truth for
-which regions are legal and widening the env var alone would still 422 the
-new zone. `offered_zones()` is the only membership check that matters —
+`gifts/checkout.py::price_gift_line`'s `zone_for_country`/`offered_zones`
+resolution ever sees the value, so a `select`-typed schema would be a
+second, DB-stored source of truth for which regions are legal and widening
+the env var alone would still 422 the new zone. `zone_for_country`/
+`offered_zones()` are the only membership checks that matter —
 verify that's still true (`region` is `text` on the live `products` row,
 no `options` key) before trusting "just restart the api" for a region
 change; if a prior seed run left the field as `select`, re-run the seed
