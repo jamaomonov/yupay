@@ -427,6 +427,83 @@ async def test_check_missing_order_id_key_is_10005(integration_client: AsyncClie
     assert body["errorCode"] == 10005
 
 
+async def test_check_accepts_uzums_camelcase_order_id(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Uzum's real ``params`` envelope uses camelCase ``orderId``.
+
+    This is the shape the live service actually sends -- captured 2026-09-04
+    from Uzum's own request, when every ``/check`` came back 10005 because we
+    only read snake_case ``order_id``. The rest of this suite was written
+    from that same unconfirmed assumption, so it could never have caught the
+    mismatch; this test pins the real contract.
+    """
+    order_id = await _seed_order(db_session)
+    r = await integration_client.post(
+        CHECK_URL,
+        headers=_auth(),
+        json={"serviceId": SERVICE_ID, "timestamp": 1, "params": {"orderId": order_id}},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "OK"
+
+
+async def test_create_accepts_uzums_camelcase_order_id(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """``/create`` reads the account field from the same envelope as ``/check``,
+    so it must accept camelCase ``orderId`` too -- otherwise a buyer who got
+    past ``/check`` would still fail at the moment the transaction is
+    registered."""
+    order_id = await _seed_order(db_session)
+    r = await integration_client.post(
+        CREATE_URL,
+        headers=_auth(),
+        json={
+            "serviceId": SERVICE_ID,
+            "timestamp": 1,
+            "transId": str(uuid.uuid4()),
+            "params": {"orderId": order_id},
+            "amount": EXPECTED_TIYIN,
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "CREATED"
+
+
+async def test_check_still_accepts_snake_case_order_id(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Uzum documents the account field as configurable per service, so the
+    snake_case spelling stays accepted -- a cabinet-side change must not break
+    the webhook the way the camelCase one did."""
+    order_id = await _seed_order(db_session)
+    r = await integration_client.post(
+        CHECK_URL,
+        headers=_auth(),
+        json={"serviceId": SERVICE_ID, "timestamp": 1, "params": {"order_id": order_id}},
+    )
+    assert r.status_code == 200
+    assert r.json()["status"] == "OK"
+
+
+async def test_check_blank_camelcase_order_id_is_10005(
+    integration_client: AsyncClient,
+) -> None:
+    """An ``orderId`` present but empty is as unusable as a missing one, and
+    must not fall through to the snake_case lookup and out as some other
+    error."""
+    r = await integration_client.post(
+        CHECK_URL,
+        headers=_auth(),
+        json={"serviceId": SERVICE_ID, "timestamp": 1, "params": {"orderId": ""}},
+    )
+    assert r.status_code == 400
+    assert r.json()["errorCode"] == 10005
+
+
 async def test_check_params_not_object_is_10005(integration_client: AsyncClient) -> None:
     """``params`` present but not a JSON object -- ``_req_dict`` must reject it
     with 10005."""

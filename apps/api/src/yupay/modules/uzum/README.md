@@ -55,7 +55,10 @@ POST /api/v1/payments/uzum/status
   `order.total_charged` is a `Decimal` in major UZS units; the expected wire
   amount is `int(total_charged * 100)`, required to be an **exact** integer —
   any fractional-tiyin mismatch is `10011`, never silently rounded.
-- `params.order_id` = our `order.id`. No other `params`/account fields are
+- `params.orderId` = our `order.id` — camelCase, confirmed against the live
+  service 2026-09-04. `params.order_id` is also accepted, because Uzum
+  documents the account field as configurable per service. No other
+  `params`/account fields are
   interpreted.
 
 ## The five webhooks

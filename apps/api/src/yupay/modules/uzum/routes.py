@@ -222,6 +222,34 @@ def _req_dict(source: dict[str, Any], key: str) -> dict[str, Any]:
     return value
 
 
+def _req_order_id(params: dict[str, Any]) -> str:
+    """Return the order id from Uzum's ``params`` envelope, else raise ``10005``.
+
+    Uzum sends the account field as **camelCase ``orderId``** — confirmed
+    2026-09-04 against the live service, when every ``/check`` came back
+    ``10005`` because we only looked for ``order_id``. That snake_case name
+    was an assumption carried over from Payme's ``account.order_id`` and was
+    flagged unconfirmed in the design's open items; it was never what Uzum
+    actually sends.
+
+    Their docs describe this field as configurable per service, so both
+    spellings are accepted: a future cabinet change cannot break the webhook
+    again, and both names denote the same value, which the service layer
+    validates against a real order regardless.
+
+    Args:
+        params: The request's ``params`` object.
+
+    Raises:
+        UzumError: ``10005`` if neither spelling carries a non-empty string.
+    """
+    for key in ("orderId", "order_id"):
+        value = params.get(key)
+        if isinstance(value, str) and value:
+            return value
+    raise missing_params()
+
+
 async def _rollback_after_internal_error(db: AsyncSession, *, endpoint: str) -> None:
     """Best-effort rollback after an unexpected exception, logging either way."""
     try:
@@ -255,7 +283,7 @@ async def uzum_check(request: Request, db: DbSession) -> dict[str, Any] | JSONRe
         _authenticate(request)
         service_id = _service_guard(body)
         params = _req_dict(body, "params")
-        order_id = _req_str(params, "order_id")
+        order_id = _req_order_id(params)
     except UzumError as exc:
         return _fail(exc, **_echo(body))
 
@@ -301,7 +329,7 @@ async def uzum_create(request: Request, db: DbSession) -> dict[str, Any] | JSONR
         service_id = _service_guard(body)
         trans_id = _req_str(body, "transId")
         params = _req_dict(body, "params")
-        order_id = _req_str(params, "order_id")
+        order_id = _req_order_id(params)
         amount = _req_int(body, "amount")
     except UzumError as exc:
         return _fail(exc, **_echo(body))

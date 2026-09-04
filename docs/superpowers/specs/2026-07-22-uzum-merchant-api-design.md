@@ -409,8 +409,14 @@ Assert `refund_admin` and the shared payments hooks are byte-for-byte unchanged
    included) for any failed webhook, `10001` included; HTTP 200 stays for
    success. Not HTTP 401 — the error still rides inside the documented JSON
    envelope, just at status 400 instead of 200.
-4. **`params` account envelope:** we assume `params.order_id`; confirm the exact
-   account-attribute key(s) Uzum will send for our service.
+4. ~~**`params` account envelope:**~~ **RESOLVED 2026-09-04.** Uzum sends
+   camelCase **`params.orderId`**, not the `params.order_id` this design
+   assumed by analogy with Payme. Confirmed against the live service: every
+   `/check` returned `10005` until we read the camelCase key. Both spellings
+   are now accepted, since Uzum documents the field as configurable per
+   service. Note the assumption was untestable from our side — the whole
+   webhook suite was written from it, so the tests agreed with the guess
+   instead of checking it.
 5. **Min/max amount (`10012`/`10013`):** whether Uzum enforces service bounds or
    expects us to; we can assert per-order bounds if required.
 6. **Source IPs:** Uzum's webhook source IPs for a Caddy allowlist (added later,
