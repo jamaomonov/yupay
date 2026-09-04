@@ -8,10 +8,12 @@ import { GiftPurchasePanel } from "./GiftPurchasePanel";
 
 import type { Me } from "@/lib/auth";
 import type * as GiftCheckoutModule from "@/lib/gift-checkout";
-import type { GiftAppDetail, GiftPackage, GiftRegion } from "@/lib/gifts";
+import type * as GiftsModule from "@/lib/gifts";
+import type { GiftAppDetail, GiftPackage, GiftProfileCheck, GiftRegion } from "@/lib/gifts";
 
 import { ApiError, clearTokens, setTokens } from "@/lib/client";
 import { buyGift, GiftPriceChangedError } from "@/lib/gift-checkout";
+import { checkGiftProfile } from "@/lib/gifts";
 import { countryName } from "@/lib/regions";
 import { formatUzs } from "@/lib/seo";
 import { useLoginModal } from "@/store/useLoginModal";
@@ -66,7 +68,16 @@ vi.mock("@/lib/gift-checkout", async (importOriginal) => ({
   buyGift: vi.fn(),
 }));
 
+// Only the network call is stubbed — `profileCheckBlocks` stays the real
+// predicate, so what these tests exercise is the panel's actual Buy gating
+// rather than a re-declaration of it.
+vi.mock("@/lib/gifts", async (importOriginal) => ({
+  ...(await importOriginal<typeof GiftsModule>()),
+  checkGiftProfile: vi.fn(),
+}));
+
 const buyGiftMock = vi.mocked(buyGift);
+const checkGiftProfileMock = vi.mocked(checkGiftProfile);
 
 function mockProvidersResponse(): void {
   vi.stubGlobal(
@@ -148,6 +159,7 @@ beforeAll(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   buyGiftMock.mockReset();
+  checkGiftProfileMock.mockReset();
   pushMock.mockReset();
   refreshMock.mockReset();
   toastInfoMock.mockReset();
@@ -1442,4 +1454,170 @@ it("never lets a providerStatus fetch that resolves after a wallet pick swap it 
     expect(screen.getByRole("button", { name: "Click" })).toHaveAttribute("aria-pressed", "false");
   });
   expect(walletTileButton()).toHaveAttribute("aria-pressed", "true");
+});
+
+/**
+ * The pre-purchase recipient check (2026-09-04): «Проверить» resolves the
+ * pasted link through `GET /gifts/steam-profile` and shows who it actually
+ * points to, so a mistyped link stops being an unrecoverable, paid mistake.
+ *
+ * The rule every state here is written against: **only a definitive
+ * `not_found` may block the purchase.** `unsupported` (an `s.team` friend
+ * invite the Web API cannot resolve) and `unavailable` (no key, a Steam
+ * outage, a timeout) are our failures, not the recipient's, and a check that
+ * fails on our side must never cost a sale.
+ */
+describe("the recipient profile check", () => {
+  const AVATAR = "https://avatars.steamstatic.com/abc_full.jpg";
+  const FOUND: GiftProfileCheck = { status: "found", nickname: "Neo", avatarUrl: AVATAR };
+
+  function checkButton(): HTMLElement {
+    return screen.getByRole("button", { name: "check" });
+  }
+
+  function pasteInvite(url: string): void {
+    fireEvent.change(screen.getByLabelText("inviteLabel"), { target: { value: url } });
+  }
+
+  it("collapses the field into a card with the recipient's nickname and avatar", async () => {
+    mockProvidersResponse();
+    checkGiftProfileMock.mockResolvedValue(FOUND);
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    pasteInvite("https://steamcommunity.com/id/neo");
+    fireEvent.click(checkButton());
+
+    expect(await screen.findByText("Neo")).toBeInTheDocument();
+    expect(screen.getByTestId("gift-profile-avatar")).toHaveAttribute(
+      "src",
+      expect.stringContaining("avatars.steamstatic.com"),
+    );
+    expect(checkGiftProfileMock).toHaveBeenCalledWith("https://steamcommunity.com/id/neo");
+    // Collapsed: the input is gone, replaced by the confirmation card.
+    expect(screen.queryByLabelText("inviteLabel")).not.toBeInTheDocument();
+  });
+
+  it("keeps Buy available once the recipient is confirmed", async () => {
+    mockProvidersResponse();
+    checkGiftProfileMock.mockResolvedValue(FOUND);
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    await fillValidCheckout();
+    fireEvent.click(checkButton());
+
+    expect(await screen.findByText("Neo")).toBeInTheDocument();
+    expect(buyButton()).not.toBeDisabled();
+  });
+
+  it("blocks Buy on a definitive not_found, and the CTA says why", async () => {
+    mockProvidersResponse();
+    checkGiftProfileMock.mockResolvedValue({ status: "not_found" });
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    await fillValidCheckout();
+    fireEvent.click(checkButton());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("profileNotFound");
+    expect(buyButton()).toBeDisabled();
+    expect(buyButton()).toHaveTextContent("payHintProfileNotFound");
+    // The field stays open on a miss — the buyer fixes the link in place.
+    expect(screen.getByLabelText("inviteLabel")).toBeInTheDocument();
+  });
+
+  it("leaves Buy available on unavailable, with a neutral note", async () => {
+    mockProvidersResponse();
+    checkGiftProfileMock.mockResolvedValue({ status: "unavailable" });
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    await fillValidCheckout();
+    fireEvent.click(checkButton());
+
+    expect(await screen.findByText("profileUnavailable")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(buyButton()).not.toBeDisabled();
+  });
+
+  it("leaves Buy available on an unsupported link type, with a neutral note", async () => {
+    mockProvidersResponse();
+    checkGiftProfileMock.mockResolvedValue({ status: "unsupported" });
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    await fillValidCheckout();
+    pasteInvite("https://s.team/p/abc-defg");
+    fireEvent.click(checkButton());
+
+    expect(await screen.findByText("profileUnsupported")).toBeInTheDocument();
+    expect(buyButton()).not.toBeDisabled();
+  });
+
+  it("resets the check — and unblocks Buy — as soon as the link is edited", async () => {
+    mockProvidersResponse();
+    checkGiftProfileMock.mockResolvedValue({ status: "not_found" });
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    await fillValidCheckout();
+    fireEvent.click(checkButton());
+    expect(await screen.findByRole("alert")).toHaveTextContent("profileNotFound");
+
+    pasteInvite("https://steamcommunity.com/id/neo");
+
+    expect(screen.queryByText("profileNotFound")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(buyButton()).not.toBeDisabled();
+    });
+  });
+
+  it("reopens the field from the card, with the pasted link still in it", async () => {
+    mockProvidersResponse();
+    checkGiftProfileMock.mockResolvedValue(FOUND);
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    pasteInvite("https://steamcommunity.com/id/neo");
+    fireEvent.click(checkButton());
+    fireEvent.click(await screen.findByRole("button", { name: "checkEdit" }));
+
+    expect(screen.getByLabelText("inviteLabel")).toHaveValue("https://steamcommunity.com/id/neo");
+    expect(screen.queryByText("Neo")).not.toBeInTheDocument();
+  });
+
+  it("refuses to check a link that doesn't parse, and shows the link error instead", () => {
+    mockProvidersResponse();
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    pasteInvite("https://example.com/not-steam");
+    expect(checkButton()).toHaveAttribute("aria-disabled", "true");
+
+    fireEvent.click(checkButton());
+
+    expect(checkGiftProfileMock).not.toHaveBeenCalled();
+    // Pressing it answers rather than swallowing the click — same posture as
+    // `CheckablePlayerField`'s `aria-disabled` button in `PurchasePanel`.
+    expect(screen.getByText("inviteError")).toBeInTheDocument();
+  });
+
+  it("ignores a verdict that lands after the buyer has already changed the link", async () => {
+    mockProvidersResponse();
+    let resolveCheck: (v: GiftProfileCheck) => void = () => {
+      throw new Error("resolveCheck called before it was assigned");
+    };
+    checkGiftProfileMock.mockReturnValue(
+      new Promise<GiftProfileCheck>((resolve) => {
+        resolveCheck = resolve;
+      }),
+    );
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    await fillValidCheckout();
+    fireEvent.click(checkButton());
+    // The buyer corrects the link while the lookup for the old one is still
+    // in flight; the answer that lands is about a profile they no longer mean.
+    pasteInvite("https://steamcommunity.com/id/neo");
+    resolveCheck({ status: "not_found" });
+
+    await waitFor(() => {
+      expect(checkButton()).toHaveTextContent("check");
+    });
+    expect(screen.queryByText("profileNotFound")).not.toBeInTheDocument();
+    expect(buyButton()).not.toBeDisabled();
+  });
 });

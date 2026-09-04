@@ -380,6 +380,10 @@
       "payHintInvite": "Qabul qiluvchining Steam profil havolasini kiriting",
       "payHintInviteInvalid": "Profil havolasini tekshiring",
       "payHintMethod": "Toʻlov usulini tanlang",
+      "profileNotFound": "Bunday Steam profili topilmadi — havolani tekshiring",
+      "profileUnsupported": "Bu turdagi havolani tekshirib boʻlmaydi — profilni oʻzingiz oching. Toʻlovga xalaqit bermaydi.",
+      "profileUnavailable": "Steam hozir javob bermayapti — davom etsangiz boʻladi",
+      "payHintProfileNotFound": "Profil topilmadi — havolani tekshiring",
       "confirmRegion": "Mintaqa",
       "confirmProfile": "Qabul qiluvchi profili",
       "confirmWarning": "Toʻlovdan keyin sovgʻani bekor qilib boʻlmaydi — u yuqoridagi havolaga yuboriladi. Toʻlovdan oldin qabul qiluvchi profilini tekshiring."

@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpRight, ExternalLink, Loader2 } from "lucide-react";
+import { ArrowUpRight, Check, ExternalLink, Loader2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -11,7 +11,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { InviteGuide } from "./InviteGuide";
 import { RegionHintPanel, RegionHintToggle } from "./RegionHint";
 
-import type { GiftAppDetail, GiftPackage } from "@/lib/gifts";
+import type { GiftAppDetail, GiftPackage, GiftProfileCheck } from "@/lib/gifts";
 import type { ProviderStatus, ProvidersOut } from "@/lib/payment-providers";
 
 import { WalletMark } from "@/components/icons/WalletMark";
@@ -28,6 +28,8 @@ import {
   isOrderNotAwaitingPaymentConflict,
   orderFingerprint,
 } from "@/lib/gift-checkout";
+import { checkGiftProfile, profileCheckBlocks } from "@/lib/gifts";
+import { isOptimizable } from "@/lib/image";
 import { methodVisibility, providerStatusMap, selectActiveMethodId } from "@/lib/payment-providers";
 import { countryName, flagEmoji } from "@/lib/regions";
 import { formatUzs, pathFor } from "@/lib/seo";
@@ -49,6 +51,12 @@ const VISIBLE_COUNTRY_COUNT = 4;
 const INVITE_ERROR_DEBOUNCE_MS = 600;
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/** The invite field's caption styling, shared by the `<label>` that owns the
+ *  input and the plain caption that stands in for it once the field collapses
+ *  into the confirmed-recipient card (a `<label>` whose `htmlFor` points at a
+ *  control that is no longer rendered announces as a dangling label). */
+const FIELD_LABEL_CLASS = "text-tx-dim text-[11px] font-semibold uppercase tracking-[0.08em]";
 
 /** In-scope acquirers for a gift purchase — same three UZ rails
  *  `PurchasePanel` offers. The wallet is a separate tile (`WALLET_METHOD_ID`
@@ -351,6 +359,50 @@ export function GiftPurchasePanel({
   }, [inviteUrl, inviteWrong]);
   const inviteInvalid = inviteWrong && (inviteTouched || inviteIdle);
   const inviteHref = inviteProfileHref(inviteUrl);
+
+  // The pre-purchase recipient check («Проверить»). The verdict is stored
+  // together with the link it was asked about and read back only while the
+  // field still holds that same link — which buys two things at once: editing
+  // the link resets the check with no effect to keep in sync, and an answer
+  // that lands after the buyer has already corrected the link is discarded
+  // rather than shown against a profile they no longer mean.
+  const [profile, setProfile] = useState<{ url: string; check: GiftProfileCheck } | null>(null);
+  const [profileChecking, setProfileChecking] = useState(false);
+  const inviteRef = useRef<HTMLInputElement>(null);
+  const profileCheck = profile !== null && profile.url === inviteUrl.trim() ? profile.check : null;
+  const profileFound = profileCheck?.status === "found" ? profileCheck : null;
+  // The single new condition on the purchase. `profileCheckBlocks` is `true`
+  // for exactly one verdict — Steam's own "no such profile" — so an
+  // unsupported link type, a Steam outage, and a link nobody checked all
+  // leave the buyer free to pay: a check that fails on our side must never
+  // cost a sale.
+  const profileBlocks = profileCheckBlocks(profileCheck);
+
+  async function runProfileCheck(): Promise<void> {
+    const url = inviteUrl.trim();
+    if (!isValidInviteUrl(url)) {
+      // A dimmed control that swallows the click teaches nothing — pressing
+      // it surfaces the link error the field would otherwise only show on
+      // blur or after the idle pause.
+      setInviteTouched(true);
+      return;
+    }
+    setProfileChecking(true);
+    try {
+      // `checkGiftProfile` never rejects (see its doc comment) — the
+      // try/finally is only here so the spinner cannot outlive the request.
+      setProfile({ url, check: await checkGiftProfile(url) });
+    } finally {
+      setProfileChecking(false);
+    }
+  }
+
+  /** Reopen the collapsed field from the card's «Изменить» control. */
+  function reopenInvite(): void {
+    setProfile(null);
+    requestAnimationFrame(() => inviteRef.current?.focus());
+  }
+
   const [email, setEmail] = useState("");
 
   // Signed-in buyers get their account's delivery address pre-filled, the
@@ -466,6 +518,7 @@ export function GiftPurchasePanel({
     selectedPrice !== null &&
     !priceUnavailable &&
     inviteValid &&
+    !profileBlocks &&
     emailValid &&
     selectedMethodActive &&
     !loading;
@@ -485,11 +538,13 @@ export function GiftPurchasePanel({
           ? t("payHintInvite")
           : !inviteValid
             ? t("payHintInviteInvalid")
-            : !emailValid
-              ? ts("payHintEmail")
-              : !selectedMethodActive
-                ? t("payHintMethod")
-                : null;
+            : profileBlocks
+              ? t("payHintProfileNotFound")
+              : !emailValid
+                ? ts("payHintEmail")
+                : !selectedMethodActive
+                  ? t("payHintMethod")
+                  : null;
 
   const buyLabel = selectedPriceLabel != null ? `${t("buy")} · ${selectedPriceLabel}` : t("buy");
 
@@ -645,7 +700,25 @@ export function GiftPurchasePanel({
   const inviteId = useId();
   const emailId = useId();
   const inviteErrorId = `${inviteId}-error`;
+  const profileNoteId = `${inviteId}-profile`;
   const emailErrorId = `${emailId}-error`;
+
+  // What the check has to say about the link currently in the field, if
+  // anything. `found` says it in the card instead, so it has no note.
+  const profileNote: string | null =
+    profileCheck === null || profileCheck.status === "found"
+      ? null
+      : profileCheck.status === "not_found"
+        ? t("profileNotFound")
+        : profileCheck.status === "unsupported"
+          ? t("profileUnsupported")
+          : t("profileUnavailable");
+  // Both the shape error and the check verdict describe the same input, so
+  // they are announced together rather than the later one hiding the earlier.
+  const inviteDescribedBy =
+    [inviteInvalid ? inviteErrorId : null, profileNote !== null ? profileNoteId : null]
+      .filter((id): id is string => id !== null)
+      .join(" ") || undefined;
 
   // No sellable country at all (see `hasRegions` above) — same posture the
   // page-level caller already uses when there's no purchasable SKU yet
@@ -819,30 +892,117 @@ export function GiftPurchasePanel({
         </div>
 
         <div className="space-y-2">
-          <label
-            htmlFor={inviteId}
-            className="text-tx-dim text-[11px] font-semibold uppercase tracking-[0.08em]"
-          >
-            {t("inviteLabel")}
-          </label>
-          <input
-            id={inviteId}
-            type="text"
-            value={inviteUrl}
-            onChange={(e) => {
-              setInviteUrl(e.target.value);
-            }}
-            onBlur={() => {
-              setInviteTouched(true);
-            }}
-            placeholder={t("invitePlaceholder")}
-            aria-invalid={inviteInvalid ? true : undefined}
-            aria-describedby={inviteInvalid ? inviteErrorId : undefined}
-            className="border-border bg-bg rounded-btn h-11 w-full border px-3 text-sm"
-          />
+          {profileFound !== null ? (
+            <p className={FIELD_LABEL_CLASS}>{t("inviteLabel")}</p>
+          ) : (
+            <label htmlFor={inviteId} className={FIELD_LABEL_CLASS}>
+              {t("inviteLabel")}
+            </label>
+          )}
+          {profileFound !== null ? (
+            /* Confirmed recipient — the field collapses into who the link
+              actually points to, so the last thing the buyer sees before
+              paying is a face and a name rather than a URL they have already
+              stopped reading. Mirrors `CheckablePlayerField`'s confirmation
+              pill in `PurchasePanel`, plus the avatar gifts have and it
+              doesn't. */
+            <div className="rounded-btn flex items-center gap-2.5 border border-emerald-500/40 bg-emerald-500/[0.06] py-1.5 pl-1.5 pr-4">
+              {profileFound.avatarUrl !== null ? (
+                <Image
+                  data-testid="gift-profile-avatar"
+                  src={profileFound.avatarUrl}
+                  // Decorative: the nickname it belongs to is right beside it,
+                  // and an avatar has nothing of its own to announce.
+                  alt=""
+                  width={48}
+                  height={48}
+                  // `avatars.steamstatic.com` is a third-party host — see
+                  // `lib/image.ts`: the optimizer 504s rather than degrading
+                  // when such a host is slow, which would lose the whole card.
+                  unoptimized={!isOptimizable(profileFound.avatarUrl)}
+                  className="h-12 w-12 shrink-0 rounded-full object-cover"
+                />
+              ) : (
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
+                  <Check size={20} strokeWidth={3} aria-hidden="true" />
+                </span>
+              )}
+              <div className="min-w-0 flex-1 leading-tight">
+                <div className="truncate text-[14px] font-bold">{profileFound.nickname}</div>
+                {/* The link it resolved to, kept visible: the field it
+                  replaced is gone, and the buyer should still be able to see
+                  what they pasted. */}
+                <div className="text-tx-dim truncate text-[12px]">{inviteUrl.trim()}</div>
+              </div>
+              <button
+                type="button"
+                onClick={reopenInvite}
+                className="text-tx-dim hover:text-tx-mute shrink-0 text-[13px] font-medium transition"
+              >
+                {ts("checkEdit")}
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="min-w-0 flex-1">
+                <input
+                  id={inviteId}
+                  ref={inviteRef}
+                  type="text"
+                  value={inviteUrl}
+                  onChange={(e) => {
+                    setInviteUrl(e.target.value);
+                  }}
+                  onBlur={() => {
+                    setInviteTouched(true);
+                  }}
+                  placeholder={t("invitePlaceholder")}
+                  aria-invalid={inviteInvalid || profileBlocks ? true : undefined}
+                  aria-describedby={inviteDescribedBy}
+                  className="border-border bg-bg rounded-btn h-11 w-full border px-3 text-sm"
+                />
+              </div>
+              <button
+                type="button"
+                // `aria-disabled`, not `disabled`: a real `disabled` button
+                // drops the click, leaving no moment at which to explain why
+                // nothing happened. `runProfileCheck` answers with the link
+                // error instead. Same posture as `CheckablePlayerField`.
+                aria-disabled={!inviteValid}
+                disabled={profileChecking}
+                onClick={() => {
+                  void runProfileCheck();
+                }}
+                // Neutral, not primary: the check is advisory — everything
+                // except a definitive "no such profile" lets the buyer carry
+                // on — and in lime it would compete with the real CTA.
+                className={`border-border-2 text-tx-mute hover:border-tx-dim hover:text-foreground hover:bg-muted rounded-btn inline-flex h-11 shrink-0 items-center justify-center gap-2 border px-5 text-[14px] font-semibold transition disabled:pointer-events-none disabled:opacity-40 ${
+                  inviteValid ? "" : "opacity-40"
+                }`}
+              >
+                {profileChecking && (
+                  <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+                )}
+                {profileChecking ? ts("checking") : ts("check")}
+              </button>
+            </div>
+          )}
           {inviteInvalid && (
             <p id={inviteErrorId} className="text-[13px] text-[#FF6B6B]">
               {t("inviteError")}
+            </p>
+          )}
+          {profileNote !== null && (
+            /* One paragraph, two registers. A definitive "no such profile" is
+              an error the buyer must act on and is the only verdict that
+              blocks Buy; everything else failed on our side, so it reads as a
+              neutral note next to a purchase that stays available. */
+            <p
+              id={profileNoteId}
+              role={profileBlocks ? "alert" : "status"}
+              className={profileBlocks ? "text-[13px] text-[#FF6B6B]" : "text-tx-dim text-[13px]"}
+            >
+              {profileNote}
             </p>
           )}
           {/* The free half of the deferred server-side profile checker

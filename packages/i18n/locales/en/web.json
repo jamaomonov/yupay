@@ -380,6 +380,10 @@
       "payHintInvite": "Add the recipient's Steam profile link",
       "payHintInviteInvalid": "Check the profile link",
       "payHintMethod": "Choose a payment method",
+      "profileNotFound": "No such Steam profile — check the link",
+      "profileUnsupported": "This kind of link can't be checked — open the profile yourself. It doesn't block payment.",
+      "profileUnavailable": "Steam isn't responding right now — you can continue",
+      "payHintProfileNotFound": "Profile not found — check the link",
       "confirmRegion": "Region",
       "confirmProfile": "Recipient's profile",
       "confirmWarning": "The gift can't be cancelled after payment — it goes to the link above. Double-check the recipient's profile before paying."

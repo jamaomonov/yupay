@@ -169,3 +169,79 @@ export function fetchGiftDlc(
     headers: { "Accept-Language": locale },
   });
 }
+
+/* ---------------------------------------------------------------------- *
+ * Pre-purchase recipient check (`GET /gifts/steam-profile`)
+ * ---------------------------------------------------------------------- */
+
+/** The four verdicts the endpoint can return (mirrors `GiftProfileOut`).
+ *
+ *  They are deliberately not equally weighted: only `not_found` — Steam
+ *  itself answering that no such profile exists — is a fact about the
+ *  recipient. `unsupported` (an `s.team` friend-invite token the Steam Web
+ *  API cannot resolve at all) and `unavailable` (no API key, an outage, a
+ *  timeout) are facts about *us*, and must never stand between the buyer and
+ *  Pay. See `profileCheckBlocks`. */
+export type GiftProfileStatus = "found" | "not_found" | "unsupported" | "unavailable";
+
+/** Wire shape of `GiftProfileOut` — see `yupay.modules.gifts.schemas`. */
+interface GiftProfileWire {
+  status: GiftProfileStatus;
+  steam_id: string | null;
+  nickname: string | null;
+  avatar_url: string | null;
+}
+
+/** The verdict as the UI consumes it. `found` is narrowed to carry a real
+ *  nickname so a confirmation card can never render around an empty name —
+ *  the one shape of this feature that would be worse than not shipping it,
+ *  since it reassures the buyer without having confirmed anything. */
+export type GiftProfileCheck =
+  | { status: "found"; nickname: string; avatarUrl: string | null }
+  | { status: "not_found" | "unsupported" | "unavailable" };
+
+/**
+ * Resolve a pasted Steam link into "who is this, actually?".
+ *
+ * **Never throws and never rejects.** Any failure — network, our own 5xx, a
+ * 429, a 422 for a link the server parses more strictly than the client-side
+ * gate does — folds into `unavailable`, which is non-blocking. That is the
+ * whole point: this check is a second pair of eyes, and a check that fails on
+ * our side must not cost a sale. The server holds the same line (see
+ * `yupay.modules.gifts.profile`), so this is belt-and-braces, not the only
+ * guard.
+ *
+ * Public data about a link the buyer just typed, so `anonymous: true` — no
+ * bearer token is attached to a call that does not need one.
+ */
+export async function checkGiftProfile(inviteUrl: string): Promise<GiftProfileCheck> {
+  try {
+    const out = await apiFetch<GiftProfileWire>(
+      `/gifts/steam-profile?invite_url=${encodeURIComponent(inviteUrl)}`,
+      { anonymous: true },
+    );
+    if (out.status !== "found") return { status: out.status };
+    // The API contract says `found` always carries a persona (it returns
+    // `unavailable` when Steam gave it nothing to show). If that ever stopped
+    // holding, a nameless "confirmation" is the worst answer available — so it
+    // degrades to the non-blocking status rather than to a blank green card.
+    if (!out.nickname) return { status: "unavailable" };
+    return { status: "found", nickname: out.nickname, avatarUrl: out.avatar_url };
+  } catch {
+    return { status: "unavailable" };
+  }
+}
+
+/**
+ * Whether a verdict stands between the buyer and Pay. Only a definitive
+ * `not_found` does.
+ *
+ * Deliberately the opposite of `blocksCheckout` in `player-check-state.ts`,
+ * where an *unchecked* id also blocks: there the check is a required gate on
+ * a top-up that would otherwise go to the wrong account with no way back;
+ * here it is an optional second look, and `null` (never checked) leaves the
+ * purchase exactly as available as it was before the button existed.
+ */
+export function profileCheckBlocks(check: GiftProfileCheck | null): boolean {
+  return check?.status === "not_found";
+}
