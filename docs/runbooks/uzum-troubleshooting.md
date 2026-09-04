@@ -67,9 +67,18 @@ reference.
    as of ADR-0035; do not assume either way without confirming).
 2. Set `UZUM_LOGIN`/`UZUM_PASSWORD`/`UZUM_SERVICE_ID` to the production
    values.
-3. Leave `UZUM_TEST_LOGIN`/`UZUM_TEST_PASSWORD` configured — the endpoint
-   accepts **either** pair, so sandbox testing keeps working after go-live
-   without a second endpoint or a code change.
+3. Keep `UZUM_TEST_LOGIN`/`UZUM_TEST_PASSWORD` only until the first real
+   payment confirms the production pair works — the endpoint accepts
+   **either** pair, so both stay valid at once and the switch carries no
+   downtime. **Then delete the sandbox pair.** Basic auth is the only gate
+   on these webhooks: the Caddy IP allowlist is not active (step 4) and
+   `serviceId` is not a secret — it rides in the open-service deeplink every
+   buyer sees. A live sandbox credential is therefore a second working key to
+   production `/confirm`, which marks an order paid; sandbox pairs get shared
+   over chat and reused, so they do not belong in production once go-live is
+   proven. Removing the two lines is enough (a pair with either half blank is
+   never accepted), but `env_file` is read at container start — recreate
+   `api` for it to take effect.
 4. The Caddy IP allowlist is **not yet active** (see below) — Uzum has not
    published webhook source IPs. Basic auth (`10001`) is the production gate
    until that range is confirmed and the commented-out block in
