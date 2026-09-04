@@ -44,6 +44,78 @@ export interface BuyGiftParams {
   provider: string;
   /** The game name, for the guest order-history stub (`saveGuestOrder`). */
   gameName: string;
+  /**
+   * The `Idempotency-Key` sent with `POST /orders`. Owned by the caller (the
+   * panel), not minted here — `create_order` replays by this key
+   * (`_existing_idempotent_order` in `orders/service.py`), so a caller keeps
+   * it sticky across a failed-payment retry to resume the same order rather
+   * than creating a second one, and mints a fresh one when the order
+   * contents change, after a success, or when a stale-order retry is
+   * needed (see `orderFingerprint` / `isOrderNotAwaitingPaymentConflict`
+   * below). The payment *intent*'s own key is still minted per attempt
+   * inside this function — retrying an intent for the same order is
+   * already "create or reuse" server-side.
+   */
+  idempotencyKey: string;
+}
+
+/**
+ * The subset of `BuyGiftParams` that determines the order's contents on
+ * `POST /orders` — everything `orderFingerprint` hashes. Deliberately
+ * excludes `provider`: switching card ↔ wallet is the same order, not a new
+ * one, so it must never change the fingerprint.
+ */
+export interface OrderFingerprintInput {
+  skuId: string;
+  amountUsd: string;
+  fulfillmentData: GiftFulfillmentData;
+  /** Delivery address for a signed-in buyer, or the guest's own email. */
+  email: string;
+}
+
+/**
+ * A pure hash of exactly the fields that determine the order body `buyGift`
+ * sends to `POST /orders` — `sku_id`, `qty` (always 1 for a gift line),
+ * `amount_usd`, every `fulfillment_data` field, and the delivery email.
+ *
+ * This is the correctness-by-construction half of the sticky order key: the
+ * caller mints a new `Idempotency-Key` exactly when this string changes
+ * from the one it last used, rather than resetting it from scattered input
+ * handlers (a forgotten one would replay a stale key and charge the buyer
+ * for their OLD selection). Over-resetting — treating two fingerprints as
+ * different when the order would actually be identical — is safe; it is
+ * exactly today's "always mint a new key" behaviour. Under-resetting is a
+ * money bug, so every field the server bills from belongs here.
+ */
+export function orderFingerprint(input: OrderFingerprintInput): string {
+  return JSON.stringify({
+    sku_id: input.skuId,
+    qty: 1,
+    amount_usd: input.amountUsd,
+    fulfillment_data: {
+      app_id: input.fulfillmentData.app_id,
+      package_id: input.fulfillmentData.package_id,
+      region: input.fulfillmentData.region,
+      invite_url: input.fulfillmentData.invite_url,
+    },
+    email: input.email,
+  });
+}
+
+/**
+ * True when `err` is the 409 `create_intent` raises for an order that has
+ * walked past `pending_payment` (most commonly `ORDER_EXPIRY_SECONDS`
+ * elapsing and the scheduler flipping it to `expired` before a retry
+ * landed) — `ConflictError("order is not awaiting payment", extra=
+ * {"status": order.status})` in `payments/service.py`. Matched structurally
+ * on the 409 status plus the `extra.status` field that guard's `extra=`
+ * keyword puts on the body, never by matching `detail` text, which is not a
+ * stable contract and is shared prose with other 409s from the same
+ * endpoint (see the `extra.provider` / `extra.current_provider` conflicts
+ * right below it).
+ */
+export function isOrderNotAwaitingPaymentConflict(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 409 && typeof err.extra?.status === "string";
 }
 
 export interface BuyGiftResult {
@@ -70,15 +142,22 @@ export class GiftPriceChangedError extends Error {
   }
 }
 
-/** Pulls `extra.expected_amount_usd` out of an RFC 7807 problem+json body —
- *  see `app_error_handler` in `core/errors.py`: `body.update(exc.extra)`,
- *  and `price_gift_line` raises with `extra={"expected_amount_usd": ...}`,
- *  so the field lands nested under `extra`, not at the body's top level. */
-function extractExpectedAmount(body: unknown): string | null {
-  if (!body || typeof body !== "object") return null;
+/** Pulls the RFC 7807 `extra` object out of a parsed problem+json body — see
+ *  `app_error_handler` in `core/errors.py`: `body.update(exc.extra)` nests a
+ *  raiser's `extra={...}` keyword under this key rather than merging its
+ *  fields at the body's top level. `body` is trusted server JSON, not user
+ *  input — narrowing its `unknown` shape here is that trade-off's one place,
+ *  reused by every caller below instead of repeating the cast. */
+function extractExtra(body: unknown): Record<string, unknown> | undefined {
+  if (!body || typeof body !== "object") return undefined;
   const extra = (body as Record<string, unknown>).extra;
-  if (!extra || typeof extra !== "object") return null;
-  const value = (extra as Record<string, unknown>).expected_amount_usd;
+  return extra && typeof extra === "object" ? (extra as Record<string, unknown>) : undefined;
+}
+
+/** Pulls `extra.expected_amount_usd` out of an RFC 7807 problem+json body —
+ *  `price_gift_line` raises with `extra={"expected_amount_usd": ...}`. */
+function extractExpectedAmount(body: unknown): string | null {
+  const value = extractExtra(body)?.expected_amount_usd;
   return typeof value === "string" ? value : null;
 }
 
@@ -95,8 +174,17 @@ function extractExpectedAmount(body: unknown): string | null {
  * @throws GiftPriceChangedError when the server rejects the quoted price.
  */
 export async function buyGift(params: BuyGiftParams): Promise<BuyGiftResult> {
-  const { locale, skuId, amountUsd, fulfillmentData, email, isLoggedIn, provider, gameName } =
-    params;
+  const {
+    locale,
+    skuId,
+    amountUsd,
+    fulfillmentData,
+    email,
+    isLoggedIn,
+    provider,
+    gameName,
+    idempotencyKey,
+  } = params;
 
   let auth: { Authorization: string };
   if (isLoggedIn) {
@@ -128,7 +216,11 @@ export async function buyGift(params: BuyGiftParams): Promise<BuyGiftResult> {
     headers: {
       "Content-Type": "application/json",
       "Accept-Language": locale,
-      "Idempotency-Key": crypto.randomUUID(),
+      // Caller-owned, not minted here — see `BuyGiftParams.idempotencyKey`.
+      // `create_order` replays by this key, which is the whole mechanism a
+      // retry after a failed payment resumes the same order instead of
+      // creating a second one.
+      "Idempotency-Key": idempotencyKey,
       "X-Yupay-Surface": SURFACE,
       ...auth,
     },
@@ -172,19 +264,23 @@ export async function buyGift(params: BuyGiftParams): Promise<BuyGiftResult> {
     // way it does everywhere else in the app — `create_intent`'s 409 for a
     // wallet payment ("insufficient wallet balance: have … need …") is
     // written to be shown, not swallowed (see the comment above
-    // `ConflictError` in `payments/service.py::create_intent`).
+    // `ConflictError` in `payments/service.py::create_intent`). `extra` also
+    // rides along so `isOrderNotAwaitingPaymentConflict` can tell that
+    // specific 409 apart from every other one this endpoint raises.
     let type: string | undefined;
     let detail: string | undefined;
+    let extra: Record<string, unknown> | undefined;
     try {
       const body: unknown = await intentRes.json();
       if (body && typeof body === "object") {
         if ("type" in body && typeof body.type === "string") type = body.type;
         if ("detail" in body && typeof body.detail === "string") detail = body.detail;
       }
+      extra = extractExtra(body);
     } catch {
-      /* non-JSON or empty error body — leave both undefined */
+      /* non-JSON or empty error body — leave all three undefined */
     }
-    throw new ApiError(intentRes.status, "/payments/intents", type, detail);
+    throw new ApiError(intentRes.status, "/payments/intents", type, detail, extra);
   }
   const intent = (await intentRes.json()) as { intent_url: string | null };
 

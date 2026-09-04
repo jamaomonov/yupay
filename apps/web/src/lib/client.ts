@@ -83,6 +83,16 @@ export class ApiError extends Error {
      * on instead of a single house error string.
      */
     public detail?: string,
+    /**
+     * The problem+json `extra` object `app_error_handler` merges onto the
+     * body (`body.update(exc.extra)` in `core/errors.py`) — e.g.
+     * `create_intent`'s "order is not awaiting payment" 409 carries
+     * `{status: <order status>}` here (`ConflictError(..., extra={"status":
+     * order.status})`). `undefined` for non-JSON bodies or bodies without an
+     * `extra` field. Callers that need to tell one 409/422 shape from
+     * another structurally (never by matching `detail` text) read this.
+     */
+    public extra?: Record<string, unknown>,
   ) {
     super(`API ${String(status)} on ${path}`);
     this.name = "ApiError";

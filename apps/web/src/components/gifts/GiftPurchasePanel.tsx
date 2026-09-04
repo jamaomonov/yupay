@@ -7,7 +7,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { InviteGuide } from "./InviteGuide";
 import { RegionHint } from "./RegionHint";
@@ -19,7 +19,12 @@ import { WalletMark } from "@/components/icons/WalletMark";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { ApiError, getAccessToken, SURFACE } from "@/lib/client";
-import { buyGift, GiftPriceChangedError } from "@/lib/gift-checkout";
+import {
+  buyGift,
+  GiftPriceChangedError,
+  isOrderNotAwaitingPaymentConflict,
+  orderFingerprint,
+} from "@/lib/gift-checkout";
 import { methodVisibility, providerStatusMap, selectActiveMethodId } from "@/lib/payment-providers";
 import { countryName, flagEmoji } from "@/lib/regions";
 import { formatUzs, pathFor } from "@/lib/seo";
@@ -303,6 +308,16 @@ export function GiftPurchasePanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // The sticky `Idempotency-Key` for `POST /orders`, kept alongside the
+  // `orderFingerprint` it was minted for — a ref, not state, since neither
+  // read nor write should trigger a render. A buy click reuses the stored
+  // key exactly when the recomputed fingerprint still matches it (a failed
+  // attempt with unchanged inputs), and mints a new one otherwise (changed
+  // inputs, no prior attempt, or the previous purchase succeeded and
+  // cleared this to `null`). Never reset from an individual input handler —
+  // see `orderFingerprint`'s doc comment for why that would be a money bug.
+  const orderKeyRef = useRef<{ fingerprint: string; key: string } | null>(null);
+
   const emailValid = user !== null || EMAIL_RE.test(email);
   const canBuy =
     selectedPrice !== null && inviteValid && emailValid && selectedMethodActive && !loading;
@@ -316,24 +331,62 @@ export function GiftPurchasePanel({
     setError(null);
     const token = getAccessToken();
     const loggedIn = user !== null && token !== null;
-    try {
-      const result = await buyGift({
+    const fulfillmentData = {
+      app_id: detail.app_id,
+      package_id: selectedPackage.id,
+      region: country,
+      invite_url: inviteUrl.trim(),
+    };
+    // `loggedIn` aliases `user !== null` — `user` is narrowed non-null in
+    // this branch, so no `?.` is needed here either.
+    const resolvedEmail = loggedIn
+      ? (user.delivery_email ?? user.email ?? "")
+      : email.trim().toLowerCase();
+
+    // Reuse the stored key only when it was minted for this exact order —
+    // any other field (payment method included) never enters this hash, so
+    // a bare method switch keeps replaying the same key on purpose.
+    const fingerprint = orderFingerprint({
+      skuId,
+      amountUsd: selectedPrice.price_usd,
+      fulfillmentData,
+      email: resolvedEmail,
+    });
+    if (orderKeyRef.current?.fingerprint !== fingerprint) {
+      orderKeyRef.current = { fingerprint, key: crypto.randomUUID() };
+    }
+
+    const attempt = (idempotencyKey: string) =>
+      buyGift({
         locale,
         skuId,
         amountUsd: selectedPrice.price_usd,
-        fulfillmentData: {
-          app_id: detail.app_id,
-          package_id: selectedPackage.id,
-          region: country,
-          invite_url: inviteUrl.trim(),
-        },
-        // `loggedIn` aliases `user !== null` — `user` is narrowed non-null
-        // in this branch, so no `?.` is needed here either.
-        email: loggedIn ? (user.delivery_email ?? user.email ?? "") : email.trim().toLowerCase(),
+        fulfillmentData,
+        email: resolvedEmail,
         isLoggedIn: loggedIn,
         provider: selectedProvider,
         gameName: detail.name,
+        idempotencyKey,
       });
+
+    try {
+      let result;
+      try {
+        result = await attempt(orderKeyRef.current.key);
+      } catch (err) {
+        if (!isOrderNotAwaitingPaymentConflict(err)) throw err;
+        // The replayed order is no longer payable (typically expired past
+        // `ORDER_EXPIRY_SECONDS` before this retry landed) — mint a fresh
+        // key for the same order contents and retry exactly once. A second
+        // failure here falls through to the outer `catch` untouched, so it
+        // never loops.
+        const freshKey = crypto.randomUUID();
+        orderKeyRef.current = { fingerprint, key: freshKey };
+        result = await attempt(freshKey);
+      }
+      // Success — the next purchase (even with identical inputs) must be a
+      // new order, so the key does not survive to be replayed.
+      orderKeyRef.current = null;
       if (result.intentUrl && selectedProvider !== "mock") {
         // Real acquirer → its hosted payment page.
         window.location.href = result.intentUrl;

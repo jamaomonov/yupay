@@ -402,21 +402,28 @@ it("POSTs the exact checkout body via lib/gift-checkout on submit", async () => 
   await waitFor(() => {
     expect(buyGiftMock).toHaveBeenCalledTimes(1);
   });
-  expect(buyGiftMock).toHaveBeenCalledWith({
-    locale: "ru",
-    skuId: "sku-1",
-    amountUsd: "1.10",
-    fulfillmentData: {
-      app_id: 588650,
-      package_id: 1,
-      region: "UZ",
-      invite_url: "https://steamcommunity.com/profiles/76561198000000000",
-    },
-    email: "guest@example.com",
-    isLoggedIn: false,
-    provider: "click",
-    gameName: "Dead Cells",
-  });
+  // `idempotencyKey` is asserted separately below — its stickiness across
+  // retries and resets is what the sticky-order-key tests further down
+  // cover; here it only needs to be a non-empty string.
+  expect(buyGiftMock).toHaveBeenCalledWith(
+    expect.objectContaining({
+      locale: "ru",
+      skuId: "sku-1",
+      amountUsd: "1.10",
+      fulfillmentData: {
+        app_id: 588650,
+        package_id: 1,
+        region: "UZ",
+        invite_url: "https://steamcommunity.com/profiles/76561198000000000",
+      },
+      email: "guest@example.com",
+      isLoggedIn: false,
+      provider: "click",
+      gameName: "Dead Cells",
+    }),
+  );
+  expect(typeof buyGiftMock.mock.calls[0]?.[0].idempotencyKey).toBe("string");
+  expect(buyGiftMock.mock.calls[0]?.[0].idempotencyKey).not.toBe("");
 });
 
 it("shows the price-changed toast and refreshes on a 422 price-drift error", async () => {
@@ -546,6 +553,164 @@ it("surfaces a 409's detail instead of the generic buy error", async () => {
   expect(
     await screen.findByText("insufficient wallet balance: have 10000 UZS, need 13970 UZS"),
   ).toBeInTheDocument();
+  expect(pushMock).not.toHaveBeenCalled();
+});
+
+// ---------- sticky order idempotency key ----------
+
+/** The order-key params `handleBuy` builds `buyGift` calls from — everything
+ *  but `idempotencyKey`, which each test reads off the mock call instead. */
+function orderKeyOf(call: number): string {
+  const args = buyGiftMock.mock.calls[call]?.[0];
+  if (!args) throw new Error(`buyGift was not called a ${String(call + 1)}th time`);
+  return args.idempotencyKey;
+}
+
+it("sends the same Idempotency-Key across two consecutive failed attempts with unchanged inputs", async () => {
+  mockProvidersResponse();
+  buyGiftMock.mockRejectedValue(new Error("network blip"));
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+  await fillValidCheckout();
+  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+  await waitFor(() => {
+    expect(buyGiftMock).toHaveBeenCalledTimes(1);
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+  await waitFor(() => {
+    expect(buyGiftMock).toHaveBeenCalledTimes(2);
+  });
+
+  expect(orderKeyOf(1)).toBe(orderKeyOf(0));
+});
+
+it("mints a different Idempotency-Key when the region changes between attempts", async () => {
+  mockProvidersResponse();
+  buyGiftMock.mockRejectedValue(new Error("network blip"));
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+  await fillValidCheckout();
+  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+  await waitFor(() => {
+    expect(buyGiftMock).toHaveBeenCalledTimes(1);
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: countryButtonName("RU") }));
+  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+  await waitFor(() => {
+    expect(buyGiftMock).toHaveBeenCalledTimes(2);
+  });
+
+  expect(orderKeyOf(1)).not.toBe(orderKeyOf(0));
+});
+
+it("keeps the same Idempotency-Key when only the payment method changes between attempts", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({
+      json: () =>
+        Promise.resolve({
+          providers: [
+            { slug: "click", status: "active" },
+            { slug: "payme", status: "active" },
+          ],
+        }),
+    }),
+  );
+  buyGiftMock.mockRejectedValue(new Error("network blip"));
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+  await fillValidCheckout();
+  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+  await waitFor(() => {
+    expect(buyGiftMock).toHaveBeenCalledTimes(1);
+  });
+  expect(orderKeyOf(0)).toBeTruthy();
+
+  fireEvent.click(screen.getByRole("button", { name: "Payme" }));
+  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+  await waitFor(() => {
+    expect(buyGiftMock).toHaveBeenCalledTimes(2);
+  });
+
+  expect(orderKeyOf(1)).toBe(orderKeyOf(0));
+  // Confirms the two calls really did request different providers — this is
+  // not just an accidental no-op click.
+  expect(buyGiftMock.mock.calls[0]?.[0].provider).toBe("click");
+  expect(buyGiftMock.mock.calls[1]?.[0].provider).toBe("payme");
+});
+
+it("mints a fresh Idempotency-Key for the next purchase after a success", async () => {
+  mockProvidersResponse();
+  buyGiftMock.mockResolvedValue({
+    orderId: "order-1",
+    intentUrl: null,
+    trackHref: "/orders/order-1?email=guest%40example.com",
+  });
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+  await fillValidCheckout();
+  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+  await waitFor(() => {
+    expect(buyGiftMock).toHaveBeenCalledTimes(1);
+  });
+  const firstKey = orderKeyOf(0);
+
+  // Same inputs, a second purchase after the first succeeded.
+  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+  await waitFor(() => {
+    expect(buyGiftMock).toHaveBeenCalledTimes(2);
+  });
+
+  expect(orderKeyOf(1)).not.toBe(firstKey);
+});
+
+it("retries exactly once with a fresh key when the order is no longer awaiting payment", async () => {
+  mockProvidersResponse();
+  const staleOrderConflict = new ApiError(
+    409,
+    "/payments/intents",
+    undefined,
+    "order is not awaiting payment",
+    { status: "expired" },
+  );
+  buyGiftMock.mockRejectedValueOnce(staleOrderConflict).mockResolvedValueOnce({
+    orderId: "order-2",
+    intentUrl: null,
+    trackHref: "/orders/order-2?email=guest%40example.com",
+  });
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+  await fillValidCheckout();
+  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+
+  // Exactly one automatic retry — a single click, two calls, no third.
+  await waitFor(() => {
+    expect(pushMock).toHaveBeenCalledWith("/orders/order-2?email=guest%40example.com");
+  });
+  expect(buyGiftMock).toHaveBeenCalledTimes(2);
+  expect(orderKeyOf(1)).not.toBe(orderKeyOf(0));
+  // The retry is invisible — no error text left over from the first attempt.
+  expect(screen.queryByText("order is not awaiting payment")).not.toBeInTheDocument();
+});
+
+it("surfaces the error normally when the retried attempt also fails, without a third call", async () => {
+  mockProvidersResponse();
+  const staleOrderConflict = () =>
+    new ApiError(409, "/payments/intents", undefined, "order is not awaiting payment", {
+      status: "expired",
+    });
+  buyGiftMock
+    .mockRejectedValueOnce(staleOrderConflict())
+    .mockRejectedValueOnce(staleOrderConflict());
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+  await fillValidCheckout();
+  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+
+  expect(await screen.findByText("order is not awaiting payment")).toBeInTheDocument();
+  expect(buyGiftMock).toHaveBeenCalledTimes(2);
   expect(pushMock).not.toHaveBeenCalled();
 });
 
