@@ -7,7 +7,10 @@ a new route added later inherits the guard automatically. The catalog routes
 carry no per-route rate limit bucket: same posture as ``catalog/routes.py``,
 which relies on the app-wide slowapi defaults. ``/steam-profile`` is the one
 exception — it proxies a third party (Steam) on the public internet, so it
-guards itself with its own ``guard_ip`` bucket.
+guards itself with its own ``guard_ip`` bucket. It is also the one route
+here that reads via ``POST``: its input is a third party's profile link, and
+a query string would land verbatim in Caddy's access log and from there in
+Loki (see :class:`~yupay.modules.gifts.schemas.GiftProfileIn`).
 """
 
 from __future__ import annotations
@@ -29,6 +32,7 @@ from yupay.modules.gifts.schemas import (
     GiftAppDetailOut,
     GiftAppOut,
     GiftPackageOut,
+    GiftProfileIn,
     GiftProfileOut,
     GiftRegionOut,
     GiftsListOut,
@@ -324,21 +328,23 @@ async def get_catalog_app_dlc(
     return GiftsListOut(items=items, total=total)
 
 
-@router.get(
+@router.post(
     "/steam-profile",
     response_model=GiftProfileOut,
     summary="Pre-purchase check: resolve a recipient's Steam profile link",
 )
-async def get_steam_profile(
+async def check_recipient_profile(
     request: Request,
-    # Bounded the same way as `limit`/`offset` above: a Steam profile/friend
-    # link never legitimately exceeds this (the longest accepted shape,
-    # `s.team/p/{64 chars}`, is ~82), and an unbounded query string is an
-    # unbounded number of distinct `gifts:steam_profile` cache keys for one
-    # upstream Steam call each.
-    invite_url: str = Query(..., min_length=1, max_length=200),
+    body: GiftProfileIn,
 ) -> GiftProfileOut:
     """Buyer-facing «Проверить»: avatar + nickname for a pasted Steam link.
+
+    ``POST`` for a read, deliberately: the link identifies a third party, and
+    a query string is logged verbatim at the edge — the full reasoning, and
+    why filtering the log instead was rejected, is on
+    :class:`~yupay.modules.gifts.schemas.GiftProfileIn`. Writes nothing, so
+    no ``Idempotency-Key`` (same as ``POST .../check-player``, the other
+    advisory identity lookup on this API).
 
     Public and proxies a third party (Steam), so it carries its own
     ``guard_ip`` bucket rather than riding the router's shared posture. Never
@@ -349,7 +355,7 @@ async def get_steam_profile(
     check_steam_profile` for the full status contract.
     """
     await guard_ip(request, bucket="gifts-steam-profile")
-    return await check_steam_profile(invite_url)
+    return await check_steam_profile(body.invite_url)
 
 
 __all__ = ["router"]

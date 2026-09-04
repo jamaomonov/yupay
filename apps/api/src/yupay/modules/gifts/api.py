@@ -4,14 +4,15 @@
 public catalog-browsing surface added in Task 3: live listing, hot offers,
 app detail, and per-app DLC, all proxied from G-Engine through a
 stale-while-error Redis cache — plus, since the pre-purchase check, the
-``GET /gifts/steam-profile`` route (``gifts.profile``). ``is_gift_sku``,
-``parse_invite_url``, and ``price_gift_line`` (Task 4) are the checkout hook
-``orders/service.py`` calls to re-price a gift line server-side;
-``STEAM_GIFT_SKU_CODE`` lives in ``checkout.py`` and is re-exported here
-rather than the other way around, since this module already depends on
-``checkout`` and the reverse would be a cycle. ``gifts.profile`` itself is
-not re-exported here — like ``gifts.service``, it's internal, consumed
-directly by ``gifts.routes`` only.
+``POST /gifts/steam-profile`` route (``gifts.profile``; a POST for a read,
+so the recipient's link never reaches an access log — see ``GiftProfileIn``).
+``is_gift_sku``, ``parse_invite_url``, and ``price_gift_line`` (Task 4) are
+the checkout hook ``orders/service.py`` calls to re-price a gift line
+server-side; ``STEAM_GIFT_SKU_CODE`` lives in ``checkout.py`` and is
+re-exported here rather than the other way around, since this module already
+depends on ``checkout`` and the reverse would be a cycle. ``gifts.profile``
+itself is not re-exported here — like ``gifts.service``, it's internal,
+consumed directly by ``gifts.routes`` only.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from yupay.modules.gifts.schemas import (
     GiftAppDetailOut,
     GiftAppOut,
     GiftPackageOut,
+    GiftProfileIn,
     GiftProfileOut,
     GiftsAdminSettingsOut,
     GiftsListOut,
@@ -48,6 +50,7 @@ __all__ = [
     "GiftAppDetailOut",
     "GiftAppOut",
     "GiftPackageOut",
+    "GiftProfileIn",
     "GiftProfileOut",
     "GiftZonePriceOut",
     "GiftsAdminSettingsOut",

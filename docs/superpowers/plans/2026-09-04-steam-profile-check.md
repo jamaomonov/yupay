@@ -24,7 +24,10 @@
 
 **Files:** `apps/api/src/yupay/modules/gifts/profile.py` (new), `routes.py`, `schemas.py`, `apps/api/src/yupay/modules/auth/steam.py` (reuse/relocate `fetch_persona`), `docs/architecture/cache-keys.md`, tests.
 
-**Endpoint:** `GET /api/v1/gifts/steam-profile?invite_url=...` → `GiftProfileOut`:
+**Endpoint:** `POST /api/v1/gifts/steam-profile` with a `{invite_url}` body → `GiftProfileOut`
+(planned here as a `GET` with a query parameter; changed during P2's review — `Caddyfile.prod`
+logs each request's `uri`, query string included, and promtail ships that to Loki, so a query
+parameter would have logged a _recipient's_ Steam identity):
 
 ```python
 class GiftProfileOut(BaseModel):

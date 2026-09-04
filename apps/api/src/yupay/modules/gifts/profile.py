@@ -233,7 +233,7 @@ async def check_steam_profile(
     earlier.
 
     Args:
-        invite_url: the raw ``invite_url`` query value, any of the shapes
+        invite_url: the raw ``invite_url`` the caller posted, any of the shapes
             :func:`~yupay.modules.gifts.checkout.parse_invite_url` accepts.
         http: injected client for tests; a real call builds and closes its
             own short-timeout client.

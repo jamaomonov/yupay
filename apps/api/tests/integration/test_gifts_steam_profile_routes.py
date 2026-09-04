@@ -1,4 +1,4 @@
-"""HTTP tests for the pre-purchase Steam profile check (`GET /gifts/steam-profile`).
+"""HTTP tests for the pre-purchase Steam profile check (`POST /gifts/steam-profile`).
 
 Covers every case the task brief lists:
 - a `/profiles/` link returns `found` with nickname+avatar and makes no
@@ -18,6 +18,13 @@ Plus, from fix round 1 review:
   of every request this module makes) into the structured logs;
 - a malformed/stale blob under the cache key degrades like a cache miss,
   never a 500.
+
+Plus, from P2's fix round 1 review:
+- the link travels in the request body, never a query string: Caddy's access
+  log records `uri` verbatim and promtail ships it to Loki, so a `GET
+  ...?invite_url=steamcommunity.com/id/{vanity}` would park a third party's
+  identity in the logs. `test_a_get_with_the_link_in_the_query_string_is_405`
+  is what stops a future refactor quietly putting it back.
 
 `@respx.mock` blocks any unmocked outbound request by raising, which is what
 makes "makes no resolve call" / "no Steam call at all" real assertions rather
@@ -63,7 +70,9 @@ def _summaries_payload(
 
 
 async def _check(client: AsyncClient, invite_url: str) -> httpx.Response:
-    return await client.get("/api/v1/gifts/steam-profile", params={"invite_url": invite_url})
+    """POST, not GET -- the link is a third party's identity and a query
+    string is logged verbatim at the edge. See ``GiftProfileIn``."""
+    return await client.post("/api/v1/gifts/steam-profile", json={"invite_url": invite_url})
 
 
 # ---------- the enabled guard ----------
@@ -332,6 +341,32 @@ async def test_a_link_checkout_would_reject_is_a_422(
     r = await _check(integration_client, "https://evil.example/not-steam-at-all")
 
     assert r.status_code == 422, r.text
+
+
+# ---------- the link never rides in a URL ----------
+
+
+async def test_a_get_with_the_link_in_the_query_string_is_405(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The route is POST-only on purpose, and this is the test that keeps it
+    that way.
+
+    `api.yupay.uz`'s Caddy site block logs each request's `uri` verbatim,
+    query string included, and promtail ships that to Loki -- so serving this
+    check over GET would put `steamcommunity.com/id/{vanity}`, a *third
+    party's* identity, into the logs, in a module that otherwise reduces the
+    same identifier to `_hash_short()` before logging it. A future
+    convenience refactor back to GET has to delete this test to pass, which
+    is exactly the amount of friction that decision deserves.
+    """
+    _enable(monkeypatch)
+
+    r = await integration_client.get(
+        "/api/v1/gifts/steam-profile", params={"invite_url": _PROFILE_LINK}
+    )
+
+    assert r.status_code == 405, r.text
 
 
 # ---------- caching ----------

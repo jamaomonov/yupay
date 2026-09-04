@@ -5684,6 +5684,22 @@
         "title": "GiftPackageOut",
         "type": "object"
       },
+      "GiftProfileIn": {
+        "description": "The pasted Steam link to check, carried in the request body.\n\nA body, not a query string, and deliberately so: the recipient's profile\nlink *is* a third party's identity, and ``api.yupay.uz``'s Caddy site\nblock writes a JSON access log whose ``uri`` field records the query\nstring verbatim (``infra/caddy/Caddyfile.prod``), which promtail then\nships to Loki. A ``GET ...?invite_url=steamcommunity.com/id/{vanity}``\nwould therefore park that identifier in the logs \u2014 the very thing\n``gifts.profile`` reduces to an opaque ``_hash_short()`` everywhere it\nlogs. Filtering the edge would work until the next unrelated Caddy edit\nundid it; not putting the identity in the URL cannot be undone by\naccident (2026-09-04 review).\n\nNothing is lost by the method change: this endpoint is not bookmarkable,\nhas no HTTP-caching story (its cache is server-side, in Redis), and is\nthe same class of advisory identity lookup as\n``POST /catalog/products/{id}/check-player``, which is already a POST\nfor the same reason. It writes nothing, so \u2014 like ``check-player`` \u2014 it\ntakes no ``Idempotency-Key``.",
+        "properties": {
+          "invite_url": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Invite Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "invite_url"
+        ],
+        "title": "GiftProfileIn",
+        "type": "object"
+      },
       "GiftProfileOut": {
         "description": "The pre-purchase recipient check: who a Steam link actually points to.\n\n``status`` is the whole contract with the frontend, and the four values\nare deliberately not equally weighted. Only ``\"not_found\"`` \u2014 Steam's own\n\"no such profile\" \u2014 is a reason to stop the buyer. The other three all\nmean \"we could not get a definitive answer\" for a reason that is ours,\nnot the recipient's: ``\"unsupported\"`` is an ``s.team`` friend-invite\nlink the Web API cannot resolve at all, and ``\"unavailable\"`` covers\neverything else that can go wrong on our end (no API key configured,\nSteam unreachable or erroring, a response we could not parse \u2014 including\na `GetPlayerSummaries` call that came back with no persona to show,\nwhich reads as ``\"unavailable\"`` rather than ``\"found\"`` for *both*\nlink shapes: see ``gifts.profile.check_steam_profile``). The frontend\nis expected to treat ``\"found\"``, ``\"unsupported\"``, and\n``\"unavailable\"`` identically: let the buyer continue.\n\n``steam_id``/``nickname``/``avatar_url`` are only ever populated\nalongside ``status=\"found\"`` \u2014 and ``\"found\"`` itself is only ever\nreturned once at least one of ``nickname``/``avatar_url`` actually came\nback from Steam, so it never carries a persona with nothing to render\n(``nickname`` and ``avatar_url`` both ``None``). They are PII \u2014 never\nlogged (see ``gifts.profile``).",
         "properties": {
@@ -24156,22 +24172,19 @@
       }
     },
     "/api/v1/gifts/steam-profile": {
-      "get": {
-        "description": "Buyer-facing \u00ab\u041f\u0440\u043e\u0432\u0435\u0440\u0438\u0442\u044c\u00bb: avatar + nickname for a pasted Steam link.\n\nPublic and proxies a third party (Steam), so it carries its own\n``guard_ip`` bucket rather than riding the router's shared posture. Never\na 500: any Steam-side problem \u2014 missing key, outage, timeout,\nunparseable response, or an unresolvable link type \u2014 degrades to\n``status=\"unavailable\"``/``\"unsupported\"``, which the frontend treats\nthe same as \"carry on\". See :func:`yupay.modules.gifts.profile.\ncheck_steam_profile` for the full status contract.",
-        "operationId": "get_steam_profile_api_v1_gifts_steam_profile_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "invite_url",
-            "required": true,
-            "schema": {
-              "maxLength": 200,
-              "minLength": 1,
-              "title": "Invite Url",
-              "type": "string"
+      "post": {
+        "description": "Buyer-facing \u00ab\u041f\u0440\u043e\u0432\u0435\u0440\u0438\u0442\u044c\u00bb: avatar + nickname for a pasted Steam link.\n\n``POST`` for a read, deliberately: the link identifies a third party, and\na query string is logged verbatim at the edge \u2014 the full reasoning, and\nwhy filtering the log instead was rejected, is on\n:class:`~yupay.modules.gifts.schemas.GiftProfileIn`. Writes nothing, so\nno ``Idempotency-Key`` (same as ``POST .../check-player``, the other\nadvisory identity lookup on this API).\n\nPublic and proxies a third party (Steam), so it carries its own\n``guard_ip`` bucket rather than riding the router's shared posture. Never\na 500: any Steam-side problem \u2014 missing key, outage, timeout,\nunparseable response, or an unresolvable link type \u2014 degrades to\n``status=\"unavailable\"``/``\"unsupported\"``, which the frontend treats\nthe same as \"carry on\". See :func:`yupay.modules.gifts.profile.\ncheck_steam_profile` for the full status contract.",
+        "operationId": "check_recipient_profile_api_v1_gifts_steam_profile_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GiftProfileIn"
+              }
             }
-          }
-        ],
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {

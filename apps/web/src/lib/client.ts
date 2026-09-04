@@ -145,6 +145,10 @@ interface ReqOpts {
   anonymous?: boolean;
   headers?: Record<string, string>;
   retry?: boolean;
+  /** Caller-supplied abort/timeout signal. Without one, a hung request sits
+   *  there until the browser's own multi-minute default gives up, which for a
+   *  UI that shows a spinner means a spinner that never stops. */
+  signal?: AbortSignal;
 }
 
 /** Which of our surfaces this bundle is. Sent on every call so an order can
@@ -175,6 +179,7 @@ export async function apiFetch<T>(path: string, opts: ReqOpts = {}): Promise<T> 
     credentials: "include",
     // exactOptionalPropertyTypes: `body` must be BodyInit | null, not undefined
     ...(opts.body !== undefined && { body: JSON.stringify(opts.body) }),
+    ...(opts.signal !== undefined && { signal: opts.signal }),
   });
 
   if (res.status === 401 && !opts.anonymous && !opts.retry) {

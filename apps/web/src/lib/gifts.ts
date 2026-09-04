@@ -171,7 +171,7 @@ export function fetchGiftDlc(
 }
 
 /* ---------------------------------------------------------------------- *
- * Pre-purchase recipient check (`GET /gifts/steam-profile`)
+ * Pre-purchase recipient check (`POST /gifts/steam-profile`)
  * ---------------------------------------------------------------------- */
 
 /** The four verdicts the endpoint can return (mirrors `GiftProfileOut`).
@@ -200,6 +200,9 @@ export type GiftProfileCheck =
   | { status: "found"; nickname: string; avatarUrl: string | null }
   | { status: "not_found" | "unsupported" | "unavailable" };
 
+/** How long the browser waits on the check before calling it `unavailable`. */
+const CHECK_TIMEOUT_MS = 8000;
+
 /**
  * Resolve a pasted Steam link into "who is this, actually?".
  *
@@ -212,14 +215,27 @@ export type GiftProfileCheck =
  * guard.
  *
  * Public data about a link the buyer just typed, so `anonymous: true` — no
- * bearer token is attached to a call that does not need one.
+ * bearer token is attached to a call that does not need one. `POST` for what
+ * is logically a read: the link identifies a *third party*, and Caddy's
+ * access log records the query string verbatim on its way to Loki, so the
+ * link travels in the body where nothing logs it (see `GiftProfileIn` on the
+ * API side for the full reasoning).
  */
 export async function checkGiftProfile(inviteUrl: string): Promise<GiftProfileCheck> {
   try {
-    const out = await apiFetch<GiftProfileWire>(
-      `/gifts/steam-profile?invite_url=${encodeURIComponent(inviteUrl)}`,
-      { anonymous: true },
-    );
+    const out = await apiFetch<GiftProfileWire>("/gifts/steam-profile", {
+      method: "POST",
+      body: { invite_url: inviteUrl },
+      anonymous: true,
+      // A hung request would otherwise spin «Проверяем…» until the browser's
+      // own default gives up, minutes later. Buy stays enabled throughout, so
+      // no sale is lost — but a buyer who assumes the check is mandatory
+      // waits for all of it. The server's own Steam timeout is 5 s, so this
+      // only ever fires when something upstream of that is wrong. Inside the
+      // `try`, so a browser too old for `AbortSignal.timeout` degrades to
+      // `unavailable` (non-blocking) rather than throwing.
+      signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
+    });
     if (out.status !== "found") return { status: out.status };
     // The API contract says `found` always carries a persona (it returns
     // `unavailable` when Steam gave it nothing to show). If that ever stopped

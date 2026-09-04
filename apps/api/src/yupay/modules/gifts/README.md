@@ -24,7 +24,7 @@ in a later task (7).
   offered zone), and that app's DLC, filtered/paged server-side (Task 3).
   Every route 404s while `steam_gifts_enabled` is off.
 - Resolve a recipient's Steam profile/friend link for the pre-purchase
-  check (`GET /gifts/steam-profile`) — avatar + nickname before the buyer
+  check (`POST /gifts/steam-profile`) — avatar + nickname before the buyer
   pays, so a mistyped link isn't an unrecoverable paid mistake. Reuses
   `checkout.parse_invite_url` for canonicalisation and
   `auth.steam.fetch_persona` for the summary call.
@@ -42,7 +42,8 @@ from yupay.modules.gifts.api import (
     GiftPackageOut,            # public per-package pricing DTO
     GiftZonePriceOut,          # public per-zone price DTO
     GiftsListOut,              # public paged-list envelope
-    GiftProfileOut,            # public GET /gifts/steam-profile response
+    GiftProfileIn,             # public POST /gifts/steam-profile request body
+    GiftProfileOut,            # public POST /gifts/steam-profile response
     admin_router,              # /api/v1/admin/gifts/*
     router,                    # /api/v1/gifts/* (public catalog browsing)
     load_margin_percent,       # Redis -> DB row -> env default
@@ -120,15 +121,15 @@ showing no sign of the divergence.
 
 ## HTTP surface
 
-| Method  | Path                                 | Returns                                                                                                          |
-| ------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| `GET`   | `/api/v1/admin/gifts/settings`       | `GiftsAdminSettingsOut` — margin, enabled flag, regions                                                          |
-| `PATCH` | `/api/v1/admin/gifts/settings`       | Same, after setting `margin_percent`                                                                             |
-| `GET`   | `/api/v1/gifts/catalog`              | `GiftsListOut` — paged listing, `?search=&limit=&offset=`                                                        |
-| `GET`   | `/api/v1/gifts/catalog/hot`          | `GiftsListOut` — up to 12 pinned/discounted apps                                                                 |
-| `GET`   | `/api/v1/gifts/catalog/{app_id}`     | `GiftAppDetailOut` — packages priced per offered zone                                                            |
-| `GET`   | `/api/v1/gifts/catalog/{app_id}/dlc` | `GiftsListOut` — that app's DLC, `?search=&limit=&offset=`                                                       |
-| `GET`   | `/api/v1/gifts/steam-profile`        | `GiftProfileOut` — pre-purchase recipient check, `?invite_url=`; own `guard_ip` bucket (`"gifts-steam-profile"`) |
+| Method  | Path                                 | Returns                                                                                                               |
+| ------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `GET`   | `/api/v1/admin/gifts/settings`       | `GiftsAdminSettingsOut` — margin, enabled flag, regions                                                               |
+| `PATCH` | `/api/v1/admin/gifts/settings`       | Same, after setting `margin_percent`                                                                                  |
+| `GET`   | `/api/v1/gifts/catalog`              | `GiftsListOut` — paged listing, `?search=&limit=&offset=`                                                             |
+| `GET`   | `/api/v1/gifts/catalog/hot`          | `GiftsListOut` — up to 12 pinned/discounted apps                                                                      |
+| `GET`   | `/api/v1/gifts/catalog/{app_id}`     | `GiftAppDetailOut` — packages priced per offered zone                                                                 |
+| `GET`   | `/api/v1/gifts/catalog/{app_id}/dlc` | `GiftsListOut` — that app's DLC, `?search=&limit=&offset=`                                                            |
+| `POST`  | `/api/v1/gifts/steam-profile`        | `GiftProfileOut` — pre-purchase recipient check, body `{invite_url}`; own `guard_ip` bucket (`"gifts-steam-profile"`) |
 
 The admin pair requires `require_admin`; `PATCH` accepts an
 `Idempotency-Key` header and a repeated key replays the first response
@@ -140,6 +141,16 @@ bucket, same as `catalog/routes.py` — the app-wide slowapi defaults apply.
 `/steam-profile` is the one exception: it proxies a third party (Steam) on
 the public internet, so it guards itself via `guard_ip(bucket=
 "gifts-steam-profile")` rather than riding that shared posture.
+
+`/steam-profile` is also the one route here that reads over `POST`. Its
+input is a _recipient's_ profile link, and `Caddyfile.prod`'s access log
+records each request's `uri` — query string included — on its way to Loki,
+so a `GET ...?invite_url=` would log a third party's identity from the one
+module that otherwise reduces that identifier to `_hash_short()` before
+logging it. Filtering the edge log was rejected as undoable-by-accident; the
+body simply is not logged. It writes nothing and therefore takes no
+`Idempotency-Key`, same as `POST /catalog/products/{id}/check-player`. See
+`GiftProfileIn` in `schemas.py`.
 
 Money on every public DTO is a `str`, not a `Decimal`: `price_usd` is our
 2dp sell price after margin, `price_uzs` is a whole-UZS display string that

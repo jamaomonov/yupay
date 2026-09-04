@@ -124,7 +124,7 @@ describe("searchGifts", () => {
 });
 
 /**
- * The pre-purchase recipient check (`GET /gifts/steam-profile`).
+ * The pre-purchase recipient check (`POST /gifts/steam-profile`).
  *
  * The one rule the whole feature turns on: only a definitive `not_found` —
  * Steam itself saying the profile does not exist — may stand between the
@@ -223,7 +223,11 @@ describe("checkGiftProfile", () => {
     });
   });
 
-  it("sends the pasted link as invite_url, with no bearer token", async () => {
+  it("posts the link in the body, never in a query string, and sends no bearer token", async () => {
+    // The query string is what Caddy's access log records verbatim and ships
+    // to Loki, so a GET here would park a *third party's* Steam identity in
+    // our logs. The body is not logged; this test is the client-side half of
+    // `test_a_get_with_the_link_in_the_query_string_is_405` on the API.
     const fetchMock = vi
       .fn<(url: string, init?: RequestInit) => Promise<Response>>()
       .mockResolvedValue(
@@ -234,8 +238,38 @@ describe("checkGiftProfile", () => {
     const [url, init] = fetchMock.mock.calls[0]!;
     const parsed = new URL(url);
     expect(parsed.pathname).toBe("/api/v1/gifts/steam-profile");
-    expect(parsed.searchParams.get("invite_url")).toBe("https://steamcommunity.com/id/neo mad");
+    expect(parsed.search).toBe("");
+    expect(init?.method).toBe("POST");
+    const raw = init?.body;
+    // Narrowed rather than cast: `BodyInit` also covers Blob/FormData/streams,
+    // none of which `JSON.parse` would take.
+    if (typeof raw !== "string") throw new Error("expected a JSON string body");
+    const body: unknown = JSON.parse(raw);
+    expect(body).toEqual({ invite_url: "https://steamcommunity.com/id/neo mad" });
     expect(new Headers(init?.headers).get("Authorization")).toBeNull();
+  });
+
+  it("carries an abort signal so a hung request can't spin the button forever", async () => {
+    const fetchMock = vi
+      .fn<(url: string, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValue(
+        jsonResponse({ status: "unavailable", steam_id: null, nickname: null, avatar_url: null }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    await checkGiftProfile("https://steamcommunity.com/id/neo");
+    const [, init] = fetchMock.mock.calls[0]!;
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("folds the abort itself into unavailable, like any other failure", async () => {
+    // What the browser actually does when the signal fires: reject the fetch.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new DOMException("The operation was aborted.", "TimeoutError")),
+    );
+    await expect(checkGiftProfile("https://steamcommunity.com/id/neo")).resolves.toEqual({
+      status: "unavailable",
+    });
   });
 });
 

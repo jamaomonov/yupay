@@ -94,6 +94,36 @@ class GiftRegionOut(BaseModel):
     price_uzs: str | None
 
 
+class GiftProfileIn(BaseModel):
+    """The pasted Steam link to check, carried in the request body.
+
+    A body, not a query string, and deliberately so: the recipient's profile
+    link *is* a third party's identity, and ``api.yupay.uz``'s Caddy site
+    block writes a JSON access log whose ``uri`` field records the query
+    string verbatim (``infra/caddy/Caddyfile.prod``), which promtail then
+    ships to Loki. A ``GET ...?invite_url=steamcommunity.com/id/{vanity}``
+    would therefore park that identifier in the logs — the very thing
+    ``gifts.profile`` reduces to an opaque ``_hash_short()`` everywhere it
+    logs. Filtering the edge would work until the next unrelated Caddy edit
+    undid it; not putting the identity in the URL cannot be undone by
+    accident (2026-09-04 review).
+
+    Nothing is lost by the method change: this endpoint is not bookmarkable,
+    has no HTTP-caching story (its cache is server-side, in Redis), and is
+    the same class of advisory identity lookup as
+    ``POST /catalog/products/{id}/check-player``, which is already a POST
+    for the same reason. It writes nothing, so — like ``check-player`` — it
+    takes no ``Idempotency-Key``.
+    """
+
+    #: Bounded like the query parameter it replaced: a Steam profile/friend
+    #: link never legitimately exceeds this (the longest accepted shape,
+    #: ``s.team/p/{64 chars}``, is ~82), and an unbounded value is an
+    #: unbounded number of distinct ``gifts:steam_profile`` cache keys for
+    #: one upstream Steam call each.
+    invite_url: str = Field(min_length=1, max_length=200)
+
+
 class GiftProfileOut(BaseModel):
     """The pre-purchase recipient check: who a Steam link actually points to.
 
@@ -145,6 +175,7 @@ __all__ = [
     "GiftAppDetailOut",
     "GiftAppOut",
     "GiftPackageOut",
+    "GiftProfileIn",
     "GiftProfileOut",
     "GiftRegionOut",
     "GiftZonePriceOut",
