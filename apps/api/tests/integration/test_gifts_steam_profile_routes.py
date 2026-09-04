@@ -125,9 +125,7 @@ async def test_unknown_vanity_is_not_found(
 ) -> None:
     _enable(monkeypatch)
     respx.get(_RESOLVE_URL).mock(
-        return_value=httpx.Response(
-            200, json={"response": {"success": 42, "message": "No match"}}
-        )
+        return_value=httpx.Response(200, json={"response": {"success": 42, "message": "No match"}})
     )
     # No _SUMMARIES_URL mock armed: a not_found vanity must never reach
     # GetPlayerSummaries at all.
@@ -350,9 +348,7 @@ async def test_not_found_vanity_verdict_is_also_cached(
 ) -> None:
     _enable(monkeypatch)
     route = respx.get(_RESOLVE_URL).mock(
-        return_value=httpx.Response(
-            200, json={"response": {"success": 42, "message": "No match"}}
-        )
+        return_value=httpx.Response(200, json={"response": {"success": 42, "message": "No match"}})
     )
 
     first = await _check(integration_client, _VANITY_LINK)

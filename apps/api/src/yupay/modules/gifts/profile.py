@@ -194,7 +194,9 @@ async def _resolve_and_summarise(
         return _UNAVAILABLE
 
     log.info("gifts.steam_profile_found", identifier_hash=_hash_short(identifier))
-    return GiftProfileOut(status="found", steam_id=steam_id, nickname=nickname, avatar_url=avatar_url)
+    return GiftProfileOut(
+        status="found", steam_id=steam_id, nickname=nickname, avatar_url=avatar_url
+    )
 
 
 async def _cache_verdict(redis: Redis, key: str, out: GiftProfileOut) -> None:
