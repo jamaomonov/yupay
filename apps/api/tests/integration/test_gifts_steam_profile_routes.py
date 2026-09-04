@@ -260,7 +260,11 @@ async def test_persona_fetch_failure_on_a_profiles_link_is_unavailable(
     genuinely nonexistent id, indistinguishable from here -- must not read
     as `found`. Unlike Steam sign-in, nothing has proven identity first."""
     _enable(monkeypatch)
-    respx.get(_SUMMARIES_URL).mock(side_effect=httpx.ConnectTimeout("steam is slow"))
+    summaries_route = respx.get(_SUMMARIES_URL)
+    summaries_route.side_effect = [
+        httpx.ConnectTimeout("steam is slow"),
+        httpx.Response(200, json=_summaries_payload()),
+    ]
 
     r = await _check(integration_client, _PROFILE_LINK)
 
@@ -270,6 +274,14 @@ async def test_persona_fetch_failure_on_a_profiles_link_is_unavailable(
     assert body["steam_id"] is None
     assert body["nickname"] is None
     assert body["avatar_url"] is None
+
+    # Nothing was written to the cache for that unavailable verdict -- the
+    # same assertion its vanity-path sibling makes. Caching is gated on the
+    # verdict alone, not the link shape, and this pins that: a regression
+    # that reintroduced shape-dependent caching here would otherwise pass.
+    second = await _check(integration_client, _PROFILE_LINK)
+    assert second.json()["status"] == "found"
+    assert summaries_route.call_count == 2
 
 
 @respx.mock
