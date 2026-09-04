@@ -86,6 +86,19 @@ the next buyer the same lie.
 PII note: ``steam_id``/nickname/avatar never appear in a log call here —
 only an opaque hash of the link's own identifier, the same convention
 ``integrations.player_check`` uses for ``player_id``.
+
+Metrics note: the same rule binds the Prometheus counters. Every answer this
+module gives moves ``yupay_gifts_steam_profile_checks_total{verdict,source}``
+and every keyed Steam call moves
+``yupay_steam_web_api_calls_total{endpoint,consumer,outcome}`` — both label
+sets are small, closed vocabularies. The link, the vanity name, the
+steamid64, the nickname and the caller's IP are **not** labels and must never
+become ones: they are unbounded (one series each, kept for the life of the
+process) and they identify a third party who is not our customer. See
+``docs/architecture/metrics.md`` and ``yupay.core.metrics``. Recording is
+also never allowed to change a verdict or fail a request — this endpoint's
+whole contract is that it is not the reason a sale fails, and observability
+does not get to be an exception.
 """
 
 from __future__ import annotations
@@ -99,6 +112,7 @@ from redis.exceptions import RedisError
 
 from yupay.core.config import get_settings
 from yupay.core.logging import get_logger, hash_short
+from yupay.core.metrics import record_gift_profile_check, steam_web_api_call
 from yupay.core.redis import get_redis
 from yupay.modules.auth.steam import resolve_persona
 from yupay.modules.gifts.checkout import parse_invite_url
@@ -166,8 +180,11 @@ async def _resolve_vanity(vanity: str, *, api_key: str, http: httpx.AsyncClient)
             they mean "we could not ask", never "we asked and Steam said
             no".
     """
-    resp = await http.get(_RESOLVE_VANITY_URL, params={"key": api_key, "vanityurl": vanity})
-    resp.raise_for_status()
+    # Counted here rather than around the whole function: the quota is
+    # charged per call, and the parsing below is about the answer.
+    with steam_web_api_call(endpoint="resolve_vanity_url", consumer="gifts_profile"):
+        resp = await http.get(_RESOLVE_VANITY_URL, params={"key": api_key, "vanityurl": vanity})
+        resp.raise_for_status()
     body = resp.json().get("response", {})
     success = body.get("success")
     if success == 1:
@@ -275,7 +292,9 @@ async def _steam_verdict(
         steam_id = resolved
     else:
         steam_id = identifier
-    persona = await resolve_persona(int(steam_id), api_key=api_key, http=client)
+    persona = await resolve_persona(
+        int(steam_id), api_key=api_key, consumer="gifts_profile", http=client
+    )
 
     if persona is None and not is_vanity:
         # A 200 carrying `players: []` -- Steam answering that no account
@@ -394,7 +413,10 @@ async def check_steam_profile(
         # Friend-invite tokens are not profiles; the Web API has nothing that
         # resolves them. This is a fact about the link shape, not the
         # profile, so it's cheap enough to just say every time -- no Steam
-        # call, no cache.
+        # call, no cache. `source="local"`, not a cache miss: this request
+        # never consulted the cache, so counting it as a miss would make a
+        # flood of friend links read as a collapsing hit rate.
+        record_gift_profile_check(verdict="unsupported", source="local")
         return _UNSUPPORTED
 
     is_vanity = canonical.startswith(_VANITY_PREFIX)
@@ -413,13 +435,24 @@ async def check_steam_profile(
     # future schema change -- must degrade like a cache miss, not become a
     # 500 on an endpoint whose entire point is to never be the reason a
     # request fails.
+    cached_out: GiftProfileOut | None = None
     with contextlib.suppress(RedisError, ValueError):
         cached = await redis.get(cache_key)
         if cached is not None:
-            return GiftProfileOut.model_validate_json(cached)
+            cached_out = GiftProfileOut.model_validate_json(cached)
+    # Returned outside the `suppress` block so that nothing after the cache
+    # read can be swallowed by it and silently fall through to a second Steam
+    # call -- the one failure mode a counter must not introduce on the path
+    # it exists to measure.
+    if cached_out is not None:
+        record_gift_profile_check(verdict=cached_out.status, source="cache")
+        return cached_out
 
     api_key = get_settings().steam_api_key
     if not api_key:
+        # `unavailable` like a Steam outage, but from `local`: no call was
+        # made, so no quota was spent and Steam is not the thing to check.
+        record_gift_profile_check(verdict="unavailable", source="local")
         return _UNAVAILABLE
 
     client = http or httpx.AsyncClient(timeout=_TIMEOUT_SECONDS)
@@ -439,6 +472,7 @@ async def check_steam_profile(
         if http is None:
             await client.aclose()
 
+    record_gift_profile_check(verdict=out.status, source="steam")
     # `not_found`/`found` are facts about the profile, cached for 6h;
     # `unavailable` is our own failure and is never written (see the
     # module docstring).

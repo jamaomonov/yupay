@@ -24,6 +24,8 @@ from urllib.parse import urlencode
 
 import httpx
 
+from yupay.core.metrics import SteamApiConsumer, steam_web_api_call
+
 _STEAM_OPENID = "https://steamcommunity.com/openid/login"
 _CLAIMED_ID = re.compile(r"^https://steamcommunity\.com/openid/id/(\d{10,20})$")
 _TIMEOUT_SECONDS = 10.0
@@ -106,6 +108,7 @@ async def resolve_persona(
     steam_id: int,
     *,
     api_key: str,
+    consumer: SteamApiConsumer,
     http: httpx.AsyncClient | None = None,
 ) -> tuple[str | None, str | None] | None:
     """``GetPlayerSummaries`` with Steam's "no such account" kept distinguishable.
@@ -123,6 +126,12 @@ async def resolve_persona(
     Args:
         steam_id: the 64-bit Steam id to summarise.
         api_key: our Steam Web API key.
+        consumer: which feature is spending the quota, for
+            ``yupay_steam_web_api_calls_total``. Required rather than
+            defaulted: the key's 100k/day ceiling is shared, so the only
+            thing that makes a burn attributable is that every call site
+            names itself, and a default would let a new one hide inside
+            another's number.
         http: injected client for tests; otherwise one is built and closed
             here.
 
@@ -143,8 +152,12 @@ async def resolve_persona(
     """
     client = http or httpx.AsyncClient(timeout=5.0)
     try:
-        resp = await client.get(_SUMMARIES, params={"key": api_key, "steamids": str(steam_id)})
-        resp.raise_for_status()
+        # The context manager counts the call itself -- the unit the daily
+        # quota is charged in -- and nothing beyond it: the parsing below is
+        # about the answer, and a 200 we could not read still spent quota.
+        with steam_web_api_call(endpoint="get_player_summaries", consumer=consumer):
+            resp = await client.get(_SUMMARIES, params={"key": api_key, "steamids": str(steam_id)})
+            resp.raise_for_status()
         # "Absent" is not "empty", and only one of them is Steam saying no.
         # `resp.json().get("response", {}).get("players", [])` read a degraded
         # ISteamUser response -- `{}`, `{"response": {}}`, a `null` players, or
@@ -203,9 +216,16 @@ async def fetch_persona(
     and "no such account" is folded in with the failures on purpose, because
     by the time this runs OpenID has already proven the account exists.
     Callers that must tell those two apart use :func:`resolve_persona`.
+
+    Its Steam call is counted under ``consumer="auth_signin"`` without asking
+    the caller, because this function's contract *is* the sign-in one: "no
+    such account" is folded in with the failures precisely because OpenID has
+    already proven the account exists. A caller that is not a sign-in wants
+    :func:`resolve_persona` and its explicit ``consumer``, or the quota
+    numbers start lying about who spent what.
     """
     try:
-        found = await resolve_persona(steam_id, api_key=api_key, http=http)
+        found = await resolve_persona(steam_id, api_key=api_key, consumer="auth_signin", http=http)
     except (httpx.HTTPError, ValueError):
         return None, None
     return found if found is not None else (None, None)

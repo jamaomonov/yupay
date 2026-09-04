@@ -328,3 +328,6 @@ one-time operator actions before announcing the section publicly (spec
 - `docs/runbooks/wallet-refunds.md` — the refund mechanism referenced above
 - `docs/runbooks/supplier-api-down.md` — if G-Engine itself is down, not
   just the gifts endpoints specifically
+- `docs/runbooks/steam-web-api-quota.md` — the pre-purchase recipient check
+  (`POST /gifts/steam-profile`) spends a Steam Web API key that Steam sign-in
+  shares; what a burn looks like and what to do about it

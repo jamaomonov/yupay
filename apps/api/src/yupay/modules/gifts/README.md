@@ -125,6 +125,25 @@ back while Redis kept serving a value no row supports, with nothing to
 expire it and the admin page — which reads the toggle from Postgres —
 showing no sign of the divergence.
 
+## Metrics
+
+`POST /gifts/steam-profile` is the one route here that spends a third-party
+quota: a Steam Web API key with a 100k/day ceiling that **Steam sign-in
+shares**. Two counters make that legible (`yupay.core.metrics`, catalogued in
+`docs/architecture/metrics.md`):
+
+| Metric                                   | Labels                                                               | Answers                                                                            |
+| ---------------------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `yupay_steam_web_api_calls_total`        | `endpoint`, `consumer` (`gifts_profile` \| `auth_signin`), `outcome` | how much of the shared key is gone, and who spent it                               |
+| `yupay_gifts_steam_profile_checks_total` | `verdict`, `source` (`cache` \| `steam` \| `local`)                  | what buyers were told, and whether the 6h verdict cache is still absorbing repeats |
+
+Neither carries the link, the vanity name, the steamid64, the nickname or the
+IP — unbounded as series, and a third party's identity in a store with no
+redactor. Same rule as this module's logs, which record only
+`hash_short(identifier)`. Recording can never raise: a broken registry costs a
+data point, never a verdict. Dashboard `yupay-steam-quota`; runbook
+`docs/runbooks/steam-web-api-quota.md`.
+
 ## Tables owned
 
 - `steam_gift_settings` — singleton row (`id` pinned to `1` by a CHECK):
@@ -206,6 +225,11 @@ quote="UZS")`) and multiplied per row, never re-fetched per item.
   500ing, the endpoint's own `guard_ip` bucket, and a Steam 5xx never
   leaking `STEAM_API_KEY` into the logs (`respx`-mocked Steam,
   `structlog.testing.capture_logs()` for the log-safety case).
+- `apps/api/tests/integration/test_gifts_steam_profile_metrics.py` — each
+  verdict moves the counter under the right `source`, a vanity link is
+  counted as the two Steam calls it really costs, a cache hit spends no
+  quota, and a registry that throws on every increment changes no verdict and
+  fails no request.
 
 - Checkout routes — Task 7.
 - Fulfilment wiring — a later task.

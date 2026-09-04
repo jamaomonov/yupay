@@ -19,6 +19,10 @@ dependencies = [
     "tenacity>=9.0",
     "purgatory>=3.0",
     "structlog>=24.4",
+    # Direct, not transitive-by-accident: `core/metrics.py` imports `Counter`
+    # from it. It arrives with the instrumentator below either way, but code
+    # that imports a package declares it.
+    "prometheus-client>=0.21",
     "prometheus-fastapi-instrumentator>=7.0",
     "sentry-sdk[fastapi]>=2.17",
     "slowapi>=0.1.9",

@@ -107,6 +107,56 @@ groups:
         annotations:
           summary: "Redis has no maxmemory configured"
           runbook: "https://github.com/yupay/yupay/blob/main/docs/runbooks/traffic-surge.md"
+
+      # ---- Steam Web API quota (one key, two consumers) ----
+      #
+      # `POST /gifts/steam-profile` is unauthenticated and costs one or two
+      # keyed Steam calls per DISTINCT link (the Redis verdict cache absorbs
+      # repeats, so distinct links are the expensive shape). The key it spends
+      # has a 100k/day ceiling and Steam **sign-in shares it**, which is why
+      # both rules below sum across the `consumer` label rather than
+      # filtering: the ceiling applies to the sum, not to either half.
+      #
+      # Exhaustion is not an outage — checks answer `unavailable` (non-blocking,
+      # the buyer can still pay) and sign-ins go nameless — so both are `warn`.
+      # The point is to be able to explain a burn while there is still budget
+      # left, which is exactly what nobody could do before these counters.
+      - alert: SteamWebApiBurnRateHigh
+        # Projected, not cumulative. `increase(...[24h]) > 100000` can only
+        # report a key that is already spent; extrapolating the current rate
+        # over a day fires with hours of budget still in hand.
+        expr: sum(rate(yupay_steam_web_api_calls_total[30m])) * 86400 > 50000
+        for: 30m
+        labels: { severity: warn }
+        annotations:
+          summary: "Steam Web API calls on pace for >50% of the 100k/day key"
+          description: >
+            Split by `consumer` (gifts_profile / auth_signin) and check the
+            recipient check's cache hit rate before touching any limit — a
+            collapsing hit rate means distinct links, not more customers.
+          runbook: "https://github.com/yupay/yupay/blob/main/docs/runbooks/steam-web-api-quota.md"
+
+      - alert: SteamProfileChecksUnavailable
+        # Guarded twice: `clamp_min` keeps the ratio finite when the metric is
+        # idle (the RedisMemoryHigh lesson — an unguarded denominator makes a
+        # rule fire forever about the thing it is supposed to detect), and the
+        # volume floor (~36 checks/h) stops a single lonely failure at 03:00
+        # reading as a 100% failure rate.
+        expr: |
+          sum(rate(yupay_gifts_steam_profile_checks_total{verdict="unavailable"}[15m]))
+            / clamp_min(sum(rate(yupay_gifts_steam_profile_checks_total[15m])), 0.001) > 0.5
+            and sum(rate(yupay_gifts_steam_profile_checks_total[15m])) > 0.01
+        for: 15m
+        labels: { severity: warn }
+        annotations:
+          summary: "Over half of Steam recipient checks answer `unavailable`"
+          description: >
+            Steam trouble, an exhausted key, or an unset STEAM_API_KEY. Buyers
+            can still pay — `unavailable` is non-blocking — but they are paying
+            without having seen who the gift goes to, which is the mistyped-link
+            refund this check exists to prevent.
+          runbook: "https://github.com/yupay/yupay/blob/main/docs/runbooks/steam-web-api-quota.md"
+
 # NOTE: there is no queue-depth alert. The fulfilment queue is now
 # `fulfillment_tasks` in Postgres (ADR-0064), not a Redis list -- the rule
 # that used to sit here watched `redis_list_length{key=~"dramatiq:.*"}`, a

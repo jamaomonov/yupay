@@ -52,6 +52,10 @@ Deliver → Reward`. State lives in `fulfillment_tasks`.
   Payme / Uzum / Crypto.
 - **Supplier abstraction** — `SupplierClient` protocol with `tenacity` retries and
   `purgatory` circuit breakers per vendor.
+- **Metrics** — per-route counts/latencies come from the FastAPI instrumentator; domain
+  counters live in `core.metrics` with closed `Literal` label vocabularies and recorders
+  that can never fail a request. Never a label: an id, a link, a nickname, an IP.
+  Catalogue: [`metrics.md`](./metrics.md).
 - **FX** — USD as the canonical currency. Display prices converted on the fly with cached
   rates; checkout snapshots the rate into `fx_snapshots`.
 

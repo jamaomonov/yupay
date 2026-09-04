@@ -233,3 +233,47 @@ async def test_persona_and_avatar_land_on_the_profile(db_session: AsyncSession) 
     assert link.persona_name == "jama"
     assert link.user.display_name == "jama"
     assert link.user.photo_url == "https://avatars.steamstatic.com/x_full.jpg"
+
+
+@respx.mock
+async def test_a_sign_in_counts_against_the_same_shared_steam_quota(
+    db_session: AsyncSession,
+) -> None:
+    """Sign-in and the gift recipient check spend ONE Steam Web API key.
+
+    The key's 100k/day ceiling is shared, so a quota graph that counted only
+    `gifts_profile` would understate the burn and mis-attribute the cause —
+    a login storm would look like the gift check was fine while the key ran
+    out from under it. `consumer` is what makes the two addable, and this is
+    the half of that sum the gift tests cannot see.
+
+    OpenID's own `check_authentication` round trip is deliberately *not*
+    counted: it carries no API key and costs no quota.
+    """
+    from prometheus_client import REGISTRY
+    from yupay.core.config import get_settings
+
+    def calls() -> float:
+        return (
+            REGISTRY.get_sample_value(
+                "yupay_steam_web_api_calls_total",
+                {
+                    "endpoint": "get_player_summaries",
+                    "consumer": "auth_signin",
+                    "outcome": "ok",
+                },
+            )
+            or 0.0
+        )
+
+    respx.get("https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/").mock(
+        return_value=httpx.Response(200, json={"response": {"players": [{"personaname": "j"}]}})
+    )
+    s = get_settings().model_copy(update={"steam_api_key": "k"})
+
+    async def verify(params: dict[str, str], **_: object) -> int:
+        return 76561198000000099
+
+    before = calls()
+    await steam_login(db_session, _params(), settings=s, verifier=verify)
+    assert calls() == before + 1
