@@ -1704,6 +1704,49 @@ describe("the recipient profile check", () => {
     expect(screen.getByTestId("gift-profile-live")).toHaveTextContent("payHintInvite");
   });
 
+  it("announces who the link resolved to, not just «Изменить»", async () => {
+    // The success case is the entire reason the feature exists, and it was the
+    // one verdict saying nothing: `profileNote` is null on `found`, the
+    // nickname is a plain <div>, the avatar is `alt=""`, and focus lands on a
+    // button whose whole accessible name is «Изменить». A screen-reader user
+    // heard "Изменить, кнопка" and nothing about the recipient.
+    mockProvidersResponse();
+    checkGiftProfileMock.mockResolvedValue(FOUND);
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    pasteInvite("https://steamcommunity.com/id/neo");
+    fireEvent.click(checkButton());
+
+    const live = screen.getByTestId("gift-profile-live");
+    await waitFor(() => {
+      expect(live).toHaveTextContent("profileFound");
+    });
+    // The nickname itself, not just a generic "found" — the point is *who*.
+    expect(live).toHaveTextContent("Neo");
+    // Announced only: the card already shows this visually, so the region
+    // stays `sr-only` rather than repeating it on screen.
+    expect(live).toHaveClass("sr-only");
+  });
+
+  it("stops re-announcing the empty-field hint once the buyer starts editing", async () => {
+    // The flag behind the hint used to live for the component's lifetime, so
+    // any later moment the field was empty re-showed it with no press behind
+    // it — spoken mid-edit, since the region is `aria-live="polite"`.
+    mockProvidersResponse();
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    fireEvent.click(checkButton());
+    const live = screen.getByTestId("gift-profile-live");
+    expect(live).toHaveTextContent("payHintInvite");
+
+    pasteInvite("https://steamcommunity.com/id/neo");
+    expect(live).toHaveTextContent("");
+
+    // Select-all-and-retype: back to empty, but no press since — silent.
+    pasteInvite("");
+    expect(live).toHaveTextContent("");
+  });
+
   it("keeps the live region mounted so an updated verdict is actually announced", async () => {
     // NVDA/JAWS commonly miss a `role="status"` node inserted into the page;
     // the region has to already be there and change its text. `not_found`

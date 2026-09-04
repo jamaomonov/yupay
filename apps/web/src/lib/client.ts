@@ -184,6 +184,12 @@ export async function apiFetch<T>(path: string, opts: ReqOpts = {}): Promise<T> 
 
   if (res.status === 401 && !opts.anonymous && !opts.retry) {
     const fresh = await refreshAccess();
+    // Note for the next caller that passes one: `...opts` forwards the
+    // original `signal` into the retry, so a timeout that has *already* fired
+    // aborts the retry the moment it starts. Nothing hits this today (the one
+    // signal-passing caller is `anonymous: true` and never reaches this
+    // branch); a signal-passing authenticated caller wants a fresh signal, or
+    // a budget that covers both attempts.
     if (fresh) return apiFetch<T>(path, { ...opts, retry: true });
   }
   if (!res.ok) {

@@ -380,6 +380,7 @@
       "payHintInvite": "Qabul qiluvchining Steam profil havolasini kiriting",
       "payHintInviteInvalid": "Profil havolasini tekshiring",
       "payHintMethod": "Toʻlov usulini tanlang",
+      "profileFound": "Profil topildi: {nickname}",
       "profileNotFound": "Bunday Steam profili topilmadi — havolani tekshiring",
       "profileUnsupported": "Bu turdagi havolani tekshirib boʻlmaydi — profilni oʻzingiz oching. Toʻlovga xalaqit bermaydi.",
       "profileUnavailable": "Steam hozir javob bermayapti — davom etsangiz boʻladi",

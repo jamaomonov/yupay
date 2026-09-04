@@ -55,6 +55,25 @@ never appears in the delivery artifact the customer reads (the artifact
 carries only `app_name`/`package_name`/a fixed instruction message — see
 `_CUSTOMER_SAFE_ARTIFACT_KEYS` above).
 
+The same link also reaches us _before_ any order exists, through the
+pre-purchase recipient check (`gifts/profile.py`), and that path is why
+**`POST /gifts/steam-profile` takes the link in a request body rather than a
+query string.** The reasoning is worth keeping, because "never log it" was not
+enough on its own: the `api.yupay.uz` site block in `infra/caddy/Caddyfile.prod`
+writes a JSON access log whose `uri` field records the query string verbatim,
+and promtail ships that container output to Loki. A `GET
+...?invite_url=steamcommunity.com/id/{vanity}` therefore lands a _recipient's_
+identity — a third party who never used the site — in our log store, no matter
+how careful the application code is, because the leak happens at the edge and
+not in a log call we control. Filtering the edge log was considered and
+rejected: an unrelated Caddy change undoes it silently, and it only ever covers
+the one place we remembered. A body is not recorded anywhere in that chain, so
+there is nothing to filter. Application-side, the module keeps the same
+discipline as above — the steamid, nickname and avatar never appear in a log
+call, only `_hash_short(identifier)` — and the Redis verdict cache
+(`gifts:steam_profile:{steamid_or_vanity}`, 6 h) is the only place the
+identifier is stored at all, keyed but never logged.
+
 **Ban reason.** `users.ban_reason` is admin-authored free text about a customer.
 It is returned only on admin routes, never to the customer or to any public
 surface, and is cleared when the suspension is lifted (ADR-0045).

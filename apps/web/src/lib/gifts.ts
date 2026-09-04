@@ -203,6 +203,30 @@ export type GiftProfileCheck =
 /** How long the browser waits on the check before calling it `unavailable`. */
 const CHECK_TIMEOUT_MS = 8000;
 
+/** Explicit bidi formatting/override controls: LRE/RLE/PDF/LRO/RLO
+ *  (U+202A–U+202E) and the isolates LRI/RLI/FSI/PDI (U+2066–U+2069). */
+const BIDI_CONTROLS = /[\u202A-\u202E\u2066-\u2069]/g;
+
+/**
+ * Strip bidi controls from a Steam persona name.
+ *
+ * The nickname is third-party text — a *recipient* picks it, and the buyer
+ * has never seen it before. A name containing `U+202E` (RIGHT-TO-LEFT
+ * OVERRIDE) visually reverses everything after it, so it can reorder text it
+ * is rendered next to: on the confirmation screen the nickname sits in the
+ * same row as the profile link the buyer is being told to verify, one tap
+ * before an irreversible payment. Stripping at this boundary rather than
+ * isolating at each render site means every present and future place this
+ * name appears (card, confirm modal, live region) is safe by construction.
+ *
+ * Only the explicit override/isolate controls go: a genuinely Arabic or
+ * Hebrew persona still renders right-to-left from its own characters'
+ * directionality, which is what the bidi algorithm is for.
+ */
+function stripBidiControls(name: string): string {
+  return name.replace(BIDI_CONTROLS, "").trim();
+}
+
 /**
  * Resolve a pasted Steam link into "who is this, actually?".
  *
@@ -222,29 +246,44 @@ const CHECK_TIMEOUT_MS = 8000;
  * API side for the full reasoning).
  */
 export async function checkGiftProfile(inviteUrl: string): Promise<GiftProfileCheck> {
+  // A hung request would otherwise spin «Проверяем…» until the browser's own
+  // default gives up, minutes later. Buy stays enabled throughout, so no sale
+  // is lost — but a buyer who assumes the check is mandatory waits for all of
+  // it. The server's own Steam timeout is 5 s, so this only ever fires when
+  // something upstream of that is wrong.
+  //
+  // `AbortController` + `setTimeout`, not `AbortSignal.timeout`: the latter
+  // is missing before iOS 15.4, and there it would throw *before the request
+  // was ever sent*, so every single «Проверить» would report «Steam сейчас не
+  // отвечает» and the buyer would conclude our check is broken. The degrade
+  // is safe in direction but total and silent, and nothing in this repo sets
+  // a browserslist floor that rules those devices out. `AbortController` has
+  // been everywhere since iOS 12.
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, CHECK_TIMEOUT_MS);
   try {
     const out = await apiFetch<GiftProfileWire>("/gifts/steam-profile", {
       method: "POST",
       body: { invite_url: inviteUrl },
       anonymous: true,
-      // A hung request would otherwise spin «Проверяем…» until the browser's
-      // own default gives up, minutes later. Buy stays enabled throughout, so
-      // no sale is lost — but a buyer who assumes the check is mandatory
-      // waits for all of it. The server's own Steam timeout is 5 s, so this
-      // only ever fires when something upstream of that is wrong. Inside the
-      // `try`, so a browser too old for `AbortSignal.timeout` degrades to
-      // `unavailable` (non-blocking) rather than throwing.
-      signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
+      signal: controller.signal,
     });
     if (out.status !== "found") return { status: out.status };
     // The API contract says `found` always carries a persona (it returns
     // `unavailable` when Steam gave it nothing to show). If that ever stopped
     // holding, a nameless "confirmation" is the worst answer available — so it
     // degrades to the non-blocking status rather than to a blank green card.
-    if (!out.nickname) return { status: "unavailable" };
-    return { status: "found", nickname: out.nickname, avatarUrl: out.avatar_url };
+    // A name that was *only* bidi controls lands here too, for the same
+    // reason: after stripping there is nothing left to show.
+    const nickname = out.nickname ? stripBidiControls(out.nickname) : "";
+    if (!nickname) return { status: "unavailable" };
+    return { status: "found", nickname, avatarUrl: out.avatar_url };
   } catch {
     return { status: "unavailable" };
+  } finally {
+    clearTimeout(timer);
   }
 }
 

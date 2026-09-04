@@ -249,6 +249,66 @@ describe("checkGiftProfile", () => {
     expect(new Headers(init?.headers).get("Authorization")).toBeNull();
   });
 
+  it("strips bidi overrides out of the persona before anyone renders it", async () => {
+    // A recipient picks their own Steam name, and the buyer has never seen it
+    // before. `U+202E` reverses everything after it, so on the confirm screen
+    // — where the name sits in the same row as the link the buyer is being
+    // told to verify — it could reorder that link one tap before an
+    // irreversible payment.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          status: "found",
+          steam_id: "76561198000000000",
+          nickname: "Neo\u202Eevil",
+          avatar_url: null,
+        }),
+      ),
+    );
+    await expect(checkGiftProfile("https://steamcommunity.com/id/neo")).resolves.toEqual({
+      status: "found",
+      nickname: "Neoevil",
+      avatarUrl: null,
+    });
+  });
+
+  it("keeps a genuinely right-to-left name intact — only the controls go", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          status: "found",
+          steam_id: "76561198000000000",
+          nickname: "שלום",
+          avatar_url: null,
+        }),
+      ),
+    );
+    await expect(checkGiftProfile("https://steamcommunity.com/id/neo")).resolves.toEqual({
+      status: "found",
+      nickname: "שלום",
+      avatarUrl: null,
+    });
+  });
+
+  it("degrades a name that was nothing but bidi controls to unavailable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          status: "found",
+          steam_id: "76561198000000000",
+          nickname: "\u202E\u2066",
+          avatar_url: "https://avatars.steamstatic.com/abc_full.jpg",
+        }),
+      ),
+    );
+    await expect(checkGiftProfile("https://steamcommunity.com/id/neo")).resolves.toEqual({
+      status: "unavailable",
+    });
+  });
+
   it("carries an abort signal so a hung request can't spin the button forever", async () => {
     const fetchMock = vi
       .fn<(url: string, init?: RequestInit) => Promise<Response>>()
@@ -259,6 +319,10 @@ describe("checkGiftProfile", () => {
     await checkGiftProfile("https://steamcommunity.com/id/neo");
     const [, init] = fetchMock.mock.calls[0]!;
     expect(init?.signal).toBeInstanceOf(AbortSignal);
+    // Built from an `AbortController`, not `AbortSignal.timeout` — the latter
+    // is missing before iOS 15.4, where it would throw before the request was
+    // ever sent and make *every* check report «Steam не отвечает».
+    expect(init?.signal?.aborted).toBe(false);
   });
 
   it("folds the abort itself into unavailable, like any other failure", async () => {

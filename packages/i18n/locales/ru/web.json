@@ -380,6 +380,7 @@
       "payHintInvite": "Укажите ссылку на профиль получателя",
       "payHintInviteInvalid": "Проверьте ссылку на профиль",
       "payHintMethod": "Выберите способ оплаты",
+      "profileFound": "Профиль найден: {nickname}",
       "profileNotFound": "Профиль Steam не найден — проверьте ссылку",
       "profileUnsupported": "Такую ссылку проверить не получится — откройте профиль сами. Оплате это не мешает.",
       "profileUnavailable": "Steam сейчас не отвечает — можно продолжить",

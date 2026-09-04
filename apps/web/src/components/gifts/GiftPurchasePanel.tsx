@@ -424,6 +424,12 @@ export function GiftPurchasePanel({
   /** Reopen the collapsed field from the card's «Изменить» control. */
   function reopenInvite(): void {
     setProfile(null);
+    // Belt-and-braces. The load-bearing reset is the input's own `onChange`
+    // (see there): every route from "pressed «Проверить» on an empty field"
+    // to a collapsed card runs through it, so the flag is already false by
+    // the time this can be called. Kept so the flag cannot outlive its
+    // meaning if another way of setting it is ever added.
+    setCheckAttempted(false);
     requestAnimationFrame(() => inviteRef.current?.focus());
   }
 
@@ -588,6 +594,12 @@ export function GiftPurchasePanel({
       // belongs here, on the last screen before an irreversible gift, not
       // just up in the form. A URL the buyer has stopped reading is not
       // evidence; a name is. Falls back to the link alone when no check ran.
+      //
+      // Safe to join into one text node: the nickname is third-party text,
+      // but `checkGiftProfile` has already stripped the bidi override
+      // controls that would let it reorder the link it sits next to (see
+      // `stripBidiControls`) — done once at that boundary rather than isolated
+      // at each of the three places persona text renders.
       value:
         profileFound !== null ? `${profileFound.nickname} · ${inviteUrl.trim()}` : inviteUrl.trim(),
     },
@@ -758,6 +770,18 @@ export function GiftPurchasePanel({
         : profileCheck.status === "unsupported"
           ? t("profileUnsupported")
           : t("profileUnavailable");
+  // What the live region actually holds. A `found` verdict has no *visible*
+  // note — the card says it — but it still has to be said out loud: the
+  // sighted buyer gets an avatar and a name, while a screen-reader user
+  // previously got focus moved to a button whose entire accessible name is
+  // «Изменить». That is the one moment this whole feature exists for, so it
+  // is announced — and only announced: the region goes `sr-only` whenever
+  // `profileNote` is null, so this never renders as a second, redundant copy
+  // of the card.
+  const profileAnnounce: string =
+    profileFound !== null
+      ? t("profileFound", { nickname: profileFound.nickname })
+      : (profileNote ?? "");
   // The shape error and the check verdict describe the same input, so they
   // are announced together rather than the later one hiding the earlier.
   const inviteDescribedBy =
@@ -1005,6 +1029,16 @@ export function GiftPurchasePanel({
                   value={inviteUrl}
                   onChange={(e) => {
                     setInviteUrl(e.target.value);
+                    // The flag means "«Проверить» was pressed with nothing to
+                    // check", and any edit — including selecting all and
+                    // deleting — makes that stale. Leaving it set meant the
+                    // hint came back every later time the field went empty,
+                    // with no press behind it: on a polite live region, spoken
+                    // into the middle of the buyer's own retyping. Clearing
+                    // here also covers "reset after a successful check", since
+                    // a check can only run once an edit made the field
+                    // non-empty.
+                    setCheckAttempted(false);
                   }}
                   onBlur={() => {
                     setInviteTouched(true);
@@ -1068,7 +1102,7 @@ export function GiftPurchasePanel({
             aria-live="polite"
             className={profileNote !== null ? "text-tx-dim text-[13px]" : "sr-only"}
           >
-            {profileNote}
+            {profileAnnounce}
           </div>
           {/* The free half of the deferred server-side profile checker
             (Task 6a): the buyer opens the pasted link themselves, in a new
