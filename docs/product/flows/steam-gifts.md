@@ -46,8 +46,8 @@ sequenceDiagram
         opt Buyer presses «Проверить» (optional, both surfaces)
             Web->>API: POST /gifts/steam-profile {invite_url}
             Note over Web,API: a body, never a query string — the recipient's link is<br/>a third party's identity and Caddy logs `uri` verbatim into Loki
-            API->>Cache: gifts:steam_profile:{steamid_or_vanity} (6h)
-            API->>Steam: GET ISteamUser/GetPlayerSummaries (5s timeout)
+            API->>Cache: gifts:steam_profile:{id|sid}:{identifier} (6h)
+            API->>Steam: ResolveVanityURL (/id/ only) then GetPlayerSummaries<br/>5s per call, 7s total budget
             Steam-->>API: persona, or nothing
             API-->>Web: {status: found | not_found | unsupported | unavailable}
             Web->>C: found -> avatar + nickname card; ONLY not_found blocks Buy
@@ -117,12 +117,12 @@ sequenceDiagram
    Steam's own Web API (verdict cached 6 h in `gifts:steam_profile:*`) and
    answers one of four ways:
 
-   | Verdict       | What the buyer sees                                                                                                                                          | Can they still pay?                           |
-   | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------- |
-   | `found`       | the field collapses into a card with the recipient's **avatar and nickname**, plus «Изменить» to reopen it                                                   | yes                                           |
-   | `not_found`   | «Профиль Steam не найден — проверьте ссылку»                                                                                                                 | **no — the only state that stops a purchase** |
-   | `unsupported` | «Такую ссылку проверить не получится — откройте профиль сами. Оплате это не мешает.» — an `s.team/p/…` friend-invite token the Web API cannot resolve at all | yes                                           |
-   | `unavailable` | «Steam сейчас не отвечает — можно продолжить» — no API key, a Steam outage, a timeout, or our own API failing                                                | yes                                           |
+   | Verdict       | What the buyer sees                                                                                                                                                                    | Can they still pay?                           |
+   | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+   | `found`       | the field collapses into a card with the recipient's **avatar and nickname**, plus «Изменить» to reopen it                                                                             | yes                                           |
+   | `not_found`   | «Профиль Steam не найден — проверьте ссылку» — Steam itself said no: `ResolveVanityURL`'s documented "No match" for an `/id/` link, or an empty `players` array for a `/profiles/` one | **no — the only state that stops a purchase** |
+   | `unsupported` | «Ссылку-приглашение проверить нельзя — убедитесь, что она от нужного человека. Оплате это не мешает.» — an `s.team/p/…` friend-invite token the Web API cannot resolve at all          | yes                                           |
+   | `unavailable` | «Steam сейчас не отвечает — можно продолжить» — no API key, a Steam outage, a timeout, or our own API failing                                                                          | yes                                           |
 
    **Only a definitive «профиль не найден» stops a purchase.** The other
    three verdicts — every way the check can fail on _our_ side included —

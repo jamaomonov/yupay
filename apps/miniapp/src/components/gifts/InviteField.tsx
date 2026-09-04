@@ -163,6 +163,15 @@ export function InviteField({
             type="button"
             ref={editRef}
             onClick={onReopen}
+            // The recipient's name is part of what focusing this control reads
+            // out, not only what the live region announced a moment earlier
+            // (2026-09-04 final review). The announcement and this focus move
+            // land in the same commit, and screen readers commonly drop a
+            // pending polite message when focus moves — which, in the found
+            // state, left the user with "Изменить, кнопка" and nothing about
+            // who the gift was going to, since the input that used to
+            // reference the region has unmounted.
+            aria-describedby={profileNoteId}
             // The only way back out of a confirmed-but-wrong recipient, so it
             // gets a real tap target rather than a bare 13px word.
             className="inline-flex min-h-[44px] shrink-0 items-center px-1 text-[13px] font-medium text-white/45 active:opacity-70"

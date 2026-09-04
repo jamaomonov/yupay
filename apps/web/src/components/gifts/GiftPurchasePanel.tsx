@@ -1061,6 +1061,15 @@ export function GiftPurchasePanel({
                 type="button"
                 ref={editRef}
                 onClick={reopenInvite}
+                // The recipient's name is part of what focusing this control
+                // reads out, not only what the live region announced a moment
+                // earlier (2026-09-04 final review). The announcement and this
+                // focus move land in the same commit, and screen readers
+                // commonly drop a pending polite message when focus moves —
+                // which, in the found state, left the user with "Изменить,
+                // кнопка" and nothing about who the gift was going to, since
+                // the input that used to reference the region has unmounted.
+                aria-describedby={profileNoteId}
                 // `min-h-[44px]` matching the «Открыть профиль» anchor below:
                 // this is the only way back out of a confirmed-but-wrong
                 // recipient, and on mobile it was a 13px word with no padding.

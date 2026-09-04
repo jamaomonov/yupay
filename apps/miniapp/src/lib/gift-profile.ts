@@ -98,8 +98,17 @@ export async function checkGiftProfile(inviteUrl: string): Promise<GiftProfileCh
   // A hung request would otherwise spin «Проверяем…» until the WebView's own
   // default gives up, minutes later. Buy stays enabled throughout, so no sale
   // is lost — but a buyer who assumes the check is mandatory waits for all of
-  // it. The server's own Steam timeout is 5 s, so this only ever fires when
-  // something upstream of that is wrong.
+  // it.
+  //
+  // 8 s sits just above the server's own ceiling on all its Steam work
+  // (`_TOTAL_BUDGET_SECONDS`, 7 s) — deliberately, so this abort is the outer
+  // bound rather than the inner one. It used to be reasoned about against the
+  // server's *per-call* 5 s, which was wrong: the vanity path makes two
+  // sequential Steam calls, so its worst case ran past 8 s and a slow-but-alive
+  // Steam produced the one outcome that reasoning ruled out — the buyer told
+  // «Steam не отвечает» while the server went on to finish and cache a `found`
+  // (2026-09-04 final review; the server-side budget is the actual fix, this
+  // is now a true backstop).
   //
   // `AbortController` + `setTimeout`, not `AbortSignal.timeout`: the latter
   // is missing before iOS 15.4, and there it would throw *before the request

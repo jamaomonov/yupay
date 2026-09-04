@@ -1807,6 +1807,30 @@ describe("the recipient profile check", () => {
     expect(buyButton()).not.toBeDisabled();
   });
 
+  it("names the recipient even if the polite announcement is dropped", async () => {
+    // The announcement and the focus move land in the same commit, and screen
+    // readers commonly drop a pending polite message when focus moves. In the
+    // found state the live region is referenced by no `aria-describedby` —
+    // the input that carried it has just unmounted — so a dropped
+    // announcement left the user with only "Изменить, кнопка" and no idea who
+    // the gift was going to (2026-09-04 final review). The card's own control
+    // now points at the region, so the name is part of what focusing it
+    // reads, announcement or not.
+    mockProvidersResponse();
+    checkGiftProfileMock.mockResolvedValue(FOUND);
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    pasteInvite("https://steamcommunity.com/id/neo");
+    fireEvent.click(checkButton());
+
+    const edit = await screen.findByRole("button", { name: "checkEdit" });
+    const describedBy = edit.getAttribute("aria-describedby");
+    expect(describedBy).not.toBeNull();
+    const description = document.getElementById(describedBy ?? "");
+    expect(description).toBe(screen.getByTestId("gift-profile-live"));
+    expect(description).toHaveTextContent("Neo");
+  });
+
   it("keeps «Проверить» focusable while the check runs, and refuses the second press", async () => {
     // A real `disabled` drops focus to <body> the instant a keyboard user
     // activates the button, and only the `found` path ever re-homes it — on

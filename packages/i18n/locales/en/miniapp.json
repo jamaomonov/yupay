@@ -444,7 +444,7 @@
   "gifts.game.payHintMethod": "Choose a payment method",
   "gifts.game.profileFound": "Profile found: {nickname}",
   "gifts.game.profileNotFound": "No such Steam profile — check the link",
-  "gifts.game.profileUnsupported": "This kind of link can't be checked — open the profile yourself. It doesn't block payment.",
+  "gifts.game.profileUnsupported": "An invite link can't be checked — make sure it came from the right person. It doesn't block payment.",
   "gifts.game.profileUnavailable": "Steam isn't responding right now — you can continue",
   "gifts.game.payHintProfileNotFound": "Profile not found — check the link",
   "gifts.game.confirmRegion": "Region",

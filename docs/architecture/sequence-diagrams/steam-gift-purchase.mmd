@@ -34,8 +34,8 @@ sequenceDiagram
         opt Buyer presses «Проверить» (optional, both surfaces)
             Web->>API: POST /gifts/steam-profile {invite_url}
             Note over Web,API: a body, never a query string — the recipient's link is<br/>a third party's identity and Caddy logs `uri` verbatim into Loki
-            API->>Cache: gifts:steam_profile:{steamid_or_vanity} (6h)
-            API->>Steam: GET ISteamUser/GetPlayerSummaries (5s timeout)
+            API->>Cache: gifts:steam_profile:{id|sid}:{identifier} (6h)
+            API->>Steam: ResolveVanityURL (/id/ only) then GetPlayerSummaries<br/>5s per call, 7s total budget
             Steam-->>API: persona, or nothing
             API-->>Web: {status: found | not_found | unsupported | unavailable}
             Web->>C: found -> avatar + nickname card; ONLY not_found blocks Buy

@@ -382,7 +382,7 @@
       "payHintMethod": "Choose a payment method",
       "profileFound": "Profile found: {nickname}",
       "profileNotFound": "No such Steam profile — check the link",
-      "profileUnsupported": "This kind of link can't be checked — open the profile yourself. It doesn't block payment.",
+      "profileUnsupported": "An invite link can't be checked — make sure it came from the right person. It doesn't block payment.",
       "profileUnavailable": "Steam isn't responding right now — you can continue",
       "payHintProfileNotFound": "Profile not found — check the link",
       "confirmRegion": "Region",
