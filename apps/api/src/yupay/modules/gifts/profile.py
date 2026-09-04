@@ -46,17 +46,26 @@ Both of the first two shapes then go through ``GetPlayerSummaries``
 outcomes apart that this module must not confuse:
 
 - an empty ``players`` array — Steam *answering* that no account holds this
-  steamid64 — is ``"not_found"``, uniformly for both shapes;
+  steamid64 — is ``"not_found"`` **for a ``/profiles/`` link**, where it is
+  the only existence check there is. On the ``/id/`` path it is
+  ``"unavailable"`` instead: ``ResolveVanityURL`` has just certified that
+  account, so the two Steam services are contradicting each other rather
+  than agreeing on a negative, and a vanity that truly does not exist was
+  already caught one call earlier by ``success == 42``. See
+  :func:`_steam_verdict`;
 - a player row carrying neither a name nor an avatar is ``"unavailable"``:
   the deliverable of this endpoint is the avatar and the nickname, so a
   verdict with neither confirms nothing the buyer can act on, and a green
   card wrapped around an empty name would sit cached for 6h;
-- anything that stopped the call landing at all — timeout, 5xx, unparseable
-  body — is ``"unavailable"`` too.
+- anything that stopped the call landing at all — timeout, 5xx, or a body
+  whose shape we could not trust — is ``"unavailable"`` too. "Absent" is
+  not "empty": a degraded 200 with no ``response.players`` list raises
+  rather than passing for Steam's own negative, which would otherwise have
+  been cached and blocking for six hours (2026-09-04 re-review).
 
 **``"found"`` still requires a persona.** What changed (2026-09-04 final
-review) is that the true negative is now expressible for the ``/profiles/``
-shape as well. That is why :func:`~yupay.modules.auth.steam.resolve_persona`
+review) is that the true negative became expressible for the ``/profiles/``
+shape, which had none at all. That is why :func:`~yupay.modules.auth.steam.resolve_persona`
 exists rather than ``fetch_persona``: the latter is best-effort and flattens
 all three outcomes into ``(None, None)``, which is exactly right for Steam
 sign-in — OpenID has already cryptographically proven the account exists
@@ -268,7 +277,7 @@ async def _steam_verdict(
         steam_id = identifier
     persona = await resolve_persona(int(steam_id), api_key=api_key, http=client)
 
-    if persona is None:
+    if persona is None and not is_vanity:
         # A 200 carrying `players: []` -- Steam answering that no account
         # holds this steamid64. For a `/profiles/` link this is the only
         # existence check there is, and it is the shape Steam's own "Copy
@@ -276,10 +285,28 @@ async def _steam_verdict(
         # in with the timeouts told those buyers «Steam сейчас не отвечает --
         # можно продолжить» about a profile that does not exist, and they
         # paid for a gift that went nowhere (2026-09-04 final review).
-        # Uniform across both shapes: whatever produced the id a moment
-        # earlier, this is Steam's answer about the id itself.
         log.info("gifts.steam_profile_not_found", identifier_hash=hash_short(identifier))
         return _NOT_FOUND
+
+    if persona is None:
+        # Same answer from Steam, but on the vanity path it proves nothing:
+        # `ResolveVanityURL` has just said this account exists and handed us
+        # its steamid64, so `GetPlayerSummaries` denying that id is two Steam
+        # services contradicting each other, not a clean negative. A vanity
+        # that genuinely does not exist was already answered one call earlier
+        # by `success == 42`, so blocking here catches nothing real -- while
+        # a buyer caught in an eventual-consistency window would be
+        # hard-blocked, with no override, on a verdict cached for six hours
+        # that re-pasting the correct link could not clear (2026-09-04
+        # re-review). The module's standing rule decides it: `not_found`
+        # requires evidence nothing else contradicts, which is also why an
+        # undocumented `ResolveVanityURL` code is `unavailable`.
+        log.info(
+            "gifts.steam_profile_unavailable",
+            identifier_hash=hash_short(identifier),
+            reason="vanity_summaries_contradiction",
+        )
+        return _UNAVAILABLE
 
     nickname, avatar_url = persona
     if nickname is None and avatar_url is None:
@@ -328,12 +355,24 @@ async def check_steam_profile(
 
     ``"found"`` is returned only when Steam actually gave us a persona —
     a non-empty nickname or avatar from ``GetPlayerSummaries`` — for
-    *either* the ``/profiles/`` or the ``/id/{vanity}`` shape; anything
-    less is ``"unavailable"``. This is deliberately uniform rather than
-    shape-dependent: the deliverable of this endpoint is the avatar and
-    the nickname, so a verdict carrying neither has confirmed nothing the
-    buyer can act on, whether or not a vanity happened to resolve a moment
-    earlier.
+    *either* link shape; a player row with neither has confirmed nothing the
+    buyer can act on, so it is ``"unavailable"``.
+
+    ``"not_found"`` comes from exactly two Steam answers, and both are
+    shape-specific on purpose:
+
+    - ``ResolveVanityURL`` reporting the documented ``success == 42``
+      ("No match") for an ``/id/{vanity}`` link;
+    - ``GetPlayerSummaries`` returning an empty ``players`` array for a
+      ``/profiles/{steamid64}`` link, where it is the only existence check
+      there is.
+
+    An empty ``players`` on the *vanity* path is **not** ``"not_found"``:
+    ``ResolveVanityURL`` has just certified that account, so the two Steam
+    services are contradicting each other, and a nonexistent vanity was
+    already caught one call earlier. See :func:`_steam_verdict` for the full
+    reasoning — the standing rule is that ``"not_found"`` requires evidence
+    nothing else contradicts.
 
     Args:
         invite_url: the raw ``invite_url`` the caller posted, any of the shapes

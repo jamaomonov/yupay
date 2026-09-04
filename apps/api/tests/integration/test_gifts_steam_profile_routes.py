@@ -68,6 +68,23 @@ _VANITY_LINK = "https://steamcommunity.com/id/my_vanity-01"
 _S_TEAM_LINK = "https://s.team/p/abcXYZ"
 
 
+@pytest.fixture(autouse=True)
+def _settings_cache_teardown():
+    """Undo `_enable`'s `lru_cache` clear once the test is over.
+
+    `monkeypatch` restores the environment after each test but knows nothing
+    about the `lru_cache` built from it, so every `_enable` below leaves this
+    file's settings object installed for whatever runs next in the same
+    worker — including its `AUTH_IP_GUARD_BUCKET_MAX` override, which drops
+    `check_player` from 200 to the default. An ordering-dependent flake under
+    xdist, and this was the only gifts test file without the guard: see
+    `test_gifts_catalog_routes.py` and `test_checkout_steam_gift.py` for the
+    same fixture.
+    """
+    yield
+    cfg.get_settings.cache_clear()
+
+
 def _enable(monkeypatch: pytest.MonkeyPatch, *, api_key: str | None = "test-steam-key") -> None:
     monkeypatch.setenv("STEAM_GIFTS_ENABLED", "true")
     if api_key is None:
@@ -343,23 +360,89 @@ async def test_a_not_found_from_an_empty_players_array_is_cached(
 
 
 @respx.mock
-async def test_an_empty_players_array_on_a_resolved_vanity_is_also_not_found(
+async def test_an_empty_players_array_on_an_already_resolved_vanity_is_unavailable(
     integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Uniform across both shapes: an empty ``players`` is Steam's answer
-    about the steamid64, whatever produced that id a moment earlier."""
+    """The `/profiles/` rule stops at the `/profiles/` shape, deliberately.
+
+    On the vanity path a profile that does not exist is already answered one
+    call earlier, by `ResolveVanityURL`'s documented `success == 42`. So the
+    only inputs this branch could newly block are ones where Steam call #1
+    said "this account exists, here is its steamid64" and call #2 said "no
+    account holds that steamid64" -- a contradiction between two Steam
+    services, never a clean negative. Zero true-positive upside, and a real
+    downside: a buyer caught in a Steam eventual-consistency window would be
+    hard-blocked with no override, on a verdict cached for six hours, so even
+    re-pasting the correct link would not help.
+
+    This is the module's own standing rule, not a shape-specific carve-out:
+    `not_found` requires evidence nothing else contradicts -- the same
+    reasoning that sends an undocumented `ResolveVanityURL` success code to
+    `unavailable` rather than `not_found`.
+    """
     _enable(monkeypatch)
-    respx.get(_RESOLVE_URL).mock(
+    resolve = respx.get(_RESOLVE_URL).mock(
         return_value=httpx.Response(200, json={"response": {"success": 1, "steamid": _STEAM_ID}})
     )
-    respx.get(_SUMMARIES_URL).mock(
+    summaries = respx.get(_SUMMARIES_URL).mock(
         return_value=httpx.Response(200, json={"response": {"players": []}})
     )
 
     r = await _check(integration_client, _VANITY_LINK)
 
     assert r.status_code == 200, r.text
-    assert r.json()["status"] == "not_found"
+    assert r.json()["status"] == "unavailable"
+
+    # And never cached, like every other `unavailable`: a second look asks
+    # Steam again rather than replaying our own confusion for six hours.
+    await _check(integration_client, _VANITY_LINK)
+    assert resolve.call_count == 2
+    assert summaries.call_count == 2
+
+
+_DEGRADED_SUMMARIES_BODIES: list[Any] = [
+    {},
+    {"response": {}},
+    {"response": {"players": None}},
+    {"response": {"players": "nope"}},
+    [],
+    "not an object at all",
+]
+
+
+@respx.mock
+@pytest.mark.parametrize("body", _DEGRADED_SUMMARIES_BODIES)
+async def test_a_degraded_200_from_steam_is_unavailable_never_a_cached_not_found(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch, body: Any
+) -> None:
+    """ "Absent" is not "empty", and only one of them is Steam saying no.
+
+    `resp.json().get("response", {}).get("players", [])` read every one of
+    these bodies as an empty player list -- a degraded ISteamUser response, or
+    an intermediary returning a JSON error page under a 200 -- and turned it
+    into `not_found`, written to Redis for six hours. Every buyer checking
+    that recipient then saw «Профиль Steam не найден» with Buy disabled and no
+    override, off one bad upstream response (2026-09-04 re-review). The shape
+    is validated now and anything else raises `ValueError`, which lands on
+    `unavailable` like every other Steam problem.
+
+    The last two entries also close a hole that predates all of this: a
+    non-dict body made `.get` raise `AttributeError`, which `fetch_persona`'s
+    `except (httpx.HTTPError, ValueError)` never caught -- so the same
+    response would have 500'd a Steam *login*, not just this check.
+    """
+    _enable(monkeypatch)
+    summaries = respx.get(_SUMMARIES_URL).mock(return_value=httpx.Response(200, json=body))
+
+    r = await _check(integration_client, _PROFILE_LINK)
+
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "unavailable"
+
+    # Not cached -- this is our (or Steam's) failure, not a fact about the
+    # profile, and caching it is what made the bug six hours long.
+    await _check(integration_client, _PROFILE_LINK)
+    assert summaries.call_count == 2
 
 
 @respx.mock
@@ -723,6 +806,39 @@ async def test_the_total_steam_budget_degrades_to_unavailable_never_a_500(
     assert r.json()["status"] == "unavailable"
 
 
+@respx.mock
+async def test_the_budget_spans_both_steam_calls_not_just_the_last_one(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The vanity path is the whole reason the budget exists.
+
+    Its two Steam calls are sequential and `_TIMEOUT_SECONDS` is
+    per-operation, so a deadline wrapped around only the summaries call would
+    leave exactly the regression this guards against -- and the one-call
+    `/profiles/` test above would not notice (2026-09-04 re-review). Here each
+    call comfortably beats its own share and only their *sum* blows the
+    budget.
+    """
+    _enable(monkeypatch)
+    monkeypatch.setattr(profile_mod, "_TOTAL_BUDGET_SECONDS", 0.3)
+
+    async def _slow_resolve(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.2)
+        return httpx.Response(200, json={"response": {"success": 1, "steamid": _STEAM_ID}})
+
+    async def _slow_summaries(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.2)
+        return httpx.Response(200, json=_summaries_payload())
+
+    respx.get(_RESOLVE_URL).mock(side_effect=_slow_resolve)
+    respx.get(_SUMMARIES_URL).mock(side_effect=_slow_summaries)
+
+    r = await _check(integration_client, _VANITY_LINK)
+
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "unavailable"
+
+
 # ---------- rate limiting ----------
 
 
@@ -743,9 +859,6 @@ async def test_the_endpoint_has_its_own_rate_limit_bucket(
         last = await _check(integration_client, _PROFILE_LINK)
     assert last is not None
     assert last.status_code == 429, last.text
-    # `monkeypatch` restores the env but not the `lru_cache` built from it, so
-    # without this every later test in this worker runs against the settings
-    # object above -- including its bucket map, which drops `check_player`
-    # from 200 to the default. An ordering-dependent flake under xdist. Same
-    # trailing `cache_clear()` `test_player_check_endpoint.py` ends with.
-    cfg.get_settings.cache_clear()
+    # The trailing `cache_clear()` this test used to carry is now the
+    # file-wide `_settings_cache_teardown` fixture -- the leak was never
+    # unique to this test, every `_enable` had it.

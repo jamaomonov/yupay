@@ -136,13 +136,37 @@ async def resolve_persona(
 
     Raises:
         httpx.HTTPError: transport failure, timeout, or a non-2xx response.
-        ValueError: a 200 whose body was not JSON, or not the expected shape.
+        ValueError: a 200 whose body was not JSON, or not the expected shape
+            — including a body with no ``response.players`` *list* at all,
+            which is a degraded answer rather than an empty one and must not
+            be mistaken for Steam's "no such account".
     """
     client = http or httpx.AsyncClient(timeout=5.0)
     try:
         resp = await client.get(_SUMMARIES, params={"key": api_key, "steamids": str(steam_id)})
         resp.raise_for_status()
-        players = resp.json().get("response", {}).get("players", [])
+        # "Absent" is not "empty", and only one of them is Steam saying no.
+        # `resp.json().get("response", {}).get("players", [])` read a degraded
+        # ISteamUser response -- `{}`, `{"response": {}}`, a `null` players, or
+        # an intermediary's JSON error page under a 200 -- as an empty player
+        # list, which the gift profile check then filed as a *blocking*
+        # `not_found`, cached for six hours (2026-09-04 re-review). Only a
+        # `players` list that is really there and really empty may mean that.
+        # The `isinstance` on the body itself also closes an older hole: a
+        # non-dict body made `.get` raise `AttributeError`, which is neither
+        # `httpx.HTTPError` nor `ValueError`, so it escaped `fetch_persona`'s
+        # catch and would have 500'd a Steam *login*.
+        body = resp.json()
+        response = body.get("response") if isinstance(body, dict) else None
+        if not isinstance(response, dict) or not isinstance(response.get("players"), list):
+            # The suppression below is deliberate: TRY004 wants `TypeError`
+            # for an isinstance guard, but this is an upstream body breaking
+            # its contract, not a Python type error -- and `TypeError` is
+            # neither `httpx.HTTPError` nor `ValueError`, so it would escape
+            # `fetch_persona`'s catch below and 500 a Steam login, which is
+            # the exact hole this check exists to close.
+            raise ValueError("GetPlayerSummaries returned an unexpected shape")  # noqa: TRY004
+        players = response["players"]
         if not players:
             return None
         player = players[0]

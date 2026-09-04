@@ -154,6 +154,45 @@ async def test_an_empty_players_array_still_logs_the_user_in_nameless(
 
 
 @respx.mock
+@pytest.mark.parametrize(
+    "body",
+    [{}, {"response": {}}, {"response": {"players": None}}, [], "not an object at all"],
+)
+async def test_a_degraded_summaries_body_still_logs_the_user_in_nameless(
+    db_session: AsyncSession, body: object
+) -> None:
+    """Sign-in survives a Steam response that is 200 but shaped wrong.
+
+    `resolve_persona` now raises `ValueError` on a body with no
+    `response.players` list rather than reading it as an empty one
+    (2026-09-04 re-review) -- deliberately `ValueError`, because that is what
+    `fetch_persona` already catches, so this call site is unchanged.
+
+    The last two cases also close a hole that predates the gift check: a
+    non-dict body made `.get` raise `AttributeError`, which is neither
+    `httpx.HTTPError` nor `ValueError`, so it escaped that catch and 500'd
+    the login outright.
+    """
+    from yupay.core.config import get_settings
+
+    respx.get("https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/").mock(
+        return_value=httpx.Response(200, json=body)
+    )
+    s = get_settings().model_copy(update={"steam_api_key": "k"})
+    steam_id = 76561198000000079
+
+    async def verify(params: dict[str, str], **_: object) -> int:
+        return steam_id
+
+    tokens = await steam_login(db_session, _params(), settings=s, verifier=verify)
+    assert tokens.access_token
+    link = (
+        await db_session.execute(select(SteamLink).where(SteamLink.steam_id == steam_id))
+    ).scalar_one()
+    assert link.persona_name is None  # nameless, not broken
+
+
+@respx.mock
 async def test_persona_and_avatar_land_on_the_profile(db_session: AsyncSession) -> None:
     from yupay.core.config import get_settings
 

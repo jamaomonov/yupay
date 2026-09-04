@@ -176,17 +176,24 @@ checkout and vice versa; an unrecognised shape is a `422`, same as checkout.
 Response is `GiftProfileOut { status, steam_id, nickname, avatar_url }` with
 `status` one of `found | not_found | unsupported | unavailable`. Only
 `"not_found"` — Steam's own definitive "no such profile" — is meant to block
-the buyer. It is surfaced only for an `/id/{vanity}` link whose
-`ResolveVanityURL` call answered with the documented `success: 42` ("No
-match"); any other non-`1` value is an undocumented condition on Steam's
-side and reads as `"unavailable"`, because the one verdict that hard-blocks
-a paying buyer earns the strictest evidence.
+the buyer, and it comes from exactly two answers. For an `/id/{vanity}` link:
+`ResolveVanityURL` reporting the documented `success: 42` ("No match") — any
+other non-`1` value is an undocumented condition on Steam's side and reads as
+`"unavailable"`. For a `/profiles/{steamid64}` link: `GetPlayerSummaries`
+returning an empty `players` array, which is the only existence check that
+shape ever gets. An empty `players` on the _vanity_ path is deliberately
+**not** `not_found` — `ResolveVanityURL` has just certified that account, so
+the two Steam services contradict each other rather than agreeing on a
+negative, and a vanity that truly does not exist was already caught one call
+earlier. The one verdict that hard-blocks a paying buyer earns the strictest
+evidence.
 The frontend treats `"found"`, `"unsupported"` (an `s.team` friend-invite
 link, which the Web API cannot resolve at all — no Steam call is made for
 that shape), and `"unavailable"` (no API key configured, Steam unreachable,
-timed out, an unparseable response, or `GetPlayerSummaries` coming back
-with no persona to show — the same for both link shapes, since a `found`
-with nothing to render confirms nothing) identically: let the sale proceed.
+timed out, a response whose shape we could not trust, a player row carrying
+neither a name nor an avatar — a `found` with nothing to render confirms
+nothing — or the vanity contradiction above) identically: let the sale
+proceed.
 `found`/`not_found` verdicts are cached 6h under `gifts:steam_profile:*`
 (never `"unavailable"` — that is our failure, not a fact about the
 profile); see `docs/architecture/cache-keys.md`. `steam_id`/`nickname`/
