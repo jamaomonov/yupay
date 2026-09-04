@@ -71,6 +71,34 @@ On `error` the field says the check is unavailable and asks the customer to
 re-read what they typed. That keeps the typo protection Option 3 wanted for
 the case where an answer exists, without making a sale depend on G2B being up.
 
+### When an answer stops applying (amended 2026-09-04)
+
+The table's first row carries more weight than it looks: an answer about a
+_different_ question is "not checked yet". The lookup is scoped to one product
+and one id, so on a region-split brand ([ADR-0048](./0048-mobile-legends-region-split.md))
+switching package switches product, and the nickname G2B confirmed for the
+Russian game says nothing about the global one.
+
+That used to be enforced by a `setState(IDLE)` in a passive effect, with a
+second effect mirroring the outcome up to the panel that gates Pay. Passive
+effects flush in a later scheduler task, so the commit that switched product —
+the one the browser can paint, and the customer can click Pay in — still showed
+the green "verified" pill for the other region **and** still held its `valid`
+upstream. Fail-open, in the one direction the gate exists for.
+
+The web storefront now stores the verdict together with the product + id it
+was asked about, and reads it back through a render-time derivation
+(`currentCheck` in `player-check-state.ts`), reported straight from the check
+handler rather than from an effect. Going stale is therefore a property of the
+current render, not of an effect that has yet to run — the pill and the Pay
+button cannot disagree inside a commit — and a lookup that lands after the
+customer has retyped is filed under what was asked, so it is simply never read
+back. `serverId` is deliberately not part of that key, matching the reset it
+replaced: a verdict still survives an edit to the sibling server field.
+
+Web only so far. The Mini App (`apps/miniapp`) still mirrors from an effect;
+same rule, same fix shape, not yet applied.
+
 ### The `check` descriptor (`FormField.check`)
 
 `Product.required_fields` is a jsonb list of `FormField`. One optional nested

@@ -34,10 +34,9 @@ import {
   blocksCheckout,
   checkBlocker,
   checkUnavailable,
-  IDLE,
-  mergeCheckResult,
+  currentCheck,
   runPlayerCheck,
-  type CheckState,
+  type PlayerCheckVerdict,
 } from "@/lib/player-check-state";
 import { formatUzs, pathFor } from "@/lib/seo";
 import { packagePrice, starLayers, visibleStarPackages } from "@/lib/star-packages";
@@ -124,11 +123,12 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 /**
  * The checkable player-id field: a pill input paired with an advisory
- * nickname lookup (`f.check` on the catalog schema). Owns its own check state
- * via the shared `player-check-state` unit; the value still flows up through
- * `onChange` so checkout gating is unchanged. A resolved id collapses the
- * input into a confirmation pill; a wrong id or a lookup fault never blocks
- * checkout — the customer can pay regardless.
+ * nickname lookup (`f.check` on the catalog schema). Everything about
+ * *asking* — the blocker hints, the in-flight button, the confirmation pill —
+ * is owned here; the two things that flow out are the value (`onChange`) and
+ * the check's verdict (`onCheckResult`), which is what gates Pay. A resolved
+ * id collapses the input into a confirmation pill; a wrong id or a lookup
+ * fault never blocks checkout — the customer can pay regardless.
  */
 function CheckablePlayerField({
   productId,
@@ -142,6 +142,7 @@ function CheckablePlayerField({
   productChosen,
   help,
   placeholder,
+  check,
   onCheckResult,
   t,
 }: {
@@ -162,17 +163,30 @@ function CheckablePlayerField({
   productChosen: boolean;
   help: string | null;
   placeholder: string;
-  /** Reports this field's latest check outcome (or `null` once it goes
-   *  stale) so the parent can require a real "valid" before Pay, not just a
-   *  filled-in box. */
-  onCheckResult?: (result: PlayerCheckResult | null) => void;
+  /** The verdict that currently applies to `value` under `productId`, or
+   *  `null` when none does (`currentCheck`). Handed down rather than kept
+   *  here — and reported back up from the check handler rather than mirrored
+   *  with an effect — because the panel gates Pay on it: an effect lands a
+   *  commit later, which left Pay payable while this field had already
+   *  stopped standing behind the id. */
+  check: PlayerCheckResult | null;
+  /** Reports a fresh verdict, filed under the product + id it was asked
+   *  about, or `null` when the pill's «Изменить» drops it. Lets the panel
+   *  require a real "valid" before Pay, not just a filled-in box. */
+  onCheckResult: (verdict: PlayerCheckVerdict | null) => void;
   t: (key: string, values?: Record<string, string>) => string;
 }) {
   // Pick the mobile keyboard from the field's pattern: a letter-bearing
   // pattern (e.g. a Steam login `[A-Za-z0-9_-]`) needs the full text keyboard,
   // while a digits-only id (a game player id) gets the numeric pad.
   const inputMode = pattern && !/[A-Za-z]/.test(pattern) ? "numeric" : "text";
-  const [state, setState] = useState<CheckState>(IDLE);
+  // The question currently in flight, or `null` when none is. Held as the
+  // question rather than as a bare `true` so the spinner goes stale on exactly
+  // the terms the verdict does: `checkPlayer` sets no deadline of its own, so
+  // switching package mid-check would otherwise leave the button spinning,
+  // disabled, on a lookup whose answer is already going to be discarded.
+  const [asking, setAsking] = useState<{ productId: string; playerId: string } | null>(null);
+  const checking = asking !== null && asking.productId === productId && asking.playerId === value;
   const [helpOpen, setHelpOpen] = useState(false);
   const closeHelp = useCallback(() => {
     setHelpOpen(false);
@@ -182,21 +196,6 @@ function CheckablePlayerField({
   // an unnamed "edit text" and the checkout cannot be completed by voice or
   // screen reader.
   const fieldId = useId();
-  // `productId` as well as `value`: the answer belongs to the product it was
-  // asked about. On a region-split brand (ADR-0048) switching package switches
-  // product, and keeping the green "verified" pill across that switch shows a
-  // nickname confirmed against the *other* region — the customer sees the
-  // reassurance and pays for the wrong account. Verified on prod: checking a
-  // Russian id, then picking a global package, left the pill standing.
-  useEffect(() => {
-    setState(IDLE);
-  }, [value, productId]);
-  // Mirrored up so `canPay` can require an actual "valid" behind this field,
-  // not just a non-empty box — a keystroke after a pass resets `state` above,
-  // and that reset must reach the parent just as reliably as a fresh pass.
-  useEffect(() => {
-    onCheckResult?.(state.phase === "done" ? state.result : null);
-  }, [state, onCheckResult]);
   const blocker = checkBlocker({
     value,
     pattern,
@@ -212,23 +211,43 @@ function CheckablePlayerField({
   const [attempted, setAttempted] = useState(false);
   const hint = blocker !== null && (blocker !== "playerId" || attempted) ? blocker : null;
 
-  async function onCheck() {
+  async function onCheck(): Promise<void> {
     if (blocker !== null) {
       setAttempted(true);
       return;
     }
-    setState({ phase: "loading" });
-    setState(await runPlayerCheck(productId, { playerId: value, serverId }));
+    // What the answer will be filed under: the product and the id as they are
+    // at the moment of the press, never as they are when it lands. A check
+    // that comes back after the customer has retyped is then simply not read
+    // back (`currentCheck`), instead of being shown against an id they no
+    // longer mean.
+    const asked = { productId, playerId: value };
+    setAsking(asked);
+    try {
+      // Reported straight from here, not from an effect: this verdict is the
+      // one thing Pay reasons about, and an effect lands a commit later.
+      // `runPlayerCheck` folds every fault into a `result`, so it cannot
+      // reject and this always reports exactly once.
+      onCheckResult({
+        ...asked,
+        result: await runPlayerCheck(productId, { playerId: value, serverId }),
+      });
+    } finally {
+      // By identity, so a check started after this one keeps its own spinner:
+      // only the press that is still the latest one clears it.
+      setAsking((current) => (current === asked ? null : current));
+    }
   }
-  function edit() {
-    setState(IDLE);
+  function edit(): void {
+    // Explicitly drops the verdict rather than leaning on the id changing:
+    // the customer is about to retype, and until they do the id is unchanged,
+    // so nothing else would clear it.
+    onCheckResult(null);
     requestAnimationFrame(() => inputRef.current?.focus());
   }
 
-  const done = state.phase === "done" ? state.result : null;
-
   // Confirmed-hit pill — nickname + the id it resolved to.
-  if (done?.status === "valid") {
+  if (check?.status === "valid") {
     return (
       <div>
         <FieldLabel label={label} required={required} />
@@ -237,7 +256,7 @@ function CheckablePlayerField({
             <Check size={17} strokeWidth={3} />
           </span>
           <div className="min-w-0 flex-1 leading-tight">
-            <div className="truncate text-[14px] font-bold">{done.name}</div>
+            <div className="truncate text-[14px] font-bold">{check.name}</div>
             <div className="truncate font-mono text-[12px] text-emerald-400">{value}</div>
           </div>
           <button
@@ -253,7 +272,7 @@ function CheckablePlayerField({
   }
 
   // Wrong id — the customer mistyped it; offer to fix it, never block.
-  if (done?.status === "invalid") {
+  if (check?.status === "invalid") {
     return (
       <div>
         <FieldLabel label={label} required={required} />
@@ -321,7 +340,7 @@ function CheckablePlayerField({
           // happens. This one still looks inert and stays out of the tab order
           // for the same reason it always did, but pressing it answers.
           aria-disabled={blocker !== null}
-          disabled={state.phase === "loading"}
+          disabled={checking}
           onClick={() => void onCheck()}
           // Neutral on purpose: this is advisory (a failed lookup never blocks
           // checkout), and in lime it read as the main action while the real
@@ -331,8 +350,8 @@ function CheckablePlayerField({
             blocker !== null ? "opacity-40" : ""
           }`}
         >
-          {state.phase === "loading" && <Loader2 size={16} className="animate-spin" />}
-          {state.phase === "loading" ? t("checking") : t("check")}
+          {checking && <Loader2 size={16} className="animate-spin" />}
+          {checking ? t("checking") : t("check")}
         </button>
       </div>
       {help && (
@@ -344,7 +363,7 @@ function CheckablePlayerField({
           onClose={closeHelp}
         />
       )}
-      {checkUnavailable(done) && (
+      {checkUnavailable(check) && (
         <p className="text-tx-dim mt-2 px-1 text-[13px]">
           {t("checkFailed")} ·{" "}
           <button
@@ -903,11 +922,15 @@ export function PurchasePanel({
     return only && only.in_stock !== false ? only.id : undefined;
   });
   const [form, setForm] = useState<Record<string, string>>({});
-  // Mirrors each checkable field's latest player-check result, reported by
-  // `CheckablePlayerField`. Lets `canPay` require a real verification
-  // instead of a filled-in box — a mistyped id otherwise redirects straight
-  // to the acquirer, and the refund policy says that's unrecoverable.
-  const [checkResults, setCheckResults] = useState<Record<string, PlayerCheckResult | null>>({});
+  // Each checkable field's latest player-check verdict, reported by
+  // `CheckablePlayerField` from the check itself and filed under the product +
+  // id it was asked about. Lets `canPay` require a real verification instead
+  // of a filled-in box — a mistyped id otherwise redirects straight to the
+  // acquirer, and the refund policy says that's unrecoverable. Read back only
+  // through `currentFieldCheck`, never directly: a stored verdict outlives the
+  // question it answers, and answering the wrong question is the whole failure
+  // mode this gate exists to prevent.
+  const [checkResults, setCheckResults] = useState<Record<string, PlayerCheckVerdict | null>>({});
   const [email, setEmail] = useState("");
   // Signed-in customers were shown the same required email field and had what
   // they typed dropped on the way out, so they were asked for an address and
@@ -1028,6 +1051,21 @@ export function PurchasePanel({
   // something was chosen, turning one form into two sequential steps.
   const fieldsProduct = selProduct ?? products[0];
   const fields: FormField[] = fieldsProduct?.required_fields ?? [];
+  /** The check verdict that currently applies to a checkable field, or `null`
+   *  when none does — because the id has been retyped, or because the package
+   *  now points at another product (ADR-0048: a region-split brand has one
+   *  product per region, and a nickname verified against the other one is
+   *  reassurance for an account nobody is paying for; verified on prod, where
+   *  checking a Russian id and then picking a global package left the pill
+   *  standing).
+   *
+   *  The single derivation behind both the field's pill and `canPay` below,
+   *  evaluated in the render that changes either input, so no commit can show
+   *  a verified pill next to a Pay button the same commit still considers
+   *  payable. The `?? ""` product id is unreachable: with no `fieldsProduct`
+   *  there are no `fields`, so nothing calls this. */
+  const currentFieldCheck = (key: string): PlayerCheckResult | null =>
+    currentCheck(checkResults[key], fieldsProduct?.id ?? "", form[key] ?? "");
   // A gift card has no account field at all — the "зачисление на аккаунт"
   // copy (and the attestation checkbox below) only make sense when there's
   // one to fill in.
@@ -1196,15 +1234,14 @@ export function PurchasePanel({
   const emailOk = EMAIL_RE.test(email);
   const fieldsOk = fields.every((f) => !f.required || (form[f.key]?.trim() ?? "") !== "");
   // A checkable field (`f.check`) with something typed that the check has not
-  // cleared — never pressed, came back not-found, or a later edit reset a
-  // previous pass (`CheckablePlayerField`'s own effect resets `state`, and its
-  // `onCheckResult` mirrors that here). A check that could not *run* does not
-  // count: see `blocksCheckout`.
+  // cleared — never pressed, came back not-found, or answered about an id or a
+  // product the field no longer points at (`currentFieldCheck`). A check that
+  // could not *run* does not count: see `blocksCheckout`.
   const uncheckedFieldKey = fields.find((f) => {
     if (!f.check) return false;
     const v = (form[f.key] ?? "").trim();
     if (v.length === 0) return false;
-    return blocksCheckout(checkResults[f.key]);
+    return blocksCheckout(currentFieldCheck(f.key));
   })?.key;
   const fieldsVerified = uncheckedFieldKey === undefined;
   // Not just "a method id is set" — the selected method's *provider* must
@@ -1750,8 +1787,12 @@ export function PurchasePanel({
                       }
                       help={f.help_text ? label(f.help_text) : null}
                       placeholder={f.placeholder ? label(f.placeholder) : t("playerIdPlaceholder")}
-                      onCheckResult={(result) => {
-                        setCheckResults((prev) => mergeCheckResult(prev, f.key, result));
+                      check={currentFieldCheck(f.key)}
+                      onCheckResult={(verdict) => {
+                        // A plain overwrite: this fires from the check handler
+                        // and from «Изменить», never from a render-keyed
+                        // effect, so it cannot feed itself a new render.
+                        setCheckResults((prev) => ({ ...prev, [f.key]: verdict }));
                       }}
                       t={t}
                     />

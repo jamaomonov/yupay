@@ -5,13 +5,6 @@
  */
 import { checkPlayer, type PlayerCheckResult } from "@/lib/player-check";
 
-export type CheckState =
-  | { phase: "idle" }
-  | { phase: "loading" }
-  | { phase: "done"; result: PlayerCheckResult };
-
-export const IDLE: CheckState = { phase: "idle" };
-
 /** Why the check cannot run yet, or `null` when it can.
  *
  * Named rather than boolean so the UI can say what to do instead of just
@@ -76,40 +69,62 @@ export async function runPlayerCheck(
   productId: string,
   input: { playerId: string; serverId?: string | null },
   run: typeof checkPlayer = checkPlayer,
-): Promise<CheckState> {
+): Promise<PlayerCheckResult> {
   try {
-    return { phase: "done", result: await run(productId, input) };
+    return await run(productId, input);
   } catch {
     // A thrown fetch (network, our 5xx, 429) is our/provider fault, not the
     // customer's — surface it as `error`, never `invalid`.
-    return { phase: "done", result: { status: "error", name: null } };
+    return { status: "error", name: null };
   }
 }
 
-/** Sets `key` to `result` in a check-results map, but returns `prev` itself
- *  (same reference) when nothing actually changed.
+/**
+ * One check outcome, kept together with the question it answers.
  *
- * `CheckablePlayerField` reports its outcome from an effect keyed partly on
- * the reporter callback the parent hands it — and that callback is a fresh
- * arrow function every render. Without this guard, mapping that into a plain
- * `{ ...prev, [key]: result }` on every one of those calls would itself
- * trigger the parent's next render, forever. Returning the very same
- * reference when the value is unchanged lets React bail out of the update
- * instead (a `useState` setter skips re-rendering on an `Object.is`-equal
- * result), breaking the cycle. */
-export function mergeCheckResult(
-  prev: Record<string, PlayerCheckResult | null>,
-  key: string,
-  result: PlayerCheckResult | null,
-): Record<string, PlayerCheckResult | null> {
-  const current = prev[key] ?? null;
-  const unchanged =
-    current === result ||
-    (current !== null &&
-      result !== null &&
-      current.status === result.status &&
-      current.name === result.name);
-  return unchanged ? prev : { ...prev, [key]: result };
+ * The lookup is scoped to a product and an id, so the answer is only ever
+ * about that pair — on a region-split brand (ADR-0048) the same id has one
+ * product per region, and G2B answers about the one it was asked.
+ *
+ * `serverId` is deliberately not part of the key: the `setState(IDLE)` this
+ * replaces did not watch it either, so a verdict surviving an edit to the
+ * sibling server field is a pre-existing gap, neither introduced nor closed
+ * here.
+ */
+export interface PlayerCheckVerdict {
+  /** The product the lookup was scoped to. */
+  productId: string;
+  /** The id exactly as it was sent — not trimmed, not normalized, so the
+   *  verdict answers for the literal text the field held. */
+  playerId: string;
+  result: PlayerCheckResult;
+}
+
+/**
+ * The verdict that currently applies to `playerId` under `productId`, or
+ * `null` when none does.
+ *
+ * Derived at render — by the field that draws the confirmation pill and by the
+ * panel that gates Pay on it, from the one stored verdict — so the two cannot
+ * disagree inside a commit. It used to be a `setState(IDLE)` in one passive
+ * effect, mirrored up to the panel by a second: switching to another region's
+ * package left a commit (two, counting the mirror re-reporting the old value)
+ * showing a nickname verified against the *other* product while Pay was still
+ * enabled. Reading the stored answer back through the pair it was asked about
+ * makes going stale a property of this render rather than of an effect that
+ * has yet to run.
+ *
+ * It also settles the late answer: a check that lands after the customer has
+ * retyped is filed under what was asked, so it is simply never read back —
+ * the same thing `gift-invite.ts::currentVerdict` does with `canonicalUrl`.
+ */
+export function currentCheck(
+  verdict: PlayerCheckVerdict | null | undefined,
+  productId: string,
+  playerId: string,
+): PlayerCheckResult | null {
+  if (verdict == null) return null;
+  return verdict.productId === productId && verdict.playerId === playerId ? verdict.result : null;
 }
 
 /** Whether a check outcome still stands between the customer and Pay.

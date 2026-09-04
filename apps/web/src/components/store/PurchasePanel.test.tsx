@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { PurchasePanel } from "./PurchasePanel";
@@ -755,12 +755,12 @@ it("enables Pay once the checkable field's check comes back valid", async () => 
   fireEvent.click(screen.getByRole("button", { name: "check" }));
 
   expect(await screen.findByText("blood moon")).toBeInTheDocument();
-  // The pill's own render and the parent's `checkResults` update (an effect,
-  // mirrored up a tick after the pill commits) are two separate renders —
-  // `findByText` above only guarantees the first one happened.
-  await waitFor(() => {
-    expect(screen.getByRole("button", { name: /^pay ·/i })).not.toBeDisabled();
-  });
+  // The pill's own render *is* the panel's: the verdict is reported straight
+  // from the check handler and both read it from the same place, so there is
+  // no tick between the field saying "verified" and Pay agreeing. This used
+  // to need a `waitFor` — the mirror effect landed the panel's copy a render
+  // later — and asserting it outright is the stronger claim.
+  expect(screen.getByRole("button", { name: /^pay ·/i })).not.toBeDisabled();
 });
 
 it("drops a confirmed nickname when the package switches to another product", async () => {
@@ -823,6 +823,183 @@ it("drops a confirmed nickname when the package switches to another product", as
   fireEvent.click(screen.getByRole("button", { name: /GL 86/ }));
 
   expect(screen.queryByText("blood moon")).not.toBeInTheDocument();
+});
+
+/**
+ * Let React render, and nothing more.
+ *
+ * React schedules the render for a click in a microtask, so a bare
+ * `dispatchEvent` leaves the DOM untouched; passive effects go through the
+ * scheduler instead, which needs a whole *task*. Draining only microtasks
+ * therefore lands exactly on the commit the click produced — the one a real
+ * browser can paint, and a real customer can click Pay in, before any effect
+ * has run.
+ */
+async function drainMicrotasks(): Promise<void> {
+  for (let i = 0; i < 5; i += 1) await Promise.resolve();
+}
+
+it("stops Pay dead in the commit the package switches product, not a frame later", async () => {
+  // The fail-open half of the test above. Dropping the pill used to be a
+  // passive effect, and reporting the verdict upward a second one, so the
+  // commit that switched product painted the green pill for the *other*
+  // region — and the panel still held its `valid`, leaving Pay live. Effects
+  // flush in a later scheduler task (the browser may paint first), and this
+  // panel runs a wallet query and a provider fetch alongside, so a long task
+  // stretches the window. What fits inside it is an order paid for one
+  // region against an id verified for the other, which the refund policy
+  // calls unrecoverable.
+  //
+  // `fireEvent` wraps events in `act`, which flushes passive effects before
+  // returning — it cannot see this commit at all. So the switch is dispatched
+  // natively, with the act environment off (React warns otherwise), and read
+  // back after `drainMicrotasks` (React renders the click in a microtask) but
+  // before the scheduler's next *task*, which is where passive effects run.
+  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (url.includes("check-player")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ status: "valid", name: "blood moon" }), { status: 200 }),
+      );
+    }
+    return Promise.resolve(
+      new Response(JSON.stringify({ providers: [{ slug: "click", status: "active" }] }), {
+        status: 200,
+      }),
+    );
+  });
+
+  const base = makeProduct();
+  const globalProduct: ProductDetail = {
+    ...base,
+    required_fields: MLBB_FIELDS,
+    skus: [
+      { ...base.skus[0]!, id: "sku-gl-1", sku_code: "MLBB-86", denomination: "GL 86" },
+      { ...base.skus[0]!, id: "sku-gl-2", sku_code: "MLBB-172", denomination: "GL 172" },
+    ],
+  };
+  const ruProduct: ProductDetail = {
+    ...globalProduct,
+    id: "prod-ru",
+    slug: "mlbb-diamonds-ru",
+    skus: [
+      { ...base.skus[0]!, id: "sku-ru-1", sku_code: "MLBB-RU-86", denomination: "RU 86" },
+      { ...base.skus[0]!, id: "sku-ru-2", sku_code: "MLBB-RU-172", denomination: "RU 172" },
+    ],
+  };
+  renderPanel(<PurchasePanel products={[globalProduct, ruProduct]} locale="ru" />);
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
+  });
+
+  // Everything the RU package needs to be payable: both ids, an email, a
+  // verified nickname.
+  fireEvent.click(screen.getByRole("button", { name: /RU 86/ }));
+  fireEvent.change(screen.getByPlaceholderText("playerIdPlaceholder"), {
+    target: { value: "1313232551" },
+  });
+  fireEvent.change(screen.getByLabelText("ID сервера *"), { target: { value: "6618" } });
+  fireEvent.change(screen.getByPlaceholderText("emailPlaceholder"), {
+    target: { value: "buyer@example.com" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "check" }));
+
+  expect(await screen.findByText("blood moon")).toBeInTheDocument();
+  // The premise, and only the premise: Pay is genuinely live before the
+  // switch, so what follows is about the switch and not about some other
+  // unmet condition. Settled with `waitFor` on purpose — the *timing* of this
+  // direction is the test above's job, and pinning it here too would have
+  // this one fail before it reached the case it exists for.
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: /^pay ·/i })).not.toBeDisabled();
+  });
+
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", false);
+  screen
+    .getByRole("button", { name: /GL 86/ })
+    .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await drainMicrotasks();
+
+  // The commit under test: the switch is on screen and no effect has run yet.
+  // The id standing behind Pay is now unverified for the product being bought,
+  // and `blocksCheckout(null)` is `true` for a top-up — so Pay is already
+  // dead here, not one flush later.
+  expect(screen.getByRole("button", { name: /^pay ·/i })).toBeDisabled();
+  expect(screen.getAllByText("payHintVerify").length).toBeGreaterThan(0);
+  // ...and the reassurance is gone in that same commit, rather than standing
+  // over a package it was never checked against.
+  expect(screen.queryByText("blood moon")).not.toBeInTheDocument();
+
+  // Hand the act environment back and let anything React still has queued run
+  // inside it, so teardown isn't left holding a pending flush.
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(screen.getByRole("button", { name: /^pay ·/i })).toBeDisabled();
+});
+
+it("files a late answer under the id it asked about, never the one now on screen", async () => {
+  // The other half of the same rule. The lookup has no client-side deadline
+  // (`checkPlayer` sets none) and the field stays editable while it runs, so
+  // an answer can land after the customer has corrected the id. It used to be
+  // written straight into the field's state — painting «blood moon» over an id
+  // nobody had ever checked, with Pay live behind it.
+  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  let land: (() => void) | undefined;
+  const answer = new Promise<Response>((resolve) => {
+    land = () => {
+      resolve(
+        new Response(JSON.stringify({ status: "valid", name: "blood moon" }), { status: 200 }),
+      );
+    };
+  });
+  vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (url.includes("check-player")) return answer;
+    return Promise.resolve(
+      new Response(JSON.stringify({ providers: [{ slug: "click", status: "active" }] }), {
+        status: 200,
+      }),
+    );
+  });
+  renderPanel(
+    <PurchasePanel products={[{ ...makeProduct(), required_fields: MLBB_FIELDS }]} locale="ru" />,
+  );
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
+  });
+
+  const playerId = screen.getByPlaceholderText("playerIdPlaceholder");
+  fireEvent.change(playerId, { target: { value: "1313232551" } });
+  fireEvent.change(screen.getByLabelText("ID сервера *"), { target: { value: "6618" } });
+  fireEvent.change(screen.getByPlaceholderText("emailPlaceholder"), {
+    target: { value: "buyer@example.com" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "check" }));
+  // The correction, typed while the lookup is still out.
+  fireEvent.change(playerId, { target: { value: "1313232559" } });
+
+  await act(async () => {
+    land?.();
+    await answer;
+  });
+
+  // The answer is in, and it is not shown: it is about an id the field no
+  // longer holds, so the id on screen counts as unchecked — which blocks Pay
+  // for a top-up (`blocksCheckout(null)`).
+  expect(screen.queryByText("blood moon")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^pay ·/i })).toBeDisabled();
+  expect(screen.getAllByText("payHintVerify").length).toBeGreaterThan(0);
+
+  // Where it *did* go: typing the checked id back brings its own answer with
+  // it. Nothing else in the flow can reach this — a standing verdict hides
+  // the input behind the pill, and «Изменить» drops the verdict on the way
+  // out — so this is also the proof that the answer landed at all rather than
+  // being lost.
+  fireEvent.change(playerId, { target: { value: "1313232551" } });
+  expect(screen.getByText("blood moon")).toBeInTheDocument();
 });
 
 // ---------- pay from balance ----------

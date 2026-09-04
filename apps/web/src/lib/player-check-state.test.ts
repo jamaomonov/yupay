@@ -5,7 +5,7 @@ import {
   canCheck,
   checkBlocker,
   checkUnavailable,
-  mergeCheckResult,
+  currentCheck,
   runPlayerCheck,
 } from "./player-check-state";
 
@@ -32,18 +32,18 @@ describe("runPlayerCheck", () => {
   test("passes a valid result through", async () => {
     const run = vi.fn().mockResolvedValue({ status: "valid", name: "Neo" });
     const s = await runPlayerCheck("p1", { playerId: "51234567" }, run);
-    expect(s).toEqual({ phase: "done", result: { status: "valid", name: "Neo" } });
+    expect(s).toEqual({ status: "valid", name: "Neo" });
     expect(run).toHaveBeenCalledWith("p1", { playerId: "51234567" });
   });
   test("passes an invalid result through unchanged (not folded to error)", async () => {
     const run = vi.fn().mockResolvedValue({ status: "invalid", name: null });
     const s = await runPlayerCheck("p1", { playerId: "9" }, run);
-    expect(s).toEqual({ phase: "done", result: { status: "invalid", name: null } });
+    expect(s).toEqual({ status: "invalid", name: null });
   });
   test("folds a thrown error into status=error, never invalid", async () => {
     const run = vi.fn().mockRejectedValue(new Error("network"));
     const s = await runPlayerCheck("p1", { playerId: "9" }, run);
-    expect(s).toEqual({ phase: "done", result: { status: "error", name: null } });
+    expect(s).toEqual({ status: "error", name: null });
   });
   test("passes serverId through", async () => {
     const run = vi.fn().mockResolvedValue({ status: "invalid", name: null });
@@ -95,35 +95,42 @@ describe("checkBlocker", () => {
   });
 });
 
-describe("mergeCheckResult", () => {
-  test("sets a new key's result", () => {
-    const next = mergeCheckResult({}, "player_id", { status: "valid", name: "Neo" });
-    expect(next).toEqual({ player_id: { status: "valid", name: "Neo" } });
+describe("currentCheck", () => {
+  const verdict = {
+    productId: "prod-ru",
+    playerId: "1313232551",
+    result: { status: "valid" as const, name: "blood moon" },
+  };
+
+  test("reads the verdict back for the pair it was asked about", () => {
+    expect(currentCheck(verdict, "prod-ru", "1313232551")).toEqual({
+      status: "valid",
+      name: "blood moon",
+    });
   });
 
-  test("returns the very same reference when both idle (null → null)", () => {
-    const prev = {};
-    expect(mergeCheckResult(prev, "player_id", null)).toBe(prev);
+  test("drops it the moment the package points at another product", () => {
+    // ADR-0048: the same id has one product per region, and G2B answered
+    // about the region it was asked. Shown against the other one, a green
+    // pill is reassurance for an account nobody is paying for.
+    expect(currentCheck(verdict, "prod-global", "1313232551")).toBeNull();
   });
 
-  test("returns the very same reference when the result is unchanged", () => {
-    const prev = { player_id: { status: "valid" as const, name: "Neo" } };
-    const next = mergeCheckResult(prev, "player_id", { status: "valid", name: "Neo" });
-    expect(next).toBe(prev);
+  test("drops it the moment the id is edited, including trailing whitespace", () => {
+    expect(currentCheck(verdict, "prod-ru", "1313232552")).toBeNull();
+    // Not trimmed on purpose: the verdict answers for the literal text that
+    // was sent, and `runPlayerCheck` sends the field's value untouched.
+    expect(currentCheck(verdict, "prod-ru", "1313232551 ")).toBeNull();
   });
 
-  test("returns a new object when the status changes", () => {
-    const prev = { player_id: { status: "valid" as const, name: "Neo" } };
-    const next = mergeCheckResult(prev, "player_id", { status: "invalid", name: null });
-    expect(next).not.toBe(prev);
-    expect(next).toEqual({ player_id: { status: "invalid", name: null } });
+  test("an invalid verdict is read back the same way — it blocks, so it must not evaporate", () => {
+    const bad = { ...verdict, result: { status: "invalid" as const, name: null } };
+    expect(currentCheck(bad, "prod-ru", "1313232551")).toEqual({ status: "invalid", name: null });
   });
 
-  test("returns a new object when a fresh field key is edited back to idle", () => {
-    const prev = { player_id: { status: "valid" as const, name: "Neo" } };
-    const next = mergeCheckResult(prev, "player_id", null);
-    expect(next).not.toBe(prev);
-    expect(next).toEqual({ player_id: null });
+  test("nothing stored reads as nothing checked", () => {
+    expect(currentCheck(null, "prod-ru", "1313232551")).toBeNull();
+    expect(currentCheck(undefined, "prod-ru", "1313232551")).toBeNull();
   });
 });
 
