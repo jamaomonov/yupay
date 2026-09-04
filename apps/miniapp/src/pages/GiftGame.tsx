@@ -309,6 +309,15 @@ export function walletSubmitReady({
  * free of `useT()` — the caller (`GiftGame`) already has `t`. `null` means
  * payable: nothing left to explain.
  *
+ * `skuId`: `canBuy`'s `skuId !== null` conjunct was missing from this
+ * function entirely (2026-09-04 review round 1) — `useGiftSkuId` resolves
+ * through its own React Query chain, fully decoupled from the
+ * `fetchGiftDetail` call driving the rest of the page, so a buyer who fills
+ * edition/region/invite/method while `detail` has resolved but the SKU
+ * chain hasn't got a disabled button with the bare `gifts.game.buy`
+ * fallback and no explanation. Checked in `canBuy`'s own position (after
+ * the invite checks, before the payment-method one).
+ *
  * `methodReady`/`submitReady` collapse into one `payHintMethod` hint,
  * mirroring the web panel's own `!selectedMethodActive` — "choose a
  * payment method" covers both "no acquirer picked yet" and "the wallet is
@@ -319,12 +328,14 @@ export function giftPayHint({
   priceAvailability,
   inviteHasValue,
   inviteValid,
+  skuId,
   methodReady,
   submitReady,
 }: {
   priceAvailability: GiftPriceAvailability;
   inviteHasValue: boolean;
   inviteValid: boolean;
+  skuId: string | null;
   methodReady: boolean;
   submitReady: boolean;
 }): MessageKey | null {
@@ -332,6 +343,7 @@ export function giftPayHint({
   if (priceAvailability === "fxDown") return "topup.priceUnavailable";
   if (!inviteHasValue) return "gifts.game.payHintInvite";
   if (!inviteValid) return "gifts.game.payHintInviteInvalid";
+  if (skuId === null) return "gifts.game.payHintLoading";
   if (!methodReady || !submitReady) return "gifts.game.payHintMethod";
   return null;
 }
@@ -762,6 +774,7 @@ export default function GiftGame() {
     priceAvailability,
     inviteHasValue,
     inviteValid,
+    skuId,
     methodReady,
     submitReady,
   });
@@ -1233,7 +1246,10 @@ export default function GiftGame() {
               recipient's, and is deleted (2026-09-04 review): the relabeled
               step above plus the region hint sheet now carry that rule. */}
             {editionCountryNotice && (
-              <p className="mt-2 text-[12px] leading-snug text-white/40">
+              // `white/40` measured below the 4.5:1 AA floor for 12px text
+              // on this app's surfaces (2026-09-04 review round 1) —
+              // `white/50` clears it, same fix as the other captions.
+              <p className="mt-2 text-[12px] leading-snug text-white/50">
                 {t("gifts.game.editionCountryOnly", {
                   country: countryName(editionCountryNotice, locale),
                 })}
@@ -1327,6 +1343,11 @@ export default function GiftGame() {
         // profile checker (Task 6a) would verify, so this dialog is
         // unconditionally the last human check.
         needsAttestation
+        // The default checkbox text asks the buyer to re-check "the data in
+        // the game" — there is none here, so a buyer who ticks it reflexively
+        // isn't re-checking anything. This is the actual thing that must be
+        // re-checked: the recipient profile link (2026-09-04 review round 1).
+        attestLabel={t("gifts.game.confirmAttest")}
         onOpenChange={setConfirmOpen}
         onConfirm={() => {
           setConfirmOpen(false);

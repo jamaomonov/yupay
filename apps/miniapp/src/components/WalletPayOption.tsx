@@ -7,6 +7,29 @@ import { useT } from "@/lib/i18n";
 import { formatBalance } from "@/lib/wallet";
 
 /**
+ * Whether the "top up your balance" link renders below the tile — narrower
+ * than the tile's own `disabled`: never shown under maintenance (nothing to
+ * top up towards) or while the total/balance itself isn't known yet
+ * (`unknownTotal`/`loading` — there's no shortfall to quote yet). Pulled out
+ * pure and exported so this decision has a direct unit test under this
+ * app's node-env convention, mirroring the helpers in `GiftGame.test.tsx`
+ * (2026-09-04 review round 1: it shipped inline, with no test at all).
+ */
+export function walletTopUpOffered({
+  maintenance,
+  unknownTotal,
+  loading,
+  enough,
+}: {
+  maintenance: boolean;
+  unknownTotal: boolean;
+  loading: boolean;
+  enough: boolean;
+}): boolean {
+  return !maintenance && !unknownTotal && !loading && !enough;
+}
+
+/**
  * "Pay from balance" tile — a full-width card rendered above the acquirer
  * grid on checkout. Not one of the acquirer picker's tiles (`TopUp`'s own
  * grid, `PaymentMethodGrid` on the Steam Gifts checkout) because the wallet
@@ -51,10 +74,8 @@ export function WalletPayOption({
   // The shortfall message ("Не хватает X") is a fact; this is what to do
   // about it — the tile used to state it and offer no way to fix it
   // (2026-09-04 review, the gift checkout offers a top-up link, this shared
-  // tile didn't). Narrower than `disabled`: never shown under maintenance
-  // (nothing to top up towards) or while the total/balance itself isn't
-  // known yet (`unknownTotal`/`loading` — there's no shortfall to quote).
-  const short = !maintenance && !unknownTotal && !loading && !enough;
+  // tile didn't). See `walletTopUpOffered`'s own docstring.
+  const short = walletTopUpOffered({ maintenance, unknownTotal, loading, enough });
   return (
     <>
       <button

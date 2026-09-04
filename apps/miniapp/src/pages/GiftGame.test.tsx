@@ -413,6 +413,7 @@ describe("giftPayHint", () => {
     priceAvailability: "priced" as const,
     inviteHasValue: true,
     inviteValid: true,
+    skuId: "sku-1",
     methodReady: true,
     submitReady: true,
   };
@@ -439,6 +440,15 @@ describe("giftPayHint", () => {
 
   test("a typed-but-invalid invite gets its own hint", () => {
     expect(giftPayHint({ ...ready, inviteValid: false })).toBe("gifts.game.payHintInviteInvalid");
+  });
+
+  // 2026-09-04 review round 1: `canBuy`'s `skuId !== null` conjunct was
+  // missing from this function entirely — `useGiftSkuId` resolves through
+  // its own React Query chain, decoupled from `fetchGiftDetail`, so a buyer
+  // who fills everything in while that chain is still loading used to see a
+  // disabled button with the bare "buy" fallback and no explanation.
+  test("the SKU chain still loading is named as its own hint, after the invite checks", () => {
+    expect(giftPayHint({ ...ready, skuId: null })).toBe("gifts.game.payHintLoading");
   });
 
   test("no ready payment method — no acquirer active yet", () => {

@@ -30,6 +30,7 @@ export function ConfirmPaymentDialog({
   total,
   warning,
   needsAttestation,
+  attestLabel,
   onConfirm,
   onOpenChange,
 }: {
@@ -40,6 +41,14 @@ export function ConfirmPaymentDialog({
    *  after payment, a gift card has no account to get that warning wrong. */
   warning: string;
   needsAttestation: boolean;
+  /** What the attestation checkbox actually asks the buyer to re-check —
+   *  defaults to `topup.confirmAttest` ("I checked the in-game data is
+   *  correct"), which is wrong for a flow with no in-game data at all: a
+   *  gift's only re-checkable fact is the recipient's profile link, and a
+   *  buyer who ticks a box that doesn't mention it isn't re-checking
+   *  anything (2026-09-04 review round 1). `TopUp` never passes this, so
+   *  its rendering is byte-identical to before. */
+  attestLabel?: string;
   onConfirm: () => void;
   onOpenChange: (next: boolean) => void;
 }) {
@@ -88,7 +97,7 @@ export function ConfirmPaymentDialog({
               }}
               className="accent-primary mt-0.5 h-4 w-4 shrink-0"
             />
-            <span>{t("topup.confirmAttest")}</span>
+            <span>{attestLabel ?? t("topup.confirmAttest")}</span>
           </label>
         )}
 

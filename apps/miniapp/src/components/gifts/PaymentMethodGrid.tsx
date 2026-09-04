@@ -102,7 +102,11 @@ export function PaymentMethodGrid({
             <span
               className={cn(
                 "text-[11px] font-bold leading-none",
-                active ? "text-white" : available ? "text-white/50" : "text-white/35",
+                // The unavailable case used to be `white/35` — even lower
+                // than the `white/40` this same sweep was raising elsewhere
+                // (2026-09-04 review round 1). Both non-active states read
+                // the same now, so there's nothing left to branch on.
+                active ? "text-white" : "text-white/50",
               )}
             >
               {m.name}
