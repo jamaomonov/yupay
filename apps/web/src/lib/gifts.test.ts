@@ -292,6 +292,34 @@ describe("checkGiftProfile", () => {
     });
   });
 
+  it("the directional MARKS survive — they are not what makes a name dangerous", async () => {
+    // The test above only proves Hebrew *letters* survive, which the character
+    // set could never have touched. This is the regression it cannot catch
+    // (2026-09-04 review round 1): U+200E/U+200F (LRM/RLM) are the marks a
+    // real Hebrew, Arabic or Persian persona uses to pin the direction of the
+    // punctuation and digits around it. They are *not* overrides — they open
+    // no scope and reorder nothing — so widening the strip to "all the
+    // direction characters" would silently mangle genuine names while every
+    // other test here stayed green. `.trim()` leaves them too: they are Cf,
+    // not whitespace.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          status: "found",
+          steam_id: "76561198000000000",
+          nickname: "\u200F\u05e9\u05dc\u05d5\u05dd 7\u200E",
+          avatar_url: null,
+        }),
+      ),
+    );
+    await expect(checkGiftProfile("https://steamcommunity.com/id/neo")).resolves.toEqual({
+      status: "found",
+      nickname: "\u200F\u05e9\u05dc\u05d5\u05dd 7\u200E",
+      avatarUrl: null,
+    });
+  });
+
   it("degrades a name that was nothing but bidi controls to unavailable", async () => {
     vi.stubGlobal(
       "fetch",

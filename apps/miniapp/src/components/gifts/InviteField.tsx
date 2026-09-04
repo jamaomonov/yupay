@@ -182,7 +182,7 @@ export function InviteField({
             }}
             onBlur={onInviteBlur}
             placeholder={t("gifts.game.invitePlaceholder")}
-            aria-invalid={showInviteError || profile.blocks}
+            aria-invalid={showInviteError || profile.blocks ? true : undefined}
             aria-describedby={describedBy}
             className="h-11 min-w-0 flex-1 rounded-xl border bg-transparent px-3 text-sm text-white outline-none"
             style={{ borderColor: "hsl(var(--border))" }}
@@ -196,16 +196,27 @@ export function InviteField({
             // blur, an *empty* one gets the note below. Same posture as the
             // web panel and `CheckablePlayerField`.
             aria-disabled={!inviteValid}
-            disabled={checking}
+            // Busy, never `disabled`, while a check runs (2026-09-04 review
+            // round 1): disabling drops focus to <body> the instant a
+            // keyboard or switch user activates the button, and only the
+            // `found` path ever re-homes it — on `not_found`/`unavailable`
+            // they would be left nowhere for up to the full 8 s timeout. The
+            // second press is refused by the caller's own in-flight guard
+            // instead.
+            aria-busy={checking ? true : undefined}
             onClick={onCheck}
-            className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-5 text-[13px] font-semibold transition-opacity active:opacity-70 disabled:opacity-40 ${
+            // Neutral, not the primary tint `DynamicFields` uses: there an
+            // unchecked id genuinely blocks checkout, so that control MUST be
+            // pressed. Here the check is advisory — everything except Steam's
+            // own "no such profile" leaves Buy live — and borrowing TopUp's
+            // look would tell a returning buyer this is a required step, so
+            // they would read «Steam сейчас не отвечает» as a hard stop while
+            // Buy sat available beside it. Mirrors the web panel's own
+            // neutral treatment, in this app's tokens.
+            className={`inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl border px-5 text-[13px] font-semibold text-white/70 transition-opacity active:opacity-70 ${
               inviteValid ? "" : "opacity-40"
             }`}
-            style={{
-              background: "hsl(var(--primary) / 0.12)",
-              border: "1px solid hsl(var(--primary) / 0.35)",
-              color: "hsl(var(--primary))",
-            }}
+            style={{ borderColor: "hsl(var(--border))" }}
           >
             {checking && <Loader2 size={15} className="animate-spin" />}
             {checking ? t("field.checking") : t("field.check")}

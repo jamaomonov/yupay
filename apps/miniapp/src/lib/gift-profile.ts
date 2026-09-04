@@ -154,7 +154,14 @@ export function profileCheckBlocks(check: GiftProfileCheck | null): boolean {
  *  pair so `profileCheckState` can discard an answer the field has since
  *  moved past — see its docstring. */
 export interface GiftProfileResult {
-  url: string;
+  /** The **canonical** link the verdict answers for — `validateInviteUrl`'s
+   *  output, the same string the server was asked about and the same one
+   *  `handleBuy` bills. Deliberately not the raw field text: a cosmetic edit
+   *  that resolves to the same profile (deleting a trailing slash, dropping
+   *  the scheme) must not discard the verdict, since the one verdict allowed
+   *  to block a purchase would then be dismissible by accident
+   *  (2026-09-04 review round 1). The raw text stays for display only. */
+  canonicalUrl: string;
   check: GiftProfileCheck;
 }
 
@@ -179,11 +186,18 @@ export interface ProfileCheckState {
  * without rendering (this app's Vitest suite is node-env, no jsdom/RTL),
  * mirroring `walletPayState` / `giftPayHint`.
  *
- * The verdict is read back only while the field still holds the very link
- * it was asked about, which buys two things at once: editing the link
- * resets the check with no effect to keep in sync, and an answer that lands
- * after the buyer already corrected the link is discarded rather than shown
- * against a profile they no longer mean.
+ * The verdict is read back only while the field still points at the very
+ * profile it was asked about, which buys two things at once: aiming the
+ * field at someone else resets the check with no effect to keep in sync, and
+ * an answer that lands after the buyer already corrected the link is
+ * discarded rather than shown against a profile they no longer mean.
+ *
+ * That comparison is on the **canonical** link, not the raw field text
+ * (2026-09-04 review round 1): `steamcommunity.com/id/neo/` and
+ * `https://steamcommunity.com/id/neo` are one profile, and keying on the raw
+ * string let a buyer clear a `not_found` — the single verdict allowed to
+ * block a purchase — by deleting a trailing slash. `canonicalInvite === null`
+ * (the field no longer parses at all) holds no verdict either way.
  *
  * `attempted` is «Проверить» having been pressed on a field with nothing in
  * it. Only that case needs saying: a *wrong* link already has the field's
@@ -193,21 +207,27 @@ export interface ProfileCheckState {
  */
 export function profileCheckState({
   result,
-  inviteUrl,
+  canonicalInvite,
+  inviteHasValue,
   attempted,
 }: {
   result: GiftProfileResult | null;
-  inviteUrl: string;
+  /** `validateInviteUrl(inviteUrl)` — the caller already has it. */
+  canonicalInvite: string | null;
+  /** Whether the field holds any non-whitespace text at all. */
+  inviteHasValue: boolean;
   attempted: boolean;
 }): ProfileCheckState {
-  const url = inviteUrl.trim();
-  const check = result !== null && result.url === url ? result.check : null;
+  const check =
+    result !== null && canonicalInvite !== null && result.canonicalUrl === canonicalInvite
+      ? result.check
+      : null;
   const found =
     check?.status === "found" ? { nickname: check.nickname, avatarUrl: check.avatarUrl } : null;
   const blocks = profileCheckBlocks(check);
   const alertKey: MessageKey | null = blocks ? "gifts.game.profileNotFound" : null;
   let noteKey: MessageKey | null = null;
-  if (attempted && url === "") {
+  if (attempted && !inviteHasValue) {
     // «Проверить» pressed on an empty field: the field's own error cannot
     // speak for this case (it requires a non-empty value), so without this
     // the button is a silent no-op. Reuses the Buy button's own wording for

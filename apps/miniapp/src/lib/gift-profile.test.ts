@@ -172,6 +172,24 @@ describe("checkGiftProfile", () => {
     });
   });
 
+  test("the directional MARKS survive — they are not what makes a name dangerous", async () => {
+    // The test above only proves Hebrew *letters* survive, which the character
+    // set could never have touched. This is the regression it cannot catch
+    // (2026-09-04 review round 1): U+200E/U+200F (LRM/RLM) are the marks a
+    // real Hebrew, Arabic or Persian persona uses to pin the direction of the
+    // punctuation and digits around it. They are *not* overrides — they add no
+    // scope and reorder nothing — so widening the strip to "all the direction
+    // characters" would silently mangle genuine names while every other test
+    // here stayed green. `.trim()` leaves them too: they are Cf, not
+    // whitespace.
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(personaResponse("\u200Fשלום 7\u200E")));
+    await expect(checkGiftProfile(LINK)).resolves.toEqual({
+      status: "found",
+      nickname: "\u200Fשלום 7\u200E",
+      avatarUrl: null,
+    });
+  });
+
   test("degrades a name that was nothing but bidi controls to unavailable", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(personaResponse("\u202E\u2066")));
     await expect(checkGiftProfile(LINK)).resolves.toEqual({ status: "unavailable" });
@@ -232,9 +250,18 @@ describe("profileCheckBlocks", () => {
 // jsdom/RTL, so this is where the state matrix is actually pinned down.
 describe("profileCheckState", () => {
   const found: GiftProfileCheck = { status: "found", nickname: "Neo", avatarUrl: null };
+  /** The state of a field holding `link` and nothing else pending. */
+  function forLink(link: string, check: GiftProfileCheck | null, attempted = false) {
+    return profileCheckState({
+      result: check === null ? null : { canonicalUrl: LINK, check },
+      canonicalInvite: link,
+      inviteHasValue: true,
+      attempted,
+    });
+  }
 
   test("nothing to show before any check has run", () => {
-    expect(profileCheckState({ result: null, inviteUrl: LINK, attempted: false })).toEqual({
+    expect(forLink(LINK, null)).toEqual({
       found: null,
       alertKey: null,
       noteKey: null,
@@ -243,9 +270,7 @@ describe("profileCheckState", () => {
   });
 
   test("found collapses the field into a card and says nothing in the note line", () => {
-    expect(
-      profileCheckState({ result: { url: LINK, check: found }, inviteUrl: LINK, attempted: false }),
-    ).toEqual({
+    expect(forLink(LINK, found)).toEqual({
       found: { nickname: "Neo", avatarUrl: null },
       alertKey: null,
       noteKey: null,
@@ -254,13 +279,7 @@ describe("profileCheckState", () => {
   });
 
   test("not_found is the one verdict that blocks, and reads as an error", () => {
-    expect(
-      profileCheckState({
-        result: { url: LINK, check: { status: "not_found" } },
-        inviteUrl: LINK,
-        attempted: false,
-      }),
-    ).toEqual({
+    expect(forLink(LINK, { status: "not_found" })).toEqual({
       found: null,
       alertKey: "gifts.game.profileNotFound",
       noteKey: null,
@@ -269,13 +288,7 @@ describe("profileCheckState", () => {
   });
 
   test("unsupported is an advisory note beside a purchase that stays available", () => {
-    expect(
-      profileCheckState({
-        result: { url: LINK, check: { status: "unsupported" } },
-        inviteUrl: LINK,
-        attempted: false,
-      }),
-    ).toEqual({
+    expect(forLink(LINK, { status: "unsupported" })).toEqual({
       found: null,
       alertKey: null,
       noteKey: "gifts.game.profileUnsupported",
@@ -284,13 +297,7 @@ describe("profileCheckState", () => {
   });
 
   test("unavailable is an advisory note too — our outage never costs a sale", () => {
-    expect(
-      profileCheckState({
-        result: { url: LINK, check: { status: "unavailable" } },
-        inviteUrl: LINK,
-        attempted: false,
-      }),
-    ).toEqual({
+    expect(forLink(LINK, { status: "unavailable" })).toEqual({
       found: null,
       alertKey: null,
       noteKey: "gifts.game.profileUnavailable",
@@ -298,42 +305,65 @@ describe("profileCheckState", () => {
     });
   });
 
-  test("a verdict for a link the field no longer holds is discarded, not shown", () => {
-    // Two things at once: editing the link resets the check with no effect to
-    // keep in sync, and an answer landing after the buyer already corrected
-    // the link is never shown against a profile they no longer mean.
-    const state = profileCheckState({
-      result: { url: LINK, check: { status: "not_found" } },
-      inviteUrl: "https://steamcommunity.com/id/neo2",
-      attempted: false,
-    });
+  test("a verdict for a different profile is discarded, not shown", () => {
+    // Two things at once: pointing the field at someone else resets the check
+    // with no effect to keep in sync, and an answer landing after the buyer
+    // already corrected the link is never shown against a profile they no
+    // longer mean.
+    const state = forLink("https://steamcommunity.com/id/neo2", { status: "not_found" });
     expect(state.blocks).toBe(false);
     expect(state.alertKey).toBeNull();
   });
 
-  test("a stale found verdict stops confirming the moment the link changes", () => {
-    const state = profileCheckState({
-      result: { url: LINK, check: found },
-      inviteUrl: "https://steamcommunity.com/id/neo2",
-      attempted: false,
-    });
-    expect(state.found).toBeNull();
+  test("a stale found verdict stops confirming the moment the profile changes", () => {
+    expect(forLink("https://steamcommunity.com/id/neo2", found).found).toBeNull();
   });
 
-  test("surrounding whitespace in the field still matches the checked link", () => {
+  // 2026-09-04 review round 1: the guard used to key on the raw field text, so
+  // a cosmetic edit that resolves to the SAME profile — deleting a trailing
+  // slash, dropping the scheme — discarded the verdict as stale. Harmless for
+  // the four non-blocking states, but it meant a buyer could dismiss the ONE
+  // verdict allowed to block a purchase by accident, and re-enable Buy for a
+  // profile Steam had just said does not exist. The key is the canonical link
+  // (`validateInviteUrl`'s output), which every such edit maps onto.
+  test("a cosmetic edit that resolves to the same profile keeps the blocking verdict", () => {
+    // `steamcommunity.com/id/neo/` and `https://steamcommunity.com/id/neo` are
+    // one profile; both canonicalize to `LINK`.
     const state = profileCheckState({
-      result: { url: LINK, check: found },
-      inviteUrl: `  ${LINK}  `,
+      result: { canonicalUrl: LINK, check: { status: "not_found" } },
+      canonicalInvite: LINK,
+      inviteHasValue: true,
       attempted: false,
     });
-    expect(state.found).toEqual({ nickname: "Neo", avatarUrl: null });
+    expect(state.blocks).toBe(true);
+    expect(state.alertKey).toBe("gifts.game.profileNotFound");
+  });
+
+  test("a field that no longer parses at all drops the verdict", () => {
+    // `canonicalInvite === null` — there is no profile to hold a verdict
+    // against, so nothing is shown and nothing blocks.
+    const state = profileCheckState({
+      result: { canonicalUrl: LINK, check: { status: "not_found" } },
+      canonicalInvite: null,
+      inviteHasValue: true,
+      attempted: false,
+    });
+    expect(state.blocks).toBe(false);
+    expect(state.found).toBeNull();
   });
 
   test("«Проверить» on an empty field says what is missing instead of nothing", () => {
     // The invite field's own error needs a non-empty value, so without this
     // the button is a silent no-op. Reuses the Buy button's own wording for
     // the same missing thing rather than forking a fourth sentence.
-    expect(profileCheckState({ result: null, inviteUrl: "   ", attempted: true })).toEqual({
+    expect(
+      profileCheckState({
+        result: null,
+        canonicalInvite: null,
+        inviteHasValue: false,
+        attempted: true,
+      }),
+    ).toEqual({
       found: null,
       alertKey: null,
       noteKey: "gifts.game.payHintInvite",
@@ -343,27 +373,22 @@ describe("profileCheckState", () => {
 
   test("a wrong (non-empty) link gets no note — its own field error already speaks", () => {
     expect(
-      profileCheckState({ result: null, inviteUrl: "not-a-steam-link", attempted: true }).noteKey,
+      profileCheckState({
+        result: null,
+        canonicalInvite: null,
+        inviteHasValue: true,
+        attempted: true,
+      }).noteKey,
     ).toBeNull();
   });
 
   test("the empty-field hint never overrides a real verdict", () => {
-    expect(
-      profileCheckState({
-        result: { url: LINK, check: { status: "unavailable" } },
-        inviteUrl: LINK,
-        attempted: true,
-      }).noteKey,
-    ).toBe("gifts.game.profileUnavailable");
+    expect(forLink(LINK, { status: "unavailable" }, true).noteKey).toBe(
+      "gifts.game.profileUnavailable",
+    );
   });
 
   test("a blocking verdict speaks through the alert, never twice through the note", () => {
-    expect(
-      profileCheckState({
-        result: { url: LINK, check: { status: "not_found" } },
-        inviteUrl: LINK,
-        attempted: true,
-      }).noteKey,
-    ).toBeNull();
+    expect(forLink(LINK, { status: "not_found" }, true).noteKey).toBeNull();
   });
 });

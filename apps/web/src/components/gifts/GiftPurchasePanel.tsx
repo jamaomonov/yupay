@@ -106,8 +106,9 @@ const S_TEAM_PATH_RE = /^[A-Za-z0-9/_-]{1,64}$/;
 
 /** Turns whatever the buyer pasted into a `URL`, defaulting the scheme to
  *  `https://` the way a browser address bar would — shared by
- *  `isValidInviteUrl` (the accept/reject gate) and the "Открыть профиль"
- *  link (which needs the same normalized, absolute form to link to). */
+ *  `canonicalInviteUrl` (which is both the accept/reject gate and the
+ *  recipient check's key) and the "Открыть профиль" link (which needs the
+ *  same normalized, absolute form to link to). */
 function parseInviteUrl(raw: string): URL | null {
   const value = raw.trim();
   if (!value) return null;
@@ -119,24 +120,48 @@ function parseInviteUrl(raw: string): URL | null {
   }
 }
 
-function isValidInviteUrl(raw: string): boolean {
+/**
+ * The one identity a pasted link stands for: `https://` forced, host
+ * lower-cased, trailing slashes gone. `null` when it isn't an accepted Steam
+ * link at all.
+ *
+ * Two callers need this to be one function rather than two (2026-09-04 review
+ * round 1). The recipient check files its verdict under this string, so
+ * `steamcommunity.com/id/neo` and `https://steamcommunity.com/id/neo/` share
+ * a verdict — keying on the raw field text instead let a buyer clear a
+ * `not_found`, the single verdict allowed to block a purchase, by deleting a
+ * trailing slash. And `isValidInviteUrl` is just "did this resolve to
+ * something", so the accept/reject gate cannot drift from what gets checked.
+ *
+ * Mirrors `validateInviteUrl` in the Mini App's `lib/gifts.ts` exactly.
+ */
+function canonicalInviteUrl(raw: string): string | null {
   const url = parseInviteUrl(raw);
-  if (!url) return false;
-  if (url.protocol !== "https:") return false;
+  if (!url) return null;
+  if (url.protocol !== "https:") return null;
   const host = url.hostname.toLowerCase();
   const parts = url.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
   if (host === "steamcommunity.com") {
-    if (parts.length === 2 && parts[0] === "profiles") return STEAM_ID64_RE.test(parts[1] ?? "");
-    if (parts.length === 2 && parts[0] === "id") return STEAM_VANITY_RE.test(parts[1] ?? "");
-    return false;
+    if (parts.length === 2 && parts[0] === "profiles" && STEAM_ID64_RE.test(parts[1] ?? "")) {
+      return `https://steamcommunity.com/profiles/${parts[1] ?? ""}`;
+    }
+    if (parts.length === 2 && parts[0] === "id" && STEAM_VANITY_RE.test(parts[1] ?? "")) {
+      return `https://steamcommunity.com/id/${parts[1] ?? ""}`;
+    }
+    return null;
   }
   if (host === "s.team") {
-    if (parts.length >= 2 && parts[0] === "p") {
-      return S_TEAM_PATH_RE.test(parts.slice(1).join("/"));
+    const tail = parts.slice(1).join("/");
+    if (parts.length >= 2 && parts[0] === "p" && S_TEAM_PATH_RE.test(tail)) {
+      return `https://s.team/p/${tail}`;
     }
-    return false;
+    return null;
   }
-  return false;
+  return null;
+}
+
+function isValidInviteUrl(raw: string): boolean {
+  return canonicalInviteUrl(raw) !== null;
 }
 
 /** The "Открыть профиль получателя" link's `href` — the normalized,
@@ -335,7 +360,10 @@ export function GiftPurchasePanel({
   }
 
   const [inviteUrl, setInviteUrl] = useState("");
-  const inviteValid = isValidInviteUrl(inviteUrl);
+  // The profile the field currently points at, or `null` when it points at
+  // nothing yet — the recipient check's own key, and the accept/reject gate.
+  const canonicalInvite = canonicalInviteUrl(inviteUrl);
+  const inviteValid = canonicalInvite !== null;
   const inviteHasValue = inviteUrl.trim() !== "";
   // Whether the current text *would* show an error, ignoring timing — the
   // gate the buy button and `payHint` reason off, unconditionally.
@@ -361,12 +389,19 @@ export function GiftPurchasePanel({
   const inviteHref = inviteProfileHref(inviteUrl);
 
   // The pre-purchase recipient check («Проверить»). The verdict is stored
-  // together with the link it was asked about and read back only while the
-  // field still holds that same link — which buys two things at once: editing
-  // the link resets the check with no effect to keep in sync, and an answer
-  // that lands after the buyer has already corrected the link is discarded
-  // rather than shown against a profile they no longer mean.
-  const [profile, setProfile] = useState<{ url: string; check: GiftProfileCheck } | null>(null);
+  // together with the profile it was asked about and read back only while the
+  // field still points at that same profile — which buys two things at once:
+  // aiming the field at someone else resets the check with no effect to keep
+  // in sync, and an answer that lands after the buyer has already corrected
+  // the link is discarded rather than shown against a profile they no longer
+  // mean.
+  // `canonicalUrl`, never the raw field text: a cosmetic edit that resolves
+  // to the same profile must not discard the verdict — see
+  // `canonicalInviteUrl`.
+  const [profile, setProfile] = useState<{
+    canonicalUrl: string;
+    check: GiftProfileCheck;
+  } | null>(null);
   const [profileChecking, setProfileChecking] = useState(false);
   // Set when «Проверить» is pressed on a field it cannot run against, so the
   // empty-field case can say what's missing. Only "you haven't pasted the
@@ -376,7 +411,16 @@ export function GiftPurchasePanel({
   const [checkAttempted, setCheckAttempted] = useState(false);
   const inviteRef = useRef<HTMLInputElement>(null);
   const editRef = useRef<HTMLButtonElement>(null);
-  const profileCheck = profile !== null && profile.url === inviteUrl.trim() ? profile.check : null;
+  // The double-submit guard for «Проверить». A ref, not `profileChecking`:
+  // the button stays focusable and pressable while a check is in flight (a
+  // real `disabled` drops focus to <body> for up to the full 8 s timeout, and
+  // only the `found` path ever re-homes it), so the handler is what has to
+  // refuse the second press (2026-09-04 review round 1).
+  const checkInFlightRef = useRef(false);
+  const profileCheck =
+    profile !== null && canonicalInvite !== null && profile.canonicalUrl === canonicalInvite
+      ? profile.check
+      : null;
   const profileFound = profileCheck?.status === "found" ? profileCheck : null;
   // The single new condition on the purchase. `profileCheckBlocks` is `true`
   // for exactly one verdict — Steam's own "no such profile" — so an
@@ -386,8 +430,12 @@ export function GiftPurchasePanel({
   const profileBlocks = profileCheckBlocks(profileCheck);
 
   async function runProfileCheck(): Promise<void> {
-    const url = inviteUrl.trim();
-    if (!isValidInviteUrl(url)) {
+    if (checkInFlightRef.current) return;
+    // The canonical form is what the server is asked about and what the
+    // verdict is filed under — one profile, one answer, however the buyer
+    // happened to type it.
+    const url = canonicalInvite;
+    if (url === null) {
       // A dimmed control that swallows the click teaches nothing. Pressing it
       // answers either way: a *wrong* link gets the visible link error the
       // field would otherwise hold back until blur or the idle pause, and an
@@ -398,10 +446,11 @@ export function GiftPurchasePanel({
       setCheckAttempted(true);
       return;
     }
+    checkInFlightRef.current = true;
     setProfileChecking(true);
     try {
       const check = await checkGiftProfile(url);
-      setProfile({ url, check });
+      setProfile({ canonicalUrl: url, check });
       if (check.status === "found") {
         // The «Проверить» button unmounts along with the field it sits next
         // to, dropping focus to <body> — a keyboard user's next Tab would
@@ -415,8 +464,9 @@ export function GiftPurchasePanel({
       // so the component stays correct on its own if that ever changes —
       // with it, `runProfileCheck` itself cannot reject either, which is what
       // makes the bare `void runProfileCheck()` at the call site safe.
-      setProfile({ url, check: { status: "unavailable" } });
+      setProfile({ canonicalUrl: url, check: { status: "unavailable" } });
     } finally {
+      checkInFlightRef.current = false;
       setProfileChecking(false);
     }
   }
@@ -1056,14 +1106,21 @@ export function GiftPurchasePanel({
                 // nothing happened. `runProfileCheck` answers with the link
                 // error instead. Same posture as `CheckablePlayerField`.
                 aria-disabled={!inviteValid}
-                disabled={profileChecking}
+                // Busy, never `disabled`, while a check runs (2026-09-04
+                // review round 1): disabling drops focus to <body> the
+                // instant a keyboard user activates the button, and only the
+                // `found` path ever re-homes it — on `not_found`/
+                // `unavailable` they would be left nowhere for up to the full
+                // 8 s timeout. `runProfileCheck`'s own in-flight guard
+                // refuses the second press.
+                aria-busy={profileChecking ? true : undefined}
                 onClick={() => {
                   void runProfileCheck();
                 }}
                 // Neutral, not primary: the check is advisory — everything
                 // except a definitive "no such profile" lets the buyer carry
                 // on — and in lime it would compete with the real CTA.
-                className={`border-border-2 text-tx-mute hover:border-tx-dim hover:text-foreground hover:bg-muted rounded-btn inline-flex h-11 shrink-0 items-center justify-center gap-2 border px-5 text-[14px] font-semibold transition disabled:pointer-events-none disabled:opacity-40 ${
+                className={`border-border-2 text-tx-mute hover:border-tx-dim hover:text-foreground hover:bg-muted rounded-btn inline-flex h-11 shrink-0 items-center justify-center gap-2 border px-5 text-[14px] font-semibold transition ${
                   inviteValid ? "" : "opacity-40"
                 }`}
               >

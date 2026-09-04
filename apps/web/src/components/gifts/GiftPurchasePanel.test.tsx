@@ -1767,4 +1767,81 @@ describe("the recipient profile check", () => {
     // The very same node, not a replacement one.
     expect(screen.getByTestId("gift-profile-live")).toBe(live);
   });
+
+  // 2026-09-04 review round 1: the verdict used to be filed under the raw
+  // field text, so a cosmetic edit resolving to the SAME profile discarded it
+  // as stale — and Buy came back for a profile Steam had just said does not
+  // exist. Harmless for the three non-blocking verdicts; not for the one that
+  // is allowed to stop a purchase.
+  it("holds a not_found through an edit that still means the same profile", async () => {
+    mockProvidersResponse();
+    checkGiftProfileMock.mockResolvedValue({ status: "not_found" });
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    await fillValidCheckout();
+    pasteInvite("https://steamcommunity.com/id/neo/");
+    fireEvent.click(checkButton());
+    expect(await screen.findByRole("alert")).toHaveTextContent("profileNotFound");
+
+    // Same profile, three cosmetic differences: no scheme, no trailing slash.
+    pasteInvite("steamcommunity.com/id/neo");
+
+    expect(screen.getByRole("alert")).toHaveTextContent("profileNotFound");
+    expect(buyButton()).toBeDisabled();
+    expect(buyButton()).toHaveTextContent("payHintProfileNotFound");
+  });
+
+  it("still drops the verdict when the edit means a different profile", async () => {
+    mockProvidersResponse();
+    checkGiftProfileMock.mockResolvedValue({ status: "not_found" });
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    await fillValidCheckout();
+    pasteInvite("https://steamcommunity.com/id/neo");
+    fireEvent.click(checkButton());
+    expect(await screen.findByRole("alert")).toHaveTextContent("profileNotFound");
+
+    pasteInvite("https://steamcommunity.com/id/neo2");
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(buyButton()).not.toBeDisabled();
+  });
+
+  it("keeps «Проверить» focusable while the check runs, and refuses the second press", async () => {
+    // A real `disabled` drops focus to <body> the instant a keyboard user
+    // activates the button, and only the `found` path ever re-homes it — on
+    // `not_found`/`unavailable` they are left nowhere for up to the full 8 s
+    // timeout (2026-09-04 review round 1). The button is `aria-busy` instead,
+    // and the handler refuses the duplicate.
+    mockProvidersResponse();
+    let resolveCheck: (v: GiftProfileCheck) => void = () => {
+      throw new Error("resolveCheck called before it was assigned");
+    };
+    checkGiftProfileMock.mockReturnValue(
+      new Promise<GiftProfileCheck>((resolve) => {
+        resolveCheck = resolve;
+      }),
+    );
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    pasteInvite("https://steamcommunity.com/id/neo");
+    const button = screen.getByRole("button", { name: "check" });
+    button.focus();
+    fireEvent.click(button);
+
+    const busy = screen.getByRole("button", { name: "checking" });
+    expect(busy).not.toBeDisabled();
+    expect(busy).toHaveAttribute("aria-busy", "true");
+    expect(busy).toHaveFocus();
+
+    fireEvent.click(busy);
+    expect(checkGiftProfileMock).toHaveBeenCalledTimes(1);
+
+    resolveCheck({ status: "unavailable" });
+    await waitFor(() => {
+      expect(screen.getByTestId("gift-profile-live")).toHaveTextContent("profileUnavailable");
+    });
+    // Still where the buyer left it — the check answered without moving focus.
+    expect(screen.getByRole("button", { name: "check" })).toHaveFocus();
+  });
 });

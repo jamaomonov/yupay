@@ -771,9 +771,25 @@ export default function GiftGame() {
   // whether Buy is blocked at all. See `lib/gift-profile.ts`.
   const profileState = profileCheckState({
     result: profile,
-    inviteUrl,
+    canonicalInvite,
+    inviteHasValue,
     attempted: checkAttempted,
   });
+  // The canonical link the field holds *now*, readable from an async
+  // continuation — `canonicalInvite` itself is a render snapshot taken before
+  // the await, so a check that resolves after the buyer retyped would compare
+  // against the link they had when they pressed the button. Synced from an
+  // effect (after commit) rather than assigned during render.
+  const currentInviteRef = useRef<string | null>(canonicalInvite);
+  useEffect(() => {
+    currentInviteRef.current = canonicalInvite;
+  }, [canonicalInvite]);
+  // The double-submit guard for «Проверить». A ref, not `profileChecking`:
+  // the button stays focusable and pressable while a check is in flight (a
+  // real `disabled` drops focus to <body> for up to the full 8 s timeout, and
+  // only the `found` path ever re-homes it), so the handler is what has to
+  // refuse the second press.
+  const checkInFlightRef = useRef(false);
 
   function changeInviteUrl(value: string): void {
     setInviteUrl(value);
@@ -786,12 +802,13 @@ export default function GiftGame() {
   }
 
   async function runProfileCheck(): Promise<void> {
-    const url = inviteUrl.trim();
-    // The canonical form is what the server is asked about — the same string
-    // `handleBuy` puts in `fulfillment_data.invite_url`, so the check answers
-    // for exactly the link that will be bought. The raw trimmed text stays the
-    // key the verdict is filed under, since that is what the field holds.
-    const canonical = validateInviteUrl(url);
+    if (checkInFlightRef.current) return;
+    // The canonical form is what the server is asked about, what the verdict
+    // is filed under, and the same string `handleBuy` puts in
+    // `fulfillment_data.invite_url` — so the check answers for exactly the
+    // link that will be bought, and a cosmetic edit to the raw text cannot
+    // discard the answer (see `GiftProfileResult.canonicalUrl`).
+    const canonical = canonicalInvite;
     if (canonical === null) {
       // A dimmed control that swallows the tap teaches nothing. Pressing it
       // answers either way: a *wrong* link gets the visible link error the
@@ -805,23 +822,30 @@ export default function GiftGame() {
       // where haptics fire only on a resolved `PlayerCheckResult`.
       return;
     }
+    checkInFlightRef.current = true;
     setProfileChecking(true);
     try {
       const check = await checkGiftProfile(canonical);
-      setProfile({ url, check });
-      // A resolved recipient is the strongest "we see who this is going to"
-      // signal in the flow and a rejection is the cheapest moment to catch a
-      // typo; the non-blocking verdicts are neither, so they get the neutral
-      // tick rather than an error buzz for a fault that was never the
-      // buyer's.
-      haptic(check.status === "found" ? "ok" : check.status === "not_found" ? "error" : "select");
+      setProfile({ canonicalUrl: canonical, check });
+      // Only for a verdict that will actually render. If the buyer retyped
+      // while this was in flight, `profileCheckState` discards the answer —
+      // buzzing success for something nobody sees is worse than silence.
+      if (currentInviteRef.current === canonical) {
+        // A resolved recipient is the strongest "we see who this is going to"
+        // signal in the flow and a rejection is the cheapest moment to catch a
+        // typo; the non-blocking verdicts are neither, so they get the neutral
+        // tick rather than an error buzz for a fault that was never the
+        // buyer's.
+        haptic(check.status === "found" ? "ok" : check.status === "not_found" ? "error" : "select");
+      }
     } catch {
       // `checkGiftProfile` never rejects (see its doc comment). This is here
       // so the page stays correct on its own if that ever changes — with it,
       // `runProfileCheck` itself cannot reject either, which is what makes
       // the bare `void runProfileCheck()` at the call site safe.
-      setProfile({ url, check: { status: "unavailable" } });
+      setProfile({ canonicalUrl: canonical, check: { status: "unavailable" } });
     } finally {
+      checkInFlightRef.current = false;
       setProfileChecking(false);
     }
   }
