@@ -86,7 +86,7 @@ export async function runPlayerCheck(
  * about that pair — on a region-split brand (ADR-0048) the same id has one
  * product per region, and G2B answers about the one it was asked.
  *
- `serverId` is part of it too, and has to be: G2B is asked for the id *on a
+ * `serverId` is part of it too, and has to be: G2B is asked for the id *on a
  * server*, and an id-only lookup against the wrong one just answers "no such
  * player". On MLBB the id collapses into the confirmation pill but the server
  * stays an ordinary editable field beside it, so without this a buyer verifies

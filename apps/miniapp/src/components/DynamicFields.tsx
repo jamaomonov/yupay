@@ -8,7 +8,7 @@
  */
 
 import { Check, HelpCircle, History, Loader2, X } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import type { FormField } from "@/lib/catalog";
 import type { PlayerCheckResult } from "@/lib/player-check";
@@ -294,6 +294,22 @@ function TextLikeField({
   // is whatever that press captured, so only a ref can say whether a later
   // press has superseded it. Written and cleared in lockstep with the state.
   const latestAsk = useRef<PlayerCheckQuestion | null>(null);
+  // Clearing on unmount is what stops a *dead* instance authorising a late
+  // report. Switching product unmounts this form while a lookup is out; the
+  // buyer re-checks on the new product and gets a fresh verdict, and then the
+  // old lookup lands still holding this ref, whose `.current` is its own
+  // question — so the guard below would pass and it would overwrite the newer
+  // verdict in the parent. That reads back as `null`, so nothing unverified
+  // becomes payable, but the pill vanishes and the CTA re-blocks with nothing
+  // on screen having changed: exactly the dead end the guard exists to remove.
+  // The old effect-mirror was immune to this (a dead instance's setState
+  // no-ops), so this is ours to close.
+  useEffect(
+    () => () => {
+      latestAsk.current = null;
+    },
+    [],
+  );
   const serverId = serverIdFor(field, allValues);
   const checking =
     asking !== null &&
