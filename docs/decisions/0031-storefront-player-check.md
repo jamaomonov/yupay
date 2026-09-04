@@ -111,8 +111,11 @@ on `null`, which also blocks, so an over-eager drop costs a second «Прове�
 and nothing more. There, `null` is permissive and `not_found` is the blocking
 verdict, so an over-eager drop would clear the one answer that blocks a sale.
 
-Web only so far. The Mini App (`apps/miniapp`) still mirrors from an effect;
-same rule, same fix shape, not yet applied.
+Applied on both storefronts: `apps/web` (`PurchasePanel`) and `apps/miniapp`
+(`DynamicFields` + `TopUp`). The Mini App keeps the decision in a pure
+`currentFieldCheck` in its own `player-check-state.ts` — its suite is node-env
+with no DOM, so the gate and the review screen's nickname read one tested
+function rather than two hand-written derivations.
 
 ### The `check` descriptor (`FormField.check`)
 

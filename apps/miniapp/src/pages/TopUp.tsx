@@ -14,8 +14,6 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useParams } from "wouter";
 
-import type { PlayerCheckResult } from "@/lib/player-check";
-
 import { ConfirmPaymentDialog } from "@/components/ConfirmPaymentDialog";
 import { DynamicFields, pickLocalized } from "@/components/DynamicFields";
 import { type AppliedPromo, PromoField } from "@/components/PromoField";
@@ -44,7 +42,11 @@ import {
   useCheckout,
 } from "@/lib/orders";
 import { ACQUIRER_BY_METHOD, PAYMENT_METHODS, PROVIDER_BY_METHOD } from "@/lib/payment-methods";
-import { blocksCheckout, mergeCheckResult } from "@/lib/player-check-state";
+import {
+  blocksCheckout,
+  currentFieldCheck,
+  type PlayerCheckVerdict,
+} from "@/lib/player-check-state";
 import { getRecentFulfillment, rememberFulfillment } from "@/lib/recent-checkout";
 import { packagePrice, starLayers, visibleStarPackages } from "@/lib/star-packages";
 import { haptic, isInsideTelegram, openExternalLink, setClosingConfirmation } from "@/lib/telegram";
@@ -234,6 +236,11 @@ export default function TopUp() {
   const currency = useDisplayCurrency();
   const productQuery = useProductWithSkus(selectedProductSlug || undefined, currency);
   const requiredFields = productQuery.data?.product.required_fields ?? [];
+  // The product the account fields — and any player check run against them —
+  // belong to. A game sold per account region (ADR-0048) is one product per
+  // region, and switching between them keeps the typed id, so this is half of
+  // what makes a stored verdict still true.
+  const productId = productQuery.data?.product.id ?? "";
   const productImage = productQuery.data?.product.image_url ?? null;
   // A gift card is a purchase, not a top-up: there's no account being
   // credited, only a code or activation link handed over after payment.
@@ -354,11 +361,15 @@ export default function TopUp() {
   // per-field tap-to-fill suggestion (see DynamicFields) — never auto-applied,
   // so we don't carry a stale player_id into a fresh order by surprise.
   const [suggestions, setSuggestions] = useState<Record<string, string>>({});
-  // Mirrors each checkable field's latest player-check result, reported by
-  // DynamicFields. Lets "continue" require an actual verification instead of
-  // a filled-in box — a mistyped id otherwise sails straight to checkout,
-  // and the refund policy says a wrong id after payment is unrecoverable.
-  const [checkResults, setCheckResults] = useState<Record<string, PlayerCheckResult | null>>({});
+  // Each checkable field's latest player-check verdict, reported by
+  // DynamicFields from the check itself and filed under the question it was
+  // asked (product + id + server). Lets "continue" require an actual
+  // verification instead of a filled-in box — a mistyped id otherwise sails
+  // straight to checkout, and the refund policy says a wrong id after payment
+  // is unrecoverable. Read back only through `currentFieldCheck`, never
+  // directly: a stored verdict outlives the question it answers, and answering
+  // the wrong question is the whole failure mode this gate exists to prevent.
+  const [checkResults, setCheckResults] = useState<Record<string, PlayerCheckVerdict | null>>({});
   const [selectedPkg, setSelectedPkg] = useState<string>("");
   // Confirmation before an irreversible payment. Declared here with the other
   // hooks — the component has early returns further down, and a `useState`
@@ -622,16 +633,16 @@ export default function TopUp() {
   })?.key;
   // A checkable field (`f.check`) with something typed into it but no
   // successful "Проверить" behind that value yet — either it was never
-  // pressed, it came back "not found", or an edit after a pass reset the
-  // result to stale (see DynamicFields' `onCheckResult`). A check that could
-  // not *run* does not count — see `blocksCheckout`. Checked after
-  // `missingFieldKey` on purpose: an empty required field is "nothing to
-  // verify yet", not "unverified".
+  // pressed, it came back "not found", or the answer on file is about another
+  // question: another product, another id, another server (`currentFieldCheck`).
+  // A check that could not *run* does not count — see `blocksCheckout`.
+  // Checked after `missingFieldKey` on purpose: an empty required field is
+  // "nothing to verify yet", not "unverified".
   const uncheckedFieldKey = requiredFields.find((f) => {
     if (!f.check) return false;
     const v = (fulfillment[f.key] ?? "").trim();
     if (v.length === 0) return false;
-    return blocksCheckout(checkResults[f.key]);
+    return blocksCheckout(currentFieldCheck(checkResults, productId, fulfillment, f));
   })?.key;
 
   // One expression for the CTA's disabled state, used by both its styling and
@@ -665,7 +676,9 @@ export default function TopUp() {
     .filter((f) => (fulfillment[f.key] ?? "").trim() !== "")
     .map((f) => {
       const value = fulfillment[f.key] ?? "";
-      const checked = f.check ? checkResults[f.key] : null;
+      // The same derivation the gate above uses, so the review screen can
+      // never show a nickname for an account the CTA no longer vouches for.
+      const checked = currentFieldCheck(checkResults, productId, fulfillment, f);
       return {
         key: f.key,
         label: pickLocalized(f.label, locale, f.key),
@@ -1116,17 +1129,20 @@ export default function TopUp() {
                   sub={fillingHint}
                 />
                 <DynamicFields
-                  productId={productQuery.data?.product.id ?? ""}
+                  productId={productId}
                   fields={requiredFields}
                   values={fulfillment}
                   suggestions={suggestions}
                   onChange={(key, value) => {
                     setFulfillment((prev) => ({ ...prev, [key]: value }));
                   }}
-                  onCheckResult={(key, result) => {
-                    setCheckResults((prev) => mergeCheckResult(prev, key, result));
+                  onCheckResult={(key, verdict) => {
+                    // A plain overwrite: this fires from the check handler and
+                    // from «Изменить», never from a render-keyed effect, so it
+                    // cannot feed itself a new render.
+                    setCheckResults((prev) => ({ ...prev, [key]: verdict }));
                   }}
-                  knownResults={checkResults}
+                  checkResults={checkResults}
                 />
               </div>
             )}

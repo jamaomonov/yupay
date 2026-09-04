@@ -8,7 +8,7 @@
  */
 
 import { Check, HelpCircle, History, Loader2, X } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 
 import type { FormField } from "@/lib/catalog";
 import type { PlayerCheckResult } from "@/lib/player-check";
@@ -25,9 +25,10 @@ import { useT } from "@/lib/i18n";
 import {
   canCheck,
   checkUnavailable,
-  IDLE,
+  currentFieldCheck,
   runPlayerCheck,
-  type CheckState,
+  serverIdFor,
+  type PlayerCheckVerdict,
 } from "@/lib/player-check-state";
 import { haptic } from "@/lib/telegram";
 
@@ -52,19 +53,25 @@ export interface DynamicFieldsProps {
   /** Per-field values from the customer's last checkout, offered as a
    *  tap-to-fill suggestion. Never auto-applied — the user decides. */
   suggestions?: Record<string, string>;
-  /** Reports a checkable field's latest player-check outcome (or `null` once
-   *  it goes stale — the value changed, so the previous result no longer
-   *  vouches for anything). Only fired for fields that carry a `check`
-   *  config; lets the parent gate checkout on "verified", not just "typed
-   *  something", and show the resolved nickname elsewhere (order summary). */
-  onCheckResult?: (key: string, result: PlayerCheckResult | null) => void;
-  /** The parent's memory of each field's last `onCheckResult` report — fed
-   *  straight back in as the initial state on (re)mount. `TopUp`'s review
-   *  stage unmounts this whole form (it lives behind `stage === "select"`),
-   *  and without this a verified pill would forget itself and demand another
-   *  "Проверить" the moment the buyer taps back, despite nothing about the
-   *  id having changed. */
-  knownResults?: Record<string, PlayerCheckResult | null>;
+  /** Reports a checkable field's fresh verdict, filed under the question it
+   *  was asked (product + id + server), or `null` when «Изменить» drops it.
+   *  Only fired for fields that carry a `check` config; lets the parent gate
+   *  checkout on "verified", not just "typed something", and show the
+   *  resolved nickname elsewhere (order summary).
+   *
+   *  Reported straight from the check handler rather than mirrored up from an
+   *  effect: an effect lands a commit later, and this verdict gates the CTA
+   *  (see `currentCheck`). */
+  onCheckResult: (key: string, verdict: PlayerCheckVerdict | null) => void;
+  /** The parent's verdict store, read back through `currentFieldCheck` — the
+   *  same function the CTA gate and the review screen's nickname use, so no
+   *  reader can disagree with another about whose account this is.
+   *
+   *  Owning it in the parent also fixes what a `knownResults` seed used to
+   *  paper over: `TopUp`'s review stage unmounts this whole form (it lives
+   *  behind `stage === "select"`), and state kept in the field would forget a
+   *  verified pill the moment the buyer taps back. */
+  checkResults: Record<string, PlayerCheckVerdict | null>;
 }
 
 export function DynamicFields({
@@ -74,7 +81,7 @@ export function DynamicFields({
   onChange,
   suggestions,
   onCheckResult,
-  knownResults,
+  checkResults,
 }: DynamicFieldsProps) {
   const { locale } = useT();
   if (fields.length === 0) return null;
@@ -103,7 +110,7 @@ export function DynamicFields({
               onChange(field.key, v);
             }}
             onCheckResult={onCheckResult}
-            knownResult={knownResults?.[field.key] ?? null}
+            check={currentFieldCheck(checkResults, productId, values, field)}
           />
         );
       })}
@@ -120,7 +127,7 @@ function DynamicField({
   onChange,
   suggestion,
   onCheckResult,
-  knownResult,
+  check,
 }: {
   productId: string;
   field: FormField;
@@ -129,8 +136,8 @@ function DynamicField({
   serverLabel: string | null;
   onChange: (v: string) => void;
   suggestion: string | null;
-  onCheckResult?: (key: string, result: PlayerCheckResult | null) => void;
-  knownResult: PlayerCheckResult | null;
+  onCheckResult: (key: string, verdict: PlayerCheckVerdict | null) => void;
+  check: PlayerCheckResult | null;
 }) {
   const { t, locale } = useT();
   const [helpOpen, setHelpOpen] = useState(false);
@@ -207,7 +214,7 @@ function DynamicField({
           required={required}
           suggestion={suggestion}
           onCheckResult={onCheckResult}
-          knownResult={knownResult}
+          check={check}
         />
       )}
 
@@ -228,6 +235,11 @@ function DynamicField({
   );
 }
 
+/** What one press of «Проверить» asks about: everything G2B is given, and so
+ *  everything the answer is about. `PlayerCheckVerdict` is this plus the
+ *  answer; the field also holds it for the press currently in flight. */
+type PlayerCheckQuestion = Omit<PlayerCheckVerdict, "result">;
+
 function TextLikeField({
   productId,
   field,
@@ -240,7 +252,7 @@ function TextLikeField({
   required,
   suggestion,
   onCheckResult,
-  knownResult,
+  check,
 }: {
   productId: string;
   field: FormField;
@@ -255,10 +267,11 @@ function TextLikeField({
   fieldId: string;
   required: boolean;
   suggestion: string | null;
-  onCheckResult?: (key: string, result: PlayerCheckResult | null) => void;
-  /** The parent's last-known result for this field, fed back in as the
-   *  initial state — see `DynamicFieldsProps.knownResults`. */
-  knownResult: PlayerCheckResult | null;
+  onCheckResult: (key: string, verdict: PlayerCheckVerdict | null) => void;
+  /** The verdict that currently applies to this field's value under this
+   *  product and server, or `null` when none does — derived by the parent
+   *  through `currentFieldCheck`. See `DynamicFieldsProps.checkResults`. */
+  check: PlayerCheckResult | null;
 }) {
   const { t } = useT();
   const inputType = field.type === "email" ? "email" : field.type === "number" ? "tel" : "text";
@@ -271,43 +284,22 @@ function TextLikeField({
   // Advisory player-id lookup (e.g. Steam/game nickname preview). Only
   // rendered when the catalog schema marks this field as checkable.
   const checkConfig = field.check;
-  // Seeded from `knownResult` rather than always `IDLE`: this component
-  // remounts every time the buyer taps "back" out of the review stage (that
-  // screen lives behind a `stage === "select" &&`, so going back tears the
-  // whole form down and rebuilds it), and without the seed a verified pill
-  // would forget itself and demand another "Проверить" for an id that never
-  // changed.
-  const [check, setCheck] = useState<CheckState>(() =>
-    knownResult ? { phase: "done", result: knownResult } : IDLE,
-  );
-  // Guards the reset effect below from firing on this initial, seeded
-  // render — otherwise it would immediately wipe the very state we just
-  // seeded, since `value`/`productId` "change" (from nothing to something)
-  // on mount too.
-  const skipNextReset = useRef(true);
-  // `productId` as well as `value`: the answer belongs to the product it was
-  // asked about. Mobile Legends and Magic Chess: Go Go each sell one product
-  // per account region (ADR-0048), and switching between them keeps the typed
-  // id — the form is only cleared on a *brand* switch (`TopUp.tsx`). Without
-  // this the green "verified" pill survives the switch and vouches for an
-  // account against the region it was never checked against.
-  useEffect(() => {
-    if (skipNextReset.current) {
-      skipNextReset.current = false;
-      return;
-    }
-    setCheck(IDLE);
-  }, [value, productId]);
-  // Mirror the outcome up to the parent so it can gate "continue"/"pay" on
-  // an actual verification, not just a non-empty box — and show the resolved
-  // nickname elsewhere (the order summary). Fires `null` the moment the
-  // value edit above resets `check` to idle, so a stale "verified" never
-  // survives a keystroke past the parent's back.
-  useEffect(() => {
-    if (!checkConfig) return;
-    onCheckResult?.(field.key, check.phase === "done" ? check.result : null);
-  }, [checkConfig, check, field.key, onCheckResult]);
-  const serverId = checkConfig?.server_field ? (allValues[checkConfig.server_field] ?? null) : null;
+  // The question currently in flight, or `null` when none is. Held as the
+  // question rather than as a bare `true` so the spinner goes stale on exactly
+  // the terms the verdict does: `checkPlayer` sets no deadline of its own, so
+  // switching product mid-check would otherwise leave the button spinning,
+  // disabled, on a lookup whose answer is already going to be discarded.
+  const [asking, setAsking] = useState<PlayerCheckQuestion | null>(null);
+  // The same value, readable from inside an in-flight check — `asking` there
+  // is whatever that press captured, so only a ref can say whether a later
+  // press has superseded it. Written and cleared in lockstep with the state.
+  const latestAsk = useRef<PlayerCheckQuestion | null>(null);
+  const serverId = serverIdFor(field, allValues);
+  const checking =
+    asking !== null &&
+    asking.productId === productId &&
+    asking.playerId === value &&
+    asking.serverId === serverId;
   const idOk = canCheck(value, field.pattern);
   const canRunCheck = canCheck(value, field.pattern, {
     required: serverLabel !== null,
@@ -318,13 +310,29 @@ function TextLikeField({
   const missingServer = idOk && serverLabel !== null && (serverId ?? "").trim().length === 0;
 
   const handleCheck = async () => {
-    setCheck({ phase: "loading" });
-    const result = await runPlayerCheck(productId, { playerId: value, serverId });
-    // A resolved nickname is the strongest "we see your account" signal in the
-    // flow; a rejection is the cheapest moment to catch a typo. Both deserve
-    // the same tactile confirmation a native app would give.
-    if (result.phase === "done") haptic(result.result.status === "valid" ? "ok" : "error");
-    setCheck(result);
+    // What the answer will be filed under: the product, the id and the server
+    // as they are at the moment of the press, never as they are when it lands.
+    const asked: PlayerCheckQuestion = { productId, playerId: value, serverId };
+    latestAsk.current = asked;
+    setAsking(asked);
+    try {
+      const result = await runPlayerCheck(productId, { playerId: value, serverId });
+      // Only if this press is still the latest. Two checks can be in flight
+      // (editing the id re-enables the button), and letting an older one
+      // report would file its question over the fresh verdict — the pill would
+      // vanish and the CTA re-block with nothing on screen to explain it.
+      if (latestAsk.current !== asked) return;
+      // A resolved nickname is the strongest "we see your account" signal in
+      // the flow; a rejection is the cheapest moment to catch a typo. Both
+      // deserve the same tactile confirmation a native app would give.
+      haptic(result.status === "valid" ? "ok" : "error");
+      // Reported straight from here, not from an effect: this verdict gates
+      // the CTA, and an effect lands a commit later.
+      onCheckResult(field.key, { ...asked, result });
+    } finally {
+      if (latestAsk.current === asked) latestAsk.current = null;
+      setAsking((current) => (current === asked ? null : current));
+    }
   };
 
   const handleChange = (v: string) => {
@@ -335,7 +343,13 @@ function TextLikeField({
     }
   };
 
-  const checkDone = checkConfig && check.phase === "done" ? check.result : null;
+  const checkDone = checkConfig ? check : null;
+  /** Drops the standing verdict and puts the input back. Explicit, rather
+   *  than leaning on the id changing: the buyer is about to retype, and until
+   *  they do the question is unchanged, so nothing else would clear it. */
+  const editAgain = () => {
+    onCheckResult(field.key, null);
+  };
 
   // Resolved id → collapse the input into a confirmation pill (nickname + id).
   if (checkDone?.status === "valid") {
@@ -350,9 +364,7 @@ function TextLikeField({
         </div>
         <button
           type="button"
-          onClick={() => {
-            setCheck(IDLE);
-          }}
+          onClick={editAgain}
           className="shrink-0 text-[13px] font-medium text-white/45 active:opacity-70"
         >
           {t("field.checkEdit")}
@@ -376,9 +388,7 @@ function TextLikeField({
         </div>
         <button
           type="button"
-          onClick={() => {
-            setCheck(IDLE);
-          }}
+          onClick={editAgain}
           className="shrink-0 text-[13px] font-medium text-white/45 active:opacity-70"
         >
           {t("field.checkEdit")}
@@ -428,7 +438,7 @@ function TextLikeField({
         {checkConfig && (
           <button
             type="button"
-            disabled={!canRunCheck || check.phase === "loading"}
+            disabled={!canRunCheck || checking}
             onClick={() => {
               void handleCheck();
             }}
@@ -440,12 +450,12 @@ function TextLikeField({
               color: "hsl(var(--primary))",
             }}
           >
-            {check.phase === "loading" && <Loader2 size={15} className="animate-spin" />}
-            {check.phase === "loading" ? t("field.checking") : t("field.check")}
+            {checking && <Loader2 size={15} className="animate-spin" />}
+            {checking ? t("field.checking") : t("field.check")}
           </button>
         )}
       </div>
-      {checkConfig && check.phase === "done" && checkUnavailable(check.result) && (
+      {checkUnavailable(checkDone) && (
         <p className="mt-1.5 px-1 text-[12px] text-white/40">
           {t("field.checkFailed")} ·{" "}
           <button
