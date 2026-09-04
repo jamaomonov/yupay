@@ -148,6 +148,30 @@ refusing (`422`, `extra.expected_amount_usd`) otherwise — see
 [ADR-0066](../decisions/0066-steam-gifts-live-catalog.md) and
 `docs/product/flows/steam-gifts.md`.
 
+**`GET /gifts/steam-profile?invite_url=...` — the pre-purchase recipient
+check.** Before paying, the buyer presses «Проверить» next to the pasted
+Steam link and sees the recipient's avatar and nickname, so a mistyped link
+stops being an unrecoverable paid mistake. Server-side only: Steam sends no
+CORS headers for our origin. Unlike the rest of this router, this endpoint
+**does** carry its own `guard_ip` bucket (`"gifts-steam-profile"`) — it
+proxies a third party on the public internet. `invite_url` is validated and
+canonicalised by the exact same `gifts.checkout.parse_invite_url` checkout
+itself uses, so a link this endpoint accepts can never be rejected at
+checkout and vice versa; an unrecognised shape is a `422`, same as checkout.
+
+Response is `GiftProfileOut { status, steam_id, nickname, avatar_url }` with
+`status` one of `found | not_found | unsupported | unavailable`. Only
+`"not_found"` — Steam's own definitive "no such profile", surfaced only for
+an `/id/{vanity}` link via `ResolveVanityURL` — is meant to block the buyer;
+the frontend treats `"found"`, `"unsupported"` (an `s.team` friend-invite
+link, which the Web API cannot resolve at all — no Steam call is made for
+that shape), and `"unavailable"` (no API key configured, Steam unreachable,
+timed out, or an unparseable response) identically: let the sale proceed.
+`found`/`not_found` verdicts are cached 6h under `gifts:steam_profile:*`
+(never `"unavailable"` — that is our failure, not a fact about the
+profile); see `docs/architecture/cache-keys.md`. `steam_id`/`nickname`/
+`avatar_url` are PII and never reach the structured logs.
+
 Admin: `GET`/`PATCH /admin/gifts/settings` (margin percent, region
 config) — `PATCH` requires `Idempotency-Key`; a repeated key replays the
 first response.

@@ -10,6 +10,7 @@ AGENTS.md §9: minor-unit money is a string in transit). ``price_usd`` is our
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -93,6 +94,31 @@ class GiftRegionOut(BaseModel):
     price_uzs: str | None
 
 
+class GiftProfileOut(BaseModel):
+    """The pre-purchase recipient check: who a Steam link actually points to.
+
+    ``status`` is the whole contract with the frontend, and the four values
+    are deliberately not equally weighted. Only ``"not_found"`` — Steam's own
+    "no such profile" — is a reason to stop the buyer. The other three all
+    mean "we could not get a definitive answer" for a reason that is ours,
+    not the recipient's: ``"unsupported"`` is an ``s.team`` friend-invite
+    link the Web API cannot resolve at all, and ``"unavailable"`` covers
+    everything else that can go wrong on our end (no API key configured,
+    Steam unreachable or erroring, a response we could not parse). The
+    frontend is expected to treat ``"found"``, ``"unsupported"``, and
+    ``"unavailable"`` identically: let the buyer continue.
+
+    ``steam_id``/``nickname``/``avatar_url`` are only ever populated
+    alongside ``status="found"`` and are PII — never logged (see
+    ``gifts.profile``).
+    """
+
+    status: Literal["found", "not_found", "unsupported", "unavailable"]
+    steam_id: str | None
+    nickname: str | None
+    avatar_url: str | None
+
+
 class GiftAppDetailOut(GiftAppOut):
     """Full app card: everything on :class:`GiftAppOut`, plus packages/DLC."""
 
@@ -113,6 +139,7 @@ __all__ = [
     "GiftAppDetailOut",
     "GiftAppOut",
     "GiftPackageOut",
+    "GiftProfileOut",
     "GiftRegionOut",
     "GiftZonePriceOut",
     "GiftsAdminSettingsOut",

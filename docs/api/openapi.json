@@ -5684,6 +5684,62 @@
         "title": "GiftPackageOut",
         "type": "object"
       },
+      "GiftProfileOut": {
+        "description": "The pre-purchase recipient check: who a Steam link actually points to.\n\n``status`` is the whole contract with the frontend, and the four values\nare deliberately not equally weighted. Only ``\"not_found\"`` \u2014 Steam's own\n\"no such profile\" \u2014 is a reason to stop the buyer. The other three all\nmean \"we could not get a definitive answer\" for a reason that is ours,\nnot the recipient's: ``\"unsupported\"`` is an ``s.team`` friend-invite\nlink the Web API cannot resolve at all, and ``\"unavailable\"`` covers\neverything else that can go wrong on our end (no API key configured,\nSteam unreachable or erroring, a response we could not parse). The\nfrontend is expected to treat ``\"found\"``, ``\"unsupported\"``, and\n``\"unavailable\"`` identically: let the buyer continue.\n\n``steam_id``/``nickname``/``avatar_url`` are only ever populated\nalongside ``status=\"found\"`` and are PII \u2014 never logged (see\n``gifts.profile``).",
+        "properties": {
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "nickname": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nickname"
+          },
+          "status": {
+            "enum": [
+              "found",
+              "not_found",
+              "unsupported",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "steam_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steam Id"
+          }
+        },
+        "required": [
+          "status",
+          "steam_id",
+          "nickname",
+          "avatar_url"
+        ],
+        "title": "GiftProfileOut",
+        "type": "object"
+      },
       "GiftRegionOut": {
         "description": "One purchasable country, priced from the zone that covers it.\n\nThe zone stays the pricing/wire unit (see\n``yupay.modules.gifts.service.ZONE_COUNTRIES``); this is the\nbuyer-facing unit a country picker renders. Every country covered by\nthe same zone carries that zone's identical price \u2014 a CIS country's\n``price_usd`` is the same number regardless of which of the nine CIS\ncountries it is.",
         "properties": {
@@ -24094,6 +24150,51 @@
           }
         },
         "summary": "An app's DLC list, filtered and paged server-side",
+        "tags": [
+          "gifts"
+        ]
+      }
+    },
+    "/api/v1/gifts/steam-profile": {
+      "get": {
+        "description": "Buyer-facing \u00ab\u041f\u0440\u043e\u0432\u0435\u0440\u0438\u0442\u044c\u00bb: avatar + nickname for a pasted Steam link.\n\nPublic and proxies a third party (Steam), so it carries its own\n``guard_ip`` bucket rather than riding the router's shared posture. Never\na 500: any Steam-side problem \u2014 missing key, outage, timeout,\nunparseable response, or an unresolvable link type \u2014 degrades to\n``status=\"unavailable\"``/``\"unsupported\"``, which the frontend treats\nthe same as \"carry on\". See :func:`yupay.modules.gifts.profile.\ncheck_steam_profile` for the full status contract.",
+        "operationId": "get_steam_profile_api_v1_gifts_steam_profile_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "invite_url",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Invite Url",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GiftProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pre-purchase check: resolve a recipient's Steam profile link",
         "tags": [
           "gifts"
         ]

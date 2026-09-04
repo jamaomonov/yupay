@@ -1,10 +1,13 @@
-"""Public HTTP routes for the ``gifts`` module: catalog browsing.
+"""Public HTTP routes for the ``gifts`` module: catalog browsing, plus the
+pre-purchase Steam profile check.
 
 Every route here is guarded by :func:`_ensure_enabled`, a router-level
 dependency, so the whole surface 404s while ``steam_gifts_enabled`` is off —
-a new route added later inherits the guard automatically. No per-route rate
-limit bucket: same posture as ``catalog/routes.py``, which relies on the
-app-wide slowapi defaults.
+a new route added later inherits the guard automatically. The catalog routes
+carry no per-route rate limit bucket: same posture as ``catalog/routes.py``,
+which relies on the app-wide slowapi defaults. ``/steam-profile`` is the one
+exception — it proxies a third party (Steam) on the public internet, so it
+guards itself with its own ``guard_ip`` bucket.
 """
 
 from __future__ import annotations
@@ -12,18 +15,21 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
 from yupay.core.config import get_settings
 from yupay.core.errors import NotFoundError
+from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.fx.factory import build_default_service
 from yupay.modules.fx.service import FxService, FxUnavailableError
+from yupay.modules.gifts.profile import check_steam_profile
 from yupay.modules.gifts.schemas import (
     GiftAppDetailOut,
     GiftAppOut,
     GiftPackageOut,
+    GiftProfileOut,
     GiftRegionOut,
     GiftsListOut,
     GiftZonePriceOut,
@@ -316,6 +322,34 @@ async def get_catalog_app_dlc(
     page = dlc_items[offset : offset + limit]
     items = [_app_out(item, margin=margin, rate=rate) for item in page]
     return GiftsListOut(items=items, total=total)
+
+
+@router.get(
+    "/steam-profile",
+    response_model=GiftProfileOut,
+    summary="Pre-purchase check: resolve a recipient's Steam profile link",
+)
+async def get_steam_profile(
+    request: Request,
+    # Bounded the same way as `limit`/`offset` above: a Steam profile/friend
+    # link never legitimately exceeds this (the longest accepted shape,
+    # `s.team/p/{64 chars}`, is ~82), and an unbounded query string is an
+    # unbounded number of distinct `gifts:steam_profile` cache keys for one
+    # upstream Steam call each.
+    invite_url: str = Query(..., min_length=1, max_length=200),
+) -> GiftProfileOut:
+    """Buyer-facing «Проверить»: avatar + nickname for a pasted Steam link.
+
+    Public and proxies a third party (Steam), so it carries its own
+    ``guard_ip`` bucket rather than riding the router's shared posture. Never
+    a 500: any Steam-side problem — missing key, outage, timeout,
+    unparseable response, or an unresolvable link type — degrades to
+    ``status="unavailable"``/``"unsupported"``, which the frontend treats
+    the same as "carry on". See :func:`yupay.modules.gifts.profile.
+    check_steam_profile` for the full status contract.
+    """
+    await guard_ip(request, bucket="gifts-steam-profile")
+    return await check_steam_profile(invite_url)
 
 
 __all__ = ["router"]

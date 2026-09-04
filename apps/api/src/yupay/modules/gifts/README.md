@@ -23,6 +23,11 @@ in a later task (7).
   a curated hot-offers list, one app's full detail (packages priced per
   offered zone), and that app's DLC, filtered/paged server-side (Task 3).
   Every route 404s while `steam_gifts_enabled` is off.
+- Resolve a recipient's Steam profile/friend link for the pre-purchase
+  check (`GET /gifts/steam-profile`) — avatar + nickname before the buyer
+  pays, so a mistyped link isn't an unrecoverable paid mistake. Reuses
+  `checkout.parse_invite_url` for canonicalisation and
+  `auth.steam.fetch_persona` for the summary call.
 
 ## Public interface
 
@@ -37,6 +42,7 @@ from yupay.modules.gifts.api import (
     GiftPackageOut,            # public per-package pricing DTO
     GiftZonePriceOut,          # public per-zone price DTO
     GiftsListOut,              # public paged-list envelope
+    GiftProfileOut,            # public GET /gifts/steam-profile response
     admin_router,              # /api/v1/admin/gifts/*
     router,                    # /api/v1/gifts/* (public catalog browsing)
     load_margin_percent,       # Redis -> DB row -> env default
@@ -60,24 +66,39 @@ from yupay.modules.gifts.service import (
 )
 ```
 
+`gifts.profile` (also internal, consumed only by `gifts.routes`) adds:
+
+```python
+from yupay.modules.gifts.profile import check_steam_profile
+# GiftProfileOut verdict for the pre-purchase recipient check; never raises
+# on a Steam-side failure (see the module docstring for the full contract).
+```
+
 ## Cache
 
-| Redis key                                                        | TTL    | Set by                                                                     |
-| ---------------------------------------------------------------- | ------ | -------------------------------------------------------------------------- |
-| `gifts:margin`                                                   | 1 h    | `load_margin_percent` on a DB hit, or `publish_margin` after an admin save |
-| `gifts:list:{offset}:{limit}` (+ `:stale`, 24 h)                 | 1 h    | `gifts.service.list_apps` — default (no-search) listing page               |
-| `gifts:search:{sha1(query)}:{offset}:{limit}` (+ `:stale`, 24 h) | 15 min | `gifts.service.list_apps` — a searched listing page                        |
-| `gifts:detail:{app_id}` (+ `:stale`, 24 h)                       | 15 min | `gifts.service.get_app`                                                    |
-| `gifts:hot` (+ `:stale`, 24 h)                                   | 1 h    | `gifts.service.hot_offers`                                                 |
+| Redis key                                                        | TTL    | Set by                                                                              |
+| ---------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------- |
+| `gifts:margin`                                                   | 1 h    | `load_margin_percent` on a DB hit, or `publish_margin` after an admin save          |
+| `gifts:list:{offset}:{limit}` (+ `:stale`, 24 h)                 | 1 h    | `gifts.service.list_apps` — default (no-search) listing page                        |
+| `gifts:search:{sha1(query)}:{offset}:{limit}` (+ `:stale`, 24 h) | 15 min | `gifts.service.list_apps` — a searched listing page                                 |
+| `gifts:detail:{app_id}` (+ `:stale`, 24 h)                       | 15 min | `gifts.service.get_app`                                                             |
+| `gifts:hot` (+ `:stale`, 24 h)                                   | 1 h    | `gifts.service.hot_offers`                                                          |
+| `gifts:steam_profile:{steamid_or_vanity}`                        | 6 h    | `gifts.profile.check_steam_profile` — `found`/`not_found` only, never `unavailable` |
 
-Every fresh key above has a `:stale` twin, written at the same time, that
-outlives it by a full day. `gifts.service._cached_json` is the one helper
-behind all four: fresh Redis entry, then upstream, then the stale twin on a
-G-Engine failure (`GEngineError` / `GEngineUnavailableError`), then
-`UpstreamUnavailableError` (502) only when neither exists. A Redis error
-itself is swallowed at every step — a cache outage degrades to "always hit
-upstream," never a 500. See `docs/architecture/cache-keys.md` for the full,
-authoritative row-by-row listing.
+Every one of the first four keys has a `:stale` twin, written at the same
+time, that outlives it by a full day. `gifts.service._cached_json` is the
+one helper behind all four: fresh Redis entry, then upstream, then the
+stale twin on a G-Engine failure (`GEngineError` / `GEngineUnavailableError`),
+then `UpstreamUnavailableError` (502) only when neither exists. A Redis
+error itself is swallowed at every step — a cache outage degrades to
+"always hit upstream," never a 500.
+
+`gifts:steam_profile:*` is deliberately different: no `:stale` twin, and no
+write at all on an `"unavailable"` verdict (see `gifts.profile`) — that
+status is our own failure, not a fact about the profile, and caching it
+would just repeat our outage back at the next buyer. See
+`docs/architecture/cache-keys.md` for the full, authoritative row-by-row
+listing.
 
 ## Commit-then-publish invariant
 
@@ -99,22 +120,26 @@ showing no sign of the divergence.
 
 ## HTTP surface
 
-| Method  | Path                                 | Returns                                                    |
-| ------- | ------------------------------------ | ---------------------------------------------------------- |
-| `GET`   | `/api/v1/admin/gifts/settings`       | `GiftsAdminSettingsOut` — margin, enabled flag, regions    |
-| `PATCH` | `/api/v1/admin/gifts/settings`       | Same, after setting `margin_percent`                       |
-| `GET`   | `/api/v1/gifts/catalog`              | `GiftsListOut` — paged listing, `?search=&limit=&offset=`  |
-| `GET`   | `/api/v1/gifts/catalog/hot`          | `GiftsListOut` — up to 12 pinned/discounted apps           |
-| `GET`   | `/api/v1/gifts/catalog/{app_id}`     | `GiftAppDetailOut` — packages priced per offered zone      |
-| `GET`   | `/api/v1/gifts/catalog/{app_id}/dlc` | `GiftsListOut` — that app's DLC, `?search=&limit=&offset=` |
+| Method  | Path                                 | Returns                                                                                                          |
+| ------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `GET`   | `/api/v1/admin/gifts/settings`       | `GiftsAdminSettingsOut` — margin, enabled flag, regions                                                          |
+| `PATCH` | `/api/v1/admin/gifts/settings`       | Same, after setting `margin_percent`                                                                             |
+| `GET`   | `/api/v1/gifts/catalog`              | `GiftsListOut` — paged listing, `?search=&limit=&offset=`                                                        |
+| `GET`   | `/api/v1/gifts/catalog/hot`          | `GiftsListOut` — up to 12 pinned/discounted apps                                                                 |
+| `GET`   | `/api/v1/gifts/catalog/{app_id}`     | `GiftAppDetailOut` — packages priced per offered zone                                                            |
+| `GET`   | `/api/v1/gifts/catalog/{app_id}/dlc` | `GiftsListOut` — that app's DLC, `?search=&limit=&offset=`                                                       |
+| `GET`   | `/api/v1/gifts/steam-profile`        | `GiftProfileOut` — pre-purchase recipient check, `?invite_url=`; own `guard_ip` bucket (`"gifts-steam-profile"`) |
 
 The admin pair requires `require_admin`; `PATCH` accepts an
 `Idempotency-Key` header and a repeated key replays the first response
 instead of re-running the write. The public `/gifts/*` routes require no
 auth but all 404 (`NotFoundError`) while `steam_gifts_enabled` is false —
 enforced once, as a router-level dependency, so a route added later inherits
-the guard automatically. No per-route rate-limit bucket, same as
-`catalog/routes.py` — the app-wide slowapi defaults apply.
+the guard automatically. The catalog routes carry no per-route rate-limit
+bucket, same as `catalog/routes.py` — the app-wide slowapi defaults apply.
+`/steam-profile` is the one exception: it proxies a third party (Steam) on
+the public internet, so it guards itself via `guard_ip(bucket=
+"gifts-steam-profile")` rather than riding that shared posture.
 
 Money on every public DTO is a `str`, not a `Decimal`: `price_usd` is our
 2dp sell price after margin, `price_uzs` is a whole-UZS display string that
@@ -125,12 +150,13 @@ quote="UZS")`) and multiplied per row, never re-fetched per item.
 
 ## Config
 
-| Env var                      | Default        | Meaning                                                                                                                       |
-| ---------------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `STEAM_GIFTS_ENABLED`        | `false`        | Feature flag the public/miniapp routers (Task 3) gate on                                                                      |
-| `STEAM_GIFTS_MARGIN_PERCENT` | `10`           | Seeds `steam_gift_settings` row 1 on first read only                                                                          |
-| `STEAM_GIFTS_REGION_DEFAULT` | `UZ`           | Default _country_ (a legacy zone label such as `CIS` is still tolerated and resolved to a country), parsed via `default_zone` |
-| `STEAM_GIFTS_REGIONS`        | `CIS,RU,KZ,UA` | CSV of offered zones, parsed via `offered_zones`                                                                              |
+| Env var                      | Default        | Meaning                                                                                                                               |
+| ---------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `STEAM_GIFTS_ENABLED`        | `false`        | Feature flag the public/miniapp routers (Task 3) gate on                                                                              |
+| `STEAM_GIFTS_MARGIN_PERCENT` | `10`           | Seeds `steam_gift_settings` row 1 on first read only                                                                                  |
+| `STEAM_GIFTS_REGION_DEFAULT` | `UZ`           | Default _country_ (a legacy zone label such as `CIS` is still tolerated and resolved to a country), parsed via `default_zone`         |
+| `STEAM_GIFTS_REGIONS`        | `CIS,RU,KZ,UA` | CSV of offered zones, parsed via `offered_zones`                                                                                      |
+| `STEAM_API_KEY`              | unset          | Shared with Steam sign-in (`auth.steam`); unset makes `/steam-profile` answer `"unavailable"` for every link instead of calling Steam |
 
 ## Tests
 
@@ -149,8 +175,12 @@ quote="UZS")`) and multiplied per row, never re-fetched per item.
   pages the cached detail server-side, never the flat listing; a G-Engine
   outage serves the warm stale cache, and 502s when there is none
   (`respx`-mocked upstream, a manual FX override in place of a live rate).
-
-## What's deliberately **not** here yet
+- `apps/api/tests/integration/test_gifts_steam_profile_routes.py` — every
+  status branch (`found` from both link shapes, `not_found`, `unsupported`
+  with no Steam call, `unavailable` from a missing key / timeout / 5xx),
+  the enabled guard, the `found`/`not_found` cache hit vs. the
+  never-cached `unavailable`, and the endpoint's own `guard_ip` bucket
+  (`respx`-mocked Steam).
 
 - Checkout routes — Task 7.
 - Fulfilment wiring — a later task.

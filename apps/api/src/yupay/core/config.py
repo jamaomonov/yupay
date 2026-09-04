@@ -224,6 +224,13 @@ class Settings(BaseSettings):
             "affiliate-apply": 30,
             "affiliate-login": 30,
             "affiliate-setpw": 30,
+            # Same reasoning as `check_player`/`affiliate-preview`: an advisory
+            # pre-purchase lookup a buyer runs while pasting in a recipient's
+            # Steam link, shared collectively by a whole carrier's subscribers
+            # on one address. The Redis cache (`gifts:steam_profile:*`, 6h)
+            # already makes a repeat of the same link free, so this only
+            # bounds distinct links from one address.
+            "gifts-steam-profile": 120,
         },
         description=(
             "Per-bucket overrides for auth_ip_guard_max. The default is written for "
