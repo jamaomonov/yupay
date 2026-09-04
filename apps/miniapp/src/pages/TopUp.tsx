@@ -650,10 +650,18 @@ export default function TopUp() {
   // `missingFieldKey` belongs here: without it the button stayed lime and
   // enabled with no game id typed, opened the confirmation dialog on an
   // incomplete order, and only rejected it afterwards with a toast.
+  // `productQuery.isLoading` is not redundant next to `!activePkg`. While a
+  // product switch is in flight there is no data, so `requiredFields` is empty
+  // and BOTH field gates above go quiet — the button is held shut only because
+  // `packages` happens to be empty too. That is the account gate being kept
+  // closed by an unrelated condition; naming the loading state makes the
+  // invariant local to this expression instead of depending on two derived
+  // values collapsing together.
   const payDisabled =
     isProcessing ||
     !insideTelegram ||
     !variableAmountReady ||
+    productQuery.isLoading ||
     !activePkg ||
     Boolean(missingFieldKey) ||
     Boolean(uncheckedFieldKey);

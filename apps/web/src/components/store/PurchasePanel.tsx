@@ -1096,7 +1096,18 @@ export function PurchasePanel({
    *  payable. The `?? ""` product id is unreachable: with no `fieldsProduct`
    *  there are no `fields`, so nothing calls this. */
   const currentFieldCheck = (f: FormField): PlayerCheckResult | null =>
-    currentCheck(checkResults[f.key], fieldsProduct?.id ?? "", form[f.key] ?? "", serverIdFor(f));
+    // The `!f.check` guard is not dead weight: both call sites pre-filter today,
+    // but this file is queued for the same extraction the gift panel got, and a
+    // field without a check config has no verdict to read back by definition.
+    // The mini app's twin carries it; safer to agree than to rely on callers.
+    !f.check
+      ? null
+      : currentCheck(
+          checkResults[f.key],
+          fieldsProduct?.id ?? "",
+          form[f.key] ?? "",
+          serverIdFor(f),
+        );
   // A gift card has no account field at all — the "зачисление на аккаунт"
   // copy (and the attestation checkbox below) only make sense when there's
   // one to fill in.
