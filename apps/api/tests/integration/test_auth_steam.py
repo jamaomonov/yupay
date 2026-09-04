@@ -156,7 +156,17 @@ async def test_an_empty_players_array_still_logs_the_user_in_nameless(
 @respx.mock
 @pytest.mark.parametrize(
     "body",
-    [{}, {"response": {}}, {"response": {"players": None}}, [], "not an object at all"],
+    [
+        {},
+        {"response": {}},
+        {"response": {"players": None}},
+        [],
+        "not an object at all",
+        # A well-formed `players` list whose first entry is not an object --
+        # the same hole one nesting level down, found by the ship-gate review.
+        {"response": {"players": [None]}},
+        {"response": {"players": ["not an object"]}},
+    ],
 )
 async def test_a_degraded_summaries_body_still_logs_the_user_in_nameless(
     db_session: AsyncSession, body: object

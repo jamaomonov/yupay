@@ -170,6 +170,14 @@ async def resolve_persona(
         if not players:
             return None
         player = players[0]
+        if not isinstance(player, dict):
+            # Same contract break one nesting level down: a `players` list
+            # that is really a list but whose first entry is not an object.
+            # Without this, `.get` below raises `AttributeError`, which
+            # escapes `fetch_persona`'s catch exactly like a non-dict body
+            # would have -- so the guard above closed only two thirds of the
+            # hole it claimed (2026-09-04 ship-gate review).
+            raise ValueError("GetPlayerSummaries returned a non-object player")  # noqa: TRY004
         name = player.get("personaname")
         avatar = player.get("avatarfull") or player.get("avatarmedium")
         return (
