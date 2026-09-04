@@ -86,10 +86,14 @@ export async function runPlayerCheck(
  * about that pair — on a region-split brand (ADR-0048) the same id has one
  * product per region, and G2B answers about the one it was asked.
  *
- * `serverId` is deliberately not part of the key: the `setState(IDLE)` this
- * replaces did not watch it either, so a verdict surviving an edit to the
- * sibling server field is a pre-existing gap, neither introduced nor closed
- * here.
+ `serverId` is part of it too, and has to be: G2B is asked for the id *on a
+ * server*, and an id-only lookup against the wrong one just answers "no such
+ * player". On MLBB the id collapses into the confirmation pill but the server
+ * stays an ordinary editable field beside it, so without this a buyer verifies
+ * 1313232551 on 6618, changes the server to 7001, and pays for a
+ * `{player_id, server}` pair nobody ever checked — which the API's own
+ * validation cannot catch either, since it checks each field alone (2026-09-04
+ * review round 1).
  */
 export interface PlayerCheckVerdict {
   /** The product the lookup was scoped to. */
@@ -97,12 +101,16 @@ export interface PlayerCheckVerdict {
   /** The id exactly as it was sent — not trimmed, not normalized, so the
    *  verdict answers for the literal text the field held. */
   playerId: string;
+  /** The sibling server field's value as it was sent, or `null` when this
+   *  field's `check` names no sibling. */
+  serverId: string | null;
   result: PlayerCheckResult;
 }
 
 /**
- * The verdict that currently applies to `playerId` under `productId`, or
- * `null` when none does.
+ * The verdict that currently applies to this exact question — the id, the
+ * server it was asked on, and the product it was scoped to — or `null` when
+ * none does.
  *
  * Derived at render — by the field that draws the confirmation pill and by the
  * panel that gates Pay on it, from the one stored verdict — so the two cannot
@@ -117,14 +125,26 @@ export interface PlayerCheckVerdict {
  * It also settles the late answer: a check that lands after the customer has
  * retyped is filed under what was asked, so it is simply never read back —
  * the same thing `gift-invite.ts::currentVerdict` does with `canonicalUrl`.
+ *
+ * Compared verbatim, with no canonicalisation, and that is deliberate here
+ * where the gift flow does the opposite: dropping a verdict lands on `null`,
+ * which `blocksCheckout` also blocks on, so a cosmetic edit costs the buyer a
+ * second «Проверить» and nothing else. In the gift flow the blocking verdict
+ * is `not_found` and `null` is permissive, so an over-eager drop would clear
+ * the one answer that blocks a purchase.
  */
 export function currentCheck(
   verdict: PlayerCheckVerdict | null | undefined,
   productId: string,
   playerId: string,
+  serverId: string | null,
 ): PlayerCheckResult | null {
   if (verdict == null) return null;
-  return verdict.productId === productId && verdict.playerId === playerId ? verdict.result : null;
+  return verdict.productId === productId &&
+    verdict.playerId === playerId &&
+    verdict.serverId === serverId
+    ? verdict.result
+    : null;
 }
 
 /** Whether a check outcome still stands between the customer and Pay.

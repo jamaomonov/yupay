@@ -99,11 +99,12 @@ describe("currentCheck", () => {
   const verdict = {
     productId: "prod-ru",
     playerId: "1313232551",
+    serverId: "6618",
     result: { status: "valid" as const, name: "blood moon" },
   };
 
-  test("reads the verdict back for the pair it was asked about", () => {
-    expect(currentCheck(verdict, "prod-ru", "1313232551")).toEqual({
+  test("reads the verdict back for the question it was asked", () => {
+    expect(currentCheck(verdict, "prod-ru", "1313232551", "6618")).toEqual({
       status: "valid",
       name: "blood moon",
     });
@@ -113,24 +114,43 @@ describe("currentCheck", () => {
     // ADR-0048: the same id has one product per region, and G2B answered
     // about the region it was asked. Shown against the other one, a green
     // pill is reassurance for an account nobody is paying for.
-    expect(currentCheck(verdict, "prod-global", "1313232551")).toBeNull();
+    expect(currentCheck(verdict, "prod-global", "1313232551", "6618")).toBeNull();
   });
 
   test("drops it the moment the id is edited, including trailing whitespace", () => {
-    expect(currentCheck(verdict, "prod-ru", "1313232552")).toBeNull();
+    expect(currentCheck(verdict, "prod-ru", "1313232552", "6618")).toBeNull();
     // Not trimmed on purpose: the verdict answers for the literal text that
     // was sent, and `runPlayerCheck` sends the field's value untouched.
-    expect(currentCheck(verdict, "prod-ru", "1313232551 ")).toBeNull();
+    expect(currentCheck(verdict, "prod-ru", "1313232551 ", "6618")).toBeNull();
+  });
+
+  test("drops it the moment the server is edited — the id was checked ON one", () => {
+    // The half the id alone cannot cover: G2B resolves a player *on a server*,
+    // and the MLBB form leaves the server editable beside the confirmed id, so
+    // this is the difference between a verified account and a stranger's.
+    expect(currentCheck(verdict, "prod-ru", "1313232551", "7001")).toBeNull();
+    expect(currentCheck(verdict, "prod-ru", "1313232551", null)).toBeNull();
+  });
+
+  test("a field with no sibling server keeps its null-for-null match", () => {
+    const noServer = { ...verdict, serverId: null };
+    expect(currentCheck(noServer, "prod-ru", "1313232551", null)).toEqual({
+      status: "valid",
+      name: "blood moon",
+    });
   });
 
   test("an invalid verdict is read back the same way — it blocks, so it must not evaporate", () => {
     const bad = { ...verdict, result: { status: "invalid" as const, name: null } };
-    expect(currentCheck(bad, "prod-ru", "1313232551")).toEqual({ status: "invalid", name: null });
+    expect(currentCheck(bad, "prod-ru", "1313232551", "6618")).toEqual({
+      status: "invalid",
+      name: null,
+    });
   });
 
   test("nothing stored reads as nothing checked", () => {
-    expect(currentCheck(null, "prod-ru", "1313232551")).toBeNull();
-    expect(currentCheck(undefined, "prod-ru", "1313232551")).toBeNull();
+    expect(currentCheck(null, "prod-ru", "1313232551", "6618")).toBeNull();
+    expect(currentCheck(undefined, "prod-ru", "1313232551", "6618")).toBeNull();
   });
 });
 

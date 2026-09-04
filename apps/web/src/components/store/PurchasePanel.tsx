@@ -121,6 +121,19 @@ function isUnitSku(sku: SkuOut): boolean {
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
+/** What one press of «Проверить» asks about: everything G2B is given, and so
+ *  everything the answer is about. `PlayerCheckVerdict` is this plus the
+ *  answer; `CheckablePlayerField` also holds it for the in-flight press. */
+interface Question {
+  productId: string;
+  playerId: string;
+  serverId: string | null;
+}
+
+function sameQuestion(a: Question, b: Question): boolean {
+  return a.productId === b.productId && a.playerId === b.playerId && a.serverId === b.serverId;
+}
+
 /**
  * The checkable player-id field: a pill input paired with an advisory
  * nickname lookup (`f.check` on the catalog schema). Everything about
@@ -185,8 +198,14 @@ function CheckablePlayerField({
   // the terms the verdict does: `checkPlayer` sets no deadline of its own, so
   // switching package mid-check would otherwise leave the button spinning,
   // disabled, on a lookup whose answer is already going to be discarded.
-  const [asking, setAsking] = useState<{ productId: string; playerId: string } | null>(null);
-  const checking = asking !== null && asking.productId === productId && asking.playerId === value;
+  const [asking, setAsking] = useState<Question | null>(null);
+  const checking =
+    asking !== null && sameQuestion(asking, { productId, playerId: value, serverId });
+  // The same value, readable from inside an in-flight check: `asking` there is
+  // whatever this press captured, so only a ref can say whether a *later*
+  // press has since superseded it. Written and cleared in lockstep with the
+  // state above, so the two cannot drift.
+  const latestAsk = useRef<Question | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const closeHelp = useCallback(() => {
     setHelpOpen(false);
@@ -216,25 +235,30 @@ function CheckablePlayerField({
       setAttempted(true);
       return;
     }
-    // What the answer will be filed under: the product and the id as they are
-    // at the moment of the press, never as they are when it lands. A check
-    // that comes back after the customer has retyped is then simply not read
-    // back (`currentCheck`), instead of being shown against an id they no
-    // longer mean.
-    const asked = { productId, playerId: value };
+    // What the answer will be filed under: the product, the id and the server
+    // as they are at the moment of the press, never as they are when it lands.
+    // A check that comes back after the customer has retyped is then simply
+    // not read back (`currentCheck`), instead of being shown against an id
+    // they no longer mean.
+    const asked: Question = { productId, playerId: value, serverId };
+    latestAsk.current = asked;
     setAsking(asked);
     try {
-      // Reported straight from here, not from an effect: this verdict is the
-      // one thing Pay reasons about, and an effect lands a commit later.
       // `runPlayerCheck` folds every fault into a `result`, so it cannot
-      // reject and this always reports exactly once.
-      onCheckResult({
-        ...asked,
-        result: await runPlayerCheck(productId, { playerId: value, serverId }),
-      });
+      // reject: this reports at most once, and never throws past the caller.
+      const result = await runPlayerCheck(productId, { playerId: value, serverId });
+      // Reported straight from here, not from an effect — this verdict is the
+      // one thing Pay reasons about, and an effect lands a commit later — and
+      // only if this press is still the latest. Two checks can be in flight
+      // (editing the id re-enables the button), and if the newer one answers
+      // first, letting the older one report would file *its* question over the
+      // fresh verdict: the pill would vanish and Pay re-block with the id on
+      // screen unchanged and nothing to explain it.
+      if (latestAsk.current === asked) onCheckResult({ ...asked, result });
     } finally {
       // By identity, so a check started after this one keeps its own spinner:
       // only the press that is still the latest one clears it.
+      if (latestAsk.current === asked) latestAsk.current = null;
       setAsking((current) => (current === asked ? null : current));
     }
   }
@@ -1051,21 +1075,28 @@ export function PurchasePanel({
   // something was chosen, turning one form into two sequential steps.
   const fieldsProduct = selProduct ?? products[0];
   const fields: FormField[] = fieldsProduct?.required_fields ?? [];
+  /** The sibling server field's current value for a checkable field, or `null`
+   *  when its `check` names no sibling. One expression, read by the derivation
+   *  below and passed to the field as its `serverId` prop: they are the two
+   *  halves of one question, and if they ever computed it differently the
+   *  verdict would never read back. */
+  const serverIdFor = (f: FormField): string | null =>
+    f.check?.server_field ? (form[f.check.server_field] ?? null) : null;
   /** The check verdict that currently applies to a checkable field, or `null`
-   *  when none does — because the id has been retyped, or because the package
-   *  now points at another product (ADR-0048: a region-split brand has one
-   *  product per region, and a nickname verified against the other one is
-   *  reassurance for an account nobody is paying for; verified on prod, where
-   *  checking a Russian id and then picking a global package left the pill
-   *  standing).
+   *  when none does — because the id or the server has been edited, or because
+   *  the package now points at another product (ADR-0048: a region-split brand
+   *  has one product per region, and a nickname verified against the other one
+   *  is reassurance for an account nobody is paying for; verified on prod,
+   *  where checking a Russian id and then picking a global package left the
+   *  pill standing).
    *
    *  The single derivation behind both the field's pill and `canPay` below,
    *  evaluated in the render that changes either input, so no commit can show
    *  a verified pill next to a Pay button the same commit still considers
    *  payable. The `?? ""` product id is unreachable: with no `fieldsProduct`
    *  there are no `fields`, so nothing calls this. */
-  const currentFieldCheck = (key: string): PlayerCheckResult | null =>
-    currentCheck(checkResults[key], fieldsProduct?.id ?? "", form[key] ?? "");
+  const currentFieldCheck = (f: FormField): PlayerCheckResult | null =>
+    currentCheck(checkResults[f.key], fieldsProduct?.id ?? "", form[f.key] ?? "", serverIdFor(f));
   // A gift card has no account field at all — the "зачисление на аккаунт"
   // copy (and the attestation checkbox below) only make sense when there's
   // one to fill in.
@@ -1241,7 +1272,7 @@ export function PurchasePanel({
     if (!f.check) return false;
     const v = (form[f.key] ?? "").trim();
     if (v.length === 0) return false;
-    return blocksCheckout(currentFieldCheck(f.key));
+    return blocksCheckout(currentFieldCheck(f));
   })?.key;
   const fieldsVerified = uncheckedFieldKey === undefined;
   // Not just "a method id is set" — the selected method's *provider* must
@@ -1778,7 +1809,7 @@ export function PurchasePanel({
                       // customer was going to make anyway, since the package
                       // list sits above this form.
                       productChosen={selProduct !== undefined || products.length <= 1}
-                      serverId={f.check.server_field ? (form[f.check.server_field] ?? null) : null}
+                      serverId={serverIdFor(f)}
                       serverLabel={
                         f.check.server_field
                           ? label(fields.find((x) => x.key === f.check?.server_field)?.label) ||
@@ -1787,7 +1818,7 @@ export function PurchasePanel({
                       }
                       help={f.help_text ? label(f.help_text) : null}
                       placeholder={f.placeholder ? label(f.placeholder) : t("playerIdPlaceholder")}
-                      check={currentFieldCheck(f.key)}
+                      check={currentFieldCheck(f)}
                       onCheckResult={(verdict) => {
                         // A plain overwrite: this fires from the check handler
                         // and from «Изменить», never from a render-keyed

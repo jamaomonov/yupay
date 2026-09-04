@@ -998,8 +998,123 @@ it("files a late answer under the id it asked about, never the one now on screen
   // the input behind the pill, and «Изменить» drops the verdict on the way
   // out — so this is also the proof that the answer landed at all rather than
   // being lost.
+  //
+  // The restore is intentional, not an artefact: a verdict is keyed by the
+  // question, so the identical question reads the identical answer back. Any
+  // later hardening that makes an edit destroy the verdict outright is editing
+  // that contract, not fixing a stale assertion — decide it on purpose.
   fireEvent.change(playerId, { target: { value: "1313232551" } });
   expect(screen.getByText("blood moon")).toBeInTheDocument();
+});
+
+it("drops the verdict when the server changes, not only when the id does", async () => {
+  // G2B resolves an id *on a server*; an id-only lookup against the wrong one
+  // answers "no such player". On MLBB the verified id collapses into the pill
+  // but the server stays an ordinary editable field beside it, so a buyer can
+  // check 1313232551 on 6618, change the server to 7001, and pay for a
+  // `{player_id, server}` pair nobody ever verified. Nothing downstream
+  // catches that: `orders/validation.py` checks each field alone — presence,
+  // type, pattern, options — never the combination.
+  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (url.includes("check-player")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ status: "valid", name: "blood moon" }), { status: 200 }),
+      );
+    }
+    return Promise.resolve(
+      new Response(JSON.stringify({ providers: [{ slug: "click", status: "active" }] }), {
+        status: 200,
+      }),
+    );
+  });
+  renderPanel(
+    <PurchasePanel products={[{ ...makeProduct(), required_fields: MLBB_FIELDS }]} locale="ru" />,
+  );
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
+  });
+
+  fireEvent.change(screen.getByPlaceholderText("playerIdPlaceholder"), {
+    target: { value: "1313232551" },
+  });
+  fireEvent.change(screen.getByLabelText("ID сервера *"), { target: { value: "6618" } });
+  fireEvent.change(screen.getByPlaceholderText("emailPlaceholder"), {
+    target: { value: "buyer@example.com" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "check" }));
+
+  expect(await screen.findByText("blood moon")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^pay ·/i })).not.toBeDisabled();
+
+  // The one edit the pill cannot show, because the pill is not what changed.
+  fireEvent.change(screen.getByLabelText("ID сервера *"), { target: { value: "7001" } });
+
+  expect(screen.queryByText("blood moon")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^pay ·/i })).toBeDisabled();
+  expect(screen.getAllByText("payHintVerify").length).toBeGreaterThan(0);
+});
+
+it("lets a newer verdict stand when an older answer lands after it", async () => {
+  // Two checks can be in flight at once — editing the id re-enables the
+  // button, since the question in flight is no longer the one on screen. If
+  // the newer answer arrives first, the older one must not report: filing its
+  // question over the fresh verdict makes the pill vanish and Pay re-block
+  // with the id on screen unchanged and nothing on screen to explain it.
+  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  const land: ((name: string) => void)[] = [];
+  vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (url.includes("check-player")) {
+      return new Promise<Response>((resolve) => {
+        land.push((name) => {
+          resolve(new Response(JSON.stringify({ status: "valid", name }), { status: 200 }));
+        });
+      });
+    }
+    return Promise.resolve(
+      new Response(JSON.stringify({ providers: [{ slug: "click", status: "active" }] }), {
+        status: 200,
+      }),
+    );
+  });
+  renderPanel(
+    <PurchasePanel products={[{ ...makeProduct(), required_fields: MLBB_FIELDS }]} locale="ru" />,
+  );
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
+  });
+
+  const playerId = screen.getByPlaceholderText("playerIdPlaceholder");
+  fireEvent.change(playerId, { target: { value: "1313232551" } });
+  fireEvent.change(screen.getByLabelText("ID сервера *"), { target: { value: "6618" } });
+  fireEvent.change(screen.getByPlaceholderText("emailPlaceholder"), {
+    target: { value: "buyer@example.com" },
+  });
+  // First press, then a correction, then a second press — both out.
+  fireEvent.click(screen.getByRole("button", { name: "check" }));
+  fireEvent.change(playerId, { target: { value: "1313232559" } });
+  fireEvent.click(screen.getByRole("button", { name: "check" }));
+  await waitFor(() => {
+    expect(land).toHaveLength(2);
+  });
+
+  // The correction answers first and paints.
+  await act(async () => {
+    land[1]?.("second id");
+    await Promise.resolve();
+  });
+  expect(screen.getByText("second id")).toBeInTheDocument();
+
+  // The first press answers last, about an id that is no longer on screen.
+  await act(async () => {
+    land[0]?.("first id");
+    await Promise.resolve();
+  });
+  expect(screen.getByText("second id")).toBeInTheDocument();
+  expect(screen.queryByText("first id")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^pay ·/i })).not.toBeDisabled();
 });
 
 // ---------- pay from balance ----------

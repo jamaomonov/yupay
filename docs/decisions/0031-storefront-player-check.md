@@ -93,8 +93,23 @@ handler rather than from an effect. Going stale is therefore a property of the
 current render, not of an effect that has yet to run — the pill and the Pay
 button cannot disagree inside a commit — and a lookup that lands after the
 customer has retyped is filed under what was asked, so it is simply never read
-back. `serverId` is deliberately not part of that key, matching the reset it
-replaced: a verdict still survives an edit to the sibling server field.
+back (an older answer that arrives after a newer one is dropped for the same
+reason: only the latest press may report).
+
+The question is the **whole** question: product, id, **and the sibling server
+id**. G2B resolves a player _on a server_, so an id-only match is not a match.
+This one is easy to miss because of how the form behaves: on MLBB the verified
+id collapses into the confirmation pill while the server stays an ordinary
+editable field beside it, so a buyer could verify `1313232551` on `6618`,
+change the server to `7001`, and pay for a pair nobody ever checked. Nothing
+downstream catches it — `orders/validation.py` checks each field alone
+(presence, type, pattern, options), never the combination.
+
+The comparison is verbatim, with no canonicalisation, and the asymmetry with
+the gift flow's `currentVerdict` is deliberate: here dropping a verdict lands
+on `null`, which also blocks, so an over-eager drop costs a second «Проверить»
+and nothing more. There, `null` is permissive and `not_found` is the blocking
+verdict, so an over-eager drop would clear the one answer that blocks a sale.
 
 Web only so far. The Mini App (`apps/miniapp`) still mirrors from an effect;
 same rule, same fix shape, not yet applied.
