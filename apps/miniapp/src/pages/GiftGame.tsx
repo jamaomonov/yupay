@@ -706,21 +706,6 @@ export default function GiftGame() {
     setEditionCountryNotice(null);
   }
 
-  // Force the overflow ("другой регион") panel open whenever the selected
-  // country lands behind it — re-derived on every `selectedCountry` change,
-  // not just at mount, so a package/edition switch (`selectPackage` above)
-  // can't strand the buyer's actual selection out of sight (2026-09-04
-  // review). Reads `detail` from the closure directly (rather than the
-  // `countries` local computed further down, after this component's early
-  // returns) so this stays with the other hooks, above every one of them —
-  // see `countryNeedsExpand`'s own docstring.
-  useEffect(() => {
-    const countries = (detail?.regions ?? []).map((r) => r.country);
-    if (countryNeedsExpand(selectedCountry, countries, VISIBLE_COUNTRY_COUNT)) {
-      setCountryExpanded(true);
-    }
-  }, [detail, selectedCountry]);
-
   const canonicalInvite = validateInviteUrl(inviteUrl);
   const inviteHasValue = inviteUrl.trim() !== "";
   const inviteValid = canonicalInvite !== null;
@@ -1059,6 +1044,18 @@ export default function GiftGame() {
     countries,
     VISIBLE_COUNTRY_COUNT,
   );
+  // Whether the overflow ("другой регион") panel actually renders open —
+  // either the buyer toggled it manually (`countryExpanded`, sticky: never
+  // auto-collapses), or the current selection landed behind it and needs to
+  // be forced open. Derived at render, not synced through a `useEffect` +
+  // extra state write: an effect keyed on `selectedCountry` alone can lag a
+  // render behind whenever something OTHER than `selectedCountry` changes
+  // what counts as "in the overflow" (2026-09-04 review, flagged on the web
+  // sibling's identical effect-based attempt) — computing it fresh every
+  // render from whatever `overflowCountries` currently is rules that class
+  // of bug out entirely, for the price of nothing (it's already cheap).
+  const countryPanelExpanded =
+    countryExpanded || countryNeedsExpand(selectedCountry, countries, VISIBLE_COUNTRY_COUNT);
 
   /** Whether the currently selected package still has a price in this
    *  country's zone — drives a pill's disabled state. */
@@ -1204,7 +1201,7 @@ export default function GiftGame() {
                   }}
                 />
               ))}
-              {overflowCountries.length > 0 && !countryExpanded && (
+              {overflowCountries.length > 0 && !countryPanelExpanded && (
                 <button
                   type="button"
                   onClick={() => {
@@ -1216,7 +1213,7 @@ export default function GiftGame() {
                   {t("gifts.game.otherRegion")}
                 </button>
               )}
-              {countryExpanded &&
+              {countryPanelExpanded &&
                 overflowCountries.map((country) => (
                   <RegionPill
                     key={country}
