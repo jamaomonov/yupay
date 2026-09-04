@@ -7,7 +7,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import type { Metadata } from "next";
 
-import { DlcBrowser } from "@/components/gifts/DlcBrowser";
+import { DlcBrowser, DlcNote } from "@/components/gifts/DlcBrowser";
 import { GiftPurchasePanel } from "@/components/gifts/GiftPurchasePanel";
 import { JsonLd } from "@/components/JsonLd";
 import { routing } from "@/i18n/routing";
@@ -210,6 +210,8 @@ export default async function GiftGamePage({
             <h1 className="font-display text-[clamp(1.9rem,3.2vw,2.75rem)] font-bold leading-tight tracking-[-0.025em]">
               {detail.name}
             </h1>
+
+            <DlcNote type={detail.type} />
 
             {detail.description && (
               <p className="text-tx-mute max-w-[70ch] text-pretty text-[15px] leading-relaxed">

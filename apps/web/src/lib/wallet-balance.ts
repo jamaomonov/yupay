@@ -29,6 +29,13 @@ export type WalletTile =
   | { state: "short"; balance: number; missing: number }
   /** Nothing picked yet, so there is no total to weigh the balance against. */
   | { state: "noTotal" }
+  /** Something IS picked, but its UZS conversion isn't available (FX is
+   *  down) — distinct from `noTotal`, whose "choose a package" copy is
+   *  wrong here: the package is already chosen. */
+  | { state: "fxDown" }
+  /** The wallet payment method itself is under admin maintenance — the
+   *  balance may well cover the order, but the rail is closed regardless. */
+  | { state: "maintenance" }
   /** A total exists but the balance does not: still loading, or the read
    *  failed. Distinct from `noTotal` because the customer can act on one of
    *  them and not the other. */
@@ -63,13 +70,24 @@ export function walletTile(input: {
   isLoggedIn: boolean;
   balance: number | null;
   total: number | null;
+  /** True when something is picked but FX made its UZS price unavailable —
+   *  turns a `null` `total` into `fxDown` instead of `noTotal`. */
+  fxDown?: boolean;
+  /** True when an admin has put the wallet payment method itself into
+   *  maintenance. Checked before the total/balance logic: the balance is
+   *  irrelevant while the rail is closed. */
+  maintenance?: boolean;
 }): WalletTile {
   if (!input.isLoggedIn) return { state: "guest" };
+  if (input.maintenance) return { state: "maintenance" };
   // Order matters: with no total there is nothing to compare against whatever
   // the balance is, and saying "choose a package" to someone who has chosen one
   // — which is what a still-loading or failed balance used to produce — is
-  // worse than saying nothing.
-  if (input.total === null || input.total <= 0) return { state: "noTotal" };
+  // worse than saying nothing. `fxDown` distinguishes "chosen, but FX is
+  // down" from "nothing chosen yet" within that same `total === null` case.
+  if (input.total === null || input.total <= 0) {
+    return input.fxDown ? { state: "fxDown" } : { state: "noTotal" };
+  }
   if (input.balance === null) return { state: "unknown" };
   if (input.balance >= input.total) return { state: "ready", balance: input.balance };
   return {

@@ -136,6 +136,10 @@ export function GiftPurchasePanel({
   // existing copy (`emailLabel`/`paymentTitle`/...) rather than forking a
   // second translation of the same sentences into this namespace.
   const ts = useTranslations("web.store");
+  // `emailInvalid` ("Введите корректный email") is `AuthForm`'s established
+  // wording for the same syntax check — reused rather than forking a third
+  // translation of "that doesn't look like an email".
+  const ta = useTranslations("web.auth");
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
 
@@ -146,6 +150,12 @@ export function GiftPurchasePanel({
   // fields resolves here truthy but without them — never throw on that,
   // degrade to the coming-soon state below instead.
   const [country, setCountry] = useState<string>(detail.region_default ?? "");
+  // The country an edition switch just reassigned the buyer to, so the
+  // shared "Это издание продаётся только для: {country}" notice can render
+  // — and ONLY render — when `selectPackage` below actually moved it. `null`
+  // on mount and after any manual country pick; never set except inside
+  // `selectPackage`'s own reassignment branches.
+  const [editionSwitchCountry, setEditionSwitchCountry] = useState<string | null>(null);
 
   // The country picker's own unit is the country, but a package's prices
   // are keyed by zone (`GiftPackage.prices[].zone`) — every country a zone
@@ -164,6 +174,13 @@ export function GiftPurchasePanel({
     selectedZone !== undefined
       ? (selectedPackage?.prices.find((p) => p.zone === selectedZone) ?? null)
       : null;
+  // `price_uzs` legitimately comes back `null` when the FX trust gate
+  // rejected the live rate — distinct from `selectedPrice === null` (no
+  // price for this zone at all, which keeps its own `noPriceInRegion`
+  // copy). Buying at `price_usd` here would charge the buyer an amount they
+  // never saw in soum, so this gates both `canBuy` below and the wallet
+  // tile's total.
+  const priceUnavailable = selectedPrice !== null && selectedPrice.price_uzs == null;
 
   const countries = (detail.regions ?? []).map((r) => r.country);
   // No offered country at all — an unlikely but real possibility once
@@ -187,37 +204,56 @@ export function GiftPurchasePanel({
    *  (`GiftGame.tsx`) exactly: a package priced only in a zone neither the
    *  current nor the default country covers (e.g. a deluxe edition sold
    *  only in RU while the buyer sits on UZ) must still land on a priced
-   *  country, not silently disable Buy. */
+   *  country, not silently disable Buy.
+   *
+   *  Also tracks `editionSwitchCountry`: set exactly when a reassignment
+   *  branch below actually fires, so the shared "this edition only sells
+   *  for {country}" notice shows only on a real, silent move — never on a
+   *  no-op reselect of the already-active package. */
   function selectPackage(pkg: GiftPackage): void {
     setPackageId(pkg.id);
     const zone = countryZone.get(country);
-    if (zone !== undefined && pkg.prices.some((p) => p.zone === zone)) return;
+    if (zone !== undefined && pkg.prices.some((p) => p.zone === zone)) {
+      // The current country still prices this edition — nothing moved.
+      setEditionSwitchCountry(null);
+      return;
+    }
 
     const defaultCountry = detail.region_default ?? "";
     const defaultZone = countryZone.get(defaultCountry);
     if (defaultZone !== undefined && pkg.prices.some((p) => p.zone === defaultZone)) {
       setCountry(defaultCountry);
+      setEditionSwitchCountry(defaultCountry);
       return;
     }
 
     const fallbackZone = pkg.prices[0]?.zone;
-    if (fallbackZone === undefined) return;
+    if (fallbackZone === undefined) {
+      setEditionSwitchCountry(null);
+      return;
+    }
     for (const [candidateCountry, candidateZone] of countryZone) {
       if (candidateZone === fallbackZone) {
         setCountry(candidateCountry);
+        setEditionSwitchCountry(candidateCountry);
         return;
       }
     }
+    setEditionSwitchCountry(null);
   }
 
   function selectCountry(c: string): void {
     const zone = countryZone.get(c);
     if (zone === undefined || !selectedPackage?.prices.some((p) => p.zone === zone)) return;
     setCountry(c);
+    // A manual pick supersedes whatever an earlier edition switch chose —
+    // the notice explaining that switch is now stale.
+    setEditionSwitchCountry(null);
   }
 
   const [inviteUrl, setInviteUrl] = useState("");
   const inviteValid = isValidInviteUrl(inviteUrl);
+  const inviteInvalid = inviteUrl.trim() !== "" && !inviteValid;
   const [email, setEmail] = useState("");
 
   // Signed-in buyers get their account's delivery address pre-filled, the
@@ -276,6 +312,13 @@ export function GiftPurchasePanel({
   // never `price_usd`, which the FX-unavailable case leaves as the only
   // figure on the DTO.
   const total = selectedPrice?.price_uzs != null ? Number(selectedPrice.price_uzs) : null;
+  const payingFromBalance = methodId === WALLET_METHOD_ID;
+  // The wallet rides the same admin lever as the acquirers (ADR-0056, an FX
+  // drop can stop pay-from-balance too) — `methodVisibility` fails open
+  // (`"active"`) while `providerStatus` is still `null`, same as everywhere
+  // else it's consulted. Computed before `walletState` below, which needs it
+  // to tell "under maintenance" apart from "FX is down"/"nothing chosen".
+  const walletVisibility = methodVisibility(WALLET_METHOD_ID, providerStatus);
   const walletState = walletTile({
     // `isLoading` matters: the access token is memory-only, so a cold load
     // re-mints it and `user` is null for a beat — treating that as "guest"
@@ -283,13 +326,12 @@ export function GiftPurchasePanel({
     isLoggedIn: user !== null || authLoading,
     balance: spendableBalance(walletQuery.data?.balances ?? null, WALLET_CURRENCY),
     total,
+    // Without this, a chosen package with FX down reads as `total === null`
+    // same as nothing chosen, and the tile said "Выберите пакет" — wrong,
+    // the package IS chosen.
+    fxDown: priceUnavailable,
+    maintenance: walletVisibility === "maintenance",
   });
-  const payingFromBalance = methodId === WALLET_METHOD_ID;
-  // The wallet rides the same admin lever as the acquirers (ADR-0056, an FX
-  // drop can stop pay-from-balance too) — `methodVisibility` fails open
-  // (`"active"`) while `providerStatus` is still `null`, same as everywhere
-  // else it's consulted.
-  const walletVisibility = methodVisibility(WALLET_METHOD_ID, providerStatus);
 
   const openLogin = useLoginModal((st) => st.open);
   const queryClient = useQueryClient();
@@ -319,8 +361,17 @@ export function GiftPurchasePanel({
   const orderKeyRef = useRef<{ fingerprint: string; key: string } | null>(null);
 
   const emailValid = user !== null || EMAIL_RE.test(email);
+  // Only meaningful for the guest field (`user !== null` never renders it) —
+  // blank stays silent (a required field the buyer hasn't reached yet is not
+  // an error), a non-empty mistyped value gets the visible error below.
+  const emailInvalid = user === null && email.trim() !== "" && !EMAIL_RE.test(email);
   const canBuy =
-    selectedPrice !== null && inviteValid && emailValid && selectedMethodActive && !loading;
+    selectedPrice !== null &&
+    !priceUnavailable &&
+    inviteValid &&
+    emailValid &&
+    selectedMethodActive &&
+    !loading;
 
   async function handleBuy(): Promise<void> {
     // `canBuy` already requires `selectedPrice !== null` — TS's aliased-
@@ -430,6 +481,8 @@ export function GiftPurchasePanel({
 
   const inviteId = useId();
   const emailId = useId();
+  const inviteErrorId = `${inviteId}-error`;
+  const emailErrorId = `${emailId}-error`;
 
   // No sellable country at all (see `hasRegions` above) — same posture the
   // page-level caller already uses when there's no purchasable SKU yet
@@ -495,6 +548,11 @@ export function GiftPurchasePanel({
             );
           })}
         </div>
+        {editionSwitchCountry && (
+          <p className="text-tx-dim mt-2 text-[12px] leading-snug">
+            {t("editionSwitchNotice", { country: countryName(editionSwitchCountry, locale) })}
+          </p>
+        )}
       </div>
 
       <div>
@@ -542,23 +600,28 @@ export function GiftPurchasePanel({
               />
             ))}
         </div>
-        <p className="text-tx-dim mt-2 text-[12px] leading-snug">{t("regionWarning")}</p>
       </div>
 
       <div className="border-border/70 border-t pt-4">
         {selectedPrice ? (
-          <div className="flex items-baseline gap-2.5">
-            <span className="font-display text-2xl font-bold tabular-nums">
-              {selectedPrice.price_uzs != null
-                ? formatUzs(locale, Math.round(Number(selectedPrice.price_uzs)))
-                : formatMoney(selectedPrice.price_usd, "USD", locale)}
-            </span>
-            {selectedPrice.price_uzs != null && (
+          selectedPrice.price_uzs != null ? (
+            <div className="flex items-baseline gap-2.5">
+              <span className="font-display text-2xl font-bold tabular-nums">
+                {formatUzs(locale, Math.round(Number(selectedPrice.price_uzs)))}
+              </span>
               <span className="text-tx-dim text-sm">
                 {formatMoney(selectedPrice.price_usd, "USD", locale)}
               </span>
-            )}
-          </div>
+            </div>
+          ) : (
+            // FX is down for this zone — never fall back to `price_usd`
+            // here: showing a dollar figure as if it were payable is exactly
+            // what sent a buyer to the acquirer for an unknown soum amount.
+            // Mirrors `PurchasePanel`'s `VariableAmountCard` FX-down card.
+            <div className="border-border bg-card text-tx-mute rounded-lg border border-dashed p-6 text-center text-sm">
+              {ts("priceUnavailable")}
+            </div>
+          )
         ) : (
           <p className="text-tx-mute text-sm">{t("noPriceInRegion")}</p>
         )}
@@ -579,10 +642,14 @@ export function GiftPurchasePanel({
             setInviteUrl(e.target.value);
           }}
           placeholder={t("invitePlaceholder")}
+          aria-invalid={inviteInvalid ? true : undefined}
+          aria-describedby={inviteInvalid ? inviteErrorId : undefined}
           className="border-border bg-bg rounded-btn h-11 w-full border px-3 text-sm"
         />
-        {inviteUrl.trim() !== "" && !inviteValid && (
-          <p className="text-[13px] text-[#FF6B6B]">{t("inviteError")}</p>
+        {inviteInvalid && (
+          <p id={inviteErrorId} className="text-[13px] text-[#FF6B6B]">
+            {t("inviteError")}
+          </p>
         )}
         <InviteGuide />
       </div>
@@ -599,13 +666,21 @@ export function GiftPurchasePanel({
             id={emailId}
             type="email"
             required
+            autoComplete="email"
             value={email}
             onChange={(e) => {
               setEmail(e.target.value);
             }}
             placeholder={ts("emailPlaceholder")}
+            aria-invalid={emailInvalid ? true : undefined}
+            aria-describedby={emailInvalid ? emailErrorId : undefined}
             className="border-border bg-bg rounded-btn h-11 w-full border px-3 text-sm"
           />
+          {emailInvalid && (
+            <p id={emailErrorId} className="text-[13px] text-[#FF6B6B]">
+              {ta("emailInvalid")}
+            </p>
+          )}
         </div>
       )}
 
@@ -629,7 +704,6 @@ export function GiftPurchasePanel({
                 walletVisibility !== "active" ||
                 (walletState.state !== "ready" && walletState.state !== "guest")
               }
-              title={walletVisibility === "maintenance" ? ts("paymentMaintenance") : undefined}
               onClick={() => {
                 if (walletState.state === "guest") {
                   openLogin();
@@ -657,15 +731,19 @@ export function GiftPurchasePanel({
                 <span className="text-tx-dim block text-[12px]">
                   {walletState.state === "guest"
                     ? ts("payFromBalanceGuest")
-                    : walletState.state === "short"
-                      ? ts("payFromBalanceShort", {
-                          amount: formatUzs(locale, walletState.missing),
-                        })
-                      : walletState.state === "ready"
-                        ? formatUzs(locale, Math.round(walletState.balance))
-                        : walletState.state === "noTotal"
-                          ? ts("payFromBalanceUnknown")
-                          : ts("payFromBalanceLoading")}
+                    : walletState.state === "maintenance"
+                      ? ts("paymentMaintenance")
+                      : walletState.state === "fxDown"
+                        ? ts("priceUnavailable")
+                        : walletState.state === "short"
+                          ? ts("payFromBalanceShort", {
+                              amount: formatUzs(locale, walletState.missing),
+                            })
+                          : walletState.state === "ready"
+                            ? formatUzs(locale, Math.round(walletState.balance))
+                            : walletState.state === "noTotal"
+                              ? ts("payFromBalanceUnknown")
+                              : ts("payFromBalanceLoading")}
                 </span>
               </span>
             </button>
@@ -693,23 +771,39 @@ export function GiftPurchasePanel({
               if (visibility === "hidden") return null;
               const disabled = visibility === "maintenance";
               const active = !disabled && m.id === methodId;
+              const statusId = `gift-pay-method-status-${m.id}`;
               return (
                 <button
                   key={m.id}
                   type="button"
+                  // Kept as the bare provider name: the status rides
+                  // `aria-describedby` instead, so the accessible name of a
+                  // tile doesn't change when an acquirer goes down.
                   aria-label={m.name}
                   aria-pressed={active}
-                  title={disabled ? ts("paymentMaintenance") : undefined}
+                  aria-describedby={disabled ? statusId : undefined}
                   disabled={disabled}
                   onClick={() => {
                     setMethodId(m.id);
                   }}
-                  className={`rounded-btn flex flex-col items-center justify-center gap-1 border px-3 py-3 transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                  className={`rounded-btn relative flex flex-col items-center justify-center gap-1 overflow-hidden border px-3 py-3 transition disabled:cursor-not-allowed disabled:opacity-60 ${
                     active
                       ? "border-primary bg-primary/10"
                       : "border-border bg-bg hover:border-border-2"
                   }`}
                 >
+                  {/* Overlaid, not stacked — a third line of text inside the
+                      tile would grow it taller than its neighbours. A strip
+                      pinned to the top edge stays out of the flow and is
+                      visible on touch, unlike a `title=` tooltip. */}
+                  {disabled && (
+                    <span
+                      id={statusId}
+                      className="border-border bg-bg/95 text-tx-dim absolute inset-x-0 top-0 z-10 border-b py-[3px] text-center text-[9px] font-bold uppercase leading-none tracking-[0.06em]"
+                    >
+                      {ts("paymentMaintenanceShort")}
+                    </span>
+                  )}
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md">
                     <Image
                       src={m.icon}

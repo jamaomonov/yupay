@@ -3,7 +3,7 @@ import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
-import { DlcBrowser } from "./DlcBrowser";
+import { DlcBrowser, DlcNote } from "./DlcBrowser";
 
 import type { GiftApp } from "@/lib/gifts";
 
@@ -44,6 +44,16 @@ function makeApp(overrides: Partial<GiftApp> = {}): GiftApp {
     ...overrides,
   };
 }
+
+it("shows the base-game-required note on a DLC's own page", () => {
+  render(<DlcNote type="dlc" />);
+  expect(screen.getByText("dlcNote")).toBeInTheDocument();
+});
+
+it("renders nothing on a base game's page", () => {
+  const { container } = render(<DlcNote type="game" />);
+  expect(container).toBeEmptyDOMElement();
+});
 
 it("renders nothing when the app has no DLC", () => {
   const { container } = render(<DlcBrowser appId={1} total={0} locale="ru" />);

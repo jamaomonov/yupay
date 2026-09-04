@@ -371,6 +371,115 @@ it("falls through to a priced country when a package switch prices neither the c
   expect(screen.getAllByText(priceText(12065)).length).toBeGreaterThan(0);
 });
 
+it("blocks Buy and shows the price-unavailable card when FX is down for the selected price", () => {
+  mockProvidersResponse();
+  // `price_uzs: null` — the FX trust gate rejected the live rate for this
+  // zone. `price_usd` is still present, which is exactly the trap: the old
+  // behaviour fell back to showing it as if it were payable.
+  const detail = makeDetail({
+    packages: [
+      { ...STANDARD_EDITION, prices: [{ zone: "CIS", price_usd: "1.10", price_uzs: null }] },
+    ],
+  });
+  renderPanel(<GiftPurchasePanel detail={detail} skuId="sku-1" locale="ru" />);
+
+  expect(screen.getByText("priceUnavailable")).toBeInTheDocument();
+
+  fireEvent.change(screen.getByLabelText("inviteLabel"), {
+    target: { value: "https://steamcommunity.com/profiles/76561198000000000" },
+  });
+  fireEvent.change(screen.getByLabelText("emailLabel"), {
+    target: { value: "guest@example.com" },
+  });
+  // Never enabled — a valid invite and email are not enough while FX is down.
+  expect(screen.getByRole("button", { name: "buy" })).toBeDisabled();
+  expect(buyGiftMock).not.toHaveBeenCalled();
+});
+
+it("shows FX-down wording on the wallet tile instead of 'choose a package' when the picked price has no UZS conversion", async () => {
+  useAuthMock.mockReturnValue({ user: makeUser(), isLoading: false });
+  setTokens("test-access-token");
+  mockWallet("50000");
+  const detail = makeDetail({
+    packages: [
+      { ...STANDARD_EDITION, prices: [{ zone: "CIS", price_usd: "1.10", price_uzs: null }] },
+    ],
+  });
+  renderPanel(<GiftPurchasePanel detail={detail} skuId="sku-1" locale="ru" />);
+
+  // The package IS chosen — `walletTile` must not say `noTotal`'s "choose a
+  // package" here, only that FX is down.
+  await waitFor(() => {
+    expect(walletTileButton()).toHaveTextContent("priceUnavailable");
+  });
+  expect(walletTileButton()).not.toHaveTextContent("payFromBalanceUnknown");
+  expect(walletTileButton()).toBeDisabled();
+});
+
+it("shows the edition-switch notice only when picking an edition actually moves the buyer's country", () => {
+  mockProvidersResponse();
+  const detail = makeDetail({ packages: [STANDARD_EDITION, CIS_ONLY_EDITION] });
+  renderPanel(<GiftPurchasePanel detail={detail} skuId="sku-1" locale="ru" />);
+
+  fireEvent.click(screen.getByRole("button", { name: countryButtonName("RU") }));
+  expect(screen.queryByText(/editionSwitchNotice/)).not.toBeInTheDocument();
+
+  // CIS_ONLY_EDITION doesn't price RU — `selectPackage` falls back to
+  // `region_default` (UZ), moving the country out from under the buyer.
+  fireEvent.click(screen.getByRole("button", { name: /CIS-Only Edition/ }));
+
+  expect(
+    screen.getByText(`editionSwitchNotice:${JSON.stringify({ country: countryName("UZ", "ru") })}`),
+  ).toBeInTheDocument();
+});
+
+it("does not show the edition-switch notice when the new edition still prices the buyer's current country", () => {
+  mockProvidersResponse();
+  const detail = makeDetail({ packages: [STANDARD_EDITION, MULTI_REGION_EDITION] });
+  renderPanel(<GiftPurchasePanel detail={detail} skuId="sku-1" locale="ru" />);
+
+  fireEvent.click(screen.getByRole("button", { name: countryButtonName("RU") }));
+  fireEvent.click(screen.getByRole("button", { name: /Multi-Region Edition/ }));
+
+  expect(screen.queryByText(/editionSwitchNotice/)).not.toBeInTheDocument();
+});
+
+it("clears a stale edition-switch notice once the buyer manually repicks a country", () => {
+  mockProvidersResponse();
+  const detail = makeDetail({ packages: [STANDARD_EDITION, CIS_ONLY_EDITION] });
+  renderPanel(<GiftPurchasePanel detail={detail} skuId="sku-1" locale="ru" />);
+
+  fireEvent.click(screen.getByRole("button", { name: countryButtonName("RU") }));
+  fireEvent.click(screen.getByRole("button", { name: /CIS-Only Edition/ }));
+  expect(screen.getByText(/editionSwitchNotice/)).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: countryButtonName("UZ") }));
+  expect(screen.queryByText(/editionSwitchNotice/)).not.toBeInTheDocument();
+});
+
+it("shows a visible maintenance strip on a disabled acquirer tile, not a title tooltip", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({
+      json: () =>
+        Promise.resolve({
+          providers: [
+            { slug: "click", status: "active" },
+            { slug: "payme", status: "maintenance" },
+          ],
+        }),
+    }),
+  );
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+  const payme = await screen.findByRole("button", { name: "Payme" });
+  await waitFor(() => {
+    expect(payme).toBeDisabled();
+  });
+  expect(payme).not.toHaveAttribute("title");
+  expect(payme).toHaveTextContent("paymentMaintenanceShort");
+});
+
 it("blocks submit and shows the i18n error on a bad invite URL", () => {
   mockProvidersResponse();
   renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
@@ -382,6 +491,41 @@ it("blocks submit and shows the i18n error on a bad invite URL", () => {
   expect(screen.getByText("inviteError")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "buy" })).toBeDisabled();
   expect(buyGiftMock).not.toHaveBeenCalled();
+});
+
+it("announces the invite error via aria-invalid/aria-describedby, not just a floating paragraph", () => {
+  mockProvidersResponse();
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+  const inviteInput = screen.getByLabelText("inviteLabel");
+  fireEvent.change(inviteInput, { target: { value: "https://example.com/not-steam" } });
+
+  const err = screen.getByText("inviteError");
+  expect(inviteInput).toHaveAttribute("aria-invalid", "true");
+  expect(inviteInput).toHaveAttribute("aria-describedby", err.id);
+  expect(err.id).not.toBe("");
+});
+
+it("shows a visible, announced error for an invalid guest email and blocks Buy", () => {
+  mockProvidersResponse();
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+  const emailInput = screen.getByLabelText("emailLabel");
+  // Untouched — no error yet, a blank required field is a different state
+  // from a mistyped one.
+  expect(screen.queryByText("emailInvalid")).not.toBeInTheDocument();
+
+  fireEvent.change(emailInput, { target: { value: "not-an-email" } });
+
+  const err = screen.getByText("emailInvalid");
+  expect(emailInput).toHaveAttribute("aria-invalid", "true");
+  expect(emailInput).toHaveAttribute("aria-describedby", err.id);
+  expect(emailInput).toHaveAttribute("autoComplete", "email");
+
+  fireEvent.change(screen.getByLabelText("inviteLabel"), {
+    target: { value: "https://steamcommunity.com/profiles/76561198000000000" },
+  });
+  expect(screen.getByRole("button", { name: "buy" })).toBeDisabled();
 });
 
 it("POSTs the exact checkout body via lib/gift-checkout on submit", async () => {
@@ -738,6 +882,13 @@ it("keeps the wallet tile visible but unselectable while it is under admin maint
   await waitFor(() => {
     expect(walletTileButton()).toBeDisabled();
   });
+  // The balance (50 000, well over the 13 970 total) covers the order, but
+  // the rail is closed — the caption must say so, visibly, not keep showing
+  // the balance as if it were payable, and not hide the state behind a
+  // `title=` tooltip.
+  expect(walletTileButton()).not.toHaveAttribute("title");
+  expect(walletTileButton()).toHaveTextContent("paymentMaintenance");
+  expect(walletTileButton()).not.toHaveTextContent(priceText(50000));
 });
 
 it("never lets a providerStatus fetch that resolves after a wallet pick swap it back to a card", async () => {

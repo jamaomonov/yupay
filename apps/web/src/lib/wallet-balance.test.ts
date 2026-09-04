@@ -133,6 +133,36 @@ describe("walletTile", () => {
       missing: 5000,
     });
   });
+
+  test("FX-down (a price was picked, but its UZS conversion is unavailable) is NOT 'choose a package'", () => {
+    // The bug this guards: `total` is `null` both when nothing is chosen yet
+    // and when FX is down for what IS chosen — collapsing them into the same
+    // `noTotal` state told a buyer who already picked a package to pick one.
+    expect(walletTile({ isLoggedIn: true, balance: 500000, total: null, fxDown: true })).toEqual({
+      state: "fxDown",
+    });
+    expect(walletTile({ isLoggedIn: true, balance: null, total: null, fxDown: true })).toEqual({
+      state: "fxDown",
+    });
+  });
+
+  test("fxDown is ignored once a total exists — the flag only matters while total is null", () => {
+    expect(walletTile({ isLoggedIn: true, balance: 200000, total: 159635, fxDown: true })).toEqual(
+      { state: "ready", balance: 200000 },
+    );
+  });
+
+  test("maintenance overrides a ready balance — the rail is closed regardless of what's in the wallet", () => {
+    expect(
+      walletTile({ isLoggedIn: true, balance: 500000, total: 1000, maintenance: true }),
+    ).toEqual({ state: "maintenance" });
+  });
+
+  test("maintenance never overrides guest — sign in is still the actionable message", () => {
+    expect(
+      walletTile({ isLoggedIn: false, balance: null, total: 1000, maintenance: true }),
+    ).toEqual({ state: "guest" });
+  });
 });
 
 describe("canPayFromBalance", () => {
@@ -142,5 +172,7 @@ describe("canPayFromBalance", () => {
     expect(canPayFromBalance({ state: "guest" })).toBe(false);
     expect(canPayFromBalance({ state: "unknown" })).toBe(false);
     expect(canPayFromBalance({ state: "noTotal" })).toBe(false);
+    expect(canPayFromBalance({ state: "fxDown" })).toBe(false);
+    expect(canPayFromBalance({ state: "maintenance" })).toBe(false);
   });
 });

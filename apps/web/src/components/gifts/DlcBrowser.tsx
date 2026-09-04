@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Info } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 
@@ -9,6 +9,29 @@ import { GiftCard } from "./GiftCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { buttonStyles } from "@/lib/button";
 import { fetchGiftDlc, type GiftApp } from "@/lib/gifts";
+
+/**
+ * "Requires the base game" note for a DLC's own product page. `DlcBrowser`
+ * below links every DLC entry straight to its own `/store/steam-gifts/
+ * {app_id}` page (via `GiftCard`), and nothing else on that page said a DLC
+ * gift only works if the recipient already owns the base game — a
+ * delivered, unusable gift. Renders only when `type` marks the app as DLC
+ * (`GiftAppOut.type`, "dlc" vs. "game"); no wire field for the parent
+ * game's name exists yet, so the copy stays generic rather than growing one
+ * just for this note.
+ */
+export function DlcNote({ type }: { type: string }) {
+  const t = useTranslations("web.gifts.game");
+  if (type !== "dlc") return null;
+  return (
+    <div className="border-border bg-muted/40 rounded-lg border p-3 text-[13px]">
+      <p className="text-foreground flex items-start gap-1.5">
+        <Info size={14} className="text-tx-dim mt-0.5 shrink-0" aria-hidden="true" />
+        <span className="text-tx-mute leading-snug">{t("dlcNote")}</span>
+      </p>
+    </div>
+  );
+}
 
 /** Matches the API's default `limit` for `/gifts/catalog/{appId}/dlc` — see
  *  `gifts/routes.py::get_catalog_app_dlc`. */
