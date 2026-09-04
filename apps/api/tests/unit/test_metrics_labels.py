@@ -20,7 +20,6 @@ from __future__ import annotations
 from typing import Any, Literal, get_args
 
 import pytest
-import structlog.testing
 from prometheus_client import REGISTRY
 from yupay.core import metrics
 
@@ -81,27 +80,41 @@ def test_a_broken_registry_never_reaches_the_caller(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(metrics, "GIFT_PROFILE_CHECKS", _BrokenCounter())
     monkeypatch.setattr(metrics, "STEAM_WEB_API_CALLS", _BrokenCounter())
 
-    with structlog.testing.capture_logs() as logs:
-        metrics.record_gift_profile_check(verdict="found", source="steam")
-        metrics.record_steam_web_api_call(
-            endpoint="get_player_summaries", consumer="gifts_profile", outcome="ok"
-        )
+    # The module's own logger is swapped for a recorder rather than reading
+    # `structlog.testing.capture_logs`. That helper works by reconfiguring
+    # structlog globally, and `configure_logging()` sets
+    # `cache_logger_on_first_use=True` — so once anything in the process has
+    # bound this module-level logger, it keeps the processor chain it was
+    # bound with and the capture never sees it. That is exactly what happened:
+    # in a full run these two events were rendered to stdout while the capture
+    # list came back empty, and the test passed alone and failed in the suite.
+    # Asserting on the call this code actually makes removes the dependency on
+    # global logging state entirely, and pins the fields as a bonus.
+    calls: list[dict[str, str]] = []
 
-    # Filtered, not compared as a whole: `capture_logs` is process-global, so
-    # anything else logging in this window — a leaked connection from an
-    # earlier test, a background task — would break an exact-list assertion
-    # for reasons that have nothing to do with metrics. This is what made the
-    # test pass alone and fail in a full run.
-    failures = [entry for entry in logs if entry["event"] == "metrics.increment_failed"]
-    assert len(failures) == 2
+    class _Recorder:
+        def warning(self, event: str, **fields: str) -> None:
+            calls.append({"event": event, **fields})
+
+    monkeypatch.setattr(metrics, "log", _Recorder())
+
+    metrics.record_gift_profile_check(verdict="found", source="steam")
+    metrics.record_steam_web_api_call(
+        endpoint="get_player_summaries", consumer="gifts_profile", outcome="ok"
+    )
+
+    assert [call["event"] for call in calls] == [
+        "metrics.increment_failed",
+        "metrics.increment_failed",
+    ]
     # The failure log names the metric, never the labels of the call that
     # failed — the log redactor is not a reason to relax about what we hand it.
-    assert all(entry["error"] == "RuntimeError" for entry in failures)
-    assert {entry["metric"] for entry in failures} == {
+    assert all(call["error"] == "RuntimeError" for call in calls)
+    assert [call["metric"] for call in calls] == [
         "yupay_gifts_steam_profile_checks_total",
         "yupay_steam_web_api_calls_total",
-    }
-    assert not any("verdict" in entry or "endpoint" in entry for entry in failures)
+    ]
+    assert not any("verdict" in call or "endpoint" in call for call in calls)
 
 
 def test_a_broken_registry_does_not_swallow_the_work_it_wraps(
