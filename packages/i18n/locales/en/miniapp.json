@@ -415,6 +415,7 @@
     "many": "{count} DLC",
     "other": "{count} DLC"
   },
+  "gifts.card.from": "from",
   "gifts.badge.discount": "-{percent}%",
   "gifts.priceUnavailable": "—",
   "gifts.comingSoon": "This section is opening soon",

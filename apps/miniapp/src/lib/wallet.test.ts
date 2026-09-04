@@ -1,6 +1,9 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 
-import { topUpAttemptKey, txKindLabelKey } from "./wallet";
+import { formatBalance, topUpAttemptKey, txKindLabelKey } from "./wallet";
+
+import { formatMoney } from "@/lib/currency";
+import { setActiveLocale } from "@/lib/i18n/core";
 
 /**
  * Every `kind=` the backend passes to `wallet.post` today. Grep for
@@ -59,5 +62,30 @@ describe("topUpAttemptKey", () => {
     const store: { current: { signature: string; key: string } | null } = { current: null };
     const first = topUpAttemptKey(store, "50000:click_miniapp");
     expect(topUpAttemptKey(store, "50000:payme")).not.toBe(first);
+  });
+});
+
+/**
+ * The gift buy screen (`GiftGame.tsx`) renders UZS two ways on one screen:
+ * `formatMoney` for the price, `formatBalance` for the wallet tile. Before
+ * this fix `formatBalance` appended a static "UZS" regardless of locale
+ * while `formatMoney` (once fixed) said "сум"/"soʻm" — two different tokens
+ * for the same currency on the same screen (2026-09-04 review).
+ */
+describe("formatBalance", () => {
+  afterEach(() => {
+    setActiveLocale("ru");
+  });
+
+  test("agrees with formatMoney's UZS word, per locale", () => {
+    for (const locale of ["ru", "en", "uz"] as const) {
+      setActiveLocale(locale);
+      expect(formatBalance(165_000, "UZS")).toBe(formatMoney(165_000, "UZS"));
+    }
+  });
+
+  test("never renders the bare ISO code for a ru balance", () => {
+    setActiveLocale("ru");
+    expect(formatBalance(165_000, "UZS")).not.toMatch(/UZS/);
   });
 });

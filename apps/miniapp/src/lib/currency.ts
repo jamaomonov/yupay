@@ -29,14 +29,7 @@ export const CURRENCY_LABEL: Record<DisplayCurrency, string> = {
   USDT: "Tether USDT",
 };
 
-export const CURRENCY_SYMBOL: Record<DisplayCurrency, string> = {
-  USD: "$",
-  UZS: "UZS",
-  RUB: "₽",
-  USDT: "USDT",
-};
-
-function isDisplayCurrency(value: string | undefined | null): value is DisplayCurrency {
+export function isDisplayCurrency(value: string | undefined | null): value is DisplayCurrency {
   return value != null && (DISPLAY_CURRENCIES as readonly string[]).includes(value);
 }
 
@@ -46,6 +39,19 @@ function isDisplayCurrency(value: string | undefined | null): value is DisplayCu
 const ZERO_DECIMAL_CURRENCIES = new Set(["UZS"]);
 
 /**
+ * Localized word for a UZS amount — the storefront-wide fix for `Intl`'s own
+ * `style:"currency"` rendering the ISO code instead of a word: "165 000 UZS"
+ * in ru (Latin letters sitting in the middle of a Cyrillic sentence), "UZS
+ * 165,000" in en (the code even leads the number). Mirrors `formatUzs` in
+ * `apps/web/src/lib/seo.ts` — keep the two in sync.
+ */
+function uzsWord(locale: string): string {
+  if (locale === "ru") return "сум";
+  if (locale === "uz") return "soʻm";
+  return "UZS";
+}
+
+/**
  * Format a money amount in the given ISO-ish currency code, honoring the
  * active locale. Shared by every page that prints a sum price (`TopUp`,
  * the Steam Gifts catalog/game screens) so a formatting tweak lands once.
@@ -53,6 +59,15 @@ const ZERO_DECIMAL_CURRENCIES = new Set(["UZS"]);
 export function formatMoney(value: number, code: string): string {
   const locale = getActiveLocale();
   const fractionDigits = ZERO_DECIMAL_CURRENCIES.has(code) ? 0 : 2;
+  if (code === "UZS") {
+    // `Intl`'s currency style is what prints the bare ISO code — build the
+    // number ourselves and append the localized word instead (see `uzsWord`).
+    const number = new Intl.NumberFormat(locale, {
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
+    }).format(value);
+    return `${number} ${uzsWord(locale)}`;
+  }
   try {
     return new Intl.NumberFormat(locale, {
       style: "currency",
@@ -64,6 +79,27 @@ export function formatMoney(value: number, code: string): string {
     // Non-ISO pseudocurrency (USDT) — format the number, suffix the code.
     return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value)} ${code}`;
   }
+}
+
+/**
+ * Currency word/symbol for the given code, honoring the active locale for
+ * UZS (see `uzsWord`) — the other three are locale-invariant glyphs.
+ *
+ * `formatBalance` (`lib/wallet.ts`) renders the wallet tile's symbol itself
+ * rather than trusting `style:"currency"` (Telegram's font sometimes mangles
+ * the ₽ Intl would supply), so it calls this instead of duplicating the UZS
+ * mapping — that's also what keeps the wallet tile and `formatMoney`'s price
+ * agreeing on "сум"/"soʻm"/"UZS" instead of the tile alone showing the bare
+ * ISO code.
+ */
+export function currencySymbol(code: DisplayCurrency, locale: string): string {
+  if (code === "UZS") return uzsWord(locale);
+  const symbols: Record<Exclude<DisplayCurrency, "UZS">, string> = {
+    USD: "$",
+    RUB: "₽",
+    USDT: "USDT",
+  };
+  return symbols[code];
 }
 
 /**

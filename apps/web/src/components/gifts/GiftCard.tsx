@@ -20,6 +20,10 @@ import { formatUzs, pathFor } from "@/lib/seo";
  */
 export function GiftCard({ app, locale }: { app: GiftApp; locale: string }) {
   const t = useTranslations("web.gifts");
+  // `web.store.from` ("от"/"from"/"dan") is `PurchasePanel`'s and the brand
+  // hero's established "starting at" label — reused rather than forking a
+  // second translation of the same word into this namespace.
+  const ts = useTranslations("web.store");
   const discount =
     app.discount_percent != null && app.discount_percent > 0 ? app.discount_percent : null;
   const priceUzs =
@@ -55,7 +59,15 @@ export function GiftCard({ app, locale }: { app: GiftApp; locale: string }) {
           {t("card.dlc", { count: app.dlc_count })}
         </div>
         {priceUzs !== null && (
-          <div className="mt-auto pt-1.5 font-mono text-[14px] font-bold">{priceUzs}</div>
+          // "от" ("from"/"dan") — this row is the *default-zone reference*
+          // price (`gifts/routes.py`), never the per-package, per-country
+          // figure the game page actually charges. Without the prefix a
+          // buyer taps in at 1 250 000 and lands on 1 410 000, which reads
+          // as bait (2026-09-04 review).
+          <div className="mt-auto flex items-baseline gap-1 pt-1.5">
+            <span className="text-tx-dim font-sans text-[11px] font-semibold">{ts("from")}</span>
+            <span className="font-mono text-[14px] font-bold">{priceUzs}</span>
+          </div>
         )}
       </div>
     </Link>

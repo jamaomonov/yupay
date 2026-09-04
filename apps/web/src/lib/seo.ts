@@ -119,13 +119,28 @@ export const GEO_META: Record<string, string> = {
   ICBM: "41.311081, 69.240562",
 };
 
+/**
+ * Localized word for a UZS amount — the storefront charges only in soum, so
+ * this is the one currency token every price needs.
+ *
+ * `Intl`'s own `style:"currency"` support renders the *ISO code*, not a
+ * word, and gets the placement wrong on top of it: "1 250 000 UZS" in ru
+ * (Latin letters sitting in the middle of a Cyrillic sentence) and "UZS
+ * 1,250,000" in en (the code even leads the number). Only `uz` gets a real
+ * word ("soʻm") for free. `formatMoney` in
+ * `apps/miniapp/src/lib/currency.ts` carries the identical mapping — keep
+ * the two in sync.
+ */
+function uzsWord(locale: string): string {
+  if (locale === "ru") return "сум";
+  if (locale === "uz") return "soʻm";
+  return "UZS";
+}
+
 /** Format a som amount for display in the active locale. Marketing/display
  * only — real pricing comes from the catalog API in minor units later. */
 export function formatUzs(locale: string, amount: number): string {
   const intlLocale = locale === "ru" ? "ru-RU" : locale === "uz" ? "uz-UZ" : "en-US";
-  return new Intl.NumberFormat(intlLocale, {
-    style: "currency",
-    currency: "UZS",
-    maximumFractionDigits: 0,
-  }).format(amount);
+  const number = new Intl.NumberFormat(intlLocale, { maximumFractionDigits: 0 }).format(amount);
+  return `${number} ${uzsWord(locale)}`;
 }

@@ -22,10 +22,27 @@ function discountLabel(app: GiftApp): number | null {
   return app.discount_percent != null && app.discount_percent > 0 ? app.discount_percent : null;
 }
 
-function priceText(app: GiftApp): string | null {
+/** Exported for its own test coverage (see `GiftsCatalog.test.ts`) — this
+ *  app's tests are node-env only, no jsdom/RTL, so the pure formatting piece
+ *  is what's testable directly. */
+export function priceText(app: GiftApp): string | null {
   if (app.price_uzs != null) return formatMoney(Math.round(Number(app.price_uzs)), "UZS");
   if (app.price_usd != null) return formatMoney(Number(app.price_usd), "USD");
   return null;
+}
+
+/**
+ * Prefixes the catalogue card price with the localized "starting at" word.
+ *
+ * Catalogue rows carry the *default-zone reference* price
+ * (`gifts/routes.py` documents this), never the per-package, per-country
+ * figure the game page actually computes — without the prefix, a buyer taps
+ * in at 1 250 000 and lands on 1 410 000, which reads as bait (2026-09-04
+ * review).
+ */
+export function cardPriceLabel(app: GiftApp, fromWord: string): string | null {
+  const price = priceText(app);
+  return price === null ? null : `${fromWord} ${price}`;
 }
 
 function HotCard({ app }: { app: GiftApp }) {
@@ -55,7 +72,7 @@ function HotCard({ app }: { app: GiftApp }) {
 function GiftCatalogCard({ app }: { app: GiftApp }) {
   const { t, tn } = useT();
   const discount = discountLabel(app);
-  const price = priceText(app);
+  const price = cardPriceLabel(app, t("gifts.card.from"));
   return (
     <Link
       href={`/gifts/${String(app.app_id)}`}

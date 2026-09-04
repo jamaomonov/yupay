@@ -273,6 +273,43 @@ it("renders the default country's (UZ) price", () => {
   );
 });
 
+/**
+ * The gift panel used to print the UZS charge and a USD figure
+ * (`price_usd`) side by side — the buyer had no way to tell which one
+ * actually left their account (it is always UZS; `buyGift` hardcodes
+ * `currency: "UZS"`). Both the main price row and the per-package edition
+ * rows must show exactly one currency (2026-09-04 review).
+ */
+it("shows only the UZS figure on the main price row — no USD figure anywhere on the panel", () => {
+  mockProvidersResponse();
+  // `makeDetail()`'s `STANDARD_EDITION` also carries `price_usd: "1.10"` — a
+  // leftover dollar figure would surface as a literal "$" somewhere on the
+  // page.
+  const { container } = renderPanel(
+    <GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />,
+  );
+
+  expect(screen.getAllByText(priceText(13970)).length).toBeGreaterThan(0);
+  expect(container.textContent).not.toMatch(/\$/);
+  expect(container.textContent).not.toMatch(/1[.,]10/);
+});
+
+it("shows a dash, never the USD figure, on a package row whose price is FX-down", () => {
+  mockProvidersResponse();
+  const detail = makeDetail({
+    packages: [
+      { ...STANDARD_EDITION, prices: [{ zone: "CIS", price_usd: "1.10", price_uzs: null }] },
+    ],
+  });
+  const { container } = renderPanel(
+    <GiftPurchasePanel detail={detail} skuId="sku-1" locale="ru" />,
+  );
+
+  expect(screen.getByRole("button", { name: /Standard Edition/ })).toHaveTextContent("—");
+  expect(container.textContent).not.toMatch(/\$/);
+  expect(container.textContent).not.toMatch(/1[.,]10/);
+});
+
 it("re-prices when the country is switched", () => {
   mockProvidersResponse();
   renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);

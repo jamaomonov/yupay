@@ -415,6 +415,7 @@
     "many": "{count} DLC",
     "other": "{count} DLC"
   },
+  "gifts.card.from": "dan",
   "gifts.badge.discount": "-{percent}%",
   "gifts.priceUnavailable": "—",
   "gifts.comingSoon": "Bo'lim tez orada ochiladi",

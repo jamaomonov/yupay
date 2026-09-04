@@ -16,7 +16,7 @@ import { getActiveLocale } from "@/lib/i18n/core";
 import { apiGet, apiPost, newIdempotencyKey } from "./api";
 import { collectClientHints } from "./client-hints";
 import { useMe } from "./auth";
-import { CURRENCY_SYMBOL, type DisplayCurrency } from "./currency";
+import { currencySymbol, isDisplayCurrency } from "./currency";
 import type { PaymentOut } from "./orders";
 
 export type UserAccountKind = "user_wallet" | "user_cashback" | "user_promo_credit";
@@ -333,11 +333,18 @@ function getFormatter(currency: string): Intl.NumberFormat {
  * Format a balance in its **native** currency. Accepts any ISO-like
  * currency string (so unfamiliar values from the ledger don't crash the
  * UI) and falls back to ``<amount> <code>`` if there's no symbol mapped.
+ *
+ * Routes UZS/RUB through `currencySymbol` (locale-aware for UZS: "сум" /
+ * "soʻm" / "UZS") rather than a static map, so this agrees with
+ * `formatMoney`'s price display instead of the tile alone showing the bare
+ * ISO code next to a localized price.
  */
 export function formatBalance(amount: number, currency: string): string {
   const formatted = getFormatter(currency).format(amount);
   if (currency === "USD") return `$${formatted}`;
   if (currency === "USDT") return `${formatted} USDT`;
-  const symbol = (CURRENCY_SYMBOL as Record<string, string | undefined>)[currency];
-  return `${formatted} ${symbol ?? currency}`;
+  if (isDisplayCurrency(currency)) {
+    return `${formatted} ${currencySymbol(currency, getActiveLocale())}`;
+  }
+  return `${formatted} ${currency}`;
 }

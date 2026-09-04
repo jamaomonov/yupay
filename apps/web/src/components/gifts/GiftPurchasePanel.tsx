@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { formatMoney } from "@yupay/utils";
 import { ArrowUpRight, Loader2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -532,10 +531,15 @@ export function GiftPurchasePanel({
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-foreground text-sm font-semibold">{pkg.name}</span>
                   <span className="font-mono text-sm font-bold tabular-nums">
-                    {price
-                      ? price.price_uzs != null
-                        ? formatUzs(locale, Math.round(Number(price.price_uzs)))
-                        : formatMoney(price.price_usd, "USD", locale)
+                    {/* Never the USD figure here, even as a fallback: a gift is
+                        always billed in UZS, so a dollar amount next to a
+                        package a buyer can still tap Buy on would look
+                        payable without being the charged currency (2026-09-04
+                        review). `price_uzs === null` (FX down for this
+                        zone/package) degrades to the same dash as no price at
+                        all. */}
+                    {price?.price_uzs != null
+                      ? formatUzs(locale, Math.round(Number(price.price_uzs)))
                       : "—"}
                   </span>
                 </div>
@@ -605,14 +609,14 @@ export function GiftPurchasePanel({
       <div className="border-border/70 border-t pt-4">
         {selectedPrice ? (
           selectedPrice.price_uzs != null ? (
-            <div className="flex items-baseline gap-2.5">
-              <span className="font-display text-2xl font-bold tabular-nums">
-                {formatUzs(locale, Math.round(Number(selectedPrice.price_uzs)))}
-              </span>
-              <span className="text-tx-dim text-sm">
-                {formatMoney(selectedPrice.price_usd, "USD", locale)}
-              </span>
-            </div>
+            // The only figure shown — the buyer is charged in UZS, always
+            // (`buyGift` hardcodes `currency: "UZS"`), so a second, USD
+            // number here answered a question nobody asked and left the
+            // buyer guessing which one leaves their account (2026-09-04
+            // review).
+            <span className="font-display text-2xl font-bold tabular-nums">
+              {formatUzs(locale, Math.round(Number(selectedPrice.price_uzs)))}
+            </span>
           ) : (
             // FX is down for this zone — never fall back to `price_usd`
             // here: showing a dollar figure as if it were payable is exactly
