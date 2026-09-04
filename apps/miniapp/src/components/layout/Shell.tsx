@@ -11,7 +11,7 @@ export function Shell({ children }: { children: ReactNode }) {
   // a 64px bar like every other page.
   return (
     <div className="bg-background text-foreground flex min-h-screen w-full justify-center">
-      <div className="bg-background border-border/50 relative flex min-h-screen w-full max-w-[430px] flex-col overflow-hidden border-x shadow-2xl">
+      <div className="bg-background border-border/50 relative flex min-h-screen w-full flex-col overflow-hidden sm:max-w-[430px] sm:border-x sm:shadow-2xl">
         <Header />
         {/* Clears both fixed bars. Top = safe-area + header; bottom = the nav
             band (safe-area + gap + pill) plus breathing room. Both derive from

@@ -30,7 +30,7 @@ export function BottomNav() {
   return (
     <nav
       aria-label={t("nav.primary")}
-      className="fixed bottom-[calc(var(--app-inset-bottom)_+_var(--app-nav-gap))] left-0 right-0 z-50 mx-auto flex max-w-[430px] justify-center px-6"
+      className="fixed bottom-[calc(var(--app-inset-bottom)_+_var(--app-nav-gap))] left-0 right-0 z-50 mx-auto flex justify-center px-6 sm:max-w-[430px]"
     >
       <div className="bg-card/80 border-border/60 flex w-full items-center justify-around rounded-[22px] border px-3 py-2 shadow-[0_8px_32px_rgba(0,0,0,0.45)] backdrop-blur-2xl">
         {navItems.map((item) => {

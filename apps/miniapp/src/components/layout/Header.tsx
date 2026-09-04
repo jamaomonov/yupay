@@ -36,7 +36,7 @@ export function Header() {
     // shows through above the brand row. (We can't depend on
     // Telegram's CSS variables — they hydrate async; a fixed offset
     // is the simplest thing that works everywhere.)
-    <header className="bg-background/80 border-border fixed left-0 right-0 top-0 z-50 mx-auto flex h-[var(--app-header-total)] max-w-[430px] items-center justify-between border-b px-4 pt-[var(--app-inset-top)] backdrop-blur-xl">
+    <header className="bg-background/80 border-border fixed left-0 right-0 top-0 z-50 mx-auto flex h-[var(--app-header-total)] items-center justify-between border-b px-4 pt-[var(--app-inset-top)] backdrop-blur-xl sm:max-w-[430px]">
       {/* Brand — full wordmark SVG. Lives in apps/miniapp/public/, the
           path is unhashed because Vite passes /logo-wordmark.svg through
           as-is for public assets. ``alt`` is the brand name so screen
