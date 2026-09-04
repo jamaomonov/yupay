@@ -286,7 +286,7 @@ export function InviteField({
           className="text-primary inline-flex min-h-[44px] items-center gap-1 text-[13px] font-semibold"
         >
           {t("gifts.game.openProfileLink")}
-          <ExternalLink size={14} />
+          <ExternalLink size={14} aria-hidden="true" />
         </a>
       )}
       {/* "Ссылка на профиль Steam получателя" reads, to a buyer purchasing

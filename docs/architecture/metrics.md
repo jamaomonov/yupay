@@ -62,7 +62,7 @@ never produces:
   returns before any cache read). `source="local"` is narrow the other way —
   only `unsupported` (an `s.team` link) or `unavailable` (no API key
   configured) — and `source="steam"` never carries `unsupported`, since that
-  verdict always short-circuits before a Steam call. That leaves 2 + 3 + 2 = 7
+  verdict always short-circuits before a Steam call. That leaves 2 + 2 + 3 = 7
   of the second counter's 12.
 
 6 + 7 = 13.
