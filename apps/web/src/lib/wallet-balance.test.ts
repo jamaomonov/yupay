@@ -147,9 +147,10 @@ describe("walletTile", () => {
   });
 
   test("fxDown is ignored once a total exists — the flag only matters while total is null", () => {
-    expect(walletTile({ isLoggedIn: true, balance: 200000, total: 159635, fxDown: true })).toEqual(
-      { state: "ready", balance: 200000 },
-    );
+    expect(walletTile({ isLoggedIn: true, balance: 200000, total: 159635, fxDown: true })).toEqual({
+      state: "ready",
+      balance: 200000,
+    });
   });
 
   test("maintenance overrides a ready balance — the rail is closed regardless of what's in the wallet", () => {
