@@ -11,6 +11,14 @@ Covers every case the task brief lists:
 - the `steam_gifts_enabled` flag being off 404s like the rest of the router;
 - a second identical call is served from the Redis cache (one upstream call).
 
+Plus, from fix round 1 review:
+- `GetPlayerSummaries` coming back empty is `unavailable`, not `found`, for
+  *both* link shapes -- a `found` with nothing to render confirms nothing;
+- a Steam 4xx/5xx never leaks `STEAM_API_KEY` (embedded in the query string
+  of every request this module makes) into the structured logs;
+- a malformed/stale blob under the cache key degrades like a cache miss,
+  never a 500.
+
 `@respx.mock` blocks any unmocked outbound request by raising, which is what
 makes "makes no resolve call" / "no Steam call at all" real assertions rather
 than just an absence of a positive check.
@@ -23,8 +31,10 @@ from typing import Any
 import httpx
 import pytest
 import respx
+import structlog.testing
 from httpx import AsyncClient
 from yupay.core import config as cfg
+from yupay.core.redis import get_redis
 
 pytestmark = pytest.mark.asyncio
 
@@ -213,16 +223,44 @@ async def test_resolve_vanity_5xx_is_unavailable(
     assert r.json()["status"] == "unavailable"
 
 
+# ---------- security: no secrets/PII in logs ----------
+
+
 @respx.mock
-async def test_persona_fetch_failure_on_a_profiles_link_still_reads_found(
+async def test_resolve_vanity_5xx_never_leaks_the_api_key_into_logs(
     integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A `/profiles/{steamid64}` link needs no resolve call -- the id is
-    already known from the URL, so its existence is never in question here.
-    `GetPlayerSummaries` failing only costs the cosmetic nickname/avatar,
-    exactly the same "nameless, not broken" degrade `fetch_persona` already
-    gives Steam sign-in (`auth/steam.py`) -- it must never demote a
-    known-shape link to a blocking verdict."""
+    """`httpx.HTTPStatusError.__str__` embeds the full request URL, query
+    string included -- and `_resolve_vanity` puts `STEAM_API_KEY` in that
+    query string. Logging `str(exc)` verbatim would leak it, the same class
+    of bug `core/logging.py` already flags for Waxpeer; this pins that the
+    profile-check module never does that. `structlog.testing.capture_logs()`
+    is the real-behaviour-verifying substitute for `caplog` in this codebase
+    -- see `test_player_check_endpoint.py::test_player_id_never_logged_plaintext`
+    for why `caplog` itself stays empty regardless of what is logged here."""
+    secret_key = "super-secret-steam-key"
+    _enable(monkeypatch, api_key=secret_key)
+    respx.get(_RESOLVE_URL).mock(return_value=httpx.Response(500))
+
+    with structlog.testing.capture_logs() as cap:
+        r = await _check(integration_client, _VANITY_LINK)
+
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "unavailable"
+    log_text = " ".join(repr(entry) for entry in cap)
+    assert secret_key not in log_text
+
+
+@respx.mock
+async def test_persona_fetch_failure_on_a_profiles_link_is_unavailable(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A `/profiles/{steamid64}` link needs no *resolve* call, but its
+    *existence* is still unverified: the id came straight from the URL,
+    regex-shape-checked only. `GetPlayerSummaries` is the only existence
+    check this shape gets, so an empty answer -- Steam being down, or a
+    genuinely nonexistent id, indistinguishable from here -- must not read
+    as `found`. Unlike Steam sign-in, nothing has proven identity first."""
     _enable(monkeypatch)
     respx.get(_SUMMARIES_URL).mock(side_effect=httpx.ConnectTimeout("steam is slow"))
 
@@ -230,10 +268,45 @@ async def test_persona_fetch_failure_on_a_profiles_link_still_reads_found(
 
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["status"] == "found"
-    assert body["steam_id"] == _STEAM_ID
+    assert body["status"] == "unavailable"
+    assert body["steam_id"] is None
     assert body["nickname"] is None
     assert body["avatar_url"] is None
+
+
+@respx.mock
+async def test_persona_fetch_failure_on_a_resolved_vanity_is_also_unavailable(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same rule, the other shape: `ResolveVanityURL` succeeding proves the
+    account exists, but `found` is still withheld when `GetPlayerSummaries`
+    comes back empty -- the deliverable is the avatar/nickname, not the bare
+    fact of existence, so a verdict with neither must not become a green
+    confirmation the buyer sees (and would otherwise sit cached for 6h)."""
+    _enable(monkeypatch)
+    respx.get(_RESOLVE_URL).mock(
+        return_value=httpx.Response(200, json={"response": {"success": 1, "steamid": _STEAM_ID}})
+    )
+    summaries_route = respx.get(_SUMMARIES_URL)
+    summaries_route.side_effect = [
+        httpx.ConnectTimeout("steam is slow"),
+        httpx.Response(200, json=_summaries_payload()),
+    ]
+
+    r = await _check(integration_client, _VANITY_LINK)
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "unavailable"
+    assert body["steam_id"] is None
+    assert body["nickname"] is None
+    assert body["avatar_url"] is None
+
+    # Nothing was written to the cache for that unavailable verdict -- a
+    # second call re-resolves and re-summarises rather than replaying it.
+    second = await _check(integration_client, _VANITY_LINK)
+    assert second.json()["status"] == "found"
+    assert summaries_route.call_count == 2
 
 
 # ---------- invalid link shapes ----------
@@ -304,6 +377,29 @@ async def test_unavailable_verdict_is_never_cached(
 
     assert first.json()["status"] == second.json()["status"] == "unavailable"
     assert route.call_count == 2
+
+
+@respx.mock
+async def test_a_malformed_cache_entry_never_500s(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`GiftProfileOut.model_validate_json` raises `pydantic.ValidationError`
+    (a `ValueError` subclass) on a schema-mismatched blob and
+    `json.JSONDecodeError` (also a `ValueError` subclass) on unparseable
+    JSON -- neither is a `RedisError`. A stale/malformed value under this
+    key (e.g. left behind by a future schema change) must degrade like a
+    cache miss, never a 500, on an endpoint whose entire point is to never
+    be the reason a request fails. No API key is configured, so a cache
+    miss here would fall through to `unavailable` without any Steam call
+    -- proving the bad entry was actually read and discarded, not merely
+    never reached."""
+    _enable(monkeypatch, api_key=None)
+    await get_redis().set(f"gifts:steam_profile:{_STEAM_ID}", "not json and not a verdict")
+
+    r = await _check(integration_client, _PROFILE_LINK)
+
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "unavailable"
 
 
 # ---------- rate limiting ----------

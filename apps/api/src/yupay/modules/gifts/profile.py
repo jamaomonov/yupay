@@ -23,28 +23,40 @@ never be rejected at checkout, and vice versa.
 Resolution, per canonical link shape:
 
 - ``steamcommunity.com/profiles/{steamid64}`` — the id is already in the
-  URL. No resolve call, and (deliberately) no existence check either: unlike
-  a vanity name, there is no cheap Steam endpoint that answers "does this
-  id exist" other than ``GetPlayerSummaries`` itself, which is best-effort
-  and degrades on *any* failure (see :func:`~yupay.modules.auth.steam.
-  fetch_persona`). Treating that degradation as ``"not_found"`` would make
-  a transient Steam hiccup block a sale, which is exactly what this module
-  exists to prevent — so this shape is always ``"found"``, with nickname
-  and avatar filled in on a best-effort basis.
+  URL, so there is no *resolve* call. Its existence is still unverified at
+  that point, though: ``_STEAM_ID64_RE`` in ``checkout.py`` only checks
+  that it is 17 digits, not that such an account has ever existed.
 - ``steamcommunity.com/id/{vanity}`` — resolved via
   ``ISteamUser/ResolveVanityURL/v1/``. This is the one Steam call in the
-  whole flow allowed to answer definitively: ``success != 1`` becomes
-  ``"not_found"``, everything else about that call failing becomes
-  ``"unavailable"``.
+  whole flow allowed to answer definitively that a link does *not* exist:
+  ``success != 1`` becomes ``"not_found"``; anything else about that call
+  failing becomes ``"unavailable"``.
 - ``s.team/p/{path}`` — a friend-invite token, not a profile. The Web API
   cannot resolve these at all, so this is ``"unsupported"`` with no Steam
   call made, ever.
+
+Both of the first two shapes then go through ``GetPlayerSummaries``
+(:func:`~yupay.modules.auth.steam.fetch_persona`) for the nickname/avatar —
+and here the rule is uniform, deliberately not shape-dependent:
+**``"found"`` is returned only when Steam actually gave us a persona;
+anything less is ``"unavailable"``.** ``fetch_persona`` is best-effort and
+degrades to ``(None, None)`` on *any* failure, transient or not — exactly
+the "nameless, not broken" degrade it already gives Steam sign-in, where
+that is fine because OpenID has already cryptographically proven the
+identity before ``fetch_persona`` ever runs. Nothing has proven identity
+here, so an empty answer cannot be read as "found": it means we confirmed
+nothing the buyer can act on — no avatar, no nickname, nothing to render —
+regardless of whether a vanity resolved a moment earlier. The deliverable
+of this whole endpoint is the avatar and the nickname; a verdict carrying
+neither has to read as "we couldn't check," not "found."
 
 Redis caches ``"found"``/``"not_found"`` verdicts for 6h under
 ``gifts:steam_profile:{steamid_or_vanity}`` (see
 ``docs/architecture/cache-keys.md``) — profiles change rarely.
 ``"unavailable"`` is never cached: it is our failure, not a fact about the
-profile, and caching it would keep telling the next buyer the same lie.
+profile, and caching it would keep telling the next buyer the same lie —
+this is exactly why the persona-empty case above must resolve to
+``"unavailable"`` before the cache write, not after.
 
 PII note: ``steam_id``/nickname/avatar never appear in a log call here —
 only an opaque hash of the link's own identifier, the same convention
@@ -107,12 +119,82 @@ async def _resolve_vanity(vanity: str, *, api_key: str, http: httpx.AsyncClient)
     resp = await http.get(_RESOLVE_VANITY_URL, params={"key": api_key, "vanityurl": vanity})
     resp.raise_for_status()
     body = resp.json().get("response", {})
+    # Steam documents only two values: `1` (resolved) and `42` ("No match").
+    # Treating every other value as "no match" too is deliberate, not an
+    # oversight -- there is nothing else a definitive verdict could mean,
+    # and it keeps this module from having to track Steam's undocumented
+    # error codes to stay correct.
     if body.get("success") == 1:
         steamid = body.get("steamid")
         if isinstance(steamid, str) and steamid:
             return steamid
         raise ValueError("ResolveVanityURL reported success without a steamid")
     return None
+
+
+def _describe_error(exc: Exception) -> str:
+    """A log-safe description of a failed Steam call. Never ``str(exc)``.
+
+    Both Steam calls in this module carry ``key=<our api key>`` in the
+    request's query string, and ``httpx.HTTPStatusError.__str__`` embeds
+    the full request URL — query string included. Logging that verbatim
+    would leak the key into every log line for a Steam 4xx/5xx, the exact
+    class of bug this module's own docstring already flags for Waxpeer
+    (see ``core/logging.py``). This keeps only what is safe: the exception
+    type, plus the HTTP status code when the exception carries one.
+    """
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    if status is not None:
+        return f"{type(exc).__name__} ({status})"
+    return type(exc).__name__
+
+
+async def _resolve_and_summarise(
+    *, is_vanity: bool, identifier: str, api_key: str, client: httpx.AsyncClient
+) -> GiftProfileOut:
+    """Run the Steam call(s) for one already-cache-missed identifier.
+
+    Split out of :func:`check_steam_profile` so that function stays under
+    the return-statement budget (ruff ``PLR0911``) — this is where every
+    Steam-side branch (``not_found``, ``unavailable`` from an exception,
+    ``unavailable`` from an empty persona, ``found``) actually lives.
+    Never raises and never touches the cache; the caller decides what of
+    this is worth caching.
+    """
+    try:
+        if is_vanity:
+            resolved = await _resolve_vanity(identifier, api_key=api_key, http=client)
+            if resolved is None:
+                return _NOT_FOUND
+            steam_id = resolved
+        else:
+            steam_id = identifier
+        nickname, avatar_url = await fetch_persona(int(steam_id), api_key=api_key, http=client)
+    except Exception as exc:  # noqa: BLE001 -- a Steam problem is `unavailable`, never a 500
+        log.warning(
+            "gifts.steam_profile_unavailable",
+            identifier_hash=_hash_short(identifier),
+            error=_describe_error(exc),
+        )
+        return _UNAVAILABLE
+
+    if nickname is None and avatar_url is None:
+        # Uniform across both shapes (see the module docstring and
+        # `check_steam_profile`'s own docstring): `found` means Steam
+        # actually gave us something to render. `fetch_persona` swallows
+        # its own failures into `(None, None)`, so this is also where a
+        # transient `GetPlayerSummaries` outage lands -- correctly, since
+        # `unavailable` is never cached and `found` would otherwise poison
+        # the 6h cache with a permanent, empty "confirmation".
+        log.info(
+            "gifts.steam_profile_unavailable",
+            identifier_hash=_hash_short(identifier),
+            reason="persona_empty",
+        )
+        return _UNAVAILABLE
+
+    log.info("gifts.steam_profile_found", identifier_hash=_hash_short(identifier))
+    return GiftProfileOut(status="found", steam_id=steam_id, nickname=nickname, avatar_url=avatar_url)
 
 
 async def _cache_verdict(redis: Redis, key: str, out: GiftProfileOut) -> None:
@@ -138,6 +220,15 @@ async def check_steam_profile(
     for a link that is not one of checkout's three accepted shapes at all;
     that is a client input error (422), not a Steam problem, and checkout
     would reject the exact same link for the exact same reason.
+
+    ``"found"`` is returned only when Steam actually gave us a persona —
+    a non-empty nickname or avatar from ``GetPlayerSummaries`` — for
+    *either* the ``/profiles/`` or the ``/id/{vanity}`` shape; anything
+    less is ``"unavailable"``. This is deliberately uniform rather than
+    shape-dependent: the deliverable of this endpoint is the avatar and
+    the nickname, so a verdict carrying neither has confirmed nothing the
+    buyer can act on, whether or not a vanity happened to resolve a moment
+    earlier.
 
     Args:
         invite_url: the raw ``invite_url`` query value, any of the shapes
@@ -167,7 +258,14 @@ async def check_steam_profile(
 
     cache_key = f"gifts:steam_profile:{identifier}"
     redis = get_redis()
-    with contextlib.suppress(RedisError):
+    # ValueError alongside RedisError: `model_validate_json` raises
+    # `pydantic.ValidationError` (a `ValueError` subclass) on a schema
+    # mismatch and `json.JSONDecodeError` (also a `ValueError` subclass) on
+    # unparseable JSON. A stale/malformed blob under this key -- e.g. from a
+    # future schema change -- must degrade like a cache miss, not become a
+    # 500 on an endpoint whose entire point is to never be the reason a
+    # request fails.
+    with contextlib.suppress(RedisError, ValueError):
         cached = await redis.get(cache_key)
         if cached is not None:
             return GiftProfileOut.model_validate_json(cached)
@@ -178,33 +276,18 @@ async def check_steam_profile(
 
     client = http or httpx.AsyncClient(timeout=_TIMEOUT_SECONDS)
     try:
-        if is_vanity:
-            resolved = await _resolve_vanity(identifier, api_key=api_key, http=client)
-            if resolved is None:
-                await _cache_verdict(redis, cache_key, _NOT_FOUND)
-                return _NOT_FOUND
-            steam_id = resolved
-        else:
-            steam_id = identifier
-        nickname, avatar_url = await fetch_persona(int(steam_id), api_key=api_key, http=client)
-    except Exception as exc:  # noqa: BLE001 -- a Steam problem is `unavailable`, never a 500
-        log.warning(
-            "gifts.steam_profile_unavailable",
-            identifier_hash=_hash_short(identifier),
-            error=str(exc)[:200],
+        out = await _resolve_and_summarise(
+            is_vanity=is_vanity, identifier=identifier, api_key=api_key, client=client
         )
-        return _UNAVAILABLE
     finally:
         if http is None:
             await client.aclose()
 
-    out = GiftProfileOut(status="found", steam_id=steam_id, nickname=nickname, avatar_url=avatar_url)
-    await _cache_verdict(redis, cache_key, out)
-    log.info(
-        "gifts.steam_profile_checked",
-        identifier_hash=_hash_short(identifier),
-        status=out.status,
-    )
+    # `not_found`/`found` are facts about the profile, cached for 6h;
+    # `unavailable` is our own failure and is never written (see the
+    # module docstring).
+    if out.status in ("found", "not_found"):
+        await _cache_verdict(redis, cache_key, out)
     return out
 
 

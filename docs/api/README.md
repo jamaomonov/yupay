@@ -166,7 +166,9 @@ an `/id/{vanity}` link via `ResolveVanityURL` — is meant to block the buyer;
 the frontend treats `"found"`, `"unsupported"` (an `s.team` friend-invite
 link, which the Web API cannot resolve at all — no Steam call is made for
 that shape), and `"unavailable"` (no API key configured, Steam unreachable,
-timed out, or an unparseable response) identically: let the sale proceed.
+timed out, an unparseable response, or `GetPlayerSummaries` coming back
+with no persona to show — the same for both link shapes, since a `found`
+with nothing to render confirms nothing) identically: let the sale proceed.
 `found`/`not_found` verdicts are cached 6h under `gifts:steam_profile:*`
 (never `"unavailable"` — that is our failure, not a fact about the
 profile); see `docs/architecture/cache-keys.md`. `steam_id`/`nickname`/

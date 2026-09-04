@@ -177,10 +177,13 @@ quote="UZS")`) and multiplied per row, never re-fetched per item.
   (`respx`-mocked upstream, a manual FX override in place of a live rate).
 - `apps/api/tests/integration/test_gifts_steam_profile_routes.py` — every
   status branch (`found` from both link shapes, `not_found`, `unsupported`
-  with no Steam call, `unavailable` from a missing key / timeout / 5xx),
-  the enabled guard, the `found`/`not_found` cache hit vs. the
-  never-cached `unavailable`, and the endpoint's own `guard_ip` bucket
-  (`respx`-mocked Steam).
+  with no Steam call, `unavailable` from a missing key / timeout / 5xx /
+  an empty `GetPlayerSummaries` answer on _either_ shape), the enabled
+  guard, the `found`/`not_found` cache hit vs. the never-cached
+  `unavailable`, a malformed cache entry degrading like a miss instead of
+  500ing, the endpoint's own `guard_ip` bucket, and a Steam 5xx never
+  leaking `STEAM_API_KEY` into the logs (`respx`-mocked Steam,
+  `structlog.testing.capture_logs()` for the log-safety case).
 
 - Checkout routes — Task 7.
 - Fulfilment wiring — a later task.

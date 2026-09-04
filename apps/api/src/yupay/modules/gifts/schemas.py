@@ -104,13 +104,19 @@ class GiftProfileOut(BaseModel):
     not the recipient's: ``"unsupported"`` is an ``s.team`` friend-invite
     link the Web API cannot resolve at all, and ``"unavailable"`` covers
     everything else that can go wrong on our end (no API key configured,
-    Steam unreachable or erroring, a response we could not parse). The
-    frontend is expected to treat ``"found"``, ``"unsupported"``, and
+    Steam unreachable or erroring, a response we could not parse — including
+    a `GetPlayerSummaries` call that came back with no persona to show,
+    which reads as ``"unavailable"`` rather than ``"found"`` for *both*
+    link shapes: see ``gifts.profile.check_steam_profile``). The frontend
+    is expected to treat ``"found"``, ``"unsupported"``, and
     ``"unavailable"`` identically: let the buyer continue.
 
     ``steam_id``/``nickname``/``avatar_url`` are only ever populated
-    alongside ``status="found"`` and are PII — never logged (see
-    ``gifts.profile``).
+    alongside ``status="found"`` — and ``"found"`` itself is only ever
+    returned once at least one of ``nickname``/``avatar_url`` actually came
+    back from Steam, so it never carries a persona with nothing to render
+    (``nickname`` and ``avatar_url`` both ``None``). They are PII — never
+    logged (see ``gifts.profile``).
     """
 
     status: Literal["found", "not_found", "unsupported", "unavailable"]
