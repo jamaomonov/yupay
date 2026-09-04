@@ -342,7 +342,8 @@
       "retry": "Повторить",
       "showMore": "Показать ещё",
       "resultCount": "Игр: {count}",
-      "emptyCta": "Посмотрите горячие предложения"
+      "emptyCta": "Посмотрите горячие предложения",
+      "emptyCtaBrowse": "Смотреть весь каталог"
     },
     "card": {
       "editions": "{count, plural, one {# издание} few {# издания} many {# изданий} other {# издания}}",

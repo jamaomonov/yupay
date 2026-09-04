@@ -106,7 +106,7 @@ export default async function SteamGiftsPage({ params }: { params: Promise<{ loc
         ) : (
           <>
             <HotOffers items={hot} locale={locale} />
-            <GiftsBrowser locale={locale} initial={firstPage} />
+            <GiftsBrowser locale={locale} initial={firstPage} hasHotOffers={hot.length > 0} />
           </>
         )}
       </div>

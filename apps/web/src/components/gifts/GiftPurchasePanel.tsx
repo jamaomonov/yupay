@@ -207,6 +207,17 @@ export function GiftPurchasePanel({
   // never saw in soum, so this gates both `canBuy` below and the wallet
   // tile's total.
   const priceUnavailable = selectedPrice !== null && selectedPrice.price_uzs == null;
+  // The one formatted-price computation every call site used to repeat
+  // verbatim (the Buy button, the confirm dialog's total, the main price
+  // row, the sticky bar) — `null` covers both "nothing selected" and
+  // "FX is down", so each site still decides its own wording for that case
+  // (a dashed FX-down card here, a bare "—" there) the way `PurchasePanel`'s
+  // `selectedPriceLabel` does at its own four call sites (2026-09-04 review,
+  // round 2).
+  const selectedPriceLabel =
+    selectedPrice?.price_uzs != null
+      ? formatUzs(locale, Math.round(Number(selectedPrice.price_uzs)))
+      : null;
 
   const countries = (detail.regions ?? []).map((r) => r.country);
   // No offered country at all — an unlikely but real possibility once
@@ -235,26 +246,25 @@ export function GiftPurchasePanel({
   const visibleCountries = pricedCountries.slice(0, VISIBLE_COUNTRY_COUNT);
   const overflowCountries = countries.filter((c) => !visibleCountries.includes(c));
   const hasUnpricedCountry = countries.some((c) => !countryAvailable(c));
-  const [countryExpanded, setCountryExpanded] = useState<boolean>(() =>
-    overflowCountries.includes(country),
-  );
+  // Sticky manual toggle only — the buyer's own tap on "другой регион".
+  // Never auto-collapses; the auto-*expand* half lives in
+  // `countryPanelExpanded` below, derived at render rather than synced here.
+  const [countryExpanded, setCountryExpanded] = useState(false);
 
-  // The `useState` initializer above only ever runs once, on mount — but
-  // `selectPackage` can move `country` into the overflow well after that
-  // (an edition switch that reassigns the buyer to a country beyond the
-  // first `VISIBLE_COUNTRY_COUNT`). Left alone, the selected country's pill
-  // ends up hidden behind "другой регион" with no visible sign it's even
-  // selected (2026-09-04 review). Re-derives on every `country` change, not
-  // just at mount; only ever expands automatically — collapsing back is a
-  // deliberate second interaction the buyer takes via the toggle.
-  useEffect(() => {
-    if (overflowCountries.includes(country)) setCountryExpanded(true);
-    // `overflowCountries` is recomputed fresh every render from `countries`/
-    // `selectedPackage`, which are themselves stable for whatever selection
-    // is active — keying this off `country` alone catches every case that
-    // can move the active pick into the overflow.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [country]);
+  // Whether the overflow panel actually renders open — either the buyer
+  // toggled it manually (`countryExpanded`), or the current selection landed
+  // behind it and needs to be forced open. Computed fresh every render, not
+  // synced through a `useEffect` keyed on `country`: `selectPackage`'s first
+  // branch (below) deliberately leaves `country` unchanged when the new
+  // package still prices its zone — but that same switch can still reorder
+  // `pricedCountries` above, pushing the still-selected country out of the
+  // visible slice without `country` itself ever changing. An effect keyed on
+  // `country` alone never fires for that path and leaves a selected country
+  // hidden behind "другой регион" with nothing highlighted (2026-09-04
+  // review, round 2). Deriving it here instead — from whatever
+  // `overflowCountries` currently is — rules that whole bug class out, for
+  // the price of nothing.
+  const countryPanelExpanded = countryExpanded || overflowCountries.includes(country);
 
   // Whether the "Как узнать?" panel is open — lifted here (not owned inside
   // `RegionHint`) so the expanded panel can render as this row's sibling
@@ -481,10 +491,7 @@ export function GiftPurchasePanel({
                 ? t("payHintMethod")
                 : null;
 
-  const buyLabel =
-    selectedPrice?.price_uzs != null
-      ? `${t("buy")} · ${formatUzs(locale, Math.round(Number(selectedPrice.price_uzs)))}`
-      : t("buy");
+  const buyLabel = selectedPriceLabel != null ? `${t("buy")} · ${selectedPriceLabel}` : t("buy");
 
   // Last look before an irreversible payment — a mistyped invite link sends
   // a paid game to a stranger, with no way to undo it once the bot sends
@@ -752,7 +759,7 @@ export function GiftPurchasePanel({
                 onSelect={selectCountry}
               />
             ))}
-            {overflowCountries.length > 0 && !countryExpanded && (
+            {overflowCountries.length > 0 && !countryPanelExpanded && (
               <button
                 type="button"
                 onClick={() => {
@@ -763,7 +770,7 @@ export function GiftPurchasePanel({
                 {t("otherRegion")}
               </button>
             )}
-            {countryExpanded &&
+            {countryPanelExpanded &&
               overflowCountries.map((c) => (
                 <CountryButton
                   key={c}
@@ -788,14 +795,14 @@ export function GiftPurchasePanel({
           changed (2026-09-04 a11y review). */}
         <div className="border-border/70 border-t pt-4" aria-live="polite">
           {selectedPrice ? (
-            selectedPrice.price_uzs != null ? (
+            selectedPriceLabel != null ? (
               // The only figure shown — the buyer is charged in UZS, always
               // (`buyGift` hardcodes `currency: "UZS"`), so a second, USD
               // number here answered a question nobody asked and left the
               // buyer guessing which one leaves their account (2026-09-04
               // review).
               <span className="font-display text-2xl font-bold tabular-nums">
-                {formatUzs(locale, Math.round(Number(selectedPrice.price_uzs)))}
+                {selectedPriceLabel}
               </span>
             ) : (
               // FX is down for this zone — never fall back to `price_usd`
@@ -1069,11 +1076,7 @@ export function GiftPurchasePanel({
         title={ts("confirmTitle")}
         rows={confirmRows}
         totalLabel={ts("confirmTotal")}
-        totalValue={
-          selectedPrice?.price_uzs != null
-            ? formatUzs(locale, Math.round(Number(selectedPrice.price_uzs)))
-            : ""
-        }
+        totalValue={selectedPriceLabel ?? ""}
         warning={t("confirmWarning")}
         confirmLabel={ts("confirmCta")}
         cancelLabel={ts("confirmCancel")}
@@ -1102,11 +1105,7 @@ export function GiftPurchasePanel({
               {canBuy || !payHint ? t("buy") : payHint}
             </div>
             <div className="font-display truncate text-lg font-bold leading-tight">
-              {priceUnavailable
-                ? "—"
-                : selectedPrice?.price_uzs != null
-                  ? formatUzs(locale, Math.round(Number(selectedPrice.price_uzs)))
-                  : "—"}
+              {priceUnavailable ? "—" : (selectedPriceLabel ?? "—")}
             </div>
           </div>
           <button

@@ -2,7 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { GiftPurchasePanel } from "./GiftPurchasePanel";
 
@@ -135,6 +135,16 @@ function renderPanel(ui: React.ReactElement) {
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
 }
 
+// jsdom ships no layout engine, so it has no `scrollIntoView` — the mobile
+// sticky bar's ghost button calls it to bring the form into view. Same
+// pattern `OrderStatus.test.tsx` uses for the identical gap. Kept as its own
+// named mock (not referenced via `Element.prototype.scrollIntoView` at the
+// call site) so assertions never touch an unbound prototype method.
+const scrollIntoViewMock = vi.fn();
+beforeAll(() => {
+  Element.prototype.scrollIntoView = scrollIntoViewMock;
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
   buyGiftMock.mockReset();
@@ -145,6 +155,7 @@ afterEach(() => {
   useAuthMock.mockReturnValue({ user: null, isLoading: false });
   useLoginModal.setState({ isOpen: false });
   clearTokens();
+  scrollIntoViewMock.mockClear();
 });
 
 useAuthMock.mockReturnValue({ user: null, isLoading: false });
@@ -231,6 +242,39 @@ const SIX_COUNTRY_REGIONS: GiftRegion[] = [
   { country: "GE", zone: "GE", price_usd: "1.60", price_uzs: "21000" },
   { country: "TR", zone: "TR", price_usd: "2.00", price_uzs: "25000" },
 ];
+
+/** Prices only the `TR` zone — pairs with `MULTI_KEEP_TR_EDITION` below to
+ *  reproduce the region-overflow path a `country`-keyed effect can't see:
+ *  switching TO the multi edition keeps `country` at "TR" unchanged (its
+ *  zone is still priced — `selectPackage`'s *first* branch), but the switch
+ *  also newly prices four countries that sit *earlier* than TR in
+ *  `SIX_COUNTRY_REGIONS`'s array order, pushing the untouched "TR"
+ *  selection from a visible slot into the overflow purely by position
+ *  (2026-09-04 review, round 2). */
+const TR_ONLY_STANDALONE_EDITION: GiftPackage = {
+  id: 6,
+  name: "Turkey Only Edition",
+  image: null,
+  discount_percent: null,
+  prices: [{ zone: "TR", price_usd: "2.00", price_uzs: "25000" }],
+};
+
+/** Prices CIS (UZ), KZ, BY, AM and TR — exactly the four countries ahead of
+ *  TR in `SIX_COUNTRY_REGIONS`, plus TR itself, so TR lands at index 4 among
+ *  this package's priced countries (one past `VISIBLE_COUNTRY_COUNT`). */
+const MULTI_KEEP_TR_EDITION: GiftPackage = {
+  id: 7,
+  name: "Multi Region Keep Edition",
+  image: null,
+  discount_percent: null,
+  prices: [
+    { zone: "CIS", price_usd: "1.10", price_uzs: "13970" },
+    { zone: "KZ", price_usd: "1.90", price_uzs: "24000" },
+    { zone: "BY", price_usd: "1.80", price_uzs: "23000" },
+    { zone: "AM", price_usd: "1.70", price_uzs: "22000" },
+    { zone: "TR", price_usd: "2.00", price_uzs: "25000" },
+  ],
+};
 
 function makeDetail(overrides: Partial<GiftAppDetail> = {}): GiftAppDetail {
   return {
@@ -498,6 +542,46 @@ it("expands the region overflow when a package switch reassigns the country into
   // TR is the country the fallback lands on, and it sits fifth among this
   // package's priced countries — beyond the four visible slots. It must be
   // visible and marked selected without an extra click on "другой регион".
+  expect(screen.getByRole("button", { name: countryButtonName("TR") })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+});
+
+/**
+ * The path a `country`-keyed `useEffect` can't see: `selectPackage`'s
+ * *first* branch deliberately leaves `country` unchanged whenever the new
+ * package still prices its zone — but that same switch can still reorder
+ * `pricedCountries`, pushing the untouched selection out of the visible
+ * slice. An effect that only re-fires when `country` itself changes never
+ * runs here, so `countryExpanded` stays stale and the selected country ends
+ * up hidden behind "другой регион" with nothing highlighted (2026-09-04
+ * review, round 2) — this is exactly why the expand is derived at render
+ * (`countryPanelExpanded`) instead of synced through an effect.
+ */
+it("keeps the still-selected country visible when a switch reorders it into the overflow without `country` itself changing", () => {
+  mockProvidersResponse();
+  const detail = makeDetail({
+    packages: [TR_ONLY_STANDALONE_EDITION, MULTI_KEEP_TR_EDITION],
+    regions: SIX_COUNTRY_REGIONS,
+    region_default: "TR",
+  });
+  renderPanel(<GiftPurchasePanel detail={detail} skuId="sku-1" locale="ru" />);
+
+  // TR starts out selected and visible — the only priced country under the
+  // first package.
+  expect(screen.getByRole("button", { name: countryButtonName("TR") })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: /Multi Region Keep Edition/ }));
+
+  // The new package still prices TR's own zone, so `selectPackage`'s first
+  // branch keeps `country` at "TR" — `country` never changes. But the same
+  // switch newly prices four countries ahead of TR in the regions array,
+  // pushing TR past the four visible slots. It must still be visible and
+  // marked selected, not silently stranded behind the toggle.
   expect(screen.getByRole("button", { name: countryButtonName("TR") })).toHaveAttribute(
     "aria-pressed",
     "true",
@@ -853,6 +937,88 @@ describe("the confirm dialog", () => {
     await waitFor(() => {
       expect(buyGiftMock).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+/**
+ * The gift page had no mobile sticky checkout bar at all (2026-09-04
+ * review) — this is a brand-new interactive surface with its own testid,
+ * its own disabled/ghost-vs-primary branching (mirrors the main CTA's
+ * `canBuy`, but the DOM `disabled` attribute isn't how it expresses that —
+ * see `PurchasePanel.test.tsx`'s identical note on its own sticky bar) and
+ * its own auto-hide `IntersectionObserver` effect.
+ */
+describe("the mobile sticky checkout bar", () => {
+  function stickyButton() {
+    return screen.getByTestId("gift-buy-sticky");
+  }
+
+  it("mirrors the main CTA's blocked state: ghost + goToPay while not payable", () => {
+    mockProvidersResponse();
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    // Nothing filled in yet — neither CTA is payable.
+    expect(buyButton()).toBeDisabled();
+    expect(stickyButton()).toHaveTextContent("goToPay");
+    // The ghost variant, not the primary lime one — `buttonStyles`'
+    // `ghost` class, absent from `primary`.
+    expect(stickyButton().className).toContain("border-border-2");
+    expect(stickyButton().className).not.toContain("bg-primary");
+  });
+
+  it("mirrors the main CTA's payable state: primary + the amount already shown beside it", async () => {
+    mockProvidersResponse();
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+    await fillValidCheckout();
+
+    expect(buyButton()).not.toBeDisabled();
+    expect(stickyButton()).toHaveTextContent("buy");
+    expect(stickyButton().className).toContain("bg-primary");
+  });
+
+  it("tapping it while payable opens the confirm dialog — never buyGift directly", async () => {
+    mockProvidersResponse();
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+    await fillValidCheckout();
+
+    fireEvent.click(stickyButton());
+
+    expect(buyGiftMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "confirmCta" }));
+    await waitFor(() => {
+      expect(buyGiftMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("tapping it while not payable scrolls to the form instead of opening the dialog", () => {
+    mockProvidersResponse();
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    // Nothing filled in — not payable.
+    fireEvent.click(stickyButton());
+
+    expect(scrollIntoViewMock).toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(buyGiftMock).not.toHaveBeenCalled();
+  });
+
+  it("shows the spinner, like the main CTA, while a purchase is in flight", async () => {
+    mockProvidersResponse();
+    // Never resolves within the test — keeps `loading` true so both CTAs
+    // stay in the pending state throughout. An expression body (not an
+    // empty block) so this isn't flagged as a no-op function.
+    buyGiftMock.mockReturnValue(new Promise(() => undefined));
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+    await fillValidCheckout();
+
+    submitBuy();
+
+    await waitFor(() => {
+      expect(stickyButton().querySelector(".animate-spin")).not.toBeNull();
+    });
+    expect(buyButton().querySelector(".animate-spin")).not.toBeNull();
   });
 });
 

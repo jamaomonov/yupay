@@ -54,8 +54,11 @@ function makeApp(overrides: Partial<GiftApp> = {}): GiftApp {
   };
 }
 
-function renderBrowser(initial: GiftsList): void {
-  render(<GiftsBrowser locale="ru" initial={initial} />);
+/** `hasHotOffers` defaults `true` — most tests below aren't about that
+ *  prop, and the "hot offers exist" path is the common case in prod. The
+ *  dedicated `hasHotOffers: false` tests pass it explicitly. */
+function renderBrowser(initial: GiftsList, hasHotOffers = true): void {
+  render(<GiftsBrowser locale="ru" initial={initial} hasHotOffers={hasHotOffers} />);
 }
 
 it("renders the server-fetched initial page with no client fetch", () => {
@@ -163,6 +166,41 @@ it("offers a route back to the hot offers from the empty search state", async ()
   });
   const cta = screen.getByRole("link", { name: "search.emptyCta" });
   expect(cta).toHaveAttribute("href", "#hot");
+});
+
+/**
+ * `HotOffers` renders nothing at all (no `id="hot"` section) when the hot
+ * pick list is empty — a real state (dark-launched flag, or just no
+ * curated picks today) distinct from the catalog itself being empty. The
+ * `#hot` link would silently do nothing there, so `hasHotOffers: false`
+ * swaps it for a fallback that always resolves: clearing the search and
+ * showing the general catalog this component already renders on its own
+ * (2026-09-04 review, round 2).
+ */
+it("falls back to clearing the search instead of a dead #hot link when there are no hot offers", async () => {
+  vi.useFakeTimers();
+  searchGiftsMock.mockResolvedValue({ items: [], total: 0 });
+  renderBrowser(
+    { items: [makeApp({ app_id: 1, name: "Browse page one" })], total: 1 },
+    /* hasHotOffers */ false,
+  );
+
+  fireEvent.change(screen.getByRole("searchbox"), { target: { value: "zzz" } });
+  await vi.advanceTimersByTimeAsync(400);
+  vi.useRealTimers();
+
+  await waitFor(() => {
+    expect(screen.getByText("search.empty")).toBeInTheDocument();
+  });
+  expect(screen.queryByRole("link", { name: "search.emptyCta" })).not.toBeInTheDocument();
+  const cta = screen.getByRole("button", { name: "search.emptyCtaBrowse" });
+
+  fireEvent.click(cta);
+
+  // Back to the original browse listing — search box cleared, the item
+  // that "disappeared" under the search is back.
+  expect(screen.getByRole("searchbox")).toHaveValue("");
+  expect(screen.getByText("Browse page one")).toBeInTheDocument();
 });
 
 it("shows an error with a retry action when the search fails", async () => {

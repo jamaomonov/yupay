@@ -342,7 +342,8 @@
       "retry": "Qayta urinish",
       "showMore": "Yana koʻrsatish",
       "resultCount": "Oʻyinlar: {count}",
-      "emptyCta": "Qaynoq takliflarni koʻring"
+      "emptyCta": "Qaynoq takliflarni koʻring",
+      "emptyCtaBrowse": "Butun katalogni koʻring"
     },
     "card": {
       "editions": "{count, plural, one {# nashr} other {# nashr}}",

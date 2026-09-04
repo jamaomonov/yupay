@@ -342,7 +342,8 @@
       "retry": "Retry",
       "showMore": "Show more",
       "resultCount": "Games: {count}",
-      "emptyCta": "Check out the hot offers"
+      "emptyCta": "Check out the hot offers",
+      "emptyCtaBrowse": "Browse the full catalog"
     },
     "card": {
       "editions": "{count, plural, one {# edition} other {# editions}}",
