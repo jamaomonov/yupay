@@ -326,10 +326,10 @@
     },
     "hero": {
       "title": "Steam oʻyinlari",
-      "subtitle": "Steamʻda oʻyin va DLC sovgʻa qiling — toʻlov soʻmda, bot orqali doʻstingiz profiliga yetkaziladi.",
+      "subtitle": "Steamʻda oʻyin va DLC sovgʻa qiling — toʻlov soʻmda, bot orqali profilga yetkaziladi.",
       "howTitle": "Bu qanday ishlaydi",
       "step1": "Oʻyin, nashr va mintaqani tanlang",
-      "step2": "Qabul qiluvchining Steam profil havolasini kiriting",
+      "step2": "Qabul qiluvchining profil havolasini kiriting",
       "step3": "Bot sovgʻani doʻstlik taklifi sifatida yuboradi — odatda bir soat ichida"
     },
     "hot": {
@@ -361,12 +361,11 @@
       "otherRegion": "Boshqa mintaqa",
       "noPriceInRegion": "Bu mintaqada ushbu nashr uchun narx yoʻq",
       "regionHintLink": "Qanday bilib olsam boʻladi?",
-      "regionHintText": "Qabul qiluvchidan Steamʻni ochib → «Akkaunt haqida» → «Mamlakat» bandiga qarashini soʻrang (store.steampowered.com/account). Sovgʻa mintaqasi shu mamlakatga mos kelishi kerak — aks holda Steam sovgʻani qabul qilishga ruxsat bermaydi. Oʻzingiz uchun sotib olsangiz — oʻz profilingizga qarang.",
+      "regionHintText": "Qabul qiluvchidan Steamʻni ochib → «Akkaunt haqida» → «Mamlakat» bandiga qarashini soʻrang (store.steampowered.com/account). Sovgʻa mintaqasi shu mamlakatga mos kelishi kerak — aks holda Steam sovgʻani qabul qilishga ruxsat bermaydi.",
       "dlcNote": "Bu qoʻshimcha (DLC). U faqat qabul qiluvchida asosiy oʻyin allaqachon boʻlsa ishlaydi.",
-      "inviteLabel": "Qabul qiluvchining Steam profil havolasi",
+      "inviteLabel": "Qabul qiluvchining profil havolasi",
       "invitePlaceholder": "https://steamcommunity.com/id/profil_nomi",
       "inviteError": "Bu Steam profil havolasiga oʻxshamaydi — tekshirib, qayta urinib koʻring",
-      "inviteSelfNote": "Oʻzingiz uchun sotib olyapsizmi? Oʻz Steam profilingiz havolasini joylashtiring.",
       "openProfileLink": "Qabul qiluvchi profilini ochish",
       "inviteGuideSteps": [
         "Qabul qiluvchining profilini Steam ilovasida yoki steamcommunity.com saytida oching",
@@ -374,8 +373,8 @@
         "Nusxalangan havolani yuqoridagi maydonga joylashtiring"
       ],
       "buy": "Sotib olish",
-      "timeline": "Sovgʻani bot yuboradi, odatda bir soat ichida",
-      "accept": "Qabul qiluvchiga bot-yuboruvchidan doʻstlik taklifi keladi — sovgʻani Steamʻda 30 kun ichida qabul qilish kerak",
+      "timeline": "Sovgʻani bot yuboradi",
+      "accept": "Qabul qiluvchiga doʻstlik taklifi keladi — sovgʻani Steamʻda 30 kun ichida qabul qilish kerak",
       "buyError": "Buyurtmani rasmiylashtirib boʻlmadi. Qayta urinib koʻring.",
       "payHintInvite": "Qabul qiluvchining Steam profil havolasini kiriting",
       "payHintInviteInvalid": "Profil havolasini tekshiring",

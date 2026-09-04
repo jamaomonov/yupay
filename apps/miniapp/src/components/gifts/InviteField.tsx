@@ -289,14 +289,6 @@ export function InviteField({
           <ExternalLink size={14} aria-hidden="true" />
         </a>
       )}
-      {/* "Ссылка на профиль Steam получателя" reads, to a buyer purchasing
-        for themselves, as though they're in the wrong place — this covers
-        that case inline. Goes away once the field has collapsed into a
-        confirmed recipient, same as the guide CTA below. */}
-      {found === null && (
-        <p className="text-[12px] leading-snug text-white/50">{t("gifts.game.inviteSelfNote")}</p>
-      )}
-
       {/* Tells the buyer what to put *in the field*, so it goes away once the
         field has collapsed into a confirmed recipient — otherwise the most
         confident moment in the flow ends with instructions to fill in

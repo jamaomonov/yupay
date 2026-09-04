@@ -326,10 +326,10 @@
     },
     "hero": {
       "title": "Steam Games",
-      "subtitle": "Gift games and DLC on Steam — pay in UZS, delivered by bot straight to a friend's profile.",
+      "subtitle": "Gift games and DLC on Steam — pay in UZS, delivered by bot straight to their profile.",
       "howTitle": "How it works",
       "step1": "Pick the game, edition, and region",
-      "step2": "Enter the recipient's Steam profile link",
+      "step2": "Enter the recipient's profile link",
       "step3": "Our bot sends the gift as a friend invite — usually within an hour"
     },
     "hot": {
@@ -361,12 +361,11 @@
       "otherRegion": "Other region",
       "noPriceInRegion": "No price for this edition in this region",
       "regionHintLink": "How do I find out?",
-      "regionHintText": "Ask the recipient to open Steam → “Account Details” → the “Country” field (store.steampowered.com/account). The gift's region must match that country — otherwise Steam won't let them accept the gift. Buying for yourself — check your own profile.",
+      "regionHintText": "Ask the recipient to open Steam → “Account Details” → the “Country” field (store.steampowered.com/account). The gift's region must match that country — otherwise Steam won't let them accept the gift.",
       "dlcNote": "This is an add-on (DLC). It will only work if the recipient already owns the base game.",
-      "inviteLabel": "Recipient's Steam profile link",
+      "inviteLabel": "Recipient's profile link",
       "invitePlaceholder": "https://steamcommunity.com/id/profilename",
       "inviteError": "That doesn't look like a Steam profile link — check it and try again",
-      "inviteSelfNote": "Buying for yourself? Paste your own Steam profile link.",
       "openProfileLink": "Open recipient's profile",
       "inviteGuideSteps": [
         "Open the recipient's profile in the Steam app or on steamcommunity.com",
@@ -374,8 +373,8 @@
         "Paste the copied link into the field above"
       ],
       "buy": "Buy",
-      "timeline": "The bot sends the gift, usually within an hour",
-      "accept": "The recipient gets a friend invite from our bot — they need to accept the gift in Steam within 30 days",
+      "timeline": "The bot sends the gift",
+      "accept": "The recipient gets a friend invite — the gift must be accepted in Steam within 30 days",
       "buyError": "Couldn't create the order. Please try again.",
       "payHintInvite": "Add the recipient's Steam profile link",
       "payHintInviteInvalid": "Check the profile link",

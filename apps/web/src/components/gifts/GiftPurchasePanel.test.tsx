@@ -826,13 +826,6 @@ describe("the Buy button carries the amount, or names the missing step", () => {
   });
 });
 
-it("shows one inline line covering the self-purchase case, next to the invite field", () => {
-  mockProvidersResponse();
-  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
-
-  expect(screen.getByText("inviteSelfNote")).toBeInTheDocument();
-});
-
 it('drops "inviteGuideTitle" — it only restated the field label right above it', () => {
   mockProvidersResponse();
   renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
@@ -1645,17 +1638,14 @@ describe("the recipient profile check", () => {
     checkGiftProfileMock.mockResolvedValue(FOUND);
     renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
 
-    // Before the check: both the self-purchase note and the "how to copy the
-    // link" guide (its steps come from the mocked `t.raw`) are on screen,
-    // because there is a field to fill in.
-    expect(screen.getByText("inviteSelfNote")).toBeInTheDocument();
+    // Before the check the "how to copy the link" guide (its steps come from
+    // the mocked `t.raw`) is on screen, because there is a field to fill in.
     expect(screen.getByText("Step one")).toBeInTheDocument();
 
     pasteInvite("https://steamcommunity.com/id/neo");
     fireEvent.click(checkButton());
     expect(await screen.findByText("Neo")).toBeInTheDocument();
 
-    expect(screen.queryByText("inviteSelfNote")).not.toBeInTheDocument();
     expect(screen.queryByText("Step one")).not.toBeInTheDocument();
     // What the gift *is* still applies after the recipient is confirmed —
     // only the fill-in-the-field guidance goes away.

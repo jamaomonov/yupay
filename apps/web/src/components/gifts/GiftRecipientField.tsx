@@ -387,17 +387,6 @@ export function GiftRecipientField({
           <ExternalLink size={14} aria-hidden="true" />
         </a>
       )}
-      {/* "Ссылка на профиль Steam получателя" reads, to a buyer purchasing
-        for themselves, as though they're in the wrong place — this
-        covers that case inline rather than leaving it unsaid
-        (2026-09-04 review). Both this and the guide below tell the buyer
-        what to put *in the field*, so both go away once the field has
-        collapsed into a confirmed recipient — otherwise the most
-        confident moment in the flow ends with instructions to fill in
-        something that is no longer on screen. */}
-      {profileFound === null && (
-        <p className="text-tx-dim text-[12px] leading-snug">{t("inviteSelfNote")}</p>
-      )}
       {/* The two sentences that explain the entire model used to sit
         *below* the Buy button, in 12px dim text — past the decision.
         Moved here, next to the field where the recipient first becomes
