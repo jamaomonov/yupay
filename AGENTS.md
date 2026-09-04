@@ -216,8 +216,13 @@ yupay/
   parsing the body. Raw-body middleware required.
 - **Never log PII**: email, phone, full card data, Telegram user ID, IP. Use the structured
   logger's redactor. Order IDs and amounts are OK to log.
-- All write endpoints (`POST`, `PUT`, `PATCH`, `DELETE`) **must** accept an `Idempotency-Key`
-  header and persist results keyed by it.
+- All **state-changing** endpoints (`POST`, `PUT`, `PATCH`, `DELETE`) **must** accept an
+  `Idempotency-Key` header and persist results keyed by it. The rule protects writes from
+  replay, so it does not reach a `POST` that writes nothing: advisory lookups are `POST`
+  only to keep an identifier out of the URL — and therefore out of the edge access log,
+  which records the full query string — not because they mutate anything. Two such
+  endpoints exist today: `POST /catalog/products/{id}/check-player` and
+  `POST /gifts/steam-profile`. If you add a third, say in its docstring why it is keyless.
 - All money values stored as `Decimal` (Python) / `string` (TS) in **minor units** (tiyin /
   cents), never floats.
 - Auth tokens: short-lived access (15 min EdDSA JWT), rotating refresh (30 days), revocable
