@@ -3,6 +3,8 @@ import { describe, expect, test } from "vitest";
 import {
   countryAfterPackageChange,
   countryMovedOnEditionSwitch,
+  countryNeedsExpand,
+  giftPayHint,
   giftPriceAvailability,
   isDlcApp,
   isOrderNotAwaitingPaymentConflict,
@@ -10,6 +12,7 @@ import {
   nextSelectedMethodId,
   orderFingerprint,
   reconcileSelection,
+  showInviteInvalid,
   splitCountries,
   walletPayState,
   walletSubmitReady,
@@ -159,6 +162,43 @@ describe("isDlcApp", () => {
   });
 });
 
+// Invite-field error timing (2026-09-04 review): showing the error paragraph
+// on the very first keystroke, before the buyer finished pasting, is the bug
+// — gated on blur (`touched`) or a short idle pause (`idle`), never live on
+// every change. `validateInviteUrl` itself decides `valid`; this only decides
+// whether the paragraph renders.
+describe("showInviteInvalid", () => {
+  test("hidden while the field is empty, regardless of timing", () => {
+    expect(showInviteInvalid({ hasValue: false, valid: false, touched: true, idle: true })).toBe(
+      false,
+    );
+  });
+
+  test("hidden while the value is actually valid", () => {
+    expect(showInviteInvalid({ hasValue: true, valid: true, touched: true, idle: true })).toBe(
+      false,
+    );
+  });
+
+  test("hidden for a wrong value that hasn't been touched or gone idle yet — the first-keystroke case", () => {
+    expect(showInviteInvalid({ hasValue: true, valid: false, touched: false, idle: false })).toBe(
+      false,
+    );
+  });
+
+  test("shown once the field is blurred (touched), even before the idle timer fires", () => {
+    expect(showInviteInvalid({ hasValue: true, valid: false, touched: true, idle: false })).toBe(
+      true,
+    );
+  });
+
+  test("shown once the idle pause elapses, even without a blur", () => {
+    expect(showInviteInvalid({ hasValue: true, valid: false, touched: false, idle: true })).toBe(
+      true,
+    );
+  });
+});
+
 describe("splitCountries", () => {
   test("splits at the visible count", () => {
     expect(splitCountries(["UZ", "RU", "KZ", "UA", "TJ"], 4)).toEqual({
@@ -173,6 +213,31 @@ describe("splitCountries", () => {
 
   test("handles an empty country list", () => {
     expect(splitCountries([], 4)).toEqual({ visible: [], overflow: [] });
+  });
+});
+
+// The region overflow ("другой регион") re-derive fix (2026-09-04 review):
+// an edition switch can silently move the selected country behind the
+// toggle with no sign it's even selected — `GiftGame` re-runs this on every
+// `selectedCountry` change, not just at mount, and forces the panel open
+// when it fires.
+describe("countryNeedsExpand", () => {
+  const countries = ["UZ", "RU", "KZ", "UA", "TJ"];
+
+  test("false when nothing is selected yet", () => {
+    expect(countryNeedsExpand(null, countries, 4)).toBe(false);
+  });
+
+  test("false when the selected country is already in the visible row", () => {
+    expect(countryNeedsExpand("RU", countries, 4)).toBe(false);
+  });
+
+  test("true when the selected country only shows up in the overflow", () => {
+    expect(countryNeedsExpand("TJ", countries, 4)).toBe(true);
+  });
+
+  test("false for a country the app doesn't even offer", () => {
+    expect(countryNeedsExpand("XX", countries, 4)).toBe(false);
   });
 });
 
@@ -336,6 +401,52 @@ describe("walletSubmitReady", () => {
 
   test("wallet IS ready when the balance covers the total exactly", () => {
     expect(walletSubmitReady({ methodId: "wallet", balance: 100_000, total: 100_000 })).toBe(true);
+  });
+});
+
+// What the fixed Buy CTA says while it can't be pressed — mirrors `canBuy`'s
+// own checks in the same order, so the reason always matches the actual
+// blocker (2026-09-04 review, "ship this first"). Returns the i18n key, not
+// the translated string — the caller (`GiftGame`) already has `t`.
+describe("giftPayHint", () => {
+  const ready = {
+    priceAvailability: "priced" as const,
+    inviteHasValue: true,
+    inviteValid: true,
+    methodReady: true,
+    submitReady: true,
+  };
+
+  test("null (payable) when every check passes", () => {
+    expect(giftPayHint(ready)).toBeNull();
+  });
+
+  test("no price at all takes priority over everything else", () => {
+    expect(giftPayHint({ ...ready, priceAvailability: "unpriced" })).toBe(
+      "gifts.game.noPriceInRegion",
+    );
+  });
+
+  test("FX-down is a distinct hint from no price at all", () => {
+    expect(giftPayHint({ ...ready, priceAvailability: "fxDown" })).toBe("topup.priceUnavailable");
+  });
+
+  test("an empty invite field is named before an invalid one", () => {
+    expect(giftPayHint({ ...ready, inviteHasValue: false, inviteValid: false })).toBe(
+      "gifts.game.payHintInvite",
+    );
+  });
+
+  test("a typed-but-invalid invite gets its own hint", () => {
+    expect(giftPayHint({ ...ready, inviteValid: false })).toBe("gifts.game.payHintInviteInvalid");
+  });
+
+  test("no ready payment method — no acquirer active yet", () => {
+    expect(giftPayHint({ ...ready, methodReady: false })).toBe("gifts.game.payHintMethod");
+  });
+
+  test("an unready submit (e.g. wallet short) is the same hint as no method at all", () => {
+    expect(giftPayHint({ ...ready, submitReady: false })).toBe("gifts.game.payHintMethod");
   });
 });
 

@@ -94,7 +94,10 @@ export function PaymentMethodGrid({
                 !available && "opacity-60 grayscale",
               )}
             >
-              <img src={m.icon} alt={m.name} className="h-full w-full object-cover" />
+              {/* The visible label right below already names the method —
+                  a repeated `alt` announced the same text twice to a screen
+                  reader (2026-09-04 review, web already does this). */}
+              <img src={m.icon} alt="" className="h-full w-full object-cover" />
             </span>
             <span
               className={cn(

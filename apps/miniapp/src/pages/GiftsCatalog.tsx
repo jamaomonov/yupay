@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import { Gift, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
@@ -45,13 +44,20 @@ export function cardPriceLabel(app: GiftApp, fromWord: string): string | null {
   return price === null ? null : `${fromWord} ${price}`;
 }
 
+/**
+ * The hot-strip card — used to carry no price while the grid card two rows
+ * below it did (2026-09-04 review): same content, two card designs. Now
+ * shares `GiftCatalogCard`'s price row (`cardPriceLabel`) instead of ending
+ * at the name.
+ */
 function HotCard({ app }: { app: GiftApp }) {
   const { t } = useT();
   const discount = discountLabel(app);
+  const price = cardPriceLabel(app, t("gifts.card.from"));
   return (
     <Link
       href={`/gifts/${String(app.app_id)}`}
-      className="w-[140px] shrink-0 overflow-hidden rounded-2xl border"
+      className="flex w-[140px] shrink-0 flex-col overflow-hidden rounded-2xl border"
       style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--surface-2))" }}
     >
       <div className="relative aspect-[16/9] w-full overflow-hidden bg-black/20">
@@ -62,9 +68,12 @@ function HotCard({ app }: { app: GiftApp }) {
           </span>
         )}
       </div>
-      <p className="line-clamp-2 p-2 text-[11px] font-semibold leading-snug text-white">
-        {app.name}
-      </p>
+      <div className="flex flex-1 flex-col gap-1 p-2">
+        <p className="line-clamp-2 text-[11px] font-semibold leading-snug text-white">{app.name}</p>
+        {price !== null && (
+          <p className="mt-auto pt-0.5 font-mono text-[12px] font-bold text-white">{price}</p>
+        )}
+      </div>
     </Link>
   );
 }
@@ -89,7 +98,9 @@ function GiftCatalogCard({ app }: { app: GiftApp }) {
       </div>
       <div className="flex flex-1 flex-col gap-1 p-2.5">
         <p className="line-clamp-2 text-[12px] font-semibold leading-snug text-white">{app.name}</p>
-        <p className="text-[10px] text-white/40">
+        {/* `white/40` measured 3.68–3.81:1 on this app's surfaces — below the
+            4.5:1 floor for 10px text (2026-09-04 review). `white/50` clears it. */}
+        <p className="text-[10px] text-white/50">
           {tn("gifts.card.editions", app.packages_count)}
           {" · "}
           {tn("gifts.card.dlc", app.dlc_count)}
@@ -99,6 +110,30 @@ function GiftCatalogCard({ app }: { app: GiftApp }) {
         )}
       </div>
     </Link>
+  );
+}
+
+/**
+ * Loading placeholder shaped like the card it's standing in for — a 16/9
+ * image block plus a two-line text block, instead of a bare `aspect-[3/4]`
+ * rectangle that bore no resemblance to the eventual `GiftCatalogCard`
+ * (2026-09-04 review): content jumped on every load as the real card's very
+ * different proportions landed. Mirrors `TopUp.tsx`'s shape-aware
+ * `PackagesSkeleton`.
+ */
+function GiftCardSkeleton() {
+  return (
+    <div
+      className="overflow-hidden rounded-2xl border"
+      style={{ borderColor: "hsl(var(--border))", background: "hsl(var(--surface-2))" }}
+    >
+      <Skeleton className="aspect-[16/9] w-full rounded-none" />
+      <div className="space-y-1.5 p-2.5">
+        <Skeleton className="h-3 w-4/5" />
+        <Skeleton className="h-3 w-2/5" />
+        <Skeleton className="mt-1 h-3.5 w-1/2" />
+      </div>
+    </div>
   );
 }
 
@@ -194,13 +229,11 @@ export default function GiftsCatalog() {
   });
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.22 }}
-      className="space-y-5 pb-2"
-    >
+    // CSS keyframe (`.yp-fade-in`, `index.css`) replaces the old
+    // framer-motion fade+slide (2026-09-04 review) — see `GiftGame.tsx`'s
+    // identical comment for the reasoning and the `prefers-reduced-motion`
+    // story.
+    <div className="yp-fade-in space-y-5 pb-2">
       <div className="px-4 pt-4">
         <h1 className="text-xl font-bold leading-tight tracking-tight text-white">
           {t("gifts.title")}
@@ -249,7 +282,7 @@ export default function GiftsCatalog() {
         {showSkeletons ? (
           <div className="grid grid-cols-2 gap-3">
             {Array.from({ length: SKELETON_COUNT }, (_, i) => (
-              <Skeleton key={i} className="aspect-[3/4] rounded-2xl" />
+              <GiftCardSkeleton key={i} />
             ))}
           </div>
         ) : showComingSoon ? (
@@ -301,6 +334,6 @@ export default function GiftsCatalog() {
           </>
         )}
       </div>
-    </motion.div>
+    </div>
   );
 }

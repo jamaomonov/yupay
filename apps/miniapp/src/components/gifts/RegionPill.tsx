@@ -45,7 +45,9 @@ export function RegionPill({
         {countryName(country, locale)}
       </span>
       {!available && (
-        <span className="text-[10px] font-normal normal-case text-white/40">
+        // `white/40` measured 3.68–3.81:1 on this app's surfaces — below the
+        // 4.5:1 floor for 10px text (2026-09-04 review). `white/50` clears it.
+        <span className="text-[10px] font-normal normal-case text-white/50">
           {t("gifts.game.noPriceInRegion")}
         </span>
       )}

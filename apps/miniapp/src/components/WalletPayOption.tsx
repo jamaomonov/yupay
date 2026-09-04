@@ -1,4 +1,5 @@
-import { Check, Wallet as WalletIcon } from "lucide-react";
+import { ArrowUpRight, Check, Wallet as WalletIcon } from "lucide-react";
+import { Link } from "wouter";
 
 import type { MethodVisibility } from "@/lib/orders";
 
@@ -47,58 +48,76 @@ export function WalletPayOption({
   if (visibility === "hidden") return null;
   const maintenance = visibility === "maintenance";
   const disabled = maintenance || unknownTotal || (!loading && !enough);
+  // The shortfall message ("Не хватает X") is a fact; this is what to do
+  // about it — the tile used to state it and offer no way to fix it
+  // (2026-09-04 review, the gift checkout offers a top-up link, this shared
+  // tile didn't). Narrower than `disabled`: never shown under maintenance
+  // (nothing to top up towards) or while the total/balance itself isn't
+  // known yet (`unknownTotal`/`loading` — there's no shortfall to quote).
+  const short = !maintenance && !unknownTotal && !loading && !enough;
   return (
-    <button
-      type="button"
-      onClick={disabled ? undefined : onSelect}
-      disabled={disabled}
-      aria-disabled={disabled}
-      className="mb-2 flex w-full items-center gap-3 rounded-2xl p-3.5 transition-all duration-150 disabled:cursor-not-allowed"
-      style={{
-        background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
-        border: active ? "1.5px solid hsl(var(--primary) / 0.8)" : "1px solid hsl(var(--border))",
-        opacity: disabled ? 0.6 : 1,
-      }}
-      data-testid="btn-pay-wallet"
-    >
-      <span
-        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl"
+    <>
+      <button
+        type="button"
+        onClick={disabled ? undefined : onSelect}
+        disabled={disabled}
+        aria-disabled={disabled}
+        className="mb-2 flex w-full items-center gap-3 rounded-2xl p-3.5 transition-all duration-150 disabled:cursor-not-allowed"
         style={{
-          background: active ? "hsl(var(--primary) / 0.18)" : "hsl(var(--surface-3))",
-          color: active ? "hsl(var(--primary))" : "rgba(255,255,255,0.6)",
+          background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
+          border: active ? "1.5px solid hsl(var(--primary) / 0.8)" : "1px solid hsl(var(--border))",
+          opacity: disabled ? 0.6 : 1,
         }}
-        aria-hidden="true"
+        data-testid="btn-pay-wallet"
       >
-        <WalletIcon size={18} />
-      </span>
-      <span className="min-w-0 flex-1 text-left">
-        <span className="block text-sm font-bold text-white">{t("topup.walletPay")}</span>
         <span
-          className="mt-0.5 block text-[12px]"
+          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl"
           style={{
-            color: disabled ? "rgb(252, 165, 165)" : "rgba(255,255,255,0.55)",
+            background: active ? "hsl(var(--primary) / 0.18)" : "hsl(var(--surface-3))",
+            color: active ? "hsl(var(--primary))" : "rgba(255,255,255,0.6)",
           }}
-        >
-          {maintenance
-            ? t("payment.maintenance")
-            : unknownTotal
-              ? t("topup.priceUnavailable")
-              : loading
-                ? t("topup.walletLoading")
-                : disabled
-                  ? t("topup.walletShort", { amount: formatBalance(shortfall, currency) })
-                  : t("topup.walletBalance", { amount: formatBalance(balance ?? 0, currency) })}
-        </span>
-      </span>
-      {active && !disabled && (
-        <span
-          className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full"
-          style={{ background: "hsl(var(--primary))" }}
           aria-hidden="true"
         >
-          <Check size={11} strokeWidth={3} className="text-black" />
+          <WalletIcon size={18} />
         </span>
+        <span className="min-w-0 flex-1 text-left">
+          <span className="block text-sm font-bold text-white">{t("topup.walletPay")}</span>
+          <span
+            className="mt-0.5 block text-[12px]"
+            style={{
+              color: disabled ? "rgb(252, 165, 165)" : "rgba(255,255,255,0.55)",
+            }}
+          >
+            {maintenance
+              ? t("payment.maintenance")
+              : unknownTotal
+                ? t("topup.priceUnavailable")
+                : loading
+                  ? t("topup.walletLoading")
+                  : disabled
+                    ? t("topup.walletShort", { amount: formatBalance(shortfall, currency) })
+                    : t("topup.walletBalance", { amount: formatBalance(balance ?? 0, currency) })}
+          </span>
+        </span>
+        {active && !disabled && (
+          <span
+            className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full"
+            style={{ background: "hsl(var(--primary))" }}
+            aria-hidden="true"
+          >
+            <Check size={11} strokeWidth={3} className="text-black" />
+          </span>
+        )}
+      </button>
+      {short && (
+        <Link
+          href="/wallet/topup"
+          className="text-primary mb-2 inline-flex min-h-[32px] items-center gap-1 text-[13px] font-semibold"
+        >
+          {t("topup.walletTopUpCta")}
+          <ArrowUpRight size={14} aria-hidden="true" />
+        </Link>
       )}
-    </button>
+    </>
   );
 }

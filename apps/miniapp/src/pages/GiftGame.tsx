@@ -1,11 +1,12 @@
-import { motion } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useParams } from "wouter";
 
 import type { GiftAppDetail, GiftPackage, GiftRegion } from "@/lib/gifts";
+import type { MessageKey } from "@/lib/i18n";
 import type { MethodVisibility, ProviderAvailability } from "@/lib/orders";
 
+import { ConfirmPaymentDialog, type ConfirmRow } from "@/components/ConfirmPaymentDialog";
 import { DlcSheet } from "@/components/gifts/DlcSheet";
 import { GiftBuyPanel } from "@/components/gifts/GiftBuyPanel";
 import { InviteGuideSheet } from "@/components/gifts/InviteGuideSheet";
@@ -33,8 +34,8 @@ import {
   type CheckoutResult,
 } from "@/lib/orders";
 import { PAYMENT_METHODS, PROVIDER_BY_METHOD } from "@/lib/payment-methods";
-import { countryName } from "@/lib/regions";
-import { haptic, openExternalLink, setClosingConfirmation } from "@/lib/telegram";
+import { countryName, flagEmoji } from "@/lib/regions";
+import { haptic, isInsideTelegram, openExternalLink, setClosingConfirmation } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { formatBalance, groupBalancesByCurrency, useWallet } from "@/lib/wallet";
 import { ensureBotCanWrite } from "@/lib/write-access";
@@ -49,6 +50,12 @@ const VISIBLE_COUNTRY_COUNT = 4;
  *  part of the shared acquirer grid. The backend provider slug is
  *  ``wallet``. Same sentinel `TopUp.tsx` uses. */
 const WALLET_METHOD_ID = "wallet";
+
+/** How long the invite field waits, idle, before showing an error on its
+ *  own — mirrors `GiftPurchasePanel.tsx`'s identical constant on the web
+ *  storefront. Blurring the field shows the error immediately regardless
+ *  (see `showInviteInvalid`). */
+const INVITE_ERROR_DEBOUNCE_MS = 600;
 
 // The shared acquirer list carries only the external providers; the wallet
 // option is checkout-only, so the provider map is extended locally for
@@ -145,6 +152,25 @@ export function splitCountries(
   return { visible: countries.slice(0, visibleCount), overflow: countries.slice(visibleCount) };
 }
 
+/**
+ * Whether the overflow ("другой регион") panel needs to be forced open so
+ * `country` — the buyer's actual selection — is visible. Without this, an
+ * edition switch that reassigns the country (`countryAfterPackageChange`)
+ * can silently move it behind the toggle with no sign it's even selected
+ * (2026-09-04 review) — mirrors `GiftPurchasePanel.tsx`'s identical
+ * `useEffect` on the web storefront, pulled out pure so it's re-derived on
+ * every selection change instead of only at mount. `null` (nothing selected
+ * yet) never needs the panel forced open.
+ */
+export function countryNeedsExpand(
+  country: string | null,
+  countries: string[],
+  visibleCount: number,
+): boolean {
+  if (country === null) return false;
+  return splitCountries(countries, visibleCount).overflow.includes(country);
+}
+
 /** Whether a catalog entry is a DLC rather than a base game — the only DLC
  *  signal already on the wire (`GiftAppOut.type`, straight from the
  *  upstream Steam catalog). Drives the shared "this needs the base game"
@@ -152,6 +178,31 @@ export function splitCountries(
  *  without the base game is unusable, and the buyer had no warning. */
 export function isDlcApp(type: string): boolean {
   return type === "dlc";
+}
+
+/**
+ * Whether the invite field's own error paragraph should render — timing
+ * only, never the accept/reject gate itself (`validateInviteUrl` already
+ * decides `valid`). Firing on the very first keystroke, before the buyer
+ * had finished pasting or typing, was the bug (2026-09-04 review): shown
+ * once the field is blurred (`touched`), or after a short idle pause
+ * (`idle`) — whichever comes first — never live on every change. Mirrors
+ * `GiftPurchasePanel.tsx`'s `inviteInvalid` on the web storefront, pulled
+ * out pure here so the decision has a direct unit test (this app's Vitest
+ * suite is node-env, no jsdom/RTL to drive a real blur/timer).
+ */
+export function showInviteInvalid({
+  hasValue,
+  valid,
+  touched,
+  idle,
+}: {
+  hasValue: boolean;
+  valid: boolean;
+  touched: boolean;
+  idle: boolean;
+}): boolean {
+  return hasValue && !valid && (touched || idle);
 }
 
 /**
@@ -245,6 +296,44 @@ export function walletSubmitReady({
 }): boolean {
   if (methodId !== WALLET_METHOD_ID) return true;
   return balance !== null && total !== null && balance >= total;
+}
+
+/**
+ * What the fixed Buy CTA says when it can't be pressed yet — mirrors
+ * `canBuy`'s own checks, in the same order, so the reason always matches the
+ * actual blocker. The button used to just grey out with no explanation
+ * while the amount it would charge sat a screen above it, the Buy button
+ * inline in the scroll flow (2026-09-04 review) — mirrors
+ * `GiftPurchasePanel.tsx`'s `payHint` on the web storefront. Returns the
+ * i18n key rather than the translated string so the pure function stays
+ * free of `useT()` — the caller (`GiftGame`) already has `t`. `null` means
+ * payable: nothing left to explain.
+ *
+ * `methodReady`/`submitReady` collapse into one `payHintMethod` hint,
+ * mirroring the web panel's own `!selectedMethodActive` — "choose a
+ * payment method" covers both "no acquirer picked yet" and "the wallet is
+ * selected but short", since the wallet tile itself already states the
+ * shortfall.
+ */
+export function giftPayHint({
+  priceAvailability,
+  inviteHasValue,
+  inviteValid,
+  methodReady,
+  submitReady,
+}: {
+  priceAvailability: GiftPriceAvailability;
+  inviteHasValue: boolean;
+  inviteValid: boolean;
+  methodReady: boolean;
+  submitReady: boolean;
+}): MessageKey | null {
+  if (priceAvailability === "unpriced") return "gifts.game.noPriceInRegion";
+  if (priceAvailability === "fxDown") return "topup.priceUnavailable";
+  if (!inviteHasValue) return "gifts.game.payHintInvite";
+  if (!inviteValid) return "gifts.game.payHintInviteInvalid";
+  if (!methodReady || !submitReady) return "gifts.game.payHintMethod";
+  return null;
 }
 
 /**
@@ -401,6 +490,15 @@ export default function GiftGame() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
+  // Detected once at mount, same as `TopUp` — re-running on every render
+  // would let an authenticated user navigate-and-render with a stale
+  // answer if their session was just rebuilt. Drives whether the floating
+  // back FAB below renders at all: Telegram's own BackButton
+  // (`useTelegramBackButton`, wired for every non-root route in `App.tsx`)
+  // already covers the in-app case, so painting this one unconditionally
+  // gave the buyer two back arrows (2026-09-04 review).
+  const insideTelegram = isInsideTelegram();
+
   const numericAppId = Number(appId);
   const validAppId = Number.isInteger(numericAppId) && numericAppId > 0;
 
@@ -419,6 +517,15 @@ export default function GiftGame() {
   // country pick — see `selectCountry` and `load` below — so it never
   // outlives the switch that produced it.
   const [editionCountryNotice, setEditionCountryNotice] = useState<string | null>(null);
+  // Confirmation before an irreversible payment — see `ConfirmPaymentDialog`.
+  // Declared here with the other hooks, above every early return below.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  // Invite-error display timing (see `showInviteInvalid`): `inviteFieldTouched`
+  // flips true on blur, `inviteIdle` flips true after a short idle pause —
+  // whichever comes first. Neither gates `canonicalInvite` itself, only
+  // whether the error paragraph renders.
+  const [inviteFieldTouched, setInviteFieldTouched] = useState(false);
+  const [inviteIdle, setInviteIdle] = useState(false);
   const seqRef = useRef(0);
   // The sticky `Idempotency-Key` for `POST /orders`, kept alongside the
   // `orderFingerprint` it was minted for — a ref, not state, since neither
@@ -599,8 +706,44 @@ export default function GiftGame() {
     setEditionCountryNotice(null);
   }
 
+  // Force the overflow ("другой регион") panel open whenever the selected
+  // country lands behind it — re-derived on every `selectedCountry` change,
+  // not just at mount, so a package/edition switch (`selectPackage` above)
+  // can't strand the buyer's actual selection out of sight (2026-09-04
+  // review). Reads `detail` from the closure directly (rather than the
+  // `countries` local computed further down, after this component's early
+  // returns) so this stays with the other hooks, above every one of them —
+  // see `countryNeedsExpand`'s own docstring.
+  useEffect(() => {
+    const countries = (detail?.regions ?? []).map((r) => r.country);
+    if (countryNeedsExpand(selectedCountry, countries, VISIBLE_COUNTRY_COUNT)) {
+      setCountryExpanded(true);
+    }
+  }, [detail, selectedCountry]);
+
   const canonicalInvite = validateInviteUrl(inviteUrl);
-  const inviteTouched = inviteUrl.trim() !== "";
+  const inviteHasValue = inviteUrl.trim() !== "";
+  const inviteValid = canonicalInvite !== null;
+  // Whether the current text *would* show an error, ignoring timing — the
+  // debounce below only delays when `showInviteInvalid`'s paragraph appears,
+  // never whether the field is actually valid.
+  const inviteWrong = inviteHasValue && !inviteValid;
+  useEffect(() => {
+    setInviteIdle(false);
+    if (!inviteWrong) return;
+    const timer = setTimeout(() => {
+      setInviteIdle(true);
+    }, INVITE_ERROR_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [inviteUrl, inviteWrong]);
+  const showInviteError = showInviteInvalid({
+    hasValue: inviteHasValue,
+    valid: inviteValid,
+    touched: inviteFieldTouched,
+    idle: inviteIdle,
+  });
   // Resolved through the FULL map so a wallet selection resolves to the
   // `"wallet"` provider `performCheckout` expects instead of `undefined`
   // (which would silently block Buy — `PROVIDER_BY_METHOD` alone has no
@@ -627,6 +770,43 @@ export default function GiftGame() {
     methodReady &&
     submitReady &&
     !checkout.isPending;
+
+  // What the fixed Buy CTA says while it can't be pressed — see
+  // `giftPayHint`'s own docstring for the exact order/reasoning.
+  const payHintKey = giftPayHint({
+    priceAvailability,
+    inviteHasValue,
+    inviteValid,
+    methodReady,
+    submitReady,
+  });
+  const payHint = payHintKey ? t(payHintKey) : null;
+  // Carries the total once payable — the buyer never has to scroll back up
+  // to it (2026-09-04 review, mirrors the web panel's `buyLabel`).
+  const buyLabel =
+    price && priceAvailability === "priced"
+      ? `${t("gifts.game.buy")} · ${priceLabel(price, t("gifts.priceUnavailable"))}`
+      : t("gifts.game.buy");
+
+  // Last look before an irreversible payment — a mistyped invite link sends
+  // a paid game to a stranger, with no way to undo it once the bot sends
+  // the friend invite. `TopUp` already gets this guard (`ConfirmPaymentDialog`);
+  // this flow used to call `handleBuy()` straight from the inline Buy button
+  // (2026-09-04 review). There is no field here a supplier can verify the
+  // way `TopUp`'s `DynamicFields` sometimes can — the recipient link is
+  // exactly what the deferred server-side profile checker (Task 6a) would
+  // verify — so `needsAttestation` is unconditionally `true` below, not a
+  // computed `hasVerifiableField`.
+  const confirmRows: ConfirmRow[] = [
+    { label: t("gifts.game.edition"), value: selectedPackage?.name ?? "" },
+    {
+      label: t("gifts.game.confirmRegion"),
+      value: selectedCountry
+        ? `${flagEmoji(selectedCountry)} ${countryName(selectedCountry, locale)}`
+        : "",
+    },
+    { label: t("gifts.game.confirmProfile"), value: canonicalInvite ?? inviteUrl.trim() },
+  ];
 
   /**
    * Checkout with the frozen body (`{sku_id, qty:1, amount_usd, fulfillment_data}`)
@@ -888,141 +1068,131 @@ export default function GiftGame() {
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.22 }}
-      className="pb-32"
-    >
-      <InviteGuideSheet open={guideOpen} onOpenChange={setGuideOpen} />
-      <RegionGuideSheet open={regionGuideOpen} onOpenChange={setRegionGuideOpen} />
-      <DlcSheet
-        open={dlcOpen}
-        onOpenChange={setDlcOpen}
-        appId={detail.app_id}
-        total={detail.dlc_total}
-      />
+    // A CSS keyframe (`.yp-fade-in`, `index.css`) replaces the old
+    // framer-motion fade+slide here — it held content back ~220ms on a
+    // surface already far over its JS budget (2026-09-04 review). The
+    // global `prefers-reduced-motion` rule already collapses its duration
+    // to near-zero, so no separate a11y branch is needed. A `<>` (not this
+    // div) wraps the fixed CTA/dialog below: nesting them inside an
+    // animated ancestor would make `position: fixed` resolve against ITS
+    // box instead of the viewport for as long as the animation's `both`
+    // fill-mode keeps a `transform` applied.
+    <>
+      <div className="yp-fade-in pb-32">
+        <InviteGuideSheet open={guideOpen} onOpenChange={setGuideOpen} />
+        <RegionGuideSheet open={regionGuideOpen} onOpenChange={setRegionGuideOpen} />
+        <DlcSheet
+          open={dlcOpen}
+          onOpenChange={setDlcOpen}
+          appId={detail.app_id}
+          total={detail.dlc_total}
+        />
 
-      {/* ── Hero ── */}
-      <div className="relative h-56 overflow-hidden">
-        {detail.image ? (
-          <SafeImage
-            src={detail.image}
-            className="absolute inset-0 h-full w-full object-cover"
-            fallback={
-              <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950" />
-            }
-          />
-        ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950" />
-        )}
-        <div className="from-background via-background/40 absolute inset-0 bg-gradient-to-t to-black/20" />
-        <button
-          type="button"
-          onClick={() => {
-            setLocation("/gifts");
-          }}
-          aria-label={t("common.back")}
-          className="absolute left-4 top-12 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-black/40 backdrop-blur-sm"
-        >
-          <ArrowLeft size={16} className="text-white" />
-        </button>
-        <div className="absolute bottom-0 left-0 right-0 z-10 px-4 pb-4">
-          <h1 className="line-clamp-2 text-lg font-bold leading-tight text-white">{detail.name}</h1>
-        </div>
-      </div>
-
-      <div className="space-y-6 px-4 pt-5">
-        {detail.description && (
-          <p className="text-sm leading-relaxed text-white/55">{detail.description}</p>
-        )}
-
-        {/* A DLC delivered with no note is unusable if the recipient lacks
-            the base game — `type` is the only DLC signal already on the
-            wire (2026-09-04 review), so no parent-game name is available to
-            append here. */}
-        {isDlcApp(detail.type) && (
-          <p className="rounded-xl border border-dashed border-white/15 bg-white/5 p-3 text-[13px] leading-relaxed text-white/60">
-            {t("gifts.game.dlcNote")}
-          </p>
-        )}
-
-        {detail.dlc_total > 0 && (
-          <button
-            type="button"
-            onClick={() => {
-              setDlcOpen(true);
-            }}
-            className="text-primary text-sm font-semibold"
-          >
-            {t("gifts.dlc.toggle", { count: detail.dlc_total })}
-          </button>
-        )}
-
-        {/* Step: edition */}
-        <div>
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/50">
-            {t("gifts.game.edition")}
-          </p>
-          <div className="flex flex-col gap-2">
-            {detail.packages.map((pkg) => (
-              <PackageOption
-                key={pkg.id}
-                pkg={pkg}
-                price={selectedCountry ? (priceFor(detail, pkg.id, selectedCountry) ?? null) : null}
-                active={pkg.id === selectedPackage?.id}
-                onSelect={() => {
-                  selectPackage(pkg);
-                }}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Step: region */}
-        <div>
-          <div className="mb-2 flex items-center gap-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
-              {t("gifts.game.region")}
-            </p>
+        {/* ── Hero ── */}
+        <div className="relative h-56 overflow-hidden">
+          {detail.image ? (
+            <SafeImage
+              src={detail.image}
+              className="absolute inset-0 h-full w-full object-cover"
+              fallback={
+                <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950" />
+              }
+            />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950" />
+          )}
+          <div className="from-background via-background/40 absolute inset-0 bg-gradient-to-t to-black/20" />
+          {/* Telegram's own BackButton (`useTelegramBackButton`, `App.tsx`)
+            already covers this inside the app — painting this FAB
+            unconditionally gave the buyer two back arrows (2026-09-04
+            review). Outside Telegram (a browser tab, a shared link) there
+            is no native back control at all, so it stays for that case. */}
+          {!insideTelegram && (
             <button
               type="button"
               onClick={() => {
-                setRegionGuideOpen(true);
+                setLocation("/gifts");
               }}
-              className="text-primary text-[11px] font-semibold"
+              aria-label={t("common.back")}
+              className="absolute left-4 top-12 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-black/40 backdrop-blur-sm"
             >
-              {t("gifts.game.regionHintCta")}
+              <ArrowLeft size={16} className="text-white" />
             </button>
+          )}
+          <div className="absolute bottom-0 left-0 right-0 z-10 px-4 pb-4">
+            <h1 className="line-clamp-2 text-lg font-bold leading-tight text-white">
+              {detail.name}
+            </h1>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {visibleCountries.map((country) => (
-              <RegionPill
-                key={country}
-                country={country}
-                active={country === selectedCountry}
-                available={countryAvailable(country)}
-                locale={locale}
-                onSelect={() => {
-                  selectCountry(country);
-                }}
-              />
-            ))}
-            {overflowCountries.length > 0 && !countryExpanded && (
+        </div>
+
+        <div className="space-y-6 px-4 pt-5">
+          {detail.description && (
+            <p className="text-sm leading-relaxed text-white/55">{detail.description}</p>
+          )}
+
+          {/* A DLC delivered with no note is unusable if the recipient lacks
+            the base game — `type` is the only DLC signal already on the
+            wire (2026-09-04 review), so no parent-game name is available to
+            append here. */}
+          {isDlcApp(detail.type) && (
+            <p className="rounded-xl border border-dashed border-white/15 bg-white/5 p-3 text-[13px] leading-relaxed text-white/60">
+              {t("gifts.game.dlcNote")}
+            </p>
+          )}
+
+          {detail.dlc_total > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setDlcOpen(true);
+              }}
+              className="text-primary text-sm font-semibold"
+            >
+              {t("gifts.dlc.toggle", { count: detail.dlc_total })}
+            </button>
+          )}
+
+          {/* Step: edition */}
+          <div>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/50">
+              {t("gifts.game.edition")}
+            </p>
+            <div className="flex flex-col gap-2">
+              {detail.packages.map((pkg) => (
+                <PackageOption
+                  key={pkg.id}
+                  pkg={pkg}
+                  price={
+                    selectedCountry ? (priceFor(detail, pkg.id, selectedCountry) ?? null) : null
+                  }
+                  active={pkg.id === selectedPackage?.id}
+                  onSelect={() => {
+                    selectPackage(pkg);
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Step: region */}
+          <div>
+            <div className="mb-2 flex items-center gap-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                {t("gifts.game.region")}
+              </p>
               <button
                 type="button"
                 onClick={() => {
-                  setCountryExpanded(true);
+                  setRegionGuideOpen(true);
                 }}
-                className="rounded-full border px-3 py-1.5 text-xs font-semibold text-white/50"
-                style={{ borderColor: "hsl(var(--border))" }}
+                className="text-primary text-[11px] font-semibold"
               >
-                {t("gifts.game.otherRegion")}
+                {t("gifts.game.regionHintCta")}
               </button>
-            )}
-            {countryExpanded &&
-              overflowCountries.map((country) => (
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {visibleCountries.map((country) => (
                 <RegionPill
                   key={country}
                   country={country}
@@ -1034,72 +1204,138 @@ export default function GiftGame() {
                   }}
                 />
               ))}
-          </div>
-          {/* Shown only when `selectPackage` actually moved the country
+              {overflowCountries.length > 0 && !countryExpanded && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCountryExpanded(true);
+                  }}
+                  className="rounded-full border px-3 py-1.5 text-xs font-semibold text-white/50"
+                  style={{ borderColor: "hsl(var(--border))" }}
+                >
+                  {t("gifts.game.otherRegion")}
+                </button>
+              )}
+              {countryExpanded &&
+                overflowCountries.map((country) => (
+                  <RegionPill
+                    key={country}
+                    country={country}
+                    active={country === selectedCountry}
+                    available={countryAvailable(country)}
+                    locale={locale}
+                    onSelect={() => {
+                      selectCountry(country);
+                    }}
+                  />
+                ))}
+            </div>
+            {/* Shown only when `selectPackage` actually moved the country
               (`countryMovedOnEditionSwitch`) — the old always-on
               `regionWarning` line explained your OWN Steam country, not the
               recipient's, and is deleted (2026-09-04 review): the relabeled
               step above plus the region hint sheet now carry that rule. */}
-          {editionCountryNotice && (
-            <p className="mt-2 text-[12px] leading-snug text-white/40">
-              {t("gifts.game.editionCountryOnly", {
-                country: countryName(editionCountryNotice, locale),
-              })}
-            </p>
-          )}
-        </div>
+            {editionCountryNotice && (
+              <p className="mt-2 text-[12px] leading-snug text-white/40">
+                {t("gifts.game.editionCountryOnly", {
+                  country: countryName(editionCountryNotice, locale),
+                })}
+              </p>
+            )}
+          </div>
 
-        {/* Price */}
-        <div className="border-t pt-4" style={{ borderColor: "hsl(var(--border) / 0.7)" }}>
-          {priceAvailability === "priced" && price ? (
-            <p className="text-2xl font-bold tabular-nums text-white">
-              {priceLabel(price, t("gifts.priceUnavailable"))}
-            </p>
-          ) : priceAvailability === "fxDown" ? (
-            // FX down must block the sale, not guess (2026-09-04 review) —
-            // the mature panels' own dashed placeholder
-            // (`TopUp.tsx`'s `VariableAmountPanel`), never a USD figure.
-            <p className="rounded-2xl border border-dashed border-white/10 p-4 text-center text-sm text-white/40">
-              {t("topup.priceUnavailable")}
-            </p>
-          ) : (
-            <p className="text-sm text-white/50">{t("gifts.game.noPriceInRegion")}</p>
-          )}
-        </div>
+          {/* Price */}
+          <div className="border-t pt-4" style={{ borderColor: "hsl(var(--border) / 0.7)" }}>
+            {priceAvailability === "priced" && price ? (
+              <p className="text-2xl font-bold tabular-nums text-white">
+                {priceLabel(price, t("gifts.priceUnavailable"))}
+              </p>
+            ) : priceAvailability === "fxDown" ? (
+              // FX down must block the sale, not guess (2026-09-04 review) —
+              // the mature panels' own dashed placeholder
+              // (`TopUp.tsx`'s `VariableAmountPanel`), never a USD figure.
+              <p className="rounded-2xl border border-dashed border-white/10 p-4 text-center text-sm text-white/40">
+                {t("topup.priceUnavailable")}
+              </p>
+            ) : (
+              <p className="text-sm text-white/50">{t("gifts.game.noPriceInRegion")}</p>
+            )}
+          </div>
 
-        <GiftBuyPanel
-          inviteUrl={inviteUrl}
-          onInviteUrlChange={setInviteUrl}
-          showInviteError={inviteTouched && canonicalInvite === null}
-          onOpenGuide={() => {
-            setGuideOpen(true);
-          }}
-          skuStatus={skuStatus}
-          methodId={methodId}
-          providerStatusBySlug={providerStatusBySlug}
-          onMethodChange={setMethodId}
-          walletActive={methodId === WALLET_METHOD_ID}
-          walletEnough={walletPay.enough}
-          walletLoading={walletQuery.isPending}
-          walletBalance={walletBalance}
-          walletShortfall={walletPay.shortfall}
-          walletVisibility={walletVisibility}
-          walletUnknownTotal={walletPay.unknownTotal}
-          onSelectWallet={() => {
-            setMethodId(WALLET_METHOD_ID);
-          }}
-          canBuy={canBuy}
-          isPending={checkout.isPending}
-          onBuy={() => {
-            void handleBuy();
-          }}
-        />
-
-        <div className="space-y-1 text-[12px] leading-relaxed text-white/40">
-          <p>{t("gifts.game.timeline")}</p>
-          <p>{t("gifts.game.accept")}</p>
+          <GiftBuyPanel
+            inviteUrl={inviteUrl}
+            onInviteUrlChange={setInviteUrl}
+            onInviteBlur={() => {
+              setInviteFieldTouched(true);
+            }}
+            showInviteError={showInviteError}
+            onOpenGuide={() => {
+              setGuideOpen(true);
+            }}
+            skuStatus={skuStatus}
+            methodId={methodId}
+            providerStatusBySlug={providerStatusBySlug}
+            onMethodChange={setMethodId}
+            walletActive={methodId === WALLET_METHOD_ID}
+            walletEnough={walletPay.enough}
+            walletLoading={walletQuery.isPending}
+            walletBalance={walletBalance}
+            walletShortfall={walletPay.shortfall}
+            walletVisibility={walletVisibility}
+            walletUnknownTotal={walletPay.unknownTotal}
+            onSelectWallet={() => {
+              setMethodId(WALLET_METHOD_ID);
+            }}
+          />
         </div>
       </div>
-    </motion.div>
+
+      {/* ── Fixed CTA ── */}
+      {/* 16px clear of the nav band, mirrors `TopUp.tsx`. Carries the total
+          once payable, and the specific missing step otherwise — the old
+          inline Buy button (inside `GiftBuyPanel`, in the scroll flow) just
+          greyed out with no explanation while the price sat a screen above
+          it (2026-09-04 review, "ship this first"). Not rendered at all
+          once the SKU itself is unavailable — `GiftBuyPanel` already swaps
+          to `gifts.comingSoon` in that state, so there is nothing to buy. */}
+      {skuStatus !== "unavailable" && (
+        <div className="fixed bottom-[calc(var(--app-nav-total)_+_16px)] left-1/2 z-40 w-full max-w-[430px] -translate-x-1/2 px-4">
+          <button
+            type="button"
+            data-testid="btn-gift-buy"
+            disabled={!canBuy}
+            onClick={() => {
+              haptic("press");
+              setConfirmOpen(true);
+            }}
+            className="bg-primary flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-base font-bold tracking-wide text-black transition-all disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            {checkout.isPending
+              ? t("topup.processingBtn")
+              : canBuy
+                ? buyLabel
+                : (payHint ?? t("gifts.game.buy"))}
+          </button>
+        </div>
+      )}
+
+      <ConfirmPaymentDialog
+        open={confirmOpen}
+        rows={confirmRows}
+        total={price ? priceLabel(price, t("gifts.priceUnavailable")) : ""}
+        warning={t("gifts.game.confirmWarning")}
+        // There is no field here a supplier can verify the way `TopUp`'s
+        // `DynamicFields` sometimes can (see `confirmRows`'s docstring) —
+        // the recipient link is exactly what the deferred server-side
+        // profile checker (Task 6a) would verify, so this dialog is
+        // unconditionally the last human check.
+        needsAttestation
+        onOpenChange={setConfirmOpen}
+        onConfirm={() => {
+          setConfirmOpen(false);
+          void handleBuy();
+        }}
+      />
+    </>
   );
 }
