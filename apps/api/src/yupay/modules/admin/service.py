@@ -40,6 +40,13 @@ from yupay.modules.admin.schemas import (
 )
 from yupay.modules.catalog.models import BrandTranslation, Product, Sku
 from yupay.modules.fulfillment.models import FulfillmentTask
+
+# Imported as the submodule, not the `yupay.modules.gifts` facade: the facade
+# also re-exports `admin_router`, which pulls in `gifts.admin` ->
+# `admin.deps` -- going through it here would route this module's own import
+# back through `yupay.modules.admin`. `checkout` is a leaf module (imports
+# nothing from `orders` or `admin`), so importing it directly is cycle-free.
+from yupay.modules.gifts import checkout as gifts_checkout
 from yupay.modules.orders.models import Order, OrderItem
 from yupay.modules.orders.revenue import order_charged_usd_subq
 from yupay.modules.payments.models import Payment, PaymentWebhook
@@ -611,6 +618,9 @@ async def get_refs(db: AsyncSession, *, user_ids: list[str], order_ids: list[str
                 BrandTranslation.name.label("brand_name"),
                 Sku.denomination.label("denomination"),
                 Sku.sku_code.label("sku_code"),
+                # OrderItem is already the driving table -- no new join.
+                # Only read for the gift-line override below.
+                OrderItem.fulfillment_data.label("fulfillment_data"),
             )
             .distinct(OrderItem.order_id)
             .select_from(OrderItem)
@@ -627,6 +637,15 @@ async def get_refs(db: AsyncSession, *, user_ids: list[str], order_ids: list[str
         for r in (await db.execute(stmt)).all():
             name = r.brand_name
             denom = r.denomination or r.sku_code
+            if r.sku_code == gifts_checkout.STEAM_GIFT_SKU_CODE:
+                # Same override as `orders.build_item_display`: steam-gift's
+                # own denomination is the "Любая сумма" placeholder, so swap
+                # in the game name snapshotted onto the line at checkout when
+                # there is one. An order with no `app_name` (placed before
+                # the snapshot existed) keeps the placeholder above.
+                gift_label = gifts_checkout.steam_gift_label(r.fulfillment_data)
+                if gift_label is not None:
+                    denom = gift_label
             orders.append(
                 OrderRefOut(
                     id=str(r.order_id),

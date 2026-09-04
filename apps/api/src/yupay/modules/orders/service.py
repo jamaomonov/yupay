@@ -126,6 +126,17 @@ def build_item_display(item: OrderItem, *, locale: str = "ru") -> OrderItemDispl
     denomination = sku.denomination
     if is_unit_sku(sku) and sku.amount_unit and sku.min_qty is not None and item.qty >= sku.min_qty:
         denomination = f"{item.qty} {sku.amount_unit}"
+    elif sku.sku_code == gifts_checkout.STEAM_GIFT_SKU_CODE:
+        # steam-gift is one SKU standing in for ~4200 games, so its own
+        # denomination is the literal placeholder "Любая сумма". The real
+        # game (and, when it differs, the edition) was snapshotted onto
+        # this line at checkout by `gifts_checkout.price_gift_line`. An
+        # order placed before that snapshot existed has no `app_name` —
+        # `steam_gift_label` returns `None` for it, and the placeholder set
+        # above stands, same as it always has.
+        gift_label = gifts_checkout.steam_gift_label(item.fulfillment_data)
+        if gift_label is not None:
+            denomination = gift_label
     return OrderItemDisplay(
         brand_slug=brand.slug if brand is not None else "",
         brand_name=_tr_name(brand.translations, locale) if brand is not None else "",

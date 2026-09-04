@@ -25,6 +25,7 @@ from yupay.modules.catalog.models import (
     ProductTranslation,
     Sku,
 )
+from yupay.modules.gifts.checkout import STEAM_GIFT_SKU_CODE
 from yupay.modules.orders.models import Order, OrderItem
 from yupay.modules.users.models import User
 
@@ -98,6 +99,64 @@ async def _seed_order(db: AsyncSession, *, sku_image: str | None) -> tuple[str, 
     return str(order.id), str(user.id)
 
 
+async def _seed_gift_order(db: AsyncSession, *, fulfillment_data: dict[str, object] | None) -> str:
+    """A one-line ``steam-gift`` order, mirroring :func:`_seed_order`'s shape.
+
+    ``fulfillment_data=None`` reproduces an order placed before the
+    ``app_name`` snapshot existed: the column stays at its DB-level
+    ``'{}'::jsonb`` default, with no ``app_name`` key at all.
+    """
+    suffix = new_id()[:8]
+    cat = Category(id=new_id(), slug=f"c-{suffix}", sort_order=0, active=True)
+    cat.translations = [CategoryTranslation(locale="ru", name="Игры")]
+    db.add(cat)
+    await db.flush()
+    brand = Brand(id=new_id(), slug=f"b-{suffix}", category_id=cat.id, sort_order=0, active=True)
+    brand.translations = [BrandTranslation(locale="ru", name="Steam Игры")]
+    db.add(brand)
+    await db.flush()
+    product = Product(id=new_id(), slug=f"p-{suffix}", brand_id=brand.id, kind="top_up")
+    product.translations = [ProductTranslation(locale="ru", name="P")]
+    db.add(product)
+    await db.flush()
+    sku = Sku(
+        id=new_id(),
+        product_id=product.id,
+        sku_code=STEAM_GIFT_SKU_CODE,
+        denomination="Любая сумма",
+        price_usd=Decimal("1.00"),
+    )
+    db.add(sku)
+    user = User(id=new_id(), email="gift-buyer@example.com", display_name="Дарья", locale="ru")
+    db.add(user)
+    await db.flush()
+    moment = now()
+    order = Order(
+        id=new_id(),
+        user_id=user.id,
+        guest_email=None,
+        status="delivered",
+        currency="USD",
+        total_usd=Decimal("1.00"),
+        total_charged=Decimal("1.00"),
+        expires_at=moment,
+    )
+    db.add(order)
+    await db.flush()
+    item = OrderItem(
+        id=new_id(),
+        order_id=order.id,
+        sku_id=sku.id,
+        qty=1,
+        unit_price_usd=Decimal("1.00"),
+    )
+    if fulfillment_data is not None:
+        item.fulfillment_data = fulfillment_data
+    db.add(item)
+    await db.commit()
+    return str(order.id)
+
+
 async def test_a_user_id_resolves_to_a_face_and_a_name(
     integration_client: AsyncClient, db_session: AsyncSession, _admin_headers: dict[str, str]
 ) -> None:
@@ -133,6 +192,32 @@ async def test_an_order_id_resolves_to_what_was_in_it(
     assert row["id"] == order_id
     assert row["image_url"] == "https://cdn.example/ff.png"
     assert row["label"] == "Свободный Огонь · 110 Diamonds"
+
+
+async def test_a_gift_order_label_carries_the_game_name(
+    integration_client: AsyncClient, db_session: AsyncSession, _admin_headers: dict[str, str]
+) -> None:
+    """The operator screens that used to read "Steam Игры · Любая сумма" now
+    show the actual game — the whole point of this change."""
+    order_id = await _seed_gift_order(db_session, fulfillment_data={"app_name": "Dead Cells"})
+    r = await integration_client.get(
+        f"/api/v1/admin/refs?orders={order_id}", headers=_admin_headers
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["orders"][0]["label"] == "Steam Игры · Dead Cells"
+
+
+async def test_a_gift_order_without_an_app_name_snapshot_keeps_the_placeholder(
+    integration_client: AsyncClient, db_session: AsyncSession, _admin_headers: dict[str, str]
+) -> None:
+    """A gift order placed before the snapshot existed must not crash or
+    render empty — same rule as the ``build_item_display`` choke point."""
+    order_id = await _seed_gift_order(db_session, fulfillment_data=None)
+    r = await integration_client.get(
+        f"/api/v1/admin/refs?orders={order_id}", headers=_admin_headers
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["orders"][0]["label"] == "Steam Игры · Любая сумма"
 
 
 async def test_an_unknown_id_is_absent_rather_than_an_error(

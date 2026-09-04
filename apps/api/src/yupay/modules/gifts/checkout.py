@@ -14,6 +14,12 @@ band.
 needs this hook, then :func:`price_gift_line` to get the authoritative
 price and an enriched ``fulfillment_data`` snapshot. This module imports
 nothing from ``orders``, so the reverse import there creates no cycle.
+
+That same snapshot is what turns a gift line's placeholder denomination
+("Любая сумма" — the one ``steam-gift`` SKU stands in for ~4200 games) into
+the actual game name at display time: both ``orders.build_item_display``
+and ``admin.get_refs`` call :func:`steam_gift_label` once they've confirmed
+a line is on the gift SKU.
 """
 
 from __future__ import annotations
@@ -255,9 +261,49 @@ async def price_gift_line(
     return expected, data
 
 
+def steam_gift_label(fulfillment_data: dict[str, Any] | None) -> str | None:
+    """The customer-facing label for a priced gift line, or ``None``.
+
+    Reads only ``app_name`` and ``package_name`` — the two display fields
+    :func:`price_gift_line` snapshots onto ``fulfillment_data``. Never reads
+    ``invite_url`` (the recipient's Steam profile — PII) or
+    ``supplier_price_usd`` (our wholesale cost), which live in the same dict
+    but must never reach a label.
+
+    Called from the two display choke points (``orders.build_item_display``
+    and ``admin.get_refs``) *after* each has already confirmed the line is
+    on the gift SKU — this function only knows how to read the snapshot, not
+    when it applies.
+
+    Args:
+        fulfillment_data: the order line's ``fulfillment_data`` column. Also
+            accepts ``None`` for an unflushed ORM row that never had one set.
+
+    Returns:
+        ``app_name`` alone, or ``"{app_name} · {package_name}"`` when the
+        edition name is present and differs from the game name — G-Engine
+        usually names the base package identically to the app, so appending
+        it unconditionally would print the name twice. ``None`` when
+        ``app_name`` is missing or not a non-empty string, which is what an
+        order placed before this snapshot existed looks like; the caller
+        falls back to its own placeholder rather than crashing or rendering
+        empty.
+    """
+    if not fulfillment_data:
+        return None
+    app_name = fulfillment_data.get("app_name")
+    if not isinstance(app_name, str) or not app_name.strip():
+        return None
+    package_name = fulfillment_data.get("package_name")
+    if isinstance(package_name, str) and package_name.strip() and package_name != app_name:
+        return f"{app_name} · {package_name}"
+    return app_name
+
+
 __all__ = [
     "STEAM_GIFT_SKU_CODE",
     "is_gift_sku",
     "parse_invite_url",
     "price_gift_line",
+    "steam_gift_label",
 ]
