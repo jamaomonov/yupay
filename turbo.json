@@ -27,11 +27,11 @@
       "cache": false
     },
     "typecheck": {
-      "dependsOn": ["^build", "^gen:api"],
+      "dependsOn": ["^build", "^gen:api", "gen:api"],
       "outputs": []
     },
     "test": {
-      "dependsOn": ["^build", "^gen:api"],
+      "dependsOn": ["^build", "^gen:api", "gen:api"],
       "outputs": ["coverage/**"]
     },
     "gen:api": {
