@@ -88,7 +88,7 @@ x-app-env: &app-env
   UZUM_PASSWORD: ${UZUM_PASSWORD:-}
   UZUM_TEST_LOGIN: ${UZUM_TEST_LOGIN:-}
   UZUM_TEST_PASSWORD: ${UZUM_TEST_PASSWORD:-}
-  UZUM_OPEN_SERVICE_URL: ${UZUM_OPEN_SERVICE_URL:-https://www.uzumbank.uz/open-service}
+  UZUM_OPEN_SERVICE_URL: ${UZUM_OPEN_SERVICE_URL:-https://uzumbank.uz/open-service}
   # Click (Shop API) — set in .env (or /opt/yupay/secrets/api.env in prod).
   # Empty CLICK_MERCHANT_ID leaves the gateway ``available=false``.
   CLICK_MERCHANT_ID: ${CLICK_MERCHANT_ID:-}
