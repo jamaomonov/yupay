@@ -19,10 +19,9 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select
 
 from yupay.core.errors import NotFoundError, ValidationError
-from yupay.core.logging import get_logger
+from yupay.core.logging import get_logger, hash_short
 from yupay.core.redis import get_redis
 from yupay.modules.catalog.models import Product, Sku
-from yupay.modules.fulfillment.suppliers.g2b import _hash_short
 from yupay.modules.integrations.breaker import SupplierBreaker
 from yupay.modules.integrations.models import SkuSupplierMapping
 from yupay.modules.integrations.schemas import PlayerCheckOut
@@ -116,9 +115,9 @@ def _cache_key(game_code: str, player_id: str, server_id: str | None) -> str:
 
     ``player_id`` is hashed (never stored raw) so the key carries no PII —
     it would otherwise be plaintext-visible via ``MONITOR``/``SCAN`` (§9).
-    ``_hash_short`` is deterministic, so identical inputs still cache-hit.
+    ``hash_short`` is deterministic, so identical inputs still cache-hit.
     """
-    return f"playercheck:g2b:{game_code}:{server_id or '-'}:{_hash_short(player_id)}"
+    return f"playercheck:g2b:{game_code}:{server_id or '-'}:{hash_short(player_id)}"
 
 
 def _waxpeer_cache_key(steam_login: str) -> str:
@@ -129,7 +128,7 @@ def _waxpeer_cache_key(steam_login: str) -> str:
     keeps this namespace from ever colliding with a g2b ``player_id`` cache
     entry even if the raw strings happened to match.
     """
-    return f"playercheck:waxpeer:{_hash_short(steam_login)}"
+    return f"playercheck:waxpeer:{hash_short(steam_login)}"
 
 
 async def _check_waxpeer_login(
@@ -161,7 +160,7 @@ async def _check_waxpeer_login(
         logger.warning(
             "player_check_failed",
             provider="waxpeer",
-            player_id_hash=_hash_short(steam_login),
+            player_id_hash=hash_short(steam_login),
             error=str(exc)[:200],
         )
         return PlayerCheckOut(status="error")
@@ -172,7 +171,7 @@ async def _check_waxpeer_login(
     logger.info(
         "player_check",
         provider="waxpeer",
-        player_id_hash=_hash_short(steam_login),
+        player_id_hash=hash_short(steam_login),
         status=out.status,
     )
     return out
@@ -323,7 +322,7 @@ async def _check_g2b_player(
         logger.warning(
             "player_check_failed",
             game_code=game_code,
-            player_id_hash=_hash_short(player_id),
+            player_id_hash=hash_short(player_id),
             error=str(exc)[:200],
         )
         return PlayerCheckOut(status="error")
@@ -336,7 +335,7 @@ async def _check_g2b_player(
     logger.info(
         "player_check",
         game_code=game_code,
-        player_id_hash=_hash_short(player_id),
+        player_id_hash=hash_short(player_id),
         status=out.status,
     )
     return out

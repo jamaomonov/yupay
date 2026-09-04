@@ -124,6 +124,36 @@ async def test_persona_fetch_failure_never_breaks_the_login(
 
 
 @respx.mock
+async def test_an_empty_players_array_still_logs_the_user_in_nameless(
+    db_session: AsyncSession,
+) -> None:
+    """`fetch_persona` keeps folding "no such account" in with the failures.
+
+    `resolve_persona` was added so the gift profile check can tell Steam's
+    definitive negative apart from a call that never landed (2026-09-04 final
+    review) -- but sign-in must not gain that distinction. OpenID has already
+    proven this account exists by the time the summary call runs, so an empty
+    `players` here is a Steam oddity, not grounds to refuse a login.
+    """
+    from yupay.core.config import get_settings
+
+    respx.get("https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/").mock(
+        return_value=httpx.Response(200, json={"response": {"players": []}})
+    )
+    s = get_settings().model_copy(update={"steam_api_key": "k"})
+
+    async def verify(params: dict[str, str], **_: object) -> int:
+        return 76561198000000078
+
+    tokens = await steam_login(db_session, _params(), settings=s, verifier=verify)
+    assert tokens.access_token
+    link = (
+        await db_session.execute(select(SteamLink).where(SteamLink.steam_id == 76561198000000078))
+    ).scalar_one()
+    assert link.persona_name is None  # nameless, not broken
+
+
+@respx.mock
 async def test_persona_and_avatar_land_on_the_profile(db_session: AsyncSession) -> None:
     from yupay.core.config import get_settings
 

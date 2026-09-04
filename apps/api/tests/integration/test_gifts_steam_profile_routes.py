@@ -19,6 +19,17 @@ Plus, from fix round 1 review:
 - a malformed/stale blob under the cache key degrades like a cache miss,
   never a 500.
 
+Plus, from the final whole-branch review:
+- the cache key is namespaced by link shape: every steamid64 is also a
+  syntactically valid vanity name, so one namespace meant a `not_found` filed
+  for `/id/{17 digits}` answered for `/profiles/{same digits}` -- a six-hour
+  denial of purchase against any Steam account, from one unauthenticated
+  request, and in the other direction a stranger's card shown as the
+  recipient;
+- `GetPlayerSummaries` answering 200 with an empty `players` array is Steam's
+  definitive "no such account" and reads as `not_found`, distinct from any
+  failure to ask, which stays `unavailable`.
+
 Plus, from P2's fix round 1 review:
 - the link travels in the request body, never a query string: Caddy's access
   log records `uri` verbatim and promtail ships it to Loki, so a `GET
@@ -33,6 +44,7 @@ than just an absence of a positive check.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import httpx
@@ -42,6 +54,8 @@ import structlog.testing
 from httpx import AsyncClient
 from yupay.core import config as cfg
 from yupay.core.redis import get_redis
+from yupay.modules.gifts import profile as profile_mod
+from yupay.modules.gifts.schemas import GiftProfileOut
 
 pytestmark = pytest.mark.asyncio
 
@@ -199,6 +213,177 @@ async def test_an_undocumented_resolve_success_code_is_never_cached(
     assert route.call_count == 2
 
 
+# ---------- the two link shapes never share a cache entry ----------
+#
+# `_STEAM_ID64_RE` is `\d{17}` and `_STEAM_VANITY_RE` is `[A-Za-z0-9_-]{2,32}`,
+# so EVERY steamid64 is also a syntactically valid vanity name. One cache
+# namespace for both meanings was a six-hour denial of purchase against any
+# Steam account, reachable from a single unauthenticated request.
+
+
+@respx.mock
+async def test_a_not_found_vanity_never_answers_for_the_same_digits_as_a_steamid(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The attack, and the honest-mistake version of it.
+
+    ``POST {"invite_url": "steamcommunity.com/id/{17 digits}"}`` resolves an
+    unregistered vanity, so Steam answers the documented ``success == 42`` and
+    we file ``not_found``. If that entry were keyed on the digits alone, the
+    real buyer pasting ``/profiles/{same digits}`` would read it back, never
+    reach ``GetPlayerSummaries``, and find Buy disabled with «Профиль Steam не
+    найден» -- with no override on either surface, for six hours. The same
+    thing happens with no attacker at all: a buyer who pastes a numeric id
+    into the ``/id/`` form (a common confusion), sees «не найден», and
+    corrects the link would stay blocked.
+    """
+    _enable(monkeypatch)
+    respx.get(_RESOLVE_URL).mock(
+        return_value=httpx.Response(200, json={"response": {"success": 42, "message": "No match"}})
+    )
+    summaries = respx.get(_SUMMARIES_URL).mock(
+        return_value=httpx.Response(200, json=_summaries_payload())
+    )
+
+    poisoned = await _check(integration_client, f"https://steamcommunity.com/id/{_STEAM_ID}")
+    assert poisoned.json()["status"] == "not_found"
+
+    real = await _check(integration_client, _PROFILE_LINK)
+
+    assert real.status_code == 200, real.text
+    assert real.json()["status"] == "found"
+    assert real.json()["steam_id"] == _STEAM_ID
+    # The summaries call actually happened -- i.e. the vanity verdict was not
+    # read back for the steamid64 shape.
+    assert summaries.call_count == 1
+
+
+@respx.mock
+async def test_a_found_vanity_is_never_replayed_as_the_steamid_card(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The other direction, which is worse for trust than a blocked sale.
+
+    A vanity made of 17 digits that really is registered -- to somebody else
+    entirely -- would otherwise have its avatar and nickname replayed as the
+    confirmation card for ``/profiles/{same digits}``: a stranger presented as
+    the buyer's recipient, one tap before an irreversible payment.
+    """
+    _enable(monkeypatch)
+    other_id = "76561198000000999"
+    respx.get(_RESOLVE_URL).mock(
+        return_value=httpx.Response(200, json={"response": {"success": 1, "steamid": other_id}})
+    )
+    summaries = respx.get(_SUMMARIES_URL)
+    summaries.side_effect = [
+        httpx.Response(200, json=_summaries_payload(name="someone-else")),
+        httpx.Response(200, json=_summaries_payload(name="the-real-recipient")),
+    ]
+
+    vanity = await _check(integration_client, f"https://steamcommunity.com/id/{_STEAM_ID}")
+    assert vanity.json()["status"] == "found"
+    assert vanity.json()["steam_id"] == other_id
+    assert vanity.json()["nickname"] == "someone-else"
+
+    real = await _check(integration_client, _PROFILE_LINK)
+
+    assert real.json()["status"] == "found"
+    assert real.json()["steam_id"] == _STEAM_ID
+    assert real.json()["nickname"] == "the-real-recipient"
+    assert summaries.call_count == 2
+
+
+# ---------- Steam's definitive "no such account" on the summaries call ------
+
+
+@respx.mock
+async def test_an_empty_players_array_on_a_profiles_link_is_not_found(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A 200 with ``players: []`` is Steam saying no, and must read that way.
+
+    ``/profiles/{steamid64}`` is the shape Steam's own "Copy profile URL"
+    button hands to every user without a custom URL, so roughly half the links
+    this endpoint sees never touch ``ResolveVanityURL`` at all. Before this,
+    the summaries call's definitive negative was flattened into the same
+    ``(None, None)`` a timeout produces, so a mistyped digit answered «Steam
+    сейчас не отвечает — можно продолжить» and the buyer paid for a gift that
+    went nowhere. That copy was not merely unhelpful, it was false.
+    """
+    _enable(monkeypatch)
+    respx.get(_SUMMARIES_URL).mock(
+        return_value=httpx.Response(200, json={"response": {"players": []}})
+    )
+
+    r = await _check(integration_client, _PROFILE_LINK)
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "not_found"
+    assert body["steam_id"] is None
+    assert body["nickname"] is None
+    assert body["avatar_url"] is None
+
+
+@respx.mock
+async def test_a_not_found_from_an_empty_players_array_is_cached(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """It is a fact about the profile, so it caches like any other one."""
+    _enable(monkeypatch)
+    summaries = respx.get(_SUMMARIES_URL).mock(
+        return_value=httpx.Response(200, json={"response": {"players": []}})
+    )
+
+    await _check(integration_client, _PROFILE_LINK)
+    second = await _check(integration_client, _PROFILE_LINK)
+
+    assert second.json()["status"] == "not_found"
+    assert summaries.call_count == 1
+
+
+@respx.mock
+async def test_an_empty_players_array_on_a_resolved_vanity_is_also_not_found(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Uniform across both shapes: an empty ``players`` is Steam's answer
+    about the steamid64, whatever produced that id a moment earlier."""
+    _enable(monkeypatch)
+    respx.get(_RESOLVE_URL).mock(
+        return_value=httpx.Response(200, json={"response": {"success": 1, "steamid": _STEAM_ID}})
+    )
+    respx.get(_SUMMARIES_URL).mock(
+        return_value=httpx.Response(200, json={"response": {"players": []}})
+    )
+
+    r = await _check(integration_client, _VANITY_LINK)
+
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "not_found"
+
+
+@respx.mock
+async def test_a_player_with_no_renderable_persona_is_still_unavailable(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`found` still requires a persona -- restoring the negative must not
+    regress the empty-confirmation-card fix. A player row that carries neither
+    a name nor an avatar has confirmed nothing the buyer can act on, and is
+    NOT Steam saying the account is absent, so it stays `unavailable` (and
+    uncached)."""
+    _enable(monkeypatch)
+    summaries = respx.get(_SUMMARIES_URL).mock(
+        return_value=httpx.Response(200, json={"response": {"players": [{"steamid": _STEAM_ID}]}})
+    )
+
+    r = await _check(integration_client, _PROFILE_LINK)
+
+    assert r.json()["status"] == "unavailable"
+    # Never cached: a second call asks Steam again.
+    await _check(integration_client, _PROFILE_LINK)
+    assert summaries.call_count == 2
+
+
 # ---------- s.team friend-invite links ----------
 
 
@@ -309,15 +494,16 @@ async def test_resolve_vanity_5xx_never_leaks_the_api_key_into_logs(
 
 
 @respx.mock
-async def test_persona_fetch_failure_on_a_profiles_link_is_unavailable(
+async def test_a_summaries_timeout_on_a_profiles_link_is_unavailable(
     integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A `/profiles/{steamid64}` link needs no *resolve* call, but its
     *existence* is still unverified: the id came straight from the URL,
     regex-shape-checked only. `GetPlayerSummaries` is the only existence
-    check this shape gets, so an empty answer -- Steam being down, or a
-    genuinely nonexistent id, indistinguishable from here -- must not read
-    as `found`. Unlike Steam sign-in, nothing has proven identity first."""
+    check this shape gets, so a call that never landed cannot read as
+    `found` -- unlike Steam sign-in, nothing has proven identity first. A
+    Steam-side *answer* of `players: []` is a different thing entirely and
+    reads as `not_found`; see the sibling above."""
     _enable(monkeypatch)
     summaries_route = respx.get(_SUMMARIES_URL)
     summaries_route.side_effect = [
@@ -344,13 +530,13 @@ async def test_persona_fetch_failure_on_a_profiles_link_is_unavailable(
 
 
 @respx.mock
-async def test_persona_fetch_failure_on_a_resolved_vanity_is_also_unavailable(
+async def test_a_summaries_timeout_on_a_resolved_vanity_is_also_unavailable(
     integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Same rule, the other shape: `ResolveVanityURL` succeeding proves the
     account exists, but `found` is still withheld when `GetPlayerSummaries`
-    comes back empty -- the deliverable is the avatar/nickname, not the bare
-    fact of existence, so a verdict with neither must not become a green
+    never lands -- the deliverable is the avatar/nickname, not the bare fact
+    of existence, so a verdict with neither must not become a green
     confirmation the buyer sees (and would otherwise sit cached for 6h)."""
     _enable(monkeypatch)
     respx.get(_RESOLVE_URL).mock(
@@ -406,7 +592,7 @@ async def test_a_get_with_the_link_in_the_query_string_is_405(
     query string included, and promtail ships that to Loki -- so serving this
     check over GET would put `steamcommunity.com/id/{vanity}`, a *third
     party's* identity, into the logs, in a module that otherwise reduces the
-    same identifier to `_hash_short()` before logging it. A future
+    same identifier to `hash_short()` before logging it. A future
     convenience refactor back to GET has to delete this test to pass, which
     is exactly the amount of friction that decision deserves.
     """
@@ -485,9 +671,51 @@ async def test_a_malformed_cache_entry_never_500s(
     be the reason a request fails. No API key is configured, so a cache
     miss here would fall through to `unavailable` without any Steam call
     -- proving the bad entry was actually read and discarded, not merely
-    never reached."""
+    never reached.
+
+    The key is spelled out literally, `:sid:` namespace included, so that a
+    change to the namespacing breaks this test loudly instead of quietly
+    turning it into an assertion about a key nothing reads. The first half
+    below is what makes that real: with no API key and no Steam mocks armed,
+    only a cache hit can produce `found`."""
     _enable(monkeypatch, api_key=None)
-    await get_redis().set(f"gifts:steam_profile:{_STEAM_ID}", "not json and not a verdict")
+    key = f"gifts:steam_profile:sid:{_STEAM_ID}"
+    good = GiftProfileOut(
+        status="found", steam_id=_STEAM_ID, nickname="jama", avatar_url=None
+    ).model_dump_json()
+    await get_redis().set(key, good)
+    assert (await _check(integration_client, _PROFILE_LINK)).json()["status"] == "found"
+
+    await get_redis().set(key, "not json and not a verdict")
+
+    r = await _check(integration_client, _PROFILE_LINK)
+
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "unavailable"
+
+
+@respx.mock
+async def test_the_total_steam_budget_degrades_to_unavailable_never_a_500(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The deadline over both Steam calls answers, it does not blow up.
+
+    `_TIMEOUT_SECONDS` is per-operation, so the vanity path's worst case ran
+    past the 8 s both frontends allow before they abort — the buyer was told
+    «Steam не отвечает» while this side went on to finish and cache a `found`
+    nobody saw (2026-09-04 final review). `_TOTAL_BUDGET_SECONDS` caps the
+    whole thing below that, and the `TimeoutError` it raises has to land on
+    the same `unavailable` every other Steam problem does, never a 500 on an
+    endpoint whose entire point is never to be the reason a request fails.
+    """
+    _enable(monkeypatch)
+    monkeypatch.setattr(profile_mod, "_TOTAL_BUDGET_SECONDS", 0.05)
+
+    async def _slow(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(1)
+        return httpx.Response(200, json=_summaries_payload())
+
+    respx.get(_SUMMARIES_URL).mock(side_effect=_slow)
 
     r = await _check(integration_client, _PROFILE_LINK)
 
@@ -515,3 +743,9 @@ async def test_the_endpoint_has_its_own_rate_limit_bucket(
         last = await _check(integration_client, _PROFILE_LINK)
     assert last is not None
     assert last.status_code == 429, last.text
+    # `monkeypatch` restores the env but not the `lru_cache` built from it, so
+    # without this every later test in this worker runs against the settings
+    # object above -- including its bucket map, which drops `check_player`
+    # from 200 to the default. An ordering-dependent flake under xdist. Same
+    # trailing `cache_clear()` `test_player_check_endpoint.py` ends with.
+    cfg.get_settings.cache_clear()

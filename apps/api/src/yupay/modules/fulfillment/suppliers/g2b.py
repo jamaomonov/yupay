@@ -23,11 +23,11 @@ PII / secrets policy:
 
 from __future__ import annotations
 
-import hashlib
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
 from yupay.core.config import get_settings
+from yupay.core.logging import hash_short
 from yupay.modules.fulfillment.suppliers.base import (
     Fulfiller,
     FulfillerError,
@@ -378,7 +378,7 @@ class G2bFulfiller(Fulfiller):
                 extra_metadata={
                     "supplier": "g2b",
                     "kind": "game",
-                    "player_id_hash": _hash_short(player_id),
+                    "player_id_hash": hash_short(player_id),
                 },
             )
         if created.status == "failed":
@@ -404,7 +404,7 @@ class G2bFulfiller(Fulfiller):
             extra_metadata={
                 "supplier": "g2b",
                 "kind": "game",
-                "player_id_hash": _hash_short(player_id),
+                "player_id_hash": hash_short(player_id),
             },
         )
 
@@ -529,13 +529,6 @@ def _game_artifact(
         "catalogue_name": mapping.external_variant_id,
         "message": message,
     }
-
-
-def _hash_short(value: str) -> str:
-    """Stable, opaque hash for logging player ids. 12 hex chars is enough
-    to identify a unique player in a single audit feed without exposing
-    the upstream id."""
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
 
 
 def _stringify_or_none(value: Any) -> str | None:

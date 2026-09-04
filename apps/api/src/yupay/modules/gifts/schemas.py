@@ -103,7 +103,7 @@ class GiftProfileIn(BaseModel):
     string verbatim (``infra/caddy/Caddyfile.prod``), which promtail then
     ships to Loki. A ``GET ...?invite_url=steamcommunity.com/id/{vanity}``
     would therefore park that identifier in the logs — the very thing
-    ``gifts.profile`` reduces to an opaque ``_hash_short()`` everywhere it
+    ``gifts.profile`` reduces to an opaque ``hash_short()`` everywhere it
     logs. Filtering the edge would work until the next unrelated Caddy edit
     undid it; not putting the identity in the URL cannot be undone by
     accident (2026-09-04 review).
@@ -129,16 +129,22 @@ class GiftProfileOut(BaseModel):
 
     ``status`` is the whole contract with the frontend, and the four values
     are deliberately not equally weighted. Only ``"not_found"`` — Steam's own
-    "no such profile" — is a reason to stop the buyer. The other three all
-    mean "we could not get a definitive answer" for a reason that is ours,
-    not the recipient's: ``"unsupported"`` is an ``s.team`` friend-invite
-    link the Web API cannot resolve at all, and ``"unavailable"`` covers
-    everything else that can go wrong on our end (no API key configured,
-    Steam unreachable or erroring, a response we could not parse — including
-    a `GetPlayerSummaries` call that came back with no persona to show,
-    which reads as ``"unavailable"`` rather than ``"found"`` for *both*
-    link shapes: see ``gifts.profile.check_steam_profile``). The frontend
-    is expected to treat ``"found"``, ``"unsupported"``, and
+    "no such profile" — is a reason to stop the buyer. It comes from one of
+    exactly two Steam answers: ``ResolveVanityURL`` reporting the documented
+    ``success == 42`` ("No match") for an ``/id/{vanity}`` link, or
+    ``GetPlayerSummaries`` returning an empty ``players`` array, which is
+    Steam saying no account holds that steamid64 — the only existence check
+    a ``/profiles/{steamid64}`` link ever gets.
+
+    The other two mean "we could not get a definitive answer" for a reason
+    that is ours, not the recipient's: ``"unsupported"`` is an ``s.team``
+    friend-invite link the Web API cannot resolve at all, and
+    ``"unavailable"`` covers everything else that can go wrong on our end
+    (no API key configured, Steam unreachable, erroring or timing out, a
+    response we could not parse, or a player row Steam *does* have but that
+    carries neither a name nor an avatar — nothing to render is not the same
+    as no such account: see ``gifts.profile.check_steam_profile``). The
+    frontend is expected to treat ``"found"``, ``"unsupported"``, and
     ``"unavailable"`` identically: let the buyer continue.
 
     ``steam_id``/``nickname``/``avatar_url`` are only ever populated

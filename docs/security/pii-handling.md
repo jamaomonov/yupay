@@ -70,9 +70,12 @@ rejected: an unrelated Caddy change undoes it silently, and it only ever covers
 the one place we remembered. A body is not recorded anywhere in that chain, so
 there is nothing to filter. Application-side, the module keeps the same
 discipline as above — the steamid, nickname and avatar never appear in a log
-call, only `_hash_short(identifier)` — and the Redis verdict cache
-(`gifts:steam_profile:{steamid_or_vanity}`, 6 h) is the only place the
-identifier is stored at all, keyed but never logged.
+call, only `hash_short(identifier)` — and the Redis verdict cache
+(`gifts:steam_profile:{id|sid}:{vanity_or_steamid}`, 6 h) is the only place
+the identifier is stored at all, keyed but never logged. The `id:`/`sid:`
+segment names the link shape: every steamid64 is also a valid vanity name,
+so without it one namespace carried two different meanings for the same
+17 digits.
 
 **Ban reason.** `users.ban_reason` is admin-authored free text about a customer.
 It is returned only on admin routes, never to the customer or to any public

@@ -25,7 +25,11 @@ Resolution, per canonical link shape:
 - ``steamcommunity.com/profiles/{steamid64}`` — the id is already in the
   URL, so there is no *resolve* call. Its existence is still unverified at
   that point, though: ``_STEAM_ID64_RE`` in ``checkout.py`` only checks
-  that it is 17 digits, not that such an account has ever existed.
+  that it is 17 digits, not that such an account has ever existed. The
+  ``GetPlayerSummaries`` call below is the only existence check this shape
+  gets — and it is the shape Steam's own "Copy profile URL" button hands to
+  every user without a custom URL, so it is roughly half the links this
+  endpoint sees.
 - ``steamcommunity.com/id/{vanity}`` — resolved via
   ``ISteamUser/ResolveVanityURL/v1/``. This is the one Steam call in the
   whole flow allowed to answer definitively that a link does *not* exist,
@@ -38,27 +42,37 @@ Resolution, per canonical link shape:
   call made, ever.
 
 Both of the first two shapes then go through ``GetPlayerSummaries``
-(:func:`~yupay.modules.auth.steam.fetch_persona`) for the nickname/avatar —
-and here the rule is uniform, deliberately not shape-dependent:
-**``"found"`` is returned only when Steam actually gave us a persona;
-anything less is ``"unavailable"``.** ``fetch_persona`` is best-effort and
-degrades to ``(None, None)`` on *any* failure, transient or not — exactly
-the "nameless, not broken" degrade it already gives Steam sign-in, where
-that is fine because OpenID has already cryptographically proven the
-identity before ``fetch_persona`` ever runs. Nothing has proven identity
-here, so an empty answer cannot be read as "found": it means we confirmed
-nothing the buyer can act on — no avatar, no nickname, nothing to render —
-regardless of whether a vanity resolved a moment earlier. The deliverable
-of this whole endpoint is the avatar and the nickname; a verdict carrying
-neither has to read as "we couldn't check," not "found."
+(:func:`~yupay.modules.auth.steam.resolve_persona`), which keeps three
+outcomes apart that this module must not confuse:
+
+- an empty ``players`` array — Steam *answering* that no account holds this
+  steamid64 — is ``"not_found"``, uniformly for both shapes;
+- a player row carrying neither a name nor an avatar is ``"unavailable"``:
+  the deliverable of this endpoint is the avatar and the nickname, so a
+  verdict with neither confirms nothing the buyer can act on, and a green
+  card wrapped around an empty name would sit cached for 6h;
+- anything that stopped the call landing at all — timeout, 5xx, unparseable
+  body — is ``"unavailable"`` too.
+
+**``"found"`` still requires a persona.** What changed (2026-09-04 final
+review) is that the true negative is now expressible for the ``/profiles/``
+shape as well. That is why :func:`~yupay.modules.auth.steam.resolve_persona`
+exists rather than ``fetch_persona``: the latter is best-effort and flattens
+all three outcomes into ``(None, None)``, which is exactly right for Steam
+sign-in — OpenID has already cryptographically proven the account exists
+before it runs — and exactly wrong here, where it made a mistyped digit
+answer «Steam сейчас не отвечает — можно продолжить» and the buyer pay for a
+gift that went nowhere.
 
 Redis caches ``"found"``/``"not_found"`` verdicts for 6h under
-``gifts:steam_profile:{steamid_or_vanity}`` (see
-``docs/architecture/cache-keys.md``) — profiles change rarely.
-``"unavailable"`` is never cached: it is our failure, not a fact about the
-profile, and caching it would keep telling the next buyer the same lie —
-this is exactly why the persona-empty case above must resolve to
-``"unavailable"`` before the cache write, not after.
+``gifts:steam_profile:{id|sid}:{vanity_or_steamid}`` (see
+``docs/architecture/cache-keys.md``) — profiles change rarely. **The
+namespace is load-bearing:** every steamid64 is also a syntactically valid
+vanity name, so a shared namespace let one unauthenticated
+``/id/{17 digits}`` request poison the verdict for the genuine
+``/profiles/{same digits}``. ``"unavailable"`` is never cached: it is our
+failure, not a fact about the profile, and caching it would keep telling
+the next buyer the same lie.
 
 PII note: ``steam_id``/nickname/avatar never appear in a log call here —
 only an opaque hash of the link's own identifier, the same convention
@@ -67,6 +81,7 @@ only an opaque hash of the link's own identifier, the same convention
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 
 import httpx
@@ -74,17 +89,25 @@ from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from yupay.core.config import get_settings
-from yupay.core.logging import get_logger
+from yupay.core.logging import get_logger, hash_short
 from yupay.core.redis import get_redis
-from yupay.modules.auth.steam import fetch_persona
-from yupay.modules.fulfillment.suppliers.g2b import _hash_short
+from yupay.modules.auth.steam import resolve_persona
 from yupay.modules.gifts.checkout import parse_invite_url
 from yupay.modules.gifts.schemas import GiftProfileOut
 
 log = get_logger("yupay.gifts.profile")
 
 _RESOLVE_VANITY_URL = "https://api.steampowered.com/ISteamUser/ResolveVanityURL/v1/"
+#: Per-operation httpx timeout for one Steam call.
 _TIMEOUT_SECONDS = 5.0
+#: Ceiling on ALL the Steam work for one request. The vanity path makes two
+#: sequential calls and ``_TIMEOUT_SECONDS`` is per-operation, so without this
+#: the server's worst case (~10 s) sat *above* the 8 s both frontends allow
+#: before they abort and report «Steam не отвечает» — while this side went on
+#: to finish and cache a `found` the buyer never saw (2026-09-04 final
+#: review). Kept below the client budget so the client's abort is the outer
+#: bound, not the inner one.
+_TOTAL_BUDGET_SECONDS = 7.0
 _CACHE_TTL_SECONDS = 6 * 3600
 
 _PROFILE_PREFIX = "https://steamcommunity.com/profiles/"
@@ -95,9 +118,20 @@ _UNAVAILABLE = GiftProfileOut(status="unavailable", steam_id=None, nickname=None
 _UNSUPPORTED = GiftProfileOut(status="unsupported", steam_id=None, nickname=None, avatar_url=None)
 _NOT_FOUND = GiftProfileOut(status="not_found", steam_id=None, nickname=None, avatar_url=None)
 
-#: ``ResolveVanityURL``'s documented "No match" code — the only value that may
-#: become ``status="not_found"``. See :func:`_resolve_vanity`.
+#: ``ResolveVanityURL``'s documented "No match" code — one of the two signals
+#: allowed to become ``status="not_found"``. See :func:`_resolve_vanity`.
 _RESOLVE_NO_MATCH = 42
+
+#: Cache-key namespaces, one per canonical link shape. **Not optional:**
+#: ``_STEAM_ID64_RE`` is ``\d{17}`` and ``_STEAM_VANITY_RE`` is
+#: ``[A-Za-z0-9_-]{2,32}``, so every steamid64 is also a syntactically valid
+#: vanity name. Sharing one namespace let a single unauthenticated
+#: ``/id/{17 digits}`` request file a ``not_found`` that then answered for the
+#: genuine ``/profiles/{same digits}`` — a six-hour denial of purchase against
+#: any Steam account — and, the other way round, replayed a stranger's
+#: ``found`` card as the buyer's recipient (2026-09-04 final review).
+_KEY_NS_VANITY = "id"
+_KEY_NS_STEAM_ID = "sid"
 
 
 async def _resolve_vanity(vanity: str, *, api_key: str, http: httpx.AsyncClient) -> str | None:
@@ -164,50 +198,105 @@ def _describe_error(exc: Exception) -> str:
 
 
 async def _resolve_and_summarise(
-    *, is_vanity: bool, identifier: str, api_key: str, client: httpx.AsyncClient
+    *,
+    is_vanity: bool,
+    identifier: str,
+    api_key: str,
+    client: httpx.AsyncClient,
+    budget_seconds: float,
 ) -> GiftProfileOut:
-    """Run the Steam call(s) for one already-cache-missed identifier.
+    """:func:`_steam_verdict` under a deadline, with every raise folded away.
 
-    Split out of :func:`check_steam_profile` so that function stays under
-    the return-statement budget (ruff ``PLR0911``) — this is where every
-    Steam-side branch (``not_found``, ``unavailable`` from an exception,
-    ``unavailable`` from an empty persona, ``found``) actually lives.
-    Never raises and never touches the cache; the caller decides what of
-    this is worth caching.
+    Never raises and never touches the cache. The deadline spans *both* Steam
+    calls: ``_TIMEOUT_SECONDS`` is per-operation, so the vanity path could
+    otherwise run past the 8 s budget both frontends allow before they abort
+    and tell the buyer «Steam не отвечает» — while this side went on to finish
+    and cache a ``found`` nobody ever saw.
+
+    Args:
+        is_vanity: whether ``identifier`` is a vanity name.
+        identifier: the tail of the canonical link.
+        api_key: our Steam Web API key.
+        client: the HTTP client both Steam calls share.
+        budget_seconds: ceiling on all the Steam work for this request.
+
+    Returns:
+        The verdict; ``unavailable`` for anything that failed or timed out.
     """
     try:
-        if is_vanity:
-            resolved = await _resolve_vanity(identifier, api_key=api_key, http=client)
-            if resolved is None:
-                return _NOT_FOUND
-            steam_id = resolved
-        else:
-            steam_id = identifier
-        nickname, avatar_url = await fetch_persona(int(steam_id), api_key=api_key, http=client)
+        async with asyncio.timeout(budget_seconds):
+            return await _steam_verdict(
+                is_vanity=is_vanity, identifier=identifier, api_key=api_key, client=client
+            )
     except Exception as exc:  # noqa: BLE001 -- a Steam problem is `unavailable`, never a 500
         log.warning(
             "gifts.steam_profile_unavailable",
-            identifier_hash=_hash_short(identifier),
+            identifier_hash=hash_short(identifier),
             error=_describe_error(exc),
         )
         return _UNAVAILABLE
 
+
+async def _steam_verdict(
+    *, is_vanity: bool, identifier: str, api_key: str, client: httpx.AsyncClient
+) -> GiftProfileOut:
+    """The Steam call(s) themselves, for one already-cache-missed identifier.
+
+    Raises freely — transport failure, a non-2xx, an unparseable body, an
+    undocumented ``ResolveVanityURL`` code. :func:`_resolve_and_summarise` is
+    what turns every one of those into ``unavailable``. Touches no cache; the
+    caller decides what of this is worth keeping.
+
+    Args:
+        is_vanity: whether ``identifier`` is an ``/id/{vanity}`` name rather
+            than a ``/profiles/{steamid64}`` id.
+        identifier: the tail of the canonical link.
+        api_key: our Steam Web API key.
+        client: the HTTP client both Steam calls share.
+
+    Returns:
+        The verdict — ``not_found`` (Steam said no, either call),
+        ``unavailable`` (Steam has the account but nothing to render), or
+        ``found``.
+    """
+    if is_vanity:
+        resolved = await _resolve_vanity(identifier, api_key=api_key, http=client)
+        if resolved is None:
+            return _NOT_FOUND
+        steam_id = resolved
+    else:
+        steam_id = identifier
+    persona = await resolve_persona(int(steam_id), api_key=api_key, http=client)
+
+    if persona is None:
+        # A 200 carrying `players: []` -- Steam answering that no account
+        # holds this steamid64. For a `/profiles/` link this is the only
+        # existence check there is, and it is the shape Steam's own "Copy
+        # profile URL" hands to every user without a custom URL. Folding it
+        # in with the timeouts told those buyers «Steam сейчас не отвечает --
+        # можно продолжить» about a profile that does not exist, and they
+        # paid for a gift that went nowhere (2026-09-04 final review).
+        # Uniform across both shapes: whatever produced the id a moment
+        # earlier, this is Steam's answer about the id itself.
+        log.info("gifts.steam_profile_not_found", identifier_hash=hash_short(identifier))
+        return _NOT_FOUND
+
+    nickname, avatar_url = persona
     if nickname is None and avatar_url is None:
-        # Uniform across both shapes (see the module docstring and
-        # `check_steam_profile`'s own docstring): `found` means Steam
-        # actually gave us something to render. `fetch_persona` swallows
-        # its own failures into `(None, None)`, so this is also where a
-        # transient `GetPlayerSummaries` outage lands -- correctly, since
-        # `unavailable` is never cached and `found` would otherwise poison
-        # the 6h cache with a permanent, empty "confirmation".
+        # Steam HAS this account but handed us nothing to render. Distinct
+        # from the branch above, and deliberately still not `found`: the
+        # deliverable of this endpoint is the avatar and the nickname, so a
+        # verdict carrying neither confirms nothing the buyer can act on, and
+        # a green card wrapped around an empty name would sit cached for 6h.
+        # `unavailable` (never cached) is the honest answer.
         log.info(
             "gifts.steam_profile_unavailable",
-            identifier_hash=_hash_short(identifier),
+            identifier_hash=hash_short(identifier),
             reason="persona_empty",
         )
         return _UNAVAILABLE
 
-    log.info("gifts.steam_profile_found", identifier_hash=_hash_short(identifier))
+    log.info("gifts.steam_profile_found", identifier_hash=hash_short(identifier))
     return GiftProfileOut(
         status="found", steam_id=steam_id, nickname=nickname, avatar_url=avatar_url
     )
@@ -272,7 +361,11 @@ async def check_steam_profile(
     is_vanity = canonical.startswith(_VANITY_PREFIX)
     identifier = canonical.removeprefix(_VANITY_PREFIX if is_vanity else _PROFILE_PREFIX)
 
-    cache_key = f"gifts:steam_profile:{identifier}"
+    namespace = _KEY_NS_VANITY if is_vanity else _KEY_NS_STEAM_ID
+    # Namespaced by link shape -- see `_KEY_NS_VANITY`. The two accept-sets
+    # overlap completely on 17-digit strings, so one namespace meant one
+    # entry with two meanings.
+    cache_key = f"gifts:steam_profile:{namespace}:{identifier}"
     redis = get_redis()
     # ValueError alongside RedisError: `model_validate_json` raises
     # `pydantic.ValidationError` (a `ValueError` subclass) on a schema
@@ -292,8 +385,16 @@ async def check_steam_profile(
 
     client = http or httpx.AsyncClient(timeout=_TIMEOUT_SECONDS)
     try:
+        # The deadline covers both Steam calls together. `_resolve_and_summarise`
+        # catches the resulting `TimeoutError` itself (it catches `Exception`)
+        # and answers `unavailable`, so this cannot become a 500 on an endpoint
+        # whose whole point is never to be the reason a request fails.
         out = await _resolve_and_summarise(
-            is_vanity=is_vanity, identifier=identifier, api_key=api_key, client=client
+            is_vanity=is_vanity,
+            identifier=identifier,
+            api_key=api_key,
+            client=client,
+            budget_seconds=_TOTAL_BUDGET_SECONDS,
         )
     finally:
         if http is None:

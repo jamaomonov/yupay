@@ -6,6 +6,7 @@ Sensitive fields are blocklisted by the redactor.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import sys
 from collections.abc import MutableMapping
@@ -14,6 +15,26 @@ from typing import Any
 import structlog
 
 from yupay.core.config import get_settings
+
+
+def hash_short(value: str) -> str:
+    """Stable, opaque hash of an identifier that must not be logged in the clear.
+
+    Twelve hex characters is enough to follow one subject through a single
+    audit feed without exposing the upstream identifier — a G2B player id, a
+    Waxpeer Steam login, or the identifier inside a recipient's Steam profile
+    link. Lives here rather than inside any one adapter because three modules
+    now need it and reaching across module boundaries for a private helper is
+    exactly what AGENTS.md §4 rules out.
+
+    Args:
+        value: the raw identifier. Not logged anywhere by this function.
+
+    Returns:
+        The first 12 hex characters of the value's SHA-256 digest.
+    """
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
+
 
 REDACTED_KEYS = frozenset(
     {

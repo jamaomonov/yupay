@@ -27,7 +27,11 @@ in a later task (7).
   check (`POST /gifts/steam-profile`) — avatar + nickname before the buyer
   pays, so a mistyped link isn't an unrecoverable paid mistake. Reuses
   `checkout.parse_invite_url` for canonicalisation and
-  `auth.steam.fetch_persona` for the summary call.
+  `auth.steam.resolve_persona` for the summary call — the strict sibling of
+  `fetch_persona`, which keeps Steam's own "no such account" (an empty
+  `players` array) distinguishable from a call that never landed. Sign-in
+  still uses the best-effort `fetch_persona`: OpenID has already proven the
+  account exists by the time it runs.
 
 ## Public interface
 
@@ -84,7 +88,7 @@ from yupay.modules.gifts.profile import check_steam_profile
 | `gifts:search:{sha1(query)}:{offset}:{limit}` (+ `:stale`, 24 h) | 15 min | `gifts.service.list_apps` — a searched listing page                                 |
 | `gifts:detail:{app_id}` (+ `:stale`, 24 h)                       | 15 min | `gifts.service.get_app`                                                             |
 | `gifts:hot` (+ `:stale`, 24 h)                                   | 1 h    | `gifts.service.hot_offers`                                                          |
-| `gifts:steam_profile:{steamid_or_vanity}`                        | 6 h    | `gifts.profile.check_steam_profile` — `found`/`not_found` only, never `unavailable` |
+| `gifts:steam_profile:{id\|sid}:{vanity_or_steamid}`              | 6 h    | `gifts.profile.check_steam_profile` — `found`/`not_found` only, never `unavailable` |
 
 Every one of the first four keys has a `:stale` twin, written at the same
 time, that outlives it by a full day. `gifts.service._cached_json` is the
@@ -97,7 +101,14 @@ error itself is swallowed at every step — a cache outage degrades to
 `gifts:steam_profile:*` is deliberately different: no `:stale` twin, and no
 write at all on an `"unavailable"` verdict (see `gifts.profile`) — that
 status is our own failure, not a fact about the profile, and caching it
-would just repeat our outage back at the next buyer. See
+would just repeat our outage back at the next buyer. Its `id:`/`sid:`
+segment is the link shape, and it is load-bearing rather than decorative:
+every steamid64 is also a syntactically valid vanity name, so one namespace
+for both meanings let a single unauthenticated `/id/{17 digits}` request
+file a `not_found` that then answered for the genuine
+`/profiles/{same digits}` — a six-hour denial of purchase against any Steam
+account, and in the other direction a stranger's `found` card shown as the
+buyer's recipient (2026-09-04 final review). See
 `docs/architecture/cache-keys.md` for the full, authoritative row-by-row
 listing.
 
@@ -146,7 +157,7 @@ the public internet, so it guards itself via `guard_ip(bucket=
 input is a _recipient's_ profile link, and `Caddyfile.prod`'s access log
 records each request's `uri` — query string included — on its way to Loki,
 so a `GET ...?invite_url=` would log a third party's identity from the one
-module that otherwise reduces that identifier to `_hash_short()` before
+module that otherwise reduces that identifier to `hash_short()` before
 logging it. Filtering the edge log was rejected as undoable-by-accident; the
 body simply is not logged. It writes nothing and therefore takes no
 `Idempotency-Key`, same as `POST /catalog/products/{id}/check-player`. See

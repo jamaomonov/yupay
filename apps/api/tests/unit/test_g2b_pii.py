@@ -8,15 +8,14 @@ test. Specifically we check that:
 - ``G2bFulfiller`` puts only a *hashed* player_id and a *count* of
   delivery items in its ``FulfillResult.extra_metadata`` payload, never
   the raw values.
-- ``_hash_short`` is stable and short (12 hex chars).
+- ``hash_short`` (now ``core.logging``) is stable and short (12 hex chars).
 """
 
 from __future__ import annotations
 
-from yupay.core.logging import REDACTED_KEYS
+from yupay.core.logging import REDACTED_KEYS, hash_short
 from yupay.modules.fulfillment.suppliers.g2b import (
     _game_artifact,
-    _hash_short,
     _voucher_artifact,
 )
 
@@ -29,9 +28,9 @@ def test_redactor_masks_g2b_secret_keys() -> None:
 
 
 def test_hash_short_is_stable_and_opaque() -> None:
-    a = _hash_short("5679523421")
-    b = _hash_short("5679523421")
-    c = _hash_short("0000000001")
+    a = hash_short("5679523421")
+    b = hash_short("5679523421")
+    c = hash_short("0000000001")
     assert a == b
     assert a != c
     assert len(a) == 12

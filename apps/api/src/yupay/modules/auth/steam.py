@@ -102,6 +102,61 @@ async def verify_callback(
 _SUMMARIES = "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/"
 
 
+async def resolve_persona(
+    steam_id: int,
+    *,
+    api_key: str,
+    http: httpx.AsyncClient | None = None,
+) -> tuple[str | None, str | None] | None:
+    """``GetPlayerSummaries`` with Steam's "no such account" kept distinguishable.
+
+    ``fetch_persona`` below flattens every outcome into ``(None, None)``,
+    which is right for Steam sign-in and wrong for the pre-purchase recipient
+    check: a 200 carrying ``players: []`` is Steam *answering* that no account
+    holds this steamid64, and that is the only existence check a
+    ``steamcommunity.com/profiles/{steamid64}`` link ever gets — the shape
+    Steam's own "Copy profile URL" hands to every user without a custom URL.
+    Collapsing it into the timeout case told those buyers «Steam сейчас не
+    отвечает — можно продолжить» for a profile that does not exist, and they
+    paid for a gift that went nowhere (2026-09-04 final review).
+
+    Args:
+        steam_id: the 64-bit Steam id to summarise.
+        api_key: our Steam Web API key.
+        http: injected client for tests; otherwise one is built and closed
+            here.
+
+    Returns:
+        ``None`` when Steam answered with an empty ``players`` array — its
+        definitive "no account with this id". Otherwise the
+        ``(persona_name, avatar_url)`` pair, either half of which may still
+        be ``None`` when the player row carries no usable value; a pair of
+        ``None``s means "Steam has this account but gave us nothing to
+        render", which is *not* the same as the account being absent.
+
+    Raises:
+        httpx.HTTPError: transport failure, timeout, or a non-2xx response.
+        ValueError: a 200 whose body was not JSON, or not the expected shape.
+    """
+    client = http or httpx.AsyncClient(timeout=5.0)
+    try:
+        resp = await client.get(_SUMMARIES, params={"key": api_key, "steamids": str(steam_id)})
+        resp.raise_for_status()
+        players = resp.json().get("response", {}).get("players", [])
+        if not players:
+            return None
+        player = players[0]
+        name = player.get("personaname")
+        avatar = player.get("avatarfull") or player.get("avatarmedium")
+        return (
+            name if isinstance(name, str) and name else None,
+            avatar if isinstance(avatar, str) and avatar else None,
+        )
+    finally:
+        if http is None:
+            await client.aclose()
+
+
 async def fetch_persona(
     steam_id: int,
     *,
@@ -112,32 +167,22 @@ async def fetch_persona(
 
     OpenID proves the identity but carries no profile, so this is the only
     source for «покажи никнейм». Strictly cosmetic: any failure returns
-    ``(None, None)`` and the login proceeds nameless rather than broken.
+    ``(None, None)`` and the login proceeds nameless rather than broken —
+    and "no such account" is folded in with the failures on purpose, because
+    by the time this runs OpenID has already proven the account exists.
+    Callers that must tell those two apart use :func:`resolve_persona`.
     """
-    client = http or httpx.AsyncClient(timeout=5.0)
     try:
-        resp = await client.get(_SUMMARIES, params={"key": api_key, "steamids": str(steam_id)})
-        resp.raise_for_status()
-        players = resp.json().get("response", {}).get("players", [])
-        if not players:
-            return None, None
-        player = players[0]
-        name = player.get("personaname")
-        avatar = player.get("avatarfull") or player.get("avatarmedium")
-        return (
-            name if isinstance(name, str) and name else None,
-            avatar if isinstance(avatar, str) and avatar else None,
-        )
+        found = await resolve_persona(steam_id, api_key=api_key, http=http)
     except (httpx.HTTPError, ValueError):
         return None, None
-    finally:
-        if http is None:
-            await client.aclose()
+    return found if found is not None else (None, None)
 
 
 __all__ = [
     "SteamAuthError",
     "build_login_url",
     "fetch_persona",
+    "resolve_persona",
     "verify_callback",
 ]
