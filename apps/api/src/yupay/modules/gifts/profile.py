@@ -42,8 +42,8 @@ Resolution, per canonical link shape:
 
 Redis caches ``"found"``/``"not_found"`` verdicts for 6h under
 ``gifts:steam_profile:{steamid_or_vanity}`` (see
-``docs/architecture/cache-keys.md``) — profiles change rarely. ``
-"unavailable"`` is never cached: it is our failure, not a fact about the
+``docs/architecture/cache-keys.md``) — profiles change rarely.
+``"unavailable"`` is never cached: it is our failure, not a fact about the
 profile, and caching it would keep telling the next buyer the same lie.
 
 PII note: ``steam_id``/nickname/avatar never appear in a log call here —
