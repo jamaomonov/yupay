@@ -49,23 +49,26 @@ export function PaymentMethodGrid({
         const visibility = methodVisibility(m.provider, providerStatusBySlug);
         const available = visibility === "active";
         const active = activeId === m.id && available;
+        const maintenance = visibility === "maintenance";
+        // Visible strip, not `title=` (2026-09-04 accessibility audit):
+        // inside Telegram's WebView there is no hover, and a `disabled`
+        // button can't take focus either, so a tooltip-only reason is
+        // categorically unreachable by touch, keyboard, and screen reader
+        // alike. Mirrors `TopUp.tsx`'s acquirer grid and this same folder's
+        // `WalletPayOption.tsx`, both of which already show the reason as
+        // text.
+        const badgeLabel = maintenance ? t("payment.maintenanceShort") : t("topup.soon");
         return (
           <button
             key={m.id}
             type="button"
             disabled={!available}
-            title={
-              available
-                ? undefined
-                : visibility === "maintenance"
-                  ? t("payment.maintenance")
-                  : t("topup.soon")
-            }
+            aria-disabled={!available}
             aria-pressed={active}
             onClick={() => {
               onSelect(m.id);
             }}
-            className="flex flex-col items-center gap-1 rounded-2xl py-3 transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-50"
+            className="relative flex flex-col items-center gap-1 overflow-hidden rounded-2xl py-3 transition-all duration-150 disabled:cursor-not-allowed"
             style={{
               background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
               border: active
@@ -73,7 +76,24 @@ export function PaymentMethodGrid({
                 : "1px solid hsl(var(--border))",
             }}
           >
-            <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-md">
+            {!available && (
+              <span
+                className="absolute inset-x-0 top-0 z-10 py-[3px] text-center text-[9px] font-bold uppercase leading-none tracking-[0.06em]"
+                style={{
+                  background: "hsl(var(--surface-3))",
+                  borderBottom: "1px solid hsl(var(--border))",
+                  color: "hsl(var(--muted-foreground))",
+                }}
+              >
+                {badgeLabel}
+              </span>
+            )}
+            <span
+              className={cn(
+                "flex h-8 w-8 items-center justify-center overflow-hidden rounded-md",
+                !available && "opacity-60 grayscale",
+              )}
+            >
               <img src={m.icon} alt={m.name} className="h-full w-full object-cover" />
             </span>
             <span

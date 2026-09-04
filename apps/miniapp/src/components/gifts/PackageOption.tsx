@@ -5,17 +5,26 @@ import type { GiftPackage } from "@/lib/gifts";
 import { formatMoney } from "@/lib/currency";
 import { useT } from "@/lib/i18n";
 
-/** `unavailable` is the caller's already-translated `gifts.priceUnavailable`
- *  string — this stays a plain function (not a component), so it can't call
- *  `useT()` itself. */
+/**
+ * `unavailable` is the caller's already-translated `gifts.priceUnavailable`
+ * string — this stays a plain function (not a component), so it can't call
+ * `useT()` itself.
+ *
+ * Never falls back to `price_usd` when `price_uzs` is `null` (2026-09-04
+ * review, FX-down parity fix): a gift is always billed in UZS
+ * (`GiftGame.tsx::handleBuy` hardcodes `currency: "UZS"`), so quoting the
+ * dollar figure here would show a sellable-looking amount for a line that
+ * `canBuy`/`giftPriceAvailability` are about to refuse to sell. `price_uzs
+ * === null` degrades to the exact same `unavailable` placeholder as no price
+ * at all — the caller (`GiftGame`'s own price section) is what renders the
+ * FX-down state distinctly, via `giftPriceAvailability`.
+ */
 export function priceLabel(
   price: { price_usd: string; price_uzs: string | null } | null,
   unavailable: string,
 ): string {
-  if (!price) return unavailable;
-  return price.price_uzs != null
-    ? formatMoney(Math.round(Number(price.price_uzs)), "UZS")
-    : formatMoney(Number(price.price_usd), "USD");
+  if (price?.price_uzs == null) return unavailable;
+  return formatMoney(Math.round(Number(price.price_uzs)), "UZS");
 }
 
 /**

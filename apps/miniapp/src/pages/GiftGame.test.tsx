@@ -2,6 +2,9 @@ import { describe, expect, test } from "vitest";
 
 import {
   countryAfterPackageChange,
+  countryMovedOnEditionSwitch,
+  giftPriceAvailability,
+  isDlcApp,
   isOrderNotAwaitingPaymentConflict,
   nextOrderKeyState,
   nextSelectedMethodId,
@@ -100,6 +103,59 @@ describe("countryAfterPackageChange", () => {
   test("leaves the country unchanged when the fallback zone maps to no known country", () => {
     const pkg = makePackage(1, [{ zone: "MENA", price_usd: "9" }]);
     expect(countryAfterPackageChange(pkg, "RU", "UZ", regions)).toBe("RU");
+  });
+});
+
+// Whether an edition/package switch actually moved the buyer's selected
+// country — `selectPackage` shows the shared "Это издание продаётся только
+// для: {country}" notice only when this is true, never merely because a
+// package was picked (e.g. re-selecting the same edition, or switching to
+// one still priced for the current country).
+describe("countryMovedOnEditionSwitch", () => {
+  test("false when the country is unchanged", () => {
+    expect(countryMovedOnEditionSwitch("RU", "RU")).toBe(false);
+  });
+
+  test("true when the country changed", () => {
+    expect(countryMovedOnEditionSwitch("RU", "UZ")).toBe(true);
+  });
+});
+
+// The FX-down gate: `price_uzs` legitimately comes back `null` when FX is
+// unavailable, and this must never be treated the same as "no price at all"
+// (which falls back to a different message) nor silently priced in USD.
+// Drives both `canBuy` (never sellable while `"fxDown"`) and the price
+// section's own three-way render, mirrored from `walletPayState`'s
+// `unknownTotal` distinction.
+describe("giftPriceAvailability", () => {
+  test("is unpriced when there's no price at all for this edition/country", () => {
+    expect(giftPriceAvailability(null)).toBe("unpriced");
+  });
+
+  test("is fxDown when a price exists but price_uzs is null", () => {
+    expect(giftPriceAvailability({ price_uzs: null })).toBe("fxDown");
+  });
+
+  test("is priced when price_uzs is a real figure", () => {
+    expect(giftPriceAvailability({ price_uzs: "150000" })).toBe("priced");
+  });
+});
+
+// A DLC's own game page has no Buy-blocking implication, but it does need
+// the shared "this needs the base game" note — gated on `GiftAppOut.type`,
+// the only DLC signal already on the wire.
+describe("isDlcApp", () => {
+  test("true for a DLC entry", () => {
+    expect(isDlcApp("dlc")).toBe(true);
+  });
+
+  test("false for a base game", () => {
+    expect(isDlcApp("game")).toBe(false);
+  });
+
+  test("false for any other upstream type", () => {
+    expect(isDlcApp("music")).toBe(false);
+    expect(isDlcApp("")).toBe(false);
   });
 });
 

@@ -33,6 +33,7 @@ import {
   type CheckoutResult,
 } from "@/lib/orders";
 import { PAYMENT_METHODS, PROVIDER_BY_METHOD } from "@/lib/payment-methods";
+import { countryName } from "@/lib/regions";
 import { haptic, openExternalLink, setClosingConfirmation } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { formatBalance, groupBalancesByCurrency, useWallet } from "@/lib/wallet";
@@ -95,6 +96,19 @@ export function countryAfterPackageChange(
 }
 
 /**
+ * Whether an edition/package switch actually moved the buyer's selected
+ * country — `selectPackage` below shows the shared "Это издание продаётся
+ * только для: {country}" notice only when this is true, never merely
+ * because a package was picked (re-selecting the current edition, or
+ * switching to one still priced for the current country, must stay silent).
+ * Pulled out pure so this decision has a name and a direct unit test
+ * (2026-09-04 review), mirroring `walletPayState`/`nextSelectedMethodId`.
+ */
+export function countryMovedOnEditionSwitch(prevCountry: string, nextCountry: string): boolean {
+  return nextCountry !== prevCountry;
+}
+
+/**
  * Which package/country stay selected after a detail refresh that must
  * preserve the buyer's picks — namely the price-drift reload in
  * `handleBuy`, where a fresh `load()` must NOT bounce the buyer back to
@@ -129,6 +143,38 @@ export function splitCountries(
   visibleCount: number,
 ): { visible: string[]; overflow: string[] } {
   return { visible: countries.slice(0, visibleCount), overflow: countries.slice(visibleCount) };
+}
+
+/** Whether a catalog entry is a DLC rather than a base game — the only DLC
+ *  signal already on the wire (`GiftAppOut.type`, straight from the
+ *  upstream Steam catalog). Drives the shared "this needs the base game"
+ *  note on `GiftGame`'s own screen (2026-09-04 review): a DLC delivered
+ *  without the base game is unusable, and the buyer had no warning. */
+export function isDlcApp(type: string): boolean {
+  return type === "dlc";
+}
+
+/**
+ * The FX-down gate: `price_uzs` legitimately comes back `null` when FX is
+ * unavailable, and this state must never be confused with "no price at all
+ * for this edition/country" (a different, unrelated dead end) nor silently
+ * priced in USD — a gift is always billed in UZS
+ * (`GiftGame.tsx::handleBuy` hardcodes `currency: "UZS"`), so a buyer who
+ * saw a dollar figure and pressed Buy would be sent to the acquirer for an
+ * unknown sum in soum. `"unpriced"` renders `gifts.game.noPriceInRegion`;
+ * `"fxDown"` renders the mature panels' dashed `topup.priceUnavailable` card
+ * (`TopUp.tsx`'s `VariableAmountPanel`) instead of a guessed number;
+ * `"priced"` is the only state `canBuy` accepts. Pulled out pure
+ * (2026-09-04 review) so this decision is unit-tested directly, mirroring
+ * `walletPayState`'s own `unknownTotal` distinction.
+ */
+export type GiftPriceAvailability = "unpriced" | "fxDown" | "priced";
+
+export function giftPriceAvailability(
+  price: { price_uzs: string | null } | null,
+): GiftPriceAvailability {
+  if (!price) return "unpriced";
+  return price.price_uzs == null ? "fxDown" : "priced";
 }
 
 /** What the wallet ("pay from balance") tile should say and whether it's
@@ -367,6 +413,12 @@ export default function GiftGame() {
   const [regionGuideOpen, setRegionGuideOpen] = useState(false);
   const [dlcOpen, setDlcOpen] = useState(false);
   const [countryExpanded, setCountryExpanded] = useState(false);
+  // Non-null exactly while the edition-switch notice should show: the
+  // country `selectPackage` just moved the buyer to, via
+  // `countryMovedOnEditionSwitch`. Cleared on every load and on a manual
+  // country pick — see `selectCountry` and `load` below — so it never
+  // outlives the switch that produced it.
+  const [editionCountryNotice, setEditionCountryNotice] = useState<string | null>(null);
   const seqRef = useRef(0);
   // The sticky `Idempotency-Key` for `POST /orders`, kept alongside the
   // `orderFingerprint` it was minted for — a ref, not state, since neither
@@ -469,6 +521,10 @@ export default function GiftGame() {
           setSelectedCountry(d.region_default ?? null);
         }
         setCountryExpanded(false);
+        // A fresh detail resets the country picker outright (either branch
+        // above) — any edition-switch notice from the previous load no
+        // longer describes anything on screen.
+        setEditionCountryNotice(null);
         setPhase("idle");
       })
       .catch(() => {
@@ -491,6 +547,12 @@ export default function GiftGame() {
   const selectedPackage =
     detail?.packages.find((p) => p.id === selectedPackageId) ?? detail?.packages[0] ?? null;
   const price = priceFor(detail, selectedPackage?.id ?? null, selectedCountry);
+  // "unpriced" (nothing priced here at all) vs "fxDown" (priced, but the
+  // UZS conversion is unavailable) vs "priced" — the price section below
+  // renders each state distinctly, and `canBuy` accepts only "priced". See
+  // `giftPriceAvailability`'s own docstring for why FX-down must never fall
+  // back to a USD figure.
+  const priceAvailability = giftPriceAvailability(price);
 
   // The UZS figure to weigh the wallet balance against. `price.price_usd`
   // is NOT it — that's what an acquirer charges, not what the wallet
@@ -511,13 +573,19 @@ export default function GiftGame() {
     haptic("select");
     setSelectedPackageId(pkg.id);
     if (!detail) return;
-    setSelectedCountry((current) =>
-      countryAfterPackageChange(
-        pkg,
-        current ?? detail.region_default ?? "",
-        detail.region_default ?? "",
-        detail.regions ?? [],
-      ),
+    const prevCountry = selectedCountry ?? detail.region_default ?? "";
+    const nextCountry = countryAfterPackageChange(
+      pkg,
+      prevCountry,
+      detail.region_default ?? "",
+      detail.regions ?? [],
+    );
+    setSelectedCountry(nextCountry);
+    // Shown only when the switch actually moved the country — never merely
+    // because a package was picked (see `countryMovedOnEditionSwitch`'s own
+    // docstring for why an invisible auto-move is the bug being fixed here).
+    setEditionCountryNotice(
+      countryMovedOnEditionSwitch(prevCountry, nextCountry) ? nextCountry : null,
     );
   }
 
@@ -527,6 +595,8 @@ export default function GiftGame() {
     if (zone === null || !selectedPackage?.prices.some((p) => p.zone === zone)) return;
     haptic("select");
     setSelectedCountry(country);
+    // A manual pick supersedes whatever the last edition switch explained.
+    setEditionCountryNotice(null);
   }
 
   const canonicalInvite = validateInviteUrl(inviteUrl);
@@ -547,6 +617,10 @@ export default function GiftGame() {
   });
   const canBuy =
     price !== null &&
+    // FX down must block the sale, not guess: a `price` that exists but
+    // whose `price_uzs` is `null` is exactly as unsellable as no price at
+    // all (2026-09-04 review) — see `giftPriceAvailability`.
+    priceAvailability === "priced" &&
     selectedCountry !== null &&
     canonicalInvite !== null &&
     skuId !== null &&
@@ -864,6 +938,16 @@ export default function GiftGame() {
           <p className="text-sm leading-relaxed text-white/55">{detail.description}</p>
         )}
 
+        {/* A DLC delivered with no note is unusable if the recipient lacks
+            the base game — `type` is the only DLC signal already on the
+            wire (2026-09-04 review), so no parent-game name is available to
+            append here. */}
+        {isDlcApp(detail.type) && (
+          <p className="rounded-xl border border-dashed border-white/15 bg-white/5 p-3 text-[13px] leading-relaxed text-white/60">
+            {t("gifts.game.dlcNote")}
+          </p>
+        )}
+
         {detail.dlc_total > 0 && (
           <button
             type="button"
@@ -951,16 +1035,32 @@ export default function GiftGame() {
                 />
               ))}
           </div>
-          <p className="mt-2 text-[12px] leading-snug text-white/40">
-            {t("gifts.game.regionWarning")}
-          </p>
+          {/* Shown only when `selectPackage` actually moved the country
+              (`countryMovedOnEditionSwitch`) — the old always-on
+              `regionWarning` line explained your OWN Steam country, not the
+              recipient's, and is deleted (2026-09-04 review): the relabeled
+              step above plus the region hint sheet now carry that rule. */}
+          {editionCountryNotice && (
+            <p className="mt-2 text-[12px] leading-snug text-white/40">
+              {t("gifts.game.editionCountryOnly", {
+                country: countryName(editionCountryNotice, locale),
+              })}
+            </p>
+          )}
         </div>
 
         {/* Price */}
         <div className="border-t pt-4" style={{ borderColor: "hsl(var(--border) / 0.7)" }}>
-          {price ? (
+          {priceAvailability === "priced" && price ? (
             <p className="text-2xl font-bold tabular-nums text-white">
               {priceLabel(price, t("gifts.priceUnavailable"))}
+            </p>
+          ) : priceAvailability === "fxDown" ? (
+            // FX down must block the sale, not guess (2026-09-04 review) —
+            // the mature panels' own dashed placeholder
+            // (`TopUp.tsx`'s `VariableAmountPanel`), never a USD figure.
+            <p className="rounded-2xl border border-dashed border-white/10 p-4 text-center text-sm text-white/40">
+              {t("topup.priceUnavailable")}
             </p>
           ) : (
             <p className="text-sm text-white/50">{t("gifts.game.noPriceInRegion")}</p>
