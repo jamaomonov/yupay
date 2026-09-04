@@ -2,7 +2,10 @@ import { describe, expect, test } from "vitest";
 
 import {
   countryAfterPackageChange,
+  isOrderNotAwaitingPaymentConflict,
+  nextOrderKeyState,
   nextSelectedMethodId,
+  orderFingerprint,
   reconcileSelection,
   splitCountries,
   walletPayState,
@@ -11,6 +14,8 @@ import {
 
 import type { GiftAppDetail, GiftPackage, GiftRegion } from "@/lib/gifts";
 import type { ProviderAvailability } from "@/lib/orders";
+
+import { ApiError } from "@/lib/api";
 
 function makePackage(id: number, prices: { zone: string; price_usd: string }[]): GiftPackage {
   return {
@@ -354,5 +359,194 @@ describe("nextSelectedMethodId", () => {
     expect(
       nextSelectedMethodId({ current: "click", statusBySlug, providerByMethod, methods }),
     ).toBe("");
+  });
+});
+
+// ---------- sticky order idempotency key ----------
+//
+// A buyer who retries after a failed payment (typically "insufficient
+// wallet balance", re-checked under a row lock server-side) must resume the
+// SAME order instead of creating a second one. `create_order` already
+// replays by `Idempotency-Key` (`_existing_idempotent_order` in
+// `orders/service.py`) — the gap was purely that `handleBuy` minted a fresh
+// key on every click. `orderFingerprint` + `nextOrderKeyState` are the
+// correctness-by-construction fix, mirroring
+// `apps/web/src/lib/gift-checkout.ts` exactly (this page has no delivery
+// email field, so the fingerprint has no `email` term). Exported pure and
+// tested directly — this app's Vitest suite runs under `environment:
+// "node"`, no jsdom/React Testing Library, so `handleBuy` itself can't be
+// exercised by rendering.
+
+function baseFingerprintInput() {
+  return {
+    skuId: "sku-1",
+    amountUsd: "1.10",
+    fulfillmentData: {
+      app_id: 588650,
+      package_id: 1,
+      region: "UZ",
+      invite_url: "https://steamcommunity.com/profiles/76561198000000000",
+    },
+  };
+}
+
+describe("orderFingerprint", () => {
+  test("is stable for the exact same order contents", () => {
+    expect(orderFingerprint(baseFingerprintInput())).toBe(orderFingerprint(baseFingerprintInput()));
+  });
+
+  test("changes when sku_id changes", () => {
+    const a = orderFingerprint(baseFingerprintInput());
+    const b = orderFingerprint({ ...baseFingerprintInput(), skuId: "sku-2" });
+    expect(a).not.toBe(b);
+  });
+
+  test("changes when amount_usd changes", () => {
+    const a = orderFingerprint(baseFingerprintInput());
+    const b = orderFingerprint({ ...baseFingerprintInput(), amountUsd: "1.30" });
+    expect(a).not.toBe(b);
+  });
+
+  test("changes when fulfillment_data.app_id changes", () => {
+    const base = baseFingerprintInput();
+    const a = orderFingerprint(base);
+    const b = orderFingerprint({
+      ...base,
+      fulfillmentData: { ...base.fulfillmentData, app_id: 12345 },
+    });
+    expect(a).not.toBe(b);
+  });
+
+  test("changes when fulfillment_data.package_id changes (edition switch)", () => {
+    const base = baseFingerprintInput();
+    const a = orderFingerprint(base);
+    const b = orderFingerprint({
+      ...base,
+      fulfillmentData: { ...base.fulfillmentData, package_id: 2 },
+    });
+    expect(a).not.toBe(b);
+  });
+
+  test("changes when fulfillment_data.region changes", () => {
+    const base = baseFingerprintInput();
+    const a = orderFingerprint(base);
+    const b = orderFingerprint({
+      ...base,
+      fulfillmentData: { ...base.fulfillmentData, region: "RU" },
+    });
+    expect(a).not.toBe(b);
+  });
+
+  test("changes when fulfillment_data.invite_url changes (recipient switch)", () => {
+    const base = baseFingerprintInput();
+    const a = orderFingerprint(base);
+    const b = orderFingerprint({
+      ...base,
+      fulfillmentData: {
+        ...base.fulfillmentData,
+        invite_url: "https://steamcommunity.com/profiles/76561198000000001",
+      },
+    });
+    expect(a).not.toBe(b);
+  });
+
+  test("has no field for the payment method — the input type cannot even carry one", () => {
+    // Two fingerprints built for what would be two different payment
+    // methods are identical, because `OrderFingerprintInput` has no
+    // `provider`/`methodId` term at all: switching card <-> wallet is the
+    // same order, never a new one.
+    const a = orderFingerprint(baseFingerprintInput());
+    const b = orderFingerprint(baseFingerprintInput());
+    expect(a).toBe(b);
+  });
+});
+
+// `nextOrderKeyState` is the "should I mint a new key?" decision `handleBuy`
+// applies on every buy click, pulled out pure. `mintKey` is injected so
+// tests can assert exactly when it does (mint) or doesn't (reuse) get
+// called, instead of asserting against real random UUIDs.
+describe("nextOrderKeyState", () => {
+  test("mints a key on the first attempt (no prior state)", () => {
+    const mint = () => "key-1";
+    expect(nextOrderKeyState(null, "fp-a", mint)).toEqual({ fingerprint: "fp-a", key: "key-1" });
+  });
+
+  test("same inputs twice reuse the same key — a retry with unchanged fingerprint never re-mints", () => {
+    const first = nextOrderKeyState(null, "fp-a", () => "key-1");
+    let minted = false;
+    const second = nextOrderKeyState(first, "fp-a", () => {
+      minted = true;
+      return "key-2";
+    });
+    expect(second).toBe(first);
+    expect(second.key).toBe("key-1");
+    expect(minted).toBe(false);
+  });
+
+  test("a changed fingerprint (region/edition/invite/email) mints a different key", () => {
+    const first = nextOrderKeyState(null, "fp-a", () => "key-1");
+    const second = nextOrderKeyState(first, "fp-b", () => "key-2");
+    expect(second.key).not.toBe(first.key);
+    expect(second.fingerprint).toBe("fp-b");
+  });
+
+  test("a changed payment method keeps the same key — same fingerprint, since the method never enters it", () => {
+    // `orderFingerprint` never takes a payment method, so the fingerprint
+    // computed for "click" and for "wallet" is the same string; feeding
+    // that same fingerprint through twice must reuse the key exactly like
+    // the "same inputs twice" case above.
+    const fingerprintForClick = orderFingerprint(baseFingerprintInput());
+    const fingerprintForWallet = orderFingerprint(baseFingerprintInput());
+    const first = nextOrderKeyState(null, fingerprintForClick, () => "key-1");
+    const second = nextOrderKeyState(first, fingerprintForWallet, () => "key-2");
+    expect(second).toBe(first);
+  });
+
+  test("after a success clears the state to null, the next purchase mints a fresh key even with identical inputs", () => {
+    const first = nextOrderKeyState(null, "fp-a", () => "key-1");
+    // `handleBuy` sets `orderKeyRef.current = null` on success.
+    const afterSuccess = null;
+    const second = nextOrderKeyState(afterSuccess, "fp-a", () => "key-2");
+    expect(second.key).not.toBe(first.key);
+  });
+});
+
+describe("isOrderNotAwaitingPaymentConflict", () => {
+  test("matches the exact 409 shape create_intent raises for an order that walked past pending_payment", () => {
+    const err = new ApiError(409, "Conflict", {
+      detail: "order is not awaiting payment",
+      extra: { status: "expired" },
+    });
+    expect(isOrderNotAwaitingPaymentConflict(err)).toBe(true);
+  });
+
+  test("does not match a 409 from a different conflict shape on the same endpoint", () => {
+    // Every sibling conflict from create_intent uses a different `extra`
+    // key (e.g. `extra.provider` / `extra.current_provider`) — matched
+    // structurally on `extra.status` being a string, never on message text.
+    const err = new ApiError(409, "Conflict", {
+      detail: "insufficient wallet balance: have 1000 need 5000",
+      extra: { current_provider: "wallet" },
+    });
+    expect(isOrderNotAwaitingPaymentConflict(err)).toBe(false);
+  });
+
+  test("does not match a 409 with no extra object at all", () => {
+    const err = new ApiError(409, "Conflict", { detail: "insufficient wallet balance" });
+    expect(isOrderNotAwaitingPaymentConflict(err)).toBe(false);
+  });
+
+  test("does not match a non-409 ApiError", () => {
+    const err = new ApiError(422, "Unprocessable Entity", {
+      detail: "gift price changed",
+      extra: { status: "expired" },
+    });
+    expect(isOrderNotAwaitingPaymentConflict(err)).toBe(false);
+  });
+
+  test("does not match a plain Error or non-ApiError value", () => {
+    expect(isOrderNotAwaitingPaymentConflict(new Error("network blip"))).toBe(false);
+    expect(isOrderNotAwaitingPaymentConflict("nope")).toBe(false);
+    expect(isOrderNotAwaitingPaymentConflict(null)).toBe(false);
   });
 });

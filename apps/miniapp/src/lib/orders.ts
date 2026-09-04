@@ -222,6 +222,18 @@ export interface CreateOrderInput {
    *  rather than the price the button showed — read `discount_charged` on the
    *  response to find out which happened. */
   affiliateCode?: string;
+  /**
+   * The `Idempotency-Key` sent with `POST /orders`. Owned by the caller when
+   * supplied — `create_order` replays by this key
+   * (`_existing_idempotent_order` in `orders/service.py`), so a caller that
+   * keeps this sticky across a failed-payment retry resumes the same order
+   * instead of creating a second one (see `orderFingerprint` /
+   * `nextOrderKeyState` in `GiftGame.tsx`, mirroring
+   * `apps/web/src/lib/gift-checkout.ts`). Falls back to a freshly minted key
+   * when omitted, so every caller that doesn't need stickiness (`TopUp`) is
+   * unaffected.
+   */
+  orderIdempotencyKey?: string;
 }
 
 export interface CheckoutResult {
@@ -274,6 +286,7 @@ export async function performCheckout(
     amountUsd,
     qty,
     affiliateCode,
+    orderIdempotencyKey,
   }: CreateOrderInput & {
     provider?: string;
   },
@@ -312,7 +325,7 @@ export async function performCheckout(
         },
       ],
     },
-    { idempotencyKey: newIdempotencyKey("order") },
+    { idempotencyKey: orderIdempotencyKey ?? newIdempotencyKey("order") },
   );
   const payment = await apiPost<PaymentOut>(
     "/api/v1/payments/intents",

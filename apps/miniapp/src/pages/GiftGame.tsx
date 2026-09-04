@@ -15,7 +15,7 @@ import { RegionPill } from "@/components/gifts/RegionPill";
 import { SafeImage } from "@/components/ui/safe-image";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { ApiError } from "@/lib/api";
+import { ApiError, newIdempotencyKey } from "@/lib/api";
 import {
   extractExpectedAmount,
   fetchGiftDetail,
@@ -30,6 +30,7 @@ import {
   providerStatusMap,
   useAvailableProviders,
   useCheckout,
+  type CheckoutResult,
 } from "@/lib/orders";
 import { PAYMENT_METHODS, PROVIDER_BY_METHOD } from "@/lib/payment-methods";
 import { haptic, openExternalLink, setClosingConfirmation } from "@/lib/telegram";
@@ -235,6 +236,115 @@ export function nextSelectedMethodId({
   return fallback ? fallback.id : "";
 }
 
+// ---------- sticky order idempotency key ----------
+//
+// A buyer who retries after a failed payment (most often "insufficient
+// wallet balance", re-checked under a row lock server-side) must resume the
+// SAME order instead of creating a second one. `create_order` already
+// replays by `Idempotency-Key` (`_existing_idempotent_order` in
+// `orders/service.py`) — the gap was purely that `handleBuy` minted a fresh
+// key on every buy click. Mirrors `apps/web/src/lib/gift-checkout.ts`
+// exactly, minus the delivery-email term this page doesn't collect (Telegram
+// identity delivers the gift, not a typed email).
+
+/** The subset of the buy inputs that determines the order body `handleBuy`
+ *  sends to `POST /orders` — everything `orderFingerprint` hashes.
+ *  Deliberately has no field for the payment method: switching card <->
+ *  wallet is the same order, not a new one, so it must never be able to
+ *  change the fingerprint. */
+export interface OrderFingerprintInput {
+  skuId: string;
+  amountUsd: string;
+  fulfillmentData: {
+    app_id: number;
+    package_id: number;
+    region: string;
+    invite_url: string;
+  };
+}
+
+/**
+ * A pure hash of exactly the fields that determine the order body
+ * `handleBuy` sends to `POST /orders` for a gift purchase — `sku_id`, `qty`
+ * (always 1 for a gift line), `amount_usd`, and every `fulfillment_data`
+ * field.
+ *
+ * This is the correctness-by-construction half of the sticky order key:
+ * `handleBuy` mints a new `Idempotency-Key` (via `nextOrderKeyState` below)
+ * exactly when this string differs from the one it last used, rather than
+ * resetting it from scattered input handlers — a forgotten one would replay
+ * a stale key and charge the buyer for their OLD selection. Over-resetting
+ * (two fingerprints treated as different when the order would actually be
+ * identical) is safe — it's exactly today's "always mint a new key"
+ * behaviour. Under-resetting is a money bug, so every field the server bills
+ * from belongs here.
+ */
+export function orderFingerprint(input: OrderFingerprintInput): string {
+  return JSON.stringify({
+    sku_id: input.skuId,
+    qty: 1,
+    amount_usd: input.amountUsd,
+    fulfillment_data: {
+      app_id: input.fulfillmentData.app_id,
+      package_id: input.fulfillmentData.package_id,
+      region: input.fulfillmentData.region,
+      invite_url: input.fulfillmentData.invite_url,
+    },
+  });
+}
+
+/** The sticky-key ref's shape: the `Idempotency-Key` last sent for
+ *  `POST /orders`, alongside the `orderFingerprint` it was minted for. */
+export interface OrderKeyState {
+  fingerprint: string;
+  key: string;
+}
+
+/**
+ * The "should I mint a new key?" decision `handleBuy` applies on every buy
+ * click: reuse `prev.key` when `fingerprint` still matches the one it was
+ * minted for (a failed attempt retried with unchanged inputs, or a bare
+ * payment-method switch — `orderFingerprint` never sees the method at all),
+ * or mint a fresh key via `mintKey` when it's absent (no prior attempt, or a
+ * prior success cleared it to `null`) or has changed (the buyer picked a
+ * different region/edition/invite). Exported pure and `mintKey`-injected so
+ * it's testable directly under this app's node-env convention — no jsdom, no
+ * rendering `GiftGame` to click a button.
+ */
+export function nextOrderKeyState(
+  prev: OrderKeyState | null,
+  fingerprint: string,
+  mintKey: () => string,
+): OrderKeyState {
+  if (prev?.fingerprint === fingerprint) return prev;
+  return { fingerprint, key: mintKey() };
+}
+
+/**
+ * True when `err` is the 409 `create_intent` raises for an order that has
+ * walked past `pending_payment` (most commonly `ORDER_EXPIRY_SECONDS`
+ * elapsing and the scheduler flipping it to `expired` before a retry
+ * landed) — `ConflictError("order is not awaiting payment", extra=
+ * {"status": order.status})` in `payments/service.py`. Matched structurally
+ * on the 409 status plus the `extra.status` field that guard's `extra=`
+ * keyword puts on the body (nested under `body.extra` — `app_error_handler`
+ * merges `exc.extra` onto the response body), never by matching `detail`
+ * text, which is shared prose with other 409s from the same endpoint (e.g.
+ * the `extra.current_provider` conflict for a mismatched payment provider).
+ * Mirrors `isOrderNotAwaitingPaymentConflict` in
+ * `apps/web/src/lib/gift-checkout.ts`, adapted to this app's `ApiError`
+ * shape, whose `body` is the raw parsed problem+json rather than a
+ * pre-split `extra` field.
+ */
+export function isOrderNotAwaitingPaymentConflict(err: unknown): boolean {
+  if (!(err instanceof ApiError) || err.status !== 409) return false;
+  const body = err.body;
+  if (!body || typeof body !== "object") return false;
+  const extra = (body as Record<string, unknown>).extra;
+  if (!extra || typeof extra !== "object") return false;
+  return typeof (extra as Record<string, unknown>).status === "string";
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 type Phase = "loading" | "idle" | "error" | "notFound";
 
@@ -258,6 +368,15 @@ export default function GiftGame() {
   const [dlcOpen, setDlcOpen] = useState(false);
   const [countryExpanded, setCountryExpanded] = useState(false);
   const seqRef = useRef(0);
+  // The sticky `Idempotency-Key` for `POST /orders`, kept alongside the
+  // `orderFingerprint` it was minted for — a ref, not state, since neither
+  // read nor write should trigger a render. A buy click reuses the stored
+  // key exactly when the recomputed fingerprint still matches it (a failed
+  // attempt with unchanged inputs), and mints a new one otherwise (changed
+  // inputs, no prior attempt, or the previous purchase succeeded and
+  // cleared this to `null`). Never reset from an individual input handler —
+  // see `orderFingerprint`'s doc comment for why that would be a money bug.
+  const orderKeyRef = useRef<OrderKeyState | null>(null);
 
   // The steam-gift product's single purchasable SKU — resolved once, reused
   // by every game on this route. `status === "unavailable"` (flag off, or an
@@ -497,29 +616,61 @@ export default function GiftGame() {
     // Money is about to move and the next step may be a redirect to the
     // acquirer — a stray swipe-down here loses the customer mid-payment.
     setClosingConfirmation(true);
-    try {
-      const result = await checkout.mutateAsync({
+
+    const fulfillmentData = {
+      app_id: detail.app_id,
+      package_id: selectedPackage.id,
+      // The country the buyer picked, not the zone it prices from — the
+      // server resolves country -> zone -> price itself and sends the
+      // zone's own `region_code` to the supplier (2026-09-03, see
+      // `apps/api/src/yupay/modules/gifts/schemas.py::GiftAppDetailOut`).
+      region: selectedCountry,
+      invite_url: canonicalInvite,
+    };
+
+    // Sticky `Idempotency-Key` for `POST /orders` — reuse the stored key
+    // exactly when it was minted for this exact order (the payment method
+    // never enters the fingerprint, so a bare method switch keeps replaying
+    // the same key on purpose). See `orderFingerprint` / `nextOrderKeyState`.
+    const fingerprint = orderFingerprint({ skuId, amountUsd: price.price_usd, fulfillmentData });
+    orderKeyRef.current = nextOrderKeyState(orderKeyRef.current, fingerprint, () =>
+      newIdempotencyKey("order"),
+    );
+
+    // `performCheckout` defaults to USD, but this SKU is variable-amount
+    // and the server rejects USD for that shape before the gift hook
+    // even runs (`_resolve_line_unit_price` in orders/service.py). Mirrors
+    // `apps/web/src/lib/gift-checkout.ts`'s hardcoded `currency: "UZS"` —
+    // required at both the orders layer and the Click/Payme/Uzum gateways.
+    const attempt = (orderIdempotencyKey: string) =>
+      checkout.mutateAsync({
         skuId,
-        fulfillmentData: {
-          app_id: detail.app_id,
-          package_id: selectedPackage.id,
-          // The country the buyer picked, not the zone it prices from — the
-          // server resolves country -> zone -> price itself and sends the
-          // zone's own `region_code` to the supplier (2026-09-03, see
-          // `apps/api/src/yupay/modules/gifts/schemas.py::GiftAppDetailOut`).
-          region: selectedCountry,
-          invite_url: canonicalInvite,
-        },
+        fulfillmentData,
         amountUsd: price.price_usd,
         qty: 1,
-        // `performCheckout` defaults to USD, but this SKU is variable-amount
-        // and the server rejects USD for that shape before the gift hook
-        // even runs (`_resolve_line_unit_price` in orders/service.py). Mirrors
-        // `apps/web/src/lib/gift-checkout.ts`'s hardcoded `currency: "UZS"` —
-        // required at both the orders layer and the Click/Payme/Uzum gateways.
         currency: "UZS",
         provider: selectedProvider,
+        orderIdempotencyKey,
       });
+
+    try {
+      let result: CheckoutResult;
+      try {
+        result = await attempt(orderKeyRef.current.key);
+      } catch (err) {
+        if (!isOrderNotAwaitingPaymentConflict(err)) throw err;
+        // The replayed order is no longer payable (typically expired past
+        // `ORDER_EXPIRY_SECONDS` before this retry landed) — mint a fresh
+        // key for the same order contents and retry exactly once. A second
+        // failure here falls through to the outer `catch` untouched, so it
+        // never loops.
+        const freshKey = newIdempotencyKey("order");
+        orderKeyRef.current = { fingerprint, key: freshKey };
+        result = await attempt(freshKey);
+      }
+      // Success — the next purchase (even with identical inputs) must be a
+      // new order, so the key does not survive to be replayed.
+      orderKeyRef.current = null;
       haptic("ok");
       if (result.payment.intent_url && result.payment.provider !== "mock") {
         // Hand the acquirer URL to Telegram so it opens in the device browser

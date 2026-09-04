@@ -312,6 +312,34 @@ describe("performCheckout", () => {
       expect.anything(),
     );
   });
+
+  // Sticky order key (GiftGame.tsx): a caller keeps `Idempotency-Key` sticky
+  // across a failed-payment retry so `create_order`'s replay-by-key
+  // (`_existing_idempotent_order` in `orders/service.py`) resumes the same
+  // order instead of minting a second one. `performCheckout` must forward a
+  // caller-supplied key untouched; `TopUp`'s call site never passes one, so
+  // omitting it must keep generating one internally, byte-identically to
+  // before this field existed.
+  it("forwards a caller-supplied order idempotency key verbatim, instead of generating one", async () => {
+    await performCheckout(qc, {
+      skuId: "sku-1",
+      fulfillmentData: {},
+      provider: "wallet",
+      orderIdempotencyKey: "sticky-order-key-123",
+    });
+
+    expect(mockApiPost).toHaveBeenNthCalledWith(1, "/api/v1/orders", expect.anything(), {
+      idempotencyKey: "sticky-order-key-123",
+    });
+  });
+
+  it("still generates an order idempotency key when none is supplied", async () => {
+    await performCheckout(qc, { skuId: "sku-1", fulfillmentData: {}, provider: "wallet" });
+
+    const call = mockApiPost.mock.calls[0] as [string, unknown, { idempotencyKey?: string }];
+    expect(call[0]).toBe("/api/v1/orders");
+    expect(call[2]?.idempotencyKey).toMatch(/^order-/);
+  });
 });
 
 describe("polling backs off instead of piling on", () => {
