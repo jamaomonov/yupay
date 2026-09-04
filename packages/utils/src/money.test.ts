@@ -37,3 +37,59 @@ describe("formatMoney", () => {
     expect(out).toMatch(/5(\.00)?/);
   });
 });
+
+/** `Intl`'s grouping separator for ru/uz is U+00A0 (NBSP), not a plain space
+ *  — normalize before comparing against a plain-space literal (mirrors
+ *  apps/miniapp/src/lib/currency.test.ts). */
+function collapseNbsp(s: string): string {
+  return s.replace(/\u00a0/g, " ");
+}
+
+/**
+ * `Intl`'s `style:"currency"` prints the bare ISO code for UZS — "1 250 000
+ * UZS" in ru (Latin letters in a Cyrillic sentence), "UZS 1,250,000" in en
+ * (the code even leads the number) — instead of the word every other soum
+ * price in the storefront uses (`apps/web/src/lib/seo.ts::formatUzs`,
+ * `apps/miniapp/src/lib/currency.ts::formatMoney`). This formatter is the
+ * shared one behind order-confirmation and order-history
+ * (`OrderSummary.tsx`, `OrderCard.tsx`) — the single most-viewed "how much
+ * did I just pay" screen — and was the last of the four sites still
+ * carrying the defect (2026-09-04 review, task C1b).
+ */
+describe("formatMoney — UZS word", () => {
+  it("renders a real ru word for UZS, trailing the number", () => {
+    expect(collapseNbsp(formatMoney("1250000", "UZS", "ru-RU"))).toBe("1 250 000 сум");
+  });
+
+  it("renders a real uz word for UZS, trailing the number", () => {
+    expect(collapseNbsp(formatMoney("1250000", "UZS", "uz-UZ"))).toBe("1 250 000 soʻm");
+  });
+
+  it("renders UZS trailing the number for en, not leading it", () => {
+    expect(formatMoney("1250000", "UZS", "en-US")).toBe("1,250,000 UZS");
+  });
+
+  // `OrderSummary.tsx` / `OrderCard.tsx` call this with next-intl's
+  // `useLocale()`, which yields the short code ("ru"/"en"/"uz"), not the
+  // region-qualified one the default param and this file's other tests use.
+  it("also works with the short locale codes the web app actually passes", () => {
+    expect(collapseNbsp(formatMoney("1250000", "UZS", "ru"))).toBe("1 250 000 сум");
+    expect(collapseNbsp(formatMoney("1250000", "UZS", "uz"))).toBe("1 250 000 soʻm");
+    expect(formatMoney("1250000", "UZS", "en")).toBe("1,250,000 UZS");
+  });
+
+  it("never leaves a bare Latin ISO code sitting in the ru output", () => {
+    const out = formatMoney("1250000", "UZS", "ru-RU");
+    expect(out).not.toMatch(/UZS/);
+    expect(out.endsWith("сум")).toBe(true);
+  });
+
+  it("keeps zero-handling and grouping intact, apart from the currency token", () => {
+    expect(formatMoney("0", "UZS", "en-US")).toBe("0 UZS");
+  });
+
+  it("still formats USD/USDT the same way (unaffected by the UZS fix)", () => {
+    expect(formatMoney("12.34", "USD", "en-US")).toBe("$12.34");
+    expect(formatMoney("25", "USDT", "en-US")).toBe("25 USDT");
+  });
+});

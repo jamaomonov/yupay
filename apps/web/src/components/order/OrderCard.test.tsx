@@ -129,6 +129,17 @@ it("uses the top-up-flavored status label for a delivered top-up order", () => {
   expect(screen.queryByText("Delivered")).not.toBeInTheDocument();
 });
 
+it("renders a UZS total as the localized ru word, not the bare ISO code", () => {
+  // Every order-history row for the storefront's near-universal currency
+  // (UZS), on both the logged-in and guest lists — the worst instance of the
+  // defect the brief named (2026-09-04 review, task C1b).
+  const order = makeOrder({ currency: "UZS", total_charged: "1250000" });
+  wrap(<OrderCard order={order} locale="ru" href="/ru/orders/abcdef123456" />);
+
+  expect(screen.getByText(/сум/)).toBeInTheDocument();
+  expect(screen.queryByText(/UZS/)).not.toBeInTheDocument();
+});
+
 it("shows the product name as the subtitle when it differs from the brand name", () => {
   const order = makeOrder({
     items: [

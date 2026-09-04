@@ -214,7 +214,15 @@ function PromoCodeCard() {
       ),
     onSuccess: (data) => {
       setCode("");
-      toast({ title: t("wallet.promoSuccess", { amount: `${data.amount} ${data.currency}` }) });
+      // Was a raw `${amount} ${currency}` concatenation: ungrouped,
+      // unlocalized, and code-suffixed even for UZS. `formatBalance` is
+      // already what the balance card right above this toast uses
+      // (2026-09-04 review, task C1b).
+      toast({
+        title: t("wallet.promoSuccess", {
+          amount: formatBalance(Number.parseFloat(data.amount) || 0, data.currency),
+        }),
+      });
       // The hero balance card sits right above — refresh it immediately.
       void qc.invalidateQueries({ queryKey: ["wallet"] });
     },

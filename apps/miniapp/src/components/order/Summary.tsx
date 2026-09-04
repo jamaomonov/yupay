@@ -4,6 +4,7 @@ import type { OrderOut } from "@/lib/orders";
 
 import { useT } from "@/lib/i18n";
 import { getActiveLocale } from "@/lib/i18n/core";
+import { formatBalance } from "@/lib/wallet";
 
 function Row({ label, value, icon }: { label: string; value: string; icon?: string | null }) {
   return (
@@ -51,7 +52,12 @@ export function Summary({ order }: { order: OrderOut }) {
       >
         <Row
           label={t("success.amount")}
-          value={`${Number.parseFloat(order.total_charged).toLocaleString(getActiveLocale(), { maximumFractionDigits: 2 })} ${order.currency}`}
+          // `formatBalance` — the same formatter `WalletFundingStatus.tsx` uses
+          // for this identical `order.total_charged`/`order.currency` pair —
+          // instead of a raw template literal that skipped grouping and
+          // localization and suffixed the bare ISO code (2026-09-04 review,
+          // task C1b).
+          value={formatBalance(Number.parseFloat(order.total_charged) || 0, order.currency)}
         />
         {providerText && (
           <Row label={t("success.paidWith")} value={providerText} icon={providerIconSrc} />

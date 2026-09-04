@@ -39,9 +39,9 @@ const order: OrderOut = {
   items: [],
 };
 
-function wrap(ui: ReactNode) {
+function wrap(ui: ReactNode, locale = "en") {
   return render(
-    <NextIntlClientProvider locale="en" messages={messages}>
+    <NextIntlClientProvider locale={locale} messages={messages}>
       {ui}
     </NextIntlClientProvider>,
   );
@@ -60,4 +60,13 @@ it("keeps the label for a provider that has no logo", () => {
   wrap(<OrderSummary order={{ ...order, payment_provider: "wallet" }} />);
   expect(screen.getByText("Balance")).toBeInTheDocument();
   expect(screen.queryByRole("img")).not.toBeInTheDocument();
+});
+
+// This is the "how much did I just pay" screen for the single most-common
+// order currency (UZS) — it must say "сум", not the bare ISO code sitting
+// in the middle of a Cyrillic sentence (2026-09-04 review, task C1b).
+it("renders a UZS total as the localized ru word, not the bare ISO code", () => {
+  wrap(<OrderSummary order={{ ...order, currency: "UZS", total_charged: "1250000" }} />, "ru");
+  expect(screen.getByText(/сум/)).toBeInTheDocument();
+  expect(screen.queryByText(/UZS/)).not.toBeInTheDocument();
 });
