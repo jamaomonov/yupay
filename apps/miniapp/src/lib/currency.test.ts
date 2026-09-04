@@ -67,4 +67,19 @@ describe("currencySymbol", () => {
     expect(currencySymbol("RUB", "ru")).toBe("₽");
     expect(currencySymbol("USDT", "ru")).toBe("USDT");
   });
+
+  /**
+   * `currencySymbol`'s UZS word comes from `@yupay/utils`'s `uzsWord`, which
+   * normalizes the locale (`locale.slice(0, 2).toLowerCase()`) — a
+   * region-qualified tag must resolve the same as its bare form. Nothing in
+   * this app passes a region-qualified locale today (`getActiveLocale()`
+   * only ever yields "ru"/"en"/"uz"), but this pins the behavior so a
+   * reintroduced app-local copy can't silently regress to an exact-match
+   * comparison again.
+   */
+  test("normalizes a region-qualified locale the same as its bare form", () => {
+    expect(currencySymbol("UZS", "ru-RU")).toBe("сум");
+    expect(currencySymbol("UZS", "ru-RU")).toBe(currencySymbol("UZS", "ru"));
+    expect(currencySymbol("UZS", "uz-UZ")).toBe(currencySymbol("UZS", "uz"));
+  });
 });

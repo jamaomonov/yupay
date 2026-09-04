@@ -36,6 +36,7 @@ export default defineConfig({
       "@": path.resolve(__dirname, "src"),
       "@yupay/i18n/locales": path.resolve(__dirname, "../../packages/i18n/locales"),
       "@yupay/i18n": path.resolve(__dirname, "../../packages/i18n/src/index.ts"),
+      "@yupay/utils": path.resolve(__dirname, "../../packages/utils/src/index.ts"),
     },
     dedupe: ["react", "react-dom"],
   },

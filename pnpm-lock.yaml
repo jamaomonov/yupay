@@ -177,6 +177,9 @@ importers:
       '@yupay/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
+      '@yupay/utils':
+        specifier: workspace:*
+        version: link:../../packages/utils
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1

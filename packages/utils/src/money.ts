@@ -2,13 +2,14 @@
 const ZERO_DECIMAL_CURRENCIES = new Set(["UZS"]);
 
 /**
- * Localized word for a UZS amount, mirroring `apps/web/src/lib/seo.ts::uzsWord`
- * and `apps/miniapp/src/lib/currency.ts`'s private helper of the same name —
- * keep all three in sync. Accepts either a bare language tag ("ru") or a
- * region-qualified one ("ru-RU"); callers pass both (next-intl's `useLocale()`
- * yields the bare form, this file's own default param the qualified one).
+ * Localized word for a UZS amount — the single home for this mapping.
+ * `apps/web/src/lib/seo.ts` and `apps/miniapp/src/lib/currency.ts` both
+ * import it rather than redefining it. Accepts either a bare language tag
+ * ("ru") or a region-qualified one ("ru-RU"); callers pass both (next-intl's
+ * `useLocale()` yields the bare form, this file's own default param the
+ * qualified one).
  */
-function uzsWord(locale: string): string {
+export function uzsWord(locale: string): string {
   const lang = locale.slice(0, 2).toLowerCase();
   if (lang === "ru") return "сум";
   if (lang === "uz") return "soʻm";

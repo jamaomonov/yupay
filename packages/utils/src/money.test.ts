@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatMoney } from "./money";
+import { formatMoney, uzsWord } from "./money";
 
 describe("formatMoney", () => {
   it("formats USD with en-US locale", () => {
@@ -91,5 +91,26 @@ describe("formatMoney — UZS word", () => {
   it("still formats USD/USDT the same way (unaffected by the UZS fix)", () => {
     expect(formatMoney("12.34", "USD", "en-US")).toBe("$12.34");
     expect(formatMoney("25", "USDT", "en-US")).toBe("25 USDT");
+  });
+});
+
+/**
+ * Pins `uzsWord`'s locale normalization — this is the single home for the
+ * mapping (`apps/web/src/lib/seo.ts` and `apps/miniapp/src/lib/currency.ts`
+ * both import it now instead of each carrying their own copy). Before the
+ * consolidation, the two app-local copies compared `locale === "ru"`
+ * exactly and would have printed the bare "UZS" code for a region-qualified
+ * tag; this locks in that a region-qualified tag and its bare form agree.
+ */
+describe("uzsWord — locale normalization", () => {
+  it("treats a region-qualified locale the same as its bare form", () => {
+    expect(uzsWord("ru-RU")).toBe("сум");
+    expect(uzsWord("ru")).toBe("сум");
+    expect(uzsWord("ru-RU")).toBe(uzsWord("ru"));
+  });
+
+  it("also normalizes uz the same way", () => {
+    expect(uzsWord("uz-UZ")).toBe("soʻm");
+    expect(uzsWord("uz")).toBe(uzsWord("uz-UZ"));
   });
 });

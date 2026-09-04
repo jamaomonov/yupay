@@ -25,6 +25,7 @@
     "@telegram-apps/sdk-react": "^3.0.0",
     "@yupay/api-client": "workspace:*",
     "@yupay/i18n": "workspace:*",
+    "@yupay/utils": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^11.18.0",

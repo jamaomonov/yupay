@@ -14,6 +14,7 @@
  */
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { uzsWord } from "@yupay/utils";
 
 import { apiPatch } from "./api";
 import { useMe, type Me } from "./auth";
@@ -37,19 +38,6 @@ export function isDisplayCurrency(value: string | undefined | null): value is Di
 // unit — UZS technically has tiyin, but showing them just renders noisy
 // ",00"/",79" suffixes on already-large sums. Mirrors packages/utils/money.ts.
 const ZERO_DECIMAL_CURRENCIES = new Set(["UZS"]);
-
-/**
- * Localized word for a UZS amount — the storefront-wide fix for `Intl`'s own
- * `style:"currency"` rendering the ISO code instead of a word: "165 000 UZS"
- * in ru (Latin letters sitting in the middle of a Cyrillic sentence), "UZS
- * 165,000" in en (the code even leads the number). Mirrors `formatUzs` in
- * `apps/web/src/lib/seo.ts` — keep the two in sync.
- */
-function uzsWord(locale: string): string {
-  if (locale === "ru") return "сум";
-  if (locale === "uz") return "soʻm";
-  return "UZS";
-}
 
 /**
  * Format a money amount in the given ISO-ish currency code, honoring the

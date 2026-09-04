@@ -1,4 +1,5 @@
 import { LOCALES } from "@yupay/i18n";
+import { uzsWord } from "@yupay/utils";
 
 import type { Metadata } from "next";
 
@@ -121,25 +122,19 @@ export const GEO_META: Record<string, string> = {
 
 /**
  * Localized word for a UZS amount — the storefront charges only in soum, so
- * this is the one currency token every price needs.
+ * this is the one currency token every price needs. `Intl`'s own
+ * `style:"currency"` support renders the *ISO code*, not a word, and gets
+ * the placement wrong on top of it: "1 250 000 UZS" in ru (Latin letters
+ * sitting in the middle of a Cyrillic sentence) and "UZS 1,250,000" in en
+ * (the code even leads the number). Only `uz` gets a real word ("soʻm") for
+ * free.
  *
- * `Intl`'s own `style:"currency"` support renders the *ISO code*, not a
- * word, and gets the placement wrong on top of it: "1 250 000 UZS" in ru
- * (Latin letters sitting in the middle of a Cyrillic sentence) and "UZS
- * 1,250,000" in en (the code even leads the number). Only `uz` gets a real
- * word ("soʻm") for free. `formatMoney` in
- * `apps/miniapp/src/lib/currency.ts` carries the identical mapping — keep
- * the two in sync.
- *
- * Exported so `wallet.ts::formatLedgerAmount` can reuse the same word for a
- * UZS ledger row instead of falling back to `Intl`'s bare ISO code the way
- * `formatUzs` itself used to (2026-09-04 review).
+ * Lives in `@yupay/utils` (single home for every surface that needs it —
+ * this file, `apps/miniapp/src/lib/currency.ts`, and this package's own
+ * `formatMoney`); re-exported here so `wallet.ts::formatLedgerAmount` can
+ * keep importing it from `@/lib/seo`.
  */
-export function uzsWord(locale: string): string {
-  if (locale === "ru") return "сум";
-  if (locale === "uz") return "soʻm";
-  return "UZS";
-}
+export { uzsWord };
 
 /** Format a som amount for display in the active locale. Marketing/display
  * only — real pricing comes from the catalog API in minor units later. */
