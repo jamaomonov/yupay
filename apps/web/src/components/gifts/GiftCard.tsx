@@ -53,11 +53,17 @@ export function GiftCard({ app, locale }: { app: GiftApp; locale: string }) {
       </div>
       <div className="flex flex-1 flex-col gap-1 p-3">
         <div className="line-clamp-2 text-[13px] font-semibold leading-snug">{app.name}</div>
-        <div className="text-tx-dim text-[11px]">
-          {t("card.editions", { count: app.packages_count })}
-          {" · "}
-          {t("card.dlc", { count: app.dlc_count })}
-        </div>
+        {/* A single edition with no DLC ("1 издание · 0 DLC") is true of
+            almost every card in the catalog — printed on every one of them
+            it's noise, not information. Only worth a line once there is
+            something to actually choose between (2026-09-04 review). */}
+        {(app.packages_count > 1 || app.dlc_count > 0) && (
+          <div className="text-tx-dim text-[11px]">
+            {t("card.editions", { count: app.packages_count })}
+            {" · "}
+            {t("card.dlc", { count: app.dlc_count })}
+          </div>
+        )}
         {priceUzs !== null && (
           // "от" ("from"/"dan") — this row is the *default-zone reference*
           // price (`gifts/routes.py`), never the per-package, per-country

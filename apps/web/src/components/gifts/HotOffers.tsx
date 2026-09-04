@@ -15,7 +15,9 @@ export async function HotOffers({ items, locale }: { items: GiftApp[]; locale: s
   const t = await getTranslations("web.gifts");
 
   return (
-    <section className="mt-12">
+    // `id="hot"` — the empty search state below (`GiftsBrowser`) links back
+    // here (`#hot`) rather than leaving a visitor at a dead end.
+    <section id="hot" className="mt-12">
       <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t("hot.title")}</h2>
       <div className="mt-5 flex gap-4 overflow-x-auto pb-2">
         {items.map((app) => (

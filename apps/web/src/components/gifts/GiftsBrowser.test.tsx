@@ -123,6 +123,48 @@ it("shows the empty state when a search finds nothing", async () => {
   expect(screen.queryByText("Should disappear")).not.toBeInTheDocument();
 });
 
+it("shows the catalogue count for the server-rendered initial page", () => {
+  renderBrowser({
+    items: [makeApp({ app_id: 1, name: "Browse page one" })],
+    total: 4241,
+  });
+
+  expect(screen.getByText('search.resultCount:{"count":4241}')).toBeInTheDocument();
+});
+
+it("updates the count to the search result total once a query resolves", async () => {
+  vi.useFakeTimers();
+  searchGiftsMock.mockResolvedValue({
+    items: [makeApp({ app_id: 7, name: "Hollow Knight" })],
+    total: 3,
+  });
+  renderBrowser({ items: [], total: 0 });
+
+  fireEvent.change(screen.getByRole("searchbox"), { target: { value: "hollow" } });
+  await vi.advanceTimersByTimeAsync(400);
+  vi.useRealTimers();
+
+  await waitFor(() => {
+    expect(screen.getByText('search.resultCount:{"count":3}')).toBeInTheDocument();
+  });
+});
+
+it("offers a route back to the hot offers from the empty search state", async () => {
+  vi.useFakeTimers();
+  searchGiftsMock.mockResolvedValue({ items: [], total: 0 });
+  renderBrowser({ items: [makeApp({ name: "Should disappear" })], total: 1 });
+
+  fireEvent.change(screen.getByRole("searchbox"), { target: { value: "zzz" } });
+  await vi.advanceTimersByTimeAsync(400);
+  vi.useRealTimers();
+
+  await waitFor(() => {
+    expect(screen.getByText("search.empty")).toBeInTheDocument();
+  });
+  const cta = screen.getByRole("link", { name: "search.emptyCta" });
+  expect(cta).toHaveAttribute("href", "#hot");
+});
+
 it("shows an error with a retry action when the search fails", async () => {
   vi.useFakeTimers();
   searchGiftsMock.mockRejectedValue(new Error("boom"));

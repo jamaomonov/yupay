@@ -340,7 +340,9 @@
       "empty": "Hech narsa topilmadi — boshqa soʻrovni sinab koʻring",
       "error": "Katalogni yuklab boʻlmadi",
       "retry": "Qayta urinish",
-      "showMore": "Yana koʻrsatish"
+      "showMore": "Yana koʻrsatish",
+      "resultCount": "Oʻyinlar: {count}",
+      "emptyCta": "Qaynoq takliflarni koʻring"
     },
     "card": {
       "editions": "{count, plural, one {# nashr} other {# nashr}}",
@@ -363,7 +365,8 @@
       "inviteLabel": "Qabul qiluvchining Steam profil havolasi",
       "invitePlaceholder": "https://steamcommunity.com/id/profil_nomi",
       "inviteError": "Bu Steam profil havolasiga oʻxshamaydi — tekshirib, qayta urinib koʻring",
-      "inviteGuideTitle": "Havolani qayerdan olish mumkin",
+      "inviteSelfNote": "Oʻzingiz uchun sotib olyapsizmi? Oʻz Steam profilingiz havolasini joylashtiring.",
+      "openProfileLink": "Qabul qiluvchi profilini ochish",
       "inviteGuideSteps": [
         "Qabul qiluvchining profilini Steam ilovasida yoki steamcommunity.com saytida oching",
         "«Profilni ulashish»ni bosing va havolani nusxalang",
@@ -372,7 +375,13 @@
       "buy": "Sotib olish",
       "timeline": "Sovgʻani bot yuboradi, odatda bir soat ichida",
       "accept": "Qabul qiluvchiga bot-yuboruvchidan doʻstlik taklifi keladi — sovgʻani Steamʻda 30 kun ichida qabul qilish kerak",
-      "buyError": "Buyurtmani rasmiylashtirib boʻlmadi. Qayta urinib koʻring."
+      "buyError": "Buyurtmani rasmiylashtirib boʻlmadi. Qayta urinib koʻring.",
+      "payHintInvite": "Qabul qiluvchining Steam profil havolasini kiriting",
+      "payHintInviteInvalid": "Profil havolasini tekshiring",
+      "payHintMethod": "Toʻlov usulini tanlang",
+      "confirmRegion": "Mintaqa",
+      "confirmProfile": "Qabul qiluvchi profili",
+      "confirmWarning": "Toʻlovdan keyin sovgʻani bekor qilib boʻlmaydi — u yuqoridagi havolaga yuboriladi. Toʻlovdan oldin qabul qiluvchi profilini tekshiring."
     },
     "delivered": {
       "title": "Sovgʻa yuborildi",
@@ -386,7 +395,8 @@
       "toggle": "DLC: {count} — koʻrsatish",
       "searchPlaceholder": "DLC qidirish…",
       "prevPage": "Oldingi sahifa",
-      "nextPage": "Keyingi sahifa"
+      "nextPage": "Keyingi sahifa",
+      "pageRange": "{from}–{to} / {total}"
     },
     "comingSoon": "Boʻlim tez orada ochiladi"
   },

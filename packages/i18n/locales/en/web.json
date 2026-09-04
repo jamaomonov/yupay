@@ -340,7 +340,9 @@
       "empty": "Nothing found — try another search",
       "error": "Couldn't load the catalog",
       "retry": "Retry",
-      "showMore": "Show more"
+      "showMore": "Show more",
+      "resultCount": "Games: {count}",
+      "emptyCta": "Check out the hot offers"
     },
     "card": {
       "editions": "{count, plural, one {# edition} other {# editions}}",
@@ -363,7 +365,8 @@
       "inviteLabel": "Recipient's Steam profile link",
       "invitePlaceholder": "https://steamcommunity.com/id/profilename",
       "inviteError": "That doesn't look like a Steam profile link — check it and try again",
-      "inviteGuideTitle": "Where to find the link",
+      "inviteSelfNote": "Buying for yourself? Paste your own Steam profile link.",
+      "openProfileLink": "Open recipient's profile",
       "inviteGuideSteps": [
         "Open the recipient's profile in the Steam app or on steamcommunity.com",
         "Tap “Share Profile” and copy the link",
@@ -372,7 +375,13 @@
       "buy": "Buy",
       "timeline": "The bot sends the gift, usually within an hour",
       "accept": "The recipient gets a friend invite from our bot — they need to accept the gift in Steam within 30 days",
-      "buyError": "Couldn't create the order. Please try again."
+      "buyError": "Couldn't create the order. Please try again.",
+      "payHintInvite": "Add the recipient's Steam profile link",
+      "payHintInviteInvalid": "Check the profile link",
+      "payHintMethod": "Choose a payment method",
+      "confirmRegion": "Region",
+      "confirmProfile": "Recipient's profile",
+      "confirmWarning": "The gift can't be cancelled after payment — it goes to the link above. Double-check the recipient's profile before paying."
     },
     "delivered": {
       "title": "Gift sent",
@@ -386,7 +395,8 @@
       "toggle": "DLC: {count} — show",
       "searchPlaceholder": "Search DLC…",
       "prevPage": "Previous page",
-      "nextPage": "Next page"
+      "nextPage": "Next page",
+      "pageRange": "{from}–{to} of {total}"
     },
     "comingSoon": "This section is opening soon"
   },

@@ -131,6 +131,7 @@ export function DlcBrowser({
       <button
         type="button"
         onClick={expand}
+        aria-expanded={false}
         className={buttonStyles({ variant: "ghost", size: "sm" })}
       >
         {t("dlc.toggle", { count: total })}
@@ -140,7 +141,17 @@ export function DlcBrowser({
 
   const canPrev = offset > 0;
   const canNext = offset + PAGE_SIZE < resultTotal;
-  const showPager = phase === "idle" && items.length > 0 && (canPrev || canNext);
+  // More than one page exists at all — computed from `resultTotal`, not
+  // `items.length`, so this stays true (and the pager stays mounted) through
+  // a `phase === "loading"` fetch: `items`/`offset`/`resultTotal` are only
+  // overwritten once that fetch's `.then()` lands, so a page turn shows the
+  // pager as disabled instead of unmounting it out from under the buyer's
+  // thumb mid-tap (2026-09-04 review).
+  const hasMultiplePages = resultTotal > PAGE_SIZE;
+  const showPager = phase !== "error" && hasMultiplePages;
+  const pagerBusy = phase === "loading";
+  const rangeFrom = offset + 1;
+  const rangeTo = Math.min(offset + PAGE_SIZE, resultTotal);
 
   return (
     <div className="mt-4">
@@ -185,10 +196,10 @@ export function DlcBrowser({
       )}
 
       {showPager && (
-        <div className="mt-4 flex items-center justify-center gap-2">
+        <div className="mt-4 flex items-center justify-center gap-3">
           <button
             type="button"
-            disabled={!canPrev}
+            disabled={!canPrev || pagerBusy}
             onClick={() => {
               fetchPage(offset - PAGE_SIZE, query);
             }}
@@ -197,9 +208,12 @@ export function DlcBrowser({
           >
             <ChevronLeft size={16} aria-hidden="true" />
           </button>
+          <span className="text-tx-dim text-[12px] tabular-nums">
+            {t("dlc.pageRange", { from: rangeFrom, to: rangeTo, total: resultTotal })}
+          </span>
           <button
             type="button"
-            disabled={!canNext}
+            disabled={!canNext || pagerBusy}
             onClick={() => {
               fetchPage(offset + PAGE_SIZE, query);
             }}

@@ -222,7 +222,13 @@ export default async function GiftGamePage({
             <DlcBrowser appId={detail.app_id} total={detail.dlc_total} locale={locale} />
           </div>
 
-          <aside className="lg:sticky lg:top-[120px] lg:self-start">
+          {/* `max-h`/`overflow-y`: the panel can grow past the viewport
+              (a game with several editions, a long country list, a guest
+              email field) and, sticky-pinned at a fixed top offset with no
+              cap, push its own Buy button below the fold — clipped by the
+              viewport but not scrollable within itself (2026-09-04
+              review). */}
+          <aside className="lg:sticky lg:top-[120px] lg:max-h-[calc(100vh-140px)] lg:self-start lg:overflow-y-auto">
             {skuId ? (
               <GiftPurchasePanel detail={detail} skuId={skuId} locale={locale} />
             ) : (

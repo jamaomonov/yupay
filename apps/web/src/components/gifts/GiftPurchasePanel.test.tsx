@@ -2,13 +2,13 @@
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { GiftPurchasePanel } from "./GiftPurchasePanel";
 
 import type { Me } from "@/lib/auth";
 import type * as GiftCheckoutModule from "@/lib/gift-checkout";
-import type { GiftAppDetail, GiftPackage } from "@/lib/gifts";
+import type { GiftAppDetail, GiftPackage, GiftRegion } from "@/lib/gifts";
 
 import { ApiError, clearTokens, setTokens } from "@/lib/client";
 import { buyGift, GiftPriceChangedError } from "@/lib/gift-checkout";
@@ -198,6 +198,40 @@ const RU_ONLY_EDITION: GiftPackage = {
   prices: [{ zone: "RU", price_usd: "0.95", price_uzs: "12065" }],
 };
 
+/** Prices five distinct zones, none of them CIS (the default country UZ's
+ *  zone) — `TR` listed first so `selectPackage`'s third fallback step (a
+ *  country covering the package's own first priced zone) lands the buyer on
+ *  it specifically. Paired with `SIX_COUNTRY_REGIONS` below, `TR` sits
+ *  beyond `VISIBLE_COUNTRY_COUNT` purely by array position among the priced
+ *  countries — proving the overflow auto-expands on the reassignment, not
+ *  just when the lone priced country happens to fall into it. */
+const TR_DELUXE_EDITION: GiftPackage = {
+  id: 5,
+  name: "Turkey Deluxe Edition",
+  image: null,
+  discount_percent: null,
+  prices: [
+    { zone: "TR", price_usd: "2.00", price_uzs: "25000" },
+    { zone: "KZ", price_usd: "1.90", price_uzs: "24000" },
+    { zone: "BY", price_usd: "1.80", price_uzs: "23000" },
+    { zone: "AM", price_usd: "1.70", price_uzs: "22000" },
+    { zone: "GE", price_usd: "1.60", price_uzs: "21000" },
+  ],
+};
+
+/** Six countries, one priced zone each (bar UZ/CIS) — enough that a package
+ *  pricing all five non-default zones still leaves more than
+ *  `VISIBLE_COUNTRY_COUNT` (4) countries priced, so the fifth one overflows
+ *  by position alone. */
+const SIX_COUNTRY_REGIONS: GiftRegion[] = [
+  { country: "UZ", zone: "CIS", price_usd: "1.10", price_uzs: "13970" },
+  { country: "KZ", zone: "KZ", price_usd: "1.90", price_uzs: "24000" },
+  { country: "BY", zone: "BY", price_usd: "1.80", price_uzs: "23000" },
+  { country: "AM", zone: "AM", price_usd: "1.70", price_uzs: "22000" },
+  { country: "GE", zone: "GE", price_usd: "1.60", price_uzs: "21000" },
+  { country: "TR", zone: "TR", price_usd: "2.00", price_uzs: "25000" },
+];
+
 function makeDetail(overrides: Partial<GiftAppDetail> = {}): GiftAppDetail {
   return {
     app_id: 588650,
@@ -250,6 +284,21 @@ function priceText(amount: number): string {
   return formatUzs("ru", amount).replace(/\u00a0/g, " ");
 }
 
+/** The Buy button's accessible name — its own label — now changes with
+ *  state (the missing-step reason while disabled, "buy · <amount>" once
+ *  payable), so tests locate it by a stable `data-testid` instead of a role
+ *  query pinned to one literal name. */
+function buyButton() {
+  return screen.getByTestId("gift-buy-cta");
+}
+
+/** Clicking Buy only opens `ConfirmPurchaseModal` now (2026-09-04 review) —
+ *  this drives both steps, the way a real buyer would. */
+function submitBuy(): void {
+  fireEvent.click(buyButton());
+  fireEvent.click(screen.getByRole("button", { name: "confirmCta" }));
+}
+
 async function fillValidCheckout(): Promise<void> {
   fireEvent.change(screen.getByLabelText("inviteLabel"), {
     target: { value: "https://steamcommunity.com/profiles/76561198000000000" },
@@ -258,7 +307,7 @@ async function fillValidCheckout(): Promise<void> {
     target: { value: "guest@example.com" },
   });
   await waitFor(() => {
-    expect(screen.getByRole("button", { name: "buy" })).not.toBeDisabled();
+    expect(buyButton()).not.toBeDisabled();
   });
 }
 
@@ -320,7 +369,7 @@ it("re-prices when the country is switched", () => {
   expect(screen.queryByText(priceText(13970))).not.toBeInTheDocument();
 });
 
-it("disables a country whose zone has no price for the selected package, with visible text", () => {
+it("folds an unpriced country into the overflow and names the reason once for the whole row", () => {
   mockProvidersResponse();
   const detail = makeDetail({
     packages: [
@@ -329,12 +378,20 @@ it("disables a country whose zone has no price for the selected package, with vi
   });
   renderPanel(<GiftPurchasePanel detail={detail} skuId="sku-1" locale="ru" />);
 
+  // RU has no price for this package — it used to sit right in the visible
+  // row, disabled, with its own "нет цены…" caption; it's now folded into
+  // the overflow instead (2026-09-04 review).
+  expect(screen.queryByRole("button", { name: countryButtonName("RU") })).not.toBeInTheDocument();
+  expect(screen.getByText("noPriceInRegion")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "otherRegion" }));
   const ruButton = screen.getByRole("button", { name: countryButtonName("RU") });
   expect(ruButton).toBeDisabled();
   // Visible text, not a `title=` tooltip (invisible on mobile) — see
   // `CountryButton` in `GiftPurchasePanel.tsx`.
   expect(ruButton).not.toHaveAttribute("title");
-  expect(screen.getByText("noPriceInRegion")).toBeInTheDocument();
+  // Still exactly once — not repeated under the now-visible disabled pill.
+  expect(screen.getAllByText("noPriceInRegion")).toHaveLength(1);
 });
 
 it("renders the coming-soon state instead of crashing when the API predates `regions`", () => {
@@ -342,7 +399,7 @@ it("renders the coming-soon state instead of crashing when the API predates `reg
   renderPanel(<GiftPurchasePanel detail={makeDetailWithoutRegions()} skuId="sku-1" locale="ru" />);
 
   expect(screen.getByText("comingSoon")).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "buy" })).not.toBeInTheDocument();
+  expect(screen.queryByTestId("gift-buy-cta")).not.toBeInTheDocument();
 });
 
 it("keeps the selected country across a package switch when its zone is still priced", () => {
@@ -375,6 +432,10 @@ it("falls back to region_default when the new package no longer prices the selec
     "aria-pressed",
     "true",
   );
+  // RU no longer prices this edition — folded into the overflow rather
+  // than shown inactive in the visible row.
+  expect(screen.queryByRole("button", { name: countryButtonName("RU") })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "otherRegion" }));
   expect(screen.getByRole("button", { name: countryButtonName("RU") })).toHaveAttribute(
     "aria-pressed",
     "false",
@@ -401,11 +462,46 @@ it("falls through to a priced country when a package switch prices neither the c
     "aria-pressed",
     "true",
   );
+  // UZ no longer prices this edition at all — folded into the overflow
+  // rather than shown active or inactive in the visible row.
+  expect(screen.queryByRole("button", { name: countryButtonName("UZ") })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "otherRegion" }));
   expect(screen.getByRole("button", { name: countryButtonName("UZ") })).toHaveAttribute(
     "aria-pressed",
     "false",
   );
   expect(screen.getAllByText(priceText(12065)).length).toBeGreaterThan(0);
+});
+
+/**
+ * The region-overflow bug: `countryExpanded` used to come from a `useState`
+ * initializer only — checked once, at mount. `selectPackage` can move the
+ * buyer's country into the overflow well after that (here: a package
+ * switch whose fallback lands on a country five *priced* countries deep,
+ * beyond `VISIBLE_COUNTRY_COUNT`), and without re-deriving on every
+ * `country` change, that pill stayed hidden behind "другой регион" with no
+ * visible sign it was even selected (2026-09-04 review).
+ */
+it("expands the region overflow when a package switch reassigns the country into it", () => {
+  mockProvidersResponse();
+  const detail = makeDetail({
+    packages: [STANDARD_EDITION, TR_DELUXE_EDITION],
+    regions: SIX_COUNTRY_REGIONS,
+  });
+  renderPanel(<GiftPurchasePanel detail={detail} skuId="sku-1" locale="ru" />);
+
+  // Not expanded yet — the default country (UZ) is visible on its own.
+  expect(screen.queryByRole("button", { name: countryButtonName("TR") })).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: /Turkey Deluxe Edition/ }));
+
+  // TR is the country the fallback lands on, and it sits fifth among this
+  // package's priced countries — beyond the four visible slots. It must be
+  // visible and marked selected without an extra click on "другой регион".
+  expect(screen.getByRole("button", { name: countryButtonName("TR") })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
 });
 
 it("blocks Buy and shows the price-unavailable card when FX is down for the selected price", () => {
@@ -420,7 +516,10 @@ it("blocks Buy and shows the price-unavailable card when FX is down for the sele
   });
   renderPanel(<GiftPurchasePanel detail={detail} skuId="sku-1" locale="ru" />);
 
-  expect(screen.getByText("priceUnavailable")).toBeInTheDocument();
+  // Now shown in three places at once: the FX-down price card, the Buy
+  // button's own disabled label, and the mobile sticky bar's reason line —
+  // all three name the same blocker (2026-09-04 review).
+  expect(screen.getAllByText("priceUnavailable").length).toBeGreaterThan(0);
 
   fireEvent.change(screen.getByLabelText("inviteLabel"), {
     target: { value: "https://steamcommunity.com/profiles/76561198000000000" },
@@ -429,7 +528,7 @@ it("blocks Buy and shows the price-unavailable card when FX is down for the sele
     target: { value: "guest@example.com" },
   });
   // Never enabled — a valid invite and email are not enough while FX is down.
-  expect(screen.getByRole("button", { name: "buy" })).toBeDisabled();
+  expect(buyButton()).toBeDisabled();
   expect(buyGiftMock).not.toHaveBeenCalled();
 });
 
@@ -517,17 +616,39 @@ it("shows a visible maintenance strip on a disabled acquirer tile, not a title t
   expect(payme).toHaveTextContent("paymentMaintenanceShort");
 });
 
-it("blocks submit and shows the i18n error on a bad invite URL", () => {
+it("blocks submit on a bad invite URL, and shows the i18n error once the field is left", () => {
+  mockProvidersResponse();
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+  const inviteInput = screen.getByLabelText("inviteLabel");
+  fireEvent.change(inviteInput, { target: { value: "https://example.com/not-steam" } });
+
+  // Not yet — it used to fire on the very first keystroke, before the buyer
+  // had even finished typing (2026-09-04 review). Buy is already blocked,
+  // though: the gate itself is immediate, only the visible error is timed.
+  expect(screen.queryByText("inviteError")).not.toBeInTheDocument();
+  expect(buyButton()).toBeDisabled();
+  expect(buyGiftMock).not.toHaveBeenCalled();
+
+  fireEvent.blur(inviteInput);
+  expect(screen.getByText("inviteError")).toBeInTheDocument();
+  expect(buyButton()).toBeDisabled();
+});
+
+it("shows the invite error after an idle pause even without a blur", async () => {
+  vi.useFakeTimers();
   mockProvidersResponse();
   renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
 
   fireEvent.change(screen.getByLabelText("inviteLabel"), {
     target: { value: "https://example.com/not-steam" },
   });
+  expect(screen.queryByText("inviteError")).not.toBeInTheDocument();
+
+  await vi.advanceTimersByTimeAsync(700);
+  vi.useRealTimers();
 
   expect(screen.getByText("inviteError")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "buy" })).toBeDisabled();
-  expect(buyGiftMock).not.toHaveBeenCalled();
 });
 
 it("announces the invite error via aria-invalid/aria-describedby, not just a floating paragraph", () => {
@@ -536,6 +657,7 @@ it("announces the invite error via aria-invalid/aria-describedby, not just a flo
 
   const inviteInput = screen.getByLabelText("inviteLabel");
   fireEvent.change(inviteInput, { target: { value: "https://example.com/not-steam" } });
+  fireEvent.blur(inviteInput);
 
   const err = screen.getByText("inviteError");
   expect(inviteInput).toHaveAttribute("aria-invalid", "true");
@@ -562,7 +684,176 @@ it("shows a visible, announced error for an invalid guest email and blocks Buy",
   fireEvent.change(screen.getByLabelText("inviteLabel"), {
     target: { value: "https://steamcommunity.com/profiles/76561198000000000" },
   });
-  expect(screen.getByRole("button", { name: "buy" })).toBeDisabled();
+  expect(buyButton()).toBeDisabled();
+});
+
+/**
+ * The Buy button used to always read "Купить" and just grey out — no hint
+ * why. It now carries the amount once payable, and names the next required
+ * step, in the same order `canBuy` itself checks, while it isn't
+ * (2026-09-04 review, "ship this first").
+ */
+describe("the Buy button carries the amount, or names the missing step", () => {
+  it("names the invite field when it's still empty", () => {
+    mockProvidersResponse();
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    expect(buyButton()).toHaveTextContent("payHintInvite");
+  });
+
+  it("names the invite link as wrong once it doesn't parse as one", () => {
+    mockProvidersResponse();
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    fireEvent.change(screen.getByLabelText("inviteLabel"), {
+      target: { value: "https://example.com/not-steam" },
+    });
+    expect(buyButton()).toHaveTextContent("payHintInviteInvalid");
+  });
+
+  it("asks a guest for their email once the invite is valid", () => {
+    mockProvidersResponse();
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    fireEvent.change(screen.getByLabelText("inviteLabel"), {
+      target: { value: "https://steamcommunity.com/profiles/76561198000000000" },
+    });
+    expect(buyButton()).toHaveTextContent("payHintEmail");
+  });
+
+  it('reads "buy · <amount>" once every field is filled', async () => {
+    mockProvidersResponse();
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    await fillValidCheckout();
+    expect(buyButton()).toHaveTextContent(`buy · ${priceText(13970)}`);
+  });
+});
+
+it("shows one inline line covering the self-purchase case, next to the invite field", () => {
+  mockProvidersResponse();
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+  expect(screen.getByText("inviteSelfNote")).toBeInTheDocument();
+});
+
+it('drops "inviteGuideTitle" — it only restated the field label right above it', () => {
+  mockProvidersResponse();
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+  expect(screen.queryByText("inviteGuideTitle")).not.toBeInTheDocument();
+});
+
+describe('the "Открыть профиль" link', () => {
+  it("is absent until the invite link is valid", () => {
+    mockProvidersResponse();
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    expect(screen.queryByRole("link", { name: /openProfileLink/ })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("inviteLabel"), {
+      target: { value: "not-a-link" },
+    });
+    expect(screen.queryByRole("link", { name: /openProfileLink/ })).not.toBeInTheDocument();
+  });
+
+  it("opens the pasted link, normalized, in a new tab once it's valid", () => {
+    mockProvidersResponse();
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    fireEvent.change(screen.getByLabelText("inviteLabel"), {
+      target: { value: "https://steamcommunity.com/id/somebuyer" },
+    });
+    const link = screen.getByRole("link", { name: /openProfileLink/ });
+    expect(link).toHaveAttribute("href", "https://steamcommunity.com/id/somebuyer");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", expect.stringContaining("noreferrer"));
+  });
+
+  it("defaults a schemeless paste to https:// for the link too", () => {
+    mockProvidersResponse();
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    fireEvent.change(screen.getByLabelText("inviteLabel"), {
+      target: { value: "steamcommunity.com/id/somebuyer" },
+    });
+    expect(screen.getByRole("link", { name: /openProfileLink/ })).toHaveAttribute(
+      "href",
+      "https://steamcommunity.com/id/somebuyer",
+    );
+  });
+});
+
+it("announces a price change via aria-live, not silently", () => {
+  mockProvidersResponse();
+  const { container } = renderPanel(
+    <GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />,
+  );
+
+  const liveRegion = container.querySelector('[aria-live="polite"]');
+  expect(liveRegion).not.toBeNull();
+  expect(liveRegion).toHaveTextContent(priceText(13970));
+});
+
+it("gives an unpriced edition's price real text for a screen reader, not a bare dash", () => {
+  mockProvidersResponse();
+  const detail = makeDetail({
+    packages: [
+      { ...STANDARD_EDITION, prices: [{ zone: "CIS", price_usd: "1.10", price_uzs: null }] },
+    ],
+  });
+  renderPanel(<GiftPurchasePanel detail={detail} skuId="sku-1" locale="ru" />);
+
+  const editionButton = screen.getByRole("button", { name: /Standard Edition/ });
+  expect(editionButton).toHaveTextContent("—");
+  expect(editionButton).toHaveTextContent("noPriceInRegion");
+});
+
+describe("the confirm dialog", () => {
+  it("opens on Buy instead of charging immediately, with edition/region/profile/total", async () => {
+    mockProvidersResponse();
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+    await fillValidCheckout();
+
+    fireEvent.click(buyButton());
+
+    expect(buyGiftMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("Standard Edition");
+    expect(dialog).toHaveTextContent(countryName("UZ", "ru"));
+    expect(dialog).toHaveTextContent("https://steamcommunity.com/profiles/76561198000000000");
+    expect(dialog).toHaveTextContent(priceText(13970));
+  });
+
+  it("never charges when the buyer cancels out of the confirm dialog", async () => {
+    mockProvidersResponse();
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+    await fillValidCheckout();
+
+    fireEvent.click(buyButton());
+    fireEvent.click(screen.getByRole("button", { name: "confirmCancel" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(buyGiftMock).not.toHaveBeenCalled();
+  });
+
+  it("charges only after the buyer confirms", async () => {
+    mockProvidersResponse();
+    buyGiftMock.mockResolvedValue({
+      orderId: "order-1",
+      intentUrl: null,
+      trackHref: "/orders/order-1?email=guest%40example.com",
+    });
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+    await fillValidCheckout();
+
+    submitBuy();
+
+    await waitFor(() => {
+      expect(buyGiftMock).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 it("POSTs the exact checkout body via lib/gift-checkout on submit", async () => {
@@ -578,7 +869,7 @@ it("POSTs the exact checkout body via lib/gift-checkout on submit", async () => 
   renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
 
   await fillValidCheckout();
-  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+  submitBuy();
 
   await waitFor(() => {
     expect(buyGiftMock).toHaveBeenCalledTimes(1);
@@ -613,7 +904,7 @@ it("shows the price-changed toast and refreshes on a 422 price-drift error", asy
   renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
 
   await fillValidCheckout();
-  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+  submitBuy();
 
   await waitFor(() => {
     expect(toastInfoMock).toHaveBeenCalledWith("priceChanged");
@@ -657,7 +948,7 @@ it("shows the wallet tile as ready for a signed-in buyer and pays with provider:
   expect(walletTileButton()).toHaveAttribute("aria-pressed", "true");
 
   fillInviteOnly();
-  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+  submitBuy();
 
   await waitFor(() => {
     expect(buyGiftMock).toHaveBeenCalledTimes(1);
@@ -688,7 +979,7 @@ it("disables the wallet tile and offers a top-up link when the balance is short"
   // Clicking a disabled tile is a no-op — the click acquirer stays selected.
   fireEvent.click(walletTileButton());
   fillInviteOnly();
-  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+  submitBuy();
   await waitFor(() => {
     expect(buyGiftMock).toHaveBeenCalledTimes(1);
   });
@@ -729,7 +1020,7 @@ it("surfaces a 409's detail instead of the generic buy error", async () => {
   });
   fireEvent.click(walletTileButton());
   fillInviteOnly();
-  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+  submitBuy();
 
   expect(
     await screen.findByText("insufficient wallet balance: have 10000 UZS, need 13970 UZS"),
@@ -753,12 +1044,12 @@ it("sends the same Idempotency-Key across two consecutive failed attempts with u
   renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
 
   await fillValidCheckout();
-  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+  submitBuy();
   await waitFor(() => {
     expect(buyGiftMock).toHaveBeenCalledTimes(1);
   });
 
-  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+  submitBuy();
   await waitFor(() => {
     expect(buyGiftMock).toHaveBeenCalledTimes(2);
   });
@@ -772,13 +1063,13 @@ it("mints a different Idempotency-Key when the region changes between attempts",
   renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
 
   await fillValidCheckout();
-  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+  submitBuy();
   await waitFor(() => {
     expect(buyGiftMock).toHaveBeenCalledTimes(1);
   });
 
   fireEvent.click(screen.getByRole("button", { name: countryButtonName("RU") }));
-  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+  submitBuy();
   await waitFor(() => {
     expect(buyGiftMock).toHaveBeenCalledTimes(2);
   });
@@ -803,14 +1094,14 @@ it("keeps the same Idempotency-Key when only the payment method changes between 
   renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
 
   await fillValidCheckout();
-  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+  submitBuy();
   await waitFor(() => {
     expect(buyGiftMock).toHaveBeenCalledTimes(1);
   });
   expect(orderKeyOf(0)).toBeTruthy();
 
   fireEvent.click(screen.getByRole("button", { name: "Payme" }));
-  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+  submitBuy();
   await waitFor(() => {
     expect(buyGiftMock).toHaveBeenCalledTimes(2);
   });
@@ -832,14 +1123,14 @@ it("mints a fresh Idempotency-Key for the next purchase after a success", async 
   renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
 
   await fillValidCheckout();
-  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+  submitBuy();
   await waitFor(() => {
     expect(buyGiftMock).toHaveBeenCalledTimes(1);
   });
   const firstKey = orderKeyOf(0);
 
   // Same inputs, a second purchase after the first succeeded.
-  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+  submitBuy();
   await waitFor(() => {
     expect(buyGiftMock).toHaveBeenCalledTimes(2);
   });
@@ -864,7 +1155,7 @@ it("retries exactly once with a fresh key when the order is no longer awaiting p
   renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
 
   await fillValidCheckout();
-  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+  submitBuy();
 
   // Exactly one automatic retry — a single click, two calls, no third.
   await waitFor(() => {
@@ -888,7 +1179,7 @@ it("surfaces the error normally when the retried attempt also fails, without a t
   renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
 
   await fillValidCheckout();
-  fireEvent.click(screen.getByRole("button", { name: "buy" }));
+  submitBuy();
 
   expect(await screen.findByText("order is not awaiting payment")).toBeInTheDocument();
   expect(buyGiftMock).toHaveBeenCalledTimes(2);
@@ -902,7 +1193,7 @@ it("hides the wallet tile entirely when the admin has disabled it", async () => 
   renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
 
   await waitFor(() => {
-    expect(screen.getByRole("button", { name: "buy" })).toBeInTheDocument();
+    expect(buyButton()).toBeInTheDocument();
   });
   expect(screen.queryByRole("button", { name: /payFromBalance/ })).not.toBeInTheDocument();
 });

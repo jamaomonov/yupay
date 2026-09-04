@@ -136,6 +136,31 @@ describe("formatLedgerAmount", () => {
     expect(out).toContain("25");
     expect(out).not.toContain("UZS");
   });
+
+  // Every other price in the storefront says "сум"/"soʻm" (see `formatUzs`) —
+  // the wallet history was the one page still printing the bare ISO code
+  // because it went through `Intl`'s `style:"currency"` instead (2026-09-04
+  // review, follow-up from the earlier `formatUzs` fix).
+  test("a UZS row reads as soum, not the bare ISO code", () => {
+    expect(formatLedgerAmount("ru", 150000, "UZS")).toContain("сум");
+    expect(formatLedgerAmount("ru", 150000, "UZS")).not.toContain("UZS");
+  });
+
+  test("a UZS row in uz reads as soʻm", () => {
+    expect(formatLedgerAmount("uz", 150000, "UZS")).toContain("soʻm");
+  });
+
+  test("a UZS row in en still says UZS (no English word for soum)", () => {
+    expect(formatLedgerAmount("en", 150000, "UZS")).toContain("UZS");
+  });
+
+  // The sign is the caller's job (`row.delta >= 0 ? "+" : "−"` in
+  // `account/wallet/page.tsx`) — this must never fold a sign into the string
+  // itself, debit or credit.
+  test("never prints a sign of its own", () => {
+    expect(formatLedgerAmount("ru", 150000, "UZS")).not.toMatch(/^[+\-−]/);
+    expect(formatLedgerAmount("ru", 25, "USDT")).not.toMatch(/^[+\-−]/);
+  });
 });
 
 describe("summarizeForUser order reference", () => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpRight, Loader2 } from "lucide-react";
+import { ArrowUpRight, ExternalLink, Loader2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -9,12 +9,16 @@ import { useTranslations } from "next-intl";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { InviteGuide } from "./InviteGuide";
-import { RegionHint } from "./RegionHint";
+import { RegionHintPanel, RegionHintToggle } from "./RegionHint";
 
 import type { GiftAppDetail, GiftPackage } from "@/lib/gifts";
 import type { ProviderStatus, ProvidersOut } from "@/lib/payment-providers";
 
 import { WalletMark } from "@/components/icons/WalletMark";
+import {
+  ConfirmPurchaseModal,
+  type ConfirmPurchaseRow,
+} from "@/components/store/ConfirmPurchaseModal";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { ApiError, getAccessToken, SURFACE } from "@/lib/client";
@@ -38,6 +42,11 @@ const API = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").re
  *  collapse behind a single "другой регион" toggle — CIS alone is nine
  *  countries. */
 const VISIBLE_COUNTRY_COUNT = 4;
+
+/** How long the invite field waits, idle, before showing an error on its
+ *  own — mirrors the catalog search debounces elsewhere in this module.
+ *  Blurring the field shows the error immediately regardless. */
+const INVITE_ERROR_DEBOUNCE_MS = 600;
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -87,16 +96,24 @@ const STEAM_ID64_RE = /^\d{17}$/;
 const STEAM_VANITY_RE = /^[A-Za-z0-9_-]{2,32}$/;
 const S_TEAM_PATH_RE = /^[A-Za-z0-9/_-]{1,64}$/;
 
-function isValidInviteUrl(raw: string): boolean {
+/** Turns whatever the buyer pasted into a `URL`, defaulting the scheme to
+ *  `https://` the way a browser address bar would — shared by
+ *  `isValidInviteUrl` (the accept/reject gate) and the "Открыть профиль"
+ *  link (which needs the same normalized, absolute form to link to). */
+function parseInviteUrl(raw: string): URL | null {
   const value = raw.trim();
-  if (!value) return false;
+  if (!value) return null;
   const candidate = value.includes("://") ? value : `https://${value}`;
-  let url: URL;
   try {
-    url = new URL(candidate);
+    return new URL(candidate);
   } catch {
-    return false;
+    return null;
   }
+}
+
+function isValidInviteUrl(raw: string): boolean {
+  const url = parseInviteUrl(raw);
+  if (!url) return false;
   if (url.protocol !== "https:") return false;
   const host = url.hostname.toLowerCase();
   const parts = url.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
@@ -112,6 +129,16 @@ function isValidInviteUrl(raw: string): boolean {
     return false;
   }
   return false;
+}
+
+/** The "Открыть профиль получателя" link's `href` — the normalized,
+ *  absolute form of the pasted invite, or `null` while it isn't a valid one
+ *  yet. This is the free half of the deferred server-side profile checker:
+ *  the buyer verifies the link resolves to the right person with their own
+ *  eyes, in a new tab, before paying (2026-09-04 review). */
+function inviteProfileHref(raw: string): string | null {
+  if (!isValidInviteUrl(raw)) return null;
+  return parseInviteUrl(raw)?.toString() ?? null;
 }
 
 /**
@@ -188,11 +215,51 @@ export function GiftPurchasePanel({
   // don't crash — rendered as the coming-soon state below, in place of a
   // form with nothing sellable in it.
   const hasRegions = countries.length > 0;
-  const visibleCountries = countries.slice(0, VISIBLE_COUNTRY_COUNT);
-  const overflowCountries = countries.slice(VISIBLE_COUNTRY_COUNT);
+
+  /** Whether `c`'s zone has a price under the currently selected package —
+   *  the same check `CountryButton` used to run for itself, centralized
+   *  here so the visible/overflow split below can use it too. */
+  function countryAvailable(c: string): boolean {
+    const zone = countryZone.get(c);
+    return zone !== undefined && (selectedPackage?.prices.some((p) => p.zone === zone) ?? false);
+  }
+
+  // Unpriced countries always fold into the overflow, never the visible row
+  // — previously a country's *position* alone decided whether it showed
+  // (positionally in the first `VISIBLE_COUNTRY_COUNT`), so an unpriced
+  // country could sit right in the visible row, disabled, with its own
+  // "нет цены…" caption. On a nine-country row that repeated the same
+  // sentence under up to eight pills at 10px (2026-09-04 review) — see the
+  // single row-level `noPriceInRegion` message below instead.
+  const pricedCountries = countries.filter(countryAvailable);
+  const visibleCountries = pricedCountries.slice(0, VISIBLE_COUNTRY_COUNT);
+  const overflowCountries = countries.filter((c) => !visibleCountries.includes(c));
+  const hasUnpricedCountry = countries.some((c) => !countryAvailable(c));
   const [countryExpanded, setCountryExpanded] = useState<boolean>(() =>
     overflowCountries.includes(country),
   );
+
+  // The `useState` initializer above only ever runs once, on mount — but
+  // `selectPackage` can move `country` into the overflow well after that
+  // (an edition switch that reassigns the buyer to a country beyond the
+  // first `VISIBLE_COUNTRY_COUNT`). Left alone, the selected country's pill
+  // ends up hidden behind "другой регион" with no visible sign it's even
+  // selected (2026-09-04 review). Re-derives on every `country` change, not
+  // just at mount; only ever expands automatically — collapsing back is a
+  // deliberate second interaction the buyer takes via the toggle.
+  useEffect(() => {
+    if (overflowCountries.includes(country)) setCountryExpanded(true);
+    // `overflowCountries` is recomputed fresh every render from `countries`/
+    // `selectedPackage`, which are themselves stable for whatever selection
+    // is active — keying this off `country` alone catches every case that
+    // can move the active pick into the overflow.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [country]);
+
+  // Whether the "Как узнать?" panel is open — lifted here (not owned inside
+  // `RegionHint`) so the expanded panel can render as this row's sibling
+  // instead of its child. See `RegionHintToggle`/`RegionHintPanel`.
+  const [regionHintOpen, setRegionHintOpen] = useState(false);
 
   /** Selection reconciliation on a package switch: keeps the chosen
    *  country if its zone is still priced by the new package, else falls
@@ -242,8 +309,7 @@ export function GiftPurchasePanel({
   }
 
   function selectCountry(c: string): void {
-    const zone = countryZone.get(c);
-    if (zone === undefined || !selectedPackage?.prices.some((p) => p.zone === zone)) return;
+    if (!countryAvailable(c)) return;
     setCountry(c);
     // A manual pick supersedes whatever an earlier edition switch chose —
     // the notice explaining that switch is now stale.
@@ -252,7 +318,29 @@ export function GiftPurchasePanel({
 
   const [inviteUrl, setInviteUrl] = useState("");
   const inviteValid = isValidInviteUrl(inviteUrl);
-  const inviteInvalid = inviteUrl.trim() !== "" && !inviteValid;
+  const inviteHasValue = inviteUrl.trim() !== "";
+  // Whether the current text *would* show an error, ignoring timing — the
+  // gate the buy button and `payHint` reason off, unconditionally.
+  const inviteWrong = inviteHasValue && !inviteValid;
+  // Timing only, for the visible error paragraph below the field: it used to
+  // fire on the very first keystroke, well before the buyer had finished
+  // pasting or typing (2026-09-04 review). Shown once the field is blurred,
+  // or after a short idle pause — whichever comes first — never live on
+  // every change.
+  const [inviteTouched, setInviteTouched] = useState(false);
+  const [inviteIdle, setInviteIdle] = useState(false);
+  useEffect(() => {
+    setInviteIdle(false);
+    if (!inviteWrong) return;
+    const timer = setTimeout(() => {
+      setInviteIdle(true);
+    }, INVITE_ERROR_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [inviteUrl, inviteWrong]);
+  const inviteInvalid = inviteWrong && (inviteTouched || inviteIdle);
+  const inviteHref = inviteProfileHref(inviteUrl);
   const [email, setEmail] = useState("");
 
   // Signed-in buyers get their account's delivery address pre-filled, the
@@ -371,6 +459,75 @@ export function GiftPurchasePanel({
     emailValid &&
     selectedMethodActive &&
     !loading;
+
+  // What the Buy button says when it can't be pressed yet — mirrors
+  // `canBuy`'s own checks, in the same order, so the reason always matches
+  // the actual blocker. The button used to just grey out with no
+  // explanation while the amount it would charge sat ~500px up the page
+  // (2026-09-04 review, "ship this first") — this is read by both the
+  // in-form button and the mobile sticky bar below.
+  const payHint: string | null =
+    selectedPrice === null
+      ? t("noPriceInRegion")
+      : priceUnavailable
+        ? ts("priceUnavailable")
+        : !inviteHasValue
+          ? t("payHintInvite")
+          : !inviteValid
+            ? t("payHintInviteInvalid")
+            : !emailValid
+              ? ts("payHintEmail")
+              : !selectedMethodActive
+                ? t("payHintMethod")
+                : null;
+
+  const buyLabel =
+    selectedPrice?.price_uzs != null
+      ? `${t("buy")} · ${formatUzs(locale, Math.round(Number(selectedPrice.price_uzs)))}`
+      : t("buy");
+
+  // Last look before an irreversible payment — a mistyped invite link sends
+  // a paid game to a stranger, with no way to undo it once the bot sends
+  // the friend invite. Ordinary top-ups get `ConfirmPurchaseModal`
+  // (`PurchasePanel`); this flow used to call `handleBuy()` straight from
+  // the Buy button (2026-09-04 review).
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const confirmRows: ConfirmPurchaseRow[] = [
+    { label: t("edition"), value: selectedPackage?.name ?? "" },
+    { label: t("confirmRegion"), value: `${flagEmoji(country)} ${countryName(country, locale)}` },
+    { label: t("confirmProfile"), value: inviteUrl.trim() },
+  ];
+
+  // The mobile sticky checkout bar auto-hides once the real form (this
+  // panel) or the page footer is on screen — same reasoning and mechanism
+  // as `PurchasePanel`'s bar.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [barHidden, setBarHidden] = useState(false);
+  useEffect(() => {
+    if (typeof IntersectionObserver === "undefined") return;
+    const footer = document.querySelector("footer");
+    const targets: Element[] = [];
+    if (panelRef.current) targets.push(panelRef.current);
+    if (footer) targets.push(footer);
+    if (targets.length === 0) return;
+    const visible = new Set<Element>();
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) visible.add(e.target);
+          else visible.delete(e.target);
+        }
+        setBarHidden(visible.size > 0);
+      },
+      { threshold: 0 },
+    );
+    targets.forEach((el) => {
+      io.observe(el);
+    });
+    return () => {
+      io.disconnect();
+    };
+  }, []);
 
   async function handleBuy(): Promise<void> {
     // `canBuy` already requires `selectedPrice !== null` — TS's aliased-
@@ -498,377 +655,507 @@ export function GiftPurchasePanel({
   }
 
   return (
-    <div className="border-border bg-card space-y-5 rounded-2xl border p-5 sm:p-6">
-      <div>
-        <p className="text-tx-dim text-[11px] font-semibold uppercase tracking-[0.08em]">
-          {t("edition")}
-        </p>
-        <div className="mt-2 flex flex-col gap-2">
-          {detail.packages.map((pkg) => {
-            const price =
-              selectedZone !== undefined
-                ? (pkg.prices.find((p) => p.zone === selectedZone) ?? null)
-                : null;
-            const active = pkg.id === selectedPackage?.id;
-            const discount =
-              pkg.discount_percent != null && pkg.discount_percent > 0
-                ? pkg.discount_percent
-                : null;
-            return (
-              <button
-                key={pkg.id}
-                type="button"
-                aria-pressed={active}
-                onClick={() => {
-                  selectPackage(pkg);
-                }}
-                className={`rounded-lg border p-3 text-left transition ${
-                  active
-                    ? "border-primary bg-primary/[0.06]"
-                    : "border-border hover:border-border-2"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-foreground text-sm font-semibold">{pkg.name}</span>
-                  <span className="font-mono text-sm font-bold tabular-nums">
-                    {/* Never the USD figure here, even as a fallback: a gift is
+    <>
+      <div ref={panelRef} className="border-border bg-card space-y-5 rounded-2xl border p-5 sm:p-6">
+        <div>
+          <p className="text-tx-dim text-[11px] font-semibold uppercase tracking-[0.08em]">
+            {t("edition")}
+          </p>
+          <div className="mt-2 flex flex-col gap-2">
+            {detail.packages.map((pkg) => {
+              const price =
+                selectedZone !== undefined
+                  ? (pkg.prices.find((p) => p.zone === selectedZone) ?? null)
+                  : null;
+              const active = pkg.id === selectedPackage?.id;
+              const discount =
+                pkg.discount_percent != null && pkg.discount_percent > 0
+                  ? pkg.discount_percent
+                  : null;
+              return (
+                <button
+                  key={pkg.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => {
+                    selectPackage(pkg);
+                  }}
+                  className={`rounded-lg border p-3 text-left transition ${
+                    active
+                      ? "border-primary bg-primary/[0.06]"
+                      : "border-border hover:border-border-2"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-foreground text-sm font-semibold">{pkg.name}</span>
+                    <span className="font-mono text-sm font-bold tabular-nums">
+                      {/* Never the USD figure here, even as a fallback: a gift is
                         always billed in UZS, so a dollar amount next to a
                         package a buyer can still tap Buy on would look
                         payable without being the charged currency (2026-09-04
                         review). `price_uzs === null` (FX down for this
                         zone/package) degrades to the same dash as no price at
                         all. */}
-                    {price?.price_uzs != null
-                      ? formatUzs(locale, Math.round(Number(price.price_uzs)))
-                      : "—"}
-                  </span>
-                </div>
-                {discount !== null && (
-                  <span className="text-primary mt-1 inline-block text-[11px] font-bold">
-                    -{discount}%
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-        {editionSwitchCountry && (
-          <p className="text-tx-dim mt-2 text-[12px] leading-snug">
-            {t("editionSwitchNotice", { country: countryName(editionSwitchCountry, locale) })}
-          </p>
-        )}
-      </div>
-
-      <div>
-        <div className="flex items-center gap-3">
-          <p className="text-tx-dim text-[11px] font-semibold uppercase tracking-[0.08em]">
-            {t("region")}
-          </p>
-          <RegionHint />
-        </div>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {visibleCountries.map((c) => (
-            <CountryButton
-              key={c}
-              country={c}
-              active={c === country}
-              selectedPackage={selectedPackage}
-              countryZone={countryZone}
-              locale={locale}
-              t={t}
-              onSelect={selectCountry}
-            />
-          ))}
-          {overflowCountries.length > 0 && !countryExpanded && (
-            <button
-              type="button"
-              onClick={() => {
-                setCountryExpanded(true);
-              }}
-              className="border-border text-tx-mute hover:border-border-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition"
-            >
-              {t("otherRegion")}
-            </button>
-          )}
-          {countryExpanded &&
-            overflowCountries.map((c) => (
-              <CountryButton
-                key={c}
-                country={c}
-                active={c === country}
-                selectedPackage={selectedPackage}
-                countryZone={countryZone}
-                locale={locale}
-                t={t}
-                onSelect={selectCountry}
-              />
-            ))}
-        </div>
-      </div>
-
-      <div className="border-border/70 border-t pt-4">
-        {selectedPrice ? (
-          selectedPrice.price_uzs != null ? (
-            // The only figure shown — the buyer is charged in UZS, always
-            // (`buyGift` hardcodes `currency: "UZS"`), so a second, USD
-            // number here answered a question nobody asked and left the
-            // buyer guessing which one leaves their account (2026-09-04
-            // review).
-            <span className="font-display text-2xl font-bold tabular-nums">
-              {formatUzs(locale, Math.round(Number(selectedPrice.price_uzs)))}
-            </span>
-          ) : (
-            // FX is down for this zone — never fall back to `price_usd`
-            // here: showing a dollar figure as if it were payable is exactly
-            // what sent a buyer to the acquirer for an unknown soum amount.
-            // Mirrors `PurchasePanel`'s `VariableAmountCard` FX-down card.
-            <div className="border-border bg-card text-tx-mute rounded-lg border border-dashed p-6 text-center text-sm">
-              {ts("priceUnavailable")}
-            </div>
-          )
-        ) : (
-          <p className="text-tx-mute text-sm">{t("noPriceInRegion")}</p>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <label
-          htmlFor={inviteId}
-          className="text-tx-dim text-[11px] font-semibold uppercase tracking-[0.08em]"
-        >
-          {t("inviteLabel")}
-        </label>
-        <input
-          id={inviteId}
-          type="text"
-          value={inviteUrl}
-          onChange={(e) => {
-            setInviteUrl(e.target.value);
-          }}
-          placeholder={t("invitePlaceholder")}
-          aria-invalid={inviteInvalid ? true : undefined}
-          aria-describedby={inviteInvalid ? inviteErrorId : undefined}
-          className="border-border bg-bg rounded-btn h-11 w-full border px-3 text-sm"
-        />
-        {inviteInvalid && (
-          <p id={inviteErrorId} className="text-[13px] text-[#FF6B6B]">
-            {t("inviteError")}
-          </p>
-        )}
-        <InviteGuide />
-      </div>
-
-      {!user && (
-        <div className="space-y-1.5">
-          <label
-            htmlFor={emailId}
-            className="text-tx-dim text-[11px] font-semibold uppercase tracking-[0.08em]"
-          >
-            {ts("emailLabel")}
-          </label>
-          <input
-            id={emailId}
-            type="email"
-            required
-            autoComplete="email"
-            value={email}
-            onChange={(e) => {
-              setEmail(e.target.value);
-            }}
-            placeholder={ts("emailPlaceholder")}
-            aria-invalid={emailInvalid ? true : undefined}
-            aria-describedby={emailInvalid ? emailErrorId : undefined}
-            className="border-border bg-bg rounded-btn h-11 w-full border px-3 text-sm"
-          />
-          {emailInvalid && (
-            <p id={emailErrorId} className="text-[13px] text-[#FF6B6B]">
-              {ta("emailInvalid")}
-            </p>
-          )}
-        </div>
-      )}
-
-      <div>
-        <p className="text-tx-dim mb-2 text-[11px] font-semibold uppercase tracking-[0.08em]">
-          {ts("paymentTitle")}
-        </p>
-        {/* Full width, above the acquirer grid — mirrors `PurchasePanel`'s
-            wallet tile. Hidden outright when an admin disables the wallet
-            entirely; kept visible but unselectable under maintenance, same
-            as an acquirer tile. */}
-        {walletVisibility !== "hidden" && (
-          <>
-            <button
-              type="button"
-              // Only a toggle when there is something to toggle: in the
-              // guest state this button signs you in, and announcing it as
-              // "not pressed" describes a choice that is not on offer.
-              aria-pressed={walletState.state === "guest" ? undefined : payingFromBalance}
-              disabled={
-                walletVisibility !== "active" ||
-                (walletState.state !== "ready" && walletState.state !== "guest")
-              }
-              onClick={() => {
-                if (walletState.state === "guest") {
-                  openLogin();
-                  return;
-                }
-                setMethodId(WALLET_METHOD_ID);
-              }}
-              className={`rounded-btn mb-2 flex w-full items-center gap-3 border px-3 py-3 text-left transition disabled:cursor-not-allowed ${
-                payingFromBalance && walletState.state === "ready"
-                  ? "border-primary bg-primary/10"
-                  : "border-border bg-bg hover:border-border-2"
-              }`}
-            >
-              <span
-                className={`bg-muted flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${
-                  walletState.state === "ready" || walletState.state === "guest"
-                    ? "text-primary"
-                    : "text-tx-dim"
-                }`}
-              >
-                <WalletMark size={18} />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-[13px] font-semibold">{ts("payFromBalance")}</span>
-                <span className="text-tx-dim block text-[12px]">
-                  {walletState.state === "guest"
-                    ? ts("payFromBalanceGuest")
-                    : walletState.state === "maintenance"
-                      ? ts("paymentMaintenance")
-                      : walletState.state === "fxDown"
-                        ? ts("priceUnavailable")
-                        : walletState.state === "short"
-                          ? ts("payFromBalanceShort", {
-                              amount: formatUzs(locale, walletState.missing),
-                            })
-                          : walletState.state === "ready"
-                            ? formatUzs(locale, Math.round(walletState.balance))
-                            : walletState.state === "noTotal"
-                              ? ts("payFromBalanceUnknown")
-                              : ts("payFromBalanceLoading")}
-                </span>
-              </span>
-            </button>
-
-            {/* "Не хватает 45 000" is a fact; this is what to do about it. A
-                new tab so the invite link and picked package survive the
-                trip. */}
-            {walletState.state === "short" && (
-              <Link
-                href={pathFor(locale, "/account/wallet/top-up")}
-                target="_blank"
-                rel="noreferrer"
-                className="text-primary hover:text-primary-2 mb-2 inline-flex items-center gap-1 text-[13px] font-semibold"
-              >
-                {ts("payFromBalanceTopUp")}
-                <ArrowUpRight size={14} />
-              </Link>
-            )}
-          </>
-        )}
-        {anyMethodVisible ? (
-          <div className="grid grid-cols-3 gap-2">
-            {METHODS.map((m) => {
-              const visibility = methodVisibility(m.provider, providerStatus);
-              if (visibility === "hidden") return null;
-              const disabled = visibility === "maintenance";
-              const active = !disabled && m.id === methodId;
-              const statusId = `gift-pay-method-status-${m.id}`;
-              return (
-                <button
-                  key={m.id}
-                  type="button"
-                  // Kept as the bare provider name: the status rides
-                  // `aria-describedby` instead, so the accessible name of a
-                  // tile doesn't change when an acquirer goes down.
-                  aria-label={m.name}
-                  aria-pressed={active}
-                  aria-describedby={disabled ? statusId : undefined}
-                  disabled={disabled}
-                  onClick={() => {
-                    setMethodId(m.id);
-                  }}
-                  className={`rounded-btn relative flex flex-col items-center justify-center gap-1 overflow-hidden border px-3 py-3 transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                    active
-                      ? "border-primary bg-primary/10"
-                      : "border-border bg-bg hover:border-border-2"
-                  }`}
-                >
-                  {/* Overlaid, not stacked — a third line of text inside the
-                      tile would grow it taller than its neighbours. A strip
-                      pinned to the top edge stays out of the flow and is
-                      visible on touch, unlike a `title=` tooltip. */}
-                  {disabled && (
-                    <span
-                      id={statusId}
-                      className="border-border bg-bg/95 text-tx-dim absolute inset-x-0 top-0 z-10 border-b py-[3px] text-center text-[9px] font-bold uppercase leading-none tracking-[0.06em]"
-                    >
-                      {ts("paymentMaintenanceShort")}
+                      {price?.price_uzs != null ? (
+                        formatUzs(locale, Math.round(Number(price.price_uzs)))
+                      ) : (
+                        // A bare "—" read as nothing to a screen reader — the
+                        // visible dash stays, but it now carries real text
+                        // alongside it (2026-09-04 a11y review).
+                        <span>
+                          <span aria-hidden="true">—</span>
+                          <span className="sr-only">{t("noPriceInRegion")}</span>
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  {discount !== null && (
+                    <span className="text-primary mt-1 inline-block text-[11px] font-bold">
+                      -{discount}%
                     </span>
                   )}
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md">
-                    <Image
-                      src={m.icon}
-                      alt=""
-                      width={m.w}
-                      height={m.h}
-                      className="h-full w-full object-cover"
-                    />
-                  </span>
-                  <span className="text-foreground text-[13px] font-semibold">{m.name}</span>
                 </button>
               );
             })}
           </div>
-        ) : (
-          <p className="text-tx-mute text-sm">{ts("paymentNone")}</p>
+          {editionSwitchCountry && (
+            <p className="text-tx-dim mt-2 text-[12px] leading-snug">
+              {t("editionSwitchNotice", { country: countryName(editionSwitchCountry, locale) })}
+            </p>
+          )}
+        </div>
+
+        <div>
+          <div className="flex items-center gap-3">
+            <p className="text-tx-dim text-[11px] font-semibold uppercase tracking-[0.08em]">
+              {t("region")}
+            </p>
+            <RegionHintToggle
+              open={regionHintOpen}
+              onToggle={() => {
+                setRegionHintOpen((o) => !o);
+              }}
+            />
+          </div>
+          {/* Rendered as the row's sibling, not its child — inside the label
+            row above, the row's own `flex` layout squeezed this panel down
+            to ~285px of the available 360px (2026-09-04 review). */}
+          <RegionHintPanel open={regionHintOpen} />
+          <div className="mt-2 flex flex-wrap gap-2">
+            {visibleCountries.map((c) => (
+              <CountryButton
+                key={c}
+                country={c}
+                active={c === country}
+                available={countryAvailable(c)}
+                locale={locale}
+                onSelect={selectCountry}
+              />
+            ))}
+            {overflowCountries.length > 0 && !countryExpanded && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCountryExpanded(true);
+                }}
+                className="border-border text-tx-mute hover:border-border-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition"
+              >
+                {t("otherRegion")}
+              </button>
+            )}
+            {countryExpanded &&
+              overflowCountries.map((c) => (
+                <CountryButton
+                  key={c}
+                  country={c}
+                  active={c === country}
+                  available={countryAvailable(c)}
+                  locale={locale}
+                  onSelect={selectCountry}
+                />
+              ))}
+          </div>
+          {/* Said once for the whole row instead of repeating under every
+            disabled pill (up to eight of them, at 10px, on a nine-country
+            row) — see `hasUnpricedCountry` above (2026-09-04 review). */}
+          {hasUnpricedCountry && (
+            <p className="text-tx-dim mt-2 text-[11px]">{t("noPriceInRegion")}</p>
+          )}
+        </div>
+
+        {/* `aria-live`: a region/edition switch re-prices this silently
+          otherwise — nothing told a screen-reader user the total just
+          changed (2026-09-04 a11y review). */}
+        <div className="border-border/70 border-t pt-4" aria-live="polite">
+          {selectedPrice ? (
+            selectedPrice.price_uzs != null ? (
+              // The only figure shown — the buyer is charged in UZS, always
+              // (`buyGift` hardcodes `currency: "UZS"`), so a second, USD
+              // number here answered a question nobody asked and left the
+              // buyer guessing which one leaves their account (2026-09-04
+              // review).
+              <span className="font-display text-2xl font-bold tabular-nums">
+                {formatUzs(locale, Math.round(Number(selectedPrice.price_uzs)))}
+              </span>
+            ) : (
+              // FX is down for this zone — never fall back to `price_usd`
+              // here: showing a dollar figure as if it were payable is exactly
+              // what sent a buyer to the acquirer for an unknown soum amount.
+              // Mirrors `PurchasePanel`'s `VariableAmountCard` FX-down card.
+              <div className="border-border bg-card text-tx-mute rounded-lg border border-dashed p-6 text-center text-sm">
+                {ts("priceUnavailable")}
+              </div>
+            )
+          ) : (
+            <p className="text-tx-mute text-sm">{t("noPriceInRegion")}</p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <label
+            htmlFor={inviteId}
+            className="text-tx-dim text-[11px] font-semibold uppercase tracking-[0.08em]"
+          >
+            {t("inviteLabel")}
+          </label>
+          <input
+            id={inviteId}
+            type="text"
+            value={inviteUrl}
+            onChange={(e) => {
+              setInviteUrl(e.target.value);
+            }}
+            onBlur={() => {
+              setInviteTouched(true);
+            }}
+            placeholder={t("invitePlaceholder")}
+            aria-invalid={inviteInvalid ? true : undefined}
+            aria-describedby={inviteInvalid ? inviteErrorId : undefined}
+            className="border-border bg-bg rounded-btn h-11 w-full border px-3 text-sm"
+          />
+          {inviteInvalid && (
+            <p id={inviteErrorId} className="text-[13px] text-[#FF6B6B]">
+              {t("inviteError")}
+            </p>
+          )}
+          {/* The free half of the deferred server-side profile checker
+            (Task 6a): the buyer opens the pasted link themselves, in a new
+            tab, and verifies it's the right person before paying
+            (2026-09-04 review). */}
+          {inviteHref && (
+            <a
+              href={inviteHref}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="text-primary inline-flex min-h-[44px] items-center gap-1 text-[13px] font-semibold hover:underline"
+            >
+              {t("openProfileLink")}
+              <ExternalLink size={14} aria-hidden="true" />
+            </a>
+          )}
+          {/* "Ссылка на профиль Steam получателя" reads, to a buyer purchasing
+            for themselves, as though they're in the wrong place — this
+            covers that case inline rather than leaving it unsaid
+            (2026-09-04 review). */}
+          <p className="text-tx-dim text-[12px] leading-snug">{t("inviteSelfNote")}</p>
+          {/* The two sentences that explain the entire model used to sit
+            *below* the Buy button, in 12px dim text — past the decision.
+            Moved here, next to the field where the recipient first becomes
+            a concept (2026-09-04 review). */}
+          <div className="text-tx-dim space-y-1 text-[12px] leading-relaxed">
+            <p>{t("timeline")}</p>
+            <p>{t("accept")}</p>
+          </div>
+          <InviteGuide />
+        </div>
+
+        {!user && (
+          <div className="space-y-1.5">
+            <label
+              htmlFor={emailId}
+              className="text-tx-dim text-[11px] font-semibold uppercase tracking-[0.08em]"
+            >
+              {ts("emailLabel")}
+            </label>
+            <input
+              id={emailId}
+              type="email"
+              required
+              autoComplete="email"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+              }}
+              placeholder={ts("emailPlaceholder")}
+              aria-invalid={emailInvalid ? true : undefined}
+              aria-describedby={emailInvalid ? emailErrorId : undefined}
+              className="border-border bg-bg rounded-btn h-11 w-full border px-3 text-sm"
+            />
+            {emailInvalid && (
+              <p id={emailErrorId} className="text-[13px] text-[#FF6B6B]">
+                {ta("emailInvalid")}
+              </p>
+            )}
+          </div>
         )}
+
+        <div>
+          <p className="text-tx-dim mb-2 text-[11px] font-semibold uppercase tracking-[0.08em]">
+            {ts("paymentTitle")}
+          </p>
+          {/* Full width, above the acquirer grid — mirrors `PurchasePanel`'s
+            wallet tile. Hidden outright when an admin disables the wallet
+            entirely; kept visible but unselectable under maintenance, same
+            as an acquirer tile. */}
+          {walletVisibility !== "hidden" && (
+            <>
+              <button
+                type="button"
+                // Only a toggle when there is something to toggle: in the
+                // guest state this button signs you in, and announcing it as
+                // "not pressed" describes a choice that is not on offer.
+                aria-pressed={walletState.state === "guest" ? undefined : payingFromBalance}
+                disabled={
+                  walletVisibility !== "active" ||
+                  (walletState.state !== "ready" && walletState.state !== "guest")
+                }
+                onClick={() => {
+                  if (walletState.state === "guest") {
+                    openLogin();
+                    return;
+                  }
+                  setMethodId(WALLET_METHOD_ID);
+                }}
+                className={`rounded-btn mb-2 flex w-full items-center gap-3 border px-3 py-3 text-left transition disabled:cursor-not-allowed ${
+                  payingFromBalance && walletState.state === "ready"
+                    ? "border-primary bg-primary/10"
+                    : "border-border bg-bg hover:border-border-2"
+                }`}
+              >
+                <span
+                  className={`bg-muted flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${
+                    walletState.state === "ready" || walletState.state === "guest"
+                      ? "text-primary"
+                      : "text-tx-dim"
+                  }`}
+                >
+                  <WalletMark size={18} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] font-semibold">{ts("payFromBalance")}</span>
+                  <span className="text-tx-dim block text-[12px]">
+                    {walletState.state === "guest"
+                      ? ts("payFromBalanceGuest")
+                      : walletState.state === "maintenance"
+                        ? ts("paymentMaintenance")
+                        : walletState.state === "fxDown"
+                          ? ts("priceUnavailable")
+                          : walletState.state === "short"
+                            ? ts("payFromBalanceShort", {
+                                amount: formatUzs(locale, walletState.missing),
+                              })
+                            : walletState.state === "ready"
+                              ? formatUzs(locale, Math.round(walletState.balance))
+                              : walletState.state === "noTotal"
+                                ? ts("payFromBalanceUnknown")
+                                : ts("payFromBalanceLoading")}
+                  </span>
+                </span>
+              </button>
+
+              {/* "Не хватает 45 000" is a fact; this is what to do about it. A
+                new tab so the invite link and picked package survive the
+                trip. */}
+              {walletState.state === "short" && (
+                <Link
+                  href={pathFor(locale, "/account/wallet/top-up")}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary hover:text-primary-2 mb-2 inline-flex items-center gap-1 text-[13px] font-semibold"
+                >
+                  {ts("payFromBalanceTopUp")}
+                  <ArrowUpRight size={14} />
+                </Link>
+              )}
+            </>
+          )}
+          {anyMethodVisible ? (
+            <div className="grid grid-cols-3 gap-2">
+              {METHODS.map((m) => {
+                const visibility = methodVisibility(m.provider, providerStatus);
+                if (visibility === "hidden") return null;
+                const disabled = visibility === "maintenance";
+                const active = !disabled && m.id === methodId;
+                const statusId = `gift-pay-method-status-${m.id}`;
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    // Kept as the bare provider name: the status rides
+                    // `aria-describedby` instead, so the accessible name of a
+                    // tile doesn't change when an acquirer goes down.
+                    aria-label={m.name}
+                    aria-pressed={active}
+                    aria-describedby={disabled ? statusId : undefined}
+                    disabled={disabled}
+                    onClick={() => {
+                      setMethodId(m.id);
+                    }}
+                    className={`rounded-btn relative flex flex-col items-center justify-center gap-1 overflow-hidden border px-3 py-3 transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                      active
+                        ? "border-primary bg-primary/10"
+                        : "border-border bg-bg hover:border-border-2"
+                    }`}
+                  >
+                    {/* Overlaid, not stacked — a third line of text inside the
+                      tile would grow it taller than its neighbours. A strip
+                      pinned to the top edge stays out of the flow and is
+                      visible on touch, unlike a `title=` tooltip. */}
+                    {disabled && (
+                      <span
+                        id={statusId}
+                        className="border-border bg-bg/95 text-tx-dim absolute inset-x-0 top-0 z-10 border-b py-[3px] text-center text-[9px] font-bold uppercase leading-none tracking-[0.06em]"
+                      >
+                        {ts("paymentMaintenanceShort")}
+                      </span>
+                    )}
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md">
+                      <Image
+                        src={m.icon}
+                        alt=""
+                        width={m.w}
+                        height={m.h}
+                        className="h-full w-full object-cover"
+                      />
+                    </span>
+                    <span className="text-foreground text-[13px] font-semibold">{m.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-tx-mute text-sm">{ts("paymentNone")}</p>
+          )}
+        </div>
+
+        {/* Carries its own state end to end: not payable → names the next
+          required step (was a silently dimmed "Купить" with the reason, if
+          any, only findable via `payHint` below); payable → the amount, so
+          the buyer never has to scroll back up to the total; pending → the
+          existing spinner. Mirrors `TopUp.tsx`'s disabled-label pattern
+          (2026-09-04 review, "ship this first"). */}
+        <button
+          type="button"
+          data-testid="gift-buy-cta"
+          disabled={!canBuy}
+          onClick={() => {
+            setConfirmOpen(true);
+          }}
+          className={buttonStyles({ size: "lg", className: "w-full" })}
+        >
+          {loading ? (
+            <Loader2 size={18} className="animate-spin" aria-hidden="true" />
+          ) : canBuy ? (
+            buyLabel
+          ) : (
+            (payHint ?? t("buy"))
+          )}
+        </button>
+        {error && <p className="text-[13px] text-[#FF6B6B]">{error}</p>}
       </div>
 
-      <button
-        type="button"
-        disabled={!canBuy}
-        onClick={() => void handleBuy()}
-        className={buttonStyles({ size: "lg", className: "w-full" })}
+      <ConfirmPurchaseModal
+        open={confirmOpen}
+        title={ts("confirmTitle")}
+        rows={confirmRows}
+        totalLabel={ts("confirmTotal")}
+        totalValue={
+          selectedPrice?.price_uzs != null
+            ? formatUzs(locale, Math.round(Number(selectedPrice.price_uzs)))
+            : ""
+        }
+        warning={t("confirmWarning")}
+        confirmLabel={ts("confirmCta")}
+        cancelLabel={ts("confirmCancel")}
+        onConfirm={() => {
+          setConfirmOpen(false);
+          void handleBuy();
+        }}
+        onClose={() => {
+          setConfirmOpen(false);
+        }}
+      />
+
+      {/* Mobile sticky checkout bar — mirrors `PurchasePanel`'s: total +
+          blocking reason, primary when payable, a ghost that scrolls to the
+          form when not. The gift page had none at all (2026-09-04 review):
+          on mobile, the total sat a full screen above the fold by the time
+          the buyer reached the fields that block Buy. */}
+      <div
+        className={`border-border bg-bg/95 fixed inset-x-0 bottom-0 z-40 border-t px-4 pt-3 backdrop-blur-xl transition-transform duration-200 [padding-bottom:calc(0.75rem+env(safe-area-inset-bottom))] lg:hidden ${
+          barHidden ? "pointer-events-none translate-y-full" : "translate-y-0"
+        }`}
       >
-        {loading ? <Loader2 size={18} className="animate-spin" aria-hidden="true" /> : t("buy")}
-      </button>
-      {error && <p className="text-[13px] text-[#FF6B6B]">{error}</p>}
-
-      <div className="text-tx-dim space-y-1 text-[12px] leading-relaxed">
-        <p>{t("timeline")}</p>
-        <p>{t("accept")}</p>
+        <div className="mx-auto flex max-w-[1200px] items-center justify-between gap-4">
+          <div className="min-w-0">
+            <div className="text-tx-mute truncate text-[11px] font-semibold">
+              {canBuy || !payHint ? t("buy") : payHint}
+            </div>
+            <div className="font-display truncate text-lg font-bold leading-tight">
+              {priceUnavailable
+                ? "—"
+                : selectedPrice?.price_uzs != null
+                  ? formatUzs(locale, Math.round(Number(selectedPrice.price_uzs)))
+                  : "—"}
+            </div>
+          </div>
+          <button
+            type="button"
+            data-testid="gift-buy-sticky"
+            onClick={() => {
+              if (canBuy) setConfirmOpen(true);
+              else panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+            className={buttonStyles({
+              size: "lg",
+              variant: canBuy ? "primary" : "ghost",
+              className: "shrink-0",
+            })}
+          >
+            {loading ? (
+              <Loader2 size={18} className="animate-spin" aria-hidden="true" />
+            ) : canBuy ? (
+              t("buy")
+            ) : (
+              ts("goToPay")
+            )}
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
-/** One country pill: flag + localized name, priced from the zone that
- *  covers it. Disabled *with visible text* (not a `title=` tooltip, which
- *  is invisible on mobile) when the currently selected package has no
- *  price in that zone. */
+/** One country pill: flag + localized name. `available` (whether the
+ *  currently selected package prices this country's zone) comes from the
+ *  parent's `countryAvailable` — a visible-row pill is always priced (see
+ *  the visible/overflow split above), but an *overflow* pill can still be
+ *  unpriced, disabled here without its own caption: the whole row explains
+ *  that once via `hasUnpricedCountry`/`noPriceInRegion` instead of
+ *  repeating "нет цены…" under every disabled pill (2026-09-04 review). */
 function CountryButton({
   country,
   active,
-  selectedPackage,
-  countryZone,
+  available,
   locale,
-  t,
   onSelect,
 }: {
   country: string;
   active: boolean;
-  selectedPackage: GiftPackage | null;
-  countryZone: Map<string, string>;
+  available: boolean;
   locale: string;
-  t: ReturnType<typeof useTranslations>;
   onSelect: (country: string) => void;
 }) {
-  const zone = countryZone.get(country);
-  const available =
-    zone !== undefined && (selectedPackage?.prices.some((p) => p.zone === zone) ?? false);
   return (
     <button
       type="button"
@@ -877,21 +1164,14 @@ function CountryButton({
       onClick={() => {
         onSelect(country);
       }}
-      className={`flex flex-col items-start gap-0.5 rounded-lg border px-3 py-1.5 text-left text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+      className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-left text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
         active
           ? "border-primary bg-primary/10 text-primary"
           : "border-border text-tx-mute hover:border-border-2"
       }`}
     >
-      <span className="inline-flex items-center gap-1.5">
-        <span aria-hidden="true">{flagEmoji(country)}</span>
-        {countryName(country, locale)}
-      </span>
-      {!available && (
-        <span className="text-tx-dim text-[10px] font-normal normal-case">
-          {t("noPriceInRegion")}
-        </span>
-      )}
+      <span aria-hidden="true">{flagEmoji(country)}</span>
+      {countryName(country, locale)}
     </button>
   );
 }

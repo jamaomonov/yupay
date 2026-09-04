@@ -48,3 +48,28 @@ it("renders no price row at all when the catalog has no UZS reference price", ()
 
   expect(screen.queryByText("from")).not.toBeInTheDocument();
 });
+
+/**
+ * "1 издание · 0 DLC" was printed on almost every card — true of the vast
+ * majority of the ~4k-game catalog — which made it noise rather than
+ * information (2026-09-04 review). It only earns its line once there's an
+ * actual choice: more than one edition, or at least one DLC.
+ */
+it("hides the editions/DLC counter for the common single-edition, no-DLC case", () => {
+  render(<GiftCard app={makeApp({ packages_count: 1, dlc_count: 0 })} locale="ru" />);
+
+  expect(screen.queryByText(/card\.editions/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/card\.dlc/)).not.toBeInTheDocument();
+});
+
+it("shows the counter once there is more than one edition", () => {
+  render(<GiftCard app={makeApp({ packages_count: 2, dlc_count: 0 })} locale="ru" />);
+
+  expect(screen.getByText(/card\.editions/)).toBeInTheDocument();
+});
+
+it("shows the counter once the app has at least one DLC", () => {
+  render(<GiftCard app={makeApp({ packages_count: 1, dlc_count: 3 })} locale="ru" />);
+
+  expect(screen.getByText(/card\.dlc/)).toBeInTheDocument();
+});

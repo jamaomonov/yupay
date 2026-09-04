@@ -11,6 +11,7 @@
 
 import { apiFetch } from "@/lib/client";
 import { collectClientHints } from "@/lib/client-hints";
+import { uzsWord } from "@/lib/seo";
 import { type WalletBalance } from "@/lib/wallet-balance";
 
 /** The charge currency for every acquirer the storefront offers. */
@@ -186,7 +187,9 @@ export const QUICK_AMOUNTS: Record<string, number[]> = {
   UZS: [50_000, 100_000, 250_000, 500_000, 1_000_000],
 };
 
-/** Format a ledger amount in its own currency.
+/** Format a ledger amount in its own currency. Unsigned — the debit/credit
+ *  sign is the caller's job (`account/wallet/page.tsx` prefixes "+"/"−" onto
+ *  `Math.abs(row.delta)` itself); this never folds a sign into the string.
  *
  * `formatUzs` is hardcoded to soum, and the API supports a USDT wallet — a $25
  * movement would have rendered as "25 UZS". Rows carry their currency; use it.
@@ -194,6 +197,14 @@ export const QUICK_AMOUNTS: Record<string, number[]> = {
 export function formatLedgerAmount(locale: string, amount: number, currency: string): string {
   const intlLocale = locale === "ru" ? "ru-RU" : locale === "uz" ? "uz-UZ" : "en-US";
   const maximumFractionDigits = currency === "UZS" ? 0 : 2;
+  if (currency === "UZS") {
+    // Same fix as `formatUzs`: `Intl`'s `style:"currency"` prints the bare
+    // ISO code ("150 000 UZS"), not the word every other soum price in the
+    // storefront uses — the wallet history was the one page still doing
+    // that (2026-09-04 review).
+    const number = new Intl.NumberFormat(intlLocale, { maximumFractionDigits }).format(amount);
+    return `${number} ${uzsWord(locale)}`;
+  }
   try {
     return new Intl.NumberFormat(intlLocale, {
       style: "currency",

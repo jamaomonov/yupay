@@ -121,6 +121,15 @@ export function GiftsBrowser({ locale, initial }: { locale: string; initial: Gif
         />
       </div>
 
+      {/* Reads as the catalogue count while browsing and the match count
+          mid-search alike — `total` already carries both (2026-09-04
+          review: the ~4k-game catalog gave no sense of scale, filtered or
+          not). Hidden during a first-page fetch/error, where `total` is
+          either stale or meaningless. */}
+      {!showError && !showSkeletons && (
+        <p className="text-tx-dim mt-3 text-[13px]">{t("search.resultCount", { count: total })}</p>
+      )}
+
       {showError ? (
         <div className="mt-10 flex flex-col items-center gap-3 text-center">
           <p className="text-tx-mute text-[14px]">{t("search.error")}</p>
@@ -139,7 +148,16 @@ export function GiftsBrowser({ locale, initial }: { locale: string; initial: Gif
           ))}
         </div>
       ) : items.length === 0 ? (
-        <p className="text-tx-mute mt-10 text-center text-[14px]">{t("search.empty")}</p>
+        <div className="mt-10 flex flex-col items-center gap-3 text-center">
+          <p className="text-tx-mute text-[14px]">{t("search.empty")}</p>
+          {/* A dead end used to be the whole state — nothing on screen
+              offered anywhere to go next (2026-09-04 review). `#hot` is the
+              hot-offers section on this same page (`HotOffers`), just above
+              this component. */}
+          <a href="#hot" className="text-primary text-[13px] font-semibold hover:underline">
+            {t("search.emptyCta")}
+          </a>
+        </div>
       ) : (
         <>
           <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">

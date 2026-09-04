@@ -130,8 +130,12 @@ export const GEO_META: Record<string, string> = {
  * word ("soʻm") for free. `formatMoney` in
  * `apps/miniapp/src/lib/currency.ts` carries the identical mapping — keep
  * the two in sync.
+ *
+ * Exported so `wallet.ts::formatLedgerAmount` can reuse the same word for a
+ * UZS ledger row instead of falling back to `Intl`'s bare ISO code the way
+ * `formatUzs` itself used to (2026-09-04 review).
  */
-function uzsWord(locale: string): string {
+export function uzsWord(locale: string): string {
   if (locale === "ru") return "сум";
   if (locale === "uz") return "soʻm";
   return "UZS";
