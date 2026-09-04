@@ -28,9 +28,11 @@ Resolution, per canonical link shape:
   that it is 17 digits, not that such an account has ever existed.
 - ``steamcommunity.com/id/{vanity}`` — resolved via
   ``ISteamUser/ResolveVanityURL/v1/``. This is the one Steam call in the
-  whole flow allowed to answer definitively that a link does *not* exist:
-  ``success != 1`` becomes ``"not_found"``; anything else about that call
-  failing becomes ``"unavailable"``.
+  whole flow allowed to answer definitively that a link does *not* exist,
+  and it only does so on Steam's documented "No match": ``success == 42``
+  becomes ``"not_found"``. ``success == 1`` resolves; every other value,
+  documented or not, is ``"unavailable"`` along with anything else about
+  that call failing (see :func:`_resolve_vanity`).
 - ``s.team/p/{path}`` — a friend-invite token, not a profile. The Web API
   cannot resolve these at all, so this is ``"unsupported"`` with no Steam
   call made, ever.
@@ -93,6 +95,10 @@ _UNAVAILABLE = GiftProfileOut(status="unavailable", steam_id=None, nickname=None
 _UNSUPPORTED = GiftProfileOut(status="unsupported", steam_id=None, nickname=None, avatar_url=None)
 _NOT_FOUND = GiftProfileOut(status="not_found", steam_id=None, nickname=None, avatar_url=None)
 
+#: ``ResolveVanityURL``'s documented "No match" code — the only value that may
+#: become ``status="not_found"``. See :func:`_resolve_vanity`.
+_RESOLVE_NO_MATCH = 42
+
 
 async def _resolve_vanity(vanity: str, *, api_key: str, http: httpx.AsyncClient) -> str | None:
     """Resolve a vanity name to a steamid64 via ``ISteamUser/ResolveVanityURL/v1/``.
@@ -104,32 +110,40 @@ async def _resolve_vanity(vanity: str, *, api_key: str, http: httpx.AsyncClient)
         http: the client to issue the request on.
 
     Returns:
-        The resolved steamid64, or ``None`` on Steam's own definitive
-        ``success != 1`` "no such profile" answer — the single signal in
-        this whole module allowed to become ``status="not_found"``.
+        The resolved steamid64, or ``None`` on Steam's own documented
+        ``success == 42`` ("No match") answer — the single signal in this
+        whole module allowed to become ``status="not_found"``.
 
     Raises:
         httpx.HTTPError: transport failure or a non-2xx response.
         ValueError: the response body was 200 but not shaped like a
-            ``ResolveVanityURL`` answer (e.g. ``success == 1`` with no
-            ``steamid``). The caller folds every one of these into
-            ``"unavailable"`` — they mean "we could not ask", never "we
-            asked and Steam said no".
+            ``ResolveVanityURL`` answer — ``success == 1`` with no
+            ``steamid``, or any ``success`` value Steam does not document.
+            The caller folds every one of these into ``"unavailable"`` —
+            they mean "we could not ask", never "we asked and Steam said
+            no".
     """
     resp = await http.get(_RESOLVE_VANITY_URL, params={"key": api_key, "vanityurl": vanity})
     resp.raise_for_status()
     body = resp.json().get("response", {})
-    # Steam documents only two values: `1` (resolved) and `42` ("No match").
-    # Treating every other value as "no match" too is deliberate, not an
-    # oversight -- there is nothing else a definitive verdict could mean,
-    # and it keeps this module from having to track Steam's undocumented
-    # error codes to stay correct.
-    if body.get("success") == 1:
+    success = body.get("success")
+    if success == 1:
         steamid = body.get("steamid")
         if isinstance(steamid, str) and steamid:
             return steamid
         raise ValueError("ResolveVanityURL reported success without a steamid")
-    return None
+    # Steam documents exactly two values: `1` (resolved) and `42` ("No
+    # match"). Only `42` becomes `not_found`. An undocumented value means we
+    # could not get an answer -- the same class of event as a timeout or a
+    # 500, which this module already calls `unavailable` -- and this call is
+    # the module's ONLY producer of `not_found`, the only verdict that
+    # hard-blocks a paying buyer with no override in either UI. The one
+    # blocking verdict earns the strictest evidence: unknown means unknown
+    # (2026-09-04 review round 1; this used to read every non-`1` value as a
+    # definitive "no such profile").
+    if success == _RESOLVE_NO_MATCH:
+        return None
+    raise ValueError("ResolveVanityURL returned an undocumented success value")
 
 
 def _describe_error(exc: Exception) -> str:

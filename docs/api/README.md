@@ -175,9 +175,13 @@ checkout and vice versa; an unrecognised shape is a `422`, same as checkout.
 
 Response is `GiftProfileOut { status, steam_id, nickname, avatar_url }` with
 `status` one of `found | not_found | unsupported | unavailable`. Only
-`"not_found"` — Steam's own definitive "no such profile", surfaced only for
-an `/id/{vanity}` link via `ResolveVanityURL` — is meant to block the buyer;
-the frontend treats `"found"`, `"unsupported"` (an `s.team` friend-invite
+`"not_found"` — Steam's own definitive "no such profile" — is meant to block
+the buyer. It is surfaced only for an `/id/{vanity}` link whose
+`ResolveVanityURL` call answered with the documented `success: 42` ("No
+match"); any other non-`1` value is an undocumented condition on Steam's
+side and reads as `"unavailable"`, because the one verdict that hard-blocks
+a paying buyer earns the strictest evidence.
+The frontend treats `"found"`, `"unsupported"` (an `s.team` friend-invite
 link, which the Web API cannot resolve at all — no Steam call is made for
 that shape), and `"unavailable"` (no API key configured, Steam unreachable,
 timed out, an unparseable response, or `GetPlayerSummaries` coming back

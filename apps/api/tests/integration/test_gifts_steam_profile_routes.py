@@ -149,6 +149,56 @@ async def test_unknown_vanity_is_not_found(
     assert body["avatar_url"] is None
 
 
+@respx.mock
+async def test_an_undocumented_resolve_success_code_is_unavailable_not_not_found(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unknown ``success`` means "we could not ask", never "Steam said no".
+
+    ``ResolveVanityURL`` is this module's only producer of ``not_found``, and
+    ``not_found`` is the only verdict that hard-blocks a paying buyer, with no
+    override in either UI. Steam documents exactly two values -- ``1``
+    (resolved) and ``42`` ("No match") -- so anything else is an undocumented
+    condition on Steam's side, which is the same class of event as a timeout
+    or a 500: everywhere else this module already calls that ``unavailable``.
+    Treating it as a definitive negative made the one blocking verdict rest on
+    the weakest evidence in the file (2026-09-04 review round 1).
+    """
+    _enable(monkeypatch)
+    respx.get(_RESOLVE_URL).mock(
+        return_value=httpx.Response(200, json={"response": {"success": 15, "message": "???"}})
+    )
+    # No _SUMMARIES_URL mock armed: an unresolved vanity must not reach
+    # GetPlayerSummaries either way.
+
+    r = await _check(integration_client, _VANITY_LINK)
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "unavailable"
+    assert body["steam_id"] is None
+
+
+@respx.mock
+async def test_an_undocumented_resolve_success_code_is_never_cached(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """...and being ``unavailable``, it must not be written to Redis.
+
+    Caching it would keep repeating a transient Steam-side condition back at
+    the next buyer for six hours.
+    """
+    _enable(monkeypatch)
+    route = respx.get(_RESOLVE_URL).mock(
+        return_value=httpx.Response(200, json={"response": {"success": 15}})
+    )
+
+    await _check(integration_client, _VANITY_LINK)
+    await _check(integration_client, _VANITY_LINK)
+
+    assert route.call_count == 2
+
+
 # ---------- s.team friend-invite links ----------
 
 
