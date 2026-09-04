@@ -2,6 +2,7 @@ import { ArrowLeft } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useParams } from "wouter";
 
+import type { GiftProfileResult } from "@/lib/gift-profile";
 import type { GiftAppDetail, GiftPackage, GiftRegion } from "@/lib/gifts";
 import type { MessageKey } from "@/lib/i18n";
 import type { MethodVisibility, ProviderAvailability } from "@/lib/orders";
@@ -17,6 +18,7 @@ import { SafeImage } from "@/components/ui/safe-image";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { ApiError, newIdempotencyKey } from "@/lib/api";
+import { checkGiftProfile, profileCheckState } from "@/lib/gift-profile";
 import {
   extractExpectedAmount,
   fetchGiftDetail,
@@ -318,6 +320,14 @@ export function walletSubmitReady({
  * fallback and no explanation. Checked in `canBuy`'s own position (after
  * the invite checks, before the payment-method one).
  *
+ * `profileBlocks`: the pre-purchase recipient check's single blocking
+ * verdict (`profileCheckState(...).blocks` — Steam's own "no such profile").
+ * Everything else the check can say — an unsupported `s.team` invite token,
+ * a Steam outage, our own API failing — never reaches here, because a check
+ * that fails on OUR side must never cost a sale. Placed after the two invite
+ * checks (a verdict can only exist for a link that parsed) and before the
+ * SKU one, matching `canBuy`'s own order.
+ *
  * `methodReady`/`submitReady` collapse into one `payHintMethod` hint,
  * mirroring the web panel's own `!selectedMethodActive` — "choose a
  * payment method" covers both "no acquirer picked yet" and "the wallet is
@@ -328,6 +338,7 @@ export function giftPayHint({
   priceAvailability,
   inviteHasValue,
   inviteValid,
+  profileBlocks,
   skuId,
   methodReady,
   submitReady,
@@ -335,6 +346,7 @@ export function giftPayHint({
   priceAvailability: GiftPriceAvailability;
   inviteHasValue: boolean;
   inviteValid: boolean;
+  profileBlocks: boolean;
   skuId: string | null;
   methodReady: boolean;
   submitReady: boolean;
@@ -343,6 +355,7 @@ export function giftPayHint({
   if (priceAvailability === "fxDown") return "topup.priceUnavailable";
   if (!inviteHasValue) return "gifts.game.payHintInvite";
   if (!inviteValid) return "gifts.game.payHintInviteInvalid";
+  if (profileBlocks) return "gifts.game.payHintProfileNotFound";
   if (skuId === null) return "gifts.game.payHintLoading";
   if (!methodReady || !submitReady) return "gifts.game.payHintMethod";
   return null;
@@ -538,6 +551,18 @@ export default function GiftGame() {
   // whether the error paragraph renders.
   const [inviteFieldTouched, setInviteFieldTouched] = useState(false);
   const [inviteIdle, setInviteIdle] = useState(false);
+  // The pre-purchase recipient check («Проверить»). The verdict is stored
+  // together with the link it was asked about and read back only while the
+  // field still holds that same link (`profileCheckState`) — editing the link
+  // resets the check with no effect to keep in sync, and an answer that lands
+  // after the buyer already corrected the link is discarded rather than shown
+  // against a profile they no longer mean.
+  const [profile, setProfile] = useState<GiftProfileResult | null>(null);
+  const [profileChecking, setProfileChecking] = useState(false);
+  // Set when «Проверить» is pressed on a field it cannot run against, so the
+  // empty-field case can say what's missing. Only "you haven't pasted the
+  // link yet" needs it — a *wrong* link already has its own visible error.
+  const [checkAttempted, setCheckAttempted] = useState(false);
   const seqRef = useRef(0);
   // The sticky `Idempotency-Key` for `POST /orders`, kept alongside the
   // `orderFingerprint` it was minted for — a ref, not state, since neither
@@ -741,6 +766,76 @@ export default function GiftGame() {
     touched: inviteFieldTouched,
     idle: inviteIdle,
   });
+  // Everything the check currently has to say about the link in the field —
+  // the confirmation card, the one blocking alert, the advisory note, and
+  // whether Buy is blocked at all. See `lib/gift-profile.ts`.
+  const profileState = profileCheckState({
+    result: profile,
+    inviteUrl,
+    attempted: checkAttempted,
+  });
+
+  function changeInviteUrl(value: string): void {
+    setInviteUrl(value);
+    // The flag means "«Проверить» was pressed with nothing to check", and any
+    // edit — including selecting all and deleting — makes that stale. Leaving
+    // it set meant the hint came back every later time the field went empty,
+    // with no press behind it: spoken into the middle of the buyer's own
+    // retyping, since the note lives in a polite live region.
+    setCheckAttempted(false);
+  }
+
+  async function runProfileCheck(): Promise<void> {
+    const url = inviteUrl.trim();
+    // The canonical form is what the server is asked about — the same string
+    // `handleBuy` puts in `fulfillment_data.invite_url`, so the check answers
+    // for exactly the link that will be bought. The raw trimmed text stays the
+    // key the verdict is filed under, since that is what the field holds.
+    const canonical = validateInviteUrl(url);
+    if (canonical === null) {
+      // A dimmed control that swallows the tap teaches nothing. Pressing it
+      // answers either way: a *wrong* link gets the visible link error the
+      // field would otherwise hold back until blur or the idle pause, and an
+      // *empty* one gets the "paste the link first" note — which the link
+      // error cannot produce, since it requires a non-empty value.
+      setInviteFieldTouched(true);
+      setCheckAttempted(true);
+      // No haptic here on purpose: the buzz reports the *check's* answer, and
+      // this path never asked anything — same rule `DynamicFields` follows,
+      // where haptics fire only on a resolved `PlayerCheckResult`.
+      return;
+    }
+    setProfileChecking(true);
+    try {
+      const check = await checkGiftProfile(canonical);
+      setProfile({ url, check });
+      // A resolved recipient is the strongest "we see who this is going to"
+      // signal in the flow and a rejection is the cheapest moment to catch a
+      // typo; the non-blocking verdicts are neither, so they get the neutral
+      // tick rather than an error buzz for a fault that was never the
+      // buyer's.
+      haptic(check.status === "found" ? "ok" : check.status === "not_found" ? "error" : "select");
+    } catch {
+      // `checkGiftProfile` never rejects (see its doc comment). This is here
+      // so the page stays correct on its own if that ever changes — with it,
+      // `runProfileCheck` itself cannot reject either, which is what makes
+      // the bare `void runProfileCheck()` at the call site safe.
+      setProfile({ url, check: { status: "unavailable" } });
+    } finally {
+      setProfileChecking(false);
+    }
+  }
+
+  /** Reopen the collapsed field from the card's «Изменить». */
+  function reopenInvite(): void {
+    setProfile(null);
+    // Belt-and-braces: the load-bearing reset is `changeInviteUrl`, which
+    // every route from "pressed «Проверить» on an empty field" to a collapsed
+    // card runs through, so the flag is already false by the time this can be
+    // called. Kept so it cannot outlive its meaning if another way of setting
+    // it is ever added.
+    setCheckAttempted(false);
+  }
   // Resolved through the FULL map so a wallet selection resolves to the
   // `"wallet"` provider `performCheckout` expects instead of `undefined`
   // (which would silently block Buy — `PROVIDER_BY_METHOD` alone has no
@@ -763,6 +858,12 @@ export default function GiftGame() {
     priceAvailability === "priced" &&
     selectedCountry !== null &&
     canonicalInvite !== null &&
+    // The single new condition on the purchase. `profileState.blocks` is true
+    // for exactly one verdict — Steam's own "no such profile" — so an
+    // unsupported link type, a Steam outage, and a link nobody checked all
+    // leave the buyer free to pay: a check that fails on our side must never
+    // cost a sale.
+    !profileState.blocks &&
     skuId !== null &&
     methodReady &&
     submitReady &&
@@ -774,6 +875,7 @@ export default function GiftGame() {
     priceAvailability,
     inviteHasValue,
     inviteValid,
+    profileBlocks: profileState.blocks,
     skuId,
     methodReady,
     submitReady,
@@ -790,11 +892,10 @@ export default function GiftGame() {
   // a paid game to a stranger, with no way to undo it once the bot sends
   // the friend invite. `TopUp` already gets this guard (`ConfirmPaymentDialog`);
   // this flow used to call `handleBuy()` straight from the inline Buy button
-  // (2026-09-04 review). There is no field here a supplier can verify the
-  // way `TopUp`'s `DynamicFields` sometimes can — the recipient link is
-  // exactly what the deferred server-side profile checker (Task 6a) would
-  // verify — so `needsAttestation` is unconditionally `true` below, not a
-  // computed `hasVerifiableField`.
+  // (2026-09-04 review). The recipient check is advisory and skippable — the
+  // buyer may never press «Проверить» at all — so `needsAttestation` stays
+  // unconditionally `true` below rather than becoming a computed
+  // `hasVerifiableField`: this dialog is still the last human check.
   const confirmRows: ConfirmRow[] = [
     { label: t("gifts.game.edition"), value: selectedPackage?.name ?? "" },
     {
@@ -803,7 +904,23 @@ export default function GiftGame() {
         ? `${flagEmoji(selectedCountry)} ${countryName(selectedCountry, locale)}`
         : "",
     },
-    { label: t("gifts.game.confirmProfile"), value: canonicalInvite ?? inviteUrl.trim() },
+    {
+      label: t("gifts.game.confirmProfile"),
+      // The dialog's own warning says «Проверьте профиль получателя перед
+      // оплатой» — so when the check has already answered that, the answer
+      // belongs here, on the last screen before an irreversible gift, not
+      // just up in the form. A URL the buyer has stopped reading is not
+      // evidence; a name is. Falls back to the link alone when no check ran.
+      //
+      // Safe to join into one text node: the nickname is third-party text,
+      // but `checkGiftProfile` has already stripped the bidi override
+      // controls that would let it reorder the link it sits next to (see
+      // `stripBidiControls`) — done once at that boundary rather than
+      // isolated at each place persona text renders.
+      value: profileState.found
+        ? `${profileState.found.nickname} · ${canonicalInvite ?? inviteUrl.trim()}`
+        : (canonicalInvite ?? inviteUrl.trim()),
+    },
   ];
 
   /**
@@ -1277,7 +1394,8 @@ export default function GiftGame() {
 
           <GiftBuyPanel
             inviteUrl={inviteUrl}
-            onInviteUrlChange={setInviteUrl}
+            inviteValid={inviteValid}
+            onInviteUrlChange={changeInviteUrl}
             onInviteBlur={() => {
               setInviteFieldTouched(true);
             }}
@@ -1285,6 +1403,12 @@ export default function GiftGame() {
             onOpenGuide={() => {
               setGuideOpen(true);
             }}
+            profile={profileState}
+            profileChecking={profileChecking}
+            onCheckProfile={() => {
+              void runProfileCheck();
+            }}
+            onReopenInvite={reopenInvite}
             skuStatus={skuStatus}
             methodId={methodId}
             providerStatusBySlug={providerStatusBySlug}
@@ -1337,11 +1461,10 @@ export default function GiftGame() {
         rows={confirmRows}
         total={price ? priceLabel(price, t("gifts.priceUnavailable")) : ""}
         warning={t("gifts.game.confirmWarning")}
-        // There is no field here a supplier can verify the way `TopUp`'s
-        // `DynamicFields` sometimes can (see `confirmRows`'s docstring) —
-        // the recipient link is exactly what the deferred server-side
-        // profile checker (Task 6a) would verify, so this dialog is
-        // unconditionally the last human check.
+        // The recipient check above is advisory and skippable (see
+        // `confirmRows`), so this dialog is unconditionally the last human
+        // check — even a confirmed nickname does not remove the need to
+        // agree that the gift is going to that person.
         needsAttestation
         // The default checkbox text asks the buyer to re-check "the data in
         // the game" — there is none here, so a buyer who ticks it reflexively

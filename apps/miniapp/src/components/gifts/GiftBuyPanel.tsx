@@ -1,7 +1,7 @@
-import { useId } from "react";
-
+import type { ProfileCheckState } from "@/lib/gift-profile";
 import type { MethodVisibility, ProviderAvailability } from "@/lib/orders";
 
+import { InviteField } from "@/components/gifts/InviteField";
 import { PaymentMethodGrid } from "@/components/gifts/PaymentMethodGrid";
 import { WalletPayOption } from "@/components/WalletPayOption";
 import { useT } from "@/lib/i18n";
@@ -23,15 +23,21 @@ import { PAYMENT_METHODS } from "@/lib/payment-methods";
  * sat a screen above it. This panel only ever renders inputs, so it has no
  * `canBuy`/`isPending`/`onBuy` prop any more.
  *
- * Extracted out of `GiftGame.tsx` (2026-09-03 review) purely to keep that
- * file near the repo's TS file-length budget — no behaviour change.
+ * The recipient field and its «Проверить» check live in `InviteField`, split
+ * out for the same reason this panel was split out of `GiftGame.tsx`
+ * (2026-09-03 review): the repo's 300-LOC soft limit for TS.
  */
 export function GiftBuyPanel({
   inviteUrl,
+  inviteValid,
   onInviteUrlChange,
   onInviteBlur,
   showInviteError,
   onOpenGuide,
+  profile,
+  profileChecking,
+  onCheckProfile,
+  onReopenInvite,
   skuStatus,
   methodId,
   providerStatusBySlug,
@@ -46,14 +52,17 @@ export function GiftBuyPanel({
   onSelectWallet,
 }: {
   inviteUrl: string;
+  inviteValid: boolean;
   onInviteUrlChange: (value: string) => void;
-  /** Flips the invite field's "touched" flag — one of the two triggers
-   *  (alongside a short idle pause) that lets `showInviteError` actually
-   *  render, instead of firing on the very first keystroke. See
-   *  `GiftGame.tsx::showInviteInvalid`. */
   onInviteBlur: () => void;
   showInviteError: boolean;
   onOpenGuide: () => void;
+  /** `GiftGame.tsx`'s `profileCheckState(...)` — the whole render decision
+   *  for the pre-purchase recipient check. */
+  profile: ProfileCheckState;
+  profileChecking: boolean;
+  onCheckProfile: () => void;
+  onReopenInvite: () => void;
   skuStatus: "loading" | "ready" | "unavailable";
   methodId: string;
   providerStatusBySlug: Map<string, ProviderAvailability> | null;
@@ -68,57 +77,31 @@ export function GiftBuyPanel({
   onSelectWallet: () => void;
 }) {
   const { t } = useT();
-  // The single required field in the whole checkout, and previously the
-  // one with NO label association at all — a `<label>` with no `htmlFor`
-  // next to an `<input>` with no `id` (2026-09-04 accessibility audit): a
-  // screen reader announced only "text field". `useId()` mirrors the web
-  // storefront sibling (`GiftPurchasePanel.tsx`), which already does this
-  // correctly.
-  const inviteId = useId();
-  const inviteErrorId = useId();
   return (
     <>
-      {/* Invite link */}
       <div className="space-y-2">
-        <label
-          htmlFor={inviteId}
-          className="text-[11px] font-semibold uppercase tracking-wide text-white/50"
-        >
-          {t("gifts.game.inviteLabel")}
-        </label>
-        <input
-          id={inviteId}
-          type="text"
-          value={inviteUrl}
-          onChange={(e) => {
-            onInviteUrlChange(e.target.value);
-          }}
-          onBlur={onInviteBlur}
-          placeholder={t("gifts.game.invitePlaceholder")}
-          aria-invalid={showInviteError}
-          aria-describedby={showInviteError ? inviteErrorId : undefined}
-          className="h-11 w-full rounded-xl border bg-transparent px-3 text-sm text-white outline-none"
-          style={{ borderColor: "hsl(var(--border))" }}
+        <InviteField
+          inviteUrl={inviteUrl}
+          inviteValid={inviteValid}
+          onInviteUrlChange={onInviteUrlChange}
+          onInviteBlur={onInviteBlur}
+          showInviteError={showInviteError}
+          onOpenGuide={onOpenGuide}
+          profile={profile}
+          checking={profileChecking}
+          onCheck={onCheckProfile}
+          onReopen={onReopenInvite}
         />
-        {showInviteError && (
-          <p id={inviteErrorId} className="text-[13px] text-red-400">
-            {t("gifts.game.inviteError")}
-          </p>
-        )}
-        <button
-          type="button"
-          onClick={onOpenGuide}
-          className="text-primary text-[13px] font-semibold"
-        >
-          {t("gifts.game.inviteGuideCta")}
-        </button>
         {/* The two sentences that explain the entire model used to sit
             *below* the payment section, past the decision, in 12px dim
             text. Moved here, next to the field where the recipient first
             becomes a concept (2026-09-04 review, mirrors
-            `GiftPurchasePanel.tsx` on the web storefront). Also the
-            contrast fix for this caption: `white/40` measured 3.68–3.81:1
-            on this app's surfaces, below the 4.5:1 floor for 12px text. */}
+            `GiftPurchasePanel.tsx` on the web storefront). Unlike the guide
+            link inside `InviteField`, these survive a confirmed recipient:
+            what the gift *is* and how it arrives stays true after the check.
+            Also the contrast fix for this caption: `white/40` measured
+            3.68–3.81:1 on this app's surfaces, below the 4.5:1 floor for
+            12px text. */}
         <div className="space-y-1 text-[12px] leading-relaxed text-white/50">
           <p>{t("gifts.game.timeline")}</p>
           <p>{t("gifts.game.accept")}</p>

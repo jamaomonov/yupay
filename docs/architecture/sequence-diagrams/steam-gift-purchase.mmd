@@ -5,6 +5,7 @@ sequenceDiagram
     participant API as FastAPI (gifts / orders)
     participant Cache as Redis (gifts:*)
     participant GE as G-Engine (/gifts/*)
+    participant Steam as Steam Web API
     participant DB as Postgres
     participant Sched as apps/scheduler (gengine_reconcile, 60s)
 
@@ -30,6 +31,15 @@ sequenceDiagram
         Note over API,GE: same fresh -> upstream -> gifts:detail:{app_id}:stale<br/>fallback on a G-Engine outage (logged gifts.catalog_stale)
         API-->>Web: packages priced per offered zone (CIS/RU/KZ/UA)
         C->>Web: Pick edition (package) + region, paste Steam invite link
+        opt Buyer presses «Проверить» (optional, both surfaces)
+            Web->>API: POST /gifts/steam-profile {invite_url}
+            Note over Web,API: a body, never a query string — the recipient's link is<br/>a third party's identity and Caddy logs `uri` verbatim into Loki
+            API->>Cache: gifts:steam_profile:{steamid_or_vanity} (6h)
+            API->>Steam: GET ISteamUser/GetPlayerSummaries (5s timeout)
+            Steam-->>API: persona, or nothing
+            API-->>Web: {status: found | not_found | unsupported | unavailable}
+            Web->>C: found -> avatar + nickname card; ONLY not_found blocks Buy
+        end
     end
 
     %% ─────────────────────────────────────────────

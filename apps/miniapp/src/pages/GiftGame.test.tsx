@@ -413,6 +413,7 @@ describe("giftPayHint", () => {
     priceAvailability: "priced" as const,
     inviteHasValue: true,
     inviteValid: true,
+    profileBlocks: false,
     skuId: "sku-1",
     methodReady: true,
     submitReady: true,
@@ -440,6 +441,30 @@ describe("giftPayHint", () => {
 
   test("a typed-but-invalid invite gets its own hint", () => {
     expect(giftPayHint({ ...ready, inviteValid: false })).toBe("gifts.game.payHintInviteInvalid");
+  });
+
+  // The pre-purchase recipient check: the ONLY verdict that reaches this
+  // function is a definitive `not_found` (`profileCheckState.blocks`), so
+  // «Steam не отвечает» and an unsupported `s.team` link never get here at
+  // all — a check that fails on our side must not cost a sale.
+  test("a recipient profile Steam says does not exist gets its own hint", () => {
+    expect(giftPayHint({ ...ready, profileBlocks: true })).toBe(
+      "gifts.game.payHintProfileNotFound",
+    );
+  });
+
+  test("the link's own shape is named before the check's verdict", () => {
+    // A blocking verdict can only exist for a link that parsed, so this is
+    // belt-and-braces — but the order still has to match `canBuy`'s.
+    expect(giftPayHint({ ...ready, inviteValid: false, profileBlocks: true })).toBe(
+      "gifts.game.payHintInviteInvalid",
+    );
+  });
+
+  test("the check's verdict is named before a still-loading SKU", () => {
+    expect(giftPayHint({ ...ready, profileBlocks: true, skuId: null })).toBe(
+      "gifts.game.payHintProfileNotFound",
+    );
   });
 
   // 2026-09-04 review round 1: `canBuy`'s `skuId !== null` conjunct was
