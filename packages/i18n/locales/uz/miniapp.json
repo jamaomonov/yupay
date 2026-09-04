@@ -432,6 +432,8 @@
   "gifts.game.inviteLabel": "Qabul qiluvchining Steam profil havolasi",
   "gifts.game.invitePlaceholder": "https://steamcommunity.com/id/profil_nomi",
   "gifts.game.inviteError": "Bu Steam profil havolasiga o'xshamaydi — tekshirib, qayta urinib ko'ring",
+  "gifts.game.inviteSelfNote": "Oʻzingiz uchun sotib olyapsizmi? Oʻz Steam profilingiz havolasini joylashtiring.",
+  "gifts.game.openProfileLink": "Qabul qiluvchi profilini ochish",
   "gifts.game.inviteGuideCta": "Havolani qayerdan olsam bo'ladi?",
   "gifts.game.inviteGuideTitle": "Havolani qayerdan olish mumkin",
   "gifts.game.inviteGuideStep1": "Qabul qiluvchining profilini Steam ilovasida yoki steamcommunity.com saytida oching",

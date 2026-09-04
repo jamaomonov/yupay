@@ -10,7 +10,7 @@ import { InviteGuide } from "./InviteGuide";
 import type { GiftProfileCheck } from "@/lib/gifts";
 
 import { canonicalInviteUrl, inviteProfileHref, type RecipientVerdict } from "@/lib/gift-invite";
-import { checkGiftProfile, profileCheckBlocks } from "@/lib/gifts";
+import { checkGiftProfile, profileCheckBlocks, profileCheckFound } from "@/lib/gifts";
 import { isOptimizable } from "@/lib/image";
 
 /** How long the invite field waits, idle, before showing an error on its
@@ -106,7 +106,7 @@ export function GiftRecipientField({
   // only the `found` path ever re-homes it), so the handler is what has to
   // refuse the second press (2026-09-04 review round 1).
   const checkInFlightRef = useRef(false);
-  const profileFound = check?.status === "found" ? check : null;
+  const profileFound = profileCheckFound(check);
   // The one verdict that blocks the purchase. `profileCheckBlocks` is `true`
   // for exactly one of them — Steam's own "no such profile" — so an
   // unsupported link type, a Steam outage, and a link nobody checked all

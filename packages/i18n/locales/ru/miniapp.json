@@ -432,6 +432,8 @@
   "gifts.game.inviteLabel": "Ссылка на профиль Steam получателя",
   "gifts.game.invitePlaceholder": "https://steamcommunity.com/id/имя_профиля",
   "gifts.game.inviteError": "Проверьте ссылку — нужен профиль или инвайт Steam",
+  "gifts.game.inviteSelfNote": "Покупаете себе? Вставьте ссылку на свой профиль Steam.",
+  "gifts.game.openProfileLink": "Открыть профиль получателя",
   "gifts.game.inviteGuideCta": "Где найти ссылку?",
   "gifts.game.inviteGuideTitle": "Где взять ссылку на профиль",
   "gifts.game.inviteGuideStep1": "Откройте профиль получателя в приложении Steam или на steamcommunity.com",

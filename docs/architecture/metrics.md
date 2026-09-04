@@ -46,15 +46,32 @@ build a `Counter` of their own.
 | `yupay_steam_web_api_calls_total`        | counter | `endpoint` = `resolve_vanity_url` \| `get_player_summaries`; `consumer` = `gifts_profile` \| `auth_signin`; `outcome` = `ok` \| `error` | `auth.steam.resolve_persona`, `gifts.profile._resolve_vanity` | The Steam Web API key has a **100k/day ceiling shared by both consumers**. Sum across `consumer` for the ceiling; split by it to attribute a burn.                                             |
 | `yupay_gifts_steam_profile_checks_total` | counter | `verdict` = `found` \| `not_found` \| `unsupported` \| `unavailable`; `source` = `cache` \| `steam` \| `local`                          | `gifts.profile.check_steam_profile`                           | The verdict mix (an `unavailable` spike is Steam trouble; a `not_found` spike is abuse or a broken client) and cache effectiveness, which is the early sign of someone walking distinct links. |
 
-Cardinality: 2 × 2 × 2 + 4 × 3 = **20 series** at the theoretical maximum,
-about half of which ever appear.
+Cardinality: 2 × 2 × 2 + 4 × 3 = **20 series** at the theoretical maximum, of
+which **13 (~65%) ever appear** — the rest are combinations the code itself
+never produces:
+
+- `resolve_vanity_url` is only ever called with `consumer="gifts_profile"`
+  (`gifts.profile._resolve_vanity` hardcodes it — `auth.steam.resolve_persona`
+  is the only caller that ever passes `consumer="auth_signin"`, and it only
+  calls `get_player_summaries`). The `resolve_vanity_url` × `auth_signin` pair
+  (2 `outcome` series) never appears, leaving 6 of the first counter's 8.
+- `source="cache"` can only carry `verdict="found"` or `verdict="not_found"`:
+  those are the only two verdicts `_cache_verdict` ever writes — `unavailable`
+  is never cached (it is our own failure, not a fact about the profile) and
+  `unsupported` never reaches the cache branch at all (an `s.team` link
+  returns before any cache read). `source="local"` is narrow the other way —
+  only `unsupported` (an `s.team` link) or `unavailable` (no API key
+  configured) — and `source="steam"` never carries `unsupported`, since that
+  verdict always short-circuits before a Steam call. That leaves 2 + 3 + 2 = 7
+  of the second counter's 12.
+
+6 + 7 = 13.
 
 `outcome` is about the **call**, not the answer: a 200 whose body we could not
 trust still spent quota, and shows up as an `unavailable` verdict on the other
-counter instead. `source=local` means a verdict reached with neither a cache
-read nor a Steam call (an `s.team` friend link, or no API key configured), so
-the cache hit rate is `cache / (cache + steam)` — counting `local` as a miss
-would make a flood of friend links read as a cache collapse.
+counter instead. And per the bullet above, the cache hit rate is
+`cache / (cache + steam)` — counting `local` as a miss would make a flood of
+friend links read as a cache collapse.
 
 ## What is _not_ here
 

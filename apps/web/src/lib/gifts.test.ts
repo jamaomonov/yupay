@@ -5,6 +5,7 @@ import {
   getGiftsHot,
   getGiftsPage,
   profileCheckBlocks,
+  profileCheckFound,
   searchGifts,
 } from "./gifts";
 
@@ -386,5 +387,23 @@ describe("profileCheckBlocks", () => {
     // where an unchecked id does block: there the check is a gate, here it is
     // a second pair of eyes the buyer may skip.
     expect(profileCheckBlocks(null)).toBe(false);
+  });
+});
+
+describe("profileCheckFound", () => {
+  it("narrows a found verdict to itself", () => {
+    const found = { status: "found", nickname: "Neo", avatarUrl: null } as const;
+    expect(profileCheckFound(found)).toEqual(found);
+  });
+
+  it.each(["not_found", "unsupported", "unavailable"] as const)(
+    "is null for a %s verdict",
+    (status) => {
+      expect(profileCheckFound({ status })).toBeNull();
+    },
+  );
+
+  it("is null for a link nobody checked", () => {
+    expect(profileCheckFound(null)).toBeNull();
   });
 });

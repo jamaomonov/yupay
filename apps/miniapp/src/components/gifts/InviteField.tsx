@@ -1,10 +1,12 @@
-import { Check, Loader2 } from "lucide-react";
+import { Check, ExternalLink, Loader2 } from "lucide-react";
 import { useEffect, useId, useRef } from "react";
 
 import type { ProfileCheckState } from "@/lib/gift-profile";
 
 import { SafeImage } from "@/components/ui/safe-image";
+import { validateInviteUrl } from "@/lib/gifts";
 import { useT } from "@/lib/i18n";
+import { openExternalLink } from "@/lib/telegram";
 
 /**
  * The recipient's Steam link: the field, the «Проверить» button beside it,
@@ -73,6 +75,14 @@ export function InviteField({
   const profileNoteId = `${inviteId}-profile`;
 
   const found = profile.found;
+  // The free half of the deferred server-side profile checker: the buyer
+  // opens the pasted link themselves, in a new tab, and verifies with their
+  // own eyes that it's the right person before paying. Mirrors the web
+  // storefront's `inviteProfileHref` — added here to close a gap where this
+  // app's own copy (`profileUnsupported`'s "убедитесь, что она от нужного
+  // человека") already promised the affordance before it existed
+  // (2026-09-04 cleanup).
+  const inviteHref = validateInviteUrl(inviteUrl);
   const inputRef = useRef<HTMLInputElement>(null);
   const editRef = useRef<HTMLButtonElement>(null);
   // Focus follows the collapse in both directions. «Проверить» unmounts along
@@ -260,6 +270,32 @@ export function InviteField({
       >
         {announce}
       </div>
+
+      {/* A real href — so it reads as a link and still works outside
+        Telegram — but the tap goes through the native bridge:
+        `target="_blank"` inside the WebView is treated as in-place
+        navigation and would replace the Mini App itself (same posture as
+        the legal links in `Settings.tsx`). */}
+      {inviteHref && (
+        <a
+          href={inviteHref}
+          onClick={(e) => {
+            e.preventDefault();
+            openExternalLink(inviteHref);
+          }}
+          className="text-primary inline-flex min-h-[44px] items-center gap-1 text-[13px] font-semibold"
+        >
+          {t("gifts.game.openProfileLink")}
+          <ExternalLink size={14} />
+        </a>
+      )}
+      {/* "Ссылка на профиль Steam получателя" reads, to a buyer purchasing
+        for themselves, as though they're in the wrong place — this covers
+        that case inline. Goes away once the field has collapsed into a
+        confirmed recipient, same as the guide CTA below. */}
+      {found === null && (
+        <p className="text-[12px] leading-snug text-white/50">{t("gifts.game.inviteSelfNote")}</p>
+      )}
 
       {/* Tells the buyer what to put *in the field*, so it goes away once the
         field has collapsed into a confirmed recipient — otherwise the most

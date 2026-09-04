@@ -432,6 +432,8 @@
   "gifts.game.inviteLabel": "Recipient's Steam profile link",
   "gifts.game.invitePlaceholder": "https://steamcommunity.com/id/profilename",
   "gifts.game.inviteError": "That doesn't look like a Steam profile link — check it and try again",
+  "gifts.game.inviteSelfNote": "Buying for yourself? Paste your own Steam profile link.",
+  "gifts.game.openProfileLink": "Open recipient's profile",
   "gifts.game.inviteGuideCta": "Where do I find the link?",
   "gifts.game.inviteGuideTitle": "Where to find the link",
   "gifts.game.inviteGuideStep1": "Open the recipient's profile in the Steam app or on steamcommunity.com",

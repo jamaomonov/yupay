@@ -29,7 +29,7 @@ import {
   orderFingerprint,
 } from "@/lib/gift-checkout";
 import { currentVerdict, isValidInviteUrl, type RecipientVerdict } from "@/lib/gift-invite";
-import { profileCheckBlocks } from "@/lib/gifts";
+import { profileCheckBlocks, profileCheckFound } from "@/lib/gifts";
 import { methodVisibility, providerStatusMap, selectActiveMethodId } from "@/lib/payment-providers";
 import { countryName, flagEmoji } from "@/lib/regions";
 import { formatUzs, pathFor } from "@/lib/seo";
@@ -292,7 +292,7 @@ export function GiftPurchasePanel({
   // while the button beside it was still payable.
   const [recipientVerdict, setRecipientVerdict] = useState<RecipientVerdict | null>(null);
   const profileCheck = currentVerdict(recipientVerdict, inviteUrl);
-  const profileFound = profileCheck?.status === "found" ? profileCheck : null;
+  const profileFound = profileCheckFound(profileCheck);
   // The single new condition on the purchase. `profileCheckBlocks` is `true`
   // for exactly one verdict — Steam's own "no such profile" — so an
   // unsupported link type, a Steam outage, and a link nobody checked all

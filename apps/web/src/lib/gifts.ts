@@ -309,3 +309,19 @@ export async function checkGiftProfile(inviteUrl: string): Promise<GiftProfileCh
 export function profileCheckBlocks(check: GiftProfileCheck | null): boolean {
   return check?.status === "not_found";
 }
+
+/**
+ * The narrowed `found` verdict, or `null` when the check hasn't landed on
+ * one.
+ *
+ * `GiftPurchasePanel` (the confirm dialog's recipient row) and
+ * `GiftRecipientField` (the confirmation card) both need exactly this
+ * narrowing from the same verdict — centralized so the two can never derive
+ * it differently, the way they already share `profileCheckBlocks` above
+ * (2026-09-04 cleanup).
+ */
+export function profileCheckFound(
+  check: GiftProfileCheck | null,
+): Extract<GiftProfileCheck, { status: "found" }> | null {
+  return check?.status === "found" ? check : null;
+}

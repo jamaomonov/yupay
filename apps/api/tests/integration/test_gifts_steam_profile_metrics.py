@@ -156,6 +156,44 @@ async def test_a_steam_failure_is_counted_as_unavailable_from_steam(
     )
 
 
+@respx.mock
+async def test_a_malformed_200_body_is_counted_as_an_ok_call_but_an_unavailable_verdict(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`steam_web_api_call` wraps only the request and `raise_for_status()` —
+    deliberately not the JSON parsing after it (see the context manager's own
+    docstring, and `resolve_persona`'s). So a 200 whose *body* breaks Steam's
+    own documented shape must still read as a successful call: the quota was
+    spent either way, and it is `verdict`, not `outcome`, that has to say the
+    answer was unusable.
+
+    Distinct from `test_a_steam_failure_is_counted_as_unavailable_from_steam`
+    above, which is a transport-level 500 — `outcome="error"`. Here the
+    request succeeds and `raise_for_status()` passes; only the body fails.
+    """
+    _enable(monkeypatch)
+    # `players` present but not a *list* — `resolve_persona` demands a real
+    # list before it will treat this as Steam's "no such account" (2026-09-04
+    # re-review, see its own docstring), so this degrades to a `ValueError`
+    # raised *after* the call is already counted, not to `not_found`.
+    respx.get(_SUMMARIES_URL).mock(
+        return_value=httpx.Response(200, json={"response": {"players": "not-a-list"}})
+    )
+    ok_before = _value(
+        _CALLS, endpoint="get_player_summaries", consumer="gifts_profile", outcome="ok"
+    )
+    verdicts_before = _value(_CHECKS, verdict="unavailable", source="steam")
+
+    r = await _check(integration_client, _PROFILE_LINK)
+
+    assert r.json()["status"] == "unavailable"
+    assert (
+        _value(_CALLS, endpoint="get_player_summaries", consumer="gifts_profile", outcome="ok")
+        == ok_before + 1
+    ), "the request succeeded and raise_for_status() passed — this call is `ok`"
+    assert _value(_CHECKS, verdict="unavailable", source="steam") == verdicts_before + 1
+
+
 async def test_a_missing_api_key_is_counted_as_local_not_as_a_steam_failure(
     integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
