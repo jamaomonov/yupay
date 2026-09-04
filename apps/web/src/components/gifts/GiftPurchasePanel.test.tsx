@@ -1458,7 +1458,7 @@ it("never lets a providerStatus fetch that resolves after a wallet pick swap it 
 
 /**
  * The pre-purchase recipient check (2026-09-04): «Проверить» resolves the
- * pasted link through `GET /gifts/steam-profile` and shows who it actually
+ * pasted link through `POST /gifts/steam-profile` and shows who it actually
  * points to, so a mistyped link stops being an unrecoverable, paid mistake.
  *
  * The rule every state here is written against: **only a definitive
@@ -1488,10 +1488,13 @@ describe("the recipient profile check", () => {
     fireEvent.click(checkButton());
 
     expect(await screen.findByText("Neo")).toBeInTheDocument();
-    expect(screen.getByTestId("gift-profile-avatar")).toHaveAttribute(
-      "src",
-      expect.stringContaining("avatars.steamstatic.com"),
-    );
+    // The exact src, not a substring: `/_next/image?url=https%3A%2F%2Favatars…`
+    // leaves the hostname readable, so a `stringContaining` assertion would
+    // pass even if the third-party host were being run through the optimizer
+    // (which 504s rather than degrading — see `lib/image.ts`).
+    const avatar = screen.getByTestId("gift-profile-avatar");
+    expect(avatar).toHaveAttribute("src", AVATAR);
+    expect(avatar.getAttribute("src")).not.toContain("/_next/image");
     expect(checkGiftProfileMock).toHaveBeenCalledWith("https://steamcommunity.com/id/neo");
     // Collapsed: the input is gone, replaced by the confirmation card.
     expect(screen.queryByLabelText("inviteLabel")).not.toBeInTheDocument();
@@ -1619,5 +1622,106 @@ describe("the recipient profile check", () => {
     });
     expect(screen.queryByText("profileNotFound")).not.toBeInTheDocument();
     expect(buyButton()).not.toBeDisabled();
+  });
+
+  it("hands focus to «Изменить» when the field collapses out from under it", async () => {
+    // The «Проверить» button unmounts with the field, so without this focus
+    // lands on <body> and a keyboard user's next Tab restarts at the top of
+    // the page — with nothing having announced that the check succeeded.
+    mockProvidersResponse();
+    checkGiftProfileMock.mockResolvedValue(FOUND);
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    pasteInvite("https://steamcommunity.com/id/neo");
+    fireEvent.click(checkButton());
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "checkEdit" })).toHaveFocus();
+    });
+  });
+
+  it("stops telling the buyer to fill in a field that has collapsed", async () => {
+    mockProvidersResponse();
+    checkGiftProfileMock.mockResolvedValue(FOUND);
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    // Before the check: both the self-purchase note and the "how to copy the
+    // link" guide (its steps come from the mocked `t.raw`) are on screen,
+    // because there is a field to fill in.
+    expect(screen.getByText("inviteSelfNote")).toBeInTheDocument();
+    expect(screen.getByText("Step one")).toBeInTheDocument();
+
+    pasteInvite("https://steamcommunity.com/id/neo");
+    fireEvent.click(checkButton());
+    expect(await screen.findByText("Neo")).toBeInTheDocument();
+
+    expect(screen.queryByText("inviteSelfNote")).not.toBeInTheDocument();
+    expect(screen.queryByText("Step one")).not.toBeInTheDocument();
+    // What the gift *is* still applies after the recipient is confirmed —
+    // only the fill-in-the-field guidance goes away.
+    expect(screen.getByText("timeline")).toBeInTheDocument();
+  });
+
+  it("puts the confirmed nickname on the last screen before payment", async () => {
+    // The modal's own warning tells the buyer to check the recipient; the
+    // answer to that instruction was sitting in state and withheld.
+    mockProvidersResponse();
+    checkGiftProfileMock.mockResolvedValue(FOUND);
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    await fillValidCheckout();
+    fireEvent.click(checkButton());
+    expect(await screen.findByText("Neo")).toBeInTheDocument();
+    fireEvent.click(buyButton());
+
+    expect(
+      screen.getByText("Neo · https://steamcommunity.com/profiles/76561198000000000"),
+    ).toBeInTheDocument();
+  });
+
+  it("falls back to the bare link in the modal when no check was run", async () => {
+    mockProvidersResponse();
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    await fillValidCheckout();
+    fireEvent.click(buyButton());
+
+    expect(
+      screen.getByText("https://steamcommunity.com/profiles/76561198000000000"),
+    ).toBeInTheDocument();
+  });
+
+  it("says what's missing when «Проверить» is pressed on an empty field", () => {
+    // `inviteWrong` requires a non-empty value, so the empty case had nothing
+    // to render and the button was a silent no-op.
+    mockProvidersResponse();
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    expect(screen.getByTestId("gift-profile-live")).toHaveTextContent("");
+    fireEvent.click(checkButton());
+
+    expect(checkGiftProfileMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId("gift-profile-live")).toHaveTextContent("payHintInvite");
+  });
+
+  it("keeps the live region mounted so an updated verdict is actually announced", async () => {
+    // NVDA/JAWS commonly miss a `role="status"` node inserted into the page;
+    // the region has to already be there and change its text. `not_found`
+    // keeps its own `role="alert"`, which does announce on insertion.
+    mockProvidersResponse();
+    checkGiftProfileMock.mockResolvedValue({ status: "unavailable" });
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    const live = screen.getByTestId("gift-profile-live");
+    expect(live).toHaveAttribute("aria-live", "polite");
+
+    pasteInvite("https://steamcommunity.com/id/neo");
+    fireEvent.click(checkButton());
+
+    await waitFor(() => {
+      expect(live).toHaveTextContent("profileUnavailable");
+    });
+    // The very same node, not a replacement one.
+    expect(screen.getByTestId("gift-profile-live")).toBe(live);
   });
 });

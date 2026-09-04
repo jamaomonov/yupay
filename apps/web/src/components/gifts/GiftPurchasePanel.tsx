@@ -368,7 +368,14 @@ export function GiftPurchasePanel({
   // rather than shown against a profile they no longer mean.
   const [profile, setProfile] = useState<{ url: string; check: GiftProfileCheck } | null>(null);
   const [profileChecking, setProfileChecking] = useState(false);
+  // Set when «Проверить» is pressed on a field it cannot run against, so the
+  // empty-field case can say what's missing. Only "you haven't pasted the
+  // link yet" needs it — a *wrong* link already has its own visible error;
+  // announcing the empty one before the buyer has tried would be noise.
+  // Mirrors `CheckablePlayerField`'s `attempted`.
+  const [checkAttempted, setCheckAttempted] = useState(false);
   const inviteRef = useRef<HTMLInputElement>(null);
+  const editRef = useRef<HTMLButtonElement>(null);
   const profileCheck = profile !== null && profile.url === inviteUrl.trim() ? profile.check : null;
   const profileFound = profileCheck?.status === "found" ? profileCheck : null;
   // The single new condition on the purchase. `profileCheckBlocks` is `true`
@@ -381,17 +388,34 @@ export function GiftPurchasePanel({
   async function runProfileCheck(): Promise<void> {
     const url = inviteUrl.trim();
     if (!isValidInviteUrl(url)) {
-      // A dimmed control that swallows the click teaches nothing — pressing
-      // it surfaces the link error the field would otherwise only show on
-      // blur or after the idle pause.
+      // A dimmed control that swallows the click teaches nothing. Pressing it
+      // answers either way: a *wrong* link gets the visible link error the
+      // field would otherwise hold back until blur or the idle pause, and an
+      // *empty* one gets the "paste the link first" note (`profileNote`
+      // below) — which `inviteWrong` alone cannot produce, since it requires
+      // the field to be non-empty.
       setInviteTouched(true);
+      setCheckAttempted(true);
       return;
     }
     setProfileChecking(true);
     try {
-      // `checkGiftProfile` never rejects (see its doc comment) — the
-      // try/finally is only here so the spinner cannot outlive the request.
-      setProfile({ url, check: await checkGiftProfile(url) });
+      const check = await checkGiftProfile(url);
+      setProfile({ url, check });
+      if (check.status === "found") {
+        // The «Проверить» button unmounts along with the field it sits next
+        // to, dropping focus to <body> — a keyboard user's next Tab would
+        // restart at the top of the page with no signal that anything
+        // happened. Hand focus to the card's «Изменить», the mirror of what
+        // `reopenInvite` does on the way back.
+        requestAnimationFrame(() => editRef.current?.focus());
+      }
+    } catch {
+      // `checkGiftProfile` never rejects (see its doc comment). This is here
+      // so the component stays correct on its own if that ever changes —
+      // with it, `runProfileCheck` itself cannot reject either, which is what
+      // makes the bare `void runProfileCheck()` at the call site safe.
+      setProfile({ url, check: { status: "unavailable" } });
     } finally {
       setProfileChecking(false);
     }
@@ -557,7 +581,16 @@ export function GiftPurchasePanel({
   const confirmRows: ConfirmPurchaseRow[] = [
     { label: t("edition"), value: selectedPackage?.name ?? "" },
     { label: t("confirmRegion"), value: `${flagEmoji(country)} ${countryName(country, locale)}` },
-    { label: t("confirmProfile"), value: inviteUrl.trim() },
+    {
+      label: t("confirmProfile"),
+      // The modal's own warning says «Проверьте профиль получателя перед
+      // оплатой» — so when the check has already answered that, the answer
+      // belongs here, on the last screen before an irreversible gift, not
+      // just up in the form. A URL the buyer has stopped reading is not
+      // evidence; a name is. Falls back to the link alone when no check ran.
+      value:
+        profileFound !== null ? `${profileFound.nickname} · ${inviteUrl.trim()}` : inviteUrl.trim(),
+    },
   ];
 
   // The mobile sticky checkout bar auto-hides once the real form (this
@@ -700,23 +733,39 @@ export function GiftPurchasePanel({
   const inviteId = useId();
   const emailId = useId();
   const inviteErrorId = `${inviteId}-error`;
+  const profileErrorId = `${inviteId}-profile-error`;
   const profileNoteId = `${inviteId}-profile`;
   const emailErrorId = `${emailId}-error`;
 
-  // What the check has to say about the link currently in the field, if
-  // anything. `found` says it in the card instead, so it has no note.
+  // The one blocking verdict, kept apart from the notes below: it renders as
+  // a `role="alert"`, which screen readers do announce on insertion.
+  const profileAlert: string | null = profileBlocks ? t("profileNotFound") : null;
+  // Everything else the check has to say about the link currently in the
+  // field. `found` says it in the card instead, so it has no note. This text
+  // lives in a live region that is always mounted (see the render), because
+  // NVDA and JAWS commonly miss a `role="status"` node that is *inserted*
+  // rather than updated in place — which would have made `unsupported` and
+  // `unavailable` silent.
   const profileNote: string | null =
-    profileCheck === null || profileCheck.status === "found"
-      ? null
-      : profileCheck.status === "not_found"
-        ? t("profileNotFound")
+    checkAttempted && !inviteHasValue
+      ? // «Проверить» pressed on an empty field: `inviteWrong` cannot speak
+        // for this case (it requires a non-empty value), so without this the
+        // button is a silent no-op. Reuses the Buy button's own wording for
+        // the same missing thing rather than forking a fourth sentence.
+        t("payHintInvite")
+      : profileCheck === null || profileCheck.status === "found" || profileBlocks
+        ? null
         : profileCheck.status === "unsupported"
           ? t("profileUnsupported")
           : t("profileUnavailable");
-  // Both the shape error and the check verdict describe the same input, so
-  // they are announced together rather than the later one hiding the earlier.
+  // The shape error and the check verdict describe the same input, so they
+  // are announced together rather than the later one hiding the earlier.
   const inviteDescribedBy =
-    [inviteInvalid ? inviteErrorId : null, profileNote !== null ? profileNoteId : null]
+    [
+      inviteInvalid ? inviteErrorId : null,
+      profileAlert !== null ? profileErrorId : null,
+      profileNote !== null ? profileNoteId : null,
+    ]
       .filter((id): id is string => id !== null)
       .join(" ") || undefined;
 
@@ -936,8 +985,12 @@ export function GiftPurchasePanel({
               </div>
               <button
                 type="button"
+                ref={editRef}
                 onClick={reopenInvite}
-                className="text-tx-dim hover:text-tx-mute shrink-0 text-[13px] font-medium transition"
+                // `min-h-[44px]` matching the «Открыть профиль» anchor below:
+                // this is the only way back out of a confirmed-but-wrong
+                // recipient, and on mobile it was a 13px word with no padding.
+                className="text-tx-dim hover:text-tx-mute inline-flex min-h-[44px] shrink-0 items-center px-1 text-[13px] font-medium transition"
               >
                 {ts("checkEdit")}
               </button>
@@ -992,19 +1045,31 @@ export function GiftPurchasePanel({
               {t("inviteError")}
             </p>
           )}
-          {profileNote !== null && (
-            /* One paragraph, two registers. A definitive "no such profile" is
-              an error the buyer must act on and is the only verdict that
-              blocks Buy; everything else failed on our side, so it reads as a
-              neutral note next to a purchase that stays available. */
-            <p
-              id={profileNoteId}
-              role={profileBlocks ? "alert" : "status"}
-              className={profileBlocks ? "text-[13px] text-[#FF6B6B]" : "text-tx-dim text-[13px]"}
-            >
-              {profileNote}
+          {profileAlert !== null && (
+            /* The only verdict that blocks Buy, and the only one that reads
+              as an error. `role="alert"` announces on insertion, which is
+              what this state needs. */
+            <p id={profileErrorId} role="alert" className="text-[13px] text-[#FF6B6B]">
+              {profileAlert}
             </p>
           )}
+          {/* Always mounted, empty when there is nothing to say: NVDA and JAWS
+            commonly miss a live region that is *inserted* into the page rather
+            than updated in place, which would leave the non-blocking verdicts
+            («нельзя проверить», «Steam не отвечает») announced to nobody.
+            `sr-only` while empty rather than a plain empty block, so the
+            parent's `space-y-2` doesn't reserve a gap for a node with nothing
+            in it — it stays in the accessibility tree either way, which is
+            the whole point of keeping it mounted. */}
+          <div
+            id={profileNoteId}
+            data-testid="gift-profile-live"
+            role="status"
+            aria-live="polite"
+            className={profileNote !== null ? "text-tx-dim text-[13px]" : "sr-only"}
+          >
+            {profileNote}
+          </div>
           {/* The free half of the deferred server-side profile checker
             (Task 6a): the buyer opens the pasted link themselves, in a new
             tab, and verifies it's the right person before paying
@@ -1023,8 +1088,14 @@ export function GiftPurchasePanel({
           {/* "Ссылка на профиль Steam получателя" reads, to a buyer purchasing
             for themselves, as though they're in the wrong place — this
             covers that case inline rather than leaving it unsaid
-            (2026-09-04 review). */}
-          <p className="text-tx-dim text-[12px] leading-snug">{t("inviteSelfNote")}</p>
+            (2026-09-04 review). Both this and the guide below tell the buyer
+            what to put *in the field*, so both go away once the field has
+            collapsed into a confirmed recipient — otherwise the most
+            confident moment in the flow ends with instructions to fill in
+            something that is no longer on screen. */}
+          {profileFound === null && (
+            <p className="text-tx-dim text-[12px] leading-snug">{t("inviteSelfNote")}</p>
+          )}
           {/* The two sentences that explain the entire model used to sit
             *below* the Buy button, in 12px dim text — past the decision.
             Moved here, next to the field where the recipient first becomes
@@ -1033,7 +1104,7 @@ export function GiftPurchasePanel({
             <p>{t("timeline")}</p>
             <p>{t("accept")}</p>
           </div>
-          <InviteGuide />
+          {profileFound === null && <InviteGuide />}
         </div>
 
         {!user && (
