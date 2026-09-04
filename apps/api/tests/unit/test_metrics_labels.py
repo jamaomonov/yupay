@@ -87,11 +87,21 @@ def test_a_broken_registry_never_reaches_the_caller(monkeypatch: pytest.MonkeyPa
             endpoint="get_player_summaries", consumer="gifts_profile", outcome="ok"
         )
 
-    events = [entry["event"] for entry in logs]
-    assert events == ["metrics.increment_failed", "metrics.increment_failed"]
+    # Filtered, not compared as a whole: `capture_logs` is process-global, so
+    # anything else logging in this window — a leaked connection from an
+    # earlier test, a background task — would break an exact-list assertion
+    # for reasons that have nothing to do with metrics. This is what made the
+    # test pass alone and fail in a full run.
+    failures = [entry for entry in logs if entry["event"] == "metrics.increment_failed"]
+    assert len(failures) == 2
     # The failure log names the metric, never the labels of the call that
     # failed — the log redactor is not a reason to relax about what we hand it.
-    assert all(entry["error"] == "RuntimeError" for entry in logs)
+    assert all(entry["error"] == "RuntimeError" for entry in failures)
+    assert {entry["metric"] for entry in failures} == {
+        "yupay_gifts_steam_profile_checks_total",
+        "yupay_steam_web_api_calls_total",
+    }
+    assert not any("verdict" in entry or "endpoint" in entry for entry in failures)
 
 
 def test_a_broken_registry_does_not_swallow_the_work_it_wraps(
