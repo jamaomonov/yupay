@@ -26,6 +26,12 @@ vi.mock("next-intl", () => ({
     values ? `${k}:${JSON.stringify(values)}` : k,
 }));
 
+// Checkout pushes the buyer to the order page (see `PurchasePanel.test.tsx`);
+// without a router in scope the panel cannot render at all.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
 vi.mock("@/lib/auth", () => ({
   useAuth: () => ({ user: { id: "u-1", email: "a@b.c" }, isLoading: false }),
 }));

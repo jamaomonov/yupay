@@ -14,6 +14,7 @@ import type { GiftAppDetail, GiftPackage, GiftProfileCheck, GiftRegion } from "@
 import { ApiError, clearTokens, setTokens } from "@/lib/client";
 import { buyGift, GiftPriceChangedError } from "@/lib/gift-checkout";
 import { checkGiftProfile } from "@/lib/gifts";
+import { AUTO_OPEN_PARAM } from "@/lib/payment-return";
 import { countryName } from "@/lib/regions";
 import { formatUzs } from "@/lib/seo";
 import { useLoginModal } from "@/store/useLoginModal";
@@ -1130,6 +1131,9 @@ it("shows the wallet tile as ready for a signed-in buyer and pays with provider:
   await waitFor(() => {
     expect(pushMock).toHaveBeenCalledWith("/orders/order-1");
   });
+  // A balance payment is settled already and has no acquirer page — it must
+  // never carry the auto-open flag onto the order page.
+  expect(pushMock).not.toHaveBeenCalledWith(expect.stringContaining(AUTO_OPEN_PARAM));
 });
 
 it("disables the wallet tile and offers a top-up link when the balance is short", async () => {
@@ -1284,7 +1288,15 @@ it("keeps the same Idempotency-Key when only the payment method changes between 
   expect(buyGiftMock.mock.calls[1]?.[0].provider).toBe("payme");
 });
 
-it("mints a fresh Idempotency-Key for the next purchase after a success", async () => {
+/**
+ * Was "mints a fresh Idempotency-Key for the next purchase after a success"
+ * until 2026-09-06. A success now hands the panel over to the created-order
+ * card and pushes the browser to the order page, so a second purchase from
+ * the same mounted panel is no longer reachable — which is the stronger
+ * guarantee, and the one worth pinning. `orderKeyRef.current = null` stays
+ * where it is as the belt to this braces.
+ */
+it("takes no second order once one exists — the buyer's next step is the order page", async () => {
   mockProvidersResponse();
   buyGiftMock.mockResolvedValue({
     orderId: "order-1",
@@ -1298,15 +1310,13 @@ it("mints a fresh Idempotency-Key for the next purchase after a success", async 
   await waitFor(() => {
     expect(buyGiftMock).toHaveBeenCalledTimes(1);
   });
-  const firstKey = orderKeyOf(0);
 
-  // Same inputs, a second purchase after the first succeeded.
-  submitBuy();
-  await waitFor(() => {
-    expect(buyGiftMock).toHaveBeenCalledTimes(2);
-  });
-
-  expect(orderKeyOf(1)).not.toBe(firstKey);
+  expect(await screen.findByText("successTitle")).toBeInTheDocument();
+  expect(screen.queryByTestId("gift-buy-cta")).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /orderStatus/ })).toHaveAttribute(
+    "href",
+    "/orders/order-1?email=guest%40example.com",
+  );
 });
 
 it("retries exactly once with a fresh key when the order is no longer awaiting payment", async () => {
@@ -1858,4 +1868,63 @@ describe("the recipient profile check", () => {
     // Still where the buyer left it — the check answered without moving focus.
     expect(screen.getByRole("button", { name: "check" })).toHaveFocus();
   });
+});
+
+/**
+ * The payment return (2026-09-06). Handing the browser the acquirer URL left
+ * the tab on the game page: on a phone the OS opens the bank app instead of
+ * navigating, so the buyer came back to the product they were about to buy
+ * with no sign the order existed. Confirmed on a real steam-gift order that
+ * died on the 10-minute expiry holding a valid Uzum `intent_url`.
+ *
+ * The panel now hands the browser the ORDER PAGE, flagged to open the
+ * acquirer from there — so the tab the buyer returns to is already the order.
+ */
+it("pushes the order page — flagged to open the acquirer — instead of the acquirer URL", async () => {
+  mockProvidersResponse();
+  buyGiftMock.mockResolvedValue({
+    orderId: "order-1",
+    intentUrl: "https://uzumbank.uz/open-service?id=1",
+    trackHref: "/orders/order-1?email=guest%40example.com",
+  });
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+  await fillValidCheckout();
+  submitBuy();
+
+  await waitFor(() => {
+    expect(pushMock).toHaveBeenCalledWith(
+      `/orders/order-1?email=guest%40example.com&${AUTO_OPEN_PARAM}=1`,
+    );
+  });
+});
+
+it("tells the buyer the order exists even if the push never lands", async () => {
+  mockProvidersResponse();
+  pushMock.mockImplementation(() => {
+    throw new Error("navigation blocked");
+  });
+  buyGiftMock.mockResolvedValue({
+    orderId: "order-1abc2345",
+    intentUrl: "https://uzumbank.uz/open-service?id=1",
+    trackHref: "/orders/order-1abc2345?email=guest%40example.com",
+  });
+  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+  await fillValidCheckout();
+  submitBuy();
+
+  // A created order must never vanish behind a generic error: the panel falls
+  // back to the "order created" card, which links to the order page and to
+  // the acquirer.
+  expect(await screen.findByText("successTitle")).toBeInTheDocument();
+  expect(screen.queryByText("buyError")).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /orderStatus/ })).toHaveAttribute(
+    "href",
+    "/orders/order-1abc2345?email=guest%40example.com",
+  );
+  expect(screen.getByRole("link", { name: /goToPay/ })).toHaveAttribute(
+    "href",
+    "https://uzumbank.uz/open-service?id=1",
+  );
 });

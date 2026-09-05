@@ -8,6 +8,7 @@ import { PurchasePanel } from "./PurchasePanel";
 
 import type { ProductDetail } from "@/lib/catalog";
 
+import { AUTO_OPEN_PARAM } from "@/lib/payment-return";
 import { formatUzs } from "@/lib/seo";
 
 vi.mock("next-intl", () => ({
@@ -16,6 +17,14 @@ vi.mock("next-intl", () => ({
 
 vi.mock("@/lib/auth", () => ({
   useAuth: () => ({ user: null }),
+}));
+
+// `vi.mock` factories are hoisted above the file's own top-level `const`s, so
+// the mock function they close over must be created through `vi.hoisted`.
+const { pushMock } = vi.hoisted(() => ({ pushMock: vi.fn() }));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: pushMock }),
 }));
 
 /** The panel reads the wallet balance through react-query, so every render
@@ -29,6 +38,7 @@ function renderPanel(ui: React.ReactElement) {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  pushMock.mockReset();
 });
 
 function mockProvidersResponse(
@@ -1162,4 +1172,123 @@ it("asks a guest to sign in rather than offering an account they do not have", a
   const tile = await screen.findByRole("button", { name: /payFromBalance/ });
   expect(tile).not.toBeDisabled();
   expect(tile).toHaveTextContent("payFromBalanceGuest");
+});
+
+/**
+ * The payment return (2026-09-06). Assigning the acquirer URL to
+ * `window.location.href` left the tab on the product page: on a phone the OS
+ * opens the bank app rather than navigating, so the buyer came back to the
+ * product they were about to buy with no sign an order existed — and the
+ * order then died on the 10-minute expiry.
+ *
+ * Checkout now hands the browser the ORDER PAGE, flagged so the order page
+ * opens the acquirer itself.
+ */
+it("pushes the order page — flagged to open the acquirer — instead of the acquirer URL", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(
+    (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes("/payments/providers")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ providers: [{ slug: "click", status: "active" }] }), {
+            status: 200,
+          }),
+        );
+      }
+      if (url.includes("/auth/guest")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ access_token: "guest-token" }), { status: 200 }),
+        );
+      }
+      if (url.includes("/api/v1/orders") && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({ id: "order-1" }), { status: 200 }));
+      }
+      if (url.includes("/payments/intents")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ intent_url: "https://my.click.uz/services/pay?x=1" }), {
+            status: 200,
+          }),
+        );
+      }
+      return Promise.resolve(new Response("{}", { status: 200 }));
+    },
+  );
+
+  renderPanel(<PurchasePanel products={[makeStarsUnitProduct()]} locale="ru" />);
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: /^50 Stars\b/ }));
+  fireEvent.change(screen.getByPlaceholderText("emailPlaceholder"), {
+    target: { value: "buyer@example.com" },
+  });
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: /^pay ·/i })).not.toBeDisabled();
+  });
+  fireEvent.click(screen.getByRole("button", { name: /^pay ·/i }));
+  fireEvent.click(await screen.findByRole("button", { name: "confirmCta" }));
+
+  await waitFor(() => {
+    // The guest's `?email=` survives — the order page needs it to load
+    // anything at all — and the one-shot flag rides beside it.
+    expect(pushMock).toHaveBeenCalledWith(
+      `/orders/order-1?email=buyer%40example.com&${AUTO_OPEN_PARAM}=1`,
+    );
+  });
+  // And the created order is still on screen behind the navigation, so a push
+  // that never lands cannot lose it.
+  expect(screen.getByText("successTitle")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /goToPay/ })).toHaveAttribute(
+    "href",
+    "https://my.click.uz/services/pay?x=1",
+  );
+});
+
+it("keeps a settled payment off the acquirer path — no flag, no navigation", async () => {
+  // `intent_url: null` is what both a wallet payment (settled inside
+  // `create_intent`) and the dev `mock` acquirer come back with.
+  vi.spyOn(globalThis, "fetch").mockImplementation(
+    (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes("/payments/providers")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ providers: [{ slug: "click", status: "active" }] }), {
+            status: 200,
+          }),
+        );
+      }
+      if (url.includes("/auth/guest")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ access_token: "guest-token" }), { status: 200 }),
+        );
+      }
+      if (url.includes("/api/v1/orders") && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({ id: "order-1" }), { status: 200 }));
+      }
+      if (url.includes("/payments/intents")) {
+        return Promise.resolve(new Response(JSON.stringify({ intent_url: null }), { status: 200 }));
+      }
+      return Promise.resolve(new Response("{}", { status: 200 }));
+    },
+  );
+
+  renderPanel(<PurchasePanel products={[makeStarsUnitProduct()]} locale="ru" />);
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: /^50 Stars\b/ }));
+  fireEvent.change(screen.getByPlaceholderText("emailPlaceholder"), {
+    target: { value: "buyer@example.com" },
+  });
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: /^pay ·/i })).not.toBeDisabled();
+  });
+  fireEvent.click(screen.getByRole("button", { name: /^pay ·/i }));
+  fireEvent.click(await screen.findByRole("button", { name: "confirmCta" }));
+
+  expect(await screen.findByText("successTitle")).toBeInTheDocument();
+  expect(pushMock).not.toHaveBeenCalled();
+  expect(screen.queryByRole("link", { name: /goToPay/ })).not.toBeInTheDocument();
 });

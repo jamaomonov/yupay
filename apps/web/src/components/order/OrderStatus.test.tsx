@@ -30,13 +30,19 @@ const messages = {
       accessLinkFailed: "Failed",
       loading: "…",
       supportCta: "Contact support",
+      payNow: "Pay",
       status: {
         delivered: "Delivered",
         deliveredTopup: "Credited",
+        pending_payment: "Awaiting payment",
       },
       // The rest of the page's copy. Present only so next-intl doesn't log a
       // MISSING_MESSAGE per key — noise that would bury a real failure.
-      body: { delivered: "Delivered", deliveredTopup: "Credited to the account" },
+      body: {
+        delivered: "Delivered",
+        deliveredTopup: "Credited to the account",
+        pending_payment: "Waiting for your payment.",
+      },
       progress: {
         label: "Progress",
         paid: "Paid",
@@ -91,6 +97,8 @@ vi.mock("@/lib/reviews", () => ({
 // order straight after paying, which is when the block appears.
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
+  usePathname: () => "/orders/01a00487-0000-0000-0000-000000000000",
+  useRouter: () => ({ replace: vi.fn() }),
 }));
 
 // Mutable so individual tests can render as a signed-in buyer (needed to
@@ -312,4 +320,49 @@ it("still renders ArtifactReceipt — not the gift card — for a non-gift artif
   expect(screen.getByText("ABC-123-XYZ")).toBeInTheDocument();
   // Never the gift instruction card for a non-gift artifact.
   expect(screen.queryByText("Gift sent")).not.toBeInTheDocument();
+});
+
+/**
+ * Resuming payment from the order page. The page never fetched the payment at
+ * all, so an order whose buyer left for the bank app was unreachable — no way
+ * back into paying it, and it simply expired. A guest reaches it the same way
+ * they reach the order itself: the `?email=` link plus a minted Guest token.
+ */
+it("offers a guest a way back into paying an order still awaiting payment", async () => {
+  mockApiFetch.mockImplementation((path: string) => {
+    if (path.startsWith("/payments/by-order/")) {
+      return Promise.resolve({
+        id: "pay-1",
+        order_id: "01a00487-0000-0000-0000-000000000000",
+        provider: "uzum",
+        status: "pending",
+        amount: "13438.00",
+        currency: "UZS",
+        intent_url: "https://uzumbank.uz/open-service?id=1",
+        external_id: "ext-1",
+      });
+    }
+    return Promise.resolve({ ...makeOrder("voucher"), status: "pending_payment" });
+  });
+
+  wrap(<OrderStatus orderId="01a00487-0000-0000-0000-000000000000" email="buyer@example.com" />);
+
+  const link = await screen.findByRole("link", { name: "Pay" });
+  expect(link).toHaveAttribute("href", "https://uzumbank.uz/open-service?id=1");
+  expect(mockApiFetch).toHaveBeenCalledWith(
+    "/payments/by-order/01a00487-0000-0000-0000-000000000000?email=buyer%40example.com",
+  );
+});
+
+it("offers no way to pay an order that is already delivered", async () => {
+  mockApiFetch.mockResolvedValue(makeOrder("voucher"));
+
+  wrap(<OrderStatus orderId="01a00487-0000-0000-0000-000000000000" email="buyer@example.com" />);
+
+  await waitFor(() => {
+    expect(screen.getByText("Codes are ready")).toBeInTheDocument();
+  });
+  expect(screen.queryByRole("link", { name: "Pay" })).not.toBeInTheDocument();
+  // Nothing even asks about a payment for an order past `pending_payment`.
+  expect(mockApiFetch).not.toHaveBeenCalledWith(expect.stringContaining("/payments/by-order/"));
 });

@@ -746,6 +746,7 @@
     },
     "codesReadyTitle": "Order complete — your codes are ready",
     "supportCta": "Message support",
+    "payNow": "Pay",
     "walletTopUpTitle": "Wallet top-up",
     "walletTopUpBody": "The balance updates once the bank confirms the payment.",
     "walletTopUpCta": "To the wallet"

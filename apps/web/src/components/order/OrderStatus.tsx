@@ -12,6 +12,7 @@ import { GuestReviewPanel } from "./GuestReviewPanel";
 import { OrderIdChip } from "./OrderIdChip";
 import { OrderItems } from "./OrderItems";
 import { OrderLoadError } from "./OrderLoadError";
+import { OrderPayNow } from "./OrderPayNow";
 import { isTrackedStatus, OrderProgress } from "./OrderProgress";
 import { OrderStatusSkeleton } from "./OrderStatusSkeleton";
 import { OrderSummary } from "./OrderSummary";
@@ -275,6 +276,20 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
             </div>
           )}
         </div>
+
+        {/* The way back into paying. Checkout lands the buyer here before the
+            bank app opens (see `lib/payment-return.ts`), so this is the page
+            they return to — and until 2026-09-06 it offered them nothing:
+            the order was unreachable and expired ten minutes later. */}
+        <OrderPayNow
+          orderId={order.data.id}
+          awaitingPayment={status === "pending_payment"}
+          // Only a guest sends the email: a signed-in buyer is identified by
+          // their Bearer, and `isGuest` is already false for them even on a
+          // `?email=` link.
+          email={isGuest ? normalizedEmail : undefined}
+          auth={guestAuth}
+        />
 
         <OrderSummary order={order.data} />
 

@@ -66,7 +66,8 @@ sequenceDiagram
             API->>DB: INSERT orders + order_items
             API-->>Web: 201 {order_id, payment_url}
         end
-        Web->>C: redirect to acquirer (Click/Payme/Uzum/USDT)
+        Web->>C: push /orders/{id}?pay=1 -- the ORDER PAGE, not the acquirer
+        Note over Web,C: the order page opens Click/Payme/Uzum itself, once<br/>(docs/product/flows/payment-return.md)
         C->>API: pays; webhook settles the order
     end
 

@@ -31,6 +31,7 @@ import {
 import { currentVerdict, isValidInviteUrl, type RecipientVerdict } from "@/lib/gift-invite";
 import { profileCheckBlocks, profileCheckFound } from "@/lib/gifts";
 import { methodVisibility, providerStatusMap, selectActiveMethodId } from "@/lib/payment-providers";
+import { withAutoOpen } from "@/lib/payment-return";
 import { countryName, flagEmoji } from "@/lib/regions";
 import { formatUzs, pathFor } from "@/lib/seo";
 import { getWallet, WALLET_CURRENCY } from "@/lib/wallet";
@@ -395,6 +396,16 @@ export function GiftPurchasePanel({
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set the instant the order exists, and never unset. Normally the buyer is
+  // already on their way to the order page when it renders; it is on screen
+  // only if that navigation did not happen, and then it is the one thing
+  // standing between the buyer and an order they would otherwise never hear
+  // about again.
+  const [created, setCreated] = useState<{
+    orderId: string;
+    trackHref: string;
+    intentUrl: string | null;
+  } | null>(null);
 
   // The sticky `Idempotency-Key` for `POST /orders`, kept alongside the
   // `orderFingerprint` it was minted for — a ref, not state, since neither
@@ -568,16 +579,30 @@ export function GiftPurchasePanel({
       // Success — the next purchase (even with identical inputs) must be a
       // new order, so the key does not survive to be replayed.
       orderKeyRef.current = null;
-      if (result.intentUrl && selectedProvider !== "mock") {
-        // Real acquirer → its hosted payment page.
-        window.location.href = result.intentUrl;
-        return;
+      // The order exists from here on. Record it before anything else can go
+      // wrong, so no later failure can leave the buyer thinking nothing
+      // happened — the fallback card below is rendered from this.
+      setCreated({
+        orderId: result.orderId,
+        trackHref: result.trackHref,
+        intentUrl: result.intentUrl,
+      });
+      // Always the order page — never the acquirer. Handing the browser the
+      // acquirer URL from here leaves the tab on the game page, because a
+      // phone opens the bank app instead of navigating, and the buyer comes
+      // back to a product page with no sign of their order. The flag asks the
+      // order page to open the acquirer once it is the page they are on; a
+      // wallet or `mock` payment has nothing to open and goes bare.
+      const href =
+        result.intentUrl && selectedProvider !== "mock"
+          ? withAutoOpen(result.trackHref)
+          : result.trackHref;
+      try {
+        router.push(href);
+      } catch {
+        // A created order must not become a generic "не удалось" — leave the
+        // card standing instead of falling into the catch below.
       }
-      // Both the dev `mock` provider and a wallet payment (settled
-      // synchronously inside `create_intent`) return a null/non-resolvable
-      // `intent_url` — go straight to the order page, which already shows
-      // the pending timeline, or in the wallet's case the paid one.
-      router.push(result.trackHref);
     } catch (err) {
       if (err instanceof GiftPriceChangedError) {
         toast.info(tg("priceChanged"));
@@ -622,6 +647,33 @@ export function GiftPurchasePanel({
     return (
       <div className="border-border bg-card rounded-2xl border p-6 text-center">
         <p className="text-tx-mute text-sm">{tg("comingSoon")}</p>
+      </div>
+    );
+  }
+
+  // Only ever seen if the push to the order page did not happen — the order
+  // is real, and this is how the buyer reaches it. Same copy as
+  // `PurchasePanel`'s confirmation screen, which is the same moment.
+  if (created) {
+    return (
+      <div className="border-border bg-card space-y-4 rounded-2xl border p-6 text-center">
+        <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{ts("successTitle")}</h2>
+        <p className="text-tx-dim font-mono text-xs">
+          {ts("orderLabel")} #{created.orderId.slice(0, 8)}
+        </p>
+        {created.intentUrl && (
+          <a href={created.intentUrl} className={buttonStyles({ size: "lg", className: "w-full" })}>
+            {ts("goToPay")}
+            <ArrowUpRight size={17} strokeWidth={2.6} aria-hidden />
+          </a>
+        )}
+        <Link
+          href={created.trackHref}
+          className={buttonStyles({ variant: "ghost", size: "lg", className: "w-full" })}
+        >
+          {ts("orderStatus")}
+          <ArrowUpRight size={17} strokeWidth={2.6} aria-hidden />
+        </Link>
       </div>
     );
   }

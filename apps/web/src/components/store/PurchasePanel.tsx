@@ -5,6 +5,7 @@ import { formatMoney } from "@yupay/utils";
 import { ArrowUpRight, Check, Info, Loader2, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
@@ -30,6 +31,7 @@ import {
   type ProviderStatus,
   type ProvidersOut,
 } from "@/lib/payment-providers";
+import { withAutoOpen } from "@/lib/payment-return";
 import {
   blocksCheckout,
   checkBlocker,
@@ -926,6 +928,7 @@ export function PurchasePanel({
   children?: ReactNode;
 }) {
   const t = useTranslations("web.store");
+  const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
   // Nothing is preselected on a grid the buyer still has to choose from. The
   // panel used to open on the middle SKU — `floor(len/2)`, i.e. a position in
@@ -1533,19 +1536,33 @@ export function PurchasePanel({
         }
       }
 
-      if (intent.intent_url && provider !== "mock") {
-        // Real acquirer → go straight to the hosted payment page. The dev `mock`
-        // provider returns a non-resolvable URL, so we keep its clickable
-        // confirmation screen instead of redirecting into a dead end.
-        window.location.href = intent.intent_url;
-        return;
-      }
+      // The order exists from here on: record it before anything else can go
+      // wrong. Whatever happens to the navigation below, the confirmation
+      // screen this renders tells the buyer their order is real and how to
+      // reach it — losing a created order silently is the failure this whole
+      // path used to cause.
       setDone({
         orderId: order.id,
         intentUrl: intent.intent_url,
         trackHref,
         paidFromBalance: payingFromBalance,
       });
+      if (intent.intent_url && provider !== "mock") {
+        // Real acquirer → the ORDER PAGE, flagged to open the acquirer from
+        // there. Assigning the acquirer URL here left the tab on the product
+        // page: a phone opens the bank app instead of navigating, none of our
+        // acquirers return the customer to us, and the buyer came back to the
+        // product they were about to buy with no sign an order existed — it
+        // then expired ten minutes later. See `lib/payment-return.ts`.
+        // A wallet payment is settled already and the dev `mock` provider's
+        // URL resolves nowhere: both keep the confirmation screen and never
+        // touch this path.
+        try {
+          router.push(withAutoOpen(trackHref));
+        } catch {
+          // The confirmation screen above is the fallback, links and all.
+        }
+      }
     } catch (err) {
       // The pre-charge geo veto (ADR-0063) refuses a foreign guest/fresh
       // account before the order is even created — say so specifically

@@ -43,3 +43,23 @@ export interface OrderOut {
 export interface OrderListOut {
   items: OrderOut[];
 }
+
+/**
+ * A payment as `GET /api/v1/payments/by-order/{order_id}` returns it —
+ * mirrors the API's `PaymentOut` (`apps/api/src/yupay/modules/payments/
+ * schemas.py`), minus the timestamps the storefront has no use for. `status`
+ * is the API's `PaymentStatus` literal (pending / requires_action / succeeded
+ * / failed / cancelled / refunded / partially_refunded), kept as a plain
+ * `string` here so an unknown value from a newer API degrades to "not
+ * payable" rather than a type error.
+ */
+export interface PaymentOut {
+  id: string;
+  order_id: string;
+  provider: string;
+  status: string;
+  amount: string;
+  currency: string;
+  intent_url: string | null;
+  external_id: string | null;
+}
