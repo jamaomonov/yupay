@@ -115,19 +115,37 @@ async def test_markup_default_is_seven_percent(db_session: AsyncSession) -> None
     assert row.visible_b2b is False
 
 
-async def test_migration_flipped_existing_topup_brands(db_engine) -> None:
+async def test_migration_flipped_existing_topup_brands(db_engine: Any) -> None:
     """0068's launch backfill flips ``visible_b2b`` for pre-existing data.
 
     Seeds catalog rows against the schema as it stood at 0067 (before 0068's
-    columns exist), upgrades to head, then checks the backfill: active
-    top-up/voucher brands and their active SKUs flip to ``visible_b2b=True``,
-    while the ``gift-cards`` category, the ``steam-gifts`` brand, an inactive
-    brand, and a brand whose only SKU is inactive all stay ``False``.
+    columns exist), upgrades to head, then checks the backfill: every active
+    top-up/voucher brand and its active SKUs flip to ``visible_b2b=True`` —
+    per the spec's owner decision ("ALL current top-up/voucher brands get
+    visible_b2b = true"), that includes a voucher-kind brand (the shape a
+    gift-cards-style brand actually has; the migration draws no category
+    exclusion) — while the one spec-named non-goal, the ``steam-gifts``
+    brand, an inactive brand, and a brand whose only SKU is inactive all
+    stay ``False``.
+
+    ``db_engine`` is requested (but not used directly in the body) purely
+    for fixture ordering: it is what starts the session-scoped testcontainer
+    and applies every migration up to head, and its TRUNCATE runs before
+    this test body so the catalog tables are empty before the downgrade
+    below. Seeding itself goes through throwaway engines instead (see next
+    paragraph), not ``db_engine``'s own connection.
 
     Seeding uses raw SQL rather than the ORM: ``yupay.modules.catalog.models``
     already declares ``visible_b2b``/``b2b_markup_pct`` in the shared
     metadata, so an ORM insert always asks Postgres to ``RETURNING`` them —
     which fails while the columns don't physically exist yet, pre-0068.
+
+    Every row this test inserts — including the real ``steam-gifts`` brand
+    slug, which the exclusion is keyed on and so can't be a throwaway — is
+    deleted again before the test returns, successfully or not: left behind,
+    they would poison later tests in the same worker (a merchant-catalog
+    listing asserting an exact set, or another test inserting the same
+    slugs non-idempotently).
     """
     alembic_cfg = _alembic_config()
     settings = cfg.get_settings()
@@ -138,7 +156,7 @@ async def test_migration_flipped_existing_topup_brands(db_engine) -> None:
         try:
             async with seed_engine.begin() as conn:
                 games_id = new_id()
-                gift_cards_id = new_id()
+                other_category_id = new_id()
                 await conn.execute(
                     text(
                         "INSERT INTO categories (id, slug, sort_order, active) "
@@ -146,7 +164,7 @@ async def test_migration_flipped_existing_topup_brands(db_engine) -> None:
                     ),
                     [
                         {"id": games_id, "slug": "b2b-mig-games"},
-                        {"id": gift_cards_id, "slug": "gift-cards"},
+                        {"id": other_category_id, "slug": "b2b-mig-other-cat"},
                     ],
                 )
 
@@ -160,7 +178,7 @@ async def test_migration_flipped_existing_topup_brands(db_engine) -> None:
 
                 brands = {
                     "eligible": _brand("b2b-mig-eligible", games_id, True),
-                    "gift": _brand("b2b-mig-giftcard", gift_cards_id, True),
+                    "voucher": _brand("b2b-mig-voucher", other_category_id, True),
                     "steam_gift": _brand("steam-gifts", games_id, True),
                     "inactive": _brand("b2b-mig-inactive", games_id, False),
                     "dead_skus": _brand("b2b-mig-dead-skus", games_id, True),
@@ -178,7 +196,7 @@ async def test_migration_flipped_existing_topup_brands(db_engine) -> None:
 
                 products = {
                     "eligible": _product("b2b-mig-eligible-p", brands["eligible"]["id"], "top_up"),
-                    "gift": _product("b2b-mig-gift-p", brands["gift"]["id"], "voucher"),
+                    "voucher": _product("b2b-mig-voucher-p", brands["voucher"]["id"], "voucher"),
                     "steam_gift": _product(
                         "b2b-mig-steam-gift-p", brands["steam_gift"]["id"], "top_up"
                     ),
@@ -205,7 +223,7 @@ async def test_migration_flipped_existing_topup_brands(db_engine) -> None:
 
                 skus = {
                     "eligible": _sku("b2b-mig-eligible-sku", products["eligible"]["id"], True),
-                    "gift": _sku("b2b-mig-gift-sku", products["gift"]["id"], True),
+                    "voucher": _sku("b2b-mig-voucher-sku", products["voucher"]["id"], True),
                     "steam_gift": _sku(
                         "b2b-mig-steam-gift-sku", products["steam_gift"]["id"], True
                     ),
@@ -240,20 +258,50 @@ async def test_migration_flipped_existing_topup_brands(db_engine) -> None:
                 text("SELECT sku_code, visible_b2b FROM skus WHERE sku_code LIKE 'b2b-mig-%'")
             )
             sku_rows: dict[str, bool] = {row.sku_code: row.visible_b2b for row in sku_result}
+
+        try:
+            assert brand_rows == {
+                "b2b-mig-eligible": True,
+                "b2b-mig-voucher": True,
+                "steam-gifts": False,
+                "b2b-mig-inactive": False,
+                "b2b-mig-dead-skus": False,
+            }
+            assert sku_rows == {
+                "b2b-mig-eligible-sku": True,
+                "b2b-mig-voucher-sku": True,
+                "b2b-mig-steam-gift-sku": False,
+                "b2b-mig-inactive-sku": False,
+                "b2b-mig-dead-sku": False,
+            }
+        finally:
+            # Delete every row this test created — including the real
+            # ``steam-gifts`` slug — so nothing survives for later tests in
+            # this worker, whether the asserts above passed or not.
+            async with check_engine.begin() as conn:
+                await conn.execute(text("DELETE FROM skus WHERE sku_code LIKE 'b2b-mig-%'"))
+                await conn.execute(text("DELETE FROM products WHERE slug LIKE 'b2b-mig-%'"))
+                await conn.execute(
+                    text("DELETE FROM brands WHERE slug LIKE 'b2b-mig-%' OR slug = 'steam-gifts'")
+                )
+                await conn.execute(text("DELETE FROM categories WHERE slug LIKE 'b2b-mig-%'"))
+
+            # Prove the cleanup actually worked, rather than trusting the SQL
+            # above compiled correctly — a later test's leaked-state failure
+            # would otherwise be the first sign of a typo here.
+            async with check_engine.connect() as conn:
+                leftover = (
+                    await conn.execute(
+                        text(
+                            "SELECT "
+                            "(SELECT count(*) FROM skus WHERE sku_code LIKE 'b2b-mig-%') "
+                            "+ (SELECT count(*) FROM products WHERE slug LIKE 'b2b-mig-%') "
+                            "+ (SELECT count(*) FROM brands "
+                            "     WHERE slug LIKE 'b2b-mig-%' OR slug = 'steam-gifts') "
+                            "+ (SELECT count(*) FROM categories WHERE slug LIKE 'b2b-mig-%')"
+                        )
+                    )
+                ).scalar_one()
+            assert leftover == 0
     finally:
         await check_engine.dispose()
-
-    assert brand_rows == {
-        "b2b-mig-eligible": True,
-        "b2b-mig-giftcard": False,
-        "steam-gifts": False,
-        "b2b-mig-inactive": False,
-        "b2b-mig-dead-skus": False,
-    }
-    assert sku_rows == {
-        "b2b-mig-eligible-sku": True,
-        "b2b-mig-gift-sku": False,
-        "b2b-mig-steam-gift-sku": False,
-        "b2b-mig-inactive-sku": False,
-        "b2b-mig-dead-sku": False,
-    }

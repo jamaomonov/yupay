@@ -12,12 +12,16 @@ also grows ``b2b_markup_pct`` (spec §8.3): the per-SKU wholesale markup over
 
 Launch data flip: every currently **active** SKU whose product is
 ``active`` and of ``kind IN ('top_up', 'voucher')`` and whose brand is
-**active** flips to ``visible_b2b = true`` — except brands in the
-``gift-cards`` category (Discord, Roblox, Standoff 2 Gold: personal
-redeemable gift codes, not wholesale top-up/voucher stock) and the
-``steam-gifts`` brand (a personalised gift for someone else's account,
-``kind='top_up'`` at the catalog level but not a wholesale line either — see
-``scripts/seed/2026-09-03_steam_gifts.py``). A brand then flips to
+**active** flips to ``visible_b2b = true`` — the spec's owner decision is
+literally "ALL current top-up/voucher brands get visible_b2b = true" (§6),
+and that includes the ``gift-cards`` category (Discord, Roblox, Standoff 2
+Gold): live, supplier-fulfilled, code-delivered vouchers are exactly the
+product shape this program sells, not an exclusion. The one carved-out
+brand is ``steam-gifts`` — a spec non-goal (a personalised gift for someone
+else's account, not a resellable SKU). It is ``kind='top_up'`` at the
+catalog level like any other top-up, so it cannot be expressed through
+``kind`` and is excluded by slug instead — see
+``scripts/seed/2026-09-03_steam_gifts.py``. A brand then flips to
 ``visible_b2b = true`` only if at least one of its SKUs was flipped, so a
 brand that mixes eligible and excluded/inactive lines is not blanket-flipped.
 
@@ -40,11 +44,6 @@ down_revision: str | None = "0067_wallet_merchant_deposit"
 branch_labels: str | None = None
 depends_on: str | None = None
 
-#: Brands that are structurally kind IN ('top_up', 'voucher') at the catalog
-#: level but are launch-excluded from the B2B catalog by identity, not kind.
-_EXCLUDED_BRAND_SLUGS = ("steam-gifts",)
-_EXCLUDED_BRAND_SLUGS_SQL = ", ".join(repr(slug) for slug in _EXCLUDED_BRAND_SLUGS)
-
 
 def upgrade() -> None:
     op.add_column(
@@ -62,8 +61,11 @@ def upgrade() -> None:
 
     # Flip eligible SKUs first — this is the single place the eligibility rule
     # lives. The brand flip below then just asks "did any of my SKUs flip?".
+    # ``steam-gifts`` is the one spec-named non-goal; every other active
+    # top-up/voucher brand (gift-cards included) flips per the spec's owner
+    # decision.
     op.execute(
-        f"""
+        """
         UPDATE skus
         SET visible_b2b = true
         FROM products, brands
@@ -73,10 +75,7 @@ def upgrade() -> None:
           AND products.active
           AND products.kind IN ('top_up', 'voucher')
           AND brands.active
-          AND brands.slug NOT IN ({_EXCLUDED_BRAND_SLUGS_SQL})
-          AND brands.category_id NOT IN (
-              SELECT id FROM categories WHERE slug = 'gift-cards'
-          )
+          AND brands.slug <> 'steam-gifts'
         """
     )
     op.execute(

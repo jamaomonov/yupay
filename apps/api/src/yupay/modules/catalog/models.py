@@ -341,7 +341,9 @@ class Sku(Base):
     # The wholesale markup applied over ``cost_usdt`` for merchant pricing
     # (``price = ceil_to_cent(cost * (1 + b2b_markup_pct/100 + merchant
     # adjustment))`` — see the merchant-B2B design spec §8). Uniform per SKU
-    # across every merchant; admin-edited, default 7%.
+    # across every merchant; admin-edited, default 7%. No DB CHECK floors this
+    # value: the "margin floor" guard (spec §8.3) is an application-level
+    # rejection at order time, not a schema invariant.
     b2b_markup_pct: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), nullable=False, server_default="7"
     )
