@@ -139,7 +139,7 @@ Decimal | null` (dormant, §8.3), created_at.
 ### 8.1 Formula, in one home
 
 ```
-price = ceil_to_cent( effective_cost(sku) × (1 + sku.b2b_markup_pct + (merchant.markup_adjustment_pp ?? 0)) )
+price = ceil_to_cent( effective_cost(sku) × (1 + (sku.b2b_markup_pct + (merchant.markup_adjustment_pp ?? 0)) / 100) )
 ```
 
 One function consumed by all four callers — machine-API catalog, order

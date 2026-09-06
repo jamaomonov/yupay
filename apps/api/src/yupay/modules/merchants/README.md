@@ -47,7 +47,48 @@ balance (`Decimal("0")` when no account exists yet — the read creates
 nothing). Freezing a merchant (`service.set_status`) blocks orders (M2),
 never money in: support can always credit a frozen merchant.
 
+## Pricing
+
+The wholesale price formula — the **one home**, per
+`docs/superpowers/plans/2026-09-06-merchant-b2b-m1.md` Task 5 — lives in
+`pricing.py` and nowhere else:
+
+```
+price = ceil_to_cent(
+    effective_cost(sku) * (1 + (sku.b2b_markup_pct + (merchant.markup_adjustment_pp ?? 0)) / 100)
+)
+```
+
+Four pure functions, all `Decimal`, no DB access:
+
+- `effective_cost(sku) -> Decimal | None` reads `sku.cost_usdt`. `None`
+  means the SKU is **not sellable B2B** — excluded from the merchant
+  catalog, orders for it rejected. It never falls back to `price_usd` or
+  any other retail figure (spec §8.2).
+- `merchant_markup_pct(sku, merchant)` adds the dormant per-merchant
+  `markup_adjustment_pp` (spec §8.3, `None` for every merchant in v1) to
+  the SKU's uniform `b2b_markup_pct`.
+- `merchant_price(cost, markup_pct)` rounds up to the cent
+  (`ROUND_CEILING`) — rounding down would erase margin on cheap SKUs
+  invisibly, a cent at a time.
+- `violates_margin_floor(cost, price, floor_pct)` is the only global
+  pricing control (spec §8.3): it catches a fat-fingered per-SKU markup
+  (including one that goes negative — Task 4 deliberately added no DB
+  `CHECK` on `b2b_markup_pct`) and cost spikes a stale markup no longer
+  covers. Callers read `settings.merchant_margin_floor_pct` (default `2`)
+  and pass it in; the pure functions never read settings themselves.
+
+**Nothing else in the codebase may reimplement this formula.** The one
+sanctioned exception is the admin SPA's client-side price _preview_ next to
+the markup field (Task 8, labelled «предварительно») — display-only, never
+authoritative; the server always recomputes and is the source of truth for
+what a merchant is actually charged.
+
+Import these from `api`, not from `pricing` directly — the same rule as
+every other symbol in this module.
+
 ## Status
 
-Schema (Task 1) and the deposit service (Task 3) are in place. Routes, auth,
-and API-key issuance land in later tasks.
+Schema (Task 1), the deposit service (Task 3), and wholesale pricing
+(Task 5) are in place. Routes, auth, and API-key issuance land in later
+tasks.
