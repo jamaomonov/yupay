@@ -71,6 +71,11 @@ _OLD_KINDS = (
 _NEW_KINDS = (*_OLD_KINDS, "merchant_deposit")
 
 
+# NOTE for future copiers of this pattern: the IN-lists below are built by
+# joining repr() of known constants. That is safe HERE (fixed, quote-free
+# kind names) but repr of a SINGLE-element tuple emits a trailing comma —
+# ('x',) — which is invalid SQL. The 0068 test file already replaced this
+# pattern with explicit literals; prefer that.
 def _replace(constraint: str, column_check: str) -> None:
     op.drop_constraint(constraint, "wallet_accounts", type_="check")
     op.create_check_constraint(constraint, "wallet_accounts", column_check)

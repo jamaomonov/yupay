@@ -30,9 +30,9 @@ re-run when a brand is reactivated later (see "Reflipping a brand" below).
 
 The 0068 backfill is a one-time migration, not a standing rule — a brand
 activated (or given its first active SKU) after deploy does **not**
-automatically gain `visible_b2b`. Until an admin bulk-edit UI exists (see the
-merchant-B2B design spec §8.3's "admin bulk-edit by category/brand"), flip it
-by hand:
+automatically gain `visible_b2b`. The admin UI covers per-brand/per-SKU
+toggles and bulk **markup** (spec §8.3); what it does not yet offer is a bulk
+**visibility** action — for that, flip by hand:
 
 ```bash
 docker compose -f docker-compose.prod.yml exec postgres psql -U yupay_app -d yupay -c \
