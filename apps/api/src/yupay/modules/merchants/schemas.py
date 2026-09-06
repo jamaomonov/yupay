@@ -9,10 +9,11 @@ a schema rule here.
 
 from __future__ import annotations
 
+import ipaddress
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 #: What ``Numeric(5, 2)`` can hold — the schema bound for markup fields.
 _MARKUP_BOUND = Decimal("999.99")
@@ -102,6 +103,76 @@ class MerchantTxnListOut(BaseModel):
     items: list[MerchantTxnOut]
 
 
+class ApiKeyCreateIn(BaseModel):
+    """Body of ``POST /admin/merchants/{id}/api-keys``; every field optional."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str = Field(default="", max_length=64)
+    #: Addresses or CIDR blocks allowed to use the key; ``None``/omitted means
+    #: no filter. Bounded at 32 entries because ``auth.address_allowed`` walks
+    #: the list on every machine-API request.
+    ip_allowlist: list[str] | None = Field(default=None, max_length=32)
+
+    @field_validator("ip_allowlist")
+    @classmethod
+    def _entries_parse(cls, value: list[str] | None) -> list[str] | None:
+        """Reject anything ``ipaddress`` cannot read, at the parse boundary.
+
+        A typo'd entry stored verbatim would silently never match and lock the
+        merchant out of their own API with a 403 nobody can explain. Host bits
+        are allowed (``203.0.113.5/24``) and read as the network at match
+        time, the same ``strict=False`` the auth path uses.
+        """
+        if value is None:
+            return None
+        cleaned: list[str] = []
+        for raw in value:
+            entry = raw.strip()
+            try:
+                ipaddress.ip_network(entry, strict=False)
+            except ValueError:
+                raise ValueError(f"not an IP address or CIDR block: {entry!r}") from None
+            cleaned.append(entry)
+        return cleaned or None
+
+
+class ApiKeyOut(BaseModel):
+    """One machine credential, as the admin surface sees it.
+
+    There is deliberately no ``secret`` field: the secret exists only in the
+    response to the call that minted it (:class:`ApiKeyCreatedOut`), and this
+    is the shape every read returns.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    key_id: str
+    label: str
+    ip_allowlist: list[str] | None
+    last_used_at: datetime | None
+    revoked_at: datetime | None
+    created_at: datetime
+
+
+class ApiKeyListOut(BaseModel):
+    """Body of ``GET /admin/merchants/{id}/api-keys``, newest first."""
+
+    items: list[ApiKeyOut]
+
+
+class ApiKeyCreatedOut(ApiKeyOut):
+    """Result of minting a key — the ONLY response that ever carries a secret.
+
+    ``secret`` is ``None`` on an idempotent replay. The replay snapshot is
+    stored in ``idempotent_responses``, a table with no reaper, and a usable
+    credential sitting there in the clear forever is worse than making a
+    retry after a lost response say so: revoke the key and issue another.
+    """
+
+    secret: str | None
+
+
 class SkuB2bPatchIn(BaseModel):
     """Body of ``PATCH /admin/catalog/skus/{id}/b2b``; absent fields stay untouched."""
 
@@ -173,6 +244,10 @@ class BrandB2bOut(BaseModel):
 
 
 __all__ = [
+    "ApiKeyCreateIn",
+    "ApiKeyCreatedOut",
+    "ApiKeyListOut",
+    "ApiKeyOut",
     "BrandB2bOut",
     "BrandB2bPatchIn",
     "BulkMarkupIn",

@@ -1,4 +1,4 @@
-"""Merchant accounts and the USD deposit on the double-entry ledger.
+"""Merchant accounts, their machine credentials, and the USD deposit ledger.
 
 M1 scope (spec §7): support credits a merchant's prepaid deposit through the
 admin surface, and the cabinet reads the balance. The deposit is a ledger
@@ -12,21 +12,34 @@ same reason ``affiliate/ledger.py`` does: the facade imports the wallet
 router, which pulls in the whole v1 route stack and circles straight back —
 an ImportError for any caller that is not already inside the app.
 
-Freezing a merchant (``set_status``) blocks ORDERS (an M2 concern), never
-money in: support can always credit a frozen merchant's deposit, e.g. to
-settle a dispute while the account is under review.
+Freezing a merchant (``set_status``) blocks ORDERS — from M2 on, the
+``merchant_auth`` dependency refuses a frozen merchant with 403
+``merchant_frozen`` — never money in: support can always credit a frozen
+merchant's deposit, e.g. to settle a dispute while the account is under
+review.
+
+M2 adds the credential lifecycle (``create_api_key`` / ``list_api_keys`` /
+``revoke_api_key``). It lives here, next to the account it belongs to,
+rather than in ``auth``: ``auth`` binds to the request stack (it is a
+FastAPI dependency) and therefore cannot be re-exported from ``api`` without
+closing an import cycle, while these three are ordinary row operations the
+admin surface calls through the facade like everything else. The wire format
+they mint into is ``signing``.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from yupay.core.clock import now
 from yupay.core.errors import NotFoundError, ValidationError
 from yupay.core.ids import new_id
-from yupay.modules.merchants.models import Merchant
+from yupay.modules.merchants import signing
+from yupay.modules.merchants.models import Merchant, MerchantApiKey
 from yupay.modules.wallet import service as wallet_service
 from yupay.modules.wallet.models import WalletAccount, WalletTransaction
 
@@ -112,6 +125,130 @@ async def set_status(db: AsyncSession, *, merchant_id: str, status: str) -> Merc
     merchant.status = status
     await db.flush()
     return merchant
+
+
+@dataclass(frozen=True)
+class IssuedApiKey:
+    """A freshly minted credential: the stored row plus the one-time secret.
+
+    ``secret`` exists only in this object and in the HTTP response that
+    carries it. It is never persisted, never logged, and cannot be recovered
+    afterwards — the row holds ``signing.derive_signing_key(secret)``.
+    """
+
+    key: MerchantApiKey
+    secret: str
+
+
+async def create_api_key(
+    db: AsyncSession,
+    *,
+    merchant_id: str,
+    label: str = "",
+    ip_allowlist: list[str] | None = None,
+) -> IssuedApiKey:
+    """Issue a machine credential for ``/merchant/v1``.
+
+    Several live keys per merchant are supported on purpose (spec §9.2):
+    rotation is "issue the new one, deploy it, revoke the old one", which has
+    no downtime window. Nothing here revokes anything.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        merchant_id: Who the key belongs to. Must exist.
+        label: Operator-facing note, e.g. ``"prod server"``. Trimmed.
+        ip_allowlist: Addresses or CIDR blocks allowed to use this key.
+            An empty list is normalised to ``None`` (filter off) so the
+            "no addresses at all" shape can never reach the auth path — see
+            ``auth.address_allowed``.
+
+    Returns:
+        The new row plus the plaintext secret, which the caller must return
+        to the operator immediately and then forget.
+
+    Raises:
+        NotFoundError: If no merchant with that id exists.
+    """
+    await _get_merchant(db, merchant_id)
+    secret = signing.new_secret()
+    key = MerchantApiKey(
+        id=new_id(),
+        merchant_id=merchant_id,
+        key_id=signing.new_key_id(),
+        secret_hash=signing.derive_signing_key(secret),
+        label=label.strip(),
+        ip_allowlist=ip_allowlist or None,
+    )
+    db.add(key)
+    await db.flush()
+    # Pick up ``created_at``'s server default so the caller can render the row
+    # without a round-trip of its own.
+    await db.refresh(key)
+    return IssuedApiKey(key=key, secret=secret)
+
+
+async def list_api_keys(db: AsyncSession, *, merchant_id: str) -> list[MerchantApiKey]:
+    """Every key ever issued to a merchant, newest first, revoked ones included.
+
+    Revoked keys stay listed: "which credential was live when this happened"
+    is the question the cabinet's security page exists to answer.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        merchant_id: Whose keys to list. Must exist.
+
+    Returns:
+        The rows, newest first.
+
+    Raises:
+        NotFoundError: If no merchant with that id exists — an empty list for
+            a typo'd id must be a 404, not a plausible-looking ``[]``.
+    """
+    await _get_merchant(db, merchant_id)
+    stmt = (
+        select(MerchantApiKey)
+        .where(MerchantApiKey.merchant_id == merchant_id)
+        # ``created_at`` is transaction-start time, so two keys minted in one
+        # transaction tie; the UUIDv7 id is the monotonic tiebreak.
+        .order_by(MerchantApiKey.created_at.desc(), MerchantApiKey.id.desc())
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def revoke_api_key(db: AsyncSession, *, merchant_id: str, key_id: str) -> MerchantApiKey:
+    """Revoke a key. Idempotent: a second call leaves the first timestamp alone.
+
+    The key is matched on ``(merchant_id, key_id)`` rather than ``key_id``
+    alone, so one merchant's id in the path can never revoke another's
+    credential.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        merchant_id: The owning merchant. Must exist.
+        key_id: The public half of the credential to revoke.
+
+    Returns:
+        The row, with ``revoked_at`` set.
+
+    Raises:
+        NotFoundError: If the merchant does not exist, or the key does not
+            belong to it.
+    """
+    await _get_merchant(db, merchant_id)
+    key = (
+        await db.execute(
+            select(MerchantApiKey).where(
+                MerchantApiKey.merchant_id == merchant_id,
+                MerchantApiKey.key_id == key_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if key is None:
+        raise NotFoundError("api key not found")
+    if key.revoked_at is None:
+        key.revoked_at = now()
+        await db.flush()
+    return key
 
 
 async def credit_deposit(
@@ -223,8 +360,12 @@ async def deposit_balance(db: AsyncSession, *, merchant_id: str) -> Decimal:
 
 __all__ = [
     "DEPOSIT_CURRENCY",
+    "IssuedApiKey",
+    "create_api_key",
     "create_merchant",
     "credit_deposit",
     "deposit_balance",
+    "list_api_keys",
+    "revoke_api_key",
     "set_status",
 ]

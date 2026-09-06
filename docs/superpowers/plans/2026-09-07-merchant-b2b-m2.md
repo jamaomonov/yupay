@@ -136,13 +136,23 @@ X-Merchant-Signature: hex(HMAC_SHA256(secret, f"{timestamp}\n{method}\n{path}\n{
 Also in this task (carry-over 3): give the M1 admin write endpoints
 per-resource replay scopes (`f"merchants.sku_b2b:{sku_id}"` etc.).
 
-- [ ] **Step 1: failing tests** — issuance returns a secret once and the row
+- [x] **Step 1: failing tests** — issuance returns a secret once and the row
       stores only its hash; a correct signature authenticates; a tampered
       body, a stale timestamp, a revoked key, an unknown key, a frozen
       merchant, and a disallowed IP each fail with the right status; the
       allowlist round-trip; `last_used_at` advances.
-- [ ] **Step 2-4: FAIL → implement → pass**
-- [ ] **Step 5: commit** `feat(api/merchants): issue API keys and verify signed requests`
+- [x] **Step 2-4: FAIL → implement → pass**
+- [x] **Step 5: commit** `feat(api/merchants): issue API keys and verify signed requests`
+
+> No migration 0070: M1's `0065_merchants_core` already ships `last_used_at`,
+> `ip_allowlist`, `revoked_at`, `label`, `key_id` (unique) and `secret_hash`.
+> The rate-limit shape follows the controller's ruling, not the literal brief:
+> `guard_ip(bucket="merchant-api")` with **no** `subject` (its subject axis is
+> capped by one global setting), plus an explicit per-`key_id` counter on the
+> single promoted `ip_guard.hit_counter`. The stored SHA-256 is also the HMAC
+> signing key — an HMAC cannot be verified without key material, so that is the
+> only reading under which both "stored only as SHA-256" and `HMAC(secret, …)`
+> hold; the trade-off is spelled out in `signing.py` and the threat model.
 
 ---
 

@@ -64,11 +64,28 @@ def subject_key(bucket: str, ip: str, subject: str) -> str:
     return f"auth:ipguard:{bucket}:{ip}:s:{digest}"
 
 
-async def _hit(key: str, *, limit: int, window: int) -> bool:
-    """Count one attempt. True when it puts the caller over ``limit``.
+async def hit_counter(key: str, *, limit: int, window: int) -> bool:
+    """Count one attempt against ``key``. True when it puts the caller over ``limit``.
 
-    Best-effort by design: a Redis error counts as "under the limit" so a cache
-    hiccup degrades to no throttling rather than locking everyone out of auth.
+    The single fixed-window counter behind every guard in the app: INCR, set
+    the TTL on the first hit of a window, compare. Public because the machine
+    API's per-key axis (``merchants.auth``) needs the same counter on a key
+    this module has no business knowing about — and a second copy of the
+    INCR/EXPIRE dance is exactly how two guards drift into behaving
+    differently under Redis trouble.
+
+    Best-effort by design: a Redis error counts as "under the limit" so a
+    cache hiccup degrades to no throttling rather than locking everyone out.
+    Callers own the response — this returns a verdict and raises nothing.
+
+    Args:
+        key: The Redis key to charge. Callers namespace it themselves; every
+            key is catalogued in ``docs/architecture/cache-keys.md``.
+        limit: Hits allowed per window before this returns True.
+        window: Window length in seconds, applied as the key's TTL.
+
+    Returns:
+        Whether this hit went over ``limit``.
     """
     count = 0
     with contextlib.suppress(Exception):  # fail open on Redis trouble
@@ -97,12 +114,12 @@ async def guard_ip(request: Request, *, bucket: str, subject: str | None = None)
 
     # Charge both counters before deciding, so an attempt is never counted
     # against one axis and not the other depending on which trips first.
-    over_ip = await _hit(
+    over_ip = await hit_counter(
         f"auth:ipguard:{bucket}:{ip}", limit=bucket_limit(settings, bucket), window=window
     )
     over_subject = False
     if subject:
-        over_subject = await _hit(
+        over_subject = await hit_counter(
             subject_key(bucket, ip, subject),
             limit=settings.auth_ip_guard_subject_max,
             window=window,

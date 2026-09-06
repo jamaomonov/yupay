@@ -169,6 +169,44 @@ auth:emailverify:{jti}` (same pattern as `auth:pwreset:{jti}`), so a leaked or
   truncated `email_hash` pseudonym, so no plaintext address enters the audit
   feed.
 
+## Merchant machine credentials (B2B, 2026-09-07)
+
+- **The stored digest is signing key material.** `merchant_api_keys.secret_hash`
+  holds `sha256(secret)`, and that is what both sides key the request HMAC with
+  — a signature scheme cannot verify without the key. So a database dump lets an
+  attacker sign requests as any merchant, exactly as if the secret were stored
+  in the clear; what hashing buys is only that the secret string the merchant
+  pasted into their own configuration is not recoverable, so a dump cannot be
+  replayed against anything else they used it for. The controls that actually
+  bound a dump are revocation (`revoked_at`, effective immediately, no cache to
+  wait out) and the per-key IP allowlist. Storing the secret reversibly
+  encrypted (the `inventory.crypto` pattern) would move the trust to the app's
+  key rather than remove it; it is the upgrade path if merchant volume ever
+  justifies the extra column.
+- **No enumeration oracle on the credential.** Unknown `key_id`, revoked key and
+  a wrong signature return one identical RFC 7807 body, and the unknown/revoked
+  paths compute an HMAC against a constant dummy signing key before failing, so
+  they cost the same as a real comparison. An early `return` would have made
+  "this key id exists" measurable — the same reason `auth.service` verifies
+  against `_DUMMY_HASH` for absent accounts.
+- **Replay is bounded to ±300 s**, and inside that window order creation is
+  idempotent on `merchant_order_id`, so a captured request re-sent within the
+  window returns the original order rather than placing a second one. The
+  signature covers method, path, timestamp and the raw body — **not** the query
+  string, which is why identifiers must never travel in a URL (spec §9.2; the
+  edge access log records query strings verbatim).
+- **Secrets never reach a log or an error body.** The credential appears only in
+  the response that mints it. The structured logger already redacts `secret`,
+  `signature`, `key` and `authorization` by name (`core.logging.REDACTED_KEYS`),
+  and the auth path writes no log line of its own.
+- **Throttling is two-axis, and the merchant axis is charged only after the
+  signature verifies.** A `key_id` travels in a plaintext header; charging its
+  counter earlier would let anyone who observed one exhaust its owner's budget.
+  Forged traffic is bounded by the per-IP `merchant-api` bucket instead.
+- **A frozen merchant is refused at the dependency** (403 `merchant_frozen`),
+  before any endpoint body runs — the freeze button is an authentication-time
+  control, not something each route has to remember.
+
 ## Out of scope (we do not handle)
 
 - Card data (PAN, CVV) — all card collection redirected to hosted provider fields.

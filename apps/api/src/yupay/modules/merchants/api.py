@@ -1,8 +1,21 @@
 """Public interface of the ``merchants`` module.
 
 Other modules import from here, never from ``models`` or ``service``
-directly — the same rule the rest of the codebase follows. API-key issuance
-and cabinet auth land in later tasks and get re-exported here as they arrive.
+directly — the same rule the rest of the codebase follows. Cabinet auth
+lands in a later task and gets re-exported here when it arrives.
+
+Two things in this module are deliberately NOT re-exported, both for the same
+reason: they bind to the ``/api/v1`` route stack, so a facade import would
+close a cycle for any service-layer caller.
+
+- the routers in ``admin_routes`` (``api/v1`` imports them from that file);
+- ``auth.merchant_auth``, the machine-API dependency, which takes its session
+  from ``api.v1.deps.db_session`` so the endpoint behind it shares one
+  transaction. Import it from ``merchants.auth`` directly.
+
+The credential *lifecycle* (``create_api_key`` / ``list_api_keys`` /
+``revoke_api_key``) and the wire format (``signing``) have no such binding
+and are exported normally.
 """
 
 from __future__ import annotations
@@ -23,28 +36,46 @@ from yupay.modules.merchants.pricing import (
 )
 from yupay.modules.merchants.service import (
     DEPOSIT_CURRENCY,
+    IssuedApiKey,
+    create_api_key,
     create_merchant,
     credit_deposit,
     deposit_balance,
+    list_api_keys,
+    revoke_api_key,
     set_status,
+)
+from yupay.modules.merchants.signing import (
+    canonical_message,
+    derive_signing_key,
+    expected_signature,
+    signature_matches,
 )
 
 __all__ = [
     "DEPOSIT_CURRENCY",
+    "IssuedApiKey",
     "Merchant",
     "MerchantApiKey",
     "MerchantUser",
     "bulk_set_markup",
+    "canonical_message",
+    "create_api_key",
     "create_merchant",
     "credit_deposit",
     "deposit_balance",
+    "derive_signing_key",
     "effective_cost",
+    "expected_signature",
+    "list_api_keys",
     "list_deposit_transactions",
     "list_merchants_with_balances",
     "merchant_markup_pct",
     "merchant_price",
+    "revoke_api_key",
     "set_brand_b2b",
     "set_sku_b2b",
     "set_status",
+    "signature_matches",
     "violates_margin_floor",
 ]

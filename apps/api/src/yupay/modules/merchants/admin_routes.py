@@ -42,6 +42,10 @@ from yupay.core.idempotency import (
 from yupay.modules.admin.api import require_admin
 from yupay.modules.merchants import api as merchants
 from yupay.modules.merchants.schemas import (
+    ApiKeyCreatedOut,
+    ApiKeyCreateIn,
+    ApiKeyListOut,
+    ApiKeyOut,
     BrandB2bOut,
     BrandB2bPatchIn,
     BulkMarkupIn,
@@ -194,7 +198,7 @@ async def _set_status(
 ) -> MerchantOut:
     """Shared freeze/unfreeze body: replay, mutate, remember."""
     normalized = normalize_idempotency_key(key)
-    scope = f"merchants.set_status.{to}"
+    scope = f"merchants.set_status.{to}:{merchant_id}"
     cached = await _replayed(db, scope=scope, key=normalized, model=MerchantOut)
     if cached is not None:
         return cached
@@ -294,6 +298,97 @@ async def list_merchant_transactions(
     return MerchantTxnListOut(items=items)
 
 
+@admin_router.post(
+    "/{merchant_id}/api-keys",
+    response_model=ApiKeyCreatedOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Issue a machine credential for /merchant/v1",
+)
+async def create_api_key(
+    merchant_id: str,
+    body: ApiKeyCreateIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    idempotency_key: IdempotencyKeyHeader = None,
+) -> ApiKeyCreatedOut:
+    """Mint a key. The secret is in this response and nowhere else, ever.
+
+    Several live keys per merchant are supported so rotation has no downtime
+    window (spec §9.2): issue, deploy, then revoke the old one.
+
+    A retry carrying the same ``Idempotency-Key`` replays the original
+    ``key_id`` but with ``secret: null`` — the stored snapshot deliberately
+    omits it, because ``idempotent_responses`` has no reaper and a usable
+    credential must not sit there in the clear. If the first response was
+    lost, revoke the key and issue another.
+    """
+    key = normalize_idempotency_key(idempotency_key)
+    scope = f"merchants.api_key_create:{merchant_id}"
+    cached = await _replayed(db, scope=scope, key=key, model=ApiKeyCreatedOut)
+    if cached is not None:
+        return cached
+    issued = await merchants.create_api_key(
+        db, merchant_id=merchant_id, label=body.label, ip_allowlist=body.ip_allowlist
+    )
+    out = ApiKeyCreatedOut(
+        **ApiKeyOut.model_validate(issued.key).model_dump(), secret=issued.secret
+    )
+    await _remember(
+        db,
+        scope=scope,
+        key=key,
+        body=out.model_copy(update={"secret": None}).model_dump(mode="json"),
+        status_code=status.HTTP_201_CREATED,
+    )
+    return out
+
+
+@admin_router.get(
+    "/{merchant_id}/api-keys",
+    response_model=ApiKeyListOut,
+    summary="A merchant's machine credentials, newest first",
+)
+async def list_api_keys(
+    merchant_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> ApiKeyListOut:
+    """Never returns a secret — the response model has no such field.
+
+    Revoked keys stay listed: "which credential was live at the time" is the
+    question this screen answers.
+    """
+    rows = await merchants.list_api_keys(db, merchant_id=merchant_id)
+    return ApiKeyListOut(items=[ApiKeyOut.model_validate(row) for row in rows])
+
+
+@admin_router.delete(
+    "/{merchant_id}/api-keys/{key_id}",
+    response_model=ApiKeyOut,
+    summary="Revoke a machine credential",
+)
+async def revoke_api_key(
+    merchant_id: str,
+    key_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    idempotency_key: IdempotencyKeyHeader = None,
+) -> ApiKeyOut:
+    """Set ``revoked_at``; the key stops authenticating immediately.
+
+    Naturally idempotent — a second call returns the row with the FIRST
+    revocation timestamp rather than moving it — and the key is matched on
+    ``(merchant_id, key_id)``, so one merchant's id in the path cannot revoke
+    another's credential (404 instead).
+    """
+    replay_key = normalize_idempotency_key(idempotency_key)
+    scope = f"merchants.api_key_revoke:{merchant_id}:{key_id}"
+    cached = await _replayed(db, scope=scope, key=replay_key, model=ApiKeyOut)
+    if cached is not None:
+        return cached
+    row = await merchants.revoke_api_key(db, merchant_id=merchant_id, key_id=key_id)
+    out = ApiKeyOut.model_validate(row)
+    await _remember(db, scope=scope, key=replay_key, body=out.model_dump(mode="json"))
+    return out
+
+
 @catalog_b2b_router.patch(
     "/skus/{sku_id}/b2b",
     response_model=SkuB2bOut,
@@ -307,7 +402,7 @@ async def patch_sku_b2b(
 ) -> SkuB2bOut:
     """Absent fields stay untouched; no pricing math here (AGENTS.md §6)."""
     key = normalize_idempotency_key(idempotency_key)
-    scope = "merchants.sku_b2b"
+    scope = f"merchants.sku_b2b:{sku_id}"
     cached = await _replayed(db, scope=scope, key=key, model=SkuB2bOut)
     if cached is not None:
         return cached
@@ -331,7 +426,7 @@ async def bulk_markup(
 ) -> BulkMarkupOut:
     """One UPDATE over the brand's (or category's) SKUs; returns the affected count."""
     key = normalize_idempotency_key(idempotency_key)
-    scope = "merchants.bulk_markup"
+    scope = f"merchants.bulk_markup:{body.brand_slug or body.category}"
     cached = await _replayed(db, scope=scope, key=key, model=BulkMarkupOut)
     if cached is not None:
         return cached
@@ -359,7 +454,7 @@ async def patch_brand_b2b(
 ) -> BrandB2bOut:
     """Effective B2B visibility is ``brand.visible_b2b AND sku.visible_b2b``."""
     key = normalize_idempotency_key(idempotency_key)
-    scope = "merchants.brand_b2b"
+    scope = f"merchants.brand_b2b:{brand_id}"
     cached = await _replayed(db, scope=scope, key=key, model=BrandB2bOut)
     if cached is not None:
         return cached

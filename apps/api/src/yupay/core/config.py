@@ -231,6 +231,19 @@ class Settings(BaseSettings):
             # already makes a repeat of the same link free, so this only
             # bounds distinct links from one address.
             "gifts-steam-profile": 120,
+            # The machine API (/merchant/v1). Sixty times the default
+            # credential bucket because the caller is a server, not a person:
+            # a reseller's backend legitimately fires a burst of order
+            # creations and status polls from ONE address, and ten a minute
+            # would break the integration on day one. 600 matches
+            # ``rate_limit_default`` (the coarse per-IP, per-endpoint limiter
+            # in bootstrap), so neither tier surprises the other. Brute force
+            # is not the threat model here — the credential is a 256-bit
+            # secret compared with ``compare_digest`` — throughput is, which
+            # is why no ``subject`` is passed on this bucket and the
+            # per-merchant axis is ``merchant_api_key_rate_max`` below
+            # instead.
+            "merchant-api": 600,
         },
         description=(
             "Per-bucket overrides for auth_ip_guard_max. The default is written for "
@@ -240,6 +253,22 @@ class Settings(BaseSettings):
             "Uzbek mobile carriers put many subscribers behind one address, so they "
             "spend a shared budget collectively. Values <= 0 are ignored, so a typo "
             "falls back to the default instead of disabling the guard."
+        ),
+    )
+    merchant_api_key_rate_max: int = Field(
+        default=600,
+        description=(
+            "Max /merchant/v1 requests per window per API KEY, the merchant axis "
+            "of the machine API's two-axis guard (the IP axis is the "
+            "'merchant-api' bucket above). Shares auth_ip_guard_window_seconds, "
+            "which is why it lives here and not with the other merchant settings: "
+            "widening that window loosens this ceiling by the same factor. Per "
+            "key rather than per merchant, so a merchant mid-rotation briefly has "
+            "two budgets -- deliberate, since the point is a fair share under "
+            "load and not a hard quota. Charged only AFTER the signature "
+            "verifies: a key id travels in a plaintext header, and a third party "
+            "who reads one must not be able to spend its owner's budget. Forged "
+            "traffic is bounded by the IP axis instead."
         ),
     )
 

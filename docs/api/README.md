@@ -234,5 +234,32 @@ transaction instead of crediting twice. The ledger replays by key **without
 comparing parameters** — the response's `amount` is the replayed transaction's
 (original) amount, so a client that resubmits a key with an amended amount can
 detect the mismatch. The other writes accept an optional `Idempotency-Key` and
-replay via the generic `(scope, key)` store. See
+replay via the generic `(scope, key)` store, whose scope is **per resource**
+(`merchants.sku_b2b:{sku_id}` and so on) so one reused client key cannot replay
+one SKU's response for another. See
 `docs/architecture/sequence-diagrams/merchant-deposit-credit.mmd`.
+
+## Merchant machine credentials (M2)
+
+`POST /admin/merchants/{id}/api-keys` mints a key and returns
+`{key_id, secret, …}`. **The secret appears in that one response and nowhere
+else** — the row stores only `sha256(secret)`, and that digest is also the HMAC
+signing key (an HMAC cannot be verified without key material; the full
+reasoning and the rejected alternative are in `signing.py`). A retry carrying
+the same `Idempotency-Key` replays the original `key_id` with `secret: null`,
+because `idempotent_responses` has no reaper and a usable credential must not
+sit there in the clear; if the first response was lost, revoke and reissue.
+
+`GET /admin/merchants/{id}/api-keys` lists every key ever issued (newest first,
+revoked ones included) and its response model has no `secret` field at all.
+`DELETE /admin/merchants/{id}/api-keys/{key_id}` sets `revoked_at`, is
+naturally idempotent, and matches on `(merchant_id, key_id)` so one merchant's
+id in the path cannot revoke another's key.
+
+Requests to the machine API `/merchant/v1` (endpoints land with the rest of M2)
+carry `X-Merchant-Key`, `X-Merchant-Timestamp` and `X-Merchant-Signature =
+hex(HMAC_SHA256(sha256_hex(secret), f"{timestamp}\n{method}\n{path}\n{body}"))`,
+timestamp within ±300 s. **The contract third parties implement against is
+`apps/api/src/yupay/modules/merchants/README.md`** — headers, canonical string,
+worked example, error codes — and it must not change without a new API version.
+Unknown key, revoked key and a wrong signature all return one identical 401.

@@ -1540,6 +1540,196 @@
         "title": "AnalyticsRange",
         "type": "string"
       },
+      "ApiKeyCreateIn": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /admin/merchants/{id}/api-keys``; every field optional.",
+        "properties": {
+          "ip_allowlist": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 32,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip Allowlist"
+          },
+          "label": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "title": "ApiKeyCreateIn",
+        "type": "object"
+      },
+      "ApiKeyCreatedOut": {
+        "description": "Result of minting a key \u2014 the ONLY response that ever carries a secret.\n\n``secret`` is ``None`` on an idempotent replay. The replay snapshot is\nstored in ``idempotent_responses``, a table with no reaper, and a usable\ncredential sitting there in the clear forever is worse than making a\nretry after a lost response say so: revoke the key and issue another.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "ip_allowlist": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip Allowlist"
+          },
+          "key_id": {
+            "title": "Key Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret"
+          }
+        },
+        "required": [
+          "key_id",
+          "label",
+          "ip_allowlist",
+          "last_used_at",
+          "revoked_at",
+          "created_at",
+          "secret"
+        ],
+        "title": "ApiKeyCreatedOut",
+        "type": "object"
+      },
+      "ApiKeyListOut": {
+        "description": "Body of ``GET /admin/merchants/{id}/api-keys``, newest first.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ApiKeyOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ApiKeyListOut",
+        "type": "object"
+      },
+      "ApiKeyOut": {
+        "description": "One machine credential, as the admin surface sees it.\n\nThere is deliberately no ``secret`` field: the secret exists only in the\nresponse to the call that minted it (:class:`ApiKeyCreatedOut`), and this\nis the shape every read returns.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "ip_allowlist": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip Allowlist"
+          },
+          "key_id": {
+            "title": "Key Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "required": [
+          "key_id",
+          "label",
+          "ip_allowlist",
+          "last_used_at",
+          "revoked_at",
+          "created_at"
+        ],
+        "title": "ApiKeyOut",
+        "type": "object"
+      },
       "ApplicationIn": {
         "additionalProperties": false,
         "description": "A request to join the program.",
@@ -19547,6 +19737,232 @@
           }
         },
         "summary": "Create a reseller account",
+        "tags": [
+          "admin:merchants"
+        ]
+      }
+    },
+    "/api/v1/admin/merchants/{merchant_id}/api-keys": {
+      "get": {
+        "description": "Never returns a secret \u2014 the response model has no such field.\n\nRevoked keys stay listed: \"which credential was live at the time\" is the\nquestion this screen answers.",
+        "operationId": "list_api_keys_api_v1_admin_merchants__merchant_id__api_keys_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "merchant_id",
+            "required": true,
+            "schema": {
+              "title": "Merchant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "A merchant's machine credentials, newest first",
+        "tags": [
+          "admin:merchants"
+        ]
+      },
+      "post": {
+        "description": "Mint a key. The secret is in this response and nowhere else, ever.\n\nSeveral live keys per merchant are supported so rotation has no downtime\nwindow (spec \u00a79.2): issue, deploy, then revoke the old one.\n\nA retry carrying the same ``Idempotency-Key`` replays the original\n``key_id`` but with ``secret: null`` \u2014 the stored snapshot deliberately\nomits it, because ``idempotent_responses`` has no reaper and a usable\ncredential must not sit there in the clear. If the first response was\nlost, revoke the key and issue another.",
+        "operationId": "create_api_key_api_v1_admin_merchants__merchant_id__api_keys_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "merchant_id",
+            "required": true,
+            "schema": {
+              "title": "Merchant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiKeyCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyCreatedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Issue a machine credential for /merchant/v1",
+        "tags": [
+          "admin:merchants"
+        ]
+      }
+    },
+    "/api/v1/admin/merchants/{merchant_id}/api-keys/{key_id}": {
+      "delete": {
+        "description": "Set ``revoked_at``; the key stops authenticating immediately.\n\nNaturally idempotent \u2014 a second call returns the row with the FIRST\nrevocation timestamp rather than moving it \u2014 and the key is matched on\n``(merchant_id, key_id)``, so one merchant's id in the path cannot revoke\nanother's credential (404 instead).",
+        "operationId": "revoke_api_key_api_v1_admin_merchants__merchant_id__api_keys__key_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "merchant_id",
+            "required": true,
+            "schema": {
+              "title": "Merchant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "title": "Key Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke a machine credential",
         "tags": [
           "admin:merchants"
         ]

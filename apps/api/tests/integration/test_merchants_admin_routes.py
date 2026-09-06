@@ -41,7 +41,7 @@ from yupay.modules.catalog.models import (
     ProductTranslation,
     Sku,
 )
-from yupay.modules.merchants.models import Merchant
+from yupay.modules.merchants.models import Merchant, MerchantApiKey
 from yupay.modules.users.models import TelegramLink, User
 from yupay.modules.wallet.models import WalletTransaction
 
@@ -150,6 +150,9 @@ def _seed_catalog_unit(db: AsyncSession, tag: str, *, sku_count: int = 1) -> tup
         ("POST", "/api/v1/admin/merchants/x/unfreeze"),
         ("POST", "/api/v1/admin/merchants/x/deposit-credits"),
         ("GET", "/api/v1/admin/merchants/x/transactions"),
+        ("POST", "/api/v1/admin/merchants/x/api-keys"),
+        ("GET", "/api/v1/admin/merchants/x/api-keys"),
+        ("DELETE", "/api/v1/admin/merchants/x/api-keys/ypm_x"),
         ("PATCH", "/api/v1/admin/catalog/skus/x/b2b"),
         ("POST", "/api/v1/admin/catalog/b2b/bulk-markup"),
         ("PATCH", "/api/v1/admin/catalog/brands/x/b2b"),
@@ -171,6 +174,9 @@ async def test_every_endpoint_requires_a_token(
         ("POST", "/api/v1/admin/merchants/x/unfreeze"),
         ("POST", "/api/v1/admin/merchants/x/deposit-credits"),
         ("GET", "/api/v1/admin/merchants/x/transactions"),
+        ("POST", "/api/v1/admin/merchants/x/api-keys"),
+        ("GET", "/api/v1/admin/merchants/x/api-keys"),
+        ("DELETE", "/api/v1/admin/merchants/x/api-keys/ypm_x"),
         ("PATCH", "/api/v1/admin/catalog/skus/x/b2b"),
         ("POST", "/api/v1/admin/catalog/b2b/bulk-markup"),
         ("PATCH", "/api/v1/admin/catalog/brands/x/b2b"),
@@ -802,3 +808,325 @@ async def test_bulk_markup_needs_exactly_one_target(
         json={"markup_pct": "5"},
     )
     assert neither.status_code == 422
+
+
+# ---------- API keys (M2, Task 2) ----------
+
+
+async def test_create_api_key_returns_the_secret_once_and_stores_only_its_hash(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    merchant_id = await _create_merchant(integration_client, admin_headers)
+
+    r = await integration_client.post(
+        f"/api/v1/admin/merchants/{merchant_id}/api-keys",
+        headers=admin_headers,
+        json={"label": "prod server"},
+    )
+
+    assert r.status_code == 201, r.text
+    body = r.json()
+    secret = body["secret"]
+    assert body["key_id"].startswith("ypm_")
+    assert secret
+    assert secret != body["key_id"]
+    assert body["label"] == "prod server"
+    assert body["ip_allowlist"] is None
+
+    row = (
+        await db_session.execute(
+            select(MerchantApiKey).where(MerchantApiKey.key_id == body["key_id"])
+        )
+    ).scalar_one()
+    assert row.merchant_id == merchant_id
+    assert row.secret_hash == hashlib.sha256(secret.encode()).hexdigest()
+    assert secret not in row.secret_hash
+    assert row.revoked_at is None
+    assert row.last_used_at is None
+
+    listed = await integration_client.get(
+        f"/api/v1/admin/merchants/{merchant_id}/api-keys", headers=admin_headers
+    )
+    assert listed.status_code == 200, listed.text
+    assert "secret" not in json.dumps(listed.json())
+    assert listed.json()["items"][0]["key_id"] == body["key_id"]
+    assert listed.json()["items"][0]["last_used_at"] is None
+    assert listed.json()["items"][0]["revoked_at"] is None
+
+
+async def test_two_keys_can_live_at_once_and_list_newest_first(
+    integration_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    """Rotation is "issue the new one, then revoke the old" — spec §9.2."""
+    merchant_id = await _create_merchant(integration_client, admin_headers)
+    first = await integration_client.post(
+        f"/api/v1/admin/merchants/{merchant_id}/api-keys",
+        headers=admin_headers,
+        json={"label": "old"},
+    )
+    second = await integration_client.post(
+        f"/api/v1/admin/merchants/{merchant_id}/api-keys",
+        headers=admin_headers,
+        json={"label": "new"},
+    )
+    assert first.status_code == 201, first.text
+    assert second.status_code == 201, second.text
+
+    listed = await integration_client.get(
+        f"/api/v1/admin/merchants/{merchant_id}/api-keys", headers=admin_headers
+    )
+    labels = [item["label"] for item in listed.json()["items"]]
+    assert labels == ["new", "old"]
+
+
+async def test_create_api_key_rejects_an_unparseable_allowlist_entry(
+    integration_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    merchant_id = await _create_merchant(integration_client, admin_headers)
+    r = await integration_client.post(
+        f"/api/v1/admin/merchants/{merchant_id}/api-keys",
+        headers=admin_headers,
+        json={"ip_allowlist": ["203.0.113.0/24", "not-an-address"]},
+    )
+    assert r.status_code == 422
+
+
+async def test_create_api_key_unknown_merchant_404(
+    integration_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    r = await integration_client.post(
+        f"/api/v1/admin/merchants/{new_id()}/api-keys", headers=admin_headers, json={}
+    )
+    assert r.status_code == 404
+
+
+async def test_create_api_key_replay_never_returns_the_secret_twice(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """A retry must not mint a second key, and must not resurrect the secret.
+
+    The replay snapshot lives in ``idempotent_responses``, which has no reaper
+    — persisting a usable credential there would be a plaintext secret at rest
+    forever. So the stored body carries ``secret: null`` and the operator is
+    told to revoke and reissue if the first response was lost.
+    """
+    headers = {**admin_headers, "Idempotency-Key": "merchants-api-key-create-0001"}
+    merchant_id = await _create_merchant(integration_client, admin_headers)
+
+    first = await integration_client.post(
+        f"/api/v1/admin/merchants/{merchant_id}/api-keys", headers=headers, json={"label": "x"}
+    )
+    second = await integration_client.post(
+        f"/api/v1/admin/merchants/{merchant_id}/api-keys", headers=headers, json={"label": "x"}
+    )
+
+    assert first.status_code == 201, first.text
+    assert second.status_code == 201, second.text
+    assert first.json()["secret"] is not None
+    assert second.json()["secret"] is None
+    assert second.json()["key_id"] == first.json()["key_id"]
+    rows = (
+        (
+            await db_session.execute(
+                select(MerchantApiKey).where(MerchantApiKey.merchant_id == merchant_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 1
+
+
+async def test_revoke_api_key_sets_revoked_at_and_is_idempotent(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    merchant_id = await _create_merchant(integration_client, admin_headers)
+    created = await integration_client.post(
+        f"/api/v1/admin/merchants/{merchant_id}/api-keys", headers=admin_headers, json={}
+    )
+    key_id = created.json()["key_id"]
+
+    first = await integration_client.delete(
+        f"/api/v1/admin/merchants/{merchant_id}/api-keys/{key_id}", headers=admin_headers
+    )
+    assert first.status_code == 200, first.text
+    assert first.json()["revoked_at"] is not None
+
+    second = await integration_client.delete(
+        f"/api/v1/admin/merchants/{merchant_id}/api-keys/{key_id}", headers=admin_headers
+    )
+    assert second.status_code == 200, second.text
+    # The first revocation stands; a second call does not move the timestamp.
+    assert second.json()["revoked_at"] == first.json()["revoked_at"]
+
+    row = (
+        await db_session.execute(select(MerchantApiKey).where(MerchantApiKey.key_id == key_id))
+    ).scalar_one()
+    assert row.revoked_at is not None
+
+
+async def test_revoke_refuses_a_key_belonging_to_another_merchant(
+    integration_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    owner = await _create_merchant(integration_client, admin_headers, title="Owner")
+    stranger = await _create_merchant(integration_client, admin_headers, title="Stranger")
+    created = await integration_client.post(
+        f"/api/v1/admin/merchants/{owner}/api-keys", headers=admin_headers, json={}
+    )
+    key_id = created.json()["key_id"]
+
+    r = await integration_client.delete(
+        f"/api/v1/admin/merchants/{stranger}/api-keys/{key_id}", headers=admin_headers
+    )
+
+    assert r.status_code == 404
+
+
+async def test_revoke_unknown_key_404(
+    integration_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    merchant_id = await _create_merchant(integration_client, admin_headers)
+    r = await integration_client.delete(
+        f"/api/v1/admin/merchants/{merchant_id}/api-keys/ypm_nosuchkey", headers=admin_headers
+    )
+    assert r.status_code == 404
+
+
+async def test_list_api_keys_unknown_merchant_404(
+    integration_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    r = await integration_client.get(
+        f"/api/v1/admin/merchants/{new_id()}/api-keys", headers=admin_headers
+    )
+    assert r.status_code == 404
+
+
+# ---------- replay scopes are per resource (M2 Task 2, carry-over 3) ----------
+
+
+async def test_sku_b2b_replay_scope_is_per_sku(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """One client key reused across two SKUs must patch both, not replay the first."""
+    _, (first_sku, second_sku) = _seed_catalog_unit(db_session, "scope", sku_count=2)
+    await db_session.commit()
+    headers = {**admin_headers, "Idempotency-Key": "merchants-sku-b2b-scope-0001"}
+
+    first = await integration_client.patch(
+        f"/api/v1/admin/catalog/skus/{first_sku}/b2b", headers=headers, json={"markup_pct": "3"}
+    )
+    second = await integration_client.patch(
+        f"/api/v1/admin/catalog/skus/{second_sku}/b2b", headers=headers, json={"markup_pct": "7"}
+    )
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert second.json()["id"] == second_sku
+    assert Decimal(str(second.json()["b2b_markup_pct"])) == Decimal("7")
+    # The app wrote through its own session; drop this one's stale snapshot.
+    db_session.expire_all()
+    rows = {
+        sku.id: sku.b2b_markup_pct
+        for sku in (
+            (await db_session.execute(select(Sku).where(Sku.id.in_([first_sku, second_sku]))))
+            .scalars()
+            .all()
+        )
+    }
+    assert rows[first_sku] == Decimal("3")
+    assert rows[second_sku] == Decimal("7")
+
+
+async def test_freeze_replay_scope_is_per_merchant(
+    integration_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    first = await _create_merchant(integration_client, admin_headers, title="Freeze A")
+    second = await _create_merchant(integration_client, admin_headers, title="Freeze B")
+    headers = {**admin_headers, "Idempotency-Key": "merchants-freeze-scope-0001"}
+
+    a = await integration_client.post(f"/api/v1/admin/merchants/{first}/freeze", headers=headers)
+    b = await integration_client.post(f"/api/v1/admin/merchants/{second}/freeze", headers=headers)
+
+    assert a.status_code == 200, a.text
+    assert b.status_code == 200, b.text
+    assert b.json()["id"] == second
+    listing = await integration_client.get("/api/v1/admin/merchants", headers=admin_headers)
+    statuses = {m["id"]: m["status"] for m in listing.json()["items"]}
+    assert statuses[first] == "frozen"
+    assert statuses[second] == "frozen"
+
+
+async def test_brand_b2b_replay_scope_is_per_brand(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    first_brand, _ = _seed_catalog_unit(db_session, "brandscope-a")
+    second_brand, _ = _seed_catalog_unit(db_session, "brandscope-b")
+    await db_session.commit()
+    headers = {**admin_headers, "Idempotency-Key": "merchants-brand-b2b-scope-01"}
+
+    a = await integration_client.patch(
+        f"/api/v1/admin/catalog/brands/{first_brand}/b2b",
+        headers=headers,
+        json={"visible_b2b": True},
+    )
+    b = await integration_client.patch(
+        f"/api/v1/admin/catalog/brands/{second_brand}/b2b",
+        headers=headers,
+        json={"visible_b2b": True},
+    )
+
+    assert a.status_code == 200, a.text
+    assert b.status_code == 200, b.text
+    assert b.json()["id"] == second_brand
+    # The app wrote through its own session; drop this one's stale snapshot.
+    db_session.expire_all()
+    rows = {
+        brand.id: brand.visible_b2b
+        for brand in (
+            (
+                await db_session.execute(
+                    select(Brand).where(Brand.id.in_([first_brand, second_brand]))
+                )
+            )
+            .scalars()
+            .all()
+        )
+    }
+    assert rows[first_brand] is True
+    assert rows[second_brand] is True
+
+
+async def test_bulk_markup_replay_scope_is_per_target(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    _seed_catalog_unit(db_session, "bulkscope-a")
+    _seed_catalog_unit(db_session, "bulkscope-b")
+    await db_session.commit()
+    headers = {**admin_headers, "Idempotency-Key": "merchants-bulk-scope-0001"}
+
+    a = await integration_client.post(
+        "/api/v1/admin/catalog/b2b/bulk-markup",
+        headers=headers,
+        json={"brand_slug": "brand-bulkscope-a", "markup_pct": "4"},
+    )
+    b = await integration_client.post(
+        "/api/v1/admin/catalog/b2b/bulk-markup",
+        headers=headers,
+        json={"brand_slug": "brand-bulkscope-b", "markup_pct": "9"},
+    )
+
+    assert a.status_code == 200, a.text
+    assert b.status_code == 200, b.text
+    db_session.expire_all()
+    skus = (
+        (
+            await db_session.execute(
+                select(Sku).where(Sku.sku_code.in_(["sku-bulkscope-a-0", "sku-bulkscope-b-0"]))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    by_code = {sku.sku_code: sku.b2b_markup_pct for sku in skus}
+    assert by_code["sku-bulkscope-a-0"] == Decimal("4")
+    assert by_code["sku-bulkscope-b-0"] == Decimal("9")

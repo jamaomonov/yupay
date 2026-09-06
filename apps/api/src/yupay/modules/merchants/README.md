@@ -21,7 +21,8 @@ in this module the merchant is the reseller.
   already permits more.
 - `merchant_api_keys` — machine credentials for `/merchant/v1`: a public
   `key_id` (`ypm_`-prefixed) and a SHA-256 `secret_hash`, with an optional
-  IP allowlist.
+  IP allowlist, a `last_used_at` stamp and a `revoked_at` tombstone. See
+  "Machine-API authentication" below.
 
 ## Deposit ledger
 
@@ -122,9 +123,32 @@ cycle back through the route stack, same rule as `affiliate.routes`):
   knobs. No pricing math in routes; the markup is stored verbatim and the
   order-time margin floor is the guard (spec §8.3).
 
+- `POST /admin/merchants/{id}/api-keys` — mint a machine credential
+  (`label?`, `ip_allowlist?`). **The secret is in this response and nowhere
+  else, ever.** `GET .../api-keys` lists every key ever issued, newest
+  first, revoked ones included, and its response model has no `secret`
+  field at all. `DELETE .../api-keys/{key_id}` revokes: it sets
+  `revoked_at`, is naturally idempotent (a second call returns the FIRST
+  timestamp rather than moving it), and matches on `(merchant_id, key_id)`
+  so one merchant's id in the path can never revoke another's credential.
+
 The non-ledger writes accept an optional `Idempotency-Key` and replay
 through the generic `(scope, key)` store (`core.idempotency`), like the
-other admin write endpoints.
+other admin write endpoints. Each scope is **per resource** —
+`merchants.sku_b2b:{sku_id}`, `merchants.brand_b2b:{brand_id}`,
+`merchants.bulk_markup:{target}`, `merchants.set_status.{to}:{merchant_id}`,
+`merchants.api_key_create:{merchant_id}`,
+`merchants.api_key_revoke:{merchant_id}:{key_id}` — because an admin client
+that mints one key per session and reuses it across two SKUs would
+otherwise get the first SKU's response replayed for the second, and the
+second SKU would silently never be patched.
+
+Key creation is the one endpoint where the replay snapshot is deliberately
+**not** the response: the stored body carries `secret: null`, so a retry
+returns the original `key_id` with no secret. `idempotent_responses` has no
+reaper, and a usable credential sitting there in the clear forever is worse
+than telling an operator whose first response was lost to revoke the key and
+issue another.
 
 The admin SPA screens for this surface live in
 `apps/admin/src/features/merchants/` (`/merchants` list + create,
@@ -146,9 +170,196 @@ side those controls render from is `AdminBrandOut.visible_b2b` /
 `AdminSkuOut.{visible_b2b,b2b_markup_pct}` in the catalog module's admin
 list DTOs — admin-only, never on the public catalog DTOs.
 
+## Machine-API authentication (`/merchant/v1`)
+
+**This section is the contract.** Third parties implement against the text
+below without reading our source, so it must stay complete and it must not
+change without a new API version — `/merchant/v1` is consumed by code
+nobody but its owner can redeploy.
+
+### Credentials
+
+Support issues a key from the admin surface and hands over two values:
+
+| Value    | Example                                     | Notes                                |
+| -------- | ------------------------------------------- | ------------------------------------ |
+| `key_id` | `ypm_9j2v…` (36 chars)                      | Public. Sent on every request.       |
+| `secret` | `ypms_Rk8…` (48 chars, 256 bits of entropy) | **Shown once.** Store it; we cannot. |
+
+Several keys can be live at the same time, which is what makes rotation
+zero-downtime: issue the new one, deploy it, then revoke the old one.
+
+### The signing key
+
+We store only the SHA-256 of the secret, and that digest is also what both
+sides key the HMAC with. So the first thing an integration does is derive
+it, once, at startup:
+
+```
+signing_key = lowercase_hex(SHA256(secret))     # 64 characters
+```
+
+```python
+signing_key = hashlib.sha256(secret.encode()).hexdigest()
+```
+
+```js
+const signingKey = crypto.createHash("sha256").update(secret).digest("hex");
+```
+
+An HMAC cannot be verified without the key material, so the digest we store
+_is_ the key — be clear about what that buys and what it does not. It does
+**not** make a database dump harmless: whoever holds `secret_hash` can sign
+requests. It does mean the secret string you pasted into your own config is
+not recoverable from our database. The controls that matter against a dump
+are revocation and the per-key IP allowlist. `signing.py`'s module docstring
+carries the full reasoning and the alternative that was rejected.
+
+### The signature
+
+Every request carries three headers:
+
+```
+X-Merchant-Key:       <key_id>
+X-Merchant-Timestamp: <unix seconds>
+X-Merchant-Signature: hex(HMAC_SHA256(signing_key, canonical))
+```
+
+where the canonical string is exactly four fields joined by `\n`:
+
+```
+canonical = f"{timestamp}\n{method}\n{path}\n{body}"
+```
+
+- `timestamp` — the **same characters** you put in the header. Do not
+  re-format it.
+- `method` — upper-case (`GET`, `POST`).
+- `path` — the URL path only, **no query string**, no scheme, no host:
+  `/merchant/v1/orders`. Percent-decoded (sign `/merchant/v1/orders/my
+order`, not `…/my%20order`), which is why identifiers you put in a path
+  should stay URL-safe.
+- `body` — the raw request body **byte for byte**, appended after the final
+  `\n`. Sign the bytes you actually send: re-serialising the JSON on either
+  side changes the signature. A GET has an empty body and contributes
+  nothing after that newline.
+
+The header value is lowercase hex; we accept surrounding whitespace and
+upper-case hex too. Query parameters are **not** covered by the signature —
+never put anything security-relevant in a query string (§9.2 of the spec
+forbids identifiers in URLs anyway, because the edge access log records
+query strings verbatim).
+
+Worked example, `GET /merchant/v1/me` at `1757000000` with no body:
+
+```
+canonical = b"1757000000\nGET\n/merchant/v1/me\n"
+```
+
+```python
+import hashlib, hmac, time, httpx
+
+signing_key = hashlib.sha256(secret.encode()).hexdigest()
+
+def call(method: str, path: str, body: bytes = b"") -> httpx.Response:
+    ts = str(int(time.time()))
+    canonical = f"{ts}\n{method}\n{path}\n".encode() + body
+    signature = hmac.new(signing_key.encode(), canonical, hashlib.sha256).hexdigest()
+    return httpx.request(
+        method,
+        "https://api.yupay.uz" + path,
+        content=body,
+        headers={
+            "X-Merchant-Key": key_id,
+            "X-Merchant-Timestamp": ts,
+            "X-Merchant-Signature": signature,
+            "Content-Type": "application/json",
+        },
+    )
+```
+
+### Rules the server applies, in order
+
+The whole path is drawn in
+`docs/architecture/sequence-diagrams/merchant-api-auth.mmd`.
+
+| Failure                                                     | Status | `code`                |
+| ----------------------------------------------------------- | ------ | --------------------- |
+| Too many requests (per IP, or per key once authenticated)   | 429    | —                     |
+| A credential header missing                                 | 401    | `missing_credentials` |
+| Timestamp not an integer, or more than **±300 s** from ours | 401    | `stale_timestamp`     |
+| Unknown `key_id`, revoked key, or wrong signature           | 401    | `invalid_credentials` |
+| Merchant frozen                                             | 403    | `merchant_frozen`     |
+| Caller's address not in the key's IP allowlist              | 403    | `ip_not_allowed`      |
+
+Errors are RFC 7807 `application/problem+json`; `type` is the stable URI and
+`code` the short discriminator to switch on. The three credential failures
+return **one identical body** on purpose, and take the same work to produce
+(the server signs against a dummy key rather than returning early), so
+neither the payload nor the response time reveals whether a `key_id` exists.
+
+The ±300 s window is the replay defence: a captured request cannot be
+replayed after five minutes. Inside the window, order creation is idempotent
+on `merchant_order_id` (spec §9.3), which is what makes a replay harmless
+rather than merely unlikely.
+
+**Clock skew is the most common integration bug** — hence its own error
+code. Sync the calling server's clock (NTP) before debugging anything else.
+
+### IP allowlist
+
+A key with `ip_allowlist` set only authenticates from those addresses;
+entries are single addresses (`198.51.100.7`) or CIDR blocks
+(`203.0.113.0/24`), IPv4 or IPv6, and host bits in a block are ignored when
+matching. A NULL (or empty) allowlist means no filter. The address compared
+is the one `core.client_ip` resolves — the real client behind the edge
+proxy, not the proxy.
+
+### `last_used_at`
+
+Stamped on every authenticated request, best effort: it never fails a
+request, and it is throttled to at most one write a minute per key (every
+request UPDATEing one row would serialise a merchant's own traffic on that
+row's lock). Treat it as "this key was in use around then", not as a request
+log.
+
+## Implementation map
+
+| Concern                                                    | Where                                                         |
+| ---------------------------------------------------------- | ------------------------------------------------------------- |
+| Wire format: key/secret minting, canonical string, digests | `signing.py` — the one home; nothing else may re-derive these |
+| Credential lifecycle (create / list / revoke)              | `service.py`, via the `api` facade                            |
+| Request verification + the FastAPI dependency              | `auth.py`                                                     |
+| Admin HTTP surface                                         | `admin_routes.py`                                             |
+
+`auth.merchant_auth` is the dependency every `/merchant/v1` endpoint sits
+behind. **Import it from `merchants.auth` directly, never from
+`merchants.api`**: it takes its session from `api.v1.deps.db_session` so the
+endpoint behind it shares one transaction, which means the facade cannot
+re-export it without closing an import cycle back through the v1 route
+stack — the same rule the routers in `admin_routes` follow.
+
+### Rate limiting
+
+Two axes, one counter implementation (`auth.ip_guard.hit_counter`):
+
+- **per IP** — `guard_ip(request, bucket="merchant-api")`, ceiling
+  `auth_ip_guard_bucket_max["merchant-api"]` (600 per 60 s). No `subject` is
+  passed: `guard_ip`'s subject axis is capped by the single global
+  `auth_ip_guard_subject_max` (10), which would throttle every merchant to
+  ten requests a minute.
+- **per key** — `settings.merchant_api_key_rate_max` (600 per 60 s), charged
+  **after** the signature verifies. A `key_id` travels in a plaintext header,
+  so charging it earlier would let anyone who reads one spend its owner's
+  budget; forged traffic is bounded by the IP axis instead.
+
+Brute force is not the threat model — the secret is 256 bits and compared
+with `compare_digest` — throughput is, which is what both numbers are sized
+for.
+
 ## Status
 
-Schema (Task 1), the deposit service (Task 3), wholesale pricing (Task 5),
-the admin endpoints (Task 6) and the admin SPA screens (Tasks 7–8) are in
-place. Cabinet auth, the machine API, and API-key issuance land in later
-plans (M2+).
+Schema (M1 Task 1), the deposit service (M1 Task 3), wholesale pricing
+(M1 Task 5), the admin endpoints (M1 Task 6), the admin SPA screens
+(M1 Tasks 7–8), and API-key issuance plus the signed-request dependency
+(M2 Task 2) are in place. The machine API's own endpoints and the cabinet
+BFF land in the rest of M2+.
