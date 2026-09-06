@@ -43,6 +43,11 @@ interface Props {
 export function SkuB2bCard({ sku, cost }: Props) {
   const qc = useQueryClient();
   const toast = useToast();
+  // Initialised from props ONCE, on mount. That is safe here only because
+  // the card lives on the /skus/:id route, which remounts it per SKU — a
+  // mount always sees a fresh `sku`. If this card is ever reused somewhere a
+  // *mounted* instance's `sku` prop can change (a list row, a modal that
+  // swaps SKUs), this state goes stale and needs an explicit re-sync.
   const [visible, setVisible] = useState(sku.visible_b2b);
   const [markup, setMarkup] = useState(sku.b2b_markup_pct);
   const [markupError, setMarkupError] = useState<string | null>(null);

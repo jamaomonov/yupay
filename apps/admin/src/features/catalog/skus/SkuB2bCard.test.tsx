@@ -75,6 +75,16 @@ it("turns the preview into a warning when it lands below cost", () => {
   expect(screen.getByText(/ниже cost — проверь знак наценки/)).toBeInTheDocument();
 });
 
+it("renders an outright negative preview price with the warning styling", () => {
+  renderCard({ ...SKU, cost_usdt: "1.00" }, "1.00");
+  fireEvent.change(screen.getByLabelText("Наценка B2B, %"), { target: { value: "-150" } });
+  // 1.00 × (1 − 1.50) = −0.50 — formatUsd renders the Unicode minus «−»,
+  // not an ASCII hyphen, and the price line itself carries the danger tone.
+  const price = screen.getByText(/≈ −\$0\.50 · предварительно/);
+  expect(price).toHaveClass("text-[var(--danger)]");
+  expect(screen.getByText(/ниже cost — проверь знак наценки/)).toBeInTheDocument();
+});
+
 it("explains that a SKU without a cost has no B2B price", () => {
   renderCard({ ...SKU, cost_usdt: null }, "");
   expect(
