@@ -95,6 +95,12 @@ class Brand(Base):
     # "maintenance" badge and blocks purchases. ``active=False`` hides it entirely;
     # ``maintenance`` is the softer "temporarily unavailable" state.
     maintenance: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    # ``active`` is (and stays) retail visibility, unchanged. ``visible_b2b`` is
+    # the separate merchant-catalog gate the B2B program reads instead: a brand
+    # can be retail-only, merchant-only, both, or neither. Effective B2B
+    # visibility is ``brand.visible_b2b AND sku.visible_b2b`` — see the matching
+    # column on :class:`Sku`.
+    visible_b2b: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )
@@ -327,6 +333,18 @@ class Sku(Base):
     image_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    # ``active`` is (and stays) retail visibility, unchanged. ``visible_b2b`` is
+    # the separate merchant-catalog gate the B2B program reads instead.
+    # Effective B2B visibility is ``brand.visible_b2b AND sku.visible_b2b`` —
+    # see the matching column on :class:`Brand`.
+    visible_b2b: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    # The wholesale markup applied over ``cost_usdt`` for merchant pricing
+    # (``price = ceil_to_cent(cost * (1 + b2b_markup_pct/100 + merchant
+    # adjustment))`` — see the merchant-B2B design spec §8). Uniform per SKU
+    # across every merchant; admin-edited, default 7%.
+    b2b_markup_pct: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, server_default="7"
+    )
     # How many codes the supplier still holds. NULL means "not tracked" — every
     # game top-up, and voucher lines the supplier reports as unlimited. Zero
     # means out of stock. Refreshed by the scheduler; see ``in_stock``.
