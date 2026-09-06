@@ -82,6 +82,13 @@ def downgrade() -> None:
     # finds out at the two-arm CHECK re-add — after drop_column, via a
     # constraint-violation error that names the old double-prefixed CHECK and
     # never mentions merchants. Fail up front, in words, instead.
+    #
+    # Advisory, not race-proof: nothing locks orders between this count and
+    # the DDL below, so a merchant order inserted in that window slips past
+    # the guard. It is still caught — the two-arm CHECK re-add fails and the
+    # transaction rolls back — just with the old opaque error instead of this
+    # message. Fine for a manual rollback; do not read this as a concurrency
+    # barrier.
     merchant_orders = (
         op.get_bind()
         .execute(sa.text("SELECT count(*) FROM orders WHERE merchant_id IS NOT NULL"))
