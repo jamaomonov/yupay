@@ -24,6 +24,14 @@ from yupay.core.config import get_settings
 NAMING_CONVENTION = {
     "ix": "ix_%(table_name)s_%(column_0_N_name)s",
     "uq": "uq_%(table_name)s_%(column_0_N_name)s",
+    # WARNING: because this template contains %(constraint_name)s, SQLAlchemy
+    # re-templates it even for a CheckConstraint that already has an explicit
+    # `name=`. Writing `name="ck_table_x"` therefore ships as
+    # `ck_table_ck_table_x`, not `ck_table_x` — pass the bare suffix
+    # (`name="x"`) and let this convention supply the `ck_table_` prefix.
+    # `affiliate` and `orders` already shipped double-prefixed names this way
+    # (`ck_orders_ck_orders_actor_exclusive` is live in production) — don't
+    # "fix" an old name to match the new pattern without a migration.
     "ck": "ck_%(table_name)s_%(constraint_name)s",
     "fk": "fk_%(table_name)s_%(column_0_N_name)s_%(referred_table_name)s",
     "pk": "pk_%(table_name)s",
