@@ -38,6 +38,15 @@ class Order(Base):
         nullable=True,
     )
     guest_email: Mapped[str | None] = mapped_column(CITEXT(), nullable=True)
+    #: The third actor arm (B2B): set when a reseller placed this order via
+    #: ``/merchant/v1``. RESTRICT, not SET NULL like ``user_id`` — merchant
+    #: orders are financial history, so a merchant that has traded gets
+    #: ``status='frozen'``, never deleted.
+    merchant_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("merchants.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     status: Mapped[str] = mapped_column(String(24), nullable=False)
     currency: Mapped[str] = mapped_column(String(8), nullable=False)
     total_usd: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
@@ -126,9 +135,17 @@ class Order(Base):
     )
 
     __table_args__ = (
+        # Exactly one actor arm: user, guest, or merchant. Bare suffix, not the
+        # full name — the metadata's naming convention (``core.db``) prepends
+        # ``ck_orders_`` itself and re-templates even explicitly named
+        # CheckConstraints, which is how the old two-arm form of this CHECK
+        # shipped to production as ``ck_orders_ck_orders_actor_exclusive``.
+        # Migration 0066 drops that name and re-adds this one clean.
         CheckConstraint(
-            "(user_id IS NULL) <> (guest_email IS NULL)",
-            name="ck_orders_actor_exclusive",
+            "(CASE WHEN user_id IS NULL THEN 0 ELSE 1 END"
+            " + CASE WHEN guest_email IS NULL THEN 0 ELSE 1 END"
+            " + CASE WHEN merchant_id IS NULL THEN 0 ELSE 1 END) = 1",
+            name="actor_exclusive",
         ),
         CheckConstraint("total_usd >= 0", name="ck_orders_total_usd_nonneg"),
         CheckConstraint("total_charged >= 0", name="ck_orders_total_charged_nonneg"),
