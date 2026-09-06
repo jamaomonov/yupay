@@ -278,6 +278,24 @@ their first deposit — the money step is the KYC filter.
 Email notifications to the merchant user on security-relevant changes only:
 key created/regenerated/revoked, webhook URL changed.
 
+**Localization** _(owner)_: the whole app — landing and cabinet — ships in
+**ru/en/uz** via the shared `packages/i18n` catalogs (new `merchant`
+namespace), under the same rule as every other surface: all three locales in
+the same PR, CI fails on a missing key. The landing is localized per route for
+SEO. API and webhook payloads are locale-free (machine strings, ISO 8601 UTC).
+
+**Theming** _(owner)_: dark **and** light themes. Dark is the default and
+follows the storefront palette; tokens are defined theme-agnostically from day
+one — the storefront's CSS-variable approach — so light is a token swap, not a
+second stylesheet. The toggle lives in the cabinet header; the choice persists
+per user.
+
+**Landing copy rules** _(owner)_: professional, SEO-oriented, and free of
+internal mechanics — no pricing formulas («себестоимость + наценка»), no
+process details («депозит через поддержку»), and **no delivery-time promises**
+anywhere on the surface; say «автоматическая выдача» instead. Facts shown as
+numbers are brand counts, not SKU counts.
+
 ## 12. Admin, abuse, legal
 
 - Admin: create/freeze merchant, credit deposit (support-request queue), edit
