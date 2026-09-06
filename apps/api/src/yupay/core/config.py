@@ -475,6 +475,16 @@ class Settings(BaseSettings):
     fx_drop_watched_quotes: list[str] = Field(default_factory=lambda: ["UZS", "RUB"])
     fx_refresh_interval_minutes: int = Field(default=5)
 
+    # --- merchant B2B pricing (reseller; spec §8.3) ---
+    # The only global pricing control on the wholesale price formula (see
+    # ``yupay.modules.merchants.pricing``, the one home for that formula): if
+    # a computed price is below ``cost * (1 + floor/100)`` the order is
+    # rejected with a distinct code. Catches a fat-fingered per-SKU
+    # ``b2b_markup_pct`` (e.g. "0.5" typed for "5") and cost spikes a stale
+    # markup no longer covers. Read by callers and passed in — the pure
+    # pricing functions never read settings themselves.
+    merchant_margin_floor_pct: Decimal = Field(default=Decimal("2"))
+
     # --- observability ---
     sentry_dsn: str | None = Field(default=None)
     sentry_traces_sample_rate: float = Field(default=0.1)
