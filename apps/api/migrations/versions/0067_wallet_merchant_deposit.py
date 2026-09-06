@@ -10,6 +10,18 @@ C house_payments_received``; the full posting table lives in
 
 No backfill: nothing has ever written this kind.
 
+WARNING — the downgrade DESTROYS money history. Downgrading past this
+revision permanently deletes every ledger transaction that touched a merchant
+account: the merchant's deposit credits, whole transactions including their
+``house_payments_received`` counter-legs (so the surviving books still hold
+``SUM(D) == SUM(C)``), and with them the audit trail of who credited which
+merchant, when, and why. The merchant rows themselves survive (0065), but
+their balances are gone and there is no recovery short of restoring a backup.
+This is the designed behaviour — with ``merchant_deposit`` removed from the
+CHECK the rows would be unwritable orphans — not an oversight; 0066 refuses
+its downgrade instead because a column drop there would silently corrupt an
+invariant, while here the deletion is the clean-up itself.
+
 Three places have to agree on the set of kinds, and only one of them raises a
 readable error. ``wallet.service.NORMAL_SIDE`` is checked in Python and says
 "unknown account kind"; ``wallet.schemas.AccountKind`` is the published literal

@@ -40,7 +40,15 @@ NAMING_CONVENTION = {
     # `sqlalchemy.sql.elements.conv()`, or it gets prefixed once more on the
     # way out (a drop of the double-prefixed name above would look for a
     # triple-prefixed one). Migration 0066 does this for both its drop and
-    # its downgrade re-add — copy that pattern.
+    # its downgrade re-add.
+    # TWO patterns are therefore valid, and which one you need depends on how
+    # the constraint was BORN. A constraint created through the re-templating
+    # path (full explicit `name="ck_table_x"`, shipped double-prefixed — e.g.
+    # 0009's wallet CHECKs) is dropped/re-added with the same BARE full name,
+    # which re-templates back into the live double-prefixed one (0018, 0056,
+    # 0067). A constraint you must address by its LITERAL live name needs
+    # `conv()` so it is NOT re-templated (0066). To pick: look at what `\d`
+    # shows on a real database and at the migration that created the name.
     "ck": "ck_%(table_name)s_%(constraint_name)s",
     "fk": "fk_%(table_name)s_%(column_0_N_name)s_%(referred_table_name)s",
     "pk": "pk_%(table_name)s",
