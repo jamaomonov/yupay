@@ -29,9 +29,13 @@ AccountKind = Literal[
     "partner_payout_hold",
     "house_affiliate_expense",
     "house_affiliate_paid",
+    # Merchant B2B program. Also absent from USER_VISIBLE_KINDS: a reseller's
+    # prepaid deposit is not customer money and must never show in a buyer's
+    # wallet view.
+    "merchant_deposit",
 ]
 
-OwnerType = Literal["user", "house", "provider", "partner"]
+OwnerType = Literal["user", "house", "provider", "partner", "merchant"]
 Direction = Literal["D", "C"]
 USER_VISIBLE_KINDS: tuple[AccountKind, ...] = (
     "user_wallet",

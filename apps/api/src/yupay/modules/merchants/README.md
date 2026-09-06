@@ -23,4 +23,31 @@ in this module the merchant is the reseller.
   `key_id` (`ypm_`-prefixed) and a SHA-256 `secret_hash`, with an optional
   IP allowlist.
 
-This task lays the schema only — no service, routes, or auth yet.
+## Deposit ledger
+
+The merchant's prepaid balance is a **ledger balance**, never a column.
+`merchant_deposit` is a debit-normal account kind (like `user_wallet`),
+owned by `owner_type="merchant", owner_id=<merchant_id>, currency="USD"`
+— USD-only in v1 (spec §7). Every movement posts through
+`wallet.service.post`, so idempotency-by-key and all-or-nothing legs are
+inherited from the ledger, not rebuilt here.
+
+The posting table is authoritative — M2 must not re-derive directions:
+
+| Event                       | Legs                                             |
+| --------------------------- | ------------------------------------------------ |
+| Support credits top-up (M1) | `D merchant_deposit / C house_payments_received` |
+| (M2) order charge           | `C merchant_deposit / D house_payments_received` |
+| (M2) refund on failure      | `D merchant_deposit / C house_payments_received` |
+
+Only the first row is implemented in M1: `service.credit_deposit` posts it
+with `kind="merchant_deposit_credit"` and the caller's idempotency key, so a
+replay returns the original transaction. `service.deposit_balance` reads the
+balance (`Decimal("0")` when no account exists yet — the read creates
+nothing). Freezing a merchant (`service.set_status`) blocks orders (M2),
+never money in: support can always credit a frozen merchant.
+
+## Status
+
+Schema (Task 1) and the deposit service (Task 3) are in place. Routes, auth,
+and API-key issuance land in later tasks.

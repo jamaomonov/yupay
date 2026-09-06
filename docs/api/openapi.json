@@ -32,7 +32,8 @@
               "partner_balance",
               "partner_payout_hold",
               "house_affiliate_expense",
-              "house_affiliate_paid"
+              "house_affiliate_paid",
+              "merchant_deposit"
             ],
             "title": "Kind",
             "type": "string"
@@ -46,7 +47,8 @@
               "user",
               "house",
               "provider",
-              "partner"
+              "partner",
+              "merchant"
             ],
             "title": "Owner Type",
             "type": "string"
@@ -12940,7 +12942,8 @@
               "partner_balance",
               "partner_payout_hold",
               "house_affiliate_expense",
-              "house_affiliate_paid"
+              "house_affiliate_paid",
+              "merchant_deposit"
             ],
             "title": "Kind",
             "type": "string"

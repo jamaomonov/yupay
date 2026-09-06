@@ -56,6 +56,14 @@ NORMAL_SIDE: dict[str, str] = {
     "partner_payout_hold": "D",
     "house_affiliate_expense": "D",
     "house_affiliate_paid": "D",
+    # Merchant B2B program (see
+    # docs/superpowers/specs/2026-09-06-merchant-b2b-design.md).
+    # A reseller's prepaid USD balance — debit-normal exactly like
+    # ``user_wallet``: a support credit top-up is ``D merchant_deposit /
+    # C house_payments_received``, an M2 order charge is the mirror. Owned by
+    # ``owner_type="merchant"``; the full posting table lives in
+    # ``modules/merchants/README.md`` so M2 does not re-derive directions.
+    "merchant_deposit": "D",
     "house_revenue": "C",
     "house_fx_pnl": "C",
     "provider_clearing": "C",

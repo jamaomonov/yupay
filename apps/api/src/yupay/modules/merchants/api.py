@@ -1,12 +1,28 @@
 """Public interface of the ``merchants`` module.
 
-Other modules import from here, never from ``models`` or a future
-``service``/``routes`` directly — the same rule the rest of the codebase
-follows. Empty for now: this task only lays the schema. Account creation,
-API-key issuance, and cabinet auth land in later tasks and get re-exported
-here as they arrive.
+Other modules import from here, never from ``models`` or ``service``
+directly — the same rule the rest of the codebase follows. API-key issuance
+and cabinet auth land in later tasks and get re-exported here as they arrive.
 """
 
 from __future__ import annotations
 
-__all__: list[str] = []
+from yupay.modules.merchants.models import Merchant, MerchantApiKey, MerchantUser
+from yupay.modules.merchants.service import (
+    DEPOSIT_CURRENCY,
+    create_merchant,
+    credit_deposit,
+    deposit_balance,
+    set_status,
+)
+
+__all__ = [
+    "DEPOSIT_CURRENCY",
+    "Merchant",
+    "MerchantApiKey",
+    "MerchantUser",
+    "create_merchant",
+    "credit_deposit",
+    "deposit_balance",
+    "set_status",
+]
