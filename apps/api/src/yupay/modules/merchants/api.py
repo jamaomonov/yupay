@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from yupay.modules.merchants.admin import (
     bulk_set_markup,
+    list_deposit_transactions,
     list_merchants_with_balances,
     set_brand_b2b,
     set_sku_b2b,
@@ -38,6 +39,7 @@ __all__ = [
     "credit_deposit",
     "deposit_balance",
     "effective_cost",
+    "list_deposit_transactions",
     "list_merchants_with_balances",
     "merchant_markup_pct",
     "merchant_price",

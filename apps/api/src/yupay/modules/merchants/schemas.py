@@ -79,6 +79,29 @@ class DepositCreditOut(BaseModel):
     balance: Decimal
 
 
+class MerchantTxnOut(BaseModel):
+    """One ledger movement of a merchant's USD deposit.
+
+    ``amount`` is the signed deposit delta: positive means the balance went
+    up (a credit), negative means it went down (an M2 order charge). ``note``
+    is the operator's free text from the credit; ``actor`` the
+    ``admin:<id>`` who booked it.
+    """
+
+    transaction_id: str
+    kind: str
+    amount: Decimal
+    note: str | None
+    actor: str | None
+    created_at: datetime
+
+
+class MerchantTxnListOut(BaseModel):
+    """Body of ``GET /admin/merchants/{id}/transactions``, newest first."""
+
+    items: list[MerchantTxnOut]
+
+
 class SkuB2bPatchIn(BaseModel):
     """Body of ``PATCH /admin/catalog/skus/{id}/b2b``; absent fields stay untouched."""
 
@@ -159,6 +182,8 @@ __all__ = [
     "MerchantCreateIn",
     "MerchantListOut",
     "MerchantOut",
+    "MerchantTxnListOut",
+    "MerchantTxnOut",
     "SkuB2bOut",
     "SkuB2bPatchIn",
 ]

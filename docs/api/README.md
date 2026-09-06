@@ -222,7 +222,8 @@ exfiltrate codes to an attacker-controlled address. See
 ## Merchant B2B admin (M1)
 
 `/admin/merchants` (create, list-with-USD-balance, freeze/unfreeze,
-deposit-credits) and the catalog B2B knobs (`PATCH /admin/catalog/skus/{id}/b2b`,
+deposit-credits, and the read-only per-merchant deposit ledger at
+`GET /admin/merchants/{id}/transactions`) and the catalog B2B knobs (`PATCH /admin/catalog/skus/{id}/b2b`,
 `POST /admin/catalog/b2b/bulk-markup`, `PATCH /admin/catalog/brands/{id}/b2b`)
 — all admin-gated.
 

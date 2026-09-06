@@ -51,6 +51,8 @@ from yupay.modules.merchants.schemas import (
     MerchantCreateIn,
     MerchantListOut,
     MerchantOut,
+    MerchantTxnListOut,
+    MerchantTxnOut,
     SkuB2bOut,
     SkuB2bPatchIn,
 )
@@ -257,6 +259,39 @@ async def credit_deposit(
         amount=txn.postings[0].amount,
         balance=balance,
     )
+
+
+@admin_router.get(
+    "/{merchant_id}/transactions",
+    response_model=MerchantTxnListOut,
+    summary="A merchant's deposit ledger, newest first",
+)
+async def list_merchant_transactions(
+    merchant_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    limit: int = 50,
+) -> MerchantTxnListOut:
+    """Every ledger movement of this merchant's deposit — the detail screen's audit trail.
+
+    Read-only, one grouped query; ``amount`` is the signed deposit delta
+    (positive = balance up). ``limit`` is clamped to 1..200.
+    """
+    capped = max(1, min(limit, 200))
+    rows = await merchants.list_deposit_transactions(db, merchant_id=merchant_id, limit=capped)
+    items: list[MerchantTxnOut] = []
+    for txn, amount in rows:
+        note = txn.extra_metadata.get("note")
+        items.append(
+            MerchantTxnOut(
+                transaction_id=txn.id,
+                kind=txn.kind,
+                amount=amount,
+                note=note if isinstance(note, str) else None,
+                actor=txn.actor,
+                created_at=txn.created_at,
+            )
+        )
+    return MerchantTxnListOut(items=items)
 
 
 @catalog_b2b_router.patch(

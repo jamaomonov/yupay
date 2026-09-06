@@ -6517,6 +6517,78 @@
         "title": "MerchantOut",
         "type": "object"
       },
+      "MerchantTxnListOut": {
+        "description": "Body of ``GET /admin/merchants/{id}/transactions``, newest first.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MerchantTxnOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "MerchantTxnListOut",
+        "type": "object"
+      },
+      "MerchantTxnOut": {
+        "description": "One ledger movement of a merchant's USD deposit.\n\n``amount`` is the signed deposit delta: positive means the balance went\nup (a credit), negative means it went down (an M2 order charge). ``note``\nis the operator's free text from the credit; ``actor`` the\n``admin:<id>`` who booked it.",
+        "properties": {
+          "actor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor"
+          },
+          "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "transaction_id": {
+            "title": "Transaction Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "transaction_id",
+          "kind",
+          "amount",
+          "note",
+          "actor",
+          "created_at"
+        ],
+        "title": "MerchantTxnOut",
+        "type": "object"
+      },
       "NewBrandIn": {
         "additionalProperties": false,
         "description": "New brand to create when importing a game (target='new_brand').",
@@ -19619,6 +19691,75 @@
           }
         },
         "summary": "Freeze a merchant (blocks orders in M2, never money in)",
+        "tags": [
+          "admin:merchants"
+        ]
+      }
+    },
+    "/api/v1/admin/merchants/{merchant_id}/transactions": {
+      "get": {
+        "description": "Every ledger movement of this merchant's deposit \u2014 the detail screen's audit trail.\n\nRead-only, one grouped query; ``amount`` is the signed deposit delta\n(positive = balance up). ``limit`` is clamped to 1..200.",
+        "operationId": "list_merchant_transactions_api_v1_admin_merchants__merchant_id__transactions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "merchant_id",
+            "required": true,
+            "schema": {
+              "title": "Merchant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantTxnListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "A merchant's deposit ledger, newest first",
         "tags": [
           "admin:merchants"
         ]

@@ -149,6 +149,7 @@ def _seed_catalog_unit(db: AsyncSession, tag: str, *, sku_count: int = 1) -> tup
         ("POST", "/api/v1/admin/merchants/x/freeze"),
         ("POST", "/api/v1/admin/merchants/x/unfreeze"),
         ("POST", "/api/v1/admin/merchants/x/deposit-credits"),
+        ("GET", "/api/v1/admin/merchants/x/transactions"),
         ("PATCH", "/api/v1/admin/catalog/skus/x/b2b"),
         ("POST", "/api/v1/admin/catalog/b2b/bulk-markup"),
         ("PATCH", "/api/v1/admin/catalog/brands/x/b2b"),
@@ -169,6 +170,7 @@ async def test_every_endpoint_requires_a_token(
         ("POST", "/api/v1/admin/merchants/x/freeze"),
         ("POST", "/api/v1/admin/merchants/x/unfreeze"),
         ("POST", "/api/v1/admin/merchants/x/deposit-credits"),
+        ("GET", "/api/v1/admin/merchants/x/transactions"),
         ("PATCH", "/api/v1/admin/catalog/skus/x/b2b"),
         ("POST", "/api/v1/admin/catalog/b2b/bulk-markup"),
         ("PATCH", "/api/v1/admin/catalog/brands/x/b2b"),
@@ -486,6 +488,117 @@ async def test_deposit_credit_rejects_non_positive_amount(
         json={"amount": "-5.00", "note": None},
     )
     assert r.status_code == 422
+
+
+# ---------- deposit ledger listing ----------
+
+
+async def _credit(
+    client: AsyncClient,
+    headers: dict[str, str],
+    merchant_id: str,
+    *,
+    amount: str,
+    key: str,
+    note: str | None = None,
+) -> dict[str, object]:
+    r = await client.post(
+        f"/api/v1/admin/merchants/{merchant_id}/deposit-credits",
+        headers={**headers, "Idempotency-Key": key},
+        json={"amount": amount, "note": note},
+    )
+    assert r.status_code == 201, r.text
+    body: dict[str, object] = r.json()
+    return body
+
+
+async def test_merchant_transactions_lists_credits_newest_first(
+    integration_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    """The detail screen's ledger: every deposit movement, newest first.
+
+    ``amount`` is the signed deposit delta (positive = balance up), ``note``
+    is the operator's free text from the credit, ``actor`` the admin who
+    booked it — everything support needs to answer "who topped this
+    merchant up, when, and why" without joining tables by hand.
+    """
+    merchant_id = await _create_merchant(integration_client, admin_headers)
+    first = await _credit(
+        integration_client,
+        admin_headers,
+        merchant_id,
+        amount="25.00",
+        key="merchants-admin-ledger-0001",
+        note="first top-up",
+    )
+    second = await _credit(
+        integration_client,
+        admin_headers,
+        merchant_id,
+        amount="10.50",
+        key="merchants-admin-ledger-0002",
+    )
+
+    r = await integration_client.get(
+        f"/api/v1/admin/merchants/{merchant_id}/transactions", headers=admin_headers
+    )
+    assert r.status_code == 200, r.text
+    items = r.json()["items"]
+    assert [i["transaction_id"] for i in items] == [
+        second["transaction_id"],
+        first["transaction_id"],
+    ]
+    newest, oldest = items
+    assert newest["kind"] == "merchant_deposit_credit"
+    assert Decimal(str(newest["amount"])) == Decimal("10.50")
+    assert newest["note"] is None
+    assert Decimal(str(oldest["amount"])) == Decimal("25.00")
+    assert oldest["note"] == "first top-up"
+    actor = oldest["actor"]
+    assert isinstance(actor, str)
+    assert actor.startswith("admin:")
+    assert oldest["created_at"]
+
+
+async def test_merchant_transactions_empty_for_fresh_merchant_and_capped_by_limit(
+    integration_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    merchant_id = await _create_merchant(integration_client, admin_headers)
+    r = await integration_client.get(
+        f"/api/v1/admin/merchants/{merchant_id}/transactions", headers=admin_headers
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["items"] == []
+
+    await _credit(
+        integration_client,
+        admin_headers,
+        merchant_id,
+        amount="5.00",
+        key="merchants-admin-limit-0001",
+    )
+    newest = await _credit(
+        integration_client,
+        admin_headers,
+        merchant_id,
+        amount="7.00",
+        key="merchants-admin-limit-0002",
+    )
+    r = await integration_client.get(
+        f"/api/v1/admin/merchants/{merchant_id}/transactions?limit=1", headers=admin_headers
+    )
+    items = r.json()["items"]
+    assert len(items) == 1
+    assert items[0]["transaction_id"] == newest["transaction_id"]
+
+
+async def test_merchant_transactions_unknown_merchant_404(
+    integration_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    r = await integration_client.get(
+        f"/api/v1/admin/merchants/{new_id()}/transactions", headers=admin_headers
+    )
+    assert r.status_code == 404
 
 
 # ---------- SKU / brand B2B patches ----------

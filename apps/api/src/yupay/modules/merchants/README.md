@@ -109,6 +109,12 @@ cycle back through the route stack, same rule as `affiliate.routes`):
   `amount` is the transaction's actual (original) amount — a mismatched
   replay is visible to the admin UI, and `balance` rides along. See
   `docs/architecture/sequence-diagrams/merchant-deposit-credit.mmd`.
+- `GET /admin/merchants/{id}/transactions` — the merchant's deposit ledger,
+  newest first (`admin.list_deposit_transactions`, one grouped query). Each
+  row carries the **signed** deposit delta (positive = balance up; M2 order
+  charges will surface as negative rows unchanged), the credit's `note`, and
+  the `admin:<id>` actor. Read-only; a typo'd merchant id is a 404, never a
+  plausible-looking `[]`.
 - `PATCH /admin/catalog/skus/{id}/b2b` (`markup_pct?`, `visible_b2b?`),
   `POST /admin/catalog/b2b/bulk-markup` (`brand_slug | category`,
   `markup_pct` — one UPDATE, returns the affected count) and
