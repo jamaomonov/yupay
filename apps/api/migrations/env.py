@@ -25,6 +25,7 @@ from yupay.modules.fulfillment import models as _fulfillment_models  # noqa: F40
 from yupay.modules.fx import models as _fx_models  # noqa: F401
 from yupay.modules.integrations import models as _integrations_models  # noqa: F401
 from yupay.modules.inventory import models as _inventory_models  # noqa: F401
+from yupay.modules.merchants import models as _merchants_models  # noqa: F401
 from yupay.modules.orders import models as _orders_models  # noqa: F401
 from yupay.modules.payments import models as _payments_models  # noqa: F401
 from yupay.modules.reviews import models as _reviews_models  # noqa: F401
