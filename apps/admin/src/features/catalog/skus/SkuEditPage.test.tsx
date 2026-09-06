@@ -2,7 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { SkuEditPage } from "./SkuEditPage";
@@ -266,4 +266,50 @@ it("previews the USD price converted per FX rate, and prefers a currency overrid
   // "Override" (capitalised, mid-sentence) — only the badge is "override".
   expect(within(panel).getByText("override")).toBeInTheDocument();
   expect(within(panel).queryByText("950")).not.toBeInTheDocument();
+});
+
+it("shows the B2B card with the saved state on an existing SKU", async () => {
+  // Full Sku shape — the edit form resets from every field of it.
+  const sku = {
+    id: "sku-1",
+    product_id: "prod-1",
+    sku_code: "stars-100",
+    denomination: "100",
+    region: "GLOBAL",
+    price_usd: "2.00",
+    cost_usdt: "8.00",
+    margin_percent: null,
+    variable_amount: false,
+    min_amount_usd: null,
+    max_amount_usd: null,
+    rate_multiplier: null,
+    min_qty: null,
+    max_qty: null,
+    image_url: null,
+    sort_order: 0,
+    active: true,
+    visible_b2b: true,
+    b2b_markup_pct: "7.00",
+    price_overrides: [],
+  };
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/fx/rates")) return Promise.resolve(RATES);
+    if (path.includes("/catalog/products")) return Promise.resolve([PRODUCT]);
+    if (path.includes("/catalog/brands")) return Promise.resolve([]);
+    return Promise.resolve([sku]);
+  });
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={["/skus/sku-1"]}>
+        <Routes>
+          <Route path="/skus/:id" element={<SkuEditPage />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByLabelText("Наценка B2B, %")).toHaveValue("7.00");
+  expect(screen.getByLabelText(/Виден мерчантам/)).toBeChecked();
+  // 8.00 × 1.07 = 8.56, «предварительно» — the server stays the authority.
+  expect(screen.getByText(/\$8\.56 · предварительно/)).toBeInTheDocument();
 });

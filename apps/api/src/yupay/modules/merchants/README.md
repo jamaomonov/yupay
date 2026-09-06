@@ -134,8 +134,21 @@ response's `amount` with what the operator typed and warns loudly on a
 mismatch, mints one idempotency key per logical credit attempt (stable
 across retries), and blocks double-submit while a credit is in flight.
 
+The catalog B2B knobs (Task 8) live on the catalog edit screens instead —
+`apps/admin/src/features/catalog/b2b.ts` plus a `SkuB2bCard` /
+`BrandB2bCard` on the SKU and brand editors: the `visible_b2b` switches,
+the per-SKU markup with the sanctioned «предварительно» price preview
+(see "Pricing" above — `previewB2bPrice` mirrors `pricing.merchant_price`
+in BigInt math and names this module as the authority), and the bulk
+"наценка всем SKU бренда" action, confirm-gated because it rewrites the
+whole brand's markups, reporting `affected` from the response. The read
+side those controls render from is `AdminBrandOut.visible_b2b` /
+`AdminSkuOut.{visible_b2b,b2b_markup_pct}` in the catalog module's admin
+list DTOs — admin-only, never on the public catalog DTOs.
+
 ## Status
 
-Schema (Task 1), the deposit service (Task 3), wholesale pricing (Task 5)
-and the admin endpoints (Task 6) are in place. Cabinet auth, the machine
-API, and API-key issuance land in later tasks.
+Schema (Task 1), the deposit service (Task 3), wholesale pricing (Task 5),
+the admin endpoints (Task 6) and the admin SPA screens (Tasks 7–8) are in
+place. Cabinet auth, the machine API, and API-key issuance land in later
+plans (M2+).

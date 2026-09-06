@@ -200,6 +200,10 @@
             },
             "title": "Translations",
             "type": "array"
+          },
+          "visible_b2b": {
+            "title": "Visible B2B",
+            "type": "boolean"
           }
         },
         "required": [
@@ -212,6 +216,7 @@
           "sort_order",
           "active",
           "maintenance",
+          "visible_b2b",
           "translations"
         ],
         "title": "AdminBrandOut",
@@ -1314,6 +1319,11 @@
             "title": "Active",
             "type": "boolean"
           },
+          "b2b_markup_pct": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "B2B Markup Pct",
+            "type": "string"
+          },
           "cost_usdt": {
             "anyOf": [
               {
@@ -1460,6 +1470,10 @@
           "variable_amount": {
             "title": "Variable Amount",
             "type": "boolean"
+          },
+          "visible_b2b": {
+            "title": "Visible B2B",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1480,6 +1494,8 @@
           "image_url",
           "sort_order",
           "active",
+          "visible_b2b",
+          "b2b_markup_pct",
           "price_overrides"
         ],
         "title": "AdminSkuOut",

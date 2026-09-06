@@ -7,6 +7,8 @@ import { Controller, useForm, useFieldArray } from "react-hook-form";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { z } from "zod";
 
+import { BrandB2bCard } from "./BrandB2bCard";
+
 import type { Brand, Category } from "../types";
 
 import { ImageUploader } from "@/components/ImageUploader";
@@ -314,6 +316,10 @@ export function BrandEditPage() {
             </fieldset>
           ))}
         </section>
+
+        {/* B2B lives outside the main form/save: it writes through the
+            merchants module's dedicated endpoints — see BrandB2bCard. */}
+        {!isNew && existing && <BrandB2bCard brand={existing} />}
       </div>
 
       {save.isError && (

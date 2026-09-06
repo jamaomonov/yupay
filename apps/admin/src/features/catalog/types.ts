@@ -42,6 +42,11 @@ export interface Brand {
   sort_order: number;
   active: boolean;
   maintenance: boolean;
+  /** Brand-level B2B (merchant catalog) visibility. Read-only here — writes
+   *  go through `PATCH /admin/catalog/brands/{id}/b2b` (see `../b2b.ts`);
+   *  the plain brand PATCH ignores it. Effective B2B visibility is
+   *  `brand.visible_b2b AND sku.visible_b2b`. */
+  visible_b2b: boolean;
   translations: Translation[];
 }
 
@@ -139,5 +144,11 @@ export interface Sku {
   image_url: string | null;
   sort_order: number;
   active: boolean;
+  /** SKU-level B2B (merchant catalog) visibility and markup. Read-only
+   *  here — writes go through `PATCH /admin/catalog/skus/{id}/b2b` (see
+   *  `../b2b.ts`); the plain SKU PATCH ignores both. The markup is margin
+   *  data, same sensitivity as `rate_multiplier` — admin-only. */
+  visible_b2b: boolean;
+  b2b_markup_pct: string;
   price_overrides: SkuPriceOverride[];
 }

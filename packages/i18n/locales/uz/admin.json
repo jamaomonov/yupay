@@ -72,5 +72,39 @@
         "actor": "Kim"
       }
     }
+  },
+  "catalogB2b": {
+    "sku": {
+      "title": "B2B (merchantlar)",
+      "visible": "Merchantlarga ko'rinadi",
+      "visibleHint": "SKU B2B katalogga faqat brendda ham B2B yoqilgan bo'lsa tushadi.",
+      "markupLabel": "B2B ustama, %",
+      "markupInvalid": "Ustama — ±999.99 gacha son, nuqtadan keyin ko'pi bilan ikki raqam.",
+      "previewLabel": "Merchant narxi",
+      "previewValue": "≈ {price} · dastlabki",
+      "previewBelowCost": "costdan past — ustama ishorasini tekshiring",
+      "previewNoCost": "USDT costsiz SKUda B2B narx yo'q — u merchant katalogiga tushmaydi.",
+      "save": "B2B ni saqlash",
+      "saving": "Saqlanmoqda…",
+      "saved": "SKU B2B sozlamalari saqlandi.",
+      "error": "B2B ni saqlab bo'lmadi: {message}"
+    },
+    "brand": {
+      "title": "B2B (merchantlar)",
+      "visible": "Brend merchantlarga ko'rinadi",
+      "visibleHint": "O'chirilgan — SKU sozlamalaridan qat'i nazar butun brend B2B katalogdan yashiriladi.",
+      "saved": "Brend B2B ko'rinishi yangilandi.",
+      "error": "B2B ko'rinishni yangilab bo'lmadi: {message}",
+      "bulk": {
+        "markupLabel": "Ustama, %",
+        "markupInvalid": "Ustama — ±999.99 gacha son, nuqtadan keyin ko'pi bilan ikki raqam.",
+        "action": "Brendning barcha SKUlariga ustama",
+        "confirmTitle": "Ustama brendning barcha SKUlariga qo'llansinmi?",
+        "confirmBody": "“{brand}” brendining barcha SKUlariga {markup}% B2B ustama o'rnatiladi. Joriy per-SKU qiymatlar qayta yoziladi.",
+        "confirm": "Ha, qo'llash",
+        "done": "Yangilangan SKUlar: {count}.",
+        "error": "Ustamani qo'llab bo'lmadi: {message}"
+      }
+    }
   }
 }

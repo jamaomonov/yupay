@@ -32,6 +32,7 @@ const BRAND: Brand = {
   sort_order: 0,
   active: true,
   maintenance: false,
+  visible_b2b: false,
   translations: [{ locale: "ru", name: "Mobile Legends" }],
 };
 

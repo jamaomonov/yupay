@@ -7,12 +7,15 @@ import { Controller, useForm, useFieldArray } from "react-hook-form";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { z } from "zod";
 
+import { SkuB2bCard } from "./SkuB2bCard";
+
 import type { Brand, Product, Sku } from "../types";
 
 import { ImageUploader } from "@/components/ImageUploader";
 import { PageHeader } from "@/components/PageHeader";
 import { SkuPriceHistoryCard } from "@/features/integrations/SkuPriceHistoryCard";
-import { ApiError, apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
+import { type ApiError, apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
+import { extractApiMessage } from "@/lib/apiError";
 import { qk } from "@/lib/queryKeys";
 
 const CURRENCIES = ["USD", "USDT", "RUB", "UZS", "KZT", "EUR"] as const;
@@ -839,6 +842,8 @@ export function SkuEditPage() {
             variableAmount={watchedVariableAmount}
           />
 
+          {!isNew && existing && <SkuB2bCard sku={existing} cost={watchedCostUsdt ?? ""} />}
+
           {!isNew && params.id && (
             <SkuPriceHistoryCard skuId={params.id} skuCode={watchedSkuCode} />
           )}
@@ -910,14 +915,10 @@ export function SkuEditPage() {
       </div>
 
       {save.isError && (
-        <p className="mt-4 text-sm text-[var(--danger)]">
-          {extractApiMessage(save.error) ?? "Не удалось сохранить SKU."}
-        </p>
+        <p className="mt-4 text-sm text-[var(--danger)]">{extractApiMessage(save.error)}</p>
       )}
       {remove.isError && (
-        <p className="mt-4 text-sm text-[var(--danger)]">
-          {extractApiMessage(remove.error) ?? "Не удалось удалить."}
-        </p>
+        <p className="mt-4 text-sm text-[var(--danger)]">{extractApiMessage(remove.error)}</p>
       )}
     </form>
   );
@@ -1157,13 +1158,4 @@ function Field({
       {error && <span className="mt-1 block text-xs text-[var(--danger)]">{error}</span>}
     </label>
   );
-}
-
-function extractApiMessage(err: unknown): string | undefined {
-  if (err instanceof ApiError) {
-    const body = err.body as { detail?: string; title?: string } | null;
-    return body?.detail ?? body?.title ?? err.message;
-  }
-  if (err instanceof Error) return err.message;
-  return undefined;
 }

@@ -891,3 +891,64 @@ async def test_update_partial_min_amount_above_max_rejected(
     assert r.status_code == 200, r.text
     sku = next(s for s in r.json() if s["id"] == sku_id)
     assert Decimal(sku["min_amount_usd"]) == Decimal("1")
+
+
+async def test_admin_lists_expose_b2b_read_side(
+    integration_client: AsyncClient, _admin_headers: dict[str, str]
+) -> None:
+    """``GET /admin/catalog/{brands,skus}`` must carry ``visible_b2b`` (and
+    ``b2b_markup_pct`` on SKUs) so the admin SPA's B2B controls render the
+    *current* state — the merchants-module PATCH endpoints under
+    ``/admin/catalog/**/b2b`` are write-only, and without a read side the
+    Task-8 switches would always show the column defaults."""
+    product_id = await _create_product_for_sku(integration_client, _admin_headers, suffix="b2b")
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/skus",
+        headers=_admin_headers,
+        json={
+            "product_id": product_id,
+            "sku_code": "b2b-read-sku",
+            "price_usd": "9.99",
+            "cost_usdt": "8.00",
+        },
+    )
+    assert r.status_code == 201, r.text
+    created = r.json()
+    sku_id = created["id"]
+    # Defaults straight from the columns: hidden, 7% (Task 4's server_default).
+    assert created["visible_b2b"] is False
+    assert Decimal(created["b2b_markup_pct"]) == Decimal("7.00")
+
+    r = await integration_client.get("/api/v1/admin/catalog/brands", headers=_admin_headers)
+    assert r.status_code == 200, r.text
+    brand = next(b for b in r.json() if b["slug"] == "var-brand-b2b")
+    assert brand["visible_b2b"] is False
+
+    # Flip everything through the merchants-module write endpoints…
+    r = await integration_client.patch(
+        f"/api/v1/admin/catalog/skus/{sku_id}/b2b",
+        headers=_admin_headers,
+        json={"markup_pct": "5.50", "visible_b2b": True},
+    )
+    assert r.status_code == 200, r.text
+    r = await integration_client.patch(
+        f"/api/v1/admin/catalog/brands/{brand['id']}/b2b",
+        headers=_admin_headers,
+        json={"visible_b2b": True},
+    )
+    assert r.status_code == 200, r.text
+
+    # …and read the new state back from the plain admin lists.
+    r = await integration_client.get(
+        "/api/v1/admin/catalog/skus",
+        headers=_admin_headers,
+        params={"product_id": product_id},
+    )
+    assert r.status_code == 200, r.text
+    sku = next(s for s in r.json() if s["id"] == sku_id)
+    assert sku["visible_b2b"] is True
+    assert Decimal(sku["b2b_markup_pct"]) == Decimal("5.50")
+
+    r = await integration_client.get("/api/v1/admin/catalog/brands", headers=_admin_headers)
+    brand = next(b for b in r.json() if b["slug"] == "var-brand-b2b")
+    assert brand["visible_b2b"] is True

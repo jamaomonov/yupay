@@ -72,5 +72,39 @@
         "actor": "Who"
       }
     }
+  },
+  "catalogB2b": {
+    "sku": {
+      "title": "B2B (merchants)",
+      "visible": "Visible to merchants",
+      "visibleHint": "The SKU shows in the B2B catalog only if B2B is also enabled on its brand.",
+      "markupLabel": "B2B markup, %",
+      "markupInvalid": "Markup must be a number up to ±999.99 with at most two decimals.",
+      "previewLabel": "Merchant price",
+      "previewValue": "≈ {price} · preliminary",
+      "previewBelowCost": "below cost — check the markup sign",
+      "previewNoCost": "Without a USDT cost the SKU has no B2B price — it will not appear in the merchant catalog.",
+      "save": "Save B2B",
+      "saving": "Saving…",
+      "saved": "SKU B2B settings saved.",
+      "error": "Failed to save B2B: {message}"
+    },
+    "brand": {
+      "title": "B2B (merchants)",
+      "visible": "Brand visible to merchants",
+      "visibleHint": "Off — the whole brand is hidden from the B2B catalog regardless of its SKUs' settings.",
+      "saved": "Brand B2B visibility updated.",
+      "error": "Failed to update B2B visibility: {message}",
+      "bulk": {
+        "markupLabel": "Markup, %",
+        "markupInvalid": "Markup must be a number up to ±999.99 with at most two decimals.",
+        "action": "Set markup on all brand SKUs",
+        "confirmTitle": "Apply the markup to every SKU of this brand?",
+        "confirmBody": "Every SKU of “{brand}” will get a B2B markup of {markup}%. Current per-SKU values will be overwritten.",
+        "confirm": "Yes, apply",
+        "done": "SKUs updated: {count}.",
+        "error": "Failed to apply the markup: {message}"
+      }
+    }
   }
 }

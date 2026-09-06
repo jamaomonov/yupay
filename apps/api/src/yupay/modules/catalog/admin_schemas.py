@@ -535,6 +535,10 @@ class AdminBrandOut(BaseModel):
     sort_order: int
     active: bool
     maintenance: bool
+    # Read side of the merchants module's ``PATCH /admin/catalog/brands/{id}/b2b``
+    # — admin-only, never on the public BrandOut. Effective B2B visibility is
+    # ``brand.visible_b2b AND sku.visible_b2b``.
+    visible_b2b: bool
     translations: list[TranslationIn]
 
 
@@ -582,6 +586,12 @@ class AdminSkuOut(BaseModel):
     image_url: str | None
     sort_order: int
     active: bool
+    # Read side of the merchants module's ``PATCH /admin/catalog/skus/{id}/b2b``
+    # — admin-only, never on the public SkuOut (the markup is margin data, same
+    # sensitivity as rate_multiplier above). Writes stay on the merchants
+    # endpoints; the plain catalog PATCH ignores these fields.
+    visible_b2b: bool
+    b2b_markup_pct: Decimal
     price_overrides: list[SkuPriceOverrideIn]
 
 
