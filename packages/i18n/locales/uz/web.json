@@ -747,6 +747,8 @@
     "codesReadyTitle": "Buyurtma tayyor — kodlar tayyor",
     "supportCta": "Qoʻllab-quvvatlashga yozish",
     "payNow": "Toʻlash",
+    "payLoadError": "Toʻlovni yuklab boʻlmadi.",
+    "openingBank": "Bank ilovasi ochilmoqda…",
     "walletTopUpTitle": "Hamyonni toʻldirish",
     "walletTopUpBody": "Bank toʻlovni tasdiqlagach balans yangilanadi.",
     "walletTopUpCta": "Hamyonga"

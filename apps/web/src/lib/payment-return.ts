@@ -44,6 +44,17 @@ const AUTO_OPEN_VALUE = "1";
 /** Per-order, per-tab record that the flag has already been spent. */
 const SPENT_PREFIX = "yupay.web.autopay.";
 
+/**
+ * How long after arriving the flag may still take over the screen.
+ *
+ * Opening the bank app is only welcome as the continuation of the tap that
+ * started checkout. On a bad connection the payment can take ten seconds to
+ * come back, by which time the buyer is reading their order — launching
+ * another app then is a hijack, not a hand-off. Past this, the answer only
+ * renders the button and the buyer decides.
+ */
+export const AUTO_OPEN_BUDGET_MS = 8_000;
+
 /** The read side of `URLSearchParams`. `useSearchParams()` hands back a
  *  `ReadonlyURLSearchParams`, which is not assignable to `URLSearchParams`. */
 export interface ReadableParams {

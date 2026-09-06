@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { OrderPayNow } from "./OrderPayNow";
@@ -62,6 +62,9 @@ const openAcquirerMock = vi.mocked(openAcquirer);
 
 afterEach(() => {
   vi.clearAllMocks();
+  // `Date.now` is spied in the late-answer test below; restore it before the
+  // next one measures its own arrival.
+  vi.restoreAllMocks();
   searchParams = new URLSearchParams();
   window.sessionStorage.clear();
 });
@@ -138,6 +141,87 @@ it("stays silent when there is no active payment (404)", async () => {
     expect(mockApiFetch).toHaveBeenCalled();
   });
   expect(screen.queryByRole("link", { name: "payNow" })).not.toBeInTheDocument();
+  // A 404 is the ordinary answer, not a failure — nothing to say and nothing
+  // to retry.
+  expect(screen.queryByText("payLoadError")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "retry" })).not.toBeInTheDocument();
+});
+
+/**
+ * A 404 means "no live intent"; anything else — a 5xx, a dropped mobile
+ * connection — means we do not know. Rendering nothing for the second case
+ * put a guest who came back from the bank app WITHOUT paying on a
+ * `pending_payment` order with no button, no error and no way to retry: the
+ * exact dead end this whole change exists to remove. `retry: false` is right
+ * for the 404 and leaves this case with nothing on screen, so the difference
+ * has to be made visible.
+ */
+it("offers a retry when the payment fetch fails for any reason but a 404", async () => {
+  mockApiFetch.mockRejectedValueOnce(new ApiError(503, "/payments/by-order/order-1"));
+
+  wrap(panel());
+
+  expect(await screen.findByText("payLoadError")).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "payNow" })).not.toBeInTheDocument();
+
+  // And the retry actually gets the buyer their button.
+  mockApiFetch.mockResolvedValue(payment());
+  fireEvent.click(screen.getByRole("button", { name: "retry" }));
+
+  expect(await screen.findByRole("link", { name: "payNow" })).toBeInTheDocument();
+  expect(screen.queryByText("payLoadError")).not.toBeInTheDocument();
+});
+
+it("offers a retry when the connection drops outright (no ApiError at all)", async () => {
+  // `apiFetch` rejects with whatever `fetch` threw when the request never
+  // reached us — a `TypeError`, which carries no status to compare.
+  mockApiFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+  wrap(panel());
+
+  expect(await screen.findByText("payLoadError")).toBeInTheDocument();
+});
+
+it("says what it is doing while the payment is still loading on arrival", async () => {
+  searchParams = new URLSearchParams(`${AUTO_OPEN_PARAM}=1`);
+  let land: (p: PaymentOut) => void = () => undefined;
+  mockApiFetch.mockReturnValue(
+    new Promise<PaymentOut>((resolve) => {
+      land = resolve;
+    }),
+  );
+
+  wrap(panel());
+
+  // Not a blank card that looks finished while the bank app is on its way.
+  expect(await screen.findByText("openingBank")).toBeInTheDocument();
+
+  land(payment());
+  await waitFor(() => {
+    expect(openAcquirerMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+it("does not hijack the screen with an answer that arrives long after the buyer did", async () => {
+  searchParams = new URLSearchParams(`${AUTO_OPEN_PARAM}=1`);
+  const arrived = Date.now();
+  let land: (p: PaymentOut) => void = () => undefined;
+  mockApiFetch.mockReturnValue(
+    new Promise<PaymentOut>((resolve) => {
+      land = resolve;
+    }),
+  );
+
+  wrap(panel());
+  await screen.findByText("openingBank");
+
+  // Ten seconds on a bad connection: the buyer has been reading the order
+  // page for a while, and launching their bank app now would be a hijack.
+  vi.spyOn(Date, "now").mockReturnValue(arrived + 10_000);
+  land(payment());
+
+  expect(await screen.findByRole("link", { name: "payNow" })).toBeInTheDocument();
+  expect(openAcquirerMock).not.toHaveBeenCalled();
 });
 
 it("opens the acquirer once when checkout sent the buyer here with the flag", async () => {

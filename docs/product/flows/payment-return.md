@@ -121,9 +121,17 @@ survives a new browser session, so all three are kept.
 
 ## Still open
 
-The wallet deposit page (`/account/wallet/top-up`) still assigns the acquirer
-URL to `window.location.href` and has the same mobile shape: the buyer comes
-back to the top-up form with no sign a deposit is in flight. It is less costly
-than a lost order — the deposit's own `return_url` is `/account/wallet?topup=1`
-and the balance settles on its own — but it is the same bug and is not fixed
-here.
+**The wallet deposit page has the same bug** — tracked as
+[#36](https://github.com/jamaomonov/yupay/issues/36).
+`/account/wallet/top-up` still assigns the acquirer URL to
+`window.location.href`, so on a phone the buyer comes back to the top-up form
+with no sign a deposit is in flight. It is milder than a lost order: the
+deposit's `return_url` is `/account/wallet?topup=1`, the balance settles by
+webhook wherever the browser is, and `topUpAttemptKey` reuses the idempotency
+key while amount and method are unchanged, so a stranded buyer's re-submit
+replays the same payment instead of opening a second deposit.
+
+It is, however, **unrecoverable from the order page**: `OrderStatus` returns
+early for `purpose === "wallet_topup"` before `OrderPayNow` mounts, so a
+deposit has no pay button to come back to. Fixing it means adding
+`OrderPayNow` to that branch as well as pushing with the flag.
