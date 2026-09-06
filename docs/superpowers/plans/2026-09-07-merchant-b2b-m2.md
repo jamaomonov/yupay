@@ -73,7 +73,7 @@ house_payments_received`) — the module README's posting table is the
 
 Read `core/db.py`'s naming-convention warning before naming anything.
 
-- [ ] **Step 1: failing tests**
+- [x] **Step 1: failing tests**
 
 ```python
 def test_actor_accepts_a_merchant_arm() -> None:
@@ -90,10 +90,10 @@ async def test_same_merchant_key_returns_the_same_order(db_session): ...
 async def test_two_merchants_may_share_a_key(db_session): ...   # scoping proof
 ```
 
-- [ ] **Step 2: run → FAIL** (`Actor` takes no `merchant_id`)
-- [ ] **Step 3: implement** `Actor`, event labelling, idempotent lookup, migration
-- [ ] **Step 4: FULL orders + payments integration suites** — retail must not move
-- [ ] **Step 5: commit** `feat(api/orders): merchant actor and its idempotency scope`
+- [x] **Step 2: run → FAIL** (`Actor` takes no `merchant_id`)
+- [x] **Step 3: implement** `Actor`, event labelling, idempotent lookup, migration
+- [x] **Step 4: FULL orders + payments integration suites** — retail must not move
+- [x] **Step 5: commit** `feat(api/orders): merchant actor and its idempotency scope`
 
 ---
 

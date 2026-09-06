@@ -174,14 +174,27 @@ def normalise_source(raw: str | None) -> str:
 
 @dataclass(frozen=True)
 class Actor:
-    """Either a logged-in user (``user_id``) or a guest (``email``). Exactly one set."""
+    """Who is placing or reading an order. Exactly one arm is set.
+
+    Three arms, mirroring the ``ck_orders_actor_exclusive`` CHECK the database
+    has enforced since migration 0066: a logged-in user (``user_id``), a guest
+    identified by their email (``email``), or a B2B reseller ordering through
+    ``/merchant/v1`` (``merchant_id``).
+
+    ``merchant_id`` is defaulted rather than required so every retail call site
+    keeps constructing an actor with the same two keyword arguments it always
+    did — the widening is additive, and a two-argument ``Actor`` still means
+    exactly what it meant before.
+    """
 
     user_id: str | None
     email: str | None
+    merchant_id: str | None = None
 
     def __post_init__(self) -> None:
-        if (self.user_id is None) == (self.email is None):
-            raise ValidationError("actor must be exactly one of user_id / email")
+        arms = (self.user_id, self.email, self.merchant_id)
+        if sum(arm is not None for arm in arms) != 1:
+            raise ValidationError("actor must be exactly one of user_id / email / merchant_id")
 
 
 def _record_event(
@@ -194,6 +207,12 @@ def _record_event(
 ) -> None:
     if actor.user_id:
         actor_label = f"user:{actor.user_id}"
+    elif actor.merchant_id:
+        # No hashing here, unlike the guest arm below: a merchant id is an
+        # internal account identifier, not the reseller's own PII, and ops needs
+        # to read it straight off the audit feed. Fits the varchar(64) actor
+        # column with room to spare ("merchant:" + 36-char UUID = 45 chars).
+        actor_label = f"merchant:{actor.merchant_id}"
     else:
         # Store a (truncated) hash of the guest's email — not the raw address — in
         # the audit actor, keeping the plaintext email out of the admin audit feed
@@ -282,6 +301,11 @@ async def _existing_idempotent_order(
     )
     if actor.user_id is not None:
         stmt = stmt.where(Order.user_id == actor.user_id)
+    elif actor.merchant_id is not None:
+        # Per-merchant scope, matching the per-user and per-guest scopes: two
+        # resellers picking the same ``merchant_order_id`` is expected traffic
+        # (they cannot see each other's keys), not a replay of one order.
+        stmt = stmt.where(Order.merchant_id == actor.merchant_id)
     else:
         stmt = stmt.where(Order.guest_email == actor.email)
     existing = (await db.execute(stmt)).scalar_one_or_none()
@@ -817,6 +841,7 @@ async def create_order(
         id=order_id,
         user_id=actor.user_id,
         guest_email=actor.email,
+        merchant_id=actor.merchant_id,
         # Only meaningful for a signed-in buyer: a guest's address is
         # ``guest_email`` and doubles as their claim on the order.
         delivery_email=(body.delivery_email if actor.user_id is not None else None),
@@ -904,6 +929,12 @@ async def get_order_for_actor(db: AsyncSession, order_id: str, *, actor: Actor) 
     if actor.user_id is not None:
         if order.user_id != actor.user_id:
             raise NotFoundError("order not found")
+    elif actor.merchant_id is not None:
+        # Explicit arm rather than letting a merchant actor fall through to the
+        # guest comparison below, where its NULL email would match nothing by
+        # accident instead of by design.
+        if order.merchant_id != actor.merchant_id:
+            raise NotFoundError("order not found")
     elif order.guest_email is None or order.guest_email.lower() != (actor.email or "").lower():
         raise NotFoundError("order not found")
     # Lazy guard: if the customer is opening a stale pending order, flip it
@@ -924,6 +955,8 @@ async def list_orders_for_actor(db: AsyncSession, *, actor: Actor, limit: int = 
     )
     if actor.user_id is not None:
         stmt = stmt.where(Order.user_id == actor.user_id)
+    elif actor.merchant_id is not None:
+        stmt = stmt.where(Order.merchant_id == actor.merchant_id)
     else:
         stmt = stmt.where(Order.guest_email == actor.email)
     rows = list((await db.execute(stmt)).scalars().all())
