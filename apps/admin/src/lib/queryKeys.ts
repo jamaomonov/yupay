@@ -160,6 +160,10 @@ export const qk = {
   paymentProviderDetail: (provider: string, window: string) =>
     ["admin", "payments", "providers", provider, window] as const,
 
+  // merchants (B2B resellers)
+  merchants: () => ["admin", "merchants"] as const,
+  merchantTxns: (merchantId: string) => ["admin", "merchants", merchantId, "transactions"] as const,
+
   // promo
   promoCodes: () => ["admin", "promo"] as const,
 

@@ -9,6 +9,7 @@
  * tables here are wide, and a permanently-visible nav is not worth that.
  */
 
+import adminRu from "@yupay/i18n/locales/ru/admin.json";
 import { Button } from "@yupay/ui";
 import {
   Activity,
@@ -32,6 +33,7 @@ import {
   Search,
   ShieldCheck,
   Star,
+  Store,
   Tag,
   Ticket,
   Truck,
@@ -106,6 +108,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: "/users", label: "Пользователи", icon: UsersIcon },
       { to: "/wallet", label: "Кошелёк", icon: Wallet },
+      { to: "/merchants", label: adminRu.merchants.nav, icon: Store },
       { to: "/reviews", label: "Отзывы", icon: Star },
     ],
   },

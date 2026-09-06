@@ -98,6 +98,13 @@ const WALLET_TX_KIND: Record<string, StatusMeta> = {
   wallet_payment: { label: "Оплата кошельком", tone: INFO },
   "payment.refund": { label: "Возврат платежа", tone: INFO },
   "promo.redeem": { label: "Погашение промокода", tone: ACCENT },
+  merchant_deposit_credit: { label: "Пополнение депозита", tone: SUCCESS },
+};
+
+/** ``Merchant.status`` — the B2B reseller lifecycle (merchants feature). */
+const MERCHANT_STATUS: Record<string, StatusMeta> = {
+  active: { label: "Активен", tone: SUCCESS },
+  frozen: { label: "Заморожен", tone: DANGER },
 };
 
 /** Review moderation status — filter values + status column. */
@@ -114,7 +121,8 @@ export type StatusDomain =
   | "fulfillmentState"
   | "taskStatus"
   | "walletTxKind"
-  | "reviewStatus";
+  | "reviewStatus"
+  | "merchantStatus";
 
 const REGISTRY: Record<StatusDomain, Record<string, StatusMeta>> = {
   orderStatus: fromLabelTone(ORDER_LABEL, ORDER_TONE),
@@ -124,6 +132,7 @@ const REGISTRY: Record<StatusDomain, Record<string, StatusMeta>> = {
   taskStatus: TASK_STATUS,
   walletTxKind: WALLET_TX_KIND,
   reviewStatus: REVIEW_STATUS,
+  merchantStatus: MERCHANT_STATUS,
 };
 
 /** Humanize an unmapped raw value instead of rendering it blank or in raw

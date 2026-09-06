@@ -35,6 +35,8 @@ import { MappingsPage } from "@/features/integrations/MappingsPage";
 import { SupplierCatalogPage } from "@/features/integrations/SupplierCatalogPage";
 import { SupplierDetailPage } from "@/features/integrations/SupplierDetailPage";
 import { InventoryPage } from "@/features/inventory/InventoryPage";
+import { MerchantDetail } from "@/features/merchants/MerchantDetail";
+import { MerchantsPage } from "@/features/merchants/MerchantsPage";
 import { OrderDetailPage } from "@/features/orders/OrderDetailPage";
 import { OrdersListPage } from "@/features/orders/OrdersListPage";
 import { PaymentsPage } from "@/features/payments/PaymentsPage";
@@ -86,6 +88,8 @@ export const router = createBrowserRouter([
             element: <Navigate to="/fulfillment?tab=manual" replace />,
           },
           { path: "/wallet", element: <WalletPage /> },
+          { path: "/merchants", element: <MerchantsPage /> },
+          { path: "/merchants/:id", element: <MerchantDetail /> },
           { path: "/audit", element: <AuditPage /> },
           { path: "/fx", element: <FxPage /> },
           { path: "/gifts", element: <GiftsSettingsPage /> },

@@ -1,0 +1,75 @@
+{
+  "merchants": {
+    "nav": "Merchantlar",
+    "list": {
+      "title": "Merchantlar",
+      "description": "Ulgurji resellerlar: USD depozit, holat va to'ldirish tarixi.",
+      "create": "Merchant yaratish",
+      "empty": "Hozircha merchantlar yo'q.",
+      "loadError": "Merchantlarni yuklab bo'lmadi.",
+      "columns": {
+        "title": "Nomi",
+        "status": "Holat",
+        "balance": "Depozit",
+        "created": "Yaratilgan"
+      },
+      "createDialog": {
+        "title": "Yangi merchant",
+        "titleLabel": "Nomi",
+        "titlePlaceholder": "masalan: Reseller LLC",
+        "submit": "Yaratish",
+        "cancel": "Bekor qilish",
+        "created": "Merchant yaratildi.",
+        "error": "Yaratib bo'lmadi: {message}"
+      }
+    },
+    "detail": {
+      "notFound": "Merchant topilmadi.",
+      "balanceLabel": "Depozit (USD)",
+      "statusLabel": "Holat",
+      "createdLabel": "Yaratilgan",
+      "freeze": "Muzlatish",
+      "unfreeze": "Muzlatishdan chiqarish",
+      "freezeConfirmTitle": "Merchant muzlatilsinmi?",
+      "freezeConfirmBody": "“{title}” yangi buyurtma bera olmaydi. Muzlatilgan holatda ham depozitni to'ldirish mumkin.",
+      "freezeConfirm": "Ha, muzlatish",
+      "unfreezeConfirmTitle": "Merchant muzlatishdan chiqarilsinmi?",
+      "unfreezeConfirmBody": "“{title}” yana buyurtma bera oladi.",
+      "unfreezeConfirm": "Ha, chiqarish",
+      "frozenToast": "Merchant muzlatildi.",
+      "unfrozenToast": "Merchant muzlatishdan chiqarildi.",
+      "statusError": "Holatni o'zgartirib bo'lmadi: {message}"
+    },
+    "credit": {
+      "title": "Depozitni to'ldirish",
+      "hint": "Ledger'ga juft yozuv bilan kiritiladi: D merchant_deposit / C house_payments_received.",
+      "amountLabel": "Summa (USD)",
+      "amountPlaceholder": "masalan: 500 yoki 99.50",
+      "noteLabel": "Izoh",
+      "noteHint": "(ixtiyoriy; faqat ichki)",
+      "notePlaceholder": "masalan: 05.09 dagi 14-invoys",
+      "submit": "O'tkazish",
+      "submitBusy": "O'tkazilmoqda…",
+      "confirmTitle": "Depozitga o'tkazilsinmi?",
+      "confirmBody": "“{title}” merchant depozitiga {amount} o'tkaziladi.",
+      "confirm": "Ha, o'tkazish",
+      "success": "{amount} o'tkazildi. Balans: {balance}.",
+      "resultBalance": "O'tkazmadan keyingi balans: {balance}",
+      "replayMismatch": "Avval ishlatilgan kalit bo'yicha {booked} o'tkazildi — kiritilgan {typed} summa qo'llanilMAdi. Quyidagi tarixni tekshiring va yangi o'tkazma kerak bo'lsa formani qayta yuboring.",
+      "amountInvalid": "Summa — musbat USD son, ko'pi bilan ikki kasr xona.",
+      "error": "O'tkazib bo'lmadi: {message}"
+    },
+    "ledger": {
+      "title": "Depozit tarixi",
+      "empty": "Depozit bo'yicha harakatlar hali yo'q.",
+      "loadError": "Tarixni yuklab bo'lmadi.",
+      "columns": {
+        "created": "Qachon",
+        "kind": "Amal",
+        "amount": "Summa",
+        "note": "Izoh",
+        "actor": "Kim"
+      }
+    }
+  }
+}

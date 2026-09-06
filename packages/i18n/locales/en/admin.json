@@ -1,0 +1,75 @@
+{
+  "merchants": {
+    "nav": "Merchants",
+    "list": {
+      "title": "Merchants",
+      "description": "Wholesale resellers: USD deposit, status and top-up history.",
+      "create": "Create merchant",
+      "empty": "No merchants yet.",
+      "loadError": "Failed to load merchants.",
+      "columns": {
+        "title": "Title",
+        "status": "Status",
+        "balance": "Deposit",
+        "created": "Created"
+      },
+      "createDialog": {
+        "title": "New merchant",
+        "titleLabel": "Title",
+        "titlePlaceholder": "e.g. Reseller LLC",
+        "submit": "Create",
+        "cancel": "Cancel",
+        "created": "Merchant created.",
+        "error": "Failed to create: {message}"
+      }
+    },
+    "detail": {
+      "notFound": "Merchant not found.",
+      "balanceLabel": "Deposit (USD)",
+      "statusLabel": "Status",
+      "createdLabel": "Created",
+      "freeze": "Freeze",
+      "unfreeze": "Unfreeze",
+      "freezeConfirmTitle": "Freeze this merchant?",
+      "freezeConfirmBody": "“{title}” will not be able to place new orders. Deposits can still be credited while frozen.",
+      "freezeConfirm": "Yes, freeze",
+      "unfreezeConfirmTitle": "Unfreeze this merchant?",
+      "unfreezeConfirmBody": "“{title}” will be able to place orders again.",
+      "unfreezeConfirm": "Yes, unfreeze",
+      "frozenToast": "Merchant frozen.",
+      "unfrozenToast": "Merchant unfrozen.",
+      "statusError": "Failed to change status: {message}"
+    },
+    "credit": {
+      "title": "Credit the deposit",
+      "hint": "Booked on the ledger as a posting pair: D merchant_deposit / C house_payments_received.",
+      "amountLabel": "Amount (USD)",
+      "amountPlaceholder": "e.g. 500 or 99.50",
+      "noteLabel": "Note",
+      "noteHint": "(optional; internal only)",
+      "notePlaceholder": "e.g. invoice #14 of Sep 5",
+      "submit": "Credit",
+      "submitBusy": "Crediting…",
+      "confirmTitle": "Credit the deposit?",
+      "confirmBody": "“{title}”'s deposit will be credited {amount}.",
+      "confirm": "Yes, credit",
+      "success": "Credited {amount}. Balance: {balance}.",
+      "resultBalance": "Balance after the credit: {balance}",
+      "replayMismatch": "Credited {booked} via a previously used key — the entered amount {typed} was NOT applied. Check the history below and submit the form again if a new credit is needed.",
+      "amountInvalid": "Amount must be a positive USD number with at most two decimals.",
+      "error": "Failed to credit: {message}"
+    },
+    "ledger": {
+      "title": "Deposit history",
+      "empty": "No deposit movements yet.",
+      "loadError": "Failed to load the history.",
+      "columns": {
+        "created": "When",
+        "kind": "Operation",
+        "amount": "Amount",
+        "note": "Note",
+        "actor": "Who"
+      }
+    }
+  }
+}

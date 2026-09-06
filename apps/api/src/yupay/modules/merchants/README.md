@@ -126,6 +126,14 @@ The non-ledger writes accept an optional `Idempotency-Key` and replay
 through the generic `(scope, key)` store (`core.idempotency`), like the
 other admin write endpoints.
 
+The admin SPA screens for this surface live in
+`apps/admin/src/features/merchants/` (`/merchants` list + create,
+`/merchants/:id` freeze / deposit credit / ledger). The deposit-credit form
+is the UI half of the replay-visibility mechanism above: it compares the
+response's `amount` with what the operator typed and warns loudly on a
+mismatch, mints one idempotency key per logical credit attempt (stable
+across retries), and blocks double-submit while a credit is in flight.
+
 ## Status
 
 Schema (Task 1), the deposit service (Task 3), wholesale pricing (Task 5)

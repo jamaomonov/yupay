@@ -1,0 +1,75 @@
+{
+  "merchants": {
+    "nav": "Мерчанты",
+    "list": {
+      "title": "Мерчанты",
+      "description": "Оптовые реселлеры: депозит в USD, статус и история пополнений.",
+      "create": "Создать мерчанта",
+      "empty": "Пока ни одного мерчанта.",
+      "loadError": "Не удалось загрузить мерчантов.",
+      "columns": {
+        "title": "Название",
+        "status": "Статус",
+        "balance": "Депозит",
+        "created": "Создан"
+      },
+      "createDialog": {
+        "title": "Новый мерчант",
+        "titleLabel": "Название",
+        "titlePlaceholder": "например: Reseller LLC",
+        "submit": "Создать",
+        "cancel": "Отмена",
+        "created": "Мерчант создан.",
+        "error": "Не удалось создать: {message}"
+      }
+    },
+    "detail": {
+      "notFound": "Мерчант не найден.",
+      "balanceLabel": "Депозит (USD)",
+      "statusLabel": "Статус",
+      "createdLabel": "Создан",
+      "freeze": "Заморозить",
+      "unfreeze": "Разморозить",
+      "freezeConfirmTitle": "Заморозить мерчанта?",
+      "freezeConfirmBody": "«{title}» не сможет оформлять новые заказы. Пополнять депозит можно и в заморозке.",
+      "freezeConfirm": "Да, заморозить",
+      "unfreezeConfirmTitle": "Разморозить мерчанта?",
+      "unfreezeConfirmBody": "«{title}» снова сможет оформлять заказы.",
+      "unfreezeConfirm": "Да, разморозить",
+      "frozenToast": "Мерчант заморожен.",
+      "unfrozenToast": "Мерчант разморожен.",
+      "statusError": "Не удалось сменить статус: {message}"
+    },
+    "credit": {
+      "title": "Пополнить депозит",
+      "hint": "Зачисление идёт в ledger парой проводок: D merchant_deposit / C house_payments_received.",
+      "amountLabel": "Сумма (USD)",
+      "amountPlaceholder": "например: 500 или 99.50",
+      "noteLabel": "Комментарий",
+      "noteHint": "(опционально; видно только нам)",
+      "notePlaceholder": "например: инвойс №14 от 05.09",
+      "submit": "Зачислить",
+      "submitBusy": "Зачисляем…",
+      "confirmTitle": "Зачислить на депозит?",
+      "confirmBody": "На депозит мерчанта «{title}» зачислится {amount}.",
+      "confirm": "Да, зачислить",
+      "success": "Зачислено {amount}. Баланс: {balance}.",
+      "resultBalance": "Баланс после зачисления: {balance}",
+      "replayMismatch": "Зачислено {booked} по ранее использованному ключу — введённая сумма {typed} не применена. Проверь историю ниже и, если нужно новое зачисление, отправь форму ещё раз.",
+      "amountInvalid": "Сумма — положительное число в USD, максимум два знака после точки.",
+      "error": "Не удалось зачислить: {message}"
+    },
+    "ledger": {
+      "title": "История депозита",
+      "empty": "Движений по депозиту ещё не было.",
+      "loadError": "Не удалось загрузить историю.",
+      "columns": {
+        "created": "Когда",
+        "kind": "Операция",
+        "amount": "Сумма",
+        "note": "Комментарий",
+        "actor": "Кто"
+      }
+    }
+  }
+}
